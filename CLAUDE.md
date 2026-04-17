@@ -25,6 +25,28 @@ These rules bind every Claude Code session working on this project.
 
 ---
 
+## Legacy code version disambiguation
+
+When the legacy codebase contains multiple files that appear to implement the
+same functionality (e.g., multiple dated copies of a notebook, or several
+`_v0`/`_mod`-suffixed helper `.py` files), identify the canonical version using
+this strict priority:
+
+1. **Latest `YYYYMMDD` in the filename wins.** Later date = more recent =
+   canonical. Suffixes like `_v0`, `_mod`, `_old`, `_backup`, `_copy`, `-Copy1`
+   are strong signals of deprecated branches and should be treated as
+   non-canonical unless their date beats every alternative.
+2. **When filenames do not uniquely resolve it** (no date, or tied dates),
+   check the latest modification time of the files each candidate produced in
+   downstream output directories (e.g. `session_processing3/`,
+   `O2_analysis/PS*/...`). The candidate that wrote the most recent output is
+   the working version.
+3. **When (1) and (2) do not resolve it**, STOP and ask Priya. Present the
+   candidates, the disambiguation attempts made, and request a human decision.
+   Do not guess, silently pick, or merge behavior across versions.
+
+---
+
 ## Repo Conventions
 
 - Code lives in `src/stroke_orofacial/`; notebooks orchestrate, they do not contain analytical code.
