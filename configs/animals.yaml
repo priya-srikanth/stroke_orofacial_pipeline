@@ -1,67 +1,115 @@
 # Per-animal metadata for the stroke orofacial cohort.
 # This is the single source of truth — no notebook may redefine these values.
-# To be populated from legacy notebooks in Phase 1.
+#
+# Convention: stroke_date is the date of the LAST PRE-STROKE SESSION.
+# The stroke is induced after that day's behavioral session.
+# Sessions on stroke_date are baseline; only sessions after are post-stroke.
+#
+# Source: transcribed from legacy notebooks on 2026-04-17.
+#   - 20260203_DLC_analysis_ws_aligned_parquet_input_tongue.ipynb (ANIMALS dict)
+#   - 20260416_DLC_analysis_ws_aligned_parquet_input_jaw.ipynb (ANIMALS dict)
+#   Cross-checked: all stroke dates, session ranges, and analysis params are
+#   identical across both notebooks' three repeated declarations.
+#
+# Exclusions: union of both notebooks, upgraded to universal ("all") where
+# the underlying reason applies across analyses (see MIGRATION_LOG.md).
 
 PS46:
-  stroke_date: null       # YYYY-MM-DD, to be filled from legacy notebooks
+  stroke_date: 2025-03-13
   sessions:
-    start: null
-    end: null
+    start: 2025-03-07
+    end: 2025-04-06
   exclusions: []
   recovery_phenotype: null
+  analysis_params:
+    break_thr_trialmax: 12000.0
+    break_thr_alllicks: 9000.0
 
 PS47:
-  stroke_date: null
+  stroke_date: 2025-03-13
   sessions:
-    start: null
-    end: null
+    start: 2025-03-07
+    end: 2025-04-06
   exclusions: []
   recovery_phenotype: null
+  analysis_params:
+    break_thr_trialmax: 12000.0
+    break_thr_alllicks: 9000.0
 
 PS48:
-  stroke_date: null
+  stroke_date: 2025-03-13
   sessions:
-    start: null
-    end: null
+    start: 2025-03-07
+    end: 2025-04-06
   exclusions: []
   recovery_phenotype: null
+  analysis_params:
+    break_thr_trialmax: 12000.0
+    break_thr_alllicks: 9000.0
 
 PS49:
-  stroke_date: null
+  stroke_date: 2025-03-17
   sessions:
-    start: null
-    end: null
+    start: 2025-03-10
+    end: 2025-04-06
   exclusions: []
   recovery_phenotype: null
+  analysis_params:
+    break_thr_trialmax: 12000.0
+    break_thr_alllicks: 9000.0
 
 PS50:
-  stroke_date: null
+  stroke_date: 2025-03-23
   sessions:
-    start: null
-    end: null
+    start: 2025-03-19
+    end: 2025-04-06
   exclusions: []
   recovery_phenotype: null
+  analysis_params:
+    break_thr_trialmax: 12000.0
+    break_thr_alllicks: 9000.0
 
 PS51:
-  stroke_date: null
+  stroke_date: 2025-04-29
   sessions:
-    start: null
-    end: null
-  exclusions: []
+    start: 2025-04-16
+    end: 2025-07-09
+  exclusions:
+    - date: 2025-04-26
+      reason: "excluded across all analyses (Rose Bengal sham with delayed licking)"
+      applies_to: [all]
   recovery_phenotype: null
+  analysis_params:
+    break_thr_trialmax: 9000.0
+    break_thr_alllicks: 7000.0
 
 PS54:
-  stroke_date: null
+  stroke_date: 2025-04-30
   sessions:
-    start: null
-    end: null
-  exclusions: []
+    start: 2025-04-16
+    end: 2025-07-09
+  exclusions:
+    - date: 2025-04-26
+      reason: "excluded across all analyses (Rose Bengal sham with delayed licking)"
+      applies_to: [all]
   recovery_phenotype: null
+  analysis_params:
+    break_thr_trialmax: 12000.0
+    break_thr_alllicks: 9000.0
 
 PS55:
-  stroke_date: null
+  stroke_date: 2025-04-30
   sessions:
-    start: null
-    end: null
-  exclusions: []
+    start: 2025-04-16
+    end: 2025-07-09
+  exclusions:
+    - date: 2025-04-27
+      reason: "excluded across all analyses (Rose Bengal sham with delayed licking)"
+      applies_to: [all]
+    - date: 2025-04-28
+      reason: "excluded across all analyses (messed up reward delivery during session)"
+      applies_to: [all]
   recovery_phenotype: null
+  analysis_params:
+    break_thr_trialmax: 12000.0
+    break_thr_alllicks: 9000.0
