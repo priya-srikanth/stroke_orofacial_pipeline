@@ -1,0 +1,25 @@
+# Data and outputs (never committed)
+data/
+outputs/
+*.parquet
+*.h5
+*.mp4
+*.avi
+*.pkl
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Tools
+.ruff_cache/
+
+# OS
+.DS_Store
+Thumbs.db

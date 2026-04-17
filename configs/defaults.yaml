@@ -1,0 +1,39 @@
+# Default analysis parameters.
+# Modules load these via stroke_orofacial config utilities.
+# Override per-notebook in the USER INPUTS cell.
+
+lick_detection:
+  threshold: null          # TODO: read from legacy batch_process notebook
+  debounce_ms: null        # TODO: read from legacy batch_process notebook
+  channel: null            # TODO: which wavesurfer analog/digital channel
+
+dlc:
+  likelihood_threshold: null   # TODO: read from legacy DLC notebooks
+  bodyparts:
+    - medial_edge_L_eye
+    - medial_edge_R_eye
+    - nose
+    - whisker_L1
+    - whisker_L2
+    - whisker_L3
+    - whisker_R1
+    - whisker_R2
+    - whisker_R3
+    - jaw
+    - tongue
+    - spout_L
+    - spout_R
+
+smoothing:
+  window_size: null        # TODO
+  method: null             # TODO
+
+reward_window:
+  start_ms: 0
+  end_ms: 8000
+
+pixel_bins:
+  bin_size_px: null        # TODO
+
+wavesurfer:
+  sample_rate_hz: null     # TODO: confirm 20000 or 40000
