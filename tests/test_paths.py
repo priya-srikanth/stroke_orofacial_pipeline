@@ -1,0 +1,153 @@
+"""Tests for stroke_orofacial.paths.PathResolver."""
+
+from __future__ import annotations
+
+import datetime
+import os
+import textwrap
+from pathlib import Path, PurePosixPath, PureWindowsPath
+
+import pytest
+
+from stroke_orofacial.paths import PathResolver
+
+
+@pytest.fixture()
+def mac_paths_yaml(tmp_path: Path) -> Path:
+    """Write a minimal paths.yaml and return its path."""
+    cfg = tmp_path / "paths.yaml"
+    cfg.write_text(
+        textwrap.dedent("""\
+            logical_roots:
+              microscope_server:
+                description: "test server"
+                mounts:
+                  mac: "/Volumes/Neurobio/MICROSCOPE/Priya"
+                  windows: "\\\\\\\\server\\\\share\\\\Priya"
+              local_processed_spout:
+                description: "local data"
+                mounts:
+                  mac: "/Users/testuser/data/analysis"
+                  windows: null
+        """)
+    )
+    return cfg
+
+
+class TestPlatformDetection:
+    def test_mac_auto_detect(self, monkeypatch, mac_paths_yaml):
+        monkeypatch.setattr("platform.system", lambda: "Darwin")
+        monkeypatch.delenv("STROKE_PIPELINE_MACHINE", raising=False)
+        resolver = PathResolver(mac_paths_yaml)
+        assert resolver.platform_key == "mac"
+
+    def test_windows_auto_detect(self, monkeypatch, mac_paths_yaml):
+        monkeypatch.setattr("platform.system", lambda: "Windows")
+        monkeypatch.delenv("STROKE_PIPELINE_MACHINE", raising=False)
+        resolver = PathResolver(mac_paths_yaml)
+        assert resolver.platform_key == "windows"
+
+    def test_env_var_override(self, monkeypatch, mac_paths_yaml):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "windows")
+        resolver = PathResolver(mac_paths_yaml)
+        assert resolver.platform_key == "windows"
+
+    def test_env_var_invalid(self, monkeypatch, mac_paths_yaml):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "linux")
+        with pytest.raises(ValueError, match="must be 'mac' or 'windows'"):
+            PathResolver(mac_paths_yaml)
+
+    def test_unsupported_platform(self, monkeypatch, mac_paths_yaml):
+        monkeypatch.setattr("platform.system", lambda: "Linux")
+        monkeypatch.delenv("STROKE_PIPELINE_MACHINE", raising=False)
+        with pytest.raises(RuntimeError, match="Unsupported platform"):
+            PathResolver(mac_paths_yaml)
+
+
+class TestRootResolution:
+    def test_root_mac(self, monkeypatch, mac_paths_yaml):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver(mac_paths_yaml)
+        assert resolver.root("microscope_server") == Path(
+            "/Volumes/Neurobio/MICROSCOPE/Priya"
+        )
+
+    def test_root_unknown_name(self, monkeypatch, mac_paths_yaml):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver(mac_paths_yaml)
+        with pytest.raises(KeyError, match="Unknown logical root"):
+            resolver.root("nonexistent")
+
+    def test_root_null_mount(self, monkeypatch, mac_paths_yaml):
+        """local_processed_spout has windows mount = null."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "windows")
+        resolver = PathResolver(mac_paths_yaml)
+        with pytest.raises(RuntimeError, match="no mount defined"):
+            resolver.root("local_processed_spout")
+
+
+class TestConvenienceMethods:
+    @pytest.fixture(autouse=True)
+    def _setup(self, monkeypatch, mac_paths_yaml):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        self.resolver = PathResolver(mac_paths_yaml)
+
+    def test_dlc_output_dir(self):
+        result = self.resolver.dlc_output_dir("PS46")
+        expected = PurePosixPath(
+            "/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/O2_analysis/PS46"
+        )
+        assert result == expected
+
+    def test_alignment_templates_dir(self):
+        result = self.resolver.alignment_templates_dir("cam2")
+        assert result == PurePosixPath(
+            "/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/O2_analysis/alignment_templates/cam2"
+        )
+
+    def test_alignment_template(self):
+        result = self.resolver.alignment_template(
+            "PS46", datetime.date(2025, 3, 7), cam="cam2"
+        )
+        assert result == PurePosixPath(
+            "/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/O2_analysis/alignment_templates/cam2/PS46/20250307.npz"
+        )
+
+    def test_session_processing_out(self):
+        result = self.resolver.session_processing_out("v2")
+        assert result == PurePosixPath(
+            "/Users/testuser/data/analysis/session_processing_v2"
+        )
+
+
+class TestDefaultConfig:
+    def test_loads_repo_config(self, monkeypatch):
+        """PathResolver() with no args loads configs/paths.yaml from the repo."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver()
+        # Should not raise; microscope_server should be resolvable
+        path = resolver.root("microscope_server")
+        assert "MICROSCOPE" in str(path) or "Neurobio" in str(path)
+
+
+# ---- Integration test (requires real mount) ----
+
+_MOUNT = Path("/Volumes/Neurobio/MICROSCOPE/Priya")
+
+
+@pytest.mark.skipif(
+    not _MOUNT.exists(),
+    reason="MICROSCOPE server not mounted at /Volumes/Neurobio/MICROSCOPE/Priya",
+)
+class TestIntegrationMount:
+    def test_dlc_output_dir_exists(self, monkeypatch):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver()
+        dlc_dir = resolver.dlc_output_dir("PS46")
+        assert dlc_dir.exists(), f"Expected {dlc_dir} to exist on mounted server"
+
+    def test_alignment_templates_exist(self, monkeypatch):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver()
+        tmpl_dir = resolver.alignment_templates_dir("cam2")
+        assert tmpl_dir.exists(), f"Expected {tmpl_dir} to exist"
