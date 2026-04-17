@@ -20,6 +20,8 @@ dependencies = [
     "pyyaml",
     "opencv-contrib-python",
     "tqdm",
+    "bnpm",
+    "pywavesurfer",
 ]
 
 [project.optional-dependencies]

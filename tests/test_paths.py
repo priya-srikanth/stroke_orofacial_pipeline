@@ -120,6 +120,139 @@ class TestConvenienceMethods:
         )
 
 
+class TestListMounts:
+    """Test list-of-paths fallback behavior for mounts."""
+
+    @pytest.fixture()
+    def list_mount_yaml(self, tmp_path: Path) -> Path:
+        """paths.yaml with a list mount for wavesurfer_raw."""
+        # Create two candidate dirs; only the second exists
+        candidate_a = tmp_path / "primary_mount" / "wavesurfer"
+        candidate_b = tmp_path / "fallback_mount" / "wavesurfer"
+        candidate_b.mkdir(parents=True)
+        # Don't create candidate_a — it should be skipped
+
+        cfg = tmp_path / "paths.yaml"
+        cfg.write_text(
+            textwrap.dedent(f"""\
+                logical_roots:
+                  wavesurfer_raw:
+                    description: "test list mount"
+                    mounts:
+                      mac:
+                        - "{candidate_a}"
+                        - "{candidate_b}"
+                      windows: "\\\\\\\\server\\\\wavesurfer"
+            """)
+        )
+        return cfg
+
+    def test_list_mount_uses_first_existing(self, monkeypatch, list_mount_yaml, tmp_path):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver(list_mount_yaml)
+        result = resolver.root("wavesurfer_raw")
+        expected = tmp_path / "fallback_mount" / "wavesurfer"
+        assert result == expected
+
+    def test_list_mount_prefers_first_if_both_exist(self, monkeypatch, tmp_path):
+        candidate_a = tmp_path / "primary" / "ws"
+        candidate_b = tmp_path / "fallback" / "ws"
+        candidate_a.mkdir(parents=True)
+        candidate_b.mkdir(parents=True)
+
+        cfg = tmp_path / "paths.yaml"
+        cfg.write_text(
+            textwrap.dedent(f"""\
+                logical_roots:
+                  wavesurfer_raw:
+                    description: "both exist"
+                    mounts:
+                      mac:
+                        - "{candidate_a}"
+                        - "{candidate_b}"
+            """)
+        )
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver(cfg)
+        assert resolver.root("wavesurfer_raw") == candidate_a
+
+    def test_list_mount_none_exist_raises(self, monkeypatch, tmp_path):
+        cfg = tmp_path / "paths.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                logical_roots:
+                  wavesurfer_raw:
+                    description: "none exist"
+                    mounts:
+                      mac:
+                        - "/nonexistent/path/a"
+                        - "/nonexistent/path/b"
+            """)
+        )
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver(cfg)
+        with pytest.raises(FileNotFoundError, match="not found at any of"):
+            resolver.root("wavesurfer_raw")
+
+    def test_single_string_mount_no_existence_check(self, monkeypatch, tmp_path):
+        """Single-string mounts don't check existence (backward compat)."""
+        cfg = tmp_path / "paths.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                logical_roots:
+                  some_root:
+                    description: "single string"
+                    mounts:
+                      mac: "/nonexistent/single/path"
+            """)
+        )
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver(cfg)
+        # Should NOT raise — single string mounts are returned directly
+        result = resolver.root("some_root")
+        assert result == Path("/nonexistent/single/path")
+
+
+class TestNewConvenienceMethods:
+    """Test pipeline_outputs() and wavesurfer_dir()."""
+
+    @pytest.fixture()
+    def full_paths_yaml(self, tmp_path: Path) -> Path:
+        cfg = tmp_path / "paths.yaml"
+        ws_dir = tmp_path / "wavesurfer"
+        ws_dir.mkdir()
+        cfg.write_text(
+            textwrap.dedent(f"""\
+                logical_roots:
+                  microscope_pipeline_outputs:
+                    description: "outputs"
+                    mounts:
+                      mac: "/Volumes/Neurobio/MICROSCOPE/Priya/pipeline_outputs_v2"
+                  wavesurfer_raw:
+                    description: "raw ws"
+                    mounts:
+                      mac:
+                        - "{ws_dir}"
+            """)
+        )
+        return cfg
+
+    def test_pipeline_outputs(self, monkeypatch, full_paths_yaml):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver(full_paths_yaml)
+        result = resolver.pipeline_outputs("spout_behavior")
+        assert result == PurePosixPath(
+            "/Volumes/Neurobio/MICROSCOPE/Priya/pipeline_outputs_v2/spout_behavior"
+        )
+
+    def test_wavesurfer_dir(self, monkeypatch, full_paths_yaml, tmp_path):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver(full_paths_yaml)
+        result = resolver.wavesurfer_dir(datetime.date(2025, 3, 7), "PS46")
+        ws_dir = tmp_path / "wavesurfer"
+        assert result == ws_dir / "20250307" / "PS46"
+
+
 class TestDefaultConfig:
     def test_loads_repo_config(self, monkeypatch):
         """PathResolver() with no args loads configs/paths.yaml from the repo."""
