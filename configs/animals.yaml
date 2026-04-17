@@ -1,0 +1,67 @@
+# Per-animal metadata for the stroke orofacial cohort.
+# This is the single source of truth — no notebook may redefine these values.
+# To be populated from legacy notebooks in Phase 1.
+
+PS46:
+  stroke_date: null       # YYYY-MM-DD, to be filled from legacy notebooks
+  sessions:
+    start: null
+    end: null
+  exclusions: []
+  recovery_phenotype: null
+
+PS47:
+  stroke_date: null
+  sessions:
+    start: null
+    end: null
+  exclusions: []
+  recovery_phenotype: null
+
+PS48:
+  stroke_date: null
+  sessions:
+    start: null
+    end: null
+  exclusions: []
+  recovery_phenotype: null
+
+PS49:
+  stroke_date: null
+  sessions:
+    start: null
+    end: null
+  exclusions: []
+  recovery_phenotype: null
+
+PS50:
+  stroke_date: null
+  sessions:
+    start: null
+    end: null
+  exclusions: []
+  recovery_phenotype: null
+
+PS51:
+  stroke_date: null
+  sessions:
+    start: null
+    end: null
+  exclusions: []
+  recovery_phenotype: null
+
+PS54:
+  stroke_date: null
+  sessions:
+    start: null
+    end: null
+  exclusions: []
+  recovery_phenotype: null
+
+PS55:
+  stroke_date: null
+  sessions:
+    start: null
+    end: null
+  exclusions: []
+  recovery_phenotype: null

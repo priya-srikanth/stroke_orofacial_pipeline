@@ -1,0 +1,27 @@
+# Conda environment for Windows.
+# TODO: Priya to export from Windows `deeplabcut` env and replace this placeholder.
+# Usage: conda env update -f environment-windows.yml && pip install -e .
+name: deeplabcut
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - numpy
+      - pandas
+      - pyarrow
+      - scipy
+      - statsmodels
+      - matplotlib
+      - seaborn
+      - scikit-learn
+      - h5py
+      - pyyaml
+      - opencv-contrib-python
+      - tqdm
+      - ipykernel
+      - jupyter
+      # dev
+      - pytest
+      - ruff

@@ -1,0 +1,27 @@
+# Conda environment for macOS (mirrors the existing frsb env).
+# Usage: conda env update -f environment-mac.yml && pip install -e .
+name: frsb
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - numpy
+      - pandas
+      - pyarrow
+      - scipy
+      - statsmodels
+      - matplotlib
+      - seaborn
+      - scikit-learn
+      - h5py
+      - pyyaml
+      - opencv-contrib-python
+      - tqdm
+      - ipykernel
+      - jupyter
+      - ipympl
+      # dev
+      - pytest
+      - ruff

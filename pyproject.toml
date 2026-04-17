@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stroke_orofacial"
+version = "0.0.1"
+description = "Consolidated analysis pipeline for post-stroke orofacial motor plasticity"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pandas",
+    "pyarrow",
+    "scipy",
+    "statsmodels",
+    "matplotlib",
+    "seaborn",
+    "scikit-learn",
+    "h5py",
+    "pyyaml",
+    "opencv-contrib-python",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+src = ["src"]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
