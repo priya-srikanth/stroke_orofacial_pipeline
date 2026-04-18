@@ -1,0 +1,33 @@
+=== Eye-Affine Alignment Experiment — PS46 ===
+
+Baseline sessions loaded: 7 of 7 requested
+Eye likelihood threshold: 0.9
+
+== Before alignment (cross-session eye-position spread) ==
+  L_eye: x_std=3.796 px, y_std=8.726 px
+  R_eye: x_std=3.685 px, y_std=8.489 px
+  Eye-to-eye distance: mean=257.301 px, std=0.837 px
+
+== Per-session similarity transforms (session -> canonical) ==
+  Date         scale        rot (deg)    tx (px)      ty (px)     
+  2025-03-07   0.9999       -0.2561      -7.79        -16.79      
+  2025-03-08   0.9995       -0.1055      +2.11        +10.32      
+  2025-03-09   0.9961       -0.0222      +2.62        +9.03       
+  2025-03-10   0.9971       +0.1705      +4.99        -1.67       
+  2025-03-11   0.9999       +0.2035      -0.14        -2.85       
+  2025-03-12   1.0003       +0.0642      -2.83        +0.98       
+  2025-03-13   1.0071       -0.0550      +0.99        +1.00       
+
+== Transform summary ==
+  Scale:    mean=1.00001  std=0.00326  range=[0.99612, 1.00714]
+  Rotation: mean=-0.0001 deg  std=0.1487 deg  range=[-0.2561, +0.2035]
+
+Interpretation:
+  - Rotation std > 0.5 deg => real tilt drift; affine alignment valuable.
+  - Scale std > 0.01 (1%) => real zoom drift; affine alignment valuable.
+  - Both tiny => camera stable; Phase 4.5 may not be worth building.
+
+== Heatmap comparison session ==
+  Compare session: 2025-03-10
+  Bodypart: tongue (likelihood >= 0.7)
+  Tongue frames (likelihood-gated): 76836
