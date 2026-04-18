@@ -26,6 +26,7 @@ from stroke_orofacial.config_loader import (
 from stroke_orofacial.paths import PathResolver
 from stroke_orofacial.spout_behavior.bouts import (
     find_grooming_bouts,
+    find_peri_reward_and_tone_periods,
     find_peri_reward_periods,
     find_quiet_bouts,
     find_running_bouts,
@@ -85,6 +86,7 @@ def _save_session_params(
     spout_keys = [
         "process_treadmill_signal", "find_running_bouts", "find_licks_and_rewards",
         "find_grooming_bouts", "find_quiet_bouts", "find_peri_reward_periods",
+        "find_peri_reward_and_tone_periods",
     ]
     params_subset = {k: params[k] for k in spout_keys if k in params}
 
@@ -280,6 +282,7 @@ def process_session(
 
     lick_idx = {"Lick_L": lr_result["Lick_L"], "Lick_R": lr_result["Lick_R"]}
     reward_idx = {"Reward_L": lr_result["Reward_L"], "Reward_R": lr_result["Reward_R"]}
+    tone_idx = {"Tone_L": lr_result["Tone_L"], "Tone_R": lr_result["Tone_R"]}
 
     # ---- Step 4: Running bouts ----
     running = find_running_bouts(treadmill_smoothed, Fs, params["find_running_bouts"])
@@ -302,11 +305,16 @@ def process_session(
     quiet_out.update(params["find_quiet_bouts"])
     _save_npz(paths["quiet_bouts"], quiet_out)
 
-    # ---- Step 7: Peri-reward periods ----
+    # ---- Step 7: Peri-reward periods (consolidated + per-side + per-tone) ----
     peri_reward = find_peri_reward_periods(
         reward_idx, n_samples, Fs, params["find_peri_reward_periods"],
     )
+    peri_sided = find_peri_reward_and_tone_periods(
+        reward_idx, tone_idx, n_samples, Fs,
+        params["find_peri_reward_and_tone_periods"],
+    )
     peri_out: dict[str, Any] = {"peri_reward_bool": peri_reward}
+    peri_out.update(peri_sided)  # peri_reward_L/R, peri_tone_L/R
     peri_out.update(params["find_peri_reward_periods"])
     _save_npz(paths["peri_reward_periods"], peri_out)
 

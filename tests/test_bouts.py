@@ -9,6 +9,7 @@ import pytest
 
 from stroke_orofacial.spout_behavior.bouts import (
     find_grooming_bouts,
+    find_peri_reward_and_tone_periods,
     find_peri_reward_periods,
     find_quiet_bouts,
     find_running_bouts,
@@ -123,6 +124,46 @@ class TestFindPeriRewardPeriods:
         assert result[2500]
         assert not result[500]
         assert not result[3500]
+
+
+class TestFindPeriRewardAndTonePeriods:
+    def test_returns_four_masks(self):
+        reward_idx = {"Reward_L": np.array([1000]), "Reward_R": np.array([], dtype=int)}
+        tone_idx = {"Tone_L": np.array([2000]), "Tone_R": np.array([], dtype=int)}
+        params = {"window_around_reward": [0, 1]}
+        result = find_peri_reward_and_tone_periods(
+            reward_idx, tone_idx, n_samples=5000, Fs=1000.0, params=params,
+        )
+        assert set(result.keys()) == {"peri_reward_L", "peri_reward_R", "peri_tone_L", "peri_tone_R"}
+        for v in result.values():
+            assert v.dtype == bool
+            assert v.shape == (5000,)
+
+    def test_per_side_independence(self):
+        """L and R rewards produce independent masks."""
+        reward_idx = {"Reward_L": np.array([1000]), "Reward_R": np.array([3000])}
+        tone_idx = {"Tone_L": np.array([], dtype=int), "Tone_R": np.array([], dtype=int)}
+        params = {"window_around_reward": [0, 1]}
+        result = find_peri_reward_and_tone_periods(
+            reward_idx, tone_idx, n_samples=5000, Fs=1000.0, params=params,
+        )
+        # L reward at 1000 → mask around 1000, R reward at 3000 → mask around 3000
+        assert result["peri_reward_L"][1500]
+        assert not result["peri_reward_L"][3500]
+        assert result["peri_reward_R"][3500]
+        assert not result["peri_reward_R"][1500]
+
+    def test_tone_masks_populated(self):
+        reward_idx = {"Reward_L": np.array([], dtype=int), "Reward_R": np.array([], dtype=int)}
+        tone_idx = {"Tone_L": np.array([500]), "Tone_R": np.array([2500])}
+        params = {"window_around_reward": [0, 1]}
+        result = find_peri_reward_and_tone_periods(
+            reward_idx, tone_idx, n_samples=5000, Fs=1000.0, params=params,
+        )
+        assert result["peri_tone_L"].any()
+        assert result["peri_tone_R"].any()
+        assert not result["peri_reward_L"].any()
+        assert not result["peri_reward_R"].any()
 
 
 # ---------------------------------------------------------------------------

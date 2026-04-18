@@ -1,6 +1,9 @@
-"""Lick and reward detection from wavesurfer signals.
+"""Lick, reward, and tone detection from wavesurfer signals.
 
-Ported from legacy module ``find_licks_and_rewards.py`` (only version).
+Ported from legacy module ``find_licks_and_rewards.py``:
+  - Phase 2: from Priya's fork (lick + reward only).
+  - Phase 2.5: extended with tone detection from Rich's upstream
+    ``find_licks_and_rewards.py`` (Rule 1 trivially resolved, only version).
 
 Lick detection uses a double-threshold algorithm:
   - **Upward lick onset**: signal falls below ``thresh_upper`` (spout contact
@@ -9,7 +12,8 @@ Lick detection uses a double-threshold algorithm:
   - **Lockout cleaning**: upward events within an asymmetric window around
     each downward event are removed (debounce).
 
-Reward detection finds rising edges on digital Reward_L / Reward_R channels.
+Reward and tone detection find rising edges on digital channels
+(Reward_L/R, Tone_L/R) using the same threshold.
 """
 
 from __future__ import annotations
@@ -42,6 +46,33 @@ def find_reward_indices(
         return np.where(np.diff(arr, prepend=0) > thresh)[0]
 
     return {f"Reward_{side}": _detect(signals[f"Reward_{side}"]) for side in ("L", "R")}
+
+
+def find_tone_indices(
+    signals: dict[str, np.ndarray],
+    thresh: float = 0.5,
+) -> dict[str, np.ndarray]:
+    """Detect tone onsets as rising edges on digital tone channels.
+
+    Same algorithm as reward detection, applied to ``Tone_L`` and ``Tone_R``.
+
+    Parameters
+    ----------
+    signals : dict[str, np.ndarray]
+        Wavesurfer signals dict containing ``Tone_L`` and ``Tone_R``.
+    thresh : float
+        Threshold for rising-edge detection on ``np.diff``.
+
+    Returns
+    -------
+    dict[str, np.ndarray]
+        ``{"Tone_L": indices, "Tone_R": indices}`` — integer arrays
+        of sample indices where tones were detected.
+    """
+    def _detect(arr: np.ndarray) -> np.ndarray:
+        return np.where(np.diff(arr, prepend=0) > thresh)[0]
+
+    return {f"Tone_{side}": _detect(signals[f"Tone_{side}"]) for side in ("L", "R")}
 
 
 def _find_upward_lick_indices(
@@ -133,7 +164,8 @@ def find_licks_and_rewards(
     ----------
     signals : dict[str, np.ndarray]
         Wavesurfer signals dict containing at minimum ``Lick_L``, ``Lick_R``,
-        ``Reward_L``, ``Reward_R``, and ``sample_rate_input``.
+        ``Reward_L``, ``Reward_R``, ``Tone_L``, ``Tone_R``, and
+        ``sample_rate_input``.
     params : dict
         The ``find_licks_and_rewards`` section from defaults.yaml. Expected
         keys: ``lick_detection.thresh_upper``, ``lick_detection.thresh_lower``,
@@ -144,13 +176,15 @@ def find_licks_and_rewards(
     -------
     dict[str, np.ndarray]
         Keys: ``Lick_L``, ``Lick_R`` (cleaned onset indices),
-        ``Reward_L``, ``Reward_R`` (onset indices),
+        ``Reward_L``, ``Reward_R``, ``Tone_L``, ``Tone_R`` (onset indices),
         ``Fs`` (float), ``n_samples`` (int).
     """
     Fs = float(signals.get("Fs", signals.get("sample_rate_input")))
 
-    # Reward detection
-    rewards = find_reward_indices(signals, params["reward_detection"]["thresh"])
+    # Reward + tone detection (same threshold, same algorithm)
+    reward_thresh = params["reward_detection"]["thresh"]
+    rewards = find_reward_indices(signals, reward_thresh)
+    tones = find_tone_indices(signals, reward_thresh)
 
     # Lick detection: double-threshold + lockout
     lick_params = params["lick_detection"]
@@ -177,6 +211,8 @@ def find_licks_and_rewards(
         "Lick_R": licks["Lick_R"],
         "Reward_L": rewards["Reward_L"],
         "Reward_R": rewards["Reward_R"],
+        "Tone_L": tones["Tone_L"],
+        "Tone_R": tones["Tone_R"],
         "Fs": Fs,
         "n_samples": n_samples,
     }

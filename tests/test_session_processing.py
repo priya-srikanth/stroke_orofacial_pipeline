@@ -174,6 +174,33 @@ class TestIntegrationProcessSession:
 
 
 @pytest.mark.skipif(
+    not (_WS_LOCAL / "20250307" / "PS46").exists() or not _MOUNT.exists(),
+    reason="Wavesurfer data or MICROSCOPE mount not available",
+)
+class TestIntegrationNewKeys:
+    """Verify Phase 2.5 additive keys are present in pipeline_outputs_v2."""
+
+    def test_tone_indices_in_licks_and_rewards(self):
+        lr = dict(np.load(
+            _V2 / "licks_and_rewards" / "PS46" / "20250307.npz", allow_pickle=True
+        ))
+        assert "Tone_L" in lr
+        assert "Tone_R" in lr
+        assert lr["Tone_L"].size > 0  # tones should be detected
+
+    def test_per_side_masks_in_peri_reward_periods(self):
+        peri = dict(np.load(
+            _V2 / "peri_reward_periods" / "PS46" / "20250307.npz", allow_pickle=True
+        ))
+        for key in ("peri_reward_L", "peri_reward_R", "peri_tone_L", "peri_tone_R"):
+            assert key in peri, f"Missing {key}"
+            assert peri[key].dtype == bool
+            assert peri[key].shape[0] > 0
+        # Consolidated peri_reward_bool still present
+        assert "peri_reward_bool" in peri
+
+
+@pytest.mark.skipif(
     not (_WS_LOCAL / "20250307" / "PS46").exists()
     or not (_SP3 / "licks_and_rewards" / "PS46" / "20250307.npz").exists(),
     reason="Wavesurfer data or session_processing3 not available",
