@@ -51,6 +51,9 @@ find_quiet_bouts:
 find_peri_reward_periods:
   window_around_reward: [0, 6]
 
+find_peri_reward_and_tone_periods:
+  window_around_reward: [0, 6]
+
 # ---- Wavesurfer ----
 
 wavesurfer:

@@ -298,3 +298,72 @@ def find_peri_reward_periods(
     peri_reward_bool[idx_mask] = True
 
     return peri_reward_bool
+
+
+# ---------------------------------------------------------------------------
+# Per-side peri-reward + peri-tone periods
+# ---------------------------------------------------------------------------
+
+
+def _make_peri_event_bool(
+    event_indices: np.ndarray,
+    n_samples: int,
+    eps_samples: tuple[int, int],
+) -> np.ndarray:
+    """Build a boolean mask marking samples within a window around events."""
+    full_idx = np.arange(n_samples)
+    idx_mask = _find_idx_within_eps(full_idx, event_indices, eps_samples)
+    mask = np.zeros(n_samples, dtype=bool)
+    mask[idx_mask] = True
+    return mask
+
+
+def find_peri_reward_and_tone_periods(
+    reward_indices: dict[str, np.ndarray],
+    tone_indices: dict[str, np.ndarray],
+    n_samples: int,
+    Fs: float,
+    params: dict[str, Any],
+) -> dict[str, np.ndarray]:
+    """Mark samples within a temporal window around each per-side event.
+
+    Produces 4 boolean masks — one per event channel — using the same window.
+    Ported from upstream ``find_peri_reward_and_tone_periods.py``.
+
+    Parameters
+    ----------
+    reward_indices : dict
+        ``{"Reward_L": indices, "Reward_R": indices}``.
+    tone_indices : dict
+        ``{"Tone_L": indices, "Tone_R": indices}``.
+    n_samples : int
+        Total number of samples in the session.
+    Fs : float
+        Sampling rate in Hz.
+    params : dict
+        The ``find_peri_reward_and_tone_periods`` section from defaults.yaml.
+        Required key: ``window_around_reward`` as ``[before_sec, after_sec]``.
+
+    Returns
+    -------
+    dict[str, np.ndarray]
+        ``{"peri_reward_L": bool, "peri_reward_R": bool,
+          "peri_tone_L": bool, "peri_tone_R": bool}``
+    """
+    window_sec = params["window_around_reward"]
+    eps_samples = (int(window_sec[0] * Fs), int(window_sec[1] * Fs))
+
+    return {
+        "peri_reward_L": _make_peri_event_bool(
+            reward_indices.get("Reward_L", np.array([], dtype=int)), n_samples, eps_samples
+        ),
+        "peri_reward_R": _make_peri_event_bool(
+            reward_indices.get("Reward_R", np.array([], dtype=int)), n_samples, eps_samples
+        ),
+        "peri_tone_L": _make_peri_event_bool(
+            tone_indices.get("Tone_L", np.array([], dtype=int)), n_samples, eps_samples
+        ),
+        "peri_tone_R": _make_peri_event_bool(
+            tone_indices.get("Tone_R", np.array([], dtype=int)), n_samples, eps_samples
+        ),
+    }
