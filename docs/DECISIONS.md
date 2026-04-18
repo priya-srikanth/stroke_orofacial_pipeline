@@ -29,6 +29,13 @@ Entries are reverse-chronological (newest at top). Format:
 - *Rationale:* Keeps Phase 5 boundary clean at descriptive analyses. Phase 9 becomes the single home for all inferential spatial-maps stats.
 - *Enforced at:* Phase 5 plan (cells 8-10 of `20251202` classified "Deferred to Phase 9"); `docs/MIGRATION_LOG.md` Phase 5 entry.
 
+## 2026-04-18 — Legacy notebooks may receive active edits; re-read at each phase kickoff
+
+- *Context:* Priya is actively working on some legacy notebooks (notably `20260203_DLC_analysis_ws_aligned_parquet_input_tongue.ipynb` for tongue kinematic and statistical analyses) in parallel with consolidation. These edits continue during the migration, meaning the "canonical" content of a notebook at Phase N kickoff may differ from its content at a later phase's kickoff.
+- *Decision:* At each phase kickoff, Claude Code must re-read the current version of every legacy notebook or helper it will port or reference. Do not rely on cached findings from earlier phases. If a notebook that has already been ported (Phases 2, 2.5, 3, 4, 5, 5.5) receives a substantive update with new production code, address it via one of: (a) a Phase 10 cleanup task documented in MIGRATION_LOG, (b) a dedicated mini-phase patterned after Phase 2.5 or 5.5, or (c) a targeted follow-up PR against the affected module. MIGRATION_LOG phase entries should capture a legacy-file fingerprint (mtime or line-count) per ported source so drift can be detected in future phases.
+- *Rationale:* Priya's ongoing scientific iteration shouldn't silently diverge from the consolidated pipeline. Capturing updates as they emerge keeps the new codebase current. This applies especially to tongue/jaw kinematics notebooks (Phase 7), behavior-report files (Phase 8), and stats code (Phase 9) — all under active scientific refinement.
+- *Enforced at:* Every future phase kickoff prompt in `docs/prompts/phase-*-kickoff.md` includes an explicit "re-read current legacy file" instruction. Phase 7 kickoff specifically flags `20260203_..._tongue.ipynb` as actively-edited as of 2026-04-18.
+
 ## 2026-04-18 — DLC inference port scheduled as dedicated mini-phase
 
 - *Context:* `20251112_DLC_batch_video_analysis_O2.ipynb` runs DLC inference on the HMS O2 GPU cluster and copies outputs to MICROSCOPE. The design doc §3 already anticipates this lives in `src/stroke_orofacial/dlc_inference_o2/` as a standalone tool, but §7 didn't include an explicit phase for porting it. Priya wants it ported and cleaned up.
