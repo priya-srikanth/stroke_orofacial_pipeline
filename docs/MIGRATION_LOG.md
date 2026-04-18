@@ -266,3 +266,103 @@ unambiguous.
 - [x] `ruff check src/` clean.
 - [x] Original parity still holds (11/11 arrays exact on both sessions).
 - [x] New keys present and non-trivial on PS46 20250307 + 20250320.
+
+---
+
+## Phase 3 — Wavesurfer ↔ Video ↔ DLC Alignment
+
+**Date:** 2026-04-18
+
+**Legacy file disambiguation (per CLAUDE.md 3-tier rule):**
+
+- **Canonical notebook:** `batch_process_alignment_20251216PS.ipynb` (Rule 1:
+  latest YYYYMMDD). Non-canonical: `playground.ipynb` (undated, older).
+  Notebook used as orchestrator reference only — the core algorithm lives in
+  the helper module.
+- **Core helper:** `make_alignment_templates_20251216.py` in Rich's upstream
+  repo (`facerhythm_stroke_biomarker_exp/analysis/alignment/`). Only version
+  found (Rule 1 trivially resolved). Note: lives in a different repo from the
+  notebook — this is by design; Rich wrote the algorithm, Priya orchestrates.
+
+**What was done:**
+
+### Sub-phase 3a: Path setup + alignment template loading
+- Added `camera_raw` logical root to `configs/paths.yaml` pointing to
+  MICROSCOPE camera data (read-only).
+- Added `PathResolver.camera_dir(date, animal)`.
+- Implemented `src/stroke_orofacial/alignment/templates.py`:
+  `load_alignment_template()`, `pick_camera_csv()`, `load_camera_csv()`,
+  `discover_video_files()`.
+- Added `alignment` section to `configs/defaults.yaml` with all sync/matching
+  parameters from the legacy notebook.
+
+### Sub-phase 3b: Core alignment functions + SessionManifest integration
+- Ported `make_alignment_templates_20251216.py` into
+  `src/stroke_orofacial/alignment/frame_sync.py`: `_normalize_minmax_robust()`,
+  `_find_rising_edges()`, `_align_edge_sequences()`, `_safe_interp1d()`,
+  `make_alignment_template()`.
+- Created `src/stroke_orofacial/alignment/timebase.py`: `AlignmentResult`
+  dataclass, `ws_sample_to_session_time()`, `frame_to_session_time()`,
+  `session_time_to_frame()`, `load_or_compute_alignment()`.
+- **SessionManifest integration (amendment 3):** `build_manifest()` now
+  populates `wavesurfer_file` (from `wavesurfer_raw` path) and `video_files`
+  (from `camera_raw` path, cam2). Both are optional — gracefully return
+  None/empty if data isn't mounted.
+
+### Sub-phase 3c: Alignment orchestrator notebook
+- Created `notebooks/01_alignment.ipynb` (thin orchestrator, cam2 only).
+- Default behavior: load existing templates from `alignment_templates/cam2/`,
+  recompute only if missing.
+- Overwrite modes: skip/prompt/force (matching Phase 2 convention).
+- Per-session `params.json` at `pipeline_outputs_v2/alignment/params/{animal}/{YYYYMMDD}.json`.
+
+### Sub-phase 3d: Parity check
+- Re-computed alignment templates for PS46 2025-03-07 (baseline, day -6) and
+  PS46 2025-03-20 (post-stroke, day +7).
+- Compared against existing `alignment_templates/cam2/PS46/` NPZs.
+
+**Parity results (per amendment 1 tolerances):**
+
+| Array | PS46/20250307 | PS46/20250320 | Tolerance |
+|-------|--------------|--------------|-----------|
+| `sig_camIdx__idx_ws` | PASS | PASS | `rtol=1e-10` |
+| `sig_wsIdx__idx_cam` | PASS | PASS | `rtol=1e-10` |
+| `slope_ws_per_camFrame` | PASS (4.0062) | PASS (4.0058) | `rtol=1e-8` |
+| `intercept_ws_samples` | PASS (-8747.4) | PASS (-9133.1) | `rtol=1e-8` |
+
+No tie-break differences observed in the pattern matcher. NaN patterns at
+array edges match exactly between re-computed and existing templates.
+
+### Sub-phase 3e: Tests + MIGRATION_LOG
+- `tests/test_frame_sync.py` — normalization, edge detection, sequence matching,
+  interpolation, full template generation with synthetic sync signals.
+- `tests/test_timebase.py` — time-base converters, AlignmentResult, integration
+  tests loading/recomputing real alignment templates.
+- `tests/test_alignment_templates.py` — template loading, camera CSV discovery,
+  video file discovery, SessionManifest integration test (amendment 3).
+
+**Intentional behavior differences vs. legacy:**
+
+1. **Default: load existing, compute if missing.** Legacy notebook always
+   recomputes. New pipeline loads existing `alignment_templates/cam2/` NPZs
+   by default, recomputing only when the template is missing. This leverages
+   already-validated alignment work.
+2. **cam2 only.** Legacy notebook processes cam1-4. New pipeline processes
+   only cam2 (the DLC camera). Other cameras can be added later.
+3. **Per-session params.json** at `alignment/params/{animal}/{YYYYMMDD}.json`
+   (matching Phase 2 convention). Legacy had no per-session params record.
+4. **SessionManifest now populates `wavesurfer_file` and `video_files`.**
+   Phase 1 left these as None/empty. Now resolved from `wavesurfer_raw` and
+   `camera_raw` paths respectively.
+
+**§4.4 time-base contract confirmed:**
+- Wavesurfer sample rate: 1000 Hz (confirmed in Phase 2).
+- `ws_samples → session_time_s`: divide by 1000.
+- `video_frame_index → session_time_s`: via `sig_wsIdx__idx_cam[frame] / 1000`.
+- `dlc_frame_index → session_time_s`: equals video_frame_index by construction.
+
+**Exit criteria met:**
+- [x] `pytest tests/` passes.
+- [x] `ruff check src/` clean.
+- [x] Parity verified on PS46 baseline + post-stroke sessions.
+- [x] `SessionManifest.wavesurfer_file` and `.video_files` populated.
