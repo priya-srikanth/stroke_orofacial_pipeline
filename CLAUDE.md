@@ -10,7 +10,12 @@ These rules bind every Claude Code session working on this project.
 
 1. **Never modify, overwrite, rename, or delete source data.** "Source data" = any raw file produced by an instrument, experiment, or upstream processing that is not already produced by this new consolidated codebase. Concretely this includes, but is not limited to:
    - Raw wavesurfer `.h5` files.
-   - Raw videos (Flea3 recordings).
+   - Raw Flea3 camera acquisition output on MICROSCOPE at
+     `/Volumes/Neurobio/MICROSCOPE/Rich/data/2pRAM/facerhythm_stroke_biomarker_exp/camera/{YYYYMMDD}/{animal}/`
+     — both the `.avi` video files (`video{N}_{timestamp}.avi`) and the
+     companion per-frame-timestamp CSVs (`timestamp{N}_{timestamp}.csv`).
+     These are pure raw acquisition output, used for wavesurfer ↔ video
+     alignment in Phase 3 and for DLC input in upstream inference.
    - DLC inference outputs on the MICROSCOPE server (`O2_analysis/PS*/...` H5 and CSV files).
    - The DLC training config and project at `DLC_train_config/`.
    - The existing `alignment_templates/` directory contents.
