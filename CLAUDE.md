@@ -20,7 +20,11 @@ These rules bind every Claude Code session working on this project.
    - The DLC training config and project at `DLC_train_config/`.
    - The existing `alignment_templates/` directory contents.
    - The existing processed behavior outputs in `/Users/Priya2/Documents/data/facerhythm_stroke_biomarker_exp/analysis/session_processing3/`.
-2. **Never modify files in the legacy repo** `/Users/Priya2/Github/facerhythm_stroke_biomarker_exp_Priya`. It is a read-only reference. Work happens in this new repo only.
+2. **Never modify files in the legacy repos**. There are two, both read-only references for this consolidation:
+   - `/Users/Priya2/Github/facerhythm_stroke_biomarker_exp_Priya` — Priya's working fork.
+   - `/Users/Priya2/Github/facerhythm_stroke_biomarker_exp` — Rich's upstream repo. Some helpers (e.g., `make_alignment_templates_20251216.py`) live only here.
+
+   Work happens in this new repo only. If either legacy repo contains multiple candidate implementations of the same functionality, apply the disambiguation policy below to identify the canonical version.
 3. **Never modify files Claude Code did not create itself in this consolidation project**, with one exception: inside this repo, Claude Code may modify files it created on a previous turn in the same or prior session.
 4. **If Claude Code believes an existing analysis output should be overwritten**, stop and ask first, describing exactly what would be overwritten and why.
 5. **Default migration pattern: copy, do not move.** Legacy notebook → new module = implement in this repo; legacy notebook stays untouched.
