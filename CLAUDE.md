@@ -60,10 +60,16 @@ same functionality (e.g., multiple dated copies of a notebook, or several
 `_v0`/`_mod`-suffixed helper `.py` files), identify the canonical version using
 this strict priority:
 
-1. **Latest `YYYYMMDD` in the filename wins.** Later date = more recent =
-   canonical. Suffixes like `_v0`, `_mod`, `_old`, `_backup`, `_copy`, `-Copy1`
-   are strong signals of deprecated branches and should be treated as
-   non-canonical unless their date beats every alternative.
+1. **Latest `YYYYMMDD` in the filename wins, WITHIN A FAMILY OF FILES THAT DO
+   THE SAME THING.** Files with distinct *scope markers* in the filename
+   (e.g., `_tongue` vs `_jaw`, `_baseline` vs `_post_stroke`, different
+   analysis types) are **siblings**, not duplicates — each may need to be
+   ported independently. Apply date-based supersession only when the rest of
+   the filename indicates the same functional scope. When in doubt, prefer
+   treating files as siblings (trigger rule 3 STOP-and-ask) rather than
+   silently choosing one. Suffixes like `_v0`, `_mod`, `_old`, `_backup`,
+   `_copy`, `-Copy1` are strong signals of deprecated branches and should be
+   treated as non-canonical unless their date beats every alternative.
 2. **When filenames do not uniquely resolve it** (no date, or tied dates),
    check the latest modification time of the files each candidate produced in
    downstream output directories (e.g. `session_processing3/`,
