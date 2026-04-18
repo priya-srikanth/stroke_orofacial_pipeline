@@ -418,12 +418,24 @@ Each phase ends with a commit on a branch + a short section added to `MIGRATION_
 - Implement `window_selector` with reward-aligned (0, 8000) ms default and parameterizable.
 - Generalize all spatial analyses to accept a window selector.
 
+**Phase 8a — Spout behavior report.** *(Moved ahead of Phase 7 for mid-experiment usability.)*
+- Port the spout-behavior-only portions of `batch_process_behavior_report_20260116PS.ipynb` into `reports/spout_behavior_report.py` + notebook `02a_spout_behavior_report.ipynb`.
+- Wavesurfer QC figures per session (deferred from Phase 2).
+- Cross-session spout metrics: first-lick accuracy, latencies (per-side), correct/incorrect counts, bout structure, L/R bias, lickiness, switchiness.
+- Per-animal time course figures (each metric across sessions).
+- Consumes ONLY Phase 2 (+ 2.5) outputs. **Zero DLC dependency** — runnable mid-experiment to support decisions like stroke-induction timing.
+- Output directory: `stroke_orofacial_pipeline_outputs/behavior_report/spout/`.
+
 **Phase 7 — DLC kinematics.**
 - Port tongue and jaw filter/interpolate + features + reward-aligned analyses.
 
-**Phase 8 — Behavior report.**
-- Port `batch_process_behavior_report_20260116PS.ipynb` into `reports/behavior_report.py` + notebook `02_behavior_report.ipynb`.
-- Re-emit every current figure.
+**Phase 8b — DLC behavior report.**
+- Port the DLC-dependent portions of `batch_process_behavior_report_20260116PS.ipynb` (and any DLC-summary cells from kinematics notebooks) into `reports/dlc_behavior_report.py` + notebook `02b_dlc_behavior_report.ipynb`.
+- Cross-session DLC kinematic summaries (tongue/jaw amplitude and velocity time courses).
+- Cross-session spatial-map grids (bodyparts × days layouts).
+- Integrated spout-DLC figures where useful (e.g., lick rate overlaid with tongue kinematics).
+- Consumes Phases 4-7 outputs plus Phase 8a.
+- Output directory: `stroke_orofacial_pipeline_outputs/behavior_report/dlc/`.
 
 **Phase 9 — Stats pipeline.**
 - Recovery epoch classification (§6.3) — first concrete design decision round with Priya.

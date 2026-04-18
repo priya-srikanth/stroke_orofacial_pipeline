@@ -69,7 +69,7 @@ Expected shape:
      them.
    - **6.7c**: Refactor Phase 4 parquet builder
      (`dlc_io/parquet.py::build_centered_parquet`) to accept a
-     `SessionManifest`.
+     `SessionManifest`. **Also add** `load_centered_fresh(h5_path, center_mode, likelihood_threshold)` utility (new) in `dlc_io/centering.py` or a new `dlc_io/fresh.py` — wraps `read_dlc` + `compute_center` + `apply_centering` to produce a DataFrame matching the parquet schema *without writing to disk*. Use case: interactive threshold exploration. Does not replace parquets; complements them. ~30 lines + tests.
    - **6.7d**: Refactor Phase 5 + 6 spatial functions. Phase 5's
      `pixel_bins`, `heatmaps`, `difference_maps` functions accept a
      `(bodypart, center_mode)` + DataFrame; likely don't need the full
@@ -78,7 +78,7 @@ Expected shape:
      parquet paths via manifest fields. Phase 6's `reward_aligned.py`
      loads reward events from Phase 2 outputs — can access via
      `manifest.animal` + `manifest.date`.
-   - **6.7e**: Update tests + MIGRATION_LOG + DECISIONS.md.
+   - **6.7e**: Update tests + MIGRATION_LOG + DECISIONS.md. MIGRATION_LOG should include a short note that `load_centered_fresh()` exists alongside the parquet-based pathway as an exploration escape hatch.
 4. **Parity strategy** — run the full test suite before and after;
    every test that passed before must pass after. Additionally, for the
    parity-integration tests (Phase 2 bout outputs, Phase 3 alignment
