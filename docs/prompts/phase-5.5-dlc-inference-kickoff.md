@@ -46,6 +46,14 @@ handling, and plan-requirements constraints are internalized:
   port scheduled as dedicated mini-phase" which has the password-handling
   strategy baked in.
 
+## Known O2 details (pre-confirmed)
+
+- **Priya's O2 login:** `ps150@o2.hms.harvard.edu`.
+- **SSH key auth is already set up** on Priya's MacBook — `ssh ps150@o2.hms.harvard.edu` logs in without a password prompt. Use key auth exclusively; do not attempt password workflows.
+- **O2 DLC conda env:** `deeplabcut`. Activate via
+  `conda activate deeplabcut` after connecting.
+- **O2 filesystem convention for DLC code + outputs:** the legacy notebook uses specific paths on O2 — discover these in plan mode by reading the notebook, and capture them in the module's README.
+
 ## SSH / password handling (non-negotiable)
 
 This phase involves SSH connections to HMS O2. Priya's directive (per
