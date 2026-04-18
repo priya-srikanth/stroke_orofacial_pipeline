@@ -75,6 +75,39 @@ this strict priority:
 
 ---
 
+## Phase plan requirements
+
+Every phase plan proposed by Claude Code in plan mode must include, at minimum:
+
+1. **Legacy file disambiguation** applied per the 3-tier rule above. Report
+   each candidate and the resolution.
+2. **Dead code identification.** For each legacy source file (notebook or
+   `.py`) that might be ported, walk through its cells (for notebooks) or
+   top-level functions/blocks (for `.py` files) and classify each one as:
+   - *Production* — its output feeds a downstream module or the final
+     analysis outputs.
+   - *Exploratory* — data inspection, debugging, troubleshooting, one-off
+     experimentation, commented-out historical code.
+   - *Deprecated* — older version, `_v0`/`_mod`/`_old` suffix, superseded
+     branch.
+   - *Ambiguous* — unclear whether used.
+
+   Only *production* items get ported. *Exploratory* and *deprecated* items
+   must be listed explicitly in the plan as non-ports (so Priya can sanity-check
+   the classification before anything is written). *Ambiguous* items must
+   STOP-and-ask for Priya's decision before the plan is finalized.
+3. **Sub-phase breakdown** with per-file line-count estimates and a clear
+   dependency order.
+4. **Parity strategy** — what existing outputs to compare against, what arrays,
+   what tolerances.
+5. **Hardcoded constants** — list any numeric thresholds, channel names,
+   path literals, etc. that should move out of source into
+   `configs/defaults.yaml` or `configs/session_overrides.yaml`.
+
+The plan must pause for Priya's explicit approval before any files are written.
+
+---
+
 ## Repo Conventions
 
 - Code lives in `src/stroke_orofacial/`; notebooks orchestrate, they do not contain analytical code.

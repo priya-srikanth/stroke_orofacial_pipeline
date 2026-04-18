@@ -158,14 +158,33 @@ def build_manifest(
 
     session_id = f"{animal}_{date.strftime('%Y%m%d')}"
 
+    # Discover wavesurfer file (optional — may not exist if data isn't local)
+    wavesurfer_file = None
+    try:
+        from stroke_orofacial.spout_behavior.wavesurfer_io import find_wavesurfer_file
+        ws_dir = resolver.wavesurfer_dir(date, animal)
+        if ws_dir.exists():
+            wavesurfer_file = find_wavesurfer_file(ws_dir)
+    except (FileNotFoundError, ValueError):
+        pass  # wavesurfer data not available for this session
+
+    # Discover video files (optional — camera data may not be mounted)
+    video_files: list[Path] = []
+    try:
+        from stroke_orofacial.alignment.templates import discover_video_files
+        cam_dir = resolver.camera_dir(date, animal)
+        video_files = discover_video_files(cam_dir, cam_idx=2)
+    except (FileNotFoundError, RuntimeError):
+        pass  # camera data not available
+
     return SessionManifest(
         session_id=session_id,
         animal=animal,
         date=date,
         day_relative_to_stroke=day_rel,
         phase=phase,
-        wavesurfer_file=None,  # populated in Phase 2
-        video_files=[],  # populated in Phase 2
+        wavesurfer_file=wavesurfer_file,
+        video_files=video_files,
         dlc_h5_files=dlc_h5_files,
         dlc_csv_files=dlc_csv_files,
         alignment_template=alignment_template,

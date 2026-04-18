@@ -197,6 +197,14 @@ class PathResolver:
         date_str = date.strftime("%Y%m%d")
         return self.root("wavesurfer_raw") / date_str / animal
 
+    def camera_dir(self, date: datetime.date, animal: str) -> Path:
+        """Return the camera session directory for an animal and date.
+
+        E.g. ``/Volumes/.../camera/20250307/PS46``
+        """
+        date_str = date.strftime("%Y%m%d")
+        return self.root("camera_raw") / date_str / animal
+
     # Kept for backward compatibility but deprecated in favor of pipeline_outputs()
     def session_processing_out(self, version: str = "v2") -> Path:
         """Return the output directory for processed session data (deprecated).
