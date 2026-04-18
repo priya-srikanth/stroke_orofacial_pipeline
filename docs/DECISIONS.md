@@ -43,6 +43,27 @@ Entries are reverse-chronological (newest at top). Format:
 - *Rationale:* Keeps Phase 5 boundary clean at descriptive analyses. Phase 9 becomes the single home for all inferential spatial-maps stats.
 - *Enforced at:* Phase 5 plan (cells 8-10 of `20251202` classified "Deferred to Phase 9"); `docs/MIGRATION_LOG.md` Phase 5 entry.
 
+## 2026-04-18 — Phase 5 fine-grid heatmap arrays saved alongside PNGs
+
+- *Context:* Phase 5 currently saves the coarse stats grid (`stats_grid_{date}.npz`) for occupancy statistics and saves the fine heatmap visualization as `heatmap_{date}.png` only. The fine 100-bin histogram array is computed during rendering but then discarded.
+- *Decision:* Save the fine-grid heatmap histogram array as `heatmap_{date}.npz` alongside the PNG. Keys: `H_counts`, `H_proportion`, `xedges`, `yedges`, `x_limits`, `y_limits`, `nbins`. Rolled into Phase 6.7's sub-phase 6.7d scope.
+- *Rationale:* (a) Future figure generation may want to tweak colormap, axis limits, or normalization without recomputing from parquet. (b) Phase 9 fine-resolution spatial stats (KS distance, energy distance) may need the fine grid as input. Saving now avoids repeat computation.
+- *Enforced at:* `src/stroke_orofacial/dlc_spatial/heatmaps.py` (new save helper), updated in sub-phase 6.7d per `docs/prompts/phase-6.7-session-manifest-refactor-kickoff.md`.
+
+## 2026-04-18 — Phase 5 all-bodyparts overlay heatmap design
+
+- *Context:* Priya wants a single-figure overlay of all bodypart heatmaps (each with its own colormap) for cross-bodypart comparison. L and R paired bodyparts (e.g., L_whiskers_1 + R_whiskers_1) share colormaps. Legacy 20251202 notebook implements this in the `_all_bodyparts_` cells.
+- *Decision:* Add `plot_all_bodyparts_heatmap(df, config, include_landmarks=False)` to `dlc_spatial/heatmaps.py` as a future Phase 5.x mini-phase (not part of 6.7 refactor). Renders tongue, jaw, nose, and whiskers on one axis with per-bodypart colormaps; L/R pairs share cmaps. `include_landmarks=True` optionally adds medial_edge_L_eye, medial_edge_R_eye, L_spout, R_spout for QC / alignment verification. Default behavior excludes landmarks. Output: `spatial_whole_session/all_bodyparts_{center_mode}/{animal}/heatmap_{date}.png` + `heatmap_{date}.npz` (per-bodypart arrays stacked).
+- *Rationale:* Single-figure overlays are the legacy standard for across-bodypart comparison; faithful port + the fine-grid save requirement make this a natural Phase 5.x mini-phase after audit closes.
+- *Enforced at:* Future `docs/prompts/phase-5.x-all-bodyparts-heatmap-kickoff.md` (to be written when scheduling that mini-phase).
+
+## 2026-04-18 — Phase 4.5 (eye-based affine cross-session alignment) proposed, pending experimental validation
+
+- *Context:* Current pipeline aligns sessions via midpoint centering (nose, spout midpoint, eye midpoint), which handles translation but not rotation, scale drift, or lateral/vertical camera displacement across sessions. Cross-session difference maps may show false "changes" from camera drift rather than biology. Priya specifically requested NOT to use nose as a fiducial (resting nose location may shift post-stroke). L and R medial eye edges are stable post-stroke and work as fiducials.
+- *Decision:* Run an experimental notebook first (`notebooks/experiments/eye_affine_alignment_exploration.ipynb`) on PS46 baseline sessions to compare midpoint-centering vs eye-based similarity transform (translation + rotation + scale, two-fiducial). If the experiment shows meaningful reduction in cross-session landmark variance AND cleaner difference maps, implement as `Phase 4.5 — Optional Affine Cross-Session Alignment` mini-phase. Canonical reference frame: baseline-averaged median eye positions per animal. Store per-session 4-parameter transform as JSON; Phase 5/6 analyses optionally apply the transform before histogramming.
+- *Rationale:* Session-to-session spatial comparability matters for cross-day analyses; affine alignment is a principled way to remove camera-mount drift. Excluding nose as a fiducial preserves the ability to detect post-stroke nose-position changes as biology, not artifact. Starting with an experimental notebook avoids building infrastructure before validating the hypothesis.
+- *Enforced at:* `notebooks/experiments/eye_affine_alignment_exploration.ipynb` (this commit); `docs/prompts/phase-4.5-affine-alignment-kickoff.md` to be written after experimental validation.
+
 ## 2026-04-18 — Phase 8 split into 8a (spout behavior) + 8b (DLC behavior), with 8a moved ahead of Phase 7
 
 - *Context:* Mid-experiment, Priya needs spout-behavior figures (first-lick accuracy, latencies, lick rates over sessions) to decide when behavior has plateaued and stroke induction is appropriate. These decisions depend only on wavesurfer data, not on DLC kinematics or spatial maps. The original Phase 8 ("Behavior report") was a single phase scheduled after Phase 7 (DLC kinematics), which would block mid-experiment figures until DLC work unrelated to the decision is complete.
