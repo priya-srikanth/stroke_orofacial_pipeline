@@ -76,6 +76,46 @@ dlc_centering:
   default_mode: "nose"        # also supports "spout_midpoint", "eye_midpoint"
   compression: "zstd"         # parquet compression
 
+# ---- DLC spatial analyses ----
+# Per-(bodypart, center_mode) plotting parameters per DECISIONS.md
+# "Phase 5+ downstream analyses: preserve per-(bodypart, center_mode) plotting parameters"
+
+dlc_spatial:
+  heatmap_nbins: 100              # fine-resolution grid for per-session heatmap viz
+  target_bin_size_x: 25.0         # coarser stats grid: nx = round(span_x / bin_size), min 5
+  target_bin_size_y: 25.0         # coarser stats grid: ny = round(span_y / bin_size), min 5
+  apply_x_range: false            # optional x-range filter on coordinates
+  x_range: [-200, 200]            # applied only when apply_x_range is true
+  save_dpi: 200                   # PNG save resolution
+  bodyparts:
+    nose:
+      likelihood_threshold: 0.80
+      cmap: "gist_ncar"
+    jaw:
+      likelihood_threshold: 0.80
+      cmap: "gnuplot2"
+    tongue:
+      likelihood_threshold: 0.70
+      cmap: "jet"
+    L_whiskers_1:
+      likelihood_threshold: 0.80
+      cmap: "plasma"
+    L_whiskers_2:
+      likelihood_threshold: 0.80
+      cmap: "inferno"
+    L_whiskers_3:
+      likelihood_threshold: 0.80
+      cmap: "viridis"
+    R_whiskers_1:
+      likelihood_threshold: 0.80
+      cmap: "plasma"
+    R_whiskers_2:
+      likelihood_threshold: 0.80
+      cmap: "inferno"
+    R_whiskers_3:
+      likelihood_threshold: 0.80
+      cmap: "viridis"
+
 # ---- Wavesurfer ----
 
 wavesurfer:
