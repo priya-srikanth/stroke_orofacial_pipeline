@@ -43,6 +43,13 @@ Entries are reverse-chronological (newest at top). Format:
 - *Rationale:* Keeps Phase 5 boundary clean at descriptive analyses. Phase 9 becomes the single home for all inferential spatial-maps stats.
 - *Enforced at:* Phase 5 plan (cells 8-10 of `20251202` classified "Deferred to Phase 9"); `docs/MIGRATION_LOG.md` Phase 5 entry.
 
+## 2026-04-18 — Phase 8 split into 8a (spout behavior) + 8b (DLC behavior), with 8a moved ahead of Phase 7
+
+- *Context:* Mid-experiment, Priya needs spout-behavior figures (first-lick accuracy, latencies, lick rates over sessions) to decide when behavior has plateaued and stroke induction is appropriate. These decisions depend only on wavesurfer data, not on DLC kinematics or spatial maps. The original Phase 8 ("Behavior report") was a single phase scheduled after Phase 7 (DLC kinematics), which would block mid-experiment figures until DLC work unrelated to the decision is complete.
+- *Decision:* Split Phase 8 into two phases along the DLC-dependency line. **Phase 8a** (spout behavior report) consumes only Phase 2 + 2.5 outputs and is moved ahead of Phase 7 in the build sequence so spout-behavior figures are available immediately after the data pipeline completes. **Phase 8b** (DLC behavior report) consumes Phases 4-7 outputs plus 8a, and runs after Phase 7. Output directories split: `behavior_report/spout/` and `behavior_report/dlc/`.
+- *Rationale:* Scientific work happens in parallel with consolidation; waiting on DLC-derived figures to get spout-derived figures blocks experimental decisions. Splitting by data-dependency makes the graph explicit and unblocks mid-experiment usage. The split also means 8a can be re-run cheaply after any new data-collection session (it's just wavesurfer → figures, no heavy video processing).
+- *Enforced at:* `docs/DESIGN.md` §7 Phase 8a and Phase 8b entries; `stroke_orofacial_pipeline_outputs/behavior_report/{spout,dlc}/` subdirs; future Phase 8a and Phase 8b kickoff prompts in `docs/prompts/`.
+
 ## 2026-04-18 — End-to-end output audits scheduled at two points
 
 - *Context:* Priya will want to walk through every analysis output and figure produced by the consolidated pipeline for one animal (PS46 as the exemplar), to identify gaps against her scientific needs, excesses, and desired edits. The DESIGN.md Phase 10 ("Cleanup & docs") as originally written is technical-cleanup-only and doesn't cover a scientific end-to-end walkthrough.
