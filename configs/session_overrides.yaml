@@ -1,0 +1,31 @@
+# Per-session parameter overrides.
+# Layered on top of defaults.yaml at runtime.
+# Structure mirrors defaults.yaml subtrees, keyed by animal -> date (YYYYMMDD).
+#
+# Authoritative source: offset_overrides from legacy canonical notebook
+# batch_process_20260410PS.ipynb params dict.
+
+overrides:
+  PS51:
+    "20250425":
+      process_treadmill_signal:
+        offset_in_volts: 0.0
+  PS54:
+    "20250425":
+      process_treadmill_signal:
+        offset_in_volts: 0.0
+  PS55:
+    "20250425":
+      process_treadmill_signal:
+        offset_in_volts: 0.0
+    "20250426":
+      process_treadmill_signal:
+        offset_in_volts: 0.0
+
+# Structural session merges (e.g., two wavesurfer files for one session).
+# TODO: merge implementation deferred beyond Phase 2.
+merges:
+  PS48:
+    "20250314":
+      note: "Two wavesurfer files need merging for this session"
+      # merge_strategy: concatenate  # not implemented yet

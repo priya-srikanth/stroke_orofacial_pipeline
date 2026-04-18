@@ -21,7 +21,20 @@ These rules bind every Claude Code session working on this project.
 5. **Default migration pattern: copy, do not move.** Legacy notebook → new module = implement in this repo; legacy notebook stays untouched.
 6. **Output writes go to new output directories** (e.g. `session_processing_v2/`, `dlc_analysis_v2/`) — never on top of existing `session_processing3/` or existing per-animal analysis folders on the server.
 7. **Before any large refactor or delete-like operation**, use plan mode (Shift+Tab → Plan) and show the plan for approval.
-8. **Git discipline:** every change lands as a commit on a feature branch; never force-push.
+8. **Git discipline:**
+   - Every change lands as a commit on a feature branch. Never force-push.
+   - Never delete a feature branch with `git branch -D` (force-delete). Use
+     `git branch -d` (lowercase), which refuses to delete unmerged branches,
+     and only after the branch has been PR-merged to main and the merge has
+     been verified locally.
+   - After PR-merge, leave the feature branch intact on origin as a permanent
+     reference. Pruning is Priya's call, not Claude Code's.
+   - When completing a phase, tag the merge commit on main with
+     `vX.Y-phase-N-short-name` so there is a permanent named reference.
+   - Before any potentially destructive git operation (`git reset --hard`,
+     `git branch -D`, `git rebase`, `git checkout -- <file>`, `git clean -fd`,
+     force-push), STOP and ask Priya first. Describe exactly what will change
+     and request explicit approval.
 
 ---
 

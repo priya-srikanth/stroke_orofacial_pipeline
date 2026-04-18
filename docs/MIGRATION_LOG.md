@@ -86,3 +86,124 @@ This matches the legacy notebook semantics where `d0` is the last baseline day.
 - [x] `pytest tests/` passes (39 tests).
 - [x] `ruff check src/` clean.
 - [x] `configs/animals.yaml` reviewed and approved by Priya.
+
+---
+
+## Phase 2 — Spout behavior processing
+
+**Date:** 2026-04-18
+
+**Legacy file disambiguation (per CLAUDE.md 3-tier rule):**
+
+- **Canonical notebook:** `batch_process_20260410PS.ipynb` (Rule 1: latest
+  YYYYMMDD). Deprecated: `batch_process.ipynb` (undated),
+  `batch_process_20250503PS.ipynb` (superseded).
+- **Python helpers (6 unambiguous):** `process_ws_signals.py`,
+  `find_licks_and_rewards.py`, `find_running_bouts.py`,
+  `find_grooming_bouts.py`, `find_quiet_bouts.py`,
+  `find_peri_reward_periods.py` — all only-version (Rule 1 trivially resolved).
+- **Treadmill calibration (Rule 3 → Priya confirmed):**
+  `calibrate_and_smooth_treadmill_signal_PS.py` is canonical. The notebook
+  imports `_patched` (stale reference); no file with that name exists. The
+  plain `calibrate_and_smooth_treadmill_signal.py` (2025-05-03) lacks the
+  offset-override logic. `_PS.py` (2026-04-10) was confirmed canonical by
+  Priya.
+
+**What was done:**
+
+### Sub-phase 2a: Wavesurfer I/O + treadmill calibration
+- Implemented `src/stroke_orofacial/spout_behavior/wavesurfer_io.py`:
+  `load_wavesurfer_signals()`, `find_wavesurfer_file()` (glob-based, excludes
+  "kHz" files), `calibrate_treadmill()`, `smooth_treadmill()`,
+  `resolve_treadmill_offset()`.
+- Ported from `process_ws_signals.py` and
+  `calibrate_and_smooth_treadmill_signal_PS.py`.
+- Updated `configs/paths.yaml`: added `microscope_pipeline_outputs` and
+  `wavesurfer_raw` (list mount: MICROSCOPE primary, Mac-local fallback).
+- Created `configs/session_overrides.yaml` with per-session treadmill offset
+  overrides (moved out of `defaults.yaml`).
+- Populated `configs/defaults.yaml` with all cohort-wide params from legacy
+  `params.json` (authoritative from canonical notebook).
+- Updated `PathResolver`: list-mount support for fallback chains,
+  `pipeline_outputs()`, `wavesurfer_dir()`.
+- Added `bnpm` and `pywavesurfer` to `pyproject.toml` dependencies.
+
+### Sub-phase 2b: Lick detection + reward detection
+- Implemented `src/stroke_orofacial/spout_behavior/lick_detection.py`:
+  `find_licks_and_rewards()` (main entry), `find_reward_indices()`,
+  double-threshold lick detection with asymmetric lockout cleaning.
+- Ported from `find_licks_and_rewards.py`.
+
+### Sub-phase 2c: Bout detection
+- Implemented `src/stroke_orofacial/spout_behavior/bouts.py`:
+  `find_running_bouts()`, `find_grooming_bouts()`, `find_quiet_bouts()`,
+  `find_peri_reward_periods()`.
+- Ported from 4 legacy modules.
+
+### Sub-phase 2d: Session orchestrator + notebook + parity check
+- Implemented `src/stroke_orofacial/spout_behavior/session_processing.py`:
+  `process_session()`, `process_animal()` with overwrite protection
+  ("skip" / "prompt" / "force").
+- Created `src/stroke_orofacial/config_loader.py`: `load_defaults()`,
+  `load_session_overrides()`, `get_session_params()` (deep-merge),
+  `check_merge_required()` (raises NotImplementedError for deferred merges).
+- Created `notebooks/00_session_processing.ipynb` (thin orchestrator with
+  USER INPUTS cell).
+- Per-session `params.json` at `params/{animal}/{YYYYMMDD}.json` for full
+  run provenance.
+
+### Sub-phase 2e: Tests + MIGRATION_LOG
+- `tests/test_wavesurfer_io.py` — wavesurfer loading, treadmill calibration,
+  file discovery, integration against real PS46/20250307.
+- `tests/test_lick_detection.py` — reward detection, lick onset/offset,
+  lockout cleaning, parity against `session_processing3/`.
+- `tests/test_bouts.py` — running/grooming/quiet/peri-reward unit tests,
+  parity against `session_processing3/` for PS46/20250307.
+- `tests/test_session_processing.py` — params.json structure, skip-path
+  behavior, integration parity for both PS46 sessions.
+- `tests/test_config_loader.py` — deep-merge, override loading, merge-required
+  check.
+
+**Parity verified** on two sessions (11 arrays each, all exact match):
+- PS46 / 2025-03-07 (baseline, day -6): 11/11 PASS
+- PS46 / 2025-03-20 (post-stroke, day +7): 11/11 PASS
+
+Boolean masks and integer index arrays: `np.array_equal`.
+Treadmill float arrays: `np.allclose(rtol=1e-10, atol=1e-10)`.
+
+**Intentional behavior differences vs. legacy `session_processing3/`:**
+
+1. **Per-session params.json** at `params/{animal}/{YYYYMMDD}.json` instead of
+   a single root-level `params.json`. Each file records `session_id`, `animal`,
+   `date`, `run_timestamp`, `skipped`, the merged `params` actually used, and
+   a `processing_log` of skip/overwrite decisions per output type.
+
+2. **params.json always written, even on skip.** When `overwrite="skip"` and
+   all outputs exist, the per-session `params.json` is still written with
+   `skipped: true`. This provides a full audit trail of what ran vs. skipped.
+
+3. **Treadmill offset_overrides moved** from `defaults.yaml` into
+   `configs/session_overrides.yaml` under a structured `overrides:` key.
+   `defaults.yaml` contains only the cohort-wide default offset value.
+
+4. **Output location on MICROSCOPE** at `pipeline_outputs_v2/spout_behavior/`
+   instead of Mac-local `session_processing3/`.
+
+5. **Cross-platform wavesurfer path support.** `wavesurfer_raw` logical root
+   tries MICROSCOPE first, falls back to Mac-local. Pipeline currently runs
+   from Mac using the local fallback; will run from Windows once Priya rsyncs
+   the wavesurfer data to MICROSCOPE (separate task).
+
+**Known constraints:**
+- Raw wavesurfer data currently Mac-local only; mirror to MICROSCOPE pending.
+- PS48 / 2025-03-14 session merge (two wavesurfer files) is documented in
+  `configs/session_overrides.yaml` under `merges:` but implementation is
+  deferred beyond Phase 2. `check_merge_required()` raises
+  `NotImplementedError` if this session is processed.
+- `trial_segmentation.py` remains a stub — legacy notebook does not segment
+  trials; that concept belongs to later phases.
+
+**Exit criteria met:**
+- [x] `pytest tests/` passes (103 tests).
+- [x] `ruff check src/` clean.
+- [x] Parity verified on PS46 baseline + post-stroke sessions.
