@@ -102,11 +102,17 @@ class TestFindLicksAndRewards:
         reward_L[200:250] = 1.0
         reward_R = np.zeros(n)
 
+        tone_L = np.zeros(n)
+        tone_L[150:200] = 1.0
+        tone_R = np.zeros(n)
+
         signals = {
             "Lick_L": lick_sig_L,
             "Lick_R": lick_sig_R,
             "Reward_L": reward_L,
             "Reward_R": reward_R,
+            "Tone_L": tone_L,
+            "Tone_R": tone_R,
             "sample_rate_input": Fs,
         }
         params = {
@@ -123,6 +129,8 @@ class TestFindLicksAndRewards:
         assert len(result["Lick_R"]) == 1
         assert len(result["Reward_L"]) == 1
         assert len(result["Reward_R"]) == 0
+        assert len(result["Tone_L"]) == 1
+        assert len(result["Tone_R"]) == 0
         assert result["Fs"] == Fs
         assert result["n_samples"] == n
 
