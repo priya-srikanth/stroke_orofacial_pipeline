@@ -32,6 +32,12 @@ These rules bind every Claude Code session working on this project.
 7. **Before any large refactor or delete-like operation**, use plan mode (Shift+Tab → Plan) and show the plan for approval.
 8. **Git discipline:**
    - Every change lands as a commit on a feature branch. Never force-push.
+   - **Before every `git commit`, run `git branch --show-current` and confirm
+     you are NOT on `main` (or `master`).** If you are on a protected branch,
+     STOP and ask Priya to switch branches. Never commit directly to `main`.
+     A pre-commit hook in `.githooks/pre-commit` enforces this; if the hook
+     blocks a commit, do not bypass with `--no-verify` without explicit
+     Priya approval.
    - Never delete a feature branch with `git branch -D` (force-delete). Use
      `git branch -d` (lowercase), which refuses to delete unmerged branches,
      and only after the branch has been PR-merged to main and the merge has
