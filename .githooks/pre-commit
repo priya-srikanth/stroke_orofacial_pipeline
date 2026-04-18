@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# pre-commit hook: refuse direct commits to protected branches.
+#
+# Enabled via: git config core.hooksPath .githooks
+# See scripts/setup-hooks.sh for a one-command install.
+
+set -e
+
+BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+
+PROTECTED_BRANCHES=(
+  "main"
+  "master"
+)
+
+for protected in "${PROTECTED_BRANCHES[@]}"; do
+  if [ "$BRANCH" = "$protected" ]; then
+    cat >&2 <<EOF
+
+  ERROR: Direct commits to '$BRANCH' are blocked by the pre-commit hook.
+
+  Every change should land on a feature branch and be merged via PR
+  (see CLAUDE.md rule 8). To proceed:
+
+    git checkout -b <feature-branch-name>
+    git commit ...
+
+  If you are certain this is an intentional, emergency-only bypass:
+
+    git commit --no-verify
+
+EOF
+    exit 1
+  fi
+done
+
+exit 0
