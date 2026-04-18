@@ -173,9 +173,12 @@ def rename_snapshots_local(output_dir: Path, renames: dict[str, str] | None = No
             "snapshot-best-60": "snapshot_060",
             "snapshot_best-60": "snapshot_060",
         }
+    import os
+
     pat = re.compile("|".join(re.escape(k) for k in renames))
     count = 0
-    for dirpath, _, files in Path(output_dir).walk():
+    for dirpath_str, _, files in os.walk(str(output_dir)):
+        dirpath = Path(dirpath_str)
         for fname in files:
             new = pat.sub(lambda m: renames[m.group()], fname)
             if new != fname:
