@@ -589,3 +589,84 @@ Exploratory or Phase 7 scope.
 - [x] `ruff check src/` clean.
 - [x] Fine heatmap verified non-trivial on PS46/20250307.
 - [x] Per-(bodypart, center_mode) axis limits in `configs/defaults.yaml`.
+
+---
+
+## Phase 5.5 — DLC Inference Port (O2)
+
+**Date:** 2026-04-18
+
+**Legacy file disambiguation:**
+- **Canonical:** `20251112_DLC_batch_video_analysis_O2.ipynb` (Rule 1: latest
+  YYYYMMDD). 55 cells.
+- **Deprecated:** `old_code/20251103_DLC_batch_video_analysis.ipynb` (pre-O2),
+  `20251104_DLC_batch_video_analysis_O2.ipynb` (earlier date),
+  `20251104_..._O2_2.ipynb` and `_O2_3.ipynb` (numbered variants).
+- No external `.py` helpers — all scripts embedded inline in notebook cells.
+
+**Dead code classification:** 55 cells; ~20 production (SSH setup, script
+generation, SBATCH, staging, renaming, copy), ~30 exploratory (monitoring,
+manual verification, debugging, batch-size scout monitoring).
+
+**What was done:**
+
+### Sub-phase 5.5a: Core modules
+- `runner.py`: `generate_inference_script()` produces standalone
+  `run_dlc_batch.py` (DLC `analyze_videos` + `filterpredictions`, per-video
+  iteration, YAML-based animal/date selection).
+- `batch.py`: `discover_camera_dates()`, `discover_videos()`,
+  `write_selection_yaml()`.
+- `o2_job.py`: `generate_sbatch_script()` with configurable SBATCH resources,
+  `o2_paths()` for path resolution.
+- Added `dlc_inference_o2` section to `configs/defaults.yaml` with all SBATCH
+  resources, DLC params, O2 paths, and snapshot rename mappings.
+
+### Sub-phase 5.5b: Transfer utilities
+- `transfer.py` (184 lines): `build_stage_videos_command()`,
+  `build_copy_to_microscope_command()` (two-stage or direct),
+  `build_rename_command()`, `rename_snapshots_local()`. Functions generate
+  shell commands as strings — user pastes into terminal. The local rename
+  utility (`rename_snapshots_local()`) is the only function that executes
+  file operations directly.
+- **Line count vs estimate:** 184 lines vs plan's ~80 estimate. Growth from:
+  comprehensive docstrings (~40 lines), the `rename_snapshots_local()` helper
+  for post-copy cleanup not in the original plan (~30 lines), and explicit
+  per-animal/per-date loop in the staging command builder (~20 lines).
+
+### Sub-phase 5.5c: README + notebook
+- `README.md`: complete O2 workflow documentation (prerequisites, step-by-step,
+  resources, DLC params, batch-size tuning, troubleshooting, security).
+- `notebooks/20_dlc_inference.ipynb`: click-through orchestrator with USER
+  INPUTS. Local actions (YAML writing, script generation) execute directly.
+  SSH/rsync/sbatch commands are printed with user-specific inputs substituted
+  — user pastes into terminal. No SSH from within notebook context.
+
+### Sub-phase 5.5d: Tests + MIGRATION_LOG + DECISIONS.md
+- `tests/test_dlc_inference.py` — script generation (valid Python syntax,
+  contains DLC API calls), YAML structure, SBATCH content, path resolution,
+  rsync commands, local rename logic.
+- Removed `batch_video_analysis.py` (Phase 0 stub, no imports anywhere in
+  the repo — confirmed via `grep -rn`). Superseded by the split into
+  `runner.py`, `batch.py`, and `o2_job.py`.
+
+**Parity strategy: code-only review.**
+- Running inference requires O2 GPU access + HMS credentials + ~30 min/video.
+  Cost/benefit low for infrastructure code.
+- Structural parity verified: generated `run_dlc_batch.py` matches legacy
+  cell 6 (same DLC API calls, same argparse options, same per-video iteration
+  + error handling). SBATCH matches legacy cell 14 resource requests. Rename
+  logic matches cell 45.
+
+**Intentional behavior differences:**
+1. **Modular structure.** Legacy: all logic embedded in notebook cells (55
+   cells, monolithic). New: split into 4 focused modules + README + notebook.
+2. **SSH commands generated, never executed.** Per DECISIONS.md. Local actions
+   run in-notebook; SSH/rsync/sbatch printed for user to paste.
+3. **All constants in config.** SBATCH resources, DLC params, O2 paths, and
+   snapshot renames moved to `configs/defaults.yaml` (were inline in notebook).
+
+**Exit criteria met:**
+- [x] `pytest tests/` passes.
+- [x] `ruff check src/` clean.
+- [x] README documents full O2 workflow.
+- [x] Notebook provides click-through interface without executing SSH.

@@ -208,3 +208,34 @@ reward_window:
 
 pixel_bins:
   bin_size_px: null
+
+# ---- DLC inference on O2 (standalone tool) ----
+
+dlc_inference_o2:
+  # SBATCH resources
+  partition: "gpu"
+  gres: "gpu:1"
+  cpus_per_task: 10
+  mem: "30G"
+  time: "9:30:00"
+  exclude_nodes: "compute-g-16-[254-255]"
+  conda_module: "conda/miniforge3/24.11.3-0"
+  conda_env: "deeplabcut"
+  # DLC parameters
+  shuffle: 5
+  trainingsetindex: 0
+  gputouse: 0
+  batchsize: 1
+  allow_growth: true
+  video_glob: "video2_*.avi"
+  # O2 paths (user-specific parts templated with {username})
+  scratch_root: "/n/scratch/users/{username_initial}/{username}"
+  camera_source: "/n/files/Neurobio/MICROSCOPE/Rich/data/2pRAM/facerhythm_stroke_biomarker_exp/camera"
+  dlc_config_source: "/n/files/Neurobio/MICROSCOPE/Priya/DeepLabCut/DLC_train_config"
+  data1_staging: "/n/data1/hms/neurobio/sabatini/Priya/DeepLabCut/O2_staging"
+  microscope_dest: "/n/files/Neurobio/MICROSCOPE/Priya/DeepLabCut/O2_analysis"
+  transfer_host: "transfer.rc.hms.harvard.edu"
+  # Snapshot renaming
+  snapshot_renames:
+    "snapshot-best-60": "snapshot_060"
+    "snapshot_best-60": "snapshot_060"
