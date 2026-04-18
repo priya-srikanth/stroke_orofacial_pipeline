@@ -32,6 +32,7 @@ def plot_heatmap(
     y_limits: tuple[float, float] = (50, 550),
     title: str = "",
     figsize: tuple[float, float] = (8, 6),
+    window: Any | None = None,
 ) -> plt.Figure:
     """Render a 2D histogram heatmap for one bodypart in one session.
 
@@ -49,6 +50,8 @@ def plot_heatmap(
         Plot title.
     figsize : tuple
         Figure size.
+    window : WindowSelector, optional
+        Frame selection window. Default None = whole session.
 
     Returns
     -------
@@ -64,7 +67,11 @@ def plot_heatmap(
     if config.get("apply_x_range", False):
         x_range_filter = tuple(config.get("x_range", [-200, 200]))
 
-    x, y = get_masked_xy(df, bodypart, lik_thr, x_range=x_range_filter)
+    frame_mask = None
+    if window is not None:
+        frame_mask = window.select_frames(df)
+
+    x, y = get_masked_xy(df, bodypart, lik_thr, x_range=x_range_filter, frame_mask=frame_mask)
 
     fig, ax = plt.subplots(figsize=figsize)
 
