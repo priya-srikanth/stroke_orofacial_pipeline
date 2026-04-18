@@ -15,6 +15,13 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-04-18 — Phase 6 establishes window_selector abstraction for all future event-aligned analyses
+
+- *Context:* Reward-aligned spatial analyses (Phase 6) are the first event-aligned work in the pipeline. The abstraction needs to be general enough for future event types (cue-aligned via tone events from Phase 2.5, custom event windows for Phase 7 kinematics) without requiring infrastructure changes.
+- *Decision:* `WindowSelector` abstract base class in `dlc_spatial/window_selector.py` with `select_frames(df) -> bool_mask`. Concrete implementations: `WholeSessionWindow` (Phase 5, all frames), `EventAlignedWindow` (generic, any event array + pre/post window with deduplication), `RewardAlignedWindow` (reward events from WS samples → camera frames via alignment). Future phases add `CueAlignedWindow` (tone events from Phase 2.5) or custom selectors. All Phase 5 spatial functions (`build_histogram`, `build_stats_grid`, `plot_heatmap`) accept an optional `window` parameter; `None` default preserves whole-session behavior.
+- *Rationale:* Clean separation between window selection (which frames to include) and spatial analysis (what to compute on those frames). Future phases extend by adding new `WindowSelector` subclasses, not by modifying existing analysis functions.
+- *Enforced at:* `src/stroke_orofacial/dlc_spatial/window_selector.py`, Phase 5 spatial functions' `window` parameter.
+
 ## 2026-04-18 — DLC inference notebook generates SSH/rsync/sbatch commands but never executes them
 
 - *Context:* Phase 5.5's inference workflow requires SSH to O2 and rsync of large video/output files. Executing these from the notebook would require password/credential handling inside the automation layer.
@@ -35,6 +42,15 @@ Entries are reverse-chronological (newest at top). Format:
 - *Decision:* Phase 5 produces descriptive spatial maps only (histograms, heatmaps, difference maps, baseline aggregates). All inferential statistics on spatial maps — permutation p-values, KS/energy distance, any other significance testing — are deferred to Phase 9. This includes the 2KSD notebook's visualization, which is tightly coupled to its stats computation.
 - *Rationale:* Keeps Phase 5 boundary clean at descriptive analyses. Phase 9 becomes the single home for all inferential spatial-maps stats.
 - *Enforced at:* Phase 5 plan (cells 8-10 of `20251202` classified "Deferred to Phase 9"); `docs/MIGRATION_LOG.md` Phase 5 entry.
+
+## 2026-04-18 — End-to-end output audits scheduled at two points
+
+- *Context:* Priya will want to walk through every analysis output and figure produced by the consolidated pipeline for one animal (PS46 as the exemplar), to identify gaps against her scientific needs, excesses, and desired edits. The DESIGN.md Phase 10 ("Cleanup & docs") as originally written is technical-cleanup-only and doesn't cover a scientific end-to-end walkthrough.
+- *Decision:* Two audits, not one:
+  - **Mid-consolidation audit** scheduled for right after Phase 6 merges. Covers Phases 2–6 + 5.5 outputs (spout behavior, alignment, DLC I/O, whole-session spatial, reward-aligned spatial, DLC inference). Done in Cowork, not Claude Code — requires back-and-forth review, not code edits. Outcomes feed into the kickoff prompts for Phases 7, 8, 9 so any gaps surfaced get designed into those phases rather than discovered post-hoc.
+  - **Full end-to-end audit at Phase 10.** All phases built; every output and figure for PS46 enumerated and reviewed. Gaps become either pre-v0.1.0 fixes or post-v0.1.0 backlog items.
+- *Rationale:* Technical cleanup (Phase 10 as originally written) doesn't verify scientific completeness. An explicit walkthrough against research needs catches missing analyses or outputs that code-level review wouldn't surface. Doing one audit mid-consolidation also means later phases are shaped by knowledge of the full current output space, not assumptions.
+- *Enforced at:* `docs/DESIGN.md` §7 Phase 10 (to be updated to reflect this broader scope); mid-consolidation audit invoked directly in Cowork after Phase 6 closeout.
 
 ## 2026-04-18 — Legacy notebooks may receive active edits; re-read at each phase kickoff
 
