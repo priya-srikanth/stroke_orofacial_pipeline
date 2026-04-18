@@ -10,6 +10,7 @@ import pytest
 from stroke_orofacial.spout_behavior.lick_detection import (
     find_licks_and_rewards,
     find_reward_indices,
+    find_tone_indices,
     _find_upward_lick_indices,
     _find_downward_lick_indices,
     _clean_lick_indices,
@@ -44,6 +45,28 @@ class TestFindRewardIndices:
         result = find_reward_indices(signals, thresh=0.5)
         assert len(result["Reward_L"]) == 2
         np.testing.assert_array_equal(result["Reward_L"], [30, 100])
+
+
+class TestFindToneIndices:
+    def test_single_tone(self):
+        sig = np.zeros(100, dtype=float)
+        sig[70:] = 1.0
+        signals = {"Tone_L": sig, "Tone_R": np.zeros(100)}
+        result = find_tone_indices(signals, thresh=0.5)
+        assert len(result["Tone_L"]) == 1
+        assert result["Tone_L"][0] == 70
+        assert len(result["Tone_R"]) == 0
+
+    def test_uses_same_algorithm_as_rewards(self):
+        """Tone detection is identical to reward detection — same rising edge."""
+        sig = np.zeros(200, dtype=float)
+        sig[30:60] = 1.0
+        sig[100:130] = 1.0
+        signals_r = {"Reward_L": sig, "Reward_R": np.zeros(200)}
+        signals_t = {"Tone_L": sig, "Tone_R": np.zeros(200)}
+        rewards = find_reward_indices(signals_r, thresh=0.5)
+        tones = find_tone_indices(signals_t, thresh=0.5)
+        np.testing.assert_array_equal(rewards["Reward_L"], tones["Tone_L"])
 
 
 class TestUpwardLickIndices:

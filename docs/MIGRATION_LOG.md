@@ -207,3 +207,62 @@ Treadmill float arrays: `np.allclose(rtol=1e-10, atol=1e-10)`.
 - [x] `pytest tests/` passes (103 tests).
 - [x] `ruff check src/` clean.
 - [x] Parity verified on PS46 baseline + post-stroke sessions.
+
+---
+
+## Phase 2.5 — Tone detection + per-side peri-periods
+
+**Date:** 2026-04-18
+
+**Purpose:** Restore features present in Rich's upstream repo but dropped in
+Priya's fork (which Phase 2 ported from). Needed for cue-aligned analyses
+in Phase 4+.
+
+**Source:** Rich's upstream `facerhythm_stroke_biomarker_exp` repo:
+- `find_licks_and_rewards.py` — adds `Tone_L`/`Tone_R` detection alongside
+  rewards (same rising-edge algorithm, same threshold).
+- `find_peri_reward_and_tone_periods.py` — produces 4 per-side boolean masks
+  instead of a single consolidated `peri_reward_bool`.
+
+Both files are only-versions in the upstream repo (Rule 1 trivially resolved).
+
+**What was done:**
+
+### Sub-phase 2.5a: Tone detection
+- Added `find_tone_indices()` to `lick_detection.py` — same rising-edge
+  detection as rewards, applied to digital `Tone_L`/`Tone_R` channels.
+- Extended `find_licks_and_rewards()` return dict to include `Tone_L`/`Tone_R`.
+
+### Sub-phase 2.5b: Per-side + peri-tone periods
+- Added `find_peri_reward_and_tone_periods()` to `bouts.py` producing 4
+  per-side boolean masks: `peri_reward_L`, `peri_reward_R`, `peri_tone_L`,
+  `peri_tone_R`. Window: `[0, 6]` seconds (same as consolidated peri-reward).
+- Existing `find_peri_reward_periods()` unchanged (backward compat).
+- Added `find_peri_reward_and_tone_periods` section to `configs/defaults.yaml`.
+
+### Sub-phase 2.5c: Orchestrator integration
+- `licks_and_rewards` NPZ now includes `Tone_L`, `Tone_R` index arrays.
+- `peri_reward_periods` NPZ now includes `peri_reward_L`, `peri_reward_R`,
+  `peri_tone_L`, `peri_tone_R` boolean masks alongside existing
+  `peri_reward_bool`.
+
+### Sub-phase 2.5d: Tests + MIGRATION_LOG
+- Added tone detection unit tests to `test_lick_detection.py`.
+- Added per-side peri-period unit tests to `test_bouts.py`.
+- Added integration tests verifying new keys are present in
+  `test_session_processing.py`.
+
+**Strictly additive:** All 11 original parity arrays unchanged in value.
+Verified on PS46 20250307 + 20250320.
+
+**Note on output subdir naming:** The `peri_reward_periods/` output subdir now
+contains both reward AND tone period masks despite its name. This naming is
+kept for parity with `session_processing3/`. Future renaming is a non-goal;
+the NPZ key names (`peri_reward_L/R`, `peri_tone_L/R`) make the contents
+unambiguous.
+
+**Exit criteria met:**
+- [x] `pytest tests/` passes.
+- [x] `ruff check src/` clean.
+- [x] Original parity still holds (11/11 arrays exact on both sessions).
+- [x] New keys present and non-trivial on PS46 20250307 + 20250320.
