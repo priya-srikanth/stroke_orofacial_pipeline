@@ -30,6 +30,14 @@ logical_roots:
         - "/Users/Priya2/Documents/data/facerhythm_stroke_biomarker_exp/wavesurfer"
       windows: "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\wavesurfer"
 
+  camera_raw:
+    description: >
+      Raw Flea3 camera acquisition output (timestamp CSVs and .avi video files).
+      Located on MICROSCOPE under Rich's data tree. Read-only — never write here.
+    mounts:
+      mac: "/Volumes/Neurobio/MICROSCOPE/Rich/data/2pRAM/facerhythm_stroke_biomarker_exp/camera"
+      windows: "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Rich\\data\\2pRAM\\facerhythm_stroke_biomarker_exp\\camera"
+
   local_processed_spout:
     description: "Local spout-behavior processed data (Mac only, legacy)"
     mounts:

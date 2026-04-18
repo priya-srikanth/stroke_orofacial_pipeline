@@ -54,6 +54,21 @@ find_peri_reward_periods:
 find_peri_reward_and_tone_periods:
   window_around_reward: [0, 6]
 
+# ---- Alignment ----
+
+alignment:
+  csv_idx_sync: 2          # column index in camera CSV for sync signal
+  csv_idx_time: 0          # column index in camera CSV for frame tick counter
+  key_sync: "Sync_signal"  # wavesurfer channel name for sync signal
+  fps_cam: 250.0           # camera frame rate (Hz)
+  edge_threshold: 0.5      # rising-edge threshold on normalized [0,1] scale
+  normalize_p_lo: 5        # robust percentile for min-max normalization
+  normalize_p_hi: 95       # robust percentile for min-max normalization
+  window: 20               # edge-sequence matching window size
+  p: 0.1                   # L-p norm exponent for matching
+  min_matched_edges: 5     # minimum matched edges for valid alignment
+  cam_idx: 2               # which camera to align (cam2 = DLC camera)
+
 # ---- Wavesurfer ----
 
 wavesurfer:
