@@ -111,7 +111,7 @@ _SP3 = Path(
     "/Users/Priya2/Documents/data/facerhythm_stroke_biomarker_exp/analysis/session_processing3"
 )
 _V2 = Path(
-    "/Volumes/Neurobio/MICROSCOPE/Priya/pipeline_outputs_v2/spout_behavior"
+    "/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/spout_behavior"
 )
 
 
@@ -178,7 +178,7 @@ class TestIntegrationProcessSession:
     reason="Wavesurfer data or MICROSCOPE mount not available",
 )
 class TestIntegrationNewKeys:
-    """Verify Phase 2.5 additive keys are present in pipeline_outputs_v2."""
+    """Verify Phase 2.5 additive keys are present in stroke_orofacial_pipeline_outputs."""
 
     def test_tone_indices_in_licks_and_rewards(self):
         lr = dict(np.load(
@@ -206,7 +206,7 @@ class TestIntegrationNewKeys:
     reason="Wavesurfer data or session_processing3 not available",
 )
 class TestIntegrationParity:
-    """Verify pipeline_outputs_v2 matches session_processing3 exactly."""
+    """Verify stroke_orofacial_pipeline_outputs matches session_processing3 exactly."""
 
     CHECKS = {
         "treadmill_signals_preprocessed": [("Treadmill_smoothed", "allclose")],

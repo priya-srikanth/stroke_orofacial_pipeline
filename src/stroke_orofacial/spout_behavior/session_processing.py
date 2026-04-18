@@ -3,7 +3,7 @@
 Replaces the legacy ``batch_process_20260410PS.ipynb`` notebook (Rule 1:
 latest YYYYMMDD). Loads wavesurfer data, calibrates treadmill, detects
 licks/rewards, and runs all four bout detectors. Writes 7 NPZ files per
-session to the MICROSCOPE pipeline_outputs_v2/spout_behavior/ tree.
+session to the MICROSCOPE stroke_orofacial_pipeline_outputs/spout_behavior/ tree.
 """
 
 from __future__ import annotations

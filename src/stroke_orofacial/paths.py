@@ -185,7 +185,7 @@ class PathResolver:
     def pipeline_outputs(self, subdir: str = "spout_behavior") -> Path:
         """Return the output directory for pipeline outputs on MICROSCOPE.
 
-        E.g. ``/Volumes/.../pipeline_outputs_v2/spout_behavior``
+        E.g. ``/Volumes/.../stroke_orofacial_pipeline_outputs/spout_behavior``
         """
         return self.root("microscope_pipeline_outputs") / subdir
 

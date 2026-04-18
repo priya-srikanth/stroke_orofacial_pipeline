@@ -158,7 +158,7 @@ def load_or_compute_alignment(
         The ``alignment`` section from defaults.yaml.
     ws_signals : dict, optional
         Pre-loaded wavesurfer signals. If None and recompute is needed,
-        loads from the processed wavesurfer NPZ in pipeline_outputs_v2.
+        loads from the processed wavesurfer NPZ in stroke_orofacial_pipeline_outputs.
     force_recompute : bool
         If True, always recompute even if an existing template exists.
 

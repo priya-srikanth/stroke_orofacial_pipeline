@@ -63,12 +63,12 @@ class TestWriteAndReadParquet:
 # ---- Integration: parity against legacy parquets ----
 
 _DLC_DIR = Path("/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/O2_analysis/PS46")
-_V2 = Path("/Volumes/Neurobio/MICROSCOPE/Priya/pipeline_outputs_v2/dlc_analysis")
+_V2 = Path("/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/dlc_analysis")
 
 
 @pytest.mark.skipif(
     not _DLC_DIR.exists() or not _V2.exists(),
-    reason="DLC data or pipeline_outputs_v2 not available",
+    reason="DLC data or stroke_orofacial_pipeline_outputs not available",
 )
 class TestIntegrationParity:
     @pytest.mark.parametrize("mode,legacy_dir,expected_hash", [
