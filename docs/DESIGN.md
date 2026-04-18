@@ -430,9 +430,11 @@ Each phase ends with a commit on a branch + a short section added to `MIGRATION_
 - Normalization + models + multiple-comparisons framework.
 - Re-run the 10-day-bin analysis through the new pipeline; verify parity or document deliberate improvements.
 
-**Phase 10 — Cleanup & docs.**
-- Prune anything obsolete.
+**Phase 10 — Cleanup, scientific end-to-end audit, & docs.**
+- Prune anything obsolete (dead code, stale stubs, unused imports).
 - Finalize `DATA_MODEL.md` and `STATS_PIPELINE.md`.
+- **Scientific end-to-end audit on one exemplar animal** (PS46): enumerate every output the consolidated pipeline produces (per-session NPZs, parquets, figures, cross-session aggregates, params.json provenance records) across all phases. Map each output to its scientific purpose. Identify gaps vs. Priya's research needs, excesses that aren't used, and desired edits. Gaps become either pre-v0.1.0 fixes or post-v0.1.0 backlog items. This audit happens in Cowork, not Claude Code — it's review + decision work, not code editing.
+- A **mid-consolidation audit** (smaller-scope version of the above) is scheduled separately after Phase 6 per `docs/DECISIONS.md` "End-to-end output audits scheduled at two points." Phase 10's audit is the comprehensive final pass.
 - Tag `v0.1.0`.
 
 ---

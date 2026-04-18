@@ -176,6 +176,60 @@ dlc_spatial:
         spout_midpoint: null
         eye_midpoint: null
 
+# ---- DLC spatial (reward-aligned) ----
+# Per-bodypart reward-aligned config. Tongue has legacy values from
+# 20260323 cell 16. All others are sanity-check-only defaults —
+# first reward-aligned runs require visual inspection.
+
+dlc_spatial_reward_aligned:
+  reward_windows_ms:
+    - [-500, 5000]
+    - [-100, 1000]
+  trial_groups: ["all", "L", "R"]
+  default_nbins: [80, 80]
+  fig_dpi: 200
+  norm_mode: "log"
+  vmin_log_prop: 1.0e-5
+  share_xy_within_mouse: true
+  fps: 250.0
+  bodyparts:
+    tongue:
+      likelihood_thresholds: [0.5, 0.7]
+      x_range: [-150, 150]
+      parity_status: "legacy-ported"
+    jaw:
+      likelihood_thresholds: [0.5]
+      x_range: null
+      parity_status: "sanity-check-only"
+    nose:
+      likelihood_thresholds: [0.7]
+      x_range: null
+      parity_status: "sanity-check-only"
+    L_whiskers_1:
+      likelihood_thresholds: [0.8]
+      x_range: null
+      parity_status: "sanity-check-only"
+    L_whiskers_2:
+      likelihood_thresholds: [0.8]
+      x_range: null
+      parity_status: "sanity-check-only"
+    L_whiskers_3:
+      likelihood_thresholds: [0.8]
+      x_range: null
+      parity_status: "sanity-check-only"
+    R_whiskers_1:
+      likelihood_thresholds: [0.8]
+      x_range: null
+      parity_status: "sanity-check-only"
+    R_whiskers_2:
+      likelihood_thresholds: [0.8]
+      x_range: null
+      parity_status: "sanity-check-only"
+    R_whiskers_3:
+      likelihood_thresholds: [0.8]
+      x_range: null
+      parity_status: "sanity-check-only"
+
 # ---- Wavesurfer ----
 
 wavesurfer:

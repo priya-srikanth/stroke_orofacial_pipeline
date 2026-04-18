@@ -670,3 +670,122 @@ manual verification, debugging, batch-size scout monitoring).
 - [x] `ruff check src/` clean.
 - [x] README documents full O2 workflow.
 - [x] Notebook provides click-through interface without executing SSH.
+
+---
+
+## Phase 6 — DLC Spatial (Reward-Aligned)
+
+**Date:** 2026-04-18
+
+**Legacy file disambiguation** (per refined CLAUDE.md rule 1):
+
+- **Reclassified from Phase 4's Exploratory to Phase 6 Production:**
+  `20260323` cell 16 (reward-aligned heatmaps, 1683 lines), cell 18
+  (reward-aligned binned heatmaps), cell 20 (reward-aligned Δ heatmaps).
+- **Re-read confirmation** (per DECISIONS.md "Legacy notebooks may receive
+  active edits"): cell 16 re-read at Phase 6 kickoff. Legacy notebook
+  mtime: 2026-03-23 (unchanged since Phase 4).
+- All other cells (21-64) remain Exploratory/Deprecated.
+
+**Dead code classification** (cells 16-20 revisited):
+- Cells 16, 18, 20: reclassified **Production** for Phase 6 (were Exploratory
+  in Phase 4 — deferred to Phase 6 scope by design).
+- Cells 17, 19: markdown section headers.
+- Cells 21-64: unchanged (kinematics Phase 7, PSD Phase 8+, stats Phase 9).
+
+**What was done:**
+
+### Sub-phase 6a: Extend window_selector + reward-aligned config
+- Extended `window_selector.py` with `EventAlignedWindow` (generic, handles
+  deduplication of overlapping event snippets) and `RewardAlignedWindow`
+  (converts WS samples → camera frames via alignment LUT, ms → frames).
+- Added `_ws_to_cam_frames()` helper (faithful port of cell 16's
+  `_ws_to_cam_frames` function).
+- Added `dlc_spatial_reward_aligned` section to `configs/defaults.yaml`:
+  reward windows `[(-500, 5000), (-100, 1000)]` ms, trial groups
+  `[all, L, R]`, 10 bodyparts (tongue legacy-ported, jaw/nose/6 whiskers
+  sanity-check-only).
+
+### Sub-phase 6b: Generalize Phase 5 spatial functions
+- Added `frame_mask` parameter to `get_masked_xy()` — ANDed with likelihood
+  mask when provided.
+- Added `window` parameter (default `None` = whole session) to
+  `build_histogram()`, `build_stats_grid()`, `plot_heatmap()`.
+- **Phase 5 backward compatibility:** all 18 Phase 5 spatial tests pass
+  unchanged with `None` default.
+
+### Sub-phase 6c: Reward-aligned analysis functions
+- Created `src/stroke_orofacial/dlc_spatial/reward_aligned.py`:
+  `load_reward_events()` (per trial group from Phase 2 NPZ),
+  `ws_samples_to_frame_indices()`, `build_reward_aligned_window()`,
+  `build_reward_aligned_analysis()` (pure function, stateless).
+
+### Sub-phase 6d: Orchestrator notebook + functional verification
+- Created `notebooks/12_dlc_spatial_reward_aligned.ipynb`: loops over
+  (animal × date × bodypart × center_mode × window_ms × trial_group).
+  Stateless, skip/force overwrite.
+
+### Sub-phase 6e: Tests + MIGRATION_LOG + DECISIONS.md
+- `tests/test_window_selector.py` — WholeSessionWindow compat,
+  EventAlignedWindow mask construction + deduplication + edge clamping,
+  RewardAlignedWindow WS→frame conversion, invalid event handling.
+- `tests/test_reward_aligned.py` — load_reward_events per trial group,
+  ws_samples_to_frame_indices, integration smoke test on PS46/20250307,
+  trial-group-differ assertion (all = L + R).
+
+**Parity status — three-section assessment:**
+
+**Verified:**
+- Phase 5 whole-session tests all still pass (18/18 — window refactor is
+  additive; `None` default preserves existing behavior).
+- Functional verification passes for tongue + nose on PS46/20250307
+  with `(-500, 5000)` ms window, nose centering:
+  - 96 rewards (48L + 48R), 132,096 selected frames (~14% of session)
+  - Tongue: 54,159 histogram counts (~41% fill — expected for `lik_thr=0.5`)
+  - Nose: 132,053 counts (~100% fill — expected for `lik_thr=0.7`)
+  - L/R trial-group differences confirmed (48 vs 48 rewards, different
+    histogram counts)
+
+**Not verifiable at array level:**
+- **First phase without an array-level parity reference.** Legacy cell 16
+  was coded but never run to produce saved outputs on MICROSCOPE. No
+  `PS46_*reward*` or `PS50_*reward*` directories exist. Array-level parity
+  comparison is not possible.
+
+**Deferred to future runs:**
+- First scientific validation on each (bodypart, center_mode, window)
+  combination requires visual inspection of the generated heatmaps.
+- Per-bodypart reward-aligned config uses sanity-check-only defaults for
+  everything except tongue (which has legacy values from cell 16).
+- Jaw, nose, and all 6 whisker points (L/R_whiskers_1/2/3) configured
+  with sanity-check-only defaults — not parity-verified.
+
+**Phase 10 cleanup tasks:**
+- Phase 5's `dlc_spatial.bodyparts` config has `L_whiskers_2`, `L_whiskers_3`,
+  `R_whiskers_2`, `R_whiskers_3` with all `per_center_mode` entries set to
+  `null`. Fill these in when whole-session whisker_2/3 analyses are
+  exercised, matching whisker_1's pattern.
+
+**Intentional behavior differences vs. legacy:**
+
+1. **Window refactor to Phase 5 spatial functions.** `get_masked_xy()`,
+   `build_histogram()`, `build_stats_grid()`, `plot_heatmap()` now accept
+   an optional `window` parameter. Default `None` preserves whole-session
+   behavior.
+2. **Reward-aligned module in new location** at
+   `src/stroke_orofacial/dlc_spatial/reward_aligned.py` (legacy was
+   inline in cell 16 of the parquet-building notebook).
+3. **Output to pipeline_outputs_v2** at
+   `dlc_analysis/spatial_reward_aligned/{bodypart}_{center_mode}/`.
+4. **All 10 bodyparts configured** (tongue + jaw + nose + 6 whiskers).
+   Legacy only configured tongue (jaw/nose were commented out).
+5. **Stateless orchestrator** matching Phase 4/5 pattern.
+6. **window_selector abstraction** supports future event types (cue-aligned,
+   custom) without infrastructure changes.
+
+**Exit criteria met:**
+- [x] `pytest tests/` passes.
+- [x] `ruff check src/` clean.
+- [x] Phase 5 tests: 18/18 pass (no regression).
+- [x] Functional verification on PS46/20250307 (tongue + nose).
+- [x] 10 bodyparts configured in reward-aligned config.

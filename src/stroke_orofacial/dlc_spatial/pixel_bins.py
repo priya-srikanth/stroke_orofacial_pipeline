@@ -29,6 +29,7 @@ def get_masked_xy(
     bodypart: str,
     likelihood_threshold: float,
     x_range: tuple[float, float] | None = None,
+    frame_mask: np.ndarray | None = None,
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
     """Extract likelihood-gated (x, y) arrays for a bodypart.
 
@@ -42,6 +43,10 @@ def get_masked_xy(
         Minimum likelihood for inclusion.
     x_range : tuple or None
         If provided, additionally filter to ``x_range[0] <= x <= x_range[1]``.
+    frame_mask : np.ndarray or None
+        If provided, boolean mask (same length as df) to AND with the
+        likelihood mask. Used by window selectors to restrict to
+        event-aligned frames.
 
     Returns
     -------
@@ -64,6 +69,9 @@ def get_masked_xy(
         lik = df[likcol].values.astype(np.float64)
         m &= lik >= likelihood_threshold
 
+    if frame_mask is not None:
+        m &= frame_mask
+
     if x_range is not None:
         m &= (x >= x_range[0]) & (x <= x_range[1])
 
@@ -80,6 +88,7 @@ def build_histogram(
     x_limits: tuple[float, float] = (-200, 200),
     y_limits: tuple[float, float] = (50, 550),
     nbins: int | None = None,
+    window: Any | None = None,
 ) -> dict[str, Any] | None:
     """Build a fine-resolution 2D histogram for visualization.
 
@@ -95,6 +104,8 @@ def build_histogram(
         Histogram range.
     nbins : int, optional
         Number of bins per axis. Defaults to ``config["heatmap_nbins"]``.
+    window : WindowSelector, optional
+        Frame selection window. Default None = whole session (all frames).
 
     Returns
     -------
@@ -111,7 +122,12 @@ def build_histogram(
     if config.get("apply_x_range", False):
         x_range_filter = tuple(config.get("x_range", [-200, 200]))
 
-    x, y = get_masked_xy(df, bodypart, lik_thr, x_range=x_range_filter)
+    # Apply window mask if provided
+    frame_mask = None
+    if window is not None:
+        frame_mask = window.select_frames(df)
+
+    x, y = get_masked_xy(df, bodypart, lik_thr, x_range=x_range_filter, frame_mask=frame_mask)
     if x is None:
         return None
 
@@ -134,6 +150,8 @@ def build_stats_grid(
     df: pd.DataFrame,
     bodypart: str,
     config: dict[str, Any],
+    *,
+    window: Any | None = None,
 ) -> dict[str, Any] | None:
     """Build a coarser histogram grid for occupancy statistics.
 
@@ -148,6 +166,8 @@ def build_stats_grid(
         Bodypart name.
     config : dict
         The ``dlc_spatial`` section from defaults.yaml.
+    window : WindowSelector, optional
+        Frame selection window. Default None = whole session.
 
     Returns
     -------
@@ -164,7 +184,11 @@ def build_stats_grid(
     if config.get("apply_x_range", False):
         x_range_filter = tuple(config.get("x_range", [-200, 200]))
 
-    x, y = get_masked_xy(df, bodypart, lik_thr, x_range=x_range_filter)
+    frame_mask = None
+    if window is not None:
+        frame_mask = window.select_frames(df)
+
+    x, y = get_masked_xy(df, bodypart, lik_thr, x_range=x_range_filter, frame_mask=frame_mask)
     if x is None:
         return None
 
