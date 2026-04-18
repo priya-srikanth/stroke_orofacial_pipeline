@@ -467,3 +467,125 @@ All frames preserved (no 975K cap — per DECISIONS.md "keep all frames").
 - [x] `ruff check src/` clean.
 - [x] Parity verified for all three centering modes on PS46/20250307.
 - [x] All frames preserved (frame count == source DLC frame count).
+
+---
+
+## Phase 5 — DLC Spatial Analyses (Whole Session)
+
+**Date:** 2026-04-18
+
+**Legacy file disambiguation** (per refined CLAUDE.md rule 1: siblings vs
+duplicates):
+
+- **Siblings (consolidated into one module):**
+  `20251117_DLC_analysis_nose.ipynb` and `20251117_DLC_analysis_jaw.ipynb` —
+  same date, distinct scope markers (`_nose` vs `_jaw`). Spatial analysis
+  cells (10-12) are structurally identical. Consolidated into parameterized
+  functions in `dlc_spatial/pixel_bins.py` and `dlc_spatial/heatmaps.py`.
+  Jaw notebook's kinematics/PSD cells (13+) are Phase 7 scope.
+- **Canonical for pixel-bin:** `20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb`
+  (latest YYYYMMDD for all-bodyparts spatial analysis).
+- **Exploratory / Deferred to Phase 9:**
+  `20251201_DLC_analysis_all_bodyparts_2KSD_spatial-maps.ipynb` — 2D-KS-distance
+  visualization tightly coupled to inferential stats. Not ported.
+- **Cells 14-20 of 20260323:** remain Exploratory/Deferred (kinematics, PSD).
+
+**Dead code classification:**
+
+`20251202` notebook (26 cells):
+- Cells 0-4: Exploratory (imports, paths, cache loading, sanity check).
+- **Cells 5-7: Production** — per-session heatmaps, binned heatmaps,
+  subtraction maps. Ported.
+- **Cells 8-10: Deferred to Phase 9** — permutation null + per-day inferential
+  stats with p-values.
+- **Cells 11-13: Production** — batch spatial viz, eye/spout grouped heatmaps.
+  Ported.
+- Cells 14+: Exploratory/Helper.
+
+`20251117` nose/jaw notebooks: cells 10-12 Production (ported); rest
+Exploratory or Phase 7 scope.
+
+**What was done:**
+
+### Sub-phase 5a: Config + window_selector scaffold
+- Added `dlc_spatial` section to `configs/defaults.yaml` with per-bodypart
+  likelihood thresholds, colormaps, and per-(bodypart, center_mode) axis
+  limits (derived from PS46/20250307 data ranges).
+- Scaffolded `WholeSessionWindow` in `window_selector.py` (Phase 6 extends
+  with reward-aligned selector).
+
+### Sub-phase 5b: Pixel bins
+- Implemented `src/stroke_orofacial/dlc_spatial/pixel_bins.py`:
+  `get_masked_xy()`, `build_histogram()` (fine-resolution, nbins=100),
+  `build_stats_grid()` (coarser, target_bin_size=25px),
+  `build_baseline_histogram()`.
+- Permutation null deferred to Phase 9.
+
+### Sub-phase 5c: Heatmaps
+- Implemented `src/stroke_orofacial/dlc_spatial/heatmaps.py`:
+  `plot_heatmap()` (hist2d with LogNorm + density), `save_heatmap_png()`.
+- Per-(bodypart, center_mode) colormap and axis limits from config.
+
+### Sub-phase 5d: Difference maps
+- Implemented `src/stroke_orofacial/dlc_spatial/difference_maps.py`:
+  `compute_difference_map()`, `plot_difference_map()` (diverging colormap),
+  `save_difference_map_png()`.
+
+### Sub-phase 5e: Orchestrator notebook
+- Created `notebooks/11_dlc_spatial_whole_session.ipynb` — loops over
+  (animal × date × bodypart × center_mode). Stateless, skip/force overwrite.
+
+### Sub-phase 5f: Parity check
+
+**Verified:**
+- Fine heatmap produces non-trivial counts (925,098 on PS46/20250307 nose,
+  nose-centered, 421 non-zero bins in 100×100 grid).
+- Output shapes, dtypes, and file structure match legacy conventions.
+- Code is a faithful port of production cells 5-7, 11-13 of
+  `20251202_all_bodyparts_stats_pixelbin` and cells 10-12 of
+  `20251117_nose`/`20251117_jaw` (consolidated).
+
+**Not verifiable at array level (legacy output limitations):**
+- Legacy saved per-session heatmaps only as PNGs, not NPZs. Per-session
+  array parity is impossible without rebuilding the legacy pipeline.
+- Baseline aggregate parity requires running the new pipeline across all
+  pre-stroke PS46 sessions — deferred to a Phase 10 cleanup task.
+
+**Deferred cleanup task for Phase 10:**
+- Run the Phase 5 pipeline across all pre-stroke PS46 sessions, aggregate
+  the histograms, and compare the resulting aggregate NPZ against the legacy
+  `PS46_nose_stats/centered_nose/nose_baseline_hists_preALL_*.npz` arrays.
+  Expected to match at `rtol=1e-6` if the port is faithful.
+
+### Sub-phase 5g: Tests + MIGRATION_LOG + DECISIONS.md
+- `tests/test_pixel_bins.py` — masking, histogram shapes, stats grid, baseline
+  aggregation.
+- `tests/test_heatmaps.py` — figure generation, PNG save.
+- `tests/test_difference_maps.py` — subtraction arithmetic, diverging colormap
+  plot, PNG save.
+
+**Intentional behavior differences vs. legacy:**
+
+1. **Per-(bodypart, center_mode) axis limits.** Legacy used hardcoded
+   `y_limits=(50, 550)` which were for un-centered pixel coordinates.
+   Nose-centered data needs `y_limits=(-120, 130)`. The new pipeline loads
+   axis limits from `configs/defaults.yaml` per (bodypart, center_mode) tuple.
+   Per DECISIONS.md "Phase 5+ downstream analyses."
+2. **Overwrite protection: skip/force only** (matching Phase 4).
+3. **Output location on MICROSCOPE** at
+   `pipeline_outputs_v2/dlc_analysis/spatial_whole_session/`.
+4. **Sibling consolidation.** Legacy had separate nose/jaw notebooks with
+   duplicated spatial analysis code. New pipeline uses one parameterized
+   module that loops over bodyparts.
+5. **Permutation null deferred to Phase 9.** Cells 8-10 of `20251202`
+   compute inferential statistics (permutation p-values). Deferred per
+   DECISIONS.md "Phase 5 defers permutation/inferential spatial stats to
+   Phase 9."
+6. **2KSD notebook deferred in full to Phase 9.** 2D-KS-distance
+   visualization tightly coupled to its stats computation.
+
+**Exit criteria met:**
+- [x] `pytest tests/` passes.
+- [x] `ruff check src/` clean.
+- [x] Fine heatmap verified non-trivial on PS46/20250307.
+- [x] Per-(bodypart, center_mode) axis limits in `configs/defaults.yaml`.
