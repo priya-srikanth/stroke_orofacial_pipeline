@@ -76,6 +76,106 @@ dlc_centering:
   default_mode: "nose"        # also supports "spout_midpoint", "eye_midpoint"
   compression: "zstd"         # parquet compression
 
+# ---- DLC spatial analyses ----
+# Per-(bodypart, center_mode) plotting parameters per DECISIONS.md
+# "Phase 5+ downstream analyses: preserve per-(bodypart, center_mode) plotting parameters"
+
+dlc_spatial:
+  heatmap_nbins: 100              # fine-resolution grid for per-session heatmap viz
+  target_bin_size_x: 25.0         # coarser stats grid: nx = round(span_x / bin_size), min 5
+  target_bin_size_y: 25.0         # coarser stats grid: ny = round(span_y / bin_size), min 5
+  apply_x_range: false            # optional x-range filter on coordinates
+  x_range: [-200, 200]            # applied only when apply_x_range is true
+  save_dpi: 200                   # PNG save resolution
+  # Per-(bodypart, center_mode) axis limits.
+  # Derived from PS46/20250307 data ranges with ~25% margin.
+  # Limits set to null are not yet validated — Phase 6+ will fill in
+  # when reward-aligned analyses are tested on those combinations.
+  bodyparts:
+    nose:
+      likelihood_threshold: 0.80
+      cmap: "gist_ncar"
+      per_center_mode:
+        nose:
+          xlim: [-150, 150]
+          ylim: [-120, 130]
+        spout_midpoint:
+          xlim: [-150, 150]
+          ylim: [-300, -60]
+        eye_midpoint:
+          xlim: [-150, 150]
+          ylim: [120, 360]
+    jaw:
+      likelihood_threshold: 0.80
+      cmap: "gnuplot2"
+      per_center_mode:
+        nose:
+          xlim: [-400, 300]
+          ylim: [-30, 300]
+        spout_midpoint:
+          xlim: [-400, 300]
+          ylim: [-220, 110]
+        eye_midpoint:
+          xlim: [-400, 300]
+          ylim: [200, 530]
+    tongue:
+      likelihood_threshold: 0.70
+      cmap: "jet"
+      per_center_mode:
+        nose:
+          xlim: [-420, 420]
+          ylim: [-300, 310]
+        spout_midpoint:
+          xlim: [-420, 420]
+          ylim: [-490, 120]
+        eye_midpoint:
+          xlim: [-420, 420]
+          ylim: [-70, 540]
+    L_whiskers_1:
+      likelihood_threshold: 0.80
+      cmap: "plasma"
+      per_center_mode:
+        nose:
+          xlim: [-380, 220]
+          ylim: [-150, 80]
+        spout_midpoint: null  # Phase 6+ will fill in
+        eye_midpoint: null
+    L_whiskers_2:
+      likelihood_threshold: 0.80
+      cmap: "inferno"
+      per_center_mode:
+        nose: null
+        spout_midpoint: null
+        eye_midpoint: null
+    L_whiskers_3:
+      likelihood_threshold: 0.80
+      cmap: "viridis"
+      per_center_mode:
+        nose: null
+        spout_midpoint: null
+        eye_midpoint: null
+    R_whiskers_1:
+      likelihood_threshold: 0.80
+      cmap: "plasma"
+      per_center_mode:
+        nose: null
+        spout_midpoint: null
+        eye_midpoint: null
+    R_whiskers_2:
+      likelihood_threshold: 0.80
+      cmap: "inferno"
+      per_center_mode:
+        nose: null
+        spout_midpoint: null
+        eye_midpoint: null
+    R_whiskers_3:
+      likelihood_threshold: 0.80
+      cmap: "viridis"
+      per_center_mode:
+        nose: null
+        spout_midpoint: null
+        eye_midpoint: null
+
 # ---- Wavesurfer ----
 
 wavesurfer:
