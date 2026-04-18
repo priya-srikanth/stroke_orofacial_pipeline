@@ -86,3 +86,94 @@ This matches the legacy notebook semantics where `d0` is the last baseline day.
 - [x] `pytest tests/` passes (39 tests).
 - [x] `ruff check src/` clean.
 - [x] `configs/animals.yaml` reviewed and approved by Priya.
+
+---
+
+## Phase 2 — Spout behavior processing
+
+**Date:** 2026-04-18
+
+**What was done:**
+
+### Sub-phase 2a: Wavesurfer I/O + treadmill calibration
+- Implemented `src/stroke_orofacial/spout_behavior/wavesurfer_io.py`:
+  `load_wavesurfer_signals()`, `find_wavesurfer_file()`, `calibrate_treadmill()`,
+  `smooth_treadmill()`, `resolve_treadmill_offset()`.
+- Ported from `process_ws_signals.py` (only version) and
+  `calibrate_and_smooth_treadmill_signal_PS.py` (confirmed canonical by Priya;
+  Rule 3 resolved).
+- Added `configs/paths.yaml`: `microscope_pipeline_outputs`,
+  `wavesurfer_raw` (list mount: MICROSCOPE primary, Mac-local fallback).
+- Added `configs/session_overrides.yaml` with per-session treadmill offset
+  overrides (moved from `defaults.yaml`).
+- Added `configs/defaults.yaml` with all cohort-wide params from legacy
+  `params.json`.
+- Updated `PathResolver`: list-mount support, `pipeline_outputs()`,
+  `wavesurfer_dir()`.
+- Added `bnpm` and `pywavesurfer` to `pyproject.toml` dependencies.
+
+### Sub-phase 2b: Lick detection + reward detection
+- Implemented `src/stroke_orofacial/spout_behavior/lick_detection.py`:
+  `find_licks_and_rewards()` (main entry), `find_reward_indices()`,
+  double-threshold lick detection with lockout cleaning.
+- Ported from `find_licks_and_rewards.py` (only version).
+- Parity verified: PS46/20250307 lick and reward indices match
+  `session_processing3/` exactly.
+
+### Sub-phase 2c: Bout detection
+- Implemented `src/stroke_orofacial/spout_behavior/bouts.py`:
+  `find_running_bouts()`, `find_grooming_bouts()`, `find_quiet_bouts()`,
+  `find_peri_reward_periods()`.
+- Ported from 4 legacy modules (all only-version, Rule 1 trivially resolved).
+- Parity verified: all 5 bout/treadmill outputs match `session_processing3/`
+  for PS46/20250307.
+
+### Sub-phase 2d: Session orchestrator + notebook + parity check
+- Implemented `src/stroke_orofacial/spout_behavior/session_processing.py`:
+  `process_session()`, `process_animal()`.
+- Created `src/stroke_orofacial/config_loader.py`: `load_defaults()`,
+  `load_session_overrides()`, `get_session_params()` (deep-merge),
+  `check_merge_required()`.
+- Created `notebooks/00_session_processing.ipynb` (thin orchestrator).
+- Overwrite protection: "skip" (default), "prompt", "force" modes.
+- Outputs written to `pipeline_outputs_v2/spout_behavior/` on MICROSCOPE.
+
+**Parity verified** on two sessions (11 arrays each, all exact):
+- PS46 / 2025-03-07 (baseline, day -6): 11/11 PASS
+- PS46 / 2025-03-20 (post-stroke, day +7): 11/11 PASS
+
+**Intentional behavior differences vs. legacy `session_processing3/`:**
+
+1. **Per-session params.json** instead of root-level.
+   Legacy `session_processing3/` has a single `params.json` at the root.
+   The new pipeline writes per-session files at
+   `params/{animal}/{YYYYMMDD}.json`, each containing:
+   - `session_id`, `animal`, `date`, `run_timestamp`
+   - `skipped` (bool)
+   - `params` (the merged defaults + session_overrides actually used)
+   - `processing_log` (skip/overwrite decisions per output type)
+
+2. **params.json always written, even on skip.**
+   When `overwrite="skip"` and all outputs already exist, the per-session
+   `params.json` is still written with `skipped: true` and the log of which
+   outputs were skipped. This provides a complete audit trail of what ran,
+   what was skipped, and when.
+
+3. **Per-session overrides via `session_overrides.yaml`** instead of inline
+   `offset_overrides` dict. Treadmill offset overrides for PS51/PS54/PS55
+   now live in `configs/session_overrides.yaml` under a structured
+   `overrides:` key, not inside `defaults.yaml`.
+
+4. **Output location moved to MICROSCOPE** server at
+   `pipeline_outputs_v2/spout_behavior/` instead of Mac-local
+   `session_processing3/`.
+
+5. **Cross-platform wavesurfer path support.** `wavesurfer_raw` logical root
+   tries MICROSCOPE first, falls back to Mac-local. Pipeline currently runs
+   from Mac using the local fallback; will run from Windows once Priya rsyncs
+   the wavesurfer data to MICROSCOPE (separate task).
+
+**Exit criteria met:**
+- [x] `pytest tests/` passes (88 tests).
+- [x] `ruff check src/` clean.
+- [x] Parity verified on PS46 baseline + post-stroke sessions.
