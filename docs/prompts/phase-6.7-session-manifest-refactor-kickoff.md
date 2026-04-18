@@ -78,6 +78,15 @@ Expected shape:
      parquet paths via manifest fields. Phase 6's `reward_aligned.py`
      loads reward events from Phase 2 outputs — can access via
      `manifest.animal` + `manifest.date`.
+     **Also add (per audit item 6.4)**: save the fine-grid heatmap
+     histogram array as `heatmap_{date}.npz` alongside the existing
+     `heatmap_{date}.png`. Fine grid uses `heatmap_nbins=100` (matching
+     current `plot_heatmap` internal computation); expose `H_counts`,
+     `H_proportion`, `xedges`, `yedges`, `x_limits`, `y_limits` as NPZ
+     keys. Used for future figure tweaking (different colormaps, axis
+     limits) without recomputing, and for Phase 9 fine-resolution spatial
+     stats. ~20 extra lines in `heatmaps.py` or a new `save_heatmap_npz()`
+     helper.
    - **6.7e**: Update tests + MIGRATION_LOG + DECISIONS.md. MIGRATION_LOG should include a short note that `load_centered_fresh()` exists alongside the parquet-based pathway as an exploration escape hatch.
 4. **Parity strategy** — run the full test suite before and after;
    every test that passed before must pass after. Additionally, for the
