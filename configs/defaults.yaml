@@ -69,6 +69,13 @@ alignment:
   min_matched_edges: 5     # minimum matched edges for valid alignment
   cam_idx: 2               # which camera to align (cam2 = DLC camera)
 
+# ---- DLC centering ----
+
+dlc_centering:
+  likelihood_threshold: 0.7   # used ONLY for computing center, NOT for dropping rows
+  default_mode: "nose"        # also supports "spout_midpoint", "eye_midpoint"
+  compression: "zstd"         # parquet compression
+
 # ---- Wavesurfer ----
 
 wavesurfer:

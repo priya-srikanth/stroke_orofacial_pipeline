@@ -366,3 +366,104 @@ array edges match exactly between re-computed and existing templates.
 - [x] `ruff check src/` clean.
 - [x] Parity verified on PS46 baseline + post-stroke sessions.
 - [x] `SessionManifest.wavesurfer_file` and `.video_files` populated.
+
+---
+
+## Phase 4 — DLC I/O + Centering
+
+**Date:** 2026-04-18
+
+**Legacy file disambiguation** (per refined CLAUDE.md rule 1: siblings vs
+duplicates, DECISIONS.md "2026-04-18 — Disambiguation rule refined"):
+
+- **Canonical notebook:** `20260323_DLC_build-parquet_reward-aligned_tongue_jaw.ipynb`
+  (Rule 1: latest YYYYMMDD within the whole-session parquet builder family).
+- **Superseded:** `20260111_DLC_analysis_build-parquet_tongue.ipynb` — same
+  family (both whole-session parquet builders), earlier date → superseded.
+- **Siblings (Phase 7 scope, not Phase 4):**
+  `20260203_DLC_analysis_ws_aligned_parquet_input_tongue.ipynb` and
+  `20260416_DLC_analysis_ws_aligned_parquet_input_jaw.ipynb` — distinct scope
+  markers (`_tongue` vs `_jaw`), both ws-aligned kinematics notebooks. Each
+  will be ported independently in Phase 7.
+- **Archived:** 37 files in `old_code/` — all Deprecated.
+- **No external .py helpers** — all production functions defined inline in
+  cell 8 of the canonical notebook.
+
+**Dead code classification** (65 cells):
+- Cells 0-11: **Production** (imports, file discovery, centering pipeline,
+  cache save/load). Ported.
+- Cells 12-64: **Exploratory** (heatmaps, kinematics, PSD, statistics,
+  colormap testing) or **Deprecated** (empty cells). Not ported. All
+  downstream of centering — Phases 5-9 scope.
+- No Ambiguous cells.
+
+**What was done:**
+
+### Sub-phase 4a: DLC loader
+- Implemented `src/stroke_orofacial/dlc_io/loaders.py`: `read_dlc()` (H5
+  preferred, CSV fallback, 3-level MultiIndex flattening to
+  `{bodypart}_{coord}`), `discover_dlc_filtered_files()`.
+- Added `tables` (pytables) to `pyproject.toml`.
+
+### Sub-phase 4b: DLC centering
+- Implemented `src/stroke_orofacial/dlc_io/centering.py`: `CenterMode` enum,
+  `compute_center()` (nose / spout_midpoint / eye_midpoint), `apply_centering()`.
+- Added `dlc_centering` section to `configs/defaults.yaml`:
+  `likelihood_threshold=0.7`, `default_mode="nose"`, `compression="zstd"`.
+
+### Sub-phase 4c: Parquet I/O + orchestrator
+- Implemented `src/stroke_orofacial/dlc_io/parquet.py`:
+  `write_centered_parquet()` (atomic tmp→rename), `read_centered_parquet()`,
+  `build_centered_parquet()` (pure function, no module-level state — per
+  DECISIONS.md "iterate over animals without notebook restart").
+- Created `notebooks/10_dlc_build_parquets.ipynb` with USER INPUTS cell.
+  Builds all three center modes by default.
+
+### Sub-phase 4d: Parity check
+- All three centering modes verified against legacy `_dlc_cache_centered_*`
+  parquets for PS46/20250307.
+
+**Parity results:**
+
+| Mode | Frames | Cols | Dtypes | assert_frame_equal | Hash |
+|------|--------|------|--------|-------------------|------|
+| nose | 931,834 = src = legacy | 39 | float32 | PASS (atol=1e-6) | c23dc714 ✓ |
+| spout_midpoint | 931,834 = src = legacy | 39 | float32 | PASS (atol=1e-6) | 2a6efb6a ✓ |
+| eye_midpoint | 931,834 = src = legacy | 39 | float32 | PASS (atol=1e-6) | b13af51c ✓ |
+
+All frames preserved (no 975K cap — per DECISIONS.md "keep all frames").
+
+### Sub-phase 4e: Tests + MIGRATION_LOG
+- `tests/test_dlc_loaders.py` — file discovery, CSV fallback, integration
+  test loading real DLC H5.
+- `tests/test_dlc_centering.py` — all three center modes, likelihood gating,
+  float32 preservation, centering arithmetic.
+- `tests/test_dlc_parquet.py` — hash signatures, write/read roundtrip, skip
+  existing, integration parity tests for all three modes.
+
+**Intentional behavior differences vs. legacy:**
+
+1. **All frames kept (no 975K cap).** Legacy `20260111` notebook filtered to
+   first 975K frames. The canonical `20260323` notebook's build cell has no
+   cap. Our pipeline follows `20260323`: output row count equals source DLC
+   frame count.
+2. **Overwrite protection: skip/force only (no prompt).** DLC parquets are
+   deterministically derivable from source DLC H5 files, so interactive
+   prompt-mode adds less value than in Phase 2 where session-processing
+   outputs took longer to rebuild.
+3. **Output location on MICROSCOPE** at
+   `pipeline_outputs_v2/dlc_analysis/centered_{mode}/{animal}/`.
+   Legacy cached in `O2_analysis/{animal}/_dlc_cache_centered_{mode}/`.
+4. **Per-session params.json** at `dlc_analysis/params/{animal}/{YYYYMMDD}.json`.
+5. **Stateless orchestrator.** `build_centered_parquet()` is a pure function
+   callable in animal × date × mode loops without accumulating state or
+   requiring notebook restart.
+6. **Output directory structure** (separate subdirs per center_mode) directly
+   supports Phase 5+ per-(bodypart, center_mode) plotting parameters (per
+   DECISIONS.md "Phase 5+ downstream analyses").
+
+**Exit criteria met:**
+- [x] `pytest tests/` passes.
+- [x] `ruff check src/` clean.
+- [x] Parity verified for all three centering modes on PS46/20250307.
+- [x] All frames preserved (frame count == source DLC frame count).
