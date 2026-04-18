@@ -227,7 +227,7 @@ class TestNewConvenienceMethods:
                   microscope_pipeline_outputs:
                     description: "outputs"
                     mounts:
-                      mac: "/Volumes/Neurobio/MICROSCOPE/Priya/pipeline_outputs_v2"
+                      mac: "/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs"
                   wavesurfer_raw:
                     description: "raw ws"
                     mounts:
@@ -242,7 +242,7 @@ class TestNewConvenienceMethods:
         resolver = PathResolver(full_paths_yaml)
         result = resolver.pipeline_outputs("spout_behavior")
         assert result == PurePosixPath(
-            "/Volumes/Neurobio/MICROSCOPE/Priya/pipeline_outputs_v2/spout_behavior"
+            "/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/spout_behavior"
         )
 
     def test_wavesurfer_dir(self, monkeypatch, full_paths_yaml, tmp_path):

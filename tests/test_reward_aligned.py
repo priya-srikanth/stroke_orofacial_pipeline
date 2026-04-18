@@ -53,12 +53,12 @@ _WS_LOCAL = Path(
     "/Users/Priya2/Documents/data/facerhythm_stroke_biomarker_exp/wavesurfer"
 )
 _MOUNT = Path("/Volumes/Neurobio/MICROSCOPE/Priya")
-_V2 = Path("/Volumes/Neurobio/MICROSCOPE/Priya/pipeline_outputs_v2")
+_V2 = Path("/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs")
 
 
 @pytest.mark.skipif(
     not _MOUNT.exists() or not (_V2 / "spout_behavior").exists(),
-    reason="MICROSCOPE or pipeline_outputs_v2 not available",
+    reason="MICROSCOPE or stroke_orofacial_pipeline_outputs not available",
 )
 class TestIntegrationRewardAligned:
     def test_smoke_ps46_20250307(self, monkeypatch):

@@ -14,10 +14,10 @@ logical_roots:
       windows: "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya"
 
   microscope_pipeline_outputs:
-    description: "New consolidated pipeline outputs (v2)"
+    description: "Consolidated pipeline outputs (stroke_orofacial_pipeline)"
     mounts:
-      mac: "/Volumes/Neurobio/MICROSCOPE/Priya/pipeline_outputs_v2"
-      windows: "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\pipeline_outputs_v2"
+      mac: "/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs"
+      windows: "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs"
 
   wavesurfer_raw:
     description: >
