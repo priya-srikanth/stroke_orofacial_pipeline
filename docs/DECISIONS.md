@@ -15,6 +15,38 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-04-19 — Audit Item 9 (SVG outputs + output reorganization) — lighter split, reorg between 6.7 and 6.8
+
+- *Context:* Audit Item 9 addressed two concerns: (a) no SVG outputs anywhere, only PNGs — inconvenient for publication-figure assembly; (b) current output layout is phase-then-bodypart-then-animal, which mixes output types and makes walking `dlc_analysis/` to gather "all heatmaps" or "all difference maps" awkward.
+- *Decision:*
+  - **Keep the existing top-level split** by data-collection type: `spout_behavior/` and `dlc_analysis/` stay as top-level directories. Do NOT introduce a top-level `figures/` vs `intermediates/` split.
+  - **Reorganize within each tree to be figure-type-first** so publication-assembly workflows can walk e.g. `dlc_analysis/heatmaps/` or `dlc_analysis/difference_maps/` directly. Proposed `dlc_analysis/` structure:
+    ```
+    dlc_analysis/
+    ├── heatmaps/
+    │   ├── whole_session/{bodypart}_{center_mode}/{animal}/{date}.{png,svg}
+    │   └── reward_aligned/{bodypart}_{center_mode}/{window}/{trial_group}/{animal}/{date}.{png,svg}
+    ├── difference_maps/
+    │   ├── whole_session/...
+    │   └── reward_aligned/...
+    ├── heatmap_npz/{bodypart}_{center_mode}/{animal}/{date}.npz    (fine-grid arrays, per Item 6.4)
+    ├── centered_parquets/{center_mode}/{animal}/*.parquet
+    └── trajectories/ (future Phase 7)
+    ```
+    Analogous figure-type-first organization within `spout_behavior/` as Phase 8a adds recovery-curve outputs there.
+  - **Add SVG alongside PNG for new outputs going forward.** Do NOT retroactively re-execute pipelines to produce SVG siblings for existing PNGs. When a specific figure is needed for publication, re-run just that notebook cell selectively.
+  - **SVG infrastructure is a Phase 5.5 polish concern** (task #16): add `save_figure(fig, path_no_ext, formats=("png", "svg"), dpi=200, rasterize_images=True)` unified helper; refactor existing `save_heatmap_png` + inline `savefig` callsites; heavy pixel content (heatmaps) uses `rasterized=True` to keep SVG file sizes manageable while leaving axes/annotations vector-editable.
+  - **Directory reorganization is a standalone mini-phase** ("Phase 6.75 — Output reorganization"), sequenced between Phase 6.7 (SessionManifest refactor, byte-parity required at old paths) and Phase 6.8 (full heatmap/binned/Δ × session/reward-aligned matrix). Writes `git mv` migration script to move existing outputs in place, evolves `PathResolver` API (adds `figures_dir(kind)` / `intermediates_dir(kind)` semantic helpers while keeping the `pipeline_outputs(subdir)` fallback), updates ~5 notebooks, updates MIGRATION_LOG.
+- *Rationale:* Priya prefers the data-collection-type top-level split because `spout_behavior` and `dlc_analysis` come from genuinely different instruments / workflows — collapsing them into a single tree would obscure that boundary and complicate Phase 8a's DLC-independent workflow. Figure-type-first sub-structure gives publication-assembly the walkability advantage of the `figures/` split without losing the instrument boundary. Sequencing reorg between 6.7 and 6.8 preserves 6.7's byte-parity requirements and lets 6.8 land at final paths. Not regenerating SVGs retroactively avoids a multi-hour re-execution of Phase 4–6 pipelines on the full cohort for a speculative future publication need.
+- *Enforced at:* Task #16 (Phase 5.5 polish) extended to include the `save_figure` helper + SVG addition. New task #17 (Phase 6.75 output reorganization) with dependency chain `#9 (Phase 6.7) → #17 → #14 (Phase 6.8)`. Legacy `pipeline_outputs(subdir)` API remains during and after transition as a deprecated fallback.
+
+## 2026-04-19 — Audit Item 8 (DLC inference / SSH workflow) — current design sound, five polish items batched
+
+- *Context:* Audit Item 8 reviewed `src/stroke_orofacial/dlc_inference_o2/` (runner, batch, o2_job, transfer + README), `notebooks/20_dlc_inference.ipynb`, and `tests/test_dlc_inference.py`. The core architectural decision (Python generates shell-command strings; user pastes into terminal; never SSH from Python; never handle passwords) is already captured in the 2026-04-18 DECISIONS entry and is the right approach given HMS O2's DUO 2FA requirement.
+- *Decision:* No architectural changes. Five polish items (8.1–8.5) batched into a new "Phase 5.5 polish" mini-PR (task #16) — all README / notebook / small-helper additions, no behavior change. Item 8.6 (split `configs/defaults.yaml` infrastructure section from analysis section) rolls into task #13 (env unification). No new task dependencies.
+- *Rationale:* The command-generation-not-execution pattern works as-is; the polish items are all UX improvements (status helper, recovery docs, SSH setup walkthrough, ControlMaster tip, auto-rename on copy) rather than correctness fixes. Bundling them as one polish PR avoids creating 5 micro-tasks.
+- *Enforced at:* Task #16 polish PR, when executed. No code or docs change from this decision itself — just the task queue entry.
+
 ## 2026-04-19 — Audit Item 7 (Phase 6 reward-aligned DLC) — seven findings, resolution distributed
 
 - *Context:* Mid-consolidation audit Item 7 reviewed the Phase 6 reward-aligned DLC implementation (`src/stroke_orofacial/dlc_spatial/reward_aligned.py`, `configs/defaults.yaml` `dlc_spatial_reward_aligned` block, `notebooks/12_dlc_spatial_reward_aligned.ipynb`, `tests/test_reward_aligned.py`, MIGRATION_LOG Phase 6 entry). Seven sub-items identified across correctness / integration / consistency / polish.
