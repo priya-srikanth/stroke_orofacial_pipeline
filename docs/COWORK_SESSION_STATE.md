@@ -1,159 +1,155 @@
 # Cowork Session State
 
-This file is the single warm-start document for a new Cowork session. Paste this into a fresh Cowork chat to pick up where the previous one left off:
+This file is the single warm-start document for a new Cowork session. See the "Best warm-start prompt" section at the end of this file for the exact paste-in to use in a fresh Cowork chat.
 
-> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full before answering any questions.
+It captures what a new Cowork session needs beyond what's already in the canonical docs (`CLAUDE.md`, `docs/DESIGN.md`, `docs/DECISIONS.md`, `docs/MIGRATION_LOG.md`): current phase state, active tasks, open decisions awaiting human input, operational knowledge (two-tool workflow, env setup, known gotchas), and a record of completed work since this file was last updated.
 
-It captures what a new Cowork session needs beyond what's already in the canonical docs (`CLAUDE.md`, `docs/DESIGN.md`, `docs/DECISIONS.md`, `docs/MIGRATION_LOG.md`): current phase state, active tasks, open decisions awaiting human input, recent decisions pending transcription, and operational knowledge (two-tool workflow, env setup, known gotchas).
-
-**Maintenance rule.** Cowork updates this file (a) at the end of every meaningful session, and (b) mid-session when a major decision lands. The "current state" and "active tasks" sections should never be stale by more than one session.
+**Maintenance rule.** Cowork updates this file (a) at the end of every meaningful session, and (b) mid-session when a major decision lands. The "Current state" and "Active tasks" sections should never be stale by more than one session.
 
 ---
 
 ## Warm-start checklist
 
-A new Cowork session works through this in order before doing anything else:
+A new Cowork session works through this in order before answering any substantive question:
 
 1. Read `CLAUDE.md` — project ground rules (apply to any code-execution path, including Claude Code in VSCode that Cowork hands off to).
 2. Read `docs/DESIGN.md` — full phase plan, architecture, cohort details.
-3. Read `docs/DECISIONS.md` — decisions record (append-only).
+3. Read `docs/DECISIONS.md` — decisions record, especially the most recent 5–10 entries (they're reverse-chronological).
 4. Read `docs/MIGRATION_LOG.md` — scan the last 2–3 phase entries for recent delivery context.
-5. Read the "Current state" and "Active tasks" sections of this file.
-6. Read "Open decisions awaiting human input" and "Recent decisions (not yet in DECISIONS.md)" — these are the time-sensitive items.
+5. Read `docs/SCIENTIFIC_ENDPOINTS.md` if the current work involves scientific endpoints, stats, or Phase 10 audit planning (currently relevant — see "Open decisions awaiting human input" below).
+6. Read the "Current state", "Active tasks", and "Open decisions awaiting human input" sections of this file.
 7. Skim "Operational knowledge" if unfamiliar with the two-tool workflow.
-8. Ask Priya if the in-flight item listed under "Current state" is still live or has moved on since the last maintenance entry.
+8. Ask Priya what she wants to work on, or pick up from the in-flight item listed under "Current state" if one exists.
 
 ---
 
 ## Current state
 
-**As of:** 2026-04-17 (end-of-session snapshot)
+**As of:** 2026-04-19 (end of extensive session; Cowork-on-Mac + Windows-Claude-Code workflow now permanent).
 
-**Repo phase:** Mid-consolidation audit in progress (Items 1–10). Phases 1 through 6 delivered and on `main`.
+**Repo phase:** Mid-consolidation audit nearing completion — 9 of 10 items resolved; Item 10's archaeology phase done, discussion-with-Priya phase deferred to next session. Phases 1 through 6 delivered and on `main`.
 
-**Current branch:** `audit-item-6-phase5-details` (off `main` at tag `v0.6-phase-6-complete`). Has uncommitted or partially-committed experimental notebook work from this session (the eye-affine exploration and the cross-session alignment sweep notebook).
+**Current branch:** `audit-item-6-phase5-details` (off `main` at tag `v0.6-phase-6-complete`). All work this session landed on this branch. Final uncommitted items sitting on Mac from the last edits: the DECISIONS.md additions for Audit Items 8/9 and the new `docs/SCIENTIFIC_ENDPOINTS.md`. See last commit instructions in the "Recent session log" below.
 
-**In flight when last updated:** Cross-session alignment regime sweep notebook (`notebooks/experiments/cross_session_alignment_sweep.ipynb`) running in VSCode Claude Code as background task. Execution pattern: `jupyter nbconvert --to notebook --execute --inplace` in the `frsb` conda env. Expected outputs under `notebooks/experiments/outputs/alignment_sweep/` (three top-level figures + per-animal subfolders + `summary.txt`). Purpose: inform Phase 4.5 (eye-affine cross-session alignment) decision.
+**In flight:** None. Between-session state is clean. Next session picks up at Audit Item 10 Q1–Q10 discussion.
 
-**Completed this session (summary):**
+**Recent session log (2026-04-18 through 2026-04-19, consolidated):**
 
-- Audit Item 1 — renamed `pipeline_outputs_v2` → `stroke_orofacial_pipeline_outputs` throughout configs + code.
-- Audit Item 2 — per-camera alignment template directory structure under `cam2/templates/`.
-- Audit Item 3 — decision to wire `SessionManifest` in properly via Phase 6.7 refactor (kickoff prompt drafted at `docs/prompts/phase-6.7-session-manifest-refactor-kickoff.md`).
-- Audit Item 4 — `load_centered_fresh()` utility specced into Phase 6.7c (on-the-fly centering for interactive exploration, complements parquets).
-- Audit Item 5 — Phase 8 split into 8a (spout-only, moved ahead of Phase 7) and 8b (DLC-dependent).
-- Audit Item 6 sub-decisions:
-  - 6.4: fine-grid heatmap NPZ arrays saved alongside PNGs (added to Phase 6.7d scope).
-  - 6.6: all-bodyparts overlay heatmap with per-bodypart colormaps, L/R pairs share colormap, eyes/spouts excluded by default.
-  - 6.7: single-animal eye-affine experiment notebook (PS46) — executed, committed. Now generalized to a full-cohort sweep (in flight).
-- `configs/defaults.yaml` dead-placeholder `dlc.bodyparts` block corrected to canonical names (was stale `medial_edge_*` / `whisker_L1` / `spout_L` — now `L_eye` / `L_whiskers_1` / `L_spout` etc.). The block wasn't consumed by any code but was actively misleading for future drafters.
+Completed across the multi-day session:
+
+- Audit Items 1–6 (renames, per-camera alignment structure, SessionManifest wiring plan, `load_centered_fresh` util spec, Phase 8 split into 8a/8b, Phase 5 sub-decisions including fine-grid NPZ save and all-bodyparts overlay design).
+- **Eye-affine alignment experiment** — single-animal exploration (PS46) then full-cohort sweep (8 animals × 4 regimes × 13 bodyparts × all session dates). Per-animal outputs + cross-animal metric overview PNGs + `summary.txt` all committed under `notebooks/experiments/outputs/alignment_sweep/`.
+- **Phase 4.5-lite decision locked** — eye-centered wins 8/9 movement bodyparts; spout_centered wins tongue; similarity and rigid transforms rejected (noise-amplification dominated signal-correction benefit). Kickoff doc at `docs/prompts/phase-4.5-lite-eye-midpoint-centering-kickoff.md`. DECISIONS entry 2026-04-19.
+- **Audit Item 7 (Phase 6 reward-aligned DLC) closed** — 7 sub-items resolved via Phase 6.7 (rolled in 7.1/7.3/7.4/7.5), new Phase 6.8 task (7.2 — full heatmap/binned/Δ × session/reward-aligned matrix), new axis-sharing task (7.6/7.7). DECISIONS entry 2026-04-19.
+- **Audit Item 8 (SSH workflow) closed** — 5 polish items batched into new Phase 5.5 polish task. DECISIONS entry 2026-04-19.
+- **Audit Item 9 (SVG + output reorg) closed** — SVG via unified `save_figure` helper (rolled into Phase 5.5 polish task). Directory reorg to figure-type-first within existing `spout_behavior/` and `dlc_analysis/` top-levels. New Phase 6.75 task, sequenced between 6.7 and 6.8. DECISIONS entry 2026-04-19.
+- **Audit Item 10 archaeology phase** — Explore agent cataloged 26 endpoints across 6 categories from two legacy repos; written to `docs/SCIENTIFIC_ENDPOINTS.md`. Discussion phase (Q1–Q10) deferred to next session.
+- **Cowork-on-Windows declared permanently unavailable** for Priya's machine despite Hyper-V running + Max subscription; account-level feature-flag block. Mac-Cowork + Windows-Claude-Code split is the permanent workflow.
 
 ---
 
 ## Active task list
 
-The authoritative source is the Cowork TaskList widget in the current session. Mirrored here for persistence across sessions.
+The authoritative source is the Cowork TaskList widget in the current session. Mirrored here for persistence across sessions. Numbers are Cowork's task IDs.
 
 **In progress:**
 
-1. Run cross-session alignment sweep notebook (background in VSCode Claude Code).
+- **#7** — Audit Item 10 (scientific endpoints). Phase 1 archaeology done (written to `docs/SCIENTIFIC_ENDPOINTS.md`). Phase 2 = walk Q1–Q10 with Priya, land decisions into DECISIONS.md.
 
-**Next up (blocked on sweep completing):**
+**Pending — audit wrap-up gate:**
 
-2. Commit sweep notebook + outputs on `audit-item-6-phase5-details` (two commits: notebook, then outputs).
-3. Decide Phase 4.5 scope based on sweep results — one of:
-   - **Build**: `eye_affine` dominates → write `docs/prompts/phase-4.5-eye-affine-alignment-kickoff.md`.
-   - **Build-lite**: `eye_centered` ≈ `eye_affine` and both beat `spout_centered` → write Phase 4.5-lite kickoff (eye-midpoint centering only).
-   - **Skip**: regimes indistinguishable → close the observation with a `DECISIONS.md` entry, no new phase.
+- **#8** — Merge `audit-item-6-phase5-details` → `main`, tag `v0.6.5-audit-complete`. Blocked on #7 only (all other audit items closed).
 
-**Remaining audit items:**
+**Pending — queued phases and mini-phases**, in rough execution order (dependencies noted):
 
-4. Item 7 — Phase 6 (reward-aligned DLC) details review. Mirror of Item 6 but for `reward_aligned.py`, `configs/defaults.yaml` `dlc_spatial_reward_aligned` block, `notebooks/12_dlc_spatial_reward_aligned.ipynb`.
-5. Item 8 — Phase 5.5 SSH-from-notebook workflow. Standardize how notebooks invoke O2 (HMS cluster) operations. Likely a thin wrapper in `src/stroke_orofacial/dlc_inference_o2/`.
-6. Item 9 — SVG outputs + figure-folder reorganization. Add SVG alongside every PNG, reorganize output dirs by figure-type for publication assembly.
-7. Item 10 — Scientific endpoints review. Catalog all endpoints (tests, stratifications, recovery-phenotype splits) from legacy code into a new section of `docs/DESIGN.md`. Feeds into Phase 10 (full scientific audit).
+- **#13** — Unify analysis conda env to `stroke_orofacial` (cross-platform). Blocked on #8. Sequenced before any new long-running phase to avoid env-name drift.
+- **#3 (completed)** — Phase 4.5 decision was "build lite". **Execution of Phase 4.5-lite** per `docs/prompts/phase-4.5-lite-eye-midpoint-centering-kickoff.md` does not have its own task yet; slot it after #13 unless Priya decides otherwise.
+- **#9** — Phase 6.7 SessionManifest refactor. Kickoff at `docs/prompts/phase-6.7-session-manifest-refactor-kickoff.md`. Blocked on #13 (env unification).
+- **#17** — Phase 6.75 output directory reorganization (figure-type-first inside dlc_analysis and spout_behavior). Blocked on #9 so Phase 6.7's byte-parity checks remain valid at old paths.
+- **#14** — Phase 6.8 full heatmap/binned/Δ × session/reward-aligned matrix. Blocked on #17.
+- **#15** — Axis sharing (`share_xy_within_mouse` + percentile fallback + reward-aligned-specific axis config). Blocked on #14.
+- **#10** — Phase 8a spout-only recovery trajectories (mid-experiment deliverable — DLC-independent). Blocked on #8 only; can execute in parallel with Phase 6.7/6.75/6.8 stack if resources allow.
+- **#11** — Phase 7 reward-aligned DLC cohort extension. Blocked on #9 + #10.
+- **#12** — Phase 8b + Phase 9 + Phase 10 bundle. Blocked on #11.
+- **#16** — Phase 5.5 polish (SSH monitoring helper, recovery docs, SSH setup, ControlMaster, auto-rename + SVG unified save helper). Ungated — can execute any time.
 
-**Audit wrap-up gate:**
-
-8. Merge `audit-item-6-phase5-details` → `main`, tag `v0.6.5-audit-complete`. Blocked on #2–#7 all resolving.
-
-**Queued phases (all blocked on #8 — the audit merge gate):**
-
-9. Phase 6.7 — SessionManifest refactor execution. Kickoff prompt already written at `docs/prompts/phase-6.7-session-manifest-refactor-kickoff.md`. Sub-phases 6.7a–6.7e; pause after 6.7a for Priya mid-phase review.
-10. Phase 8a — spout-only recovery trajectories. High-priority mid-experiment deliverable (lets Priya review recovery patterns while experiments continue). Moved ahead of Phase 7 per earlier decision.
-11. Phase 7 — reward-aligned DLC cohort extension. Extend Phase 6 (PS46-only) to full 8-animal cohort. Blocked on #9 + #10.
-12. Phase 8b / 9 / 10 bundle — DLC-dependent recovery trajectories, fine-grid spatial statistics, full scientific audit. Blocked on #11. Each will get its own kickoff prompt when it's time.
-
-**Phase-transition rule:** no new phase starts until the audit branch is merged to main and tagged. Keeps the audit as one atomic chunk rather than interleaving with new-phase work.
+**Phase-transition rule:** No new phase starts until the audit branch is merged to main and tagged (#8). Keeps the audit as one atomic chunk.
 
 ---
 
 ## Open decisions awaiting human input
 
-*(Empty at the moment. All in-flight items have default directions Cowork can execute without Priya's input unless a specific blocker surfaces.)*
+Currently-open decision points that need Priya's call in the next session. These are the Q1–Q10 from `docs/SCIENTIFIC_ENDPOINTS.md`, needed to fully close Audit Item 10:
 
-When a decision point appears that genuinely needs Priya:
+- **Q1** — Confirm canonical-version disambiguation for legacy files (`behavior_report_PS.py`, `batch_process_behavior_report_20260116PS.ipynb`, `playground.ipynb` linear alignment). Was DTW alignment meant to replace linear or parallel?
+- **Q2** — Criteria renaming (`criteria_1/2/3/4` → descriptive slugs).
+- **Q3** — Recovery-phenotype stratification timing: Phase 8a or Phase 9/10?
+- **Q4** — Quiet-period endpoint status: is `quiet_period_batch_playground.ipynb` integrated or not?
+- **Q5** — Face-rhythm TCA scope: in-scope (Phase 11+) or out-of-scope?
+- **Q6** — Kinematic endpoint design (whisker angle, tongue protrusion amplitude, jaw velocity, face-velocity PCs, others). Open; drives Phase 7 scope.
+- **Q7** — Sex coding in cohort; does `animals.yaml` need a `sex` field?
+- **Q8** — Stats integration timing (Phase 9 relative to cohort completion).
+- **Q9** — New endpoints to add that aren't in legacy?
+- **Q10** — Prioritization of the 6 gaps listed in SCIENTIFIC_ENDPOINTS.md's Gaps section.
 
-- List it here with the question, the options, and Cowork's tentative recommendation.
-- Mark the related task as `pending` with a `blockedBy` pointing to a stub "decision: X" task.
-- Don't make the call unilaterally.
+When Priya's decisions land, transcribe each to `docs/DECISIONS.md` with its own dated entry, update this file's "Open decisions" section to remove the resolved Qs, and if the decision reshapes a queued phase's scope, amend that phase's kickoff prompt or task description accordingly.
 
 ---
 
 ## Recent decisions (pending transcription into `docs/DECISIONS.md`)
 
-These were decided this session but haven't yet been written into the canonical decisions record. Next maintenance pass should transcribe and delete from this section.
-
-- **Per-animal reference frame for eye-affine alignment** = mean of all pre-stroke session eye medians (more robust to per-session DLC noise than any single-session anchor). One-line toggle in USER INPUTS to flip back to last-pre-stroke-session if needed.
-- **Alignment regime sweep scope** = all 8 animals × all sessions in each animal's recording range × 9 bodyparts × 3 regimes (`eye_affine`, `eye_centered`, `spout_centered`).
-- **Primary sweep metrics** = mean pairwise Pearson r (higher = better) + mean pairwise Jensen-Shannon divergence (lower = better) of flattened normalized 2D histograms across sessions.
-- **Phase 4.5 will be scoped post-sweep**, not predetermined. Decision tree documented in task #3 above.
-- **`configs/defaults.yaml` canonical bodypart roster** (lines 240–255) corrected to match the DLC model output: L_eye, R_eye, L_spout, R_spout, nose, jaw, tongue, L_whiskers_{1,2,3}, R_whiskers_{1,2,3}. The stale placeholder names (`medial_edge_L_eye`, `whisker_L1`, `spout_L`, etc.) had no downstream code consumer but were misleading. The block is now canonical documentation of the DLC roster.
+*(None at the moment. All in-session decisions from 2026-04-18 / 2026-04-19 have been written into DECISIONS.md. This section will re-populate when new decisions land before transcription.)*
 
 ---
 
 ## Operational knowledge
 
-### Two-tool workflow
+### Two-tool workflow (permanent since 2026-04-19)
 
 **Cowork (this chat)** is the advisor/reviewer. It has:
 
-- Read/write access to the repo folder (`/Volumes/Neurobio/MICROSCOPE/Priya` is NOT mounted in Cowork's sandbox).
-- No conda env; only a minimal Python sandbox without DLC dependencies.
-- A TaskList widget for tracking state across tool calls within one session.
+- Read/write access to the Mac-side repo folder (at `/Volumes/Neurobio/...` from Cowork's sandbox view) — but NOT to MICROSCOPE data.
+- No conda env; minimal Python sandbox without DLC dependencies.
+- A TaskList widget for tracking state within one session.
+- Cannot `git push` (sandbox has no GitHub auth); writes to the Mac's disk but Priya commits via Mac.
 
-**Claude Code in VSCode** (on Priya's Mac) is the executor. It has:
+**Claude Code in VSCode** (on Priya's Windows machine, ethernet-connected to MICROSCOPE) is the executor. It has:
 
-- The `frsb` conda env with pandas / numpy / matplotlib / h5py / tables / pyarrow / jupyter / nbconvert.
-- Live SMB mount to `/Volumes/Neurobio/MICROSCOPE/Priya` (assumes the Mac is awake; remount after sleep).
-- The repo checked out.
+- The `deeplabcut` conda env on Windows (analytics-capable; pandas / numpy / matplotlib / h5py / tables / pyarrow / jupyter / nbconvert). **Note:** Mac uses `frsb` env for the same purpose — cross-platform env-name unification is tracked as task #13.
+- Direct ethernet access to MICROSCOPE at `\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\` (Windows UNC path; no VPN).
+- The repo checked out at `C:\Users\sabatini\GitHub\stroke_orofacial_pipeline`.
 - Git access with `.githooks/pre-commit` that blocks direct commits to `main` / `master`.
 
-**Handoff pattern.** Cowork drafts "paste-in prompts" (usually in block-quote form) that Priya pastes into the Claude Code sidebar in VSCode. Claude Code reports back to Priya; she relays the summary to Cowork. Cowork reads committed outputs directly from its folder view of the repo — no separate upload step.
+**Cowork-on-Windows is NOT AVAILABLE** on Priya's setup despite meeting all published prerequisites — see "Cowork-on-Windows status" section below.
 
-### Opening Claude Code in VSCode
+**Handoff pattern.** Cowork drafts "paste-in prompts" (usually in block-quote form) that Priya pastes into Claude Code's chat panel in VSCode on Windows. Claude Code reports back to Priya; she relays the summary to Cowork. Cowork reads committed outputs directly from its folder view of the repo.
 
-1. File → Open Folder → select the `stroke_orofacial_pipeline` repo.
-2. Open the integrated terminal (Ctrl+backtick) and `conda activate frsb`. This ensures Claude Code inherits the right env when it shells out.
-3. Cmd+Esc toggles the Claude Code sidebar. Command Palette ("Claude Code: Focus") is a fallback.
-4. Paste the prompt into the chat input at the bottom of the sidebar.
+**Mac-commit roundtrip.** When Cowork writes files (DECISIONS updates, new kickoff prompts, SCIENTIFIC_ENDPOINTS.md, etc.), the files land on the Mac's disk (which Cowork mounts) but are uncommitted. Priya runs a 30-second `git add / git commit / git push` sequence on Mac to get them to origin. Then Windows does `git pull` to see them. This is the only friction added by the split.
 
-### SMB mount health
+### Opening Claude Code in VSCode on Windows
 
-- Path: `/Volumes/Neurobio/MICROSCOPE/Priya`.
-- Goes stale after the Mac sleeps. Symptoms: long hangs, permission errors, or empty `ls`.
-- Fix: `diskutil unmount /Volumes/Neurobio` then Finder → Go → Connect to Server → reconnect to the research fileserver.
+1. File → Open Folder → select `C:\Users\sabatini\GitHub\stroke_orofacial_pipeline`.
+2. Open the integrated terminal (Ctrl+backtick) and `conda activate deeplabcut`.
+3. Click the Claude Code icon in the left activity bar (or Ctrl+Esc as the shortcut).
+4. Paste the Cowork-drafted prompt.
+
+### SMB / MICROSCOPE mount health
+
+- Windows path: `\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\`.
+- Mac path: `/Volumes/Neurobio/MICROSCOPE/Priya` (for when Priya uses the Mac directly).
+- Mac mount goes stale after sleep. Symptoms: hangs, permission errors, empty `ls`. Fix: unmount + remount via Finder → Go → Connect to Server.
+- Windows mount is stable (no VPN, no sleep issue).
 
 ### nbconvert streaming quirk
 
 - `jupyter nbconvert --execute --inplace` does NOT stream cell stdout. Cell prints are buffered until the whole notebook is written back at the end.
-- To see live per-cell progress, use: `jupyter nbconvert --to script <nb.ipynb> --stdout | python -u 2>&1 | tee /tmp/run.log`. Then rerun with `--execute --inplace` so outputs get baked into the `.ipynb` for commit.
+- To see live per-cell progress: `jupyter nbconvert --to script <nb.ipynb> --stdout | python -u 2>&1 | tee /tmp/run.log`. Then rerun with `--execute --inplace` so outputs get baked into the `.ipynb` for commit.
 
-### Memory footprint heuristic (for sweep-style notebooks)
+### Memory / disk footprint heuristics (for sweep-style notebooks)
 
-- ~1 MB per (session, bodypart, regime) of aligned-point arrays at steady state.
-- For the alignment sweep: 8 animals × 9 bodyparts × 3 regimes × ~30 sessions ≈ 6–8 GB RSS. Plateaus, doesn't grow unbounded.
-- On ≥16 GB machines: no swap concerns. On 8 GB machines: expect swap under sweep-style runs.
+- Slim-cache pattern (learned from alignment-sweep): aligned-point arrays are transient; only small histograms survive into pickles. ~30–50 MB per animal pickle.
+- Pre-slim-refactor version produced 5–19 GB per animal pickles that OOM-killed the kernel on long-record animals. Don't repeat that mistake.
+- Per-animal incremental output (render figures and checkpoint pickle before moving to next animal) is the robust pattern for long-running sweeps.
 
 ---
 
@@ -173,6 +169,8 @@ These were decided this session but haven't yet been written into the canonical 
 | PS55   | 2025-04-30  | 2025-04-16 → 2025-07-09 | 2025-04-27 + 2025-04-28 excluded |
 
 **Convention:** `stroke_date` is the date of the **last pre-stroke session**. Stroke is induced after that day's behavioral session. Sessions on `stroke_date` are baseline; sessions strictly after are post-stroke. `AnimalInfo.day_relative_to_stroke(date)` returns a signed int (negative = pre-stroke, 0 = stroke_date, positive = post-stroke).
+
+**DLC status:** all 8 animals have full DLC inference done as of 2026-04-19 — no in-progress-inference edge cases to handle currently.
 
 ---
 
@@ -196,6 +194,7 @@ To confirm empirically from a fresh session, load any filtered H5 via `read_dlc(
 - Design doc: `docs/DESIGN.md`.
 - Decisions record (append-only): `docs/DECISIONS.md`.
 - Phase history: `docs/MIGRATION_LOG.md`.
+- **Scientific endpoint inventory (new this session): `docs/SCIENTIFIC_ENDPOINTS.md`.** Has the Q1–Q10 discussion questions.
 - Phase kickoff prompts (Cowork → Claude Code handoffs): `docs/prompts/phase-*-kickoff.md`.
 - Cowork session state (this file): `docs/COWORK_SESSION_STATE.md`.
 - Data model doc: `docs/DATA_MODEL.md`.
@@ -203,7 +202,8 @@ To confirm empirically from a fresh session, load any filtered H5 via `read_dlc(
 - Configs: `configs/animals.yaml`, `configs/defaults.yaml`, `configs/paths.yaml`, `configs/session_overrides.yaml`.
 - Experimental (throwaway) notebooks: `notebooks/experiments/`.
 - Production notebooks: `notebooks/*.ipynb`.
-- Pipeline outputs on MICROSCOPE: `/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/`.
+- Pipeline outputs on MICROSCOPE: `/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/` (Mac) or `\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\stroke_orofacial_pipeline_outputs\` (Windows).
+- Alignment-sweep experimental outputs: `notebooks/experiments/outputs/alignment_sweep/` (cross-animal `summary.txt` + metric overview PNGs + per-animal subfolders).
 
 ---
 
@@ -211,38 +211,27 @@ To confirm empirically from a fresh session, load any filtered H5 via `read_dlc(
 
 **Do not attempt to get Cowork working on Priya's Windows Enterprise machine.**
 
-Extensive troubleshooting on 2026-04-19 did not yield a working Cowork install on
-Windows despite:
+Extensive troubleshooting on 2026-04-19 did not yield a working Cowork install on Windows despite:
 
 - Windows 11 Enterprise edition (correct tier for Hyper-V).
 - Max subscription confirmed at account level.
 - Claude Desktop 1.3109.0 (current release).
-- Hyper-V enabled and running (`vmms` and `vmcompute` services both `Running`,
-  `systeminfo` confirms "A hypervisor has been detected").
+- Hyper-V enabled and running (`vmms` and `vmcompute` services both `Running`, `systeminfo` confirms "A hypervisor has been detected").
 - Computer use toggled on in Settings.
-- Clean full reinstall of Claude Desktop with cache-directory wipe
-  (`%APPDATA%\Claude`, `%LOCALAPPDATA%\Claude`) after Hyper-V activation.
+- Clean full reinstall of Claude Desktop with cache-directory wipe (`%APPDATA%\Claude`, `%LOCALAPPDATA%\Claude`) after Hyper-V activation.
 - Sign-out / sign-back-in.
 
-Result: no Cowork tab appears in the Windows desktop app. The Claude VM
-(`yukonSilver` or equivalent) is never provisioned (`Get-VM` returns nothing).
-Likely cause is an account-level feature flag or staged-rollout gate that
-Anthropic controls server-side. Would require a support-ticket conversation
-with Anthropic to resolve, which is deferred indefinitely.
+Result: no Cowork tab appears in the Windows desktop app. The Claude VM (`yukonSilver` or equivalent) is never provisioned (`Get-VM` returns nothing). Likely cause is an account-level feature flag or staged-rollout gate that Anthropic controls server-side. Would require a support-ticket conversation with Anthropic to resolve, deferred indefinitely.
 
-**Permanent workflow is Mac Cowork + Windows Claude Code in VSCode.** See
-"Two-tool workflow" section below for details. When Cowork writes new files
-(DECISIONS updates, kickoff prompts, etc.), Priya runs a 30-second
-`git add / commit / push` on her Mac, then `git pull` on Windows. This is the
-only friction added by the split.
+**Permanent workflow is Mac Cowork + Windows Claude Code in VSCode.** See "Operational knowledge → Two-tool workflow" above.
 
 ---
 
 ## Known gotchas
 
-- **`configs/defaults.yaml` naming consistency.** The live spatial blocks (lines 94–178, 195–228) use canonical bodypart names. The `dlc.bodyparts` block (lines 240–255) was stale placeholder text corrected this session. If another stale block appears, prefer names from an actual DLC H5 file via the diagnostic in cell 3 of the eye-affine experiment notebook.
+- **`configs/defaults.yaml` naming consistency.** Live spatial blocks use canonical bodypart names. A stale `dlc.bodyparts` placeholder block (lines 240–255) was corrected earlier in this session. If another stale block appears, prefer names from an actual DLC H5 file.
 - **nbconvert stdout buffering.** See "Operational knowledge → nbconvert streaming quirk" above.
-- **SMB mount stale-after-sleep.** See "Operational knowledge → SMB mount health" above.
+- **SMB mount stale-after-sleep** (Mac only; Windows is stable).
 - **Plot file paths under `nbconvert`.** Jupyter's `__file__` is not defined inside a kernel. Robust pattern for notebook output dirs:
   ```python
   _cwd = Path.cwd().resolve()
@@ -252,10 +241,26 @@ only friction added by the split.
       OUTPUT_DIR = _cwd / "notebooks" / "experiments" / "outputs" / "<experiment_name>"
   ```
 - **Whiskers naming.** The DLC model uses `L_whiskers_1` (plural "whiskers", left/right as prefix). Legacy `whisker_L1` / `whisker_R1` style appears in some stale configs and should be rejected.
-- **Eye bodypart names.** DLC uses `L_eye` / `R_eye`, not `medial_edge_L_eye` / `medial_edge_R_eye` (that's a stale legacy convention from the DLC training project name — the actual trained bodypart labels are the short form).
+- **Eye bodypart names.** DLC uses `L_eye` / `R_eye`, not `medial_edge_L_eye` / `medial_edge_R_eye` (stale legacy convention).
+- **Slim-cache pattern for sweeps.** Aligned-point arrays are transient — derive histograms + drop `aligned_points` before pickling. See Phase 4.5 alignment-sweep notebook for the reference implementation. Retaining raw points in the per-animal pickle produces 5–19 GB files and OOM-kills the kernel on long-record animals.
+- **Conda env cross-platform.** Mac env is `frsb`, Windows env is `deeplabcut` (inherited from legacy). Don't confuse them in paste-in prompts. Unification is task #13.
+- **Cowork's folder view can be stale.** If Priya pushes from Windows and doesn't pull on Mac, Cowork's read of the Mac's disk lags behind origin. Workaround: have Priya `git pull` on Mac before Cowork needs the fresh files, or have Cowork ask her to pull when it seems stale.
+
+---
+
+## Best warm-start prompt (paste into a new Cowork chat)
+
+For the next session specifically, use this prompt. It captures the "read the state doc, then tackle the open Q1–Q10" structure:
+
+> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full before answering substantive questions. We're picking up the mid-consolidation audit at Item 10 — the scientific endpoint inventory. Read `docs/SCIENTIFIC_ENDPOINTS.md` after the state doc; it has 10 discussion questions (Q1–Q10) at the bottom. Walk me through them one at a time in order, pausing for my decision on each before moving to the next. Capture each decision as a DECISIONS.md entry as it lands (one entry per question, or a single grouped entry at the end — propose whichever is cleaner). After all 10 are decided, update this COWORK_SESSION_STATE.md to reflect the new state, and we'll be ready for the audit merge (#8). Audit is currently 9/10 done; this session closes the last item.
+
+For future sessions after Item 10 is closed, the warm-start prompt is the more generic:
+
+> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Then ask me what we're working on.
 
 ---
 
 ## Maintenance log
 
-- **2026-04-17** — Initial creation during mid-consolidation audit, after cross-session alignment sweep launched. Captured Audit Items 1–6 completion status, sweep-in-flight state, and two-tool operational knowledge. Next expected update: after sweep completes and Phase 4.5 decision lands.
+- **2026-04-17** — Initial creation during mid-consolidation audit, after cross-session alignment sweep launched. Captured Audit Items 1–6 completion status, sweep-in-flight state, and two-tool operational knowledge.
+- **2026-04-19** — Major refresh at end of multi-day session. Audit progressed from 6/10 to 9/10 items resolved; Phase 4.5-lite decision locked; several new tasks created (#14, #15, #16, #17); Cowork-on-Windows permanently deferred; `docs/SCIENTIFIC_ENDPOINTS.md` created with Q1–Q10 for next session. Transcribed all session decisions into DECISIONS.md. Next expected update: after Item 10 Q1–Q10 discussion completes.
