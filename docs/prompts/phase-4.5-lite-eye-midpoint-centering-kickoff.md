@@ -81,10 +81,11 @@ Expected shape:
      - `tongue` → `spout_midpoint` (unchanged)
      - `jaw`, `nose`, `L_whiskers_1`, `L_whiskers_2`, `L_whiskers_3`,
        `R_whiskers_1`, `R_whiskers_2`, `R_whiskers_3` → `eye_midpoint` (new)
-     The bodypart keys for eyes and spouts themselves (`L_eye`, `R_eye`,
-     `L_spout`, `R_spout`) get `center_mode: null` — these are fiducials and
-     have no meaningful downstream centering. Add test validating the config
-     loads with the new defaults.
+     - `L_eye`, `R_eye` → `eye_midpoint` (fiducials, centered under their
+       own fiducial regime as a null-baseline control for Phase 9
+       significance testing — see Constraints section below)
+     - `L_spout`, `R_spout` → `spout_midpoint` (same rationale)
+     Add test validating the config loads with the new defaults.
    - **4.5c — Regenerate centered parquets** (~0 new lines; execute existing
      Phase 4 `build_centered_parquet` with new defaults):
      For each animal × date with DLC output available, rebuild centered
@@ -203,9 +204,19 @@ need changes — verify).
   Phase 7+ future phases). If any downstream notebook explicitly overrides
   `center_mode`, that override wins — the default only applies when the
   caller doesn't specify.
-- Fiducial bodyparts (`L_eye`, `R_eye`, `L_spout`, `R_spout`) get
-  `center_mode: null` — they are not centered for downstream analysis;
-  they're used to *derive* the center for others.
+- Fiducial bodyparts are centered under their own fiducial regime
+  (`L_eye`, `R_eye` → `eye_midpoint`; `L_spout`, `R_spout` → `spout_midpoint`).
+  Rationale: under its own centering, a fiducial's distribution across sessions
+  is — by construction — the null baseline. Variance comes only from per-session
+  fiducial-detection noise plus residual rotation / scale drift between session
+  and reference; there's no biological-signal component. Phase 9 significance
+  testing uses these fiducial distributions as a control: pre-vs-post tests
+  on fiducials should NOT return significant. If they do, something is wrong
+  with the null model or the centering pipeline, and that's diagnostic.
+  Cross-fiducial centerings (e.g., L_eye on `spout_midpoint` to measure
+  eye-rig drift relative to spout-rig) can be computed ad hoc from the
+  `eye_midpoint` and `spout_midpoint` parquets or the sweep-experiment
+  cache if needed for diagnostics; no default config support.
 
 If the refactor reveals a place where the new default breaks an existing
 analysis silently (e.g., a Phase 5/6 notebook whose axis limits were tuned
