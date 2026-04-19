@@ -207,6 +207,37 @@ To confirm empirically from a fresh session, load any filtered H5 via `read_dlc(
 
 ---
 
+## Cowork-on-Windows status (as of 2026-04-19)
+
+**Do not attempt to get Cowork working on Priya's Windows Enterprise machine.**
+
+Extensive troubleshooting on 2026-04-19 did not yield a working Cowork install on
+Windows despite:
+
+- Windows 11 Enterprise edition (correct tier for Hyper-V).
+- Max subscription confirmed at account level.
+- Claude Desktop 1.3109.0 (current release).
+- Hyper-V enabled and running (`vmms` and `vmcompute` services both `Running`,
+  `systeminfo` confirms "A hypervisor has been detected").
+- Computer use toggled on in Settings.
+- Clean full reinstall of Claude Desktop with cache-directory wipe
+  (`%APPDATA%\Claude`, `%LOCALAPPDATA%\Claude`) after Hyper-V activation.
+- Sign-out / sign-back-in.
+
+Result: no Cowork tab appears in the Windows desktop app. The Claude VM
+(`yukonSilver` or equivalent) is never provisioned (`Get-VM` returns nothing).
+Likely cause is an account-level feature flag or staged-rollout gate that
+Anthropic controls server-side. Would require a support-ticket conversation
+with Anthropic to resolve, which is deferred indefinitely.
+
+**Permanent workflow is Mac Cowork + Windows Claude Code in VSCode.** See
+"Two-tool workflow" section below for details. When Cowork writes new files
+(DECISIONS updates, kickoff prompts, etc.), Priya runs a 30-second
+`git add / commit / push` on her Mac, then `git pull` on Windows. This is the
+only friction added by the split.
+
+---
+
 ## Known gotchas
 
 - **`configs/defaults.yaml` naming consistency.** The live spatial blocks (lines 94–178, 195–228) use canonical bodypart names. The `dlc.bodyparts` block (lines 240–255) was stale placeholder text corrected this session. If another stale block appears, prefer names from an actual DLC H5 file via the diagnostic in cell 3 of the eye-affine experiment notebook.
