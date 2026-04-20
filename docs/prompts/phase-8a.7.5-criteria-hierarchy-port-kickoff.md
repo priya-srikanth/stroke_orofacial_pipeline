@@ -61,6 +61,26 @@ Re-read:
 - `src/stroke_orofacial/spout_behavior/endpoints_per_trial.py` —
   TrialRecord contract from 8a.3.
 
+## Environment activation
+
+Required before any `pytest`, `ruff`, `pip`, `python`, or notebook-execution
+command in this session:
+
+```bash
+conda activate stroke_orofacial
+which python                # must print a path under .conda/envs/stroke_orofacial/
+python -c "import stroke_orofacial"   # must succeed without error
+```
+
+If `conda activate` fails (PATH not set in the shell), fall back to
+`conda run -n stroke_orofacial <command>` per-command. If the `import`
+sanity-check fails with `ModuleNotFoundError`, run
+`pip install -e . --no-deps` inside the activated env and retry before
+touching any other command. Do **not** start implementation work until
+`pytest --collect-only` runs to completion without import errors — a
+silent collection failure means the post-implementation suite run
+isn't actually validating anything.
+
 ## Branch setup
 
 ```bash

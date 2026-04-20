@@ -53,6 +53,29 @@ These rules bind every Claude Code session working on this project.
 
 ---
 
+## Environment activation
+
+Before any `pytest`, `ruff`, `pip`, `python`, `papermill`, `jupyter`, or
+notebook-execution command at the start of every Claude Code session:
+
+```bash
+conda activate stroke_orofacial
+which python                            # must print a path under .conda/envs/stroke_orofacial/
+python -c "import stroke_orofacial"     # must succeed without error
+```
+
+If `conda activate` fails (PATH not set in the shell), fall back to
+`conda run -n stroke_orofacial <command>` per-command. If the `import`
+check fails with `ModuleNotFoundError`, run `pip install -e . --no-deps`
+in the activated env and retry.
+
+**Do not begin any test/ruff/implementation work until `pytest --collect-only`
+completes without import errors.** A silent collection failure means the
+post-implementation test suite isn't validating anything — "N tests pass"
+is meaningless if only M of N tests were actually collected.
+
+---
+
 ## Legacy code version disambiguation
 
 When the legacy codebase contains multiple files that appear to implement the
