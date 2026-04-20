@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import datetime
+import platform
 import textwrap
 from pathlib import Path
 
 import pytest
 
 from stroke_orofacial.paths import PathResolver
+
+# For tests that build YAML mounts from real on-disk tmp_path values,
+# we must use the HOST platform's key so PathResolver._make_path picks
+# the right PurePath subclass (PureWindowsPath for Windows tmp paths
+# like "C:/Users/...", PurePosixPath for Mac/Linux tmp paths).
+# Forcing platform_key='mac' on a Windows host loses the drive root
+# (PurePosixPath drops "C:" → drive-relative path → .exists() fails).
+_HOST_KEY = "windows" if platform.system() == "Windows" else "mac"
 
 
 @pytest.fixture()
@@ -134,12 +143,10 @@ class TestListMounts:
         candidate_b.mkdir(parents=True)
         # Don't create candidate_a — it should be skipped
 
-        # Use .as_posix() for YAML interpolation so Windows backslashes in
-        # tmp_path (e.g. C:\Users\sabatini\AppData\...) are not emitted into
-        # a double-quoted YAML scalar, where the literal `\U` would otherwise
-        # trigger Unicode-escape parsing and crash yaml.safe_load. Windows
-        # accepts forward-slash paths natively, so Path() in PathResolver
-        # still resolves correctly.
+        # Write mount under the HOST platform's key (see _HOST_KEY note at top).
+        # Use .as_posix() so Windows backslashes (C:\Users\...) don't trigger
+        # the YAML \U Unicode-escape parser inside a double-quoted scalar.
+        # Windows accepts forward-slash paths natively, so Path() resolves fine.
         cfg = tmp_path / "paths.yaml"
         cfg.write_text(
             textwrap.dedent(f"""\
@@ -147,16 +154,15 @@ class TestListMounts:
                   wavesurfer_raw:
                     description: "test list mount"
                     mounts:
-                      mac:
+                      {_HOST_KEY}:
                         - "{candidate_a.as_posix()}"
                         - "{candidate_b.as_posix()}"
-                      windows: "\\\\\\\\server\\\\wavesurfer"
             """)
         )
         return cfg
 
     def test_list_mount_uses_first_existing(self, monkeypatch, list_mount_yaml, tmp_path):
-        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(list_mount_yaml)
         result = resolver.root("wavesurfer_raw")
         expected = tmp_path / "fallback_mount" / "wavesurfer"
@@ -169,20 +175,19 @@ class TestListMounts:
         candidate_b.mkdir(parents=True)
 
         cfg = tmp_path / "paths.yaml"
-        # .as_posix() avoids Windows `\U` escape parsing in double-quoted YAML;
-        # see note in list_mount_yaml fixture above.
+        # Host-platform key + .as_posix() — see list_mount_yaml fixture / _HOST_KEY.
         cfg.write_text(
             textwrap.dedent(f"""\
                 logical_roots:
                   wavesurfer_raw:
                     description: "both exist"
                     mounts:
-                      mac:
+                      {_HOST_KEY}:
                         - "{candidate_a.as_posix()}"
                         - "{candidate_b.as_posix()}"
             """)
         )
-        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(cfg)
         assert resolver.root("wavesurfer_raw") == candidate_a
 
@@ -231,8 +236,13 @@ class TestNewConvenienceMethods:
         cfg = tmp_path / "paths.yaml"
         ws_dir = tmp_path / "wavesurfer"
         ws_dir.mkdir()
-        # .as_posix() avoids Windows `\U` escape parsing in double-quoted YAML;
-        # see note in TestListMounts.list_mount_yaml fixture above.
+        # microscope_pipeline_outputs uses a static /Volumes path so we keep it
+        # under the "mac" key — the tests that read it force platform_key='mac'.
+        # wavesurfer_raw uses a real on-disk tmp_path, so it MUST go under the
+        # HOST platform's key (see _HOST_KEY note at top of file). Two mounts
+        # under potentially-different platform keys is fine because each test
+        # only touches one root. .as_posix() avoids Windows \U escape parsing
+        # inside double-quoted YAML.
         cfg.write_text(
             textwrap.dedent(f"""\
                 logical_roots:
@@ -243,13 +253,14 @@ class TestNewConvenienceMethods:
                   wavesurfer_raw:
                     description: "raw ws"
                     mounts:
-                      mac:
+                      {_HOST_KEY}:
                         - "{ws_dir.as_posix()}"
             """)
         )
         return cfg
 
     def test_pipeline_outputs(self, monkeypatch, full_paths_yaml):
+        # Uses the static /Volumes mac mount; safe to force mac key.
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         resolver = PathResolver(full_paths_yaml)
         result = resolver.pipeline_outputs("spout_behavior")
@@ -259,7 +270,8 @@ class TestNewConvenienceMethods:
         )
 
     def test_wavesurfer_dir(self, monkeypatch, full_paths_yaml, tmp_path):
-        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        # Uses the real on-disk tmp_path mount, so must run under host key.
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(full_paths_yaml)
         result = resolver.wavesurfer_dir(datetime.date(2025, 3, 7), "PS46")
         ws_dir = tmp_path / "wavesurfer"
