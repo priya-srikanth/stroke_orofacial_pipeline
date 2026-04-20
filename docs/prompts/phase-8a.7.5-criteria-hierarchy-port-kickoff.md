@@ -51,9 +51,19 @@ Re-read:
 - `docs/PHASE_8A_LEGACY_ENDPOINT_MAPPING.md` — archaeology reference,
   especially §1 (criteria ground-truth definitions).
 - `docs/DECISIONS.md` — recent 2026-04-19 Q1–Q10 scoping entry; any 8a.7
-  decisions that landed post-8a.7 merge.
-- `behavior_report_PS.py:455–551` (read-only legacy reference) for the
-  C3/C4 per-trial computation.
+  decisions that landed post-8a.7 merge; the 2026-04-20 "Phase 8a
+  architecture" grouped entry (criteria slug finalization, schema 2.0.0,
+  8a.7.5 split rationale, legacy-snippets pattern).
+- `docs/legacy_snippets/behavior_report_PS_455_551.py` — **canonical
+  read-only reference for the C3/C4/C34/C2/C1 legacy computation.**
+  This is an in-repo snippet of the canonical legacy file (source:
+  `/Users/Priya2/Github/facerhythm_stroke_biomarker_exp_Priya/analysis/behavior_report/behavior_report_PS.py`,
+  lines 385-565), committed here so parity validation is possible on any
+  machine — including Windows, which does not have a local clone of the
+  legacy Github repo. Use this snippet as the parity reference. If it
+  ever appears to diverge from the live canonical legacy file, STOP and
+  ask Priya before proceeding; the provenance header documents its
+  extraction point and mtime-based disambiguation.
 - `src/stroke_orofacial/spout_behavior/criteria_slugs.py` — established
   slug map + validator.
 - `src/stroke_orofacial/spout_behavior/endpoints_writer.py` — existing
@@ -119,7 +129,9 @@ Expected shape:
      contains real values for C3/C4/C2 and sentinel for C1. ~30 lines added.
 4. **Parity strategy** —
    - Per-trial C3 and C4 boolean arrays byte-identical vs legacy
-     `behavior_report_PS.py:455–551` on PS46/20250307 reference session.
+     `docs/legacy_snippets/behavior_report_PS_455_551.py` (canonical
+     excerpt of `behavior_report_PS.py:385-565`) on PS46/20250307
+     reference session.
    - C2 per-session-per-side aggregate byte-identical (boolean counts, no
      floating-point tolerance needed).
    - Fixture: reuse the existing PS46/20250307 TrialRecord pipeline fixture
@@ -141,7 +153,8 @@ The plan must pause for Priya's explicit approval before any files are written.
 
 ## Exit criteria
 
-- Per-trial C3 and C4 boolean arrays byte-identical vs legacy on
+- Per-trial C3 and C4 boolean arrays byte-identical vs
+  `docs/legacy_snippets/behavior_report_PS_455_551.py` on
   PS46/20250307 reference session.
 - C2 per-session-per-side aggregate byte-identical vs legacy.
 - C1 sentinel unchanged in computation terms but status-string aligned
