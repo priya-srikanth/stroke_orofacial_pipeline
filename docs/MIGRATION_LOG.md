@@ -1579,3 +1579,35 @@ divergence-rationale entry is needed for this sub-phase.
 - [x] C1 slot emitted as `requires_cohort_aggregation` sentinel, not
   caller-override-able.
 - [x] Implemented on feature branch `phase-8a-part4-criteria-hierarchy`.
+
+**Post-merge appendix (2026-04-20) — external bnpm parity finding:**
+
+After PR #42 merged, an independent external-bnpm parity sweep (Mac-local
+scratch script running the inline reference with bnpm 0.6.0's
+`find_idx_within_eps` substituted for the numpy mask, across 3 animals × 1
+session each) found one Category 2 divergence at **PS50/20250324 trial
+k=40, L side**. Reproducer: reward_idx = 3,422,003; C4 window (0, 2.5) s;
+L licks in the window are [3,422,497, 3,422,906, 3,423,057, 3,423,239,
+3,423,436]; window right edge 3,424,503 > last lick 3,423,436.
+Root cause is an upstream bug in **bnpm 0.6.0 `find_idx_within_eps`**:
+`np.searchsorted(arr, v + eps[1], side='left')` returns `len(arr) = 26`
+when the right edge is past every element, and the upstream implementation
+clamps to `len(arr) - 1 = 25`, which excludes `arr[25]` — the final lick.
+Production (`criteria.py:_sub_window_counts` using
+`(licks >= lo) & (licks < hi)` on pre-windowed `TrialRecord.licks_*_indices_in_window`)
+is correct and includes all 5 licks, so PS50's C4 L-side trial k=40
+correctly passes. The PS46/20250307 parity that sub-phase 8a.7.5 gated on
+remains byte-identical — this finding does not affect the sub-phase's exit
+criteria. **Verdict:** intentional divergence from upstream bnpm under the
+Phase 13 vendoring pattern (production untouched, correct; upstream wrong).
+Captured as a new bullet under DECISIONS.md 2026-04-20 "Phase 8a
+architecture" entry and guarded by
+`tests/test_criteria.py::TestClampBugRegressionGuards::test_last_lick_inside_subwindow_with_right_edge_past_it`.
+PS51/20250502 re-run skipped (not needed for triage). Upstream bnpm issue
+filing is deferred / optional. **Forward obligation:** the same clamp bug
+exists in the private `_find_idx_within_eps` port at
+`src/stroke_orofacial/spout_behavior/bouts.py:236-256` (peri-reward mask
+caller); it does not affect criteria.py (which never calls it), but a
+Phase-13-pattern fix-PR will follow the Phase 5/6 indexing-module refactor
+(`_find_idx_within_eps` → `_utils/indexing.py`) and must land before Phase
+5/6 code writes begin so Phase 5/6 does not consume the buggy helper.
