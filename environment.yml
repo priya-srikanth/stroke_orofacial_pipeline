@@ -53,6 +53,18 @@ dependencies:
                     #   pixel-bin distribution comparison). Used in 3 legacy
                     #   DLC stats notebooks. Conda-forge package name is `pot`.
 
+  # ---- Build toolchain + JIT runtime (pre-installed so pip doesn't build from source) ----
+  # `numba` + its `llvmlite` dep are transitively required by `bnpm[core]`.
+  # PyPI does not ship pre-built llvmlite wheels for Intel Mac + Python 3.11,
+  # which would otherwise force pip to build llvmlite from source (requires
+  # cmake, fails out-of-box on Mac without Xcode CLI tools). conda-forge ships
+  # binary numba+llvmlite for both Mac and Windows, so installing them here
+  # via conda makes the subsequent pip install of bnpm[core] a no-op on this
+  # front. `cmake` is included as a belt-and-suspenders fallback so any other
+  # pip-installed package needing a source build can proceed.
+  - numba
+  - cmake
+
   # ---- Dev + notebook runtime ----
   - pytest
   - ruff
