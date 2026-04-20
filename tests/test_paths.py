@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import datetime
-import os
 import textwrap
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
 
 import pytest
 
@@ -94,14 +93,17 @@ class TestConvenienceMethods:
 
     def test_dlc_output_dir(self):
         result = self.resolver.dlc_output_dir("PS46")
-        expected = PurePosixPath(
+        # Compare via .as_posix() so the test is platform-independent:
+        # on Windows, `Path("/Volumes/...")` is a WindowsPath and would never
+        # equal a PurePosixPath even though the string content matches.
+        # as_posix() always emits forward-slash normalized form on both platforms.
+        assert result.as_posix() == (
             "/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/O2_analysis/PS46"
         )
-        assert result == expected
 
     def test_alignment_templates_dir(self):
         result = self.resolver.alignment_templates_dir("cam2")
-        assert result == PurePosixPath(
+        assert result.as_posix() == (
             "/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/O2_analysis/alignment_templates/cam2"
         )
 
@@ -109,13 +111,13 @@ class TestConvenienceMethods:
         result = self.resolver.alignment_template(
             "PS46", datetime.date(2025, 3, 7), cam="cam2"
         )
-        assert result == PurePosixPath(
+        assert result.as_posix() == (
             "/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/O2_analysis/alignment_templates/cam2/PS46/20250307.npz"
         )
 
     def test_session_processing_out(self):
         result = self.resolver.session_processing_out("v2")
-        assert result == PurePosixPath(
+        assert result.as_posix() == (
             "/Users/testuser/data/analysis/session_processing_v2"
         )
 
@@ -132,6 +134,12 @@ class TestListMounts:
         candidate_b.mkdir(parents=True)
         # Don't create candidate_a — it should be skipped
 
+        # Use .as_posix() for YAML interpolation so Windows backslashes in
+        # tmp_path (e.g. C:\Users\sabatini\AppData\...) are not emitted into
+        # a double-quoted YAML scalar, where the literal `\U` would otherwise
+        # trigger Unicode-escape parsing and crash yaml.safe_load. Windows
+        # accepts forward-slash paths natively, so Path() in PathResolver
+        # still resolves correctly.
         cfg = tmp_path / "paths.yaml"
         cfg.write_text(
             textwrap.dedent(f"""\
@@ -140,8 +148,8 @@ class TestListMounts:
                     description: "test list mount"
                     mounts:
                       mac:
-                        - "{candidate_a}"
-                        - "{candidate_b}"
+                        - "{candidate_a.as_posix()}"
+                        - "{candidate_b.as_posix()}"
                       windows: "\\\\\\\\server\\\\wavesurfer"
             """)
         )
@@ -161,6 +169,8 @@ class TestListMounts:
         candidate_b.mkdir(parents=True)
 
         cfg = tmp_path / "paths.yaml"
+        # .as_posix() avoids Windows `\U` escape parsing in double-quoted YAML;
+        # see note in list_mount_yaml fixture above.
         cfg.write_text(
             textwrap.dedent(f"""\
                 logical_roots:
@@ -168,8 +178,8 @@ class TestListMounts:
                     description: "both exist"
                     mounts:
                       mac:
-                        - "{candidate_a}"
-                        - "{candidate_b}"
+                        - "{candidate_a.as_posix()}"
+                        - "{candidate_b.as_posix()}"
             """)
         )
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
@@ -221,6 +231,8 @@ class TestNewConvenienceMethods:
         cfg = tmp_path / "paths.yaml"
         ws_dir = tmp_path / "wavesurfer"
         ws_dir.mkdir()
+        # .as_posix() avoids Windows `\U` escape parsing in double-quoted YAML;
+        # see note in TestListMounts.list_mount_yaml fixture above.
         cfg.write_text(
             textwrap.dedent(f"""\
                 logical_roots:
@@ -232,7 +244,7 @@ class TestNewConvenienceMethods:
                     description: "raw ws"
                     mounts:
                       mac:
-                        - "{ws_dir}"
+                        - "{ws_dir.as_posix()}"
             """)
         )
         return cfg
@@ -241,7 +253,8 @@ class TestNewConvenienceMethods:
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         resolver = PathResolver(full_paths_yaml)
         result = resolver.pipeline_outputs("spout_behavior")
-        assert result == PurePosixPath(
+        # See note in TestConvenienceMethods.test_dlc_output_dir.
+        assert result.as_posix() == (
             "/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/spout_behavior"
         )
 
