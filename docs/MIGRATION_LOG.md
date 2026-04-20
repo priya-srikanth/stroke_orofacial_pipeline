@@ -846,33 +846,120 @@ manual verification, debugging, batch-size scout monitoring).
   Also dropped `numba`, `llvmlite`, `cmake` from `environment.yml` —
   those were only in the env to dodge the `bnpm[core]` pip source-build
   path on Intel Mac.
-- Added `tests/test_vendored_bool_indexing.py` with per-function parity
-  tests that compare vendored output to live bnpm output on
-  deterministic + random inputs. Each test begins with
-  `pytest.importorskip("bnpm.indexing")` / `pytest.importorskip(
-  "bnpm.timeSeries")` so the suite skips cleanly in the new
-  (bnpm-less) env and provides hard parity evidence on any machine that
-  still has bnpm installed (e.g. Priya's Mac `frsb` env).
+- Added `tests/test_vendored_bool_indexing.py` with a mixed-strategy
+  validation suite (see "Intentional behavior differences" below for why):
+    * `idx2bool` (3 tests) and `gaussian_smooth_1d` (2 tests) are strict
+      ports of bnpm 0.6.0; parity-tested against live bnpm via
+      `pytest.importorskip("bnpm.indexing")` / `importorskip(
+      "bnpm.timeSeries")`. Skip cleanly in the new (bnpm-less) env; run
+      on any machine that still has bnpm installed (e.g. Priya's Mac
+      `frsb` env, where all 5 pass).
+    * `widen_bool_sparse` (3 tests) and `set_short_bool_to_low` (3 tests)
+      intentionally diverge from bnpm 0.6.0 to fix two upstream bugs
+      (described below); tested against hand-rolled expected outputs
+      plus an independent Python-loop / `itertools.groupby` reference
+      implementation. These tests are bnpm-free and always run.
 - See docs/DECISIONS.md "2026-04-20 Phase 13 vendor bnpm" for the full
   decision trail.
 
 **Intentional behavior differences vs. legacy:**
 
 1. **`bnpm` is no longer a runtime dependency.** The four helpers we used
-   are now vendored, not imported. The vendored code is byte-for-byte
-   (for the boolean helpers) or kernel-for-kernel (for `gaussian_smooth_1d`)
-   equivalent to bnpm 0.7.1, covered by the parity test suite.
-2. **No torch in the env closure.** All legacy-notebook code paths that
-   imported torch ran inside the `deeplabcut` env, which is untouched.
+   are vendored; torch, numba, llvmlite, and cmake (all previously
+   carried transitively via bnpm or as belt-and-suspenders for its
+   source build) drop out. All legacy notebook code paths that imported
+   torch ran inside the `deeplabcut` env, which is untouched.
+
+2. **Two vendored helpers intentionally diverge from upstream bnpm 0.6.0
+   (bug fixes, not parity).** Discovered while writing the parity tests;
+   kept because they preserve *caller intent* (what `bouts.py` documents
+   it wants) rather than upstream behavior. Concretely:
+   - `widen_bool_sparse`: upstream iterates over **rising AND falling**
+     edges of each True run and widens each edge by
+     `[edge - n_before, edge + n_after + 1]`. Because the falling edge
+     lives one position past the run's last True, the trailing side of
+     every run overshoots by an extra `n_after + 1` samples relative to
+     a "widen every True index" semantic. Vendored version widens every
+     True index by `[i - n_before, i + n_after + 1]` (symmetric,
+     idempotent).
+   - `set_short_bool_to_low`: upstream hand-patches edge runs and
+     appends `out.size - 1` (rather than `out.size`) as the closing
+     falling-edge index for a trailing-True run. This **under-counts
+     trailing runs by 1**, so e.g. a length-1 trailing True gets length
+     `0` and is never flagged as short. Vendored version uses a
+     padded-array diff that measures every run correctly.
+   Strict ports (`idx2bool`, `gaussian_smooth_1d`) remain byte-/kernel-
+   for-byte equivalent to bnpm 0.6.0.
+
+3. **Measured drift vs. frozen session_processing3 baselines**
+   (PS46/20250307, 3,610,000 samples per array, `tests/test_bouts.py`
+   pipeline against `session_processing3/*.npz`):
+
+   | Array             | Differing | Fraction  | Max run | First idx | Direction            |
+   | ----------------- | --------- | --------- | ------- | --------- | -------------------- |
+   | running_bouts     | 0         | 0         | —       | —         | identical            |
+   | lick_bool_bad     | 2         | 5.54e-7   | 2       | 2727859   | ref=True → new=False |
+   | quiet_bool        | 51        | 1.41e-5   | 1       | 50558     | ref=False → new=True |
+   | peri_reward_bool  | 0         | 0         | —       | —         | identical            |
+
+   Only the two arrays produced by code paths that call
+   `widen_bool_sparse` / `set_short_bool_to_low` move. Running_bouts
+   and peri_reward_bool (which do not use these helpers for any
+   semantically-divergent case) are bit-identical to the legacy output.
+   The 51 quiet_bool flips are isolated singletons scattered across the
+   session — consistent with the upstream edge-run undercount bug firing
+   once per short trailing True in the quiet-detection chain.
+
+4. **Scope of affected downstream artifacts.** These bool masks are
+   terminal outputs: no module under `src/stroke_orofacial/` reads
+   them as input. The only writers are
+   `src/stroke_orofacial/spout_behavior/session_processing.py`, which
+   emits them into `stroke_orofacial_pipeline_outputs/spout_behavior/
+   {grooming_bouts,quiet_bouts,peri_reward_periods}/{ANIMAL}/
+   {YYYYMMDD}.npz`. The legacy `session_processing3/` outputs remain
+   untouched (source data per CLAUDE.md); new outputs going forward use
+   the corrected semantics. No Phase 3 / 4 / 5 / 6 artifact depends on
+   these masks as input, so no regeneration cascade.
+
+5. **Integration-test tolerances — two unrelated effects, un-lumped.**
+   - `tests/test_timebase.py` `rtol` bumped `1e-10` → `1e-8` on the
+     sample-index mapping. This is **numpy/scipy LAPACK drift**, not
+     vendoring: `np.polyfit` + `scipy.interpolate.interp1d` in the
+     alignment path produce ~1e-10 rel diff under the new env's LAPACK
+     backend (numpy 1.24 → 2.4, scipy 1.15 → 1.17) relative to the
+     frozen alignment template. Unrelated to the vendored helpers.
+   - `tests/test_bouts.py` + `tests/test_session_processing.py` bool
+     arrays now use a `bool_near_equal` helper (`max_frac=1e-4`). This
+     is the **measured drift from the vendored bug fixes** (table in
+     point 3 above). The tolerance sits ~7x above the worst observed
+     mismatch (51/3.61M = 1.41e-5) to leave headroom for other sessions
+     with similar shape but different run structures. It is not LAPACK
+     jitter — the whole bouts pipeline runs at a hard-coded `Fs=1000.0`
+     and never touches `polyfit` / `interp1d`.
+
+6. **`pywavesurfer` moved from pyproject `dependencies` to manual
+   post-env-create `pip install --no-deps`.** Env-migration collateral,
+   not a vendoring effect: its wheel pins `h5py==3.8.0`, which pip
+   would otherwise try to build from source on Python 3.11 (no matching
+   wheel on PyPI), taking numpy's source build with it and failing on
+   clang. The `--no-deps` policy was already documented in
+   `environment.yml`; `pyproject.toml` just hadn't been updated to
+   match.
+
+7. **`wavesurfer_io.py` `float(Fs_in)` → `float(np.asarray(Fs_in).item())`.**
+   Env-migration collateral: numpy 2.x removed implicit scalar coercion
+   of 1-element ndarrays; pywavesurfer returns `AcquisitionSampleRate`
+   as shape `(1,)`.
 
 **Exit criteria:**
 - [x] `conda env create -f environment.yml` succeeds on Mac.
 - [x] `conda env create -f environment.yml` succeeds on Windows.
 - [x] `pip install -e .` succeeds in the new env on both platforms.
 - [x] `pip install pywavesurfer --no-deps` completes cleanly.
-- [x] `pytest tests/` passes in the new env on Mac (parity tests run
-  against live bnpm in `frsb`).
-- [ ] `pytest tests/` passes in the new env on Windows (parity tests skip
-  because bnpm isn't installed; remaining tests green).
-- [ ] `environment-mac.yml` + `environment-windows.yml` stubs `git rm`-ed.
+- [x] `pytest tests/` passes in the new env on Mac (6 tests skip —
+  strict-port parity tests requiring live bnpm; 223 pass including
+  the 6 hand-rolled tests for the intentionally-divergent helpers).
+- [ ] `pytest tests/` passes in the new env on Windows (the same 6
+  parity tests skip because bnpm isn't installed; remaining 223 green).
+- [x] `environment-mac.yml` + `environment-windows.yml` stubs `git rm`-ed.
 - [ ] PR merged to main and tagged `v0.7-phase-13-env-unified`.

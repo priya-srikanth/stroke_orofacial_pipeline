@@ -72,7 +72,7 @@ import numpy as np
 def idx2bool(idx: np.ndarray, length: int | None = None) -> np.ndarray:
     """Convert an integer index array to a 1-D boolean mask.
 
-    Verbatim port of ``bnpm.indexing.idx2bool`` (v0.7.1). NaN entries in
+    Verbatim port of ``bnpm.indexing.idx2bool`` (v0.6.0). NaN entries in
     ``idx`` are dropped. ``length`` defaults to ``max(idx)+1``.
     """
     idx = np.asarray(idx)
@@ -157,7 +157,7 @@ def set_short_bool_to_low(b: np.ndarray, n: int) -> np.ndarray:
 def gaussian_smooth_1d(arr: np.ndarray, sig: float) -> np.ndarray:
     """Gaussian-smooth a 1-D array with the bnpm kernel and edge normalization.
 
-    Faithful 1-D reconstruction of ``bnpm.timeSeries.simple_smooth`` (v0.7.1),
+    Faithful 1-D reconstruction of ``bnpm.timeSeries.simple_smooth`` (v0.6.0),
     which builds its kernel via ``bnpm.math_functions.gaussian`` and applies
     it via ``bnpm.timeSeries.convolve_along_axis`` with edge normalization:
 

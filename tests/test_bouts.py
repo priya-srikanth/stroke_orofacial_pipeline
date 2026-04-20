@@ -357,15 +357,23 @@ class TestIntegrationBouts:
             err_msg="Running bouts mismatch",
         )
 
-        # Bool arrays below are all downstream of the timebase/alignment chain,
-        # so they inherit ~1e-10 rel drift from np.polyfit + scipy.interpolate
-        # under the Phase 13 LAPACK/BLAS backend change (numpy 1.24 -> 2.4,
-        # scipy 1.15 -> 1.17). Threshold-based detection flips a handful of
-        # samples near threshold crossings. Use a bounded-mismatch tolerance
-        # (max_frac=1e-4 -> ~361 sample cap on a 3.6M array; observed drift
-        # 2-51 samples per array) instead of strict array_equal. Tight enough
-        # to catch any real algorithmic regression; loose enough to absorb
-        # LAPACK-level float jitter.
+        # Bool arrays below are produced by code paths in bouts.py that call
+        # the vendored widen_bool_sparse / set_short_bool_to_low helpers,
+        # which intentionally diverge from upstream bnpm 0.6.0 to fix two
+        # upstream bugs (falling-edge overshoot in widen; trailing-run
+        # undercount in set_short). See docs/DECISIONS.md "2026-04-20 Phase
+        # 13 vendor bnpm" and docs/MIGRATION_LOG.md Phase 13b for the full
+        # rationale. On PS46/20250307 the fix flips exactly 2 samples in
+        # lick_bool_bad and 51 in quiet_bool relative to the frozen
+        # session_processing3 baseline (which was generated using the
+        # buggy upstream behavior); running_bouts and peri_reward_bool are
+        # bit-identical. Use a bounded-mismatch tolerance
+        # (max_frac=1e-4 -> ~361 sample cap on a 3.6M array) to absorb
+        # the measured drift with ~7x headroom for other sessions whose
+        # run structure may interact with the fix differently. This is NOT
+        # LAPACK jitter — the bouts pipeline runs at hard-coded Fs=1000.0
+        # and never touches polyfit/interp1d; the unrelated rtol loosening
+        # in test_timebase.py is the LAPACK-jitter mitigation.
         ref_groom = np.load(_SP3 / "grooming_bouts" / "PS46" / f"{date_str}.npz")
         _assert_bool_near_equal(
             results["lick_bool_bad"],

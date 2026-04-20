@@ -236,12 +236,19 @@ class TestIntegrationParity:
     #   "equal"          — np.testing.assert_array_equal (strict byte match).
     #   "allclose"       — np.testing.assert_allclose at rtol/atol=1e-10.
     #   "bool_near_equal" — allow a bounded mismatch fraction on bool arrays
-    #                      whose threshold-based detections inherit ~1e-10
-    #                      numeric jitter from the upstream polyfit/interp1d
-    #                      path after the Phase 13 env migration (numpy 1.24
-    #                      -> 2.4, scipy 1.15 -> 1.17). See
-    #                      docs/DECISIONS.md 2026-04-20 "Phase 13 parity
-    #                      tolerance" for the full trail.
+    #                       produced by code paths that call the vendored
+    #                       widen_bool_sparse / set_short_bool_to_low helpers.
+    #                       Those helpers intentionally diverge from upstream
+    #                       bnpm 0.6.0 to fix two upstream bugs; the drift vs.
+    #                       the frozen session_processing3 baseline on
+    #                       PS46/20250307 is 2 samples (lick_bool_bad) and
+    #                       51 samples (quiet_bool), max_frac=1e-4 cap gives
+    #                       ~7x headroom. This is NOT LAPACK jitter — the
+    #                       unrelated rtol change in tests/test_timebase.py
+    #                       is the polyfit/interp1d LAPACK drift mitigation.
+    #                       See docs/DECISIONS.md "2026-04-20 Phase 13 vendor
+    #                       bnpm" and docs/MIGRATION_LOG.md Phase 13b for the
+    #                       full rationale.
     CHECKS = {
         "treadmill_signals_preprocessed": [("Treadmill_smoothed", "allclose")],
         "licks_and_rewards": [
