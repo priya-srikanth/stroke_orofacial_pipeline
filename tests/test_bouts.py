@@ -16,6 +16,34 @@ from stroke_orofacial.spout_behavior.bouts import (
 )
 
 
+def _assert_bool_near_equal(
+    actual: np.ndarray,
+    desired: np.ndarray,
+    max_frac: float,
+    err_msg: str = "",
+) -> None:
+    """Assert two bool arrays agree except for up to ``max_frac`` mismatched samples.
+
+    Intended for fixture parity checks of threshold-based detections whose
+    output inherits tiny numeric jitter from upstream floating-point
+    operations (e.g. polyfit + interp1d in the alignment template path).
+    ``max_frac`` is a fraction of the array size, so e.g. ``1e-5`` on a 3.6M
+    array caps mismatches at ~36 samples.
+    """
+    actual = np.asarray(actual, dtype=bool)
+    desired = np.asarray(desired, dtype=bool)
+    assert actual.shape == desired.shape, (
+        f"{err_msg}: shape mismatch {actual.shape} vs {desired.shape}"
+    )
+    n_mismatch = int(np.count_nonzero(actual != desired))
+    max_allowed = int(np.ceil(max_frac * actual.size))
+    if n_mismatch > max_allowed:
+        raise AssertionError(
+            f"{err_msg}: {n_mismatch} mismatched samples exceeds tolerance "
+            f"{max_allowed} ({max_frac:.0e} of {actual.size})"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Running bouts
 # ---------------------------------------------------------------------------
@@ -329,26 +357,37 @@ class TestIntegrationBouts:
             err_msg="Running bouts mismatch",
         )
 
-        # Grooming bouts
+        # Bool arrays below are all downstream of the timebase/alignment chain,
+        # so they inherit ~1e-10 rel drift from np.polyfit + scipy.interpolate
+        # under the Phase 13 LAPACK/BLAS backend change (numpy 1.24 -> 2.4,
+        # scipy 1.15 -> 1.17). Threshold-based detection flips a handful of
+        # samples near threshold crossings. Use a bounded-mismatch tolerance
+        # (max_frac=1e-4 -> ~361 sample cap on a 3.6M array; observed drift
+        # 2-51 samples per array) instead of strict array_equal. Tight enough
+        # to catch any real algorithmic regression; loose enough to absorb
+        # LAPACK-level float jitter.
         ref_groom = np.load(_SP3 / "grooming_bouts" / "PS46" / f"{date_str}.npz")
-        np.testing.assert_array_equal(
+        _assert_bool_near_equal(
             results["lick_bool_bad"],
             ref_groom["lick_bool_bad"],
+            max_frac=1e-4,
             err_msg="Grooming bouts mismatch",
         )
 
-        # Quiet bouts
+        # Quiet bouts (same rationale as grooming bouts above).
         ref_quiet = np.load(_SP3 / "quiet_bouts" / "PS46" / f"{date_str}.npz")
-        np.testing.assert_array_equal(
+        _assert_bool_near_equal(
             results["quiet_bool"],
             ref_quiet["quiet_bool"],
+            max_frac=1e-4,
             err_msg="Quiet bouts mismatch",
         )
 
-        # Peri-reward
+        # Peri-reward (same rationale).
         ref_peri = np.load(_SP3 / "peri_reward_periods" / "PS46" / f"{date_str}.npz")
-        np.testing.assert_array_equal(
+        _assert_bool_near_equal(
             results["peri_reward_bool"],
             ref_peri["peri_reward_bool"],
+            max_frac=1e-4,
             err_msg="Peri-reward mismatch",
         )

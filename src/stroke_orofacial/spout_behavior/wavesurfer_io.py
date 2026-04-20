@@ -12,9 +12,10 @@ import warnings
 from pathlib import Path
 from typing import Any
 
-import bnpm.timeSeries
 import numpy as np
 import pywavesurfer.ws
+
+from stroke_orofacial._utils.bool_indexing import gaussian_smooth_1d
 
 
 def load_wavesurfer_signals(path_ws: Path | str) -> dict[str, np.ndarray]:
@@ -82,7 +83,10 @@ def load_wavesurfer_signals(path_ws: Path | str) -> dict[str, np.ndarray]:
     signals: dict[str, np.ndarray] = {}
     signals.update(signals_analog)
     signals.update(signals_digital)
-    signals["sample_rate_input"] = float(Fs_in)
+    # pywavesurfer returns AcquisitionSampleRate as a shape-(1,) ndarray.
+    # numpy 2.x removed the implicit float(1d-array) coercion, so normalize
+    # via .item() — works for both 0-D scalars and single-element arrays.
+    signals["sample_rate_input"] = float(np.asarray(Fs_in).item())
     return signals
 
 
@@ -182,7 +186,7 @@ def smooth_treadmill(
         Smoothed signal.
     """
     sigma_samples = int(sigma_sec * Fs)
-    return bnpm.timeSeries.simple_smooth(signal, sig=sigma_samples)
+    return gaussian_smooth_1d(signal, sig=sigma_samples)
 
 
 def _normalize_date_candidates(date: str | None) -> list[str]:

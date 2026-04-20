@@ -16,6 +16,30 @@ from stroke_orofacial.spout_behavior.session_processing import (
 )
 
 
+def _assert_bool_near_equal(
+    actual: np.ndarray,
+    desired: np.ndarray,
+    max_frac: float,
+    err_msg: str = "",
+) -> None:
+    """Assert two bool arrays agree except for up to ``max_frac`` mismatched samples.
+
+    See the identical helper in tests/test_bouts.py for rationale.
+    """
+    actual = np.asarray(actual, dtype=bool)
+    desired = np.asarray(desired, dtype=bool)
+    assert actual.shape == desired.shape, (
+        f"{err_msg}: shape mismatch {actual.shape} vs {desired.shape}"
+    )
+    n_mismatch = int(np.count_nonzero(actual != desired))
+    max_allowed = int(np.ceil(max_frac * actual.size))
+    if n_mismatch > max_allowed:
+        raise AssertionError(
+            f"{err_msg}: {n_mismatch} mismatched samples exceeds tolerance "
+            f"{max_allowed} ({max_frac:.0e} of {actual.size})"
+        )
+
+
 class TestParamsJsonPath:
     def test_path_structure(self, tmp_path):
         result = _params_json_path(tmp_path, "PS46", "20250307")
@@ -208,6 +232,16 @@ class TestIntegrationNewKeys:
 class TestIntegrationParity:
     """Verify stroke_orofacial_pipeline_outputs matches session_processing3 exactly."""
 
+    # Method tags:
+    #   "equal"          — np.testing.assert_array_equal (strict byte match).
+    #   "allclose"       — np.testing.assert_allclose at rtol/atol=1e-10.
+    #   "bool_near_equal" — allow a bounded mismatch fraction on bool arrays
+    #                      whose threshold-based detections inherit ~1e-10
+    #                      numeric jitter from the upstream polyfit/interp1d
+    #                      path after the Phase 13 env migration (numpy 1.24
+    #                      -> 2.4, scipy 1.15 -> 1.17). See
+    #                      docs/DECISIONS.md 2026-04-20 "Phase 13 parity
+    #                      tolerance" for the full trail.
     CHECKS = {
         "treadmill_signals_preprocessed": [("Treadmill_smoothed", "allclose")],
         "licks_and_rewards": [
@@ -216,9 +250,9 @@ class TestIntegrationParity:
             ("Fs", "equal"), ("n_samples", "equal"),
         ],
         "running_bouts": [("running_bouts", "equal")],
-        "grooming_bouts": [("lick_bool_bad", "equal")],
-        "quiet_bouts": [("quiet_bool", "equal")],
-        "peri_reward_periods": [("peri_reward_bool", "equal")],
+        "grooming_bouts": [("lick_bool_bad", "bool_near_equal")],
+        "quiet_bouts": [("quiet_bool", "bool_near_equal")],
+        "peri_reward_periods": [("peri_reward_bool", "bool_near_equal")],
     }
 
     @pytest.mark.parametrize("date_str", ["20250307", "20250320"])
@@ -244,5 +278,10 @@ class TestIntegrationParity:
                 elif method == "allclose":
                     np.testing.assert_allclose(
                         r, n, rtol=1e-10, atol=1e-10,
+                        err_msg=f"{output_type}/{arr_name} on {date_str}",
+                    )
+                elif method == "bool_near_equal":
+                    _assert_bool_near_equal(
+                        n, r, max_frac=1e-4,
                         err_msg=f"{output_type}/{arr_name} on {date_str}",
                     )

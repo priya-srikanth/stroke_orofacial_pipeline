@@ -13,8 +13,11 @@
 #
 # Dep scope is derived from a full import audit of src/ + tests/ + notebooks/
 # performed during Phase 13 (see docs/DECISIONS.md 2026-04-19 "Phase 13 env
-# unification"). Every package listed below traces to a real import or is
-# called out in a comment.
+# unification" and 2026-04-20 "Phase 13 vendor bnpm"). Every package listed
+# below traces to a real import or is called out in a comment. bnpm was
+# dropped 2026-04-20 after its transitive torch dependency broke on Windows
+# (WinError 127 on shm.dll); the 4 helpers we used are vendored into
+# src/stroke_orofacial/_utils/bool_indexing.py under bnpm's MIT license.
 #
 # Python 3.11 is the target (matches `requires-python = ">=3.11"` in
 # pyproject.toml). The legacy Windows `deeplabcut` env pinned Python 3.10 to
@@ -29,9 +32,9 @@ channels:
 # incompatible HDF5 binaries. Symptom: `import h5py` raised
 # `ImportError: DLL load failed while importing _errors: The specified
 # procedure could not be found.` even though `import tables` worked. Keeping
-# all C-extension deps (h5py, pytables, hdf5, blosc, numba, llvmlite) on a
-# single channel avoids this entirely. See docs/DECISIONS.md
-# (2026-04-19 Phase 13 env unification) for the full diagnosis.
+# all C-extension deps (h5py, pytables, hdf5, blosc) on a single channel
+# avoids this entirely. See docs/DECISIONS.md (2026-04-19 Phase 13 env
+# unification) for the full diagnosis.
 dependencies:
   - python=3.11
   - pip
@@ -85,18 +88,6 @@ dependencies:
                     #   pixel-bin distribution comparison). Used in 3 legacy
                     #   DLC stats notebooks. Conda-forge package name is `pot`.
 
-  # ---- Build toolchain + JIT runtime (pre-installed so pip doesn't build from source) ----
-  # `numba` + its `llvmlite` dep are transitively required by `bnpm[core]`.
-  # PyPI does not ship pre-built llvmlite wheels for Intel Mac + Python 3.11,
-  # which would otherwise force pip to build llvmlite from source (requires
-  # cmake, fails out-of-box on Mac without Xcode CLI tools). conda-forge ships
-  # binary numba+llvmlite for both Mac and Windows, so installing them here
-  # via conda makes the subsequent pip install of bnpm[core] a no-op on this
-  # front. `cmake` is included as a belt-and-suspenders fallback so any other
-  # pip-installed package needing a source build can proceed.
-  - numba
-  - cmake
-
   # ---- Dev + notebook runtime ----
   - pytest
   - ruff
@@ -116,11 +107,6 @@ dependencies:
   # note above for the full diagnosis; see docs/MIGRATION_LOG.md Phase 13
   # for the exact post-create install sequence.
   - pip:
-      - "bnpm[core]"                # bnpm.indexing + bnpm.timeSeries helpers.
-                                    # The [core] extra installs only the
-                                    # lightweight deps we actually use — see
-                                    # https://pypi.org/project/bnpm/. Plain
-                                    # `bnpm` pulls in heavy optional deps.
       - scicomap                    # scientific colormaps; used in 6 legacy
                                     # DLC spatial notebooks. Not on conda-forge
                                     # as of 2026-04; pip-install from PyPI.
@@ -128,6 +114,24 @@ dependencies:
 # Deliberately NOT included (audited unused across src/, tests/, and notebooks/):
 #   - opencv-contrib-python    — no imports anywhere (video I/O handled upstream by DLC on O2)
 #   - tqdm                     — no imports anywhere
+#
+# Deliberately NOT included (vendored — see docs/DECISIONS.md 2026-04-20 "Phase 13 vendor bnpm"):
+#   - bnpm / bnpm[core]        — only 4 pure-numpy helpers were used; vendored
+#                                into src/stroke_orofacial/_utils/bool_indexing.py
+#                                under bnpm's MIT license. The reason it is no
+#                                longer a dep is that bnpm imports torch at
+#                                module load, and PyPI torch on Windows clashes
+#                                with the conda-forge MKL/OpenMP stack (OMP
+#                                Error #15, WinError 127 on torch\lib\shm.dll).
+#   - torch / pytorch          — was pulled in transitively by bnpm; nothing in
+#                                src/ / tests/ / notebooks/ imports torch now
+#                                that the 4 bnpm helpers are vendored.
+#   - numba / llvmlite         — was pre-installed to dodge the bnpm[core] pip
+#                                source-build path for llvmlite on Intel Mac
+#                                + Python 3.11. With bnpm gone, no package in
+#                                this env needs numba.
+#   - cmake                    — was the belt-and-suspenders fallback for the
+#                                same bnpm[core] source build. No longer needed.
 #
 # Deliberately NOT included (belongs in `deeplabcut` env, not in analysis env):
 #   - deeplabcut, pytorch, torchvision, cudatoolkit, tensorflow, ffmpeg,

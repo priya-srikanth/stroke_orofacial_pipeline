@@ -11,8 +11,13 @@ from __future__ import annotations
 
 from typing import Any
 
-import bnpm.indexing
 import numpy as np
+
+from stroke_orofacial._utils.bool_indexing import (
+    idx2bool,
+    set_short_bool_to_low,
+    widen_bool_sparse,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -51,11 +56,11 @@ def find_running_bouts(
 
     # Fill brief gaps (invert, remove short True runs, re-invert)
     gap_n = int(Fs * params["max_gap_duration"])
-    bout_mask = ~bnpm.indexing.set_short_bool_to_low(~bout_mask, n=gap_n)
+    bout_mask = ~set_short_bool_to_low(~bout_mask, n=gap_n)
 
     # Drop short bouts
     run_n = int(Fs * params["min_duration"])
-    bout_mask = bnpm.indexing.set_short_bool_to_low(bout_mask, n=run_n)
+    bout_mask = set_short_bool_to_low(bout_mask, n=run_n)
 
     return bout_mask
 
@@ -110,13 +115,13 @@ def find_grooming_bouts(
 
     # 1) Convert indices to boolean
     lick_bool = {
-        s: bnpm.indexing.idx2bool(idx=lick_indices[s], length=n_samples)
+        s: idx2bool(idx=lick_indices[s], length=n_samples)
         for s in ("Lick_L", "Lick_R")
     }
 
     # 2) Widen for conjunction violations
     wide = {
-        s: bnpm.indexing.widen_bool_sparse(
+        s: widen_bool_sparse(
             b=lick_bool[s], n_before=conj_before, n_after=conj_after
         )
         for s in ("Lick_L", "Lick_R")
@@ -127,7 +132,7 @@ def find_grooming_bouts(
 
     # 4) Long-touch violations
     long_viol = {
-        s: bnpm.indexing.set_short_bool_to_low(b=lick_bool[s], n=max_long)
+        s: set_short_bool_to_low(b=lick_bool[s], n=max_long)
         for s in ("Lick_L", "Lick_R")
     }
 
@@ -135,8 +140,8 @@ def find_grooming_bouts(
     bad = wide_conj | long_viol["Lick_L"] | long_viol["Lick_R"]
 
     # 6) Widen bad regions, then remove short good gaps
-    bad = bnpm.indexing.widen_bool_sparse(b=bad, n_before=bad_before, n_after=bad_after)
-    bad = ~bnpm.indexing.set_short_bool_to_low(b=~bad, n=min_good)
+    bad = widen_bool_sparse(b=bad, n_before=bad_before, n_after=bad_after)
+    bad = ~set_short_bool_to_low(b=~bad, n=min_good)
 
     return bad
 
@@ -188,17 +193,17 @@ def find_quiet_bouts(
     """
 
     def widen(b: np.ndarray, before_s: float, after_s: float) -> np.ndarray:
-        return bnpm.indexing.widen_bool_sparse(
+        return widen_bool_sparse(
             b=b, n_before=int(before_s * Fs), n_after=int(after_s * Fs)
         )
 
     # Convert lick/reward indices to boolean
     lick_bool = {
-        side: bnpm.indexing.idx2bool(idx=lick_indices[f"Lick_{side}"], length=n_samples)
+        side: idx2bool(idx=lick_indices[f"Lick_{side}"], length=n_samples)
         for side in ("L", "R")
     }
     reward_bool = {
-        side: bnpm.indexing.idx2bool(idx=reward_indices[f"Reward_{side}"], length=n_samples)
+        side: idx2bool(idx=reward_indices[f"Reward_{side}"], length=n_samples)
         for side in ("L", "R")
     }
 
@@ -216,7 +221,7 @@ def find_quiet_bouts(
     )
 
     # Remove short quiet periods
-    quiet = bnpm.indexing.set_short_bool_to_low(
+    quiet = set_short_bool_to_low(
         quiet, n=int(params["min_quiet_duration"] * Fs)
     )
 

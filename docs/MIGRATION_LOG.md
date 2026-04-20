@@ -789,3 +789,90 @@ manual verification, debugging, batch-size scout monitoring).
 - [x] Phase 5 tests: 18/18 pass (no regression).
 - [x] Functional verification on PS46/20250307 (tongue + nose).
 - [x] 10 bodyparts configured in reward-aligned config.
+
+---
+
+## Phase 13 — Env unification + bnpm vendoring
+
+**Dates:** 2026-04-19 (env unification) → 2026-04-20 (bnpm vendoring).
+
+**What was done:**
+
+### Sub-phase 13a: Unified environment.yml
+- Replaced the `environment-mac.yml` (`frsb`) + `environment-windows.yml`
+  (`deeplabcut` placeholder) pair with a single `environment.yml` creating
+  the `stroke_orofacial` env (Python 3.11, conda-forge primary).
+- Runs PARALLEL to existing envs — `frsb` (Mac) and `deeplabcut` (Windows)
+  are not touched; `deeplabcut` remains the DLC training / O2 inference /
+  Keypoint-MoSeq env.
+- Dep scope derived from a full import audit of `src/`, `tests/`,
+  `notebooks/`, and every legacy notebook under
+  `/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/code/`.
+- Dropped (unused anywhere): `opencv-contrib-python`, `tqdm`.
+- Added (in-flight ports reference them): `patsy`, `pot`, `scicomap`,
+  `nbconvert`.
+- Pinned the HDF5 stack to avoid silent ABI skew on Windows:
+  `hdf5=1.14.*`, `pytables=3.10.*`, `h5py` unpinned (conda-forge resolves
+  it), `pywavesurfer` installed post-env-create via
+  `pip install pywavesurfer --no-deps` (its wheel pins `h5py==3.8.0` and
+  would otherwise downgrade conda h5py to a PyPI wheel with its own
+  hdf5.dll, colliding with pytables' conda hdf5.dll).
+- `pyproject.toml` `[project.dependencies]` brought into agreement with
+  `environment.yml` so `pip install -e .` produces an equivalent install.
+- See docs/DECISIONS.md "2026-04-19 Phase 13 env unification" for the
+  full channel / pin / exclusion rationale.
+
+### Sub-phase 13b: Vendor 4 bnpm helpers, drop bnpm / torch
+- After 13a, pytest couldn't collect on Windows: `import bnpm.indexing`
+  failed with `OSError: [WinError 127]` on `torch\lib\shm.dll` plus
+  `OMP: Error #15: Initializing libomp.dll, but found libiomp5md.dll
+  already initialized`. Root cause: bnpm unconditionally imports torch at
+  module load, and PyPI torch 2.11.0 on Windows bundles Intel OpenMP
+  (libiomp5md.dll) clashing with conda-forge MKL's LLVM OpenMP (libomp.dll).
+- Usage audit showed the repo uses exactly four bnpm helpers, all pure
+  numpy: `bnpm.indexing.{idx2bool, widen_bool_sparse, set_short_bool_to_low}`
+  and `bnpm.timeSeries.simple_smooth`.
+- Vendored all four into
+  `src/stroke_orofacial/_utils/bool_indexing.py` under bnpm's MIT license
+  (© 2021 RichieHakim; license text reproduced in the module docstring).
+  `gaussian_smooth_1d` is a faithful 1-D reconstruction of
+  `simple_smooth` using the same kernel formula from
+  `bnpm.math_functions.gaussian` (`x = linspace(-5σ, 5σ, 7σ samples)`,
+  `kernel = (1/(√2π σ)) exp(-0.5 (x/σ)²)`) with edge-normalized
+  `np.convolve` (``mode='same'``).
+- Updated `bouts.py` (10 callsites) and `wavesurfer_io.py` (1 callsite)
+  to import from `stroke_orofacial._utils.bool_indexing`.
+- Dropped `bnpm[core]` from both `environment.yml` and `pyproject.toml`.
+  Also dropped `numba`, `llvmlite`, `cmake` from `environment.yml` —
+  those were only in the env to dodge the `bnpm[core]` pip source-build
+  path on Intel Mac.
+- Added `tests/test_vendored_bool_indexing.py` with per-function parity
+  tests that compare vendored output to live bnpm output on
+  deterministic + random inputs. Each test begins with
+  `pytest.importorskip("bnpm.indexing")` / `pytest.importorskip(
+  "bnpm.timeSeries")` so the suite skips cleanly in the new
+  (bnpm-less) env and provides hard parity evidence on any machine that
+  still has bnpm installed (e.g. Priya's Mac `frsb` env).
+- See docs/DECISIONS.md "2026-04-20 Phase 13 vendor bnpm" for the full
+  decision trail.
+
+**Intentional behavior differences vs. legacy:**
+
+1. **`bnpm` is no longer a runtime dependency.** The four helpers we used
+   are now vendored, not imported. The vendored code is byte-for-byte
+   (for the boolean helpers) or kernel-for-kernel (for `gaussian_smooth_1d`)
+   equivalent to bnpm 0.7.1, covered by the parity test suite.
+2. **No torch in the env closure.** All legacy-notebook code paths that
+   imported torch ran inside the `deeplabcut` env, which is untouched.
+
+**Exit criteria:**
+- [x] `conda env create -f environment.yml` succeeds on Mac.
+- [x] `conda env create -f environment.yml` succeeds on Windows.
+- [x] `pip install -e .` succeeds in the new env on both platforms.
+- [x] `pip install pywavesurfer --no-deps` completes cleanly.
+- [x] `pytest tests/` passes in the new env on Mac (parity tests run
+  against live bnpm in `frsb`).
+- [ ] `pytest tests/` passes in the new env on Windows (parity tests skip
+  because bnpm isn't installed; remaining tests green).
+- [ ] `environment-mac.yml` + `environment-windows.yml` stubs `git rm`-ed.
+- [ ] PR merged to main and tagged `v0.7-phase-13-env-unified`.

@@ -7,15 +7,21 @@ name = "stroke_orofacial"
 version = "0.0.1"
 description = "Consolidated analysis pipeline for post-stroke orofacial motor plasticity"
 requires-python = ">=3.11"
-# Dep scope audited during Phase 13 (2026-04-19); see docs/DECISIONS.md entry
-# "Phase 13 env unification" and environment.yml for rationale.
+# Dep scope audited during Phase 13 (2026-04-19, vendoring amendment
+# 2026-04-20); see docs/DECISIONS.md entries "Phase 13 env unification" and
+# "Phase 13 vendor bnpm" and environment.yml for rationale.
 #   - opencv-contrib-python and tqdm dropped: no imports in src/, tests/,
 #     notebooks/, or any surviving legacy analysis notebook on MICROSCOPE/
 #     Priya/DeepLabCut/code/.
 #   - patsy, pot, scicomap added: imported by legacy DLC analysis notebooks
 #     scheduled for Phase 5/7/9 ports.
-#   - bnpm installs with the [core] extra per https://pypi.org/project/bnpm/
-#     (plain `bnpm` pulls in heavy optional deps we don't use).
+#   - bnpm dropped: only 4 pure-numpy helpers were used
+#     (bnpm.indexing.idx2bool / widen_bool_sparse / set_short_bool_to_low and
+#     bnpm.timeSeries.simple_smooth). Vendored into
+#     src/stroke_orofacial/_utils/bool_indexing.py under bnpm's MIT license
+#     because bnpm unconditionally imports torch at module load, and PyPI
+#     torch on Windows collides with the conda-forge MKL/OpenMP stack
+#     (WinError 127 on shm.dll). See docs/DECISIONS.md 2026-04-20.
 dependencies = [
     "numpy",
     "pandas",
@@ -31,8 +37,13 @@ dependencies = [
     "scicomap",         # scientific colormaps — used in Phase 5/6 figure ports
     "h5py",
     "pyyaml",
-    "bnpm[core]",
-    "pywavesurfer",
+    # pywavesurfer is intentionally NOT listed here. Its wheel pins
+    # h5py==3.8.0, which pip would otherwise pull from PyPI and build
+    # from source (no Py3.11 macOS wheel exists), failing on clang.
+    # Install it manually post-env-create via
+    #     pip install pywavesurfer --no-deps
+    # See environment.yml's h5py / pywavesurfer comment block and
+    # docs/MIGRATION_LOG.md Phase 13 for the full rationale.
     "tables",           # pd.read_hdf backend for DLC *_filtered.h5
 ]
 
