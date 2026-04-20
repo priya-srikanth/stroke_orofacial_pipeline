@@ -1,0 +1,519 @@
+=== Cross-Session Alignment Regime Sweep ===
+Reference mode: mean_of_baseline
+Animals included: ['PS46', 'PS47', 'PS48', 'PS49', 'PS50', 'PS51', 'PS54', 'PS55']
+Bodyparts compared: ['tongue', 'jaw', 'nose', 'L_whiskers_1', 'L_whiskers_2', 'L_whiskers_3', 'R_whiskers_1', 'R_whiskers_2', 'R_whiskers_3', 'L_eye', 'R_eye', 'L_spout', 'R_spout']
+Regimes: ['eye_affine', 'eye_rigid', 'eye_centered', 'spout_centered']
+Likelihood thresholds: bodypart=0.7, eye=0.9, spout=0.7
+Heatmap bins: 80 x 80
+
+== Per-animal transform ranges (eye_affine) ==
+Animal   N     scale_mean   scale_std    rot_std_deg    |t|_median_px  |t|_max_px  
+-------------------------------------------------------------------------------------
+PS46     21    1.00650      0.00733      0.2226         9.402          18.511      
+PS47     21    0.99696      0.00757      0.4264         9.148          21.290      
+PS48     21    0.99395      0.00978      0.2672         11.453         23.252      
+PS49     22    0.98921      0.01793      0.4397         11.414         26.341      
+PS50     18    0.99331      0.01058      0.3506         9.462          26.283      
+PS51     53    0.96593      0.03524      0.5581         14.779         40.289      
+PS54     54    0.95585      0.03053      0.6071         14.126         25.285      
+PS55     53    0.98067      0.03065      0.5561         14.308         34.045      
+
+== Metric table (pairwise across sessions, aggregated) ==
+Animal   Bodypart         Regime           N_sess   Pearson r    JS (bits)   
+-------------------------------------------------------------------------------------
+PS46     tongue           eye_affine       21       0.6142       0.2410      
+PS46     tongue           eye_rigid        21       0.6264       0.2379      
+PS46     tongue           eye_centered     21       0.6392       0.2317      
+PS46     tongue           spout_centered   21       0.7883       0.1791      
+PS46     jaw              eye_affine       21       0.8389       0.1066      
+PS46     jaw              eye_rigid        21       0.8068       0.1261      
+PS46     jaw              eye_centered     21       0.8277       0.1186      
+PS46     jaw              spout_centered   21       0.6231       0.2287      
+PS46     nose             eye_affine       21       0.7208       0.1634      
+PS46     nose             eye_rigid        21       0.7195       0.1622      
+PS46     nose             eye_centered     21       0.7646       0.1372      
+PS46     nose             spout_centered   21       0.5921       0.2473      
+PS46     L_whiskers_1     eye_affine       21       0.7620       0.1426      
+PS46     L_whiskers_1     eye_rigid        21       0.7220       0.1700      
+PS46     L_whiskers_1     eye_centered     21       0.7545       0.1482      
+PS46     L_whiskers_1     spout_centered   21       0.4067       0.4165      
+PS46     L_whiskers_2     eye_affine       21       0.8297       0.1084      
+PS46     L_whiskers_2     eye_rigid        21       0.8273       0.1096      
+PS46     L_whiskers_2     eye_centered     21       0.8614       0.0885      
+PS46     L_whiskers_2     spout_centered   21       0.5076       0.3678      
+PS46     L_whiskers_3     eye_affine       21       0.7677       0.1372      
+PS46     L_whiskers_3     eye_rigid        21       0.7317       0.1625      
+PS46     L_whiskers_3     eye_centered     21       0.7564       0.1444      
+PS46     L_whiskers_3     spout_centered   21       0.4129       0.4261      
+PS46     R_whiskers_1     eye_affine       21       0.7639       0.1506      
+PS46     R_whiskers_1     eye_rigid        21       0.8282       0.1117      
+PS46     R_whiskers_1     eye_centered     21       0.8483       0.0976      
+PS46     R_whiskers_1     spout_centered   21       0.4162       0.4176      
+PS46     R_whiskers_2     eye_affine       21       0.8725       0.0850      
+PS46     R_whiskers_2     eye_rigid        21       0.8660       0.0857      
+PS46     R_whiskers_2     eye_centered     21       0.8625       0.0880      
+PS46     R_whiskers_2     spout_centered   21       0.4928       0.3704      
+PS46     R_whiskers_3     eye_affine       21       0.7673       0.1525      
+PS46     R_whiskers_3     eye_rigid        21       0.8248       0.1082      
+PS46     R_whiskers_3     eye_centered     21       0.8434       0.0964      
+PS46     R_whiskers_3     spout_centered   21       0.4422       0.4156      
+PS46     L_eye            eye_affine       21       0.9835       0.0276      
+PS46     L_eye            eye_rigid        21       0.6216       0.2867      
+PS46     L_eye            eye_centered     21       0.6015       0.3067      
+PS46     L_eye            spout_centered   21       0.0431       0.9210      
+PS46     R_eye            eye_affine       21       0.8988       0.0944      
+PS46     R_eye            eye_rigid        21       0.6676       0.2573      
+PS46     R_eye            eye_centered     21       0.6752       0.2492      
+PS46     R_eye            spout_centered   21       0.0536       0.9029      
+PS46     L_spout          eye_affine       21       0.0278       0.9508      
+PS46     L_spout          eye_rigid        21       0.0393       0.9413      
+PS46     L_spout          eye_centered     21       0.0438       0.9321      
+PS46     L_spout          spout_centered   21       0.4718       0.4495      
+PS46     R_spout          eye_affine       21       0.0259       0.9645      
+PS46     R_spout          eye_rigid        21       0.0512       0.9401      
+PS46     R_spout          eye_centered     21       0.0523       0.9286      
+PS46     R_spout          spout_centered   21       0.4520       0.4692      
+PS47     tongue           eye_affine       21       0.7073       0.1709      
+PS47     tongue           eye_rigid        21       0.7115       0.1662      
+PS47     tongue           eye_centered     21       0.6863       0.1626      
+PS47     tongue           spout_centered   21       0.7849       0.1233      
+PS47     jaw              eye_affine       21       0.8224       0.1027      
+PS47     jaw              eye_rigid        21       0.7867       0.1234      
+PS47     jaw              eye_centered     21       0.7636       0.1241      
+PS47     jaw              spout_centered   21       0.5844       0.2591      
+PS47     nose             eye_affine       21       0.8096       0.1274      
+PS47     nose             eye_rigid        21       0.7919       0.1406      
+PS47     nose             eye_centered     21       0.8110       0.1254      
+PS47     nose             spout_centered   21       0.6240       0.2284      
+PS47     L_whiskers_1     eye_affine       21       0.8256       0.1313      
+PS47     L_whiskers_1     eye_rigid        21       0.8393       0.1242      
+PS47     L_whiskers_1     eye_centered     21       0.8541       0.1145      
+PS47     L_whiskers_1     spout_centered   21       0.5646       0.2983      
+PS47     L_whiskers_2     eye_affine       21       0.8240       0.1199      
+PS47     L_whiskers_2     eye_rigid        21       0.8710       0.0865      
+PS47     L_whiskers_2     eye_centered     21       0.8258       0.1115      
+PS47     L_whiskers_2     spout_centered   21       0.5555       0.3295      
+PS47     L_whiskers_3     eye_affine       21       0.8243       0.1298      
+PS47     L_whiskers_3     eye_rigid        21       0.8452       0.1102      
+PS47     L_whiskers_3     eye_centered     21       0.8499       0.1059      
+PS47     L_whiskers_3     spout_centered   21       0.5645       0.3139      
+PS47     R_whiskers_1     eye_affine       21       0.8725       0.0932      
+PS47     R_whiskers_1     eye_rigid        21       0.8324       0.1267      
+PS47     R_whiskers_1     eye_centered     21       0.8508       0.1097      
+PS47     R_whiskers_1     spout_centered   21       0.5356       0.3370      
+PS47     R_whiskers_2     eye_affine       21       0.8300       0.1173      
+PS47     R_whiskers_2     eye_rigid        21       0.8147       0.1273      
+PS47     R_whiskers_2     eye_centered     21       0.8396       0.1072      
+PS47     R_whiskers_2     spout_centered   21       0.5494       0.3362      
+PS47     R_whiskers_3     eye_affine       21       0.8846       0.0868      
+PS47     R_whiskers_3     eye_rigid        21       0.8358       0.1209      
+PS47     R_whiskers_3     eye_centered     21       0.8552       0.1084      
+PS47     R_whiskers_3     spout_centered   21       0.5257       0.3602      
+PS47     L_eye            eye_affine       21       0.9910       0.0188      
+PS47     L_eye            eye_rigid        21       0.9195       0.0979      
+PS47     L_eye            eye_centered     21       0.7288       0.2308      
+PS47     L_eye            spout_centered   21       0.1090       0.8514      
+PS47     R_eye            eye_affine       21       0.9573       0.0340      
+PS47     R_eye            eye_rigid        21       0.9434       0.0605      
+PS47     R_eye            eye_centered     21       0.8423       0.1537      
+PS47     R_eye            spout_centered   21       0.1165       0.8366      
+PS47     L_spout          eye_affine       21       0.0828       0.8985      
+PS47     L_spout          eye_rigid        21       0.0606       0.9179      
+PS47     L_spout          eye_centered     21       0.0668       0.9143      
+PS47     L_spout          spout_centered   21       0.6324       0.3048      
+PS47     R_spout          eye_affine       21       0.0690       0.9174      
+PS47     R_spout          eye_rigid        21       0.0644       0.9246      
+PS47     R_spout          eye_centered     21       0.0909       0.8881      
+PS47     R_spout          spout_centered   21       0.6398       0.3148      
+PS48     tongue           eye_affine       21       0.7231       0.1677      
+PS48     tongue           eye_rigid        21       0.7298       0.1566      
+PS48     tongue           eye_centered     21       0.7451       0.1575      
+PS48     tongue           spout_centered   21       0.8191       0.1171      
+PS48     jaw              eye_affine       21       0.7041       0.1836      
+PS48     jaw              eye_rigid        21       0.7960       0.1292      
+PS48     jaw              eye_centered     21       0.7974       0.1290      
+PS48     jaw              spout_centered   21       0.6067       0.2580      
+PS48     nose             eye_affine       21       0.7851       0.1160      
+PS48     nose             eye_rigid        21       0.8005       0.1142      
+PS48     nose             eye_centered     21       0.8419       0.0966      
+PS48     nose             spout_centered   21       0.6389       0.2153      
+PS48     L_whiskers_1     eye_affine       21       0.7784       0.1388      
+PS48     L_whiskers_1     eye_rigid        21       0.7336       0.1608      
+PS48     L_whiskers_1     eye_centered     21       0.7611       0.1449      
+PS48     L_whiskers_1     spout_centered   21       0.5105       0.3443      
+PS48     L_whiskers_2     eye_affine       21       0.6807       0.2055      
+PS48     L_whiskers_2     eye_rigid        21       0.8015       0.1251      
+PS48     L_whiskers_2     eye_centered     21       0.7839       0.1329      
+PS48     L_whiskers_2     spout_centered   21       0.6292       0.2606      
+PS48     L_whiskers_3     eye_affine       21       0.7352       0.1754      
+PS48     L_whiskers_3     eye_rigid        21       0.7206       0.1637      
+PS48     L_whiskers_3     eye_centered     21       0.7357       0.1552      
+PS48     L_whiskers_3     spout_centered   21       0.5204       0.3373      
+PS48     R_whiskers_1     eye_affine       21       0.6664       0.2143      
+PS48     R_whiskers_1     eye_rigid        21       0.7289       0.1645      
+PS48     R_whiskers_1     eye_centered     21       0.7779       0.1345      
+PS48     R_whiskers_1     spout_centered   21       0.4134       0.4301      
+PS48     R_whiskers_2     eye_affine       21       0.6403       0.2328      
+PS48     R_whiskers_2     eye_rigid        21       0.8062       0.1168      
+PS48     R_whiskers_2     eye_centered     21       0.8083       0.1179      
+PS48     R_whiskers_2     spout_centered   21       0.4919       0.3570      
+PS48     R_whiskers_3     eye_affine       21       0.6572       0.2276      
+PS48     R_whiskers_3     eye_rigid        21       0.7689       0.1450      
+PS48     R_whiskers_3     eye_centered     21       0.7928       0.1252      
+PS48     R_whiskers_3     spout_centered   21       0.4636       0.3921      
+PS48     L_eye            eye_affine       21       0.9179       0.0832      
+PS48     L_eye            eye_rigid        21       0.4655       0.4351      
+PS48     L_eye            eye_centered     21       0.4231       0.4632      
+PS48     L_eye            spout_centered   21       0.0871       0.8569      
+PS48     R_eye            eye_affine       21       0.8829       0.1019      
+PS48     R_eye            eye_rigid        21       0.4185       0.4695      
+PS48     R_eye            eye_centered     21       0.3616       0.5199      
+PS48     R_eye            spout_centered   21       0.0466       0.9109      
+PS48     L_spout          eye_affine       21       0.0284       0.9472      
+PS48     L_spout          eye_rigid        21       0.0329       0.9407      
+PS48     L_spout          eye_centered     21       0.0395       0.9232      
+PS48     L_spout          spout_centered   21       0.4991       0.4096      
+PS48     R_spout          eye_affine       21       0.0730       0.9116      
+PS48     R_spout          eye_rigid        21       0.1511       0.8208      
+PS48     R_spout          eye_centered     21       0.2115       0.7753      
+PS48     R_spout          spout_centered   21       0.6329       0.3223      
+PS49     tongue           eye_affine       22       0.7285       0.1688      
+PS49     tongue           eye_rigid        22       0.7435       0.1518      
+PS49     tongue           eye_centered     22       0.7749       0.1313      
+PS49     tongue           spout_centered   22       0.8865       0.0734      
+PS49     jaw              eye_affine       22       0.6064       0.2361      
+PS49     jaw              eye_rigid        22       0.7225       0.1642      
+PS49     jaw              eye_centered     22       0.7747       0.1242      
+PS49     jaw              spout_centered   22       0.6923       0.1796      
+PS49     nose             eye_affine       22       0.6086       0.2124      
+PS49     nose             eye_rigid        22       0.6569       0.1846      
+PS49     nose             eye_centered     22       0.7354       0.1440      
+PS49     nose             spout_centered   22       0.5630       0.2388      
+PS49     L_whiskers_1     eye_affine       22       0.4961       0.3581      
+PS49     L_whiskers_1     eye_rigid        22       0.6031       0.2584      
+PS49     L_whiskers_1     eye_centered     22       0.6482       0.2228      
+PS49     L_whiskers_1     spout_centered   22       0.4425       0.4080      
+PS49     L_whiskers_2     eye_affine       22       0.4659       0.3897      
+PS49     L_whiskers_2     eye_rigid        22       0.7277       0.1697      
+PS49     L_whiskers_2     eye_centered     22       0.7889       0.1277      
+PS49     L_whiskers_2     spout_centered   22       0.5444       0.3164      
+PS49     L_whiskers_3     eye_affine       22       0.5571       0.3472      
+PS49     L_whiskers_3     eye_rigid        22       0.7615       0.1777      
+PS49     L_whiskers_3     eye_centered     22       0.8003       0.1489      
+PS49     L_whiskers_3     spout_centered   22       0.5460       0.3443      
+PS49     R_whiskers_1     eye_affine       22       0.5414       0.3051      
+PS49     R_whiskers_1     eye_rigid        22       0.5971       0.2650      
+PS49     R_whiskers_1     eye_centered     22       0.6780       0.2081      
+PS49     R_whiskers_1     spout_centered   22       0.4113       0.4213      
+PS49     R_whiskers_2     eye_affine       22       0.4661       0.3830      
+PS49     R_whiskers_2     eye_rigid        22       0.6856       0.1991      
+PS49     R_whiskers_2     eye_centered     22       0.7740       0.1343      
+PS49     R_whiskers_2     spout_centered   22       0.5525       0.3003      
+PS49     R_whiskers_3     eye_affine       22       0.5087       0.3572      
+PS49     R_whiskers_3     eye_rigid        22       0.6214       0.2581      
+PS49     R_whiskers_3     eye_centered     22       0.6945       0.2040      
+PS49     R_whiskers_3     spout_centered   22       0.4533       0.4013      
+PS49     L_eye            eye_affine       22       0.9467       0.0659      
+PS49     L_eye            eye_rigid        22       0.6670       0.2979      
+PS49     L_eye            eye_centered     22       0.5822       0.3617      
+PS49     L_eye            spout_centered   22       0.2111       0.7391      
+PS49     R_eye            eye_affine       22       0.7185       0.2207      
+PS49     R_eye            eye_rigid        22       0.3709       0.5461      
+PS49     R_eye            eye_centered     22       0.2613       0.6395      
+PS49     R_eye            spout_centered   22       0.0688       0.8809      
+PS49     L_spout          eye_affine       22       0.0368       0.9505      
+PS49     L_spout          eye_rigid        22       0.0530       0.9196      
+PS49     L_spout          eye_centered     22       0.0668       0.9019      
+PS49     L_spout          spout_centered   22       0.3621       0.5346      
+PS49     R_spout          eye_affine       22       0.0472       0.9402      
+PS49     R_spout          eye_rigid        22       0.0608       0.9158      
+PS49     R_spout          eye_centered     22       0.0697       0.9126      
+PS49     R_spout          spout_centered   22       0.5061       0.4514      
+PS50     tongue           eye_affine       18       0.6838       0.1895      
+PS50     tongue           eye_rigid        18       0.6910       0.1856      
+PS50     tongue           eye_centered     18       0.7802       0.1324      
+PS50     tongue           spout_centered   18       0.8874       0.0820      
+PS50     jaw              eye_affine       18       0.6199       0.2352      
+PS50     jaw              eye_rigid        18       0.6549       0.2052      
+PS50     jaw              eye_centered     18       0.6997       0.1699      
+PS50     jaw              spout_centered   18       0.6059       0.2514      
+PS50     nose             eye_affine       18       0.7304       0.1406      
+PS50     nose             eye_rigid        18       0.7320       0.1350      
+PS50     nose             eye_centered     18       0.7689       0.1121      
+PS50     nose             spout_centered   18       0.6814       0.1798      
+PS50     L_whiskers_1     eye_affine       18       0.7071       0.1795      
+PS50     L_whiskers_1     eye_rigid        18       0.7307       0.1603      
+PS50     L_whiskers_1     eye_centered     18       0.7684       0.1297      
+PS50     L_whiskers_1     spout_centered   18       0.5892       0.2860      
+PS50     L_whiskers_2     eye_affine       18       0.6621       0.2092      
+PS50     L_whiskers_2     eye_rigid        18       0.7032       0.1781      
+PS50     L_whiskers_2     eye_centered     18       0.7767       0.1250      
+PS50     L_whiskers_2     spout_centered   18       0.5951       0.2662      
+PS50     L_whiskers_3     eye_affine       18       0.6646       0.2138      
+PS50     L_whiskers_3     eye_rigid        18       0.7377       0.1578      
+PS50     L_whiskers_3     eye_centered     18       0.7822       0.1238      
+PS50     L_whiskers_3     spout_centered   18       0.5969       0.2762      
+PS50     R_whiskers_1     eye_affine       18       0.6475       0.2272      
+PS50     R_whiskers_1     eye_rigid        18       0.6689       0.2053      
+PS50     R_whiskers_1     eye_centered     18       0.7205       0.1674      
+PS50     R_whiskers_1     spout_centered   18       0.5085       0.3582      
+PS50     R_whiskers_2     eye_affine       18       0.6104       0.2637      
+PS50     R_whiskers_2     eye_rigid        18       0.6778       0.2070      
+PS50     R_whiskers_2     eye_centered     18       0.7254       0.1726      
+PS50     R_whiskers_2     spout_centered   18       0.5415       0.3330      
+PS50     R_whiskers_3     eye_affine       18       0.6366       0.2529      
+PS50     R_whiskers_3     eye_rigid        18       0.6841       0.2071      
+PS50     R_whiskers_3     eye_centered     18       0.7426       0.1636      
+PS50     R_whiskers_3     spout_centered   18       0.5041       0.3756      
+PS50     L_eye            eye_affine       18       0.9326       0.0696      
+PS50     L_eye            eye_rigid        18       0.5300       0.3933      
+PS50     L_eye            eye_centered     18       0.4665       0.4376      
+PS50     L_eye            spout_centered   18       0.0874       0.8650      
+PS50     R_eye            eye_affine       18       0.7853       0.1629      
+PS50     R_eye            eye_rigid        18       0.5101       0.3855      
+PS50     R_eye            eye_centered     18       0.4170       0.4657      
+PS50     R_eye            spout_centered   18       0.0602       0.8910      
+PS50     L_spout          eye_affine       18       0.0158       0.9679      
+PS50     L_spout          eye_rigid        18       0.0381       0.9405      
+PS50     L_spout          eye_centered     18       0.0279       0.9493      
+PS50     L_spout          spout_centered   18       0.4586       0.4881      
+PS50     R_spout          eye_affine       18       0.0303       0.9548      
+PS50     R_spout          eye_rigid        18       0.0277       0.9593      
+PS50     R_spout          eye_centered     18       0.0328       0.9498      
+PS50     R_spout          spout_centered   18       0.3756       0.5756      
+PS51     tongue           eye_affine       53       0.5005       0.3483      
+PS51     tongue           eye_rigid        53       0.5964       0.2819      
+PS51     tongue           eye_centered     53       0.5999       0.2757      
+PS51     tongue           spout_centered   53       0.6668       0.2430      
+PS51     jaw              eye_affine       53       0.4751       0.3620      
+PS51     jaw              eye_rigid        53       0.6044       0.2792      
+PS51     jaw              eye_centered     53       0.6218       0.2697      
+PS51     jaw              spout_centered   53       0.6068       0.2828      
+PS51     nose             eye_affine       53       0.5522       0.2958      
+PS51     nose             eye_rigid        53       0.5261       0.3089      
+PS51     nose             eye_centered     53       0.5208       0.3078      
+PS51     nose             spout_centered   53       0.4955       0.3339      
+PS51     L_whiskers_1     eye_affine       53       0.4014       0.4447      
+PS51     L_whiskers_1     eye_rigid        53       0.4515       0.3823      
+PS51     L_whiskers_1     eye_centered     53       0.4554       0.3764      
+PS51     L_whiskers_1     spout_centered   53       0.3738       0.4771      
+PS51     L_whiskers_2     eye_affine       53       0.3234       0.5622      
+PS51     L_whiskers_2     eye_rigid        53       0.6088       0.2699      
+PS51     L_whiskers_2     eye_centered     53       0.6047       0.2686      
+PS51     L_whiskers_2     spout_centered   53       0.5229       0.3488      
+PS51     L_whiskers_3     eye_affine       53       0.3628       0.5128      
+PS51     L_whiskers_3     eye_rigid        53       0.4653       0.3855      
+PS51     L_whiskers_3     eye_centered     53       0.4652       0.3832      
+PS51     L_whiskers_3     spout_centered   53       0.3622       0.5012      
+PS51     R_whiskers_1     eye_affine       53       0.5706       0.3053      
+PS51     R_whiskers_1     eye_rigid        53       0.5618       0.3043      
+PS51     R_whiskers_1     eye_centered     53       0.5494       0.3142      
+PS51     R_whiskers_1     spout_centered   53       0.4862       0.3781      
+PS51     R_whiskers_2     eye_affine       53       0.3148       0.5678      
+PS51     R_whiskers_2     eye_rigid        53       0.6520       0.2424      
+PS51     R_whiskers_2     eye_centered     53       0.6631       0.2373      
+PS51     R_whiskers_2     spout_centered   53       0.5638       0.3036      
+PS51     R_whiskers_3     eye_affine       53       0.5101       0.3797      
+PS51     R_whiskers_3     eye_rigid        53       0.5768       0.3090      
+PS51     R_whiskers_3     eye_centered     53       0.5642       0.3188      
+PS51     R_whiskers_3     spout_centered   53       0.5166       0.3621      
+PS51     L_eye            eye_affine       53       0.8547       0.1344      
+PS51     L_eye            eye_rigid        53       0.2401       0.7044      
+PS51     L_eye            eye_centered     53       0.2107       0.7312      
+PS51     L_eye            spout_centered   53       0.0771       0.8784      
+PS51     R_eye            eye_affine       53       0.8569       0.1242      
+PS51     R_eye            eye_rigid        53       0.2724       0.6766      
+PS51     R_eye            eye_centered     53       0.2159       0.7262      
+PS51     R_eye            spout_centered   53       0.0849       0.8625      
+PS51     L_spout          eye_affine       53       0.0125       0.9805      
+PS51     L_spout          eye_rigid        53       0.0680       0.9056      
+PS51     L_spout          eye_centered     53       0.0804       0.8943      
+PS51     L_spout          spout_centered   53       0.8236       0.1715      
+PS51     R_spout          eye_affine       53       0.0181       0.9731      
+PS51     R_spout          eye_rigid        53       0.0901       0.8735      
+PS51     R_spout          eye_centered     53       0.0880       0.8793      
+PS51     R_spout          spout_centered   53       0.8546       0.1387      
+PS54     tongue           eye_affine       54       0.3746       0.4984      
+PS54     tongue           eye_rigid        54       0.4159       0.4582      
+PS54     tongue           eye_centered     54       0.4421       0.4406      
+PS54     tongue           spout_centered   54       0.4832       0.4214      
+PS54     jaw              eye_affine       54       0.4349       0.4541      
+PS54     jaw              eye_rigid        54       0.4708       0.4140      
+PS54     jaw              eye_centered     54       0.5342       0.3583      
+PS54     jaw              spout_centered   54       0.6028       0.2953      
+PS54     nose             eye_affine       54       0.4670       0.3560      
+PS54     nose             eye_rigid        54       0.4583       0.3510      
+PS54     nose             eye_centered     54       0.4960       0.3211      
+PS54     nose             spout_centered   54       0.4923       0.3383      
+PS54     L_whiskers_1     eye_affine       54       0.2952       0.5654      
+PS54     L_whiskers_1     eye_rigid        54       0.4060       0.4270      
+PS54     L_whiskers_1     eye_centered     54       0.4444       0.3805      
+PS54     L_whiskers_1     spout_centered   54       0.4027       0.4354      
+PS54     L_whiskers_2     eye_affine       54       0.3415       0.5433      
+PS54     L_whiskers_2     eye_rigid        54       0.4594       0.3902      
+PS54     L_whiskers_2     eye_centered     54       0.4975       0.3578      
+PS54     L_whiskers_2     spout_centered   54       0.5128       0.3574      
+PS54     L_whiskers_3     eye_affine       54       0.2331       0.6483      
+PS54     L_whiskers_3     eye_rigid        54       0.3908       0.4368      
+PS54     L_whiskers_3     eye_centered     54       0.4253       0.3958      
+PS54     L_whiskers_3     spout_centered   54       0.4271       0.4289      
+PS54     R_whiskers_1     eye_affine       54       0.6290       0.2456      
+PS54     R_whiskers_1     eye_rigid        54       0.4401       0.4171      
+PS54     R_whiskers_1     eye_centered     54       0.4527       0.4011      
+PS54     R_whiskers_1     spout_centered   54       0.4638       0.3751      
+PS54     R_whiskers_2     eye_affine       54       0.4441       0.4489      
+PS54     R_whiskers_2     eye_rigid        54       0.4507       0.4226      
+PS54     R_whiskers_2     eye_centered     54       0.5032       0.3806      
+PS54     R_whiskers_2     spout_centered   54       0.5947       0.2854      
+PS54     R_whiskers_3     eye_affine       54       0.5861       0.2855      
+PS54     R_whiskers_3     eye_rigid        54       0.4246       0.4495      
+PS54     R_whiskers_3     eye_centered     54       0.4377       0.4342      
+PS54     R_whiskers_3     spout_centered   54       0.4642       0.3861      
+PS54     L_eye            eye_affine       54       0.6899       0.2488      
+PS54     L_eye            eye_rigid        54       0.3436       0.5705      
+PS54     L_eye            eye_centered     54       0.2993       0.6122      
+PS54     L_eye            spout_centered   54       0.1021       0.8500      
+PS54     R_eye            eye_affine       54       0.7501       0.2195      
+PS54     R_eye            eye_rigid        54       0.2532       0.6876      
+PS54     R_eye            eye_centered     54       0.2048       0.7306      
+PS54     R_eye            spout_centered   54       0.0970       0.8448      
+PS54     L_spout          eye_affine       54       0.0579       0.9348      
+PS54     L_spout          eye_rigid        54       0.0903       0.8935      
+PS54     L_spout          eye_centered     54       0.1253       0.8578      
+PS54     L_spout          spout_centered   54       0.9731       0.0502      
+PS54     R_spout          eye_affine       54       0.0279       0.9614      
+PS54     R_spout          eye_rigid        54       0.0336       0.9498      
+PS54     R_spout          eye_centered     54       0.0460       0.9315      
+PS54     R_spout          spout_centered   54       0.7978       0.1709      
+PS55     tongue           eye_affine       52       0.2946       0.5744      
+PS55     tongue           eye_rigid        52       0.3228       0.5362      
+PS55     tongue           eye_centered     52       0.3307       0.5279      
+PS55     tongue           spout_centered   52       0.3691       0.5012      
+PS55     jaw              eye_affine       53       0.4159       0.4671      
+PS55     jaw              eye_rigid        53       0.4982       0.3877      
+PS55     jaw              eye_centered     53       0.4520       0.4205      
+PS55     jaw              spout_centered   53       0.4449       0.4357      
+PS55     nose             eye_affine       53       0.5086       0.3386      
+PS55     nose             eye_rigid        53       0.4835       0.3509      
+PS55     nose             eye_centered     53       0.4559       0.3724      
+PS55     nose             spout_centered   53       0.3855       0.4479      
+PS55     L_whiskers_1     eye_affine       53       0.5420       0.3134      
+PS55     L_whiskers_1     eye_rigid        53       0.4070       0.4413      
+PS55     L_whiskers_1     eye_centered     53       0.3869       0.4633      
+PS55     L_whiskers_1     spout_centered   53       0.3025       0.5492      
+PS55     L_whiskers_2     eye_affine       53       0.3350       0.5510      
+PS55     L_whiskers_2     eye_rigid        53       0.4107       0.4601      
+PS55     L_whiskers_2     eye_centered     53       0.3779       0.4896      
+PS55     L_whiskers_2     spout_centered   53       0.3654       0.4989      
+PS55     L_whiskers_3     eye_affine       53       0.4039       0.4433      
+PS55     L_whiskers_3     eye_rigid        53       0.4441       0.4090      
+PS55     L_whiskers_3     eye_centered     53       0.4176       0.4362      
+PS55     L_whiskers_3     spout_centered   53       0.3358       0.5208      
+PS55     R_whiskers_1     eye_affine       53       0.3140       0.5681      
+PS55     R_whiskers_1     eye_rigid        53       0.5147       0.3509      
+PS55     R_whiskers_1     eye_centered     53       0.5072       0.3576      
+PS55     R_whiskers_1     spout_centered   53       0.2948       0.5462      
+PS55     R_whiskers_2     eye_affine       53       0.2873       0.5999      
+PS55     R_whiskers_2     eye_rigid        53       0.4540       0.3996      
+PS55     R_whiskers_2     eye_centered     53       0.4297       0.4161      
+PS55     R_whiskers_2     spout_centered   53       0.3840       0.4645      
+PS55     R_whiskers_3     eye_affine       53       0.3089       0.5872      
+PS55     R_whiskers_3     eye_rigid        53       0.5439       0.3286      
+PS55     R_whiskers_3     eye_centered     53       0.5183       0.3461      
+PS55     R_whiskers_3     spout_centered   53       0.3227       0.5287      
+PS55     L_eye            eye_affine       53       0.8154       0.1594      
+PS55     L_eye            eye_rigid        53       0.2609       0.6742      
+PS55     L_eye            eye_centered     53       0.1992       0.7271      
+PS55     L_eye            spout_centered   53       0.0702       0.8861      
+PS55     R_eye            eye_affine       53       0.7570       0.2150      
+PS55     R_eye            eye_rigid        53       0.2629       0.6698      
+PS55     R_eye            eye_centered     53       0.1926       0.7347      
+PS55     R_eye            spout_centered   53       0.0467       0.9250      
+PS55     L_spout          eye_affine       53       0.0220       0.9733      
+PS55     L_spout          eye_rigid        53       0.0551       0.9324      
+PS55     L_spout          eye_centered     53       0.0555       0.9288      
+PS55     L_spout          spout_centered   53       0.8821       0.1539      
+PS55     R_spout          eye_affine       53       0.0252       0.9678      
+PS55     R_spout          eye_rigid        53       0.0585       0.9258      
+PS55     R_spout          eye_centered     53       0.0589       0.9250      
+PS55     R_spout          spout_centered   53       0.7019       0.2392      
+
+== Per-bodypart regime ranking (Pearson: higher wins; JS: lower wins) ==
+
+  Bodypart: tongue
+    eye_affine        mean pearson r = 0.5783 (N_animals=8)  mean JS = 0.2949 bits
+    eye_rigid         mean pearson r = 0.6047 (N_animals=8)  mean JS = 0.2718 bits
+    eye_centered      mean pearson r = 0.6248 (N_animals=8)  mean JS = 0.2575 bits
+    spout_centered    mean pearson r = 0.7107 (N_animals=8)  mean JS = 0.2176 bits
+
+  Bodypart: jaw
+    eye_affine        mean pearson r = 0.6147 (N_animals=8)  mean JS = 0.2684 bits
+    eye_rigid         mean pearson r = 0.6675 (N_animals=8)  mean JS = 0.2286 bits
+    eye_centered      mean pearson r = 0.6839 (N_animals=8)  mean JS = 0.2143 bits
+    spout_centered    mean pearson r = 0.5959 (N_animals=8)  mean JS = 0.2738 bits
+
+  Bodypart: nose
+    eye_affine        mean pearson r = 0.6478 (N_animals=8)  mean JS = 0.2188 bits
+    eye_rigid         mean pearson r = 0.6461 (N_animals=8)  mean JS = 0.2184 bits
+    eye_centered      mean pearson r = 0.6743 (N_animals=8)  mean JS = 0.2021 bits
+    spout_centered    mean pearson r = 0.5591 (N_animals=8)  mean JS = 0.2787 bits
+
+  Bodypart: L_whiskers_1
+    eye_affine        mean pearson r = 0.6010 (N_animals=8)  mean JS = 0.2842 bits
+    eye_rigid         mean pearson r = 0.6117 (N_animals=8)  mean JS = 0.2655 bits
+    eye_centered      mean pearson r = 0.6341 (N_animals=8)  mean JS = 0.2476 bits
+    spout_centered    mean pearson r = 0.4491 (N_animals=8)  mean JS = 0.4018 bits
+
+  Bodypart: L_whiskers_2
+    eye_affine        mean pearson r = 0.5578 (N_animals=8)  mean JS = 0.3362 bits
+    eye_rigid         mean pearson r = 0.6762 (N_animals=8)  mean JS = 0.2236 bits
+    eye_centered      mean pearson r = 0.6896 (N_animals=8)  mean JS = 0.2127 bits
+    spout_centered    mean pearson r = 0.5291 (N_animals=8)  mean JS = 0.3432 bits
+
+  Bodypart: L_whiskers_3
+    eye_affine        mean pearson r = 0.5686 (N_animals=8)  mean JS = 0.3260 bits
+    eye_rigid         mean pearson r = 0.6371 (N_animals=8)  mean JS = 0.2504 bits
+    eye_centered      mean pearson r = 0.6541 (N_animals=8)  mean JS = 0.2367 bits
+    spout_centered    mean pearson r = 0.4707 (N_animals=8)  mean JS = 0.3936 bits
+
+  Bodypart: R_whiskers_1
+    eye_affine        mean pearson r = 0.6257 (N_animals=8)  mean JS = 0.2637 bits
+    eye_rigid         mean pearson r = 0.6465 (N_animals=8)  mean JS = 0.2432 bits
+    eye_centered      mean pearson r = 0.6731 (N_animals=8)  mean JS = 0.2238 bits
+    spout_centered    mean pearson r = 0.4412 (N_animals=8)  mean JS = 0.4079 bits
+
+  Bodypart: R_whiskers_2
+    eye_affine        mean pearson r = 0.5582 (N_animals=8)  mean JS = 0.3373 bits
+    eye_rigid         mean pearson r = 0.6759 (N_animals=8)  mean JS = 0.2251 bits
+    eye_centered      mean pearson r = 0.7007 (N_animals=8)  mean JS = 0.2067 bits
+    spout_centered    mean pearson r = 0.5213 (N_animals=8)  mean JS = 0.3438 bits
+
+  Bodypart: R_whiskers_3
+    eye_affine        mean pearson r = 0.6074 (N_animals=8)  mean JS = 0.2912 bits
+    eye_rigid         mean pearson r = 0.6600 (N_animals=8)  mean JS = 0.2408 bits
+    eye_centered      mean pearson r = 0.6811 (N_animals=8)  mean JS = 0.2246 bits
+    spout_centered    mean pearson r = 0.4615 (N_animals=8)  mean JS = 0.4027 bits
+
+  Bodypart: L_eye
+    eye_affine        mean pearson r = 0.8915 (N_animals=8)  mean JS = 0.1010 bits
+    eye_rigid         mean pearson r = 0.5060 (N_animals=8)  mean JS = 0.4325 bits
+    eye_centered      mean pearson r = 0.4389 (N_animals=8)  mean JS = 0.4838 bits
+    spout_centered    mean pearson r = 0.0984 (N_animals=8)  mean JS = 0.8560 bits
+
+  Bodypart: R_eye
+    eye_affine        mean pearson r = 0.8258 (N_animals=8)  mean JS = 0.1466 bits
+    eye_rigid         mean pearson r = 0.4624 (N_animals=8)  mean JS = 0.4691 bits
+    eye_centered      mean pearson r = 0.3963 (N_animals=8)  mean JS = 0.5274 bits
+    spout_centered    mean pearson r = 0.0718 (N_animals=8)  mean JS = 0.8818 bits
+
+  Bodypart: L_spout
+    eye_affine        mean pearson r = 0.0355 (N_animals=8)  mean JS = 0.9505 bits
+    eye_rigid         mean pearson r = 0.0547 (N_animals=8)  mean JS = 0.9239 bits
+    eye_centered      mean pearson r = 0.0633 (N_animals=8)  mean JS = 0.9127 bits
+    spout_centered    mean pearson r = 0.6379 (N_animals=8)  mean JS = 0.3203 bits
+
+  Bodypart: R_spout
+    eye_affine        mean pearson r = 0.0396 (N_animals=8)  mean JS = 0.9489 bits
+    eye_rigid         mean pearson r = 0.0672 (N_animals=8)  mean JS = 0.9137 bits
+    eye_centered      mean pearson r = 0.0813 (N_animals=8)  mean JS = 0.8988 bits
+    spout_centered    mean pearson r = 0.6201 (N_animals=8)  mean JS = 0.3353 bits
