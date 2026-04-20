@@ -1,7 +1,7 @@
-"""Per-session ``spout_endpoints.json`` writer + schema (Phase 8a.7).
+"""Per-session ``spout_endpoints.json`` writer + schema (Phase 8a.7.5).
 
-Aggregates the endpoint primitives from sub-phases 8a.2–8a.6 into a single
-per-session JSON artifact under
+Aggregates the endpoint primitives from sub-phases 8a.2–8a.6 and the criteria
+hierarchy from sub-phase 8a.7.5 into a single per-session JSON artifact under
 ``{pipeline_outputs_root}/spout_behavior/endpoints/{ANIMAL}/{YYYYMMDD}.json``.
 
 Schema 2.0.0 — three top-level blocks
@@ -15,7 +15,7 @@ Schema 2.0.0 — three top-level blocks
                    n_trials, source_npz_hashes, writer_run_timestamp},
       "endpoints": { <CANONICAL_ENDPOINT_NAMES>: EndpointResult.to_dict()
                                                   | inter_session sentinel },
-      "criteria":  { <criteria_slugs.all_new_slugs(defaults)>: criteria sentinel }
+      "criteria":  { C3/C4/C2 computed dicts + C1 cohort sentinel }
     }
 
 Schema 2.0.0 is a **clean break** from the legacy ``behavior_report_PS.py``
@@ -25,15 +25,17 @@ stays byte-stable and Phase 8a writes to a parallel file.
 Sentinels
 ---------
 
-Two endpoint slots are stubbed by design in Phase 8a.7:
+Two slots are sentinel-by-design in the per-session JSON:
 
-- All four ``criteria`` values get ``CRITERIA_NOT_YET_COMPUTED_SENTINEL``
-  (port deferred to 8a.7.5).
-- ``inter_session_persistence`` (a per-animal cross-session metric) gets
+- ``inter_session_persistence`` (an endpoints-block cross-session metric) gets
   ``INTER_SESSION_REQUIRES_COHORT_SENTINEL`` because the per-session JSON
   stays a pure function of per-session inputs; cross-session metrics are
   computed at a future cohort-aggregation layer that explicitly tracks
   which session JSONs it depends on.
+- ``criteria_training_pass_consecutive_sessions`` (C1, a multi-session
+  pass criterion) shares the same ``requires_cohort_aggregation`` sentinel
+  — this slot is auto-filled by the writer and must not be passed by the
+  caller. See ``docs/DECISIONS.md`` 2026-04-20 §"8a.7.5 split from 8a.7".
 
 Sentinels are explicit dict objects, never ``None`` and never absent, so
 downstream consumers can assert presence at the schema level.
@@ -41,11 +43,17 @@ downstream consumers can assert presence at the schema level.
 Caller contract
 ---------------
 
-Caller passes the full 10-key ``endpoints`` dict; each value is either an
-:class:`EndpointResult` (computed) or the appropriate sentinel dict. The
-writer validates strictness (D8: missing or unknown keys raise
-``ValueError``). The four criteria sentinels are constructed internally
-from :func:`criteria_slugs.all_new_slugs` — caller does not pass them.
+Caller passes:
+
+- the full 10-key ``endpoints`` dict — each value is either an
+  :class:`EndpointResult` (computed) or the inter-session sentinel dict; and
+- a 3-key ``criteria`` dict — C3, C4, C2 computed values (shape produced by
+  :func:`stroke_orofacial.spout_behavior.criteria.build_criteria_block`).
+
+Writer auto-fills C1 with :data:`INTER_SESSION_REQUIRES_COHORT_SENTINEL`.
+Strict validation (D8): missing, unknown, or extra keys in either dict raise
+``ValueError``. Supplying ``criteria_training_pass_consecutive_sessions`` in
+``criteria`` is rejected — the caller must not override the C1 sentinel.
 
 Atomic write
 ------------
@@ -90,20 +98,30 @@ CANONICAL_ENDPOINT_NAMES: frozenset[str] = frozenset({
     "lick_bout_structure",
 })
 
-#: Sentinel for the 4 criteria slugs. Auto-stubbed by the writer; not
-#: passed by the caller. Replaced by computed booleans/aggregates in 8a.7.5.
-CRITERIA_NOT_YET_COMPUTED_SENTINEL: dict[str, str] = {
-    "status": "not_yet_computed",
-    "port_scheduled_for": "8a.7.5",
-}
-
-#: Sentinel for ``inter_session_persistence`` in the per-session JSON. The
-#: caller passes this for that one slot when invoking the writer; the value
-#: is replaced by the cohort-aggregation stage in a future phase.
+#: Sentinel for ``inter_session_persistence`` (endpoints block) and
+#: ``criteria_training_pass_consecutive_sessions`` (C1, criteria block) — both
+#: are multi-session quantities that cannot be computed from a single
+#: session's inputs without breaking the per-session JSON's provenance
+#: contract. Caller passes this for the ``inter_session_persistence``
+#: endpoint slot; the writer auto-fills the C1 criteria slot internally.
+#: See ``docs/DECISIONS.md`` 2026-04-20 §"8a.7.5 split from 8a.7".
 INTER_SESSION_REQUIRES_COHORT_SENTINEL: dict[str, str] = {
     "status": "requires_cohort_aggregation",
     "computed_at": "cohort_aggregation_stage",
 }
+
+#: Slugs the caller supplies in the ``criteria`` parameter (C3, C4, C2).
+#: C1 (``criteria_training_pass_consecutive_sessions``) is excluded — it is
+#: auto-filled by the writer with :data:`INTER_SESSION_REQUIRES_COHORT_SENTINEL`.
+CALLER_SUPPLIED_CRITERIA_SLUGS: frozenset[str] = frozenset({
+    "criteria_first_correct_lick_present",
+    "criteria_correct_lick_count_threshold",
+    "criteria_session_trial_pass_fraction_above_threshold",
+})
+
+#: Criteria slug that is always auto-filled with the cohort-aggregation
+#: sentinel and must not be passed by the caller.
+COHORT_AGGREGATED_CRITERIA_SLUG: str = "criteria_training_pass_consecutive_sessions"
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +266,30 @@ def _validate_endpoints_keys(endpoints: dict[str, Any]) -> None:
         raise ValueError("; ".join(parts))
 
 
+def _validate_criteria_keys(criteria: dict[str, Any]) -> None:
+    """Enforce strict key set against :data:`CALLER_SUPPLIED_CRITERIA_SLUGS`.
+
+    Rejects ``COHORT_AGGREGATED_CRITERIA_SLUG`` (C1) explicitly — the writer
+    auto-fills that slot and callers must not override it.
+    """
+    keys = frozenset(criteria.keys())
+    if COHORT_AGGREGATED_CRITERIA_SLUG in keys:
+        raise ValueError(
+            f"criteria dict must not include {COHORT_AGGREGATED_CRITERIA_SLUG!r} "
+            "— this slot is auto-filled by the writer with the "
+            "requires_cohort_aggregation sentinel."
+        )
+    missing = CALLER_SUPPLIED_CRITERIA_SLUGS - keys
+    unknown = keys - CALLER_SUPPLIED_CRITERIA_SLUGS
+    if missing or unknown:
+        parts = []
+        if missing:
+            parts.append(f"missing criteria keys: {sorted(missing)}")
+        if unknown:
+            parts.append(f"unknown criteria keys: {sorted(unknown)}")
+        raise ValueError("; ".join(parts))
+
+
 # ---------------------------------------------------------------------------
 # Writer
 # ---------------------------------------------------------------------------
@@ -258,6 +300,7 @@ def write_session_endpoints_json(
     animal: str,
     date: datetime.date,
     endpoints: dict[str, EndpointResult | dict[str, Any]],
+    criteria: dict[str, dict[str, Any]],
     source_npz_paths: dict[str, Path],
     output_path: Path,
     defaults: dict[str, Any],
@@ -277,6 +320,14 @@ def write_session_endpoints_json(
         is either an :class:`EndpointResult` (computed) or a sentinel dict
         (e.g. :data:`INTER_SESSION_REQUIRES_COHORT_SENTINEL`). Strict
         validation per D8 — missing or unknown keys raise ``ValueError``.
+    criteria : dict
+        Exactly the 3 keys in :data:`CALLER_SUPPLIED_CRITERIA_SLUGS` — C3,
+        C4, C2 computed dicts (shape produced by
+        :func:`stroke_orofacial.spout_behavior.criteria.build_criteria_block`).
+        The writer fills the C1 slot
+        (:data:`COHORT_AGGREGATED_CRITERIA_SLUG`) internally with
+        :data:`INTER_SESSION_REQUIRES_COHORT_SENTINEL`. Strict validation —
+        missing, unknown, extra, or C1-overriding keys raise ``ValueError``.
     source_npz_paths : dict[str, Path]
         ``{logical_name: path}`` for each Phase-2 NPZ this run consumed.
         Each is hashed (SHA-256, hex) and recorded in
@@ -302,7 +353,8 @@ def write_session_endpoints_json(
     ------
     ValueError
         If ``endpoints`` keys do not exactly equal
-        :data:`CANONICAL_ENDPOINT_NAMES`.
+        :data:`CANONICAL_ENDPOINT_NAMES`, or ``criteria`` keys do not exactly
+        equal :data:`CALLER_SUPPLIED_CRITERIA_SLUGS`.
     TypeError
         If any value in ``endpoints`` is neither an :class:`EndpointResult`
         nor a dict.
@@ -311,6 +363,21 @@ def write_session_endpoints_json(
         ``Path.read_bytes()`` during hashing).
     """
     _validate_endpoints_keys(endpoints)
+    _validate_criteria_keys(criteria)
+
+    # Cross-check: criteria slugs must be a subset of the full slug map in
+    # defaults.yaml. Guards against a future drift where the slug map grows
+    # but `CALLER_SUPPLIED_CRITERIA_SLUGS` wasn't updated.
+    declared_slugs = set(all_new_slugs(defaults))
+    expected_slugs = set(CALLER_SUPPLIED_CRITERIA_SLUGS) | {
+        COHORT_AGGREGATED_CRITERIA_SLUG
+    }
+    if declared_slugs != expected_slugs:
+        raise ValueError(
+            "criteria_slug_map in defaults.yaml "
+            f"({sorted(declared_slugs)}) does not match the writer's expected "
+            f"slugs ({sorted(expected_slugs)})."
+        )
 
     source_npz_hashes = {
         name: _sha256_of_file(path) for name, path in source_npz_paths.items()
@@ -319,7 +386,7 @@ def write_session_endpoints_json(
     metadata = {
         "animal": animal,
         "date": date.isoformat(),
-        "phase": "8a.7",
+        "phase": "8a.7.5",
         "day_relative_to_stroke": day_relative_to_stroke,
         "n_trials": n_trials,
         "source_npz_hashes": source_npz_hashes,
@@ -330,10 +397,10 @@ def write_session_endpoints_json(
         name: _serialize_endpoint_value(value) for name, value in endpoints.items()
     }
 
-    criteria_block = {
-        slug: dict(CRITERIA_NOT_YET_COMPUTED_SENTINEL)
-        for slug in all_new_slugs(defaults)
-    }
+    criteria_block: dict[str, dict[str, Any]] = dict(criteria)
+    criteria_block[COHORT_AGGREGATED_CRITERIA_SLUG] = dict(
+        INTER_SESSION_REQUIRES_COHORT_SENTINEL
+    )
 
     payload = {
         "schema_version": SCHEMA_VERSION,

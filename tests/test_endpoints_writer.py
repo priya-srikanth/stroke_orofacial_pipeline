@@ -1,11 +1,13 @@
-"""Tests for :mod:`stroke_orofacial.spout_behavior.endpoints_writer` (Phase 8a.7).
+"""Tests for :mod:`stroke_orofacial.spout_behavior.endpoints_writer` (Phase 8a.7.5).
 
 Schema 2.0.0 — three top-level blocks (metadata / endpoints / criteria) with
-strict key validation, sentinel patterns for not-yet-computed slots,
-SHA-256 NPZ provenance hashes, and atomic-write-via-temp-file semantics.
+strict key validation on both the ``endpoints`` and ``criteria`` inputs,
+auto-filled C1 sentinel, SHA-256 NPZ provenance hashes, and atomic-write-via-
+temp-file semantics.
 
 No parity tests — schema is a clean break from legacy ``report.json``
-(per kickoff scoping decision Q6, with legacy staying byte-stable).
+(per kickoff scoping decision Q6, with legacy staying byte-stable). Criteria
+parity lives in ``tests/test_criteria.py``.
 """
 from __future__ import annotations
 
@@ -20,8 +22,9 @@ import pytest
 
 from stroke_orofacial.spout_behavior.endpoint_result import EndpointResult
 from stroke_orofacial.spout_behavior.endpoints_writer import (
+    CALLER_SUPPLIED_CRITERIA_SLUGS,
     CANONICAL_ENDPOINT_NAMES,
-    CRITERIA_NOT_YET_COMPUTED_SENTINEL,
+    COHORT_AGGREGATED_CRITERIA_SLUG,
     INTER_SESSION_REQUIRES_COHORT_SENTINEL,
     SCHEMA_VERSION,
     lick_bouts_to_endpoint_result,
@@ -73,6 +76,33 @@ def _make_full_endpoints_dict() -> dict[str, EndpointResult | dict[str, Any]]:
     return out
 
 
+def _make_full_criteria_dict() -> dict[str, dict[str, Any]]:
+    """Minimal valid ``criteria`` dict covering the 3 caller-supplied slugs."""
+    return {
+        "criteria_first_correct_lick_present": {
+            "status": "computed",
+            "per_side_per_trial_pass": {"L": [True, False], "R": [True]},
+            "config_snapshot": {"window_seconds": [0.0, 2.0]},
+        },
+        "criteria_correct_lick_count_threshold": {
+            "status": "computed",
+            "per_side_per_trial_pass": {"L": [True, True], "R": [False]},
+            "config_snapshot": {
+                "window_seconds": [0.0, 2.5],
+                "num_licks_correct_min": 5,
+                "num_licks_incorrect_max": 0,
+            },
+        },
+        "criteria_session_trial_pass_fraction_above_threshold": {
+            "status": "computed",
+            "per_side_pass": {"L": True, "R": False},
+            "per_side_fraction": {"L": 0.5, "R": 0.0},
+            "per_side_n_trials": {"L": 2, "R": 1},
+            "config_snapshot": {"fraction_pass": 0.6},
+        },
+    }
+
+
 def _write_synthetic_npz(path: Path, content: dict[str, np.ndarray]) -> Path:
     """Write a small NPZ file at ``path`` and return the path."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -95,6 +125,7 @@ def writer_kwargs(tmp_path: Path) -> dict[str, Any]:
         "animal": "PS46",
         "date": datetime.date(2025, 3, 7),
         "endpoints": _make_full_endpoints_dict(),
+        "criteria": _make_full_criteria_dict(),
         "source_npz_paths": {
             "licks_and_rewards": npz_a,
             "wavesurfer_signals_processed": npz_b,
@@ -146,7 +177,7 @@ class TestBlockShapes:
         }
         assert meta["animal"] == "PS46"
         assert meta["date"] == "2025-03-07"
-        assert meta["phase"] == "8a.7"
+        assert meta["phase"] == "8a.7.5"
         assert meta["day_relative_to_stroke"] == -3
         assert meta["n_trials"] == 87
         assert set(meta["source_npz_hashes"].keys()) == {
@@ -166,26 +197,41 @@ class TestBlockShapes:
 # ---------------------------------------------------------------------------
 
 
-class TestSentinels:
-    def test_criteria_block_sentinel_pattern(self, writer_kwargs: dict[str, Any]):
-        """Every criteria value is the explicit sentinel — never None, never absent."""
+class TestCriteriaComputed:
+    def test_computed_c3_c4_c2_pass_through_unchanged(
+        self, writer_kwargs: dict[str, Any],
+    ):
+        """Caller-supplied C3/C4/C2 blocks serialize byte-identical."""
         out_path = write_session_endpoints_json(**writer_kwargs)
         criteria = json.loads(out_path.read_text())["criteria"]
-        expected_slugs = {
-            "criteria_training_pass_consecutive_sessions",
-            "criteria_session_trial_pass_fraction_above_threshold",
-            "criteria_first_correct_lick_present",
-            "criteria_correct_lick_count_threshold",
-        }
-        assert set(criteria.keys()) == expected_slugs
-        for slug, value in criteria.items():
-            assert value is not None, f"{slug} must not be null"
-            assert value == CRITERIA_NOT_YET_COMPUTED_SENTINEL, (
-                f"{slug} sentinel mismatch: {value}"
-            )
-            assert value["status"] == "not_yet_computed"
-            assert value["port_scheduled_for"] == "8a.7.5"
+        caller_block = _make_full_criteria_dict()
+        for slug in CALLER_SUPPLIED_CRITERIA_SLUGS:
+            assert criteria[slug] == caller_block[slug], slug
 
+    def test_c1_auto_filled_with_cohort_sentinel(
+        self, writer_kwargs: dict[str, Any],
+    ):
+        """Writer fills C1 with ``requires_cohort_aggregation`` — caller did not pass it."""
+        out_path = write_session_endpoints_json(**writer_kwargs)
+        criteria = json.loads(out_path.read_text())["criteria"]
+        c1 = criteria[COHORT_AGGREGATED_CRITERIA_SLUG]
+        assert c1 == INTER_SESSION_REQUIRES_COHORT_SENTINEL
+        assert c1["status"] == "requires_cohort_aggregation"
+        assert c1["computed_at"] == "cohort_aggregation_stage"
+
+    def test_criteria_block_has_all_four_slugs(
+        self, writer_kwargs: dict[str, Any],
+    ):
+        """All 4 criteria slugs present — 3 computed + C1 cohort sentinel."""
+        out_path = write_session_endpoints_json(**writer_kwargs)
+        criteria = json.loads(out_path.read_text())["criteria"]
+        assert set(criteria.keys()) == (
+            set(CALLER_SUPPLIED_CRITERIA_SLUGS)
+            | {COHORT_AGGREGATED_CRITERIA_SLUG}
+        )
+
+
+class TestSentinels:
     def test_inter_session_sentinel_passthrough(self, writer_kwargs: dict[str, Any]):
         """Caller-supplied inter_session sentinel survives serialization unchanged."""
         out_path = write_session_endpoints_json(**writer_kwargs)
@@ -298,6 +344,37 @@ class TestStrictKeyValidation:
         del bad_endpoints["switch_cost_per_session"]
         bad_kwargs = dict(writer_kwargs, endpoints=bad_endpoints)
         with pytest.raises(ValueError, match="missing endpoint keys"):
+            write_session_endpoints_json(**bad_kwargs)
+
+
+class TestCriteriaValidation:
+    def test_missing_criteria_key_rejected(self, writer_kwargs: dict[str, Any]):
+        bad_criteria = dict(writer_kwargs["criteria"])
+        del bad_criteria["criteria_first_correct_lick_present"]
+        bad_kwargs = dict(writer_kwargs, criteria=bad_criteria)
+        with pytest.raises(ValueError, match="missing criteria keys"):
+            write_session_endpoints_json(**bad_kwargs)
+
+    def test_unknown_criteria_key_rejected(self, writer_kwargs: dict[str, Any]):
+        bad_criteria = dict(writer_kwargs["criteria"])
+        bad_criteria["criteria_made_up"] = {"status": "computed"}
+        bad_kwargs = dict(writer_kwargs, criteria=bad_criteria)
+        with pytest.raises(ValueError, match="unknown criteria keys"):
+            write_session_endpoints_json(**bad_kwargs)
+
+    def test_c1_slug_in_criteria_rejected(self, writer_kwargs: dict[str, Any]):
+        """Caller must not supply C1 — writer owns that slot."""
+        bad_criteria = dict(writer_kwargs["criteria"])
+        bad_criteria[COHORT_AGGREGATED_CRITERIA_SLUG] = {
+            "status": "caller_tried_to_override",
+        }
+        bad_kwargs = dict(writer_kwargs, criteria=bad_criteria)
+        with pytest.raises(ValueError, match="must not include"):
+            write_session_endpoints_json(**bad_kwargs)
+
+    def test_empty_criteria_rejected(self, writer_kwargs: dict[str, Any]):
+        bad_kwargs = dict(writer_kwargs, criteria={})
+        with pytest.raises(ValueError, match="missing criteria keys"):
             write_session_endpoints_json(**bad_kwargs)
 
 

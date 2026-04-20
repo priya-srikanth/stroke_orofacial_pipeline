@@ -1445,3 +1445,137 @@ manual verification, debugging, batch-size scout monitoring).
 - Parity tests for C3/C4 per-trial booleans against legacy
   `behavior_report_PS.py:455-551` on PS46/20250307 (byte-identical for
   booleans, `1e-12` rtol for the C2/C1 boolean-count aggregates).
+
+---
+
+## Phase 8a.7.5 — Criteria hierarchy port (C3, C4, C2 computed; C1 stays cohort-aggregation sentinel)
+
+**Date:** 2026-04-20.
+
+**What was done:**
+
+- New module `src/stroke_orofacial/spout_behavior/criteria.py` (~330
+  lines incl. docstrings) ports the per-trial and per-session-per-side
+  legacy pass-criteria from
+  `docs/legacy_snippets/behavior_report_PS_455_551.py` (verbatim excerpt
+  of `/Users/Priya2/Github/facerhythm_stroke_biomarker_exp_Priya/analysis/behavior_report/behavior_report_PS.py:385-565`)
+  into pure-function compute entry points:
+  - `compute_c3_first_correct_lick_present(trials, *, defaults)` — per-trial
+    boolean; passes iff at least one correct-side (rewarded) lick falls in the
+    C3 window (`[0, 2.0]` s post-reward).
+  - `compute_c4_correct_lick_count_threshold(trials, *, defaults)` —
+    per-trial boolean; passes iff `n_correct ≥ num_licks_correct_min` AND
+    `n_incorrect ≤ num_licks_incorrect_max` in the C4 window (`[0, 2.5]` s).
+    Fail-loud `ValueError` when a caller passes TrialRecords built with a
+    narrower window than C4 requires.
+  - `compute_c2_session_trial_pass_fraction_above_threshold(c3_block,
+    c4_block, *, defaults)` — per-session per-side boolean + NaN-preserving
+    fraction; passes iff the fraction of C3∩C4-passing trials meets
+    `fraction_pass` (0.6 default). Zero-trial sides emit `NaN` fraction and
+    `False` pass, matching legacy semantics.
+  - `build_criteria_block(trials, *, defaults)` — single entry point
+    returning the 3-key dict the writer's `criteria` parameter accepts
+    (C3, C4, C2). C1 stays writer-owned.
+- Per-side output shape:
+  `{"per_side_per_trial_pass": {"L": [bool, ...], "R": [bool, ...]}}` for
+  C3/C4; `{"per_side_pass", "per_side_fraction", "per_side_n_trials"}` for
+  C2. Per-side lists preserve reward-index chronological order within side —
+  byte-identical to the legacy iteration convention thanks to the stable sort
+  in `build_per_trial_records`.
+- `endpoints_writer.py` now takes a required `criteria: dict` parameter
+  (3 caller-supplied slugs). The writer fills
+  `criteria_training_pass_consecutive_sessions` (C1) internally with the
+  existing `INTER_SESSION_REQUIRES_COHORT_SENTINEL`, aligning C1's sentinel
+  vocabulary with `inter_session_persistence` per DECISIONS.md 2026-04-20
+  §"8a.7.5 split from 8a.7". The 8a.7 `CRITERIA_NOT_YET_COMPUTED_SENTINEL`
+  constant is retired (no longer emitted). Two new module-level constants —
+  `CALLER_SUPPLIED_CRITERIA_SLUGS` (frozenset of 3) and
+  `COHORT_AGGREGATED_CRITERIA_SLUG` (C1) — make the caller/writer split
+  explicit. `metadata.phase` string bumped from `"8a.7"` to `"8a.7.5"` so
+  artifacts are self-describing.
+- New validator `_validate_criteria_keys` enforces: missing / unknown / extra
+  keys raise `ValueError`; supplying the C1 slug in `criteria` raises
+  explicitly (caller cannot override the writer-owned sentinel slot).
+- `tests/test_criteria.py` (20 tests, ~460 lines) covers:
+  - Synthetic unit tests for C3 (empty trials, correct-side lick in/out of
+    window, half-open boundary, per-side chronological ordering), C4 (exact
+    count threshold, one-below, incorrect-lick rejection, narrower-TrialRecord
+    `ValueError`, config snapshot), C2 (empty sides, zero-trial side with
+    other-side pass, fraction at/below threshold, C34 intersection).
+  - Inline-reference parity — a numpy re-implementation of the legacy
+    snippet's algorithm run on a hand-built 12-trial synthetic session,
+    asserted dict-equal to the production `build_criteria_block` output.
+    Covers boundary-inclusive / exclusive timing, single-side sessions, and
+    empty sessions.
+  - **Real-data parity on PS46/20250307** via the MICROSCOPE wavesurfer
+    mount (Windows `\\research.files.med.harvard.edu\...\wavesurfer` or Mac
+    `/Volumes/Neurobio/MICROSCOPE/Priya/.../wavesurfer`). Runs Phase-2
+    `find_licks_and_rewards` → `build_per_trial_records(window=(0, 2.5))` →
+    `build_criteria_block` → compares byte-identical with the inline
+    reference re-run on the same raw `(lick_L, lick_R, reward_L, reward_R)`
+    arrays. Skips gracefully when the mount is unreachable (mirrors
+    `tests/test_bouts.py` integration-test convention).
+- `tests/test_endpoints_writer.py` (21 tests) updates:
+  - `writer_kwargs` fixture now carries a valid 3-slug `criteria` dict.
+  - `test_metadata_block_complete` bumped to assert `phase == "8a.7.5"`.
+  - `TestSentinels::test_criteria_block_sentinel_pattern` **replaced** with
+    a new `TestCriteriaComputed` class asserting (a) caller-supplied C3/C4/C2
+    blocks serialize byte-identical, (b) C1 is auto-filled with the cohort
+    sentinel, and (c) all 4 criteria slugs are present. `test_inter_session_sentinel_passthrough` remains.
+  - New `TestCriteriaValidation` class covers missing / unknown / C1-override
+    / empty-dict rejection paths.
+- Boundary-semantics audit: the legacy `bnpm.indexing.find_idx_within_eps`
+  uses the same half-open `[v - eps[0], v + eps[1])` convention as the
+  existing `_find_idx_within_eps` port at
+  `src/stroke_orofacial/spout_behavior/bouts.py:236-254` and as
+  `build_per_trial_records`. At integer Fs (1000 Hz), `int(round(w*Fs)) ==
+  int(w*Fs)`, so the port introduces no boundary divergence from the
+  snippet. Confirmed by the real-data PS46/20250307 parity test.
+
+**Intentional behavior differences vs. legacy:**
+
+1. **C1 stays a per-session-JSON sentinel.** The legacy
+   `behavior_report_PS.py:549-551` computes C1 (training-pass over the last
+   `num_consecutive_pass` sessions) inline after C2. In the consolidated
+   pipeline, C1 is a multi-session quantity and is computed by a future
+   cohort-aggregation stage that tracks which per-session JSONs it depends
+   on. The per-session writer auto-emits the
+   `{"status": "requires_cohort_aggregation", "computed_at": "cohort_aggregation_stage"}`
+   sentinel for the C1 slot. This preserves the "JSON = pure function of
+   this session's data" provenance contract (see DECISIONS.md 2026-04-20
+   §"8a.7.5 split from 8a.7" for the full rationale).
+2. **Per-side chronological list shape replaces the legacy per-trial-index
+   dict shape.** Legacy emits
+   `criteria_3[date][side][idx_reward] -> bool`; the new JSON emits
+   `{"per_side_per_trial_pass": {"L": [bool, ...], "R": [bool, ...]}}` —
+   semantically equivalent (same ordering, same booleans), more JSON-natural
+   (no stringified integer keys), and byte-identical under the parity test.
+3. **TrialRecord window contract.** The C4 compute function rejects any
+   TrialRecord whose `window_seconds` is narrower than C4's window (legacy
+   default `[0, 2.5]`). The legacy snippet never hit this condition because
+   its input was always the raw `lick_idx[date][f"Lick_{side}"]` array (full
+   session), not a pre-sliced trial buffer; the new code has pre-sliced
+   buffers and fails loud rather than silently truncating — consistent with
+   the Phase 13 vendoring policy.
+
+No legacy-function bugs surfaced that required a Phase-13-style divergence.
+The real-data PS46/20250307 parity passes byte-identical, so no DECISIONS.md
+divergence-rationale entry is needed for this sub-phase.
+
+**Exit criteria:**
+- [x] `pytest tests/test_criteria.py -v` → 20 passed (includes the real-data
+  PS46/20250307 parity test).
+- [x] `pytest tests/test_endpoints_writer.py -v` → 21 passed.
+- [x] `pytest -q` → 361 passed / 28 skipped (was 335 passed / 28 skipped
+  after 8a.7; +26 new tests = +20 criteria + +6 writer).
+- [x] `ruff check src/stroke_orofacial/spout_behavior/criteria.py
+  src/stroke_orofacial/spout_behavior/endpoints_writer.py
+  tests/test_criteria.py tests/test_endpoints_writer.py` → clean.
+- [x] Per-trial C3 and C4 per-side boolean lists byte-identical to the legacy
+  snippet's algorithm on PS46/20250307 (verified by
+  `TestRealDataParityPS46_20250307`).
+- [x] C2 per-session-per-side booleans byte-identical; per-side fractions
+  exact-equal (integer-count ratios — no float tolerance needed).
+- [x] C1 slot emitted as `requires_cohort_aggregation` sentinel, not
+  caller-override-able.
+- [x] Implemented on feature branch `phase-8a-part4-criteria-hierarchy`.
