@@ -1,27 +1,9 @@
-# Conda environment for Windows.
-# TODO: Priya to export from Windows `deeplabcut` env and replace this placeholder.
-# Usage: conda env update -f environment-windows.yml && pip install -e .
-name: deeplabcut
-channels:
-  - defaults
-dependencies:
-  - python=3.11
-  - pip
-  - pip:
-      - numpy
-      - pandas
-      - pyarrow
-      - scipy
-      - statsmodels
-      - matplotlib
-      - seaborn
-      - scikit-learn
-      - h5py
-      - pyyaml
-      - opencv-contrib-python
-      - tqdm
-      - ipykernel
-      - jupyter
-      # dev
-      - pytest
-      - ruff
+# DEPRECATED 2026-04-19 — superseded by environment.yml (unified Mac + Windows).
+# This file is retained as a stub only; delete with
+# `git rm environment-windows.yml` once the unified env has been verified on
+# both platforms.
+#
+# The new env is `stroke_orofacial` (parallel to the existing `deeplabcut` env;
+# `deeplabcut` is not touched and remains the correct env for DLC training /
+# inference and for the keypoint_moseq analysis thread). See environment.yml
+# and docs/DECISIONS.md (2026-04-19 — Phase 13 env unification) for rationale.

@@ -15,6 +15,33 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-04-19 — Phase 13 env unification (single `stroke_orofacial` conda env for Mac + Windows)
+
+- *Context:* Legacy setup used two different conda envs for the same analysis work: `frsb` on Mac (Python 3.11, pip-installed deps) and `deeplabcut` on Windows (Python 3.10, heavy DLC/CUDA/PyTorch/ffmpeg stack). Env-name drift created friction across the permanent Cowork-on-Mac + Claude-Code-on-Windows workflow; per-session prompts had to branch on platform. Additionally, pyproject.toml declared runtime deps (`opencv-contrib-python`, `tqdm`) that were never imported anywhere, and was missing three deps that legacy DLC-analysis notebooks on MICROSCOPE actually use (`scicomap`, `patsy`, `pot`).
+- *Decision:*
+  - **One unified `environment.yml`** replaces the `environment-mac.yml` / `environment-windows.yml` pair. New env name is `stroke_orofacial`.
+  - **Runs PARALLEL to existing envs.** The `frsb` (Mac) and especially the `deeplabcut` (Windows) envs are not touched; `deeplabcut` remains the correct env for DLC training/inference and for the `keypoint_moseq` analysis thread. This means rollback is a single `conda activate frsb` or `conda activate deeplabcut` away if anything breaks.
+  - **Python 3.11** (matches `requires-python = ">=3.11"` in pyproject.toml; was 3.10 on Windows `deeplabcut`).
+  - **Channels:** `conda-forge` primary, `defaults` fallback. Previously `defaults`-only with everything pip-installed; conda-forge gives faster resolves on Windows for the jupyter stack.
+  - **Dep scope derived from a full import audit** of `src/`, `tests/`, `notebooks/`, AND every notebook under `/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/code/`. Every package in the env traces to at least one real import or is a transitive pin (`h5py`) / in-flight port prerequisite. Full matrix of what was added / kept / dropped:
+    - **Actively imported (kept):** numpy, pandas, pyarrow, scipy, matplotlib, pyyaml, pytables (pip name `tables`), h5py, pywavesurfer, `bnpm[core]`. Dev: pytest, ruff, ipykernel, jupyter, nbconvert.
+    - **Reserved for Phase 5/7/9 (kept):** statsmodels, scikit-learn, seaborn, patsy, pot. All five are imported by one or more legacy DLC analysis notebooks on MICROSCOPE that are scheduled for port in #10 / #11 / #12b / #12c / #12d.
+    - **Added this phase:** `patsy` (R-style formulas for statsmodels; imported by the locked Q6 re-read notebooks `20260203_tongue` + `20260416_jaw`), `pot` aka POT (Python Optimal Transport — Wasserstein distance for pixel-bin distribution comparison; imported by 3 legacy DLC stats notebooks), `scicomap` (scientific colormaps; imported by 6 legacy DLC spatial notebooks, pip-only as not on conda-forge), `nbconvert` (for the `jupyter nbconvert --execute --inplace` CI pattern that Phase 4.5-lite's sweep established).
+    - **Dropped:** `opencv-contrib-python` (no imports in src/, tests/, notebooks/, and the one MICROSCOPE notebook that imported `cv2` is the legacy O2 batch script, already consolidated into `dlc_inference_o2/`), `tqdm` (no imports anywhere).
+    - **Explicitly not included (belongs in `deeplabcut` env):** deeplabcut, pytorch, torchvision, cudatoolkit, tensorflow, ffmpeg, dlclibrary, keras, cv2, paramiko, scp. All of these are imported ONLY by `src/stroke_orofacial/dlc_inference_o2/runner.py` (which runs on O2 inside `deeplabcut`) and by the legacy `20251112_DLC_batch_video_analysis_O2.ipynb` whose functionality is now consolidated into the pipeline's `dlc_inference_o2/` submodule.
+    - **Explicitly not included (out-of-scope for v1):** jax, jax_moseq, keypoint_moseq. These appear only in `20260209_keypoint_moseq*.ipynb`. Keypoint-MoSeq is not part of any v1 phase or Q1–Q10 audit decision. If it becomes a v2 deliverable, it should live in its own env to avoid dragging JAX into the core analysis env.
+  - **`bnpm[core]` extra** explicitly used in both environment.yml and pyproject.toml per https://pypi.org/project/bnpm/. Plain `bnpm` pulls in heavy optional deps we don't use; the `[core]` extra is the minimum install that covers `bnpm.indexing` and `bnpm.timeSeries` (the only two subpackages imported by `spout_behavior/`).
+  - **`pyproject.toml` deps brought into agreement** with environment.yml so `pip install -e .` produces an equivalent install.
+- *Rationale:*
+  - Env-name parity across the two-laptop workflow eliminates a recurring source of paste-in-prompt bugs where paths and activate commands had to branch by platform.
+  - Running PARALLEL to existing envs (vs. in-place upgrade) makes the transition fully reversible and preserves `deeplabcut` for its still-valid uses (DLC training, O2 inference, Keypoint-MoSeq).
+  - Dropping two unused heavy deps (opencv-contrib-python ≈ 40 MB, tqdm) keeps the env lean.
+  - Adding the three MICROSCOPE-notebook deps (scicomap, patsy, pot) now avoids blocking on env bumps when Phase 5/7/9 ports land.
+  - Excluding the entire DLC/CUDA/PyTorch/ffmpeg stack — which is what made `deeplabcut` a slow, conflict-prone install — is the biggest win: the new env should install in minutes, not hours, and is free of GPU driver / CUDA version entanglements.
+- *Enforced at:* `environment.yml` (new, unified). `pyproject.toml` `[project.dependencies]` in agreement. `environment-mac.yml` and `environment-windows.yml` reduced to deprecation stubs pointing at `environment.yml`; to be `git rm`-ed once both platforms have verified the new env installs cleanly. Migration-log entry for Phase 13 will close out this work once both platforms are verified.
+
+---
+
 ## 2026-04-19 — Audit Item 10 (scientific endpoint inventory) — Q1–Q10 resolutions
 
 - *Context:* Mid-consolidation audit Item 10 inventoried 26 scientific endpoints across 6 categories (A–F) from the two legacy repos (`facerhythm_stroke_biomarker_exp`, `facerhythm_stroke_biomarker_exp_Priya`), written up in `docs/SCIENTIFIC_ENDPOINTS.md`. Ten open questions (Q1–Q10) at the bottom of that doc needed Priya's call before the audit branch could merge. Each Q is resolved below.

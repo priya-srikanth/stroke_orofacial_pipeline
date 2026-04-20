@@ -1,28 +1,7 @@
-# Conda environment for macOS (mirrors the existing frsb env).
-# Usage: conda env update -f environment-mac.yml && pip install -e .
-name: frsb
-channels:
-  - defaults
-dependencies:
-  - python=3.11
-  - pip
-  - pip:
-      - numpy==1.24.1
-      - pandas
-      - pyarrow
-      - scipy
-      - statsmodels
-      - matplotlib
-      - seaborn
-      - scikit-learn
-      - h5py==3.8.0
-      - tables==3.9.2
-      - pyyaml
-      - opencv-contrib-python
-      - tqdm
-      - ipykernel
-      - jupyter
-      - ipympl
-      # dev
-      - pytest
-      - ruff
+# DEPRECATED 2026-04-19 — superseded by environment.yml (unified Mac + Windows).
+# This file is retained as a stub only; delete with `git rm environment-mac.yml`
+# once the unified env has been verified on both platforms.
+#
+# The new env is `stroke_orofacial` (parallel to the existing `frsb` env;
+# `frsb` is not touched). See environment.yml and
+# docs/DECISIONS.md (2026-04-19 — Phase 13 env unification) for rationale.

@@ -7,22 +7,33 @@ name = "stroke_orofacial"
 version = "0.0.1"
 description = "Consolidated analysis pipeline for post-stroke orofacial motor plasticity"
 requires-python = ">=3.11"
+# Dep scope audited during Phase 13 (2026-04-19); see docs/DECISIONS.md entry
+# "Phase 13 env unification" and environment.yml for rationale.
+#   - opencv-contrib-python and tqdm dropped: no imports in src/, tests/,
+#     notebooks/, or any surviving legacy analysis notebook on MICROSCOPE/
+#     Priya/DeepLabCut/code/.
+#   - patsy, pot, scicomap added: imported by legacy DLC analysis notebooks
+#     scheduled for Phase 5/7/9 ports.
+#   - bnpm installs with the [core] extra per https://pypi.org/project/bnpm/
+#     (plain `bnpm` pulls in heavy optional deps we don't use).
 dependencies = [
     "numpy",
     "pandas",
     "pyarrow",
     "scipy",
-    "statsmodels",
+    "statsmodels",      # Phase 9 stats
     "matplotlib",
-    "seaborn",
-    "scikit-learn",
+    "seaborn",          # Phase 5+ figures
+    "scikit-learn",     # Phase 9.1 phenotype classification
+    "patsy",            # R-style formulas for statsmodels (Phase 9)
+    "POT",              # Python Optimal Transport — Wasserstein distance for
+                        # pixel-bin distribution comparison (Phase 9b DLC stats)
+    "scicomap",         # scientific colormaps — used in Phase 5/6 figure ports
     "h5py",
     "pyyaml",
-    "opencv-contrib-python",
-    "tqdm",
-    "bnpm",
+    "bnpm[core]",
     "pywavesurfer",
-    "tables",
+    "tables",           # pd.read_hdf backend for DLC *_filtered.h5
 ]
 
 [project.optional-dependencies]

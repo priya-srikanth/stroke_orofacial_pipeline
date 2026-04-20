@@ -1,0 +1,95 @@
+# Unified conda environment for the stroke_orofacial pipeline (Mac + Windows).
+#
+# Replaces the earlier per-platform pair (environment-mac.yml "frsb" +
+# environment-windows.yml "deeplabcut" placeholder). The new `stroke_orofacial`
+# env lives PARALLEL to any existing `frsb` / `deeplabcut` conda envs — neither
+# is touched. Keep `deeplabcut` intact for actual DLC training/inference; this
+# analysis env has no DLC / PyTorch / CUDA / ffmpeg dependencies.
+#
+# Usage (both platforms):
+#     conda env create -f environment.yml
+#     conda activate stroke_orofacial
+#     pip install -e .
+#
+# Dep scope is derived from a full import audit of src/ + tests/ + notebooks/
+# performed during Phase 13 (see docs/DECISIONS.md 2026-04-19 "Phase 13 env
+# unification"). Every package listed below traces to a real import or is
+# called out in a comment.
+#
+# Python 3.11 is the target (matches `requires-python = ">=3.11"` in
+# pyproject.toml). The legacy Windows `deeplabcut` env pinned Python 3.10 to
+# satisfy DLC; this analysis env is free of that constraint.
+
+name: stroke_orofacial
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+
+  # ---- Core runtime (actively imported by src/ or tests/) ----
+  - numpy           # everywhere
+  - pandas          # everywhere; pd.read_hdf for DLC *_filtered.h5
+  - pyarrow         # parquet I/O in dlc_io/parquet.py
+  - scipy           # scipy.interpolate in alignment/frame_sync.py
+  - matplotlib      # dlc_spatial/{heatmaps,difference_maps}.py + notebooks
+  - pyyaml          # configs/paths loader, animals.yaml, defaults.yaml
+  - pytables        # required by pd.read_hdf on DLC filtered H5 files
+  - h5py            # transitive via pywavesurfer; pin explicitly for robustness
+
+  # ---- Reserved for Phase 5+ (no current imports, but close on the horizon) ----
+  # Not imported by src/ or tests/ yet, but every entry here is imported by
+  # one or more legacy notebooks under
+  # /Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/code/ that are scheduled
+  # for porting per the Q6/Q8/Q9 Phase 7/9 plans. Including proactively so the
+  # first Phase 5/6/7/9 port doesn't need an env bump.
+  - statsmodels     # Phase 9 stats framework; 5 legacy nbs
+  - scikit-learn    # Phase 9.1 recovery-phenotype classification
+  - seaborn         # Phase 5+ figure styling
+  - patsy           # R-style formulas for statsmodels; used in the locked
+                    #   Q6 re-read notebooks 20260203_tongue + 20260416_jaw
+  - pot             # Python Optimal Transport (Wasserstein distance for
+                    #   pixel-bin distribution comparison). Used in 3 legacy
+                    #   DLC stats notebooks. Conda-forge package name is `pot`.
+
+  # ---- Dev + notebook runtime ----
+  - pytest
+  - ruff
+  - ipykernel
+  - jupyter
+  - nbconvert       # used by the `jupyter nbconvert --execute --inplace` pattern
+
+  # ---- pip-only (not on conda-forge, or extras syntax required) ----
+  - pip:
+      - pywavesurfer                # raw wavesurfer .h5 reader
+      - "bnpm[core]"                # bnpm.indexing + bnpm.timeSeries helpers.
+                                    # The [core] extra installs only the
+                                    # lightweight deps we actually use — see
+                                    # https://pypi.org/project/bnpm/. Plain
+                                    # `bnpm` pulls in heavy optional deps.
+      - scicomap                    # scientific colormaps; used in 6 legacy
+                                    # DLC spatial notebooks. Not on conda-forge
+                                    # as of 2026-04; pip-install from PyPI.
+
+# Deliberately NOT included (audited unused across src/, tests/, and notebooks/):
+#   - opencv-contrib-python    — no imports anywhere (video I/O handled upstream by DLC on O2)
+#   - tqdm                     — no imports anywhere
+#
+# Deliberately NOT included (belongs in `deeplabcut` env, not in analysis env):
+#   - deeplabcut, pytorch, torchvision, cudatoolkit, tensorflow, ffmpeg,
+#     dlclibrary, keras, cv2, paramiko, scp, ...
+# These are imported ONLY by src/stroke_orofacial/dlc_inference_o2/runner.py
+# (which runs on the O2 HPC cluster inside the `deeplabcut` conda env) and by
+# the legacy `20251112_DLC_batch_video_analysis_O2.ipynb` notebook whose
+# functionality has already been consolidated into dlc_inference_o2/. The
+# laptop-side submission helpers (batch.py / o2_job.py / transfer.py) use only
+# pyyaml + stdlib and are fully covered by this env.
+#
+# Deliberately NOT included (out-of-scope for v1 — separate analysis thread):
+#   - jax, jax_moseq, keypoint_moseq
+# These appear only in `20260209_keypoint_moseq*.ipynb`. Keypoint-MoSeq is an
+# unsupervised-behavior analysis that is not part of any v1 phase (Phases 1–10)
+# and is not covered by the Q1–Q10 audit decisions. If Keypoint-MoSeq becomes
+# a v2 deliverable, it should live in its own env to avoid dragging JAX into
+# the core analysis env.
