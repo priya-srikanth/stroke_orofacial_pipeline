@@ -83,7 +83,7 @@ def _mean_std(values: np.ndarray) -> dict[str, float]:
 def first_lick_latency_per_trial(
     trials: Sequence[TrialRecord],
     *,
-    endpoints_v2_params: dict[str, Any],
+    endpoints_params: dict[str, Any],
 ) -> EndpointResult:
     """Compute per-trial first-correct-lick latency.
 
@@ -116,7 +116,7 @@ def first_lick_latency_per_trial(
         per_trial_type_split=per_side,
         provenance={
             "endpoint_name": "first_lick_latency_per_trial",
-            "config_snapshot": copy.deepcopy(endpoints_v2_params),
+            "config_snapshot": copy.deepcopy(endpoints_params),
             "n_trials_input": len(trials),
             "n_trials_used": n_used,
         },
@@ -131,7 +131,7 @@ def first_lick_latency_per_trial(
 def directional_lick_accuracy_per_session(
     trials: Sequence[TrialRecord],
     *,
-    endpoints_v2_params: dict[str, Any],
+    endpoints_params: dict[str, Any],
 ) -> EndpointResult:
     """Per-reward-side fraction of trials where correct-side licks dominate.
 
@@ -189,7 +189,7 @@ def directional_lick_accuracy_per_session(
         per_trial_type_split=per_side,
         provenance={
             "endpoint_name": "directional_lick_accuracy_per_session",
-            "config_snapshot": copy.deepcopy(endpoints_v2_params),
+            "config_snapshot": copy.deepcopy(endpoints_params),
             "n_trials_input": len(trials),
             "n_trials_used": len(trials),
         },
@@ -204,7 +204,7 @@ def directional_lick_accuracy_per_session(
 def switch_cost_per_session(
     trials: Sequence[TrialRecord],
     *,
-    endpoints_v2_params: dict[str, Any],
+    endpoints_params: dict[str, Any],
 ) -> EndpointResult:
     """Contrast of trial-N performance on "switch" vs "same-side-continuation" trials.
 
@@ -233,7 +233,7 @@ def switch_cost_per_session(
         - ``per_trial_type_split``: ``None`` (the decomposition is temporal,
           not side-wise).
     """
-    baseline = endpoints_v2_params.get("switch_cost", {}).get(
+    baseline = endpoints_params.get("switch_cost", {}).get(
         "same_side_baseline_definition", "immediately_prior_trial"
     )
     if baseline != "immediately_prior_trial":
@@ -273,7 +273,7 @@ def switch_cost_per_session(
         per_trial_type_split=None,
         provenance={
             "endpoint_name": "switch_cost_per_session",
-            "config_snapshot": copy.deepcopy(endpoints_v2_params),
+            "config_snapshot": copy.deepcopy(endpoints_params),
             "n_trials_input": n_trials,
             "n_trials_used": len(same_latencies) + len(switch_latencies),
             "performance_metric": "first_correct_lick_latency_s",
@@ -289,7 +289,7 @@ def switch_cost_per_session(
 def latency_variability_per_session(
     trials: Sequence[TrialRecord],
     *,
-    endpoints_v2_params: dict[str, Any],
+    endpoints_params: dict[str, Any],
 ) -> EndpointResult:
     """Dispersion statistics (std, CV, IQR, n) on per-trial first-lick latency.
 
@@ -337,7 +337,7 @@ def latency_variability_per_session(
         per_trial_type_split=per_side,
         provenance={
             "endpoint_name": "latency_variability_per_session",
-            "config_snapshot": copy.deepcopy(endpoints_v2_params),
+            "config_snapshot": copy.deepcopy(endpoints_params),
             "n_trials_input": len(trials),
             "n_trials_used": int(np.count_nonzero(~np.isnan(latencies))),
         },

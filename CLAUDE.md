@@ -28,7 +28,7 @@ These rules bind every Claude Code session working on this project.
 3. **Never modify files Claude Code did not create itself in this consolidation project**, with one exception: inside this repo, Claude Code may modify files it created on a previous turn in the same or prior session.
 4. **If Claude Code believes an existing analysis output should be overwritten**, stop and ask first, describing exactly what would be overwritten and why.
 5. **Default migration pattern: copy, do not move.** Legacy notebook → new module = implement in this repo; legacy notebook stays untouched.
-6. **Output writes go to new output directories** (e.g. `session_processing_v2/`, `dlc_analysis_v2/`) — never on top of existing `session_processing3/` or existing per-animal analysis folders on the server.
+6. **Output writes go to new output directories under `stroke_orofacial_pipeline_outputs/`** (e.g. `stroke_orofacial_pipeline_outputs/spout_behavior/`, `stroke_orofacial_pipeline_outputs/dlc_analysis/`) — never on top of existing `session_processing3/` or existing per-animal analysis folders on the server.
 7. **Before any large refactor or delete-like operation**, use plan mode (Shift+Tab → Plan) and show the plan for approval.
 8. **Git discipline:**
    - Every change lands as a commit on a feature branch. Never force-push.

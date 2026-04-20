@@ -1329,3 +1329,119 @@ manual verification, debugging, batch-size scout monitoring).
 - [x] PR #31 merged to main as `d031486` and tagged
   `v0.7-phase-13-env-unification` (annotated, pushed). Feature branch
   `phase-13-env-unification` preserved on origin per CLAUDE.md §8.
+
+## Phase 8a.7 — Per-session JSON writer + schema (criteria stubbed)
+
+**Date:** 2026-04-20.
+
+**What was done:**
+
+- New module `src/stroke_orofacial/spout_behavior/endpoints_writer.py`
+  defining `write_session_endpoints_json()` plus the
+  `lick_bouts_to_endpoint_result()` adapter and three module-level
+  constants: `SCHEMA_VERSION = "2.0.0"`,
+  `CANONICAL_ENDPOINT_NAMES` (10-name frozenset), and two sentinel dicts
+  (`CRITERIA_NOT_YET_COMPUTED_SENTINEL`,
+  `INTER_SESSION_REQUIRES_COHORT_SENTINEL`).
+- Schema 2.0.0 has three top-level blocks — `metadata`, `endpoints`,
+  `criteria` — plus a top-level `schema_version` string. Every
+  endpoint slot and every criteria slot is always present; absent
+  computations land as explicit sentinel objects rather than `null` or
+  missing keys, so downstream consumers (8a.7.5, 8a.8) can assert
+  presence at the schema level.
+- Caller passes the full 10-key `endpoints` dict; the writer validates
+  strictly (missing or unknown keys → `ValueError`). Each value may be
+  an `EndpointResult` (computed) or a sentinel dict (e.g.
+  `INTER_SESSION_REQUIRES_COHORT_SENTINEL` for the per-animal
+  cross-session metric, which is computed at the cohort-aggregation
+  stage in a future phase). The four criteria sentinels are
+  constructed internally from
+  `criteria_slugs.all_new_slugs(defaults)` — caller does not pass
+  them.
+- `lick_bouts_to_endpoint_result()` adapts the
+  `find_lick_bouts() → list[LickBout]` primitive into the uniform
+  `EndpointResult` shape the writer expects. Bouts are binned into
+  trials by `start_idx ∈ [reward_idx + window_seconds[0]*Fs,
+  reward_idx + window_seconds[1]*Fs)` (half-open, matches
+  `build_per_trial_records`'s window semantics). `per_session_aggregate`
+  reports `n_bouts`, `mean_n_licks`, `mean_within_bout_ili_s`,
+  `mean_bout_duration_s`, and `std_bouts_per_trial`;
+  `per_trial_array` carries per-trial bout counts so downstream
+  consumers can recompute alternative summary stats without re-running
+  the primitive.
+- NPZ provenance hashes are SHA-256 hex of full file bytes
+  (`hashlib.sha256(path.read_bytes()).hexdigest()`); Phase 2 NPZs are
+  small enough that one-shot reads are fine.
+- Atomic write mirrors the
+  `tempfile.TemporaryDirectory` + `Path.replace` idiom in
+  `dlc_io/parquet.py:47-75` — temp file lands in the final output's
+  parent directory so the rename is atomic on the same filesystem.
+- 15 tests in `tests/test_endpoints_writer.py` cover schema
+  round-trip, top-level / metadata / endpoints block shapes, criteria
+  sentinel pattern (explicit assertion that values are the sentinel
+  dict, never `None`), inter-session sentinel passthrough, hash
+  determinism, hash-changes-on-byte-mutation, schema version,
+  no-partial-on-exception atomic semantics, strict missing/unknown
+  key validation, NaN preservation through `json.dumps(allow_nan=True)`,
+  and the lick-bout adapter's empty-input + trial-binning behavior.
+
+**Intentional behavior differences vs. legacy:**
+
+1. **Schema 2.0.0 is a clean break from legacy
+   `behavior_report_PS.py:report.json`.** Per the kickoff scoping
+   decision Q6 (2026-04-20), the new writer emits to a parallel
+   `spout_endpoints.json` file and the legacy `report.json`
+   pathway stays byte-stable. The two files coexist; consumers choose
+   per their needs. There is no parity test in 8a.7 — the schemas are
+   structurally incompatible by design.
+
+   Naming-wise, the kickoff originally called the new artifact
+   `spout_endpoints_v2.json` and gave the config block / API kwargs the
+   `_v2` suffix to disambiguate from the legacy `report.json`. In 8a.7
+   we dropped the `_v2` everywhere — the new outputs land in their own
+   tree (`pipeline_outputs/spout_behavior/endpoints/...`), the new
+   config block lives under its own namespace
+   (`spout_behavior.endpoints:` in `defaults.yaml`), and the new API
+   kwarg (`endpoints_params=`) doesn't collide with anything legacy.
+   Renamed in this PR: the `endpoints_v2:` block in `defaults.yaml`
+   (now `endpoints:`); every `endpoints_v2_params=` callsite in 8a.2–
+   8a.6 modules and tests (now `endpoints_params=`); the `V2_PARAMS`
+   test fixture name (now `ENDPOINTS_PARAMS`); the docstring path
+   examples in `criteria_slugs.py` and `endpoints_writer.py`. Frozen
+   archaeology / kickoff docs under `docs/PHASE_8A_*.md` and
+   `docs/prompts/phase-8a-*.md` retain the original `_v2` references
+   as historical decision-trail context.
+
+2. **Two endpoint slots ship as sentinels in 8a.7.** All four
+   `criteria` values land as
+   `{"status": "not_yet_computed", "port_scheduled_for": "8a.7.5"}`
+   because C1–C4 production computation is not yet ported (verified by
+   greps for `criteria_(1|2|3|4)|criteria_training_pass|...` returning
+   only the `criteria_slugs.py` slug-bijection helpers and a docstring
+   note in `endpoints_per_trial.py`). `inter_session_persistence`
+   lands as `{"status": "requires_cohort_aggregation",
+   "computed_at": "cohort_aggregation_stage"}` because it's a
+   per-animal cross-session metric and the per-session writer stays a
+   pure function of per-session inputs. Both sentinels are explicit
+   dict objects, never `null` and never absent.
+
+**Exit criteria:**
+- [x] `pytest tests/test_endpoints_writer.py -v` → 15 passed.
+- [x] `pytest -q` → 335 passed / 28 skipped (320 baseline + 15 new).
+- [x] `ruff check src/stroke_orofacial/spout_behavior/endpoints_writer.py
+  tests/test_endpoints_writer.py` → clean.
+- [x] All four criteria slugs and the inter_session_persistence slot
+  emit explicit sentinel dicts (not `null`) — verified by tests.
+- [x] Implemented on feature branch `phase-8a-part3-json-writer` off
+  main; pre-commit hook in `.githooks/pre-commit` blocks accidental
+  commits to main per CLAUDE.md §1.8.
+
+**Deferred to 8a.7.5:**
+- Port C3 (per-trial first-correct-lick-present), C4 (per-trial
+  correct/incorrect lick-count thresholds), C2 (per-session per-side
+  C3∩C4 pass-fraction aggregator), C1 (multi-session C2 training-pass
+  over consecutive sessions).
+- Replace the four `criteria` sentinel dicts with computed values.
+- Parity tests for C3/C4 per-trial booleans against legacy
+  `behavior_report_PS.py:455-551` on PS46/20250307 (byte-identical for
+  booleans, `1e-12` rtol for the C2/C1 boolean-count aggregates).

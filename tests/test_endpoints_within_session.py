@@ -13,7 +13,7 @@ from stroke_orofacial.spout_behavior.endpoints_within_session import (
 from stroke_orofacial.spout_behavior.trial_segmentation import TrialRecord
 
 
-V2_PARAMS = {
+ENDPOINTS_PARAMS = {
     "within_session_learning_curve": {"n_bins": 5},
     "within_session_change": {"detrend_method": "linear"},
 }
@@ -57,7 +57,7 @@ def _metric_from_list(values: list[float]):
 class TestWithinSessionLearningCurve:
     def test_empty_trials(self):
         r = within_session_learning_curve(
-            [], metric_extractor=lambda t: 0.0, endpoints_v2_params=V2_PARAMS
+            [], metric_extractor=lambda t: 0.0, endpoints_params=ENDPOINTS_PARAMS
         )
         agg = r.per_session_aggregate
         assert len(agg["per_bin_means"]) == 5
@@ -71,7 +71,7 @@ class TestWithinSessionLearningCurve:
         trials = _make_trials(20, vals)
         r = within_session_learning_curve(
             trials, metric_extractor=_metric_from_list(vals),
-            endpoints_v2_params=V2_PARAMS,
+            endpoints_params=ENDPOINTS_PARAMS,
         )
         agg = r.per_session_aggregate
         assert agg["per_bin_means"] == pytest.approx([0.5] * 5)
@@ -84,7 +84,7 @@ class TestWithinSessionLearningCurve:
         trials = _make_trials(20, vals)
         r = within_session_learning_curve(
             trials, metric_extractor=_metric_from_list(vals),
-            endpoints_v2_params=V2_PARAMS,
+            endpoints_params=ENDPOINTS_PARAMS,
         )
         agg = r.per_session_aggregate
         bin_means = agg["per_bin_means"]
@@ -102,7 +102,7 @@ class TestWithinSessionLearningCurve:
         trials = _make_trials(3, vals)
         r = within_session_learning_curve(
             trials, metric_extractor=_metric_from_list(vals),
-            endpoints_v2_params=params,
+            endpoints_params=params,
         )
         bin_means = r.per_session_aggregate["per_bin_means"]
         assert len(bin_means) == 5
@@ -121,7 +121,7 @@ class TestWithinSessionLearningCurve:
                   "within_session_change": {"detrend_method": "linear"}}
         r = within_session_learning_curve(
             trials, metric_extractor=_metric_from_list(vals),
-            endpoints_v2_params=params,
+            endpoints_params=params,
         )
         # Single bin covers everything; mean over non-NaN values = (1+3+5)/3 = 3.
         assert r.per_session_aggregate["per_bin_means"][0] == pytest.approx(3.0)
@@ -135,7 +135,7 @@ class TestWithinSessionLearningCurve:
                   "within_session_change": {"detrend_method": "linear"}}
         r = within_session_learning_curve(
             trials, metric_extractor=_metric_from_list(vals),
-            endpoints_v2_params=params,
+            endpoints_params=params,
         )
         assert math.isnan(r.per_session_aggregate["per_bin_means"][0])
 
@@ -148,7 +148,7 @@ class TestWithinSessionLearningCurve:
 class TestWithinSessionChange:
     def test_empty_trials(self):
         r = within_session_change(
-            [], metric_extractor=lambda t: 0.0, endpoints_v2_params=V2_PARAMS
+            [], metric_extractor=lambda t: 0.0, endpoints_params=ENDPOINTS_PARAMS
         )
         assert math.isnan(r.per_session_aggregate["slope_per_trial"])
         assert r.per_session_aggregate["n_trials_valid"] == 0
@@ -159,7 +159,7 @@ class TestWithinSessionChange:
         trials = _make_trials(10, vals)
         r = within_session_change(
             trials, metric_extractor=_metric_from_list(vals),
-            endpoints_v2_params=V2_PARAMS,
+            endpoints_params=ENDPOINTS_PARAMS,
         )
         assert r.per_session_aggregate["slope_per_trial"] == pytest.approx(0.0)
 
@@ -169,7 +169,7 @@ class TestWithinSessionChange:
         trials = _make_trials(10, vals)
         r = within_session_change(
             trials, metric_extractor=_metric_from_list(vals),
-            endpoints_v2_params=V2_PARAMS,
+            endpoints_params=ENDPOINTS_PARAMS,
         )
         assert r.per_session_aggregate["slope_per_trial"] == pytest.approx(2.0)
 
@@ -178,7 +178,7 @@ class TestWithinSessionChange:
         trials = _make_trials(1, vals)
         r = within_session_change(
             trials, metric_extractor=_metric_from_list(vals),
-            endpoints_v2_params=V2_PARAMS,
+            endpoints_params=ENDPOINTS_PARAMS,
         )
         assert math.isnan(r.per_session_aggregate["slope_per_trial"])
 
@@ -187,7 +187,7 @@ class TestWithinSessionChange:
         trials = _make_trials(10, vals)
         r = within_session_change(
             trials, metric_extractor=_metric_from_list(vals),
-            endpoints_v2_params=V2_PARAMS,
+            endpoints_params=ENDPOINTS_PARAMS,
         )
         assert r.per_session_aggregate["slope_per_trial"] == pytest.approx(-0.1)
 
@@ -198,7 +198,7 @@ class TestWithinSessionChange:
         with pytest.raises(NotImplementedError, match="theil_sen"):
             within_session_change(
                 trials, metric_extractor=_metric_from_list([1.0, 2.0, 3.0]),
-                endpoints_v2_params=params,
+                endpoints_params=params,
             )
 
     def test_nan_metric_dropped_from_slope(self):
@@ -208,7 +208,7 @@ class TestWithinSessionChange:
         trials = _make_trials(5, vals)
         r = within_session_change(
             trials, metric_extractor=_metric_from_list(vals),
-            endpoints_v2_params=V2_PARAMS,
+            endpoints_params=ENDPOINTS_PARAMS,
         )
         assert r.per_session_aggregate["slope_per_trial"] == pytest.approx(1.0)
         assert r.per_session_aggregate["n_trials_valid"] == 3

@@ -72,14 +72,14 @@ class TestValidateSlugMap:
         validate_slug_map(d)  # raises on any violation
 
     def test_rejects_wrong_count(self):
-        bad = {"spout_behavior": {"endpoints_v2": {
+        bad = {"spout_behavior": {"endpoints": {
             "criteria_slug_map": {"criteria_1": "foo", "criteria_2": "bar"}
         }}}
         with pytest.raises(ValueError, match="exactly 4"):
             validate_slug_map(bad)
 
     def test_rejects_wrong_keys(self):
-        bad = {"spout_behavior": {"endpoints_v2": {
+        bad = {"spout_behavior": {"endpoints": {
             "criteria_slug_map": {
                 "criteria_1": "a", "criteria_2": "b",
                 "criteria_3": "c", "criteria_5": "d",
@@ -89,7 +89,7 @@ class TestValidateSlugMap:
             validate_slug_map(bad)
 
     def test_rejects_duplicate_new_slugs(self):
-        bad = {"spout_behavior": {"endpoints_v2": {
+        bad = {"spout_behavior": {"endpoints": {
             "criteria_slug_map": {
                 "criteria_1": "same_name", "criteria_2": "same_name",
                 "criteria_3": "c", "criteria_4": "d",
@@ -99,7 +99,7 @@ class TestValidateSlugMap:
             validate_slug_map(bad)
 
     def test_rejects_non_identifier_slug(self):
-        bad = {"spout_behavior": {"endpoints_v2": {
+        bad = {"spout_behavior": {"endpoints": {
             "criteria_slug_map": {
                 "criteria_1": "not-an-identifier",  # hyphen
                 "criteria_2": "b", "criteria_3": "c", "criteria_4": "d",

@@ -59,7 +59,7 @@ def find_lick_bouts(
     Fs : float
         Sampling rate in Hz.
     params : dict
-        The ``spout_behavior.endpoints_v2.lick_bouts`` block from defaults.yaml.
+        The ``spout_behavior.endpoints.lick_bouts`` block from defaults.yaml.
         Required keys:
 
         - ``max_ili_ms`` (float): Maximum inter-lick interval, in milliseconds,

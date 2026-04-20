@@ -15,8 +15,8 @@ from stroke_orofacial.spout_behavior.endpoints_per_trial import (
 from stroke_orofacial.spout_behavior.trial_segmentation import TrialRecord
 
 
-# Minimal endpoints_v2 params stub for the two endpoints that actually key into it.
-V2_PARAMS: dict = {
+# Minimal endpoints params stub for the two endpoints that actually key into it.
+ENDPOINTS_PARAMS: dict = {
     "switch_cost": {"same_side_baseline_definition": "immediately_prior_trial"},
 }
 
@@ -51,7 +51,7 @@ def _trial(
 
 class TestFirstLickLatencyPerTrial:
     def test_empty_trials(self):
-        r = first_lick_latency_per_trial([], endpoints_v2_params=V2_PARAMS)
+        r = first_lick_latency_per_trial([], endpoints_params=ENDPOINTS_PARAMS)
         assert r.per_trial_array.shape == (0,)
         assert math.isnan(r.per_session_aggregate["mean"])
         assert r.per_session_aggregate["n"] == 0
@@ -61,7 +61,7 @@ class TestFirstLickLatencyPerTrial:
     def test_single_L_trial_with_correct_lick(self):
         # Reward at 0; first L lick at sample 200 → latency = 0.2 s @ Fs=1000.
         trials = [_trial(0, "L", reward_idx=0, licks_L=[200, 500])]
-        r = first_lick_latency_per_trial(trials, endpoints_v2_params=V2_PARAMS)
+        r = first_lick_latency_per_trial(trials, endpoints_params=ENDPOINTS_PARAMS)
         np.testing.assert_allclose(r.per_trial_array, [0.2])
         assert math.isclose(r.per_session_aggregate["mean"], 0.2)
         assert r.per_session_aggregate["std"] == 0.0
@@ -72,7 +72,7 @@ class TestFirstLickLatencyPerTrial:
     def test_no_correct_lick_in_window_yields_nan(self):
         # L reward trial, but only R lick present → no correct-side lick.
         trials = [_trial(0, "L", reward_idx=0, licks_R=[100])]
-        r = first_lick_latency_per_trial(trials, endpoints_v2_params=V2_PARAMS)
+        r = first_lick_latency_per_trial(trials, endpoints_params=ENDPOINTS_PARAMS)
         assert math.isnan(r.per_trial_array[0])
         assert r.per_session_aggregate["n"] == 0
 
@@ -82,7 +82,7 @@ class TestFirstLickLatencyPerTrial:
             _trial(1, "L", reward_idx=1_000, licks_L=[1_300]),  # 0.3 s
             _trial(2, "R", reward_idx=5_000, licks_R=[5_500]),  # 0.5 s
         ]
-        r = first_lick_latency_per_trial(trials, endpoints_v2_params=V2_PARAMS)
+        r = first_lick_latency_per_trial(trials, endpoints_params=ENDPOINTS_PARAMS)
         np.testing.assert_allclose(r.per_trial_array, [0.1, 0.3, 0.5])
         assert r.per_trial_type_split["L"]["mean"] == pytest.approx(0.2)
         assert r.per_trial_type_split["L"]["n"] == 2
@@ -97,7 +97,7 @@ class TestFirstLickLatencyPerTrial:
 
 class TestDirectionalLickAccuracy:
     def test_empty_trials(self):
-        r = directional_lick_accuracy_per_session([], endpoints_v2_params=V2_PARAMS)
+        r = directional_lick_accuracy_per_session([], endpoints_params=ENDPOINTS_PARAMS)
         assert math.isnan(r.per_session_aggregate["fraction_correct_on_L_trials"])
         assert math.isnan(r.per_session_aggregate["fraction_correct_on_R_trials"])
         assert r.per_trial_type_split["L"]["n_trials"] == 0
@@ -111,7 +111,7 @@ class TestDirectionalLickAccuracy:
             _trial(2, "R", licks_L=[], licks_R=[100, 200]),
             _trial(3, "R", licks_L=[], licks_R=[150]),
         ]
-        r = directional_lick_accuracy_per_session(trials, endpoints_v2_params=V2_PARAMS)
+        r = directional_lick_accuracy_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         assert r.per_session_aggregate["fraction_correct_on_L_trials"] == 1.0
         assert r.per_session_aggregate["fraction_correct_on_R_trials"] == 1.0
         assert r.per_trial_type_split["L"]["counts_correct"] == [2, 1]
@@ -123,7 +123,7 @@ class TestDirectionalLickAccuracy:
             _trial(0, "L", licks_L=[], licks_R=[100]),
             _trial(1, "L", licks_L=[], licks_R=[200]),
         ]
-        r = directional_lick_accuracy_per_session(trials, endpoints_v2_params=V2_PARAMS)
+        r = directional_lick_accuracy_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         assert r.per_session_aggregate["fraction_correct_on_L_trials"] == 0.0
         assert math.isnan(r.per_session_aggregate["fraction_correct_on_R_trials"])
         assert r.per_trial_type_split["L"]["counts_correct"] == [0, 0]
@@ -136,13 +136,13 @@ class TestDirectionalLickAccuracy:
             _trial(2, "L", licks_L=[100], licks_R=[100]),      # correct (1>=1, 1>=1)
             _trial(3, "L", licks_L=[], licks_R=[]),             # incorrect (correct=0)
         ]
-        r = directional_lick_accuracy_per_session(trials, endpoints_v2_params=V2_PARAMS)
+        r = directional_lick_accuracy_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         # 2 of 4 correct → 0.5.
         assert r.per_session_aggregate["fraction_correct_on_L_trials"] == 0.5
 
     def test_single_side_only_other_side_is_nan(self):
         trials = [_trial(0, "R", licks_R=[100])]
-        r = directional_lick_accuracy_per_session(trials, endpoints_v2_params=V2_PARAMS)
+        r = directional_lick_accuracy_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         assert math.isnan(r.per_session_aggregate["fraction_correct_on_L_trials"])
         assert r.per_session_aggregate["fraction_correct_on_R_trials"] == 1.0
 
@@ -154,7 +154,7 @@ class TestDirectionalLickAccuracy:
 
 class TestSwitchCost:
     def test_empty_trials(self):
-        r = switch_cost_per_session([], endpoints_v2_params=V2_PARAMS)
+        r = switch_cost_per_session([], endpoints_params=ENDPOINTS_PARAMS)
         agg = r.per_session_aggregate
         assert math.isnan(agg["switch_cost_s"])
         assert agg["n_same_side_trials"] == 0
@@ -162,7 +162,7 @@ class TestSwitchCost:
 
     def test_single_trial_no_prior(self):
         trials = [_trial(0, "L", licks_L=[100])]
-        r = switch_cost_per_session(trials, endpoints_v2_params=V2_PARAMS)
+        r = switch_cost_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         assert math.isnan(r.per_session_aggregate["switch_cost_s"])
         assert r.per_session_aggregate["n_same_side_trials"] == 0
 
@@ -173,7 +173,7 @@ class TestSwitchCost:
             _trial(1, "L", reward_idx=1_000, licks_L=[1_200]), # lat 0.2
             _trial(2, "L", reward_idx=2_000, licks_L=[2_300]), # lat 0.3
         ]
-        r = switch_cost_per_session(trials, endpoints_v2_params=V2_PARAMS)
+        r = switch_cost_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         agg = r.per_session_aggregate
         # Both trial 1 and 2 are same-side → mean_same = mean(0.2, 0.3) = 0.25.
         assert agg["mean_latency_same_side_s"] == pytest.approx(0.25)
@@ -190,7 +190,7 @@ class TestSwitchCost:
             _trial(2, "L", reward_idx=2_000, licks_L=[2_300]),
             _trial(3, "R", reward_idx=3_000, licks_R=[3_400]),
         ]
-        r = switch_cost_per_session(trials, endpoints_v2_params=V2_PARAMS)
+        r = switch_cost_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         agg = r.per_session_aggregate
         assert agg["n_switch_trials"] == 3
         assert agg["n_same_side_trials"] == 0
@@ -205,7 +205,7 @@ class TestSwitchCost:
             _trial(2, "R", reward_idx=2_000, licks_R=[2_300]),
             _trial(3, "L", reward_idx=3_000, licks_L=[3_400]),
         ]
-        r = switch_cost_per_session(trials, endpoints_v2_params=V2_PARAMS)
+        r = switch_cost_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         agg = r.per_session_aggregate
         assert agg["mean_latency_same_side_s"] == pytest.approx(0.2)
         assert agg["mean_latency_switch_s"] == pytest.approx(0.35)
@@ -218,7 +218,7 @@ class TestSwitchCost:
             _trial(1, "R", reward_idx=1_000, licks_R=[]),  # NaN
             _trial(2, "R", reward_idx=2_000, licks_R=[2_300]),
         ]
-        r = switch_cost_per_session(trials, endpoints_v2_params=V2_PARAMS)
+        r = switch_cost_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         # Trial 1 (switch) excluded; trial 2 (same-side-continuation) kept.
         assert r.per_session_aggregate["n_same_side_trials"] == 1
         assert r.per_session_aggregate["n_switch_trials"] == 0
@@ -226,7 +226,7 @@ class TestSwitchCost:
     def test_unsupported_baseline_raises(self):
         params = {"switch_cost": {"same_side_baseline_definition": "n_back_average"}}
         with pytest.raises(NotImplementedError, match="n_back_average"):
-            switch_cost_per_session([], endpoints_v2_params=params)
+            switch_cost_per_session([], endpoints_params=params)
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +236,7 @@ class TestSwitchCost:
 
 class TestLatencyVariability:
     def test_empty_trials(self):
-        r = latency_variability_per_session([], endpoints_v2_params=V2_PARAMS)
+        r = latency_variability_per_session([], endpoints_params=ENDPOINTS_PARAMS)
         agg = r.per_session_aggregate
         assert agg["n"] == 0
         assert math.isnan(agg["std_s"])
@@ -250,7 +250,7 @@ class TestLatencyVariability:
             _trial(2, "L", reward_idx=2_000, licks_L=[2_500]),
         ]
         # All latencies 0.5 → std 0, CV 0, IQR 0.
-        r = latency_variability_per_session(trials, endpoints_v2_params=V2_PARAMS)
+        r = latency_variability_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         agg = r.per_session_aggregate
         assert agg["std_s"] == 0.0
         assert agg["cv"] == 0.0
@@ -264,7 +264,7 @@ class TestLatencyVariability:
             _trial(i, "L", reward_idx=i * 1_000, licks_L=[i * 1_000 + (i + 1) * 100])
             for i in range(5)
         ]
-        r = latency_variability_per_session(trials, endpoints_v2_params=V2_PARAMS)
+        r = latency_variability_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         agg = r.per_session_aggregate
         assert agg["std_s"] == pytest.approx(np.sqrt(0.02))
         assert agg["cv"] == pytest.approx(np.sqrt(0.02) / 0.3)
@@ -273,7 +273,7 @@ class TestLatencyVariability:
 
     def test_single_trial_iqr_is_nan(self):
         trials = [_trial(0, "L", reward_idx=0, licks_L=[100])]
-        r = latency_variability_per_session(trials, endpoints_v2_params=V2_PARAMS)
+        r = latency_variability_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         agg = r.per_session_aggregate
         # n=1 → std=0, CV defined (std/mean=0), IQR=NaN (n<2).
         assert agg["n"] == 1
@@ -287,6 +287,6 @@ class TestLatencyVariability:
             _trial(1, "R", reward_idx=1_000, licks_R=[1_200]),
             _trial(2, "R", reward_idx=2_000, licks_R=[2_400]),
         ]
-        r = latency_variability_per_session(trials, endpoints_v2_params=V2_PARAMS)
+        r = latency_variability_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         assert r.per_trial_type_split["L"]["n"] == 1
         assert r.per_trial_type_split["R"]["n"] == 2
