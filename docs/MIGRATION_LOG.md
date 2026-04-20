@@ -725,6 +725,81 @@ captures the full pooling + comparison + proposal pipeline. Outputs at
   passed (5 tests; 2 skipped for missing data). Live-data re-run on PS46
   recommended once Priya re-executes notebook 12.
 
+### Post-merge validation (2026-04-20, post-PR-#33-merge)
+
+Both follow-ups from the "Deferred / noted" block above executed on branch
+`phase-4.5-lite-post-merge-validation` (off main at `685d3f7`) to confirm
+nothing regressed after the Gate 2 API refactor.
+
+**Followup 1 — Cohort-wide Phase 5 re-run.** Deleted the single pre-fix
+blank PNG at `spatial_whole_session/nose_nose/PS46/heatmap_20250307.png`
+and executed `notebooks/11_dlc_spatial_whole_session.ipynb` via
+`jupyter nbconvert --execute --inplace`. Parquets for the other 7 animals
+and other PS46 dates are not yet built (confirmed by Phase 4.5-E hash
+script), so the effective re-run scope was PS46/20250307 × 3 bodyparts
+(nose/jaw/tongue) × 3 center_modes (nose/spout_midpoint/eye_midpoint) =
+9 `(bodypart, center_mode)` combinations, producing 9 PNGs + 9
+`stats_grid` NPZs. All 18 outputs non-blank; the previously-blank
+`nose_nose/PS46` re-rendered as a correct nose-centered density at
+`(0, 0)` within `xlim=[-150, 150]`, `ylim=[-120, 130]`, camera-view
+y-inversion applied. Full re-run baseline:
+
+| combination | file | sha256[:12] | size (KB) |
+|---|---|---|---|
+| jaw_eye_midpoint | PS46/heatmap_20250307.png | 7f7d855214bf | 53.9 |
+| jaw_eye_midpoint | PS46/stats_grid_20250307.npz | 3e866674fe56 | 2.7 |
+| jaw_nose | PS46/heatmap_20250307.png | 38bf72585eb2 | 44.6 |
+| jaw_nose | PS46/stats_grid_20250307.npz | 4956a43d3d46 | 2.9 |
+| jaw_spout_midpoint | PS46/heatmap_20250307.png | 15394b0028f5 | 45.9 |
+| jaw_spout_midpoint | PS46/stats_grid_20250307.npz | 93f9e39f12d8 | 2.9 |
+| nose_eye_midpoint | PS46/heatmap_20250307.png | 24834e920388 | 48.4 |
+| nose_eye_midpoint | PS46/stats_grid_20250307.npz | 79edfe96d17e | 2.4 |
+| nose_nose | PS46/heatmap_20250307.png | 5caf3a348f9c | 42.9 |
+| nose_nose | PS46/stats_grid_20250307.npz | 76f953ea8f8f | 2.4 |
+| nose_spout_midpoint | PS46/heatmap_20250307.png | 633c25a7ad1e | 46.9 |
+| nose_spout_midpoint | PS46/stats_grid_20250307.npz | 62ec7c54f97d | 2.4 |
+| tongue_eye_midpoint | PS46/heatmap_20250307.png | b0d99b3a11de | 49.3 |
+| tongue_eye_midpoint | PS46/stats_grid_20250307.npz | 4838328575d3 | 6.0 |
+| tongue_nose | PS46/heatmap_20250307.png | 99d5d55ecc6d | 49.5 |
+| tongue_nose | PS46/stats_grid_20250307.npz | 500e3682ee9c | 6.0 |
+| tongue_spout_midpoint | PS46/heatmap_20250307.png | 6c156a7947b5 | 52.8 |
+| tongue_spout_midpoint | PS46/stats_grid_20250307.npz | 83dd84f530ed | 3.6 |
+
+No regressions observed. The previously-good `nose_nose` PNG was blank
+under the pre-4.5-lite bug (not truly good), so the regression-detection
+logic ("any combination that was good and is now broken") had no broken
+referents to check against.
+
+**Followup 2 — Phase 6 reward_aligned live-data re-test.** Called
+`build_reward_aligned_analysis` directly on PS46/20250307 with
+`window_ms=(-500, 5000)`, `trial_group="all"` (96 rewards, 132,096
+selected frames) for the two reference combinations in Phase 6 §6d, and
+compared histogram counts to the recorded baselines:
+
+| combination | center_mode | counts (post-4.5-lite) | baseline (Phase 6 §6d) | status |
+|---|---|---|---|---|
+| tongue | nose | 54,159 | 54,159 | MATCH |
+| nose   | nose | 132,053 | 132,053 | MATCH |
+| tongue | spout_midpoint | 54,159 | — | recorded as new baseline |
+
+All rewards / selected_frame counts also match (96 / 132,096).
+Histogram-bin fill percentages differ across center_modes because the
+per-(bodypart, center_mode) `xlim` / `ylim` / `x_range` are different
+frames, but total counts are invariant under the API refactor — exactly
+as expected for a pure plumbing change.
+
+Additionally smoke-tested `notebooks/12_dlc_spatial_reward_aligned.ipynb`
+via `jupyter nbconvert --execute --inplace`. Exit 0, 54 new Phase 6
+reward-aligned PNGs on disk (3 bodyparts × 3 center_modes × 2 windows ×
+3 trial_groups).
+
+**Conclusion.** Gate 2 API refactor preserved Phase 6 behavior at the
+histogram level; the pre-existing Phase 5 blank-PNG bug is fixed; no
+regressions. All "Deferred / noted" items from the main Phase 4.5-lite
+entry are now closed except the Phase 5.x all-bodyparts overlay
+(still future scope) and the fiducial `per_center_mode` blocks (still
+intentionally null).
+
 ---
 
 ## Phase 5 — DLC Spatial Analyses (Whole Session)
