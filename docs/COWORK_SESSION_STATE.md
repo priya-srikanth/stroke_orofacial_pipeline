@@ -25,13 +25,13 @@ A new Cowork session works through this in order before answering any substantiv
 
 ## Current state
 
-**As of:** 2026-04-19 (end of extensive session; Cowork-on-Mac + Windows-Claude-Code workflow now permanent).
+**As of:** 2026-04-19 (audit closure session; Cowork-on-Mac + Windows-Claude-Code workflow now permanent).
 
-**Repo phase:** Mid-consolidation audit nearing completion — 9 of 10 items resolved; Item 10's archaeology phase done, discussion-with-Priya phase deferred to next session. Phases 1 through 6 delivered and on `main`.
+**Repo phase:** Mid-consolidation audit **complete — 10 of 10 items resolved**. Phases 1 through 6 delivered and on `main`. Audit branch ready to merge.
 
-**Current branch:** `audit-item-6-phase5-details` (off `main` at tag `v0.6-phase-6-complete`). All work this session landed on this branch. Final uncommitted items sitting on Mac from the last edits: the DECISIONS.md additions for Audit Items 8/9 and the new `docs/SCIENTIFIC_ENDPOINTS.md`. See last commit instructions in the "Recent session log" below.
+**Current branch:** `audit-item-6-phase5-details` (off `main` at tag `v0.6-phase-6-complete`). Final uncommitted items sitting on Mac from this closure session: the DECISIONS.md addition for Audit Item 10 (Q1–Q10 grouped entry at top) and this COWORK_SESSION_STATE.md update. Priya to run `git add docs/DECISIONS.md docs/COWORK_SESSION_STATE.md && git commit && git push` on Mac to land them on origin.
 
-**In flight:** None. Between-session state is clean. Next session picks up at Audit Item 10 Q1–Q10 discussion.
+**In flight:** None. Between-session state is clean. Next session picks up at **task #8 — audit merge to `main` + tag `v0.6.5-audit-complete`**.
 
 **Recent session log (2026-04-18 through 2026-04-19, consolidated):**
 
@@ -45,6 +45,17 @@ Completed across the multi-day session:
 - **Audit Item 9 (SVG + output reorg) closed** — SVG via unified `save_figure` helper (rolled into Phase 5.5 polish task). Directory reorg to figure-type-first within existing `spout_behavior/` and `dlc_analysis/` top-levels. New Phase 6.75 task, sequenced between 6.7 and 6.8. DECISIONS entry 2026-04-19.
 - **Audit Item 10 archaeology phase** — Explore agent cataloged 26 endpoints across 6 categories from two legacy repos; written to `docs/SCIENTIFIC_ENDPOINTS.md`. Discussion phase (Q1–Q10) deferred to next session.
 - **Cowork-on-Windows declared permanently unavailable** for Priya's machine despite Hyper-V running + Max subscription; account-level feature-flag block. Mac-Cowork + Windows-Claude-Code split is the permanent workflow.
+- **Audit Item 10 closure (this session)** — Walked Q1–Q10 with Priya, all decisions landed as a single grouped DECISIONS entry at top of `docs/DECISIONS.md`. Key outcomes:
+  - *Q1:* Phase 3 linear alignment stays canonical; DTW notebook's end output is strictly worse (collapses back to linear fit with only first/last anchors vs Phase 3's polyfit over all matched edges). Per-edge-shift QC plot carve-out rolls into task #16 (Phase 5.5 polish).
+  - *Q2:* `criteria_1/2/3/4` renamed to descriptive slugs — exact slugs finalized at Phase 8a kickoff.
+  - *Q3:* Phenotype viz in Phase 8a; phenotype **classification** is a new Phase 9.1 between 9a and 9b.
+  - *Q4:* Quiet-period endpoint reserved for FaceRhythm (v2).
+  - *Q5:* `facerhythm_tca` stub reserved in Phase 11+ slot.
+  - *Q6:* Phase 7 scope locked = 6 core + 4 secondary + face-velocity PCs 1–3 + PSD on tongue/jaw/whisker; per-trial AND whole-session; HARD prerequisite = interpolated continuous traces for tongue/jaw must carry forward from Priya's legacy code; re-read `20260203` and `20260416` DLC kinematic notebooks at Phase 7 kickoff.
+  - *Q7:* Add `sex` AND `date_of_birth` to `AnimalInfo` + `animals.yaml`; cohort = mixed (sex/age as covariates, not strata).
+  - *Q8:* Phase 9 splits into 9a (spout stats framework + spout endpoints) → 9.1 (phenotype classification) → 9b (DLC kinematic stats).
+  - *Q9:* 8 new spout endpoints locked: `within_session_learning_curve`, `inter_session_persistence`, `lick_bout_structure`, `within_session_change`, `switch_cost`, `directional_lick_accuracy`, `first_lick_latency`, `latency_variability`. Phase 8a kickoff includes legacy-behavior-report walkthrough to match / discard / surface-additional metrics.
+  - *Q10:* No re-prioritization needed; derived ordering matches existing task queue.
 
 ---
 
@@ -54,11 +65,11 @@ The authoritative source is the Cowork TaskList widget in the current session. M
 
 **In progress:**
 
-- **#7** — Audit Item 10 (scientific endpoints). Phase 1 archaeology done (written to `docs/SCIENTIFIC_ENDPOINTS.md`). Phase 2 = walk Q1–Q10 with Priya, land decisions into DECISIONS.md.
+- *(none — Audit Item 10 closed this session)*
 
 **Pending — audit wrap-up gate:**
 
-- **#8** — Merge `audit-item-6-phase5-details` → `main`, tag `v0.6.5-audit-complete`. Blocked on #7 only (all other audit items closed).
+- **#8** — Merge `audit-item-6-phase5-details` → `main`, tag `v0.6.5-audit-complete`. **Unblocked** (all 10 audit items closed). Next session's first action.
 
 **Pending — queued phases and mini-phases**, in rough execution order (dependencies noted):
 
@@ -68,10 +79,16 @@ The authoritative source is the Cowork TaskList widget in the current session. M
 - **#17** — Phase 6.75 output directory reorganization (figure-type-first inside dlc_analysis and spout_behavior). Blocked on #9 so Phase 6.7's byte-parity checks remain valid at old paths.
 - **#14** — Phase 6.8 full heatmap/binned/Δ × session/reward-aligned matrix. Blocked on #17.
 - **#15** — Axis sharing (`share_xy_within_mouse` + percentile fallback + reward-aligned-specific axis config). Blocked on #14.
-- **#10** — Phase 8a spout-only recovery trajectories (mid-experiment deliverable — DLC-independent). Blocked on #8 only; can execute in parallel with Phase 6.7/6.75/6.8 stack if resources allow.
-- **#11** — Phase 7 reward-aligned DLC cohort extension. Blocked on #9 + #10.
-- **#12** — Phase 8b + Phase 9 + Phase 10 bundle. Blocked on #11.
-- **#16** — Phase 5.5 polish (SSH monitoring helper, recovery docs, SSH setup, ControlMaster, auto-rename + SVG unified save helper). Ungated — can execute any time.
+- **#10** — Phase 8a spout-only recovery trajectories (mid-experiment deliverable — DLC-independent). Blocked on #8 only; can execute in parallel with Phase 6.7/6.75/6.8 stack if resources allow. **Scope expansion from Audit Item 10:** also includes (a) finalizing the descriptive slug names for the renamed `criteria_1/2/3/4`, (b) Phase 8a viz of recovery phenotypes (faceting / coloring by fast / slow / non-recoverer), (c) 8 new spout endpoints from Q9 (`within_session_learning_curve`, `inter_session_persistence`, `lick_bout_structure`, `within_session_change`, `switch_cost`, `directional_lick_accuracy`, `first_lick_latency`, `latency_variability`), (d) systematic walkthrough of legacy `facerhythm_stroke_biomarker_exp_Priya` spout behavior code to match each of the 8 to existing implementations + surface additional worth-keeping metrics + explicitly discard stale/redundant ones.
+- **#11** — Phase 7 reward-aligned DLC cohort extension + kinematic endpoints. Blocked on #9 + #10. **Scope locked per Audit Item 10 Q6:** 6 core (tongue amplitude, tongue velocity, jaw amplitude, jaw velocity, whisker frequency, whisker angle) + 4 secondary (W1 baseline whisker angle, W2 whisker angle RMS, W3 whisker protraction event counts, F1 face-velocity PC1 power / N1 nose RMS) + face-velocity PCs 1–3 + PSD on tongue / jaw / whisker angle; per-trial AND whole-session granularity. HARD prerequisite: carry forward Priya's existing interpolated continuous kinematic traces for tongue/jaw (occlusion handling). Phase 7 kickoff must re-read `20260203_DLC_analysis_ws_aligned_parquet_input_tongue.ipynb` and `20260416_DLC_analysis_ws_aligned_parquet_input_jaw.ipynb` from MICROSCOPE `code/`.
+- **#12a** — Phase 8b DLC-based recovery trajectory visualization. Blocked on #11.
+- **#12b** — Phase 9a stats framework + spout endpoint stats. Blocked on #10 (spout data pipeline) but independent of DLC.
+- **#12c** — Phase 9.1 recovery-phenotype classification (fast / slow / non-recoverer fit). Blocked on #12b.
+- **#12d** — Phase 9b DLC kinematic stats. Blocked on #11 + #12c (uses phenotype as covariate).
+- **#12e** — Phase 10 cross-animal / cohort-level synthesis. Blocked on #12a + #12d.
+- **#16** — Phase 5.5 polish (SSH monitoring helper, recovery docs, SSH setup, ControlMaster, auto-rename + SVG unified save helper). **Scope expansion from Audit Item 10 Q1:** also includes porting the one valuable diagnostic from the DTW notebook — the per-edge-shift QC plot (~20 lines) — as an alignment-diagnostic figure to surface any sessions with clear mid-session breakpoints that would need piecewise-linear transform fitting. Ungated — can execute any time.
+- **#18 (new — Audit Item 10 Q7)** — Add `sex` and `date_of_birth` fields to `AnimalInfo` dataclass and populate `configs/animals.yaml` for all 8 mice. Downstream enables age-at-session and age-at-stroke as covariates in Phase 9. Ungated — small schema task, can execute any time before Phase 9a.
+- **#19 (new — Audit Item 10 Q5)** — `facerhythm_tca` stub placeholder (Phase 11+ slot). Not a v1 deliverable; created as a tracking task so v2 planning has a handle. Deferred indefinitely.
 
 **Phase-transition rule:** No new phase starts until the audit branch is merged to main and tagged (#8). Keeps the audit as one atomic chunk.
 
@@ -79,20 +96,9 @@ The authoritative source is the Cowork TaskList widget in the current session. M
 
 ## Open decisions awaiting human input
 
-Currently-open decision points that need Priya's call in the next session. These are the Q1–Q10 from `docs/SCIENTIFIC_ENDPOINTS.md`, needed to fully close Audit Item 10:
+*(None at the moment — Q1–Q10 from `docs/SCIENTIFIC_ENDPOINTS.md` all resolved this session and captured as the 2026-04-19 "Audit Item 10" grouped entry at the top of `docs/DECISIONS.md`. This section will re-populate when new decisions emerge.)*
 
-- **Q1** — Confirm canonical-version disambiguation for legacy files (`behavior_report_PS.py`, `batch_process_behavior_report_20260116PS.ipynb`, `playground.ipynb` linear alignment). Was DTW alignment meant to replace linear or parallel?
-- **Q2** — Criteria renaming (`criteria_1/2/3/4` → descriptive slugs).
-- **Q3** — Recovery-phenotype stratification timing: Phase 8a or Phase 9/10?
-- **Q4** — Quiet-period endpoint status: is `quiet_period_batch_playground.ipynb` integrated or not?
-- **Q5** — Face-rhythm TCA scope: in-scope (Phase 11+) or out-of-scope?
-- **Q6** — Kinematic endpoint design (whisker angle, tongue protrusion amplitude, jaw velocity, face-velocity PCs, others). Open; drives Phase 7 scope.
-- **Q7** — Sex coding in cohort; does `animals.yaml` need a `sex` field?
-- **Q8** — Stats integration timing (Phase 9 relative to cohort completion).
-- **Q9** — New endpoints to add that aren't in legacy?
-- **Q10** — Prioritization of the 6 gaps listed in SCIENTIFIC_ENDPOINTS.md's Gaps section.
-
-When Priya's decisions land, transcribe each to `docs/DECISIONS.md` with its own dated entry, update this file's "Open decisions" section to remove the resolved Qs, and if the decision reshapes a queued phase's scope, amend that phase's kickoff prompt or task description accordingly.
+**Note on SCIENTIFIC_ENDPOINTS.md:** the Q1–Q10 section at the bottom of that doc is now *historical* — superseded by the DECISIONS entry. The 26-endpoint catalog itself (categories A–F) remains the authoritative reference for what exists in legacy, what's planned for v1, and what's deferred.
 
 ---
 
@@ -250,11 +256,11 @@ Result: no Cowork tab appears in the Windows desktop app. The Claude VM (`yukonS
 
 ## Best warm-start prompt (paste into a new Cowork chat)
 
-For the next session specifically, use this prompt. It captures the "read the state doc, then tackle the open Q1–Q10" structure:
+Audit is now 10/10 complete. The immediate next-session action is the audit merge + tag. Use:
 
-> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full before answering substantive questions. We're picking up the mid-consolidation audit at Item 10 — the scientific endpoint inventory. Read `docs/SCIENTIFIC_ENDPOINTS.md` after the state doc; it has 10 discussion questions (Q1–Q10) at the bottom. Walk me through them one at a time in order, pausing for my decision on each before moving to the next. Capture each decision as a DECISIONS.md entry as it lands (one entry per question, or a single grouped entry at the end — propose whichever is cleaner). After all 10 are decided, update this COWORK_SESSION_STATE.md to reflect the new state, and we'll be ready for the audit merge (#8). Audit is currently 9/10 done; this session closes the last item.
+> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. The audit is 10/10 done and the `audit-item-6-phase5-details` branch is ready to merge. Next action is task #8 — merge to `main` and tag `v0.6.5-audit-complete`. Draft the paste-in prompt for Windows-Claude-Code to run the merge, then we'll figure out what to pick up after that (likely #13 env unification, #18 sex/DOB schema add, or #16 Phase 5.5 polish — whichever is highest priority).
 
-For future sessions after Item 10 is closed, the warm-start prompt is the more generic:
+For sessions further out (once the audit merge has landed), the generic warm-start is:
 
 > Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Then ask me what we're working on.
 
@@ -264,3 +270,4 @@ For future sessions after Item 10 is closed, the warm-start prompt is the more g
 
 - **2026-04-17** — Initial creation during mid-consolidation audit, after cross-session alignment sweep launched. Captured Audit Items 1–6 completion status, sweep-in-flight state, and two-tool operational knowledge.
 - **2026-04-19** — Major refresh at end of multi-day session. Audit progressed from 6/10 to 9/10 items resolved; Phase 4.5-lite decision locked; several new tasks created (#14, #15, #16, #17); Cowork-on-Windows permanently deferred; `docs/SCIENTIFIC_ENDPOINTS.md` created with Q1–Q10 for next session. Transcribed all session decisions into DECISIONS.md. Next expected update: after Item 10 Q1–Q10 discussion completes.
+- **2026-04-19 (audit closure)** — Walked Q1–Q10 with Priya in a focused second session the same day; all 10 decisions landed as a single grouped entry at the top of DECISIONS.md. Audit now 10/10. Phase 9 split into 9a/9.1/9b; task #12 refactored into #12a–e; new tasks #18 (sex/DOB schema) and #19 (facerhythm_tca stub) created; task #16 extended with DTW per-edge-shift QC plot carve-out; task #10 and #11 scopes expanded with locked Phase 8a/7 content. Next session opens with audit merge (#8).
