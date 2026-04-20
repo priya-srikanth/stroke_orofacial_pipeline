@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime
 import math
+import os
 from pathlib import Path
 from typing import Any
 
@@ -531,39 +532,57 @@ class TestSyntheticParity:
 # ---------------------------------------------------------------------------
 # Real-data parity — PS46/20250307 via MICROSCOPE wavesurfer mount
 # ---------------------------------------------------------------------------
+#
+# Skip discipline: we skip *only* when the wavesurfer mount ROOT is
+# unreachable (share not mapped, offline, permission denied to the root).
+# "Mount reachable but session directory layout mismatched" is a real layout
+# /config bug, not a test-environment skip — in that case the test body
+# surfaces the problem via ``pytest.fail``.
+#
+# Uses ``os.path.exists(str(p))`` rather than ``Path.exists()`` for the
+# module-scan-time reachability probe: on Windows, ``pathlib.Path.exists`` on
+# a UNC path has been observed to intermittently return False under certain
+# auth / mount-state conditions, whereas ``os.path.exists`` goes through a
+# slightly different code path and is more tolerant. Both are checked in the
+# helper so neither false-negatives silently skips the test.
 
 
-def _ps46_wavesurfer_dir() -> Path | None:
-    """Return the wavesurfer session dir for PS46/20250307, or None if absent.
-
-    Resolves via :class:`PathResolver` so the test works on Mac
-    (``/Volumes/...``) and Windows
-    (``\\\\research.files.med.harvard.edu\\...``). Returns ``None`` when the
-    directory is unreachable (mount not mapped, offline, permission denied).
-    """
+def _mount_reachable(p: Path | None) -> bool:
+    """True iff ``p`` is non-None and the OS reports it as existing."""
+    if p is None:
+        return False
+    s = str(p)
     try:
-        resolver = PathResolver()
-        d = resolver.wavesurfer_dir(datetime.date(2025, 3, 7), "PS46")
+        # Prefer os.path.exists for its slightly more forgiving Windows UNC
+        # behavior; fall back to Path.exists if os.path.exists raises
+        # (would be surprising, but belt-and-suspenders).
+        if os.path.exists(s):
+            return True
+        return p.exists()
+    except OSError:
+        return False
+
+
+def _resolve_wavesurfer_mount_root() -> Path | None:
+    """Return the wavesurfer-raw mount root (platform-resolved), or None."""
+    try:
+        return PathResolver().root("wavesurfer_raw")
     except (RuntimeError, KeyError, FileNotFoundError):
         return None
-    try:
-        if d.exists():
-            return d
-    except OSError:
-        # Some mounts raise OSError on exists() when the share is unreachable.
-        return None
-    return None
 
 
-_PS46_WS_DIR = _ps46_wavesurfer_dir()
+_WAVESURFER_MOUNT_ROOT: Path | None = _resolve_wavesurfer_mount_root()
+_WAVESURFER_MOUNT_REACHABLE: bool = _mount_reachable(_WAVESURFER_MOUNT_ROOT)
 
 
 @pytest.mark.skipif(
-    _PS46_WS_DIR is None,
+    not _WAVESURFER_MOUNT_REACHABLE,
     reason=(
-        "PS46/20250307 wavesurfer mount not reachable. "
+        "Wavesurfer mount root not reachable "
+        f"(resolved to {_WAVESURFER_MOUNT_ROOT!r}). "
         "On Windows: map \\\\research.files.med.harvard.edu\\Neurobio. "
-        "On Mac: mount /Volumes/Neurobio."
+        "On Mac: mount /Volumes/Neurobio. Path-layout mismatches "
+        "on a reachable mount are a test FAIL, not a skip."
     ),
 )
 class TestRealDataParityPS46_20250307:
@@ -577,7 +596,23 @@ class TestRealDataParityPS46_20250307:
             load_wavesurfer_signals,
         )
 
-        ws_file = find_wavesurfer_file(_PS46_WS_DIR)
+        session_dir = PathResolver().wavesurfer_dir(
+            datetime.date(2025, 3, 7), "PS46",
+        )
+        # Mount root is reachable (per skipif); if the specific session
+        # directory isn't present under it, that's a real config / layout
+        # mismatch — fail loudly rather than silently skipping.
+        if not _mount_reachable(session_dir):
+            pytest.fail(
+                f"Wavesurfer mount root {_WAVESURFER_MOUNT_ROOT!r} is "
+                f"reachable, but PS46/20250307 session directory "
+                f"{str(session_dir)!r} was not found beneath it. "
+                "This is a layout / configs/paths.yaml mismatch, not an "
+                "environment skip. Check that the wavesurfer_raw mount in "
+                "configs/paths.yaml points at the directory whose immediate "
+                "children are YYYYMMDD session folders."
+            )
+        ws_file = find_wavesurfer_file(session_dir)
         signals = load_wavesurfer_signals(ws_file)
         Fs_real = float(signals["sample_rate_input"])
         lick_params = {
