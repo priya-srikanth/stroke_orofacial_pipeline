@@ -10,6 +10,7 @@ import pytest
 from stroke_orofacial.config_loader import (
     _deep_merge,
     check_merge_required,
+    default_center_mode,
     get_session_params,
     load_defaults,
     load_session_overrides,
@@ -123,6 +124,74 @@ class TestGetSessionParams:
         # Should not raise — loads the real session_overrides.yaml
         result = get_session_params(defaults, "PS46", "20250307")
         assert "process_treadmill_signal" in result
+
+
+class TestDefaultCenterMode:
+    """Phase 4.5-lite: per-bodypart center_mode defaults from configs/defaults.yaml."""
+
+    # Bodypart → expected mode (per DECISIONS 2026-04-19 Phase 4.5-lite).
+    EXPECTED = {
+        "nose": "eye_midpoint",
+        "jaw": "eye_midpoint",
+        "tongue": "spout_midpoint",
+        "L_whiskers_1": "eye_midpoint",
+        "L_whiskers_2": "eye_midpoint",
+        "L_whiskers_3": "eye_midpoint",
+        "R_whiskers_1": "eye_midpoint",
+        "R_whiskers_2": "eye_midpoint",
+        "R_whiskers_3": "eye_midpoint",
+        "L_eye": "eye_midpoint",
+        "R_eye": "eye_midpoint",
+        "L_spout": "spout_midpoint",
+        "R_spout": "spout_midpoint",
+    }
+
+    def test_real_config_movement_bodyparts(self):
+        d = load_defaults()
+        for bp in [
+            "nose", "jaw", "tongue",
+            "L_whiskers_1", "L_whiskers_2", "L_whiskers_3",
+            "R_whiskers_1", "R_whiskers_2", "R_whiskers_3",
+        ]:
+            assert default_center_mode(d, bp) == self.EXPECTED[bp], (
+                f"bodypart {bp}: expected {self.EXPECTED[bp]}"
+            )
+
+    def test_real_config_fiducials(self):
+        d = load_defaults()
+        for bp in ["L_eye", "R_eye", "L_spout", "R_spout"]:
+            assert default_center_mode(d, bp) == self.EXPECTED[bp], (
+                f"fiducial {bp}: expected {self.EXPECTED[bp]}"
+            )
+
+    def test_fallback_to_top_level_default(self):
+        """When per-bodypart center_mode is missing, falls back to dlc_centering.default_mode."""
+        synthetic = {
+            "dlc_centering": {"default_mode": "nose"},
+            "dlc_spatial": {"bodyparts": {"some_new_bodypart": {"likelihood_threshold": 0.9}}},
+        }
+        assert default_center_mode(synthetic, "some_new_bodypart") == "nose"
+
+    def test_unknown_bodypart_uses_top_level(self):
+        """Bodypart with no config entry still gets the top-level fallback."""
+        synthetic = {"dlc_centering": {"default_mode": "nose"}}
+        assert default_center_mode(synthetic, "never_heard_of_this") == "nose"
+
+    def test_raises_when_nothing_configured(self):
+        """No per-bodypart entry AND no top-level default → KeyError."""
+        synthetic = {"dlc_spatial": {"bodyparts": {}}}
+        with pytest.raises(KeyError, match="No center_mode configured"):
+            default_center_mode(synthetic, "tongue")
+
+    def test_raises_on_invalid_mode(self):
+        """Invalid per-bodypart mode is rejected by CenterMode validation."""
+        synthetic = {
+            "dlc_spatial": {
+                "bodyparts": {"tongue": {"center_mode": "bogus_mode"}},
+            },
+        }
+        with pytest.raises(ValueError):
+            default_center_mode(synthetic, "tongue")
 
 
 class TestCheckMergeRequired:

@@ -73,7 +73,9 @@ alignment:
 
 dlc_centering:
   likelihood_threshold: 0.7   # used ONLY for computing center, NOT for dropping rows
-  default_mode: "nose"        # also supports "spout_midpoint", "eye_midpoint"
+  default_mode: "nose"        # ultimate fallback only; per-bodypart defaults under
+                              # dlc_spatial.bodyparts.{bp}.center_mode are the primary
+                              # source (added in Phase 4.5-lite, 2026-04-20)
   compression: "zstd"         # parquet compression
 
 # ---- DLC spatial analyses ----
@@ -94,6 +96,7 @@ dlc_spatial:
   bodyparts:
     nose:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "gist_ncar"
       per_center_mode:
         nose:
@@ -107,6 +110,7 @@ dlc_spatial:
           ylim: [120, 360]
     jaw:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "gnuplot2"
       per_center_mode:
         nose:
@@ -120,6 +124,7 @@ dlc_spatial:
           ylim: [200, 530]
     tongue:
       likelihood_threshold: 0.70
+      center_mode: spout_midpoint # Phase 4.5-lite: anatomically spout-anchored; sweep confirms
       cmap: "jet"
       per_center_mode:
         nose:
@@ -133,6 +138,7 @@ dlc_spatial:
           ylim: [-70, 540]
     L_whiskers_1:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "plasma"
       per_center_mode:
         nose:
@@ -142,6 +148,7 @@ dlc_spatial:
         eye_midpoint: null
     L_whiskers_2:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "inferno"
       per_center_mode:
         nose: null
@@ -149,6 +156,7 @@ dlc_spatial:
         eye_midpoint: null
     L_whiskers_3:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "viridis"
       per_center_mode:
         nose: null
@@ -156,6 +164,7 @@ dlc_spatial:
         eye_midpoint: null
     R_whiskers_1:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "plasma"
       per_center_mode:
         nose: null
@@ -163,6 +172,7 @@ dlc_spatial:
         eye_midpoint: null
     R_whiskers_2:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "inferno"
       per_center_mode:
         nose: null
@@ -170,11 +180,27 @@ dlc_spatial:
         eye_midpoint: null
     R_whiskers_3:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "viridis"
       per_center_mode:
         nose: null
         spout_midpoint: null
         eye_midpoint: null
+    # Fiducial bodyparts — null-baseline controls for Phase 9 significance testing
+    # (DECISIONS 2026-04-19 Phase 4.5-lite §Constraints). Each fiducial is centered
+    # under its own regime. No cmap / per_center_mode: no heatmaps for fiducials today.
+    L_eye:
+      likelihood_threshold: 0.80
+      center_mode: eye_midpoint
+    R_eye:
+      likelihood_threshold: 0.80
+      center_mode: eye_midpoint
+    L_spout:
+      likelihood_threshold: 0.80
+      center_mode: spout_midpoint
+    R_spout:
+      likelihood_threshold: 0.80
+      center_mode: spout_midpoint
 
 # ---- DLC spatial (reward-aligned) ----
 # Per-bodypart reward-aligned config. Tongue has legacy values from
