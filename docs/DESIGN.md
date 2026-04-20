@@ -27,7 +27,7 @@ These rules bind every Claude Code session working on this project. They should 
 3. **Never modify files Claude Code did not create itself in this consolidation project**, with one exception: inside the new consolidation repo, Claude Code may modify files it created on a previous turn in the same or prior session.
 4. **If Claude Code believes an existing analysis output should be overwritten**, it must stop and ask Priya first, describing exactly what would be overwritten and why.
 5. **Default migration pattern: copy, do not move.** Legacy notebook → new module = implement in new repo; legacy notebook stays untouched.
-6. **Output writes go to new output directories** (e.g. `session_processing_v2/`, `dlc_analysis_v2/`) — never on top of existing `session_processing3/` or existing per-animal analysis folders on the server.
+6. **Output writes go to new output directories under `stroke_orofacial_pipeline_outputs/`** (e.g. `stroke_orofacial_pipeline_outputs/spout_behavior/`, `stroke_orofacial_pipeline_outputs/dlc_analysis/`) — never on top of existing `session_processing3/` or existing per-animal analysis folders on the server.
 7. **Before any large refactor or delete-like operation**, use plan mode (`Shift+Tab` → Plan) and show the plan for approval.
 8. **Git discipline:** every change lands as a commit on a feature branch, so anything wrong is one `git revert` away. Never force-push.
 
@@ -398,7 +398,7 @@ Each phase ends with a commit on a branch + a short section added to `MIGRATION_
 
 **Phase 2 — Spout behavior.**
 - Port `batch_process_20260410PS.ipynb` into `spout_behavior/*` + notebook `00_session_processing.ipynb`.
-- Outputs go to a **new** directory (`session_processing_v2/`) — never overwriting `session_processing3/`.
+- Outputs go to a **new** directory (`stroke_orofacial_pipeline_outputs/spout_behavior/`) — never overwriting `session_processing3/`.
 - Verify byte-level or value-level parity with a few sessions' `session_processing3/` outputs before moving on.
 
 **Phase 3 — Alignment.**
@@ -596,7 +596,7 @@ Paste this at the top of your first Claude Code session in the new empty repo:
 > 1. Summarize in 5 bullets what Phase N requires.
 > 2. Enter plan mode and propose the file-by-file changes you will make.
 > 3. Wait for my approval before writing.
-> Constraints: (a) no source data modifications per §0; (b) outputs go to new `_v2` directories; (c) preserve analytical behavior of legacy notebooks unless I explicitly approve a change.
+> Constraints: (a) no source data modifications per §0; (b) outputs go to new directories under `stroke_orofacial_pipeline_outputs/`; (c) preserve analytical behavior of legacy notebooks unless I explicitly approve a change.
 
 ### 11.4 "Safety check" prompt to sprinkle in
 

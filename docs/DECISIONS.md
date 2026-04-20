@@ -326,7 +326,7 @@ Entries are reverse-chronological (newest at top). Format:
 ## 2026-04-17 — Output location: MICROSCOPE, not Mac local
 
 - *Context:* Legacy outputs lived at Mac-local `/Users/Priya2/Documents/data/facerhythm_stroke_biomarker_exp/analysis/session_processing3/`. Priya works from both Mac and Windows workstations.
-- *Decision:* New pipeline outputs go to `/Volumes/Neurobio/MICROSCOPE/Priya/pipeline_outputs_v2/` (Mac SMB mount) or the equivalent UNC path (Windows). Layout under the v2 root: `spout_behavior/`, `alignment/`, `dlc_analysis/`, `stats/`. Legacy `session_processing3/` is read-only and untouched.
+- *Decision:* New pipeline outputs go to `/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/` (Mac SMB mount) or the equivalent UNC path (Windows). Layout under the root: `spout_behavior/`, `alignment/`, `dlc_analysis/`, `stats/`. Legacy `session_processing3/` is read-only and untouched.
 - *Rationale:* Single source of truth across both workstations. Server backup. No local duplicates to keep in sync.
 - *Enforced at:* `configs/paths.yaml` (`microscope_pipeline_outputs` logical root), `PathResolver.pipeline_outputs()`.
 
