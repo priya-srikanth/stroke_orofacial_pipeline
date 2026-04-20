@@ -25,24 +25,41 @@ A new Cowork session works through this in order before answering any substantiv
 
 ## Current state
 
-**As of:** 2026-04-19 (Phase 13 env-unification drafting session; context was compacted mid-session so next warm-start should scan "Recent session log" carefully).
+**As of:** 2026-04-20 (Phase 13 closed).
 
-**Repo phase:** Mid-consolidation audit **complete — 10 of 10 items resolved and merged to main** (tag `v0.6.5-audit-complete`). Phases 1 through 6 delivered. Phase 13 (env unification) in flight.
+**Repo phase:** Mid-consolidation audit **complete** (tag `v0.6.5-audit-complete`). Phases 1 through 6 + 13 delivered. Phase 13 merged via PR #31 as `d031486` and tagged `v0.7-phase-13-env-unification`. No work in flight; ready to pick the next phase.
 
-**Current branch:** `phase-13-env-unification` (off `main` at tag `v0.6.5-audit-complete`). Uncommitted changes on Mac from this session:
+**Current branch:** `main` at `d031486`. The `phase-13-env-unification` branch is preserved on origin at `e244c0b` per CLAUDE.md §8.
 
-- `environment.yml` — NEW, unified Mac + Windows conda env (replaces the per-platform pair). Dep scope audited across `src/`, `tests/`, `notebooks/`, and every notebook under `/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/code/`.
-- `environment-mac.yml` and `environment-windows.yml` — reduced to deprecation stubs pointing at `environment.yml`. Priya to `git rm` both once the unified env is verified on both machines.
-- `pyproject.toml` — trimmed `opencv-contrib-python` + `tqdm` (unused anywhere); added `patsy`, `POT`, `scicomap` (imported by legacy DLC analysis notebooks queued for Phase 5/7/9 ports); switched plain `bnpm` → `bnpm[core]` per https://pypi.org/project/bnpm/.
-- `docs/DECISIONS.md` — new entry at top for "Phase 13 env unification" with full dep audit + rationale.
-- `docs/COWORK_SESSION_STATE.md` — this update.
+**In flight:** *None.* Phase 13 is fully closed on both Mac and Windows:
 
-**In flight:** **Phase 13 env unification.** Windows test-env install was stuck on jinja2 at last report — likely just pip backtracking on the jupyter stack rather than a real failure. Next-session action list:
+- Mac pytest (in the new `stroke_orofacial` env): 223 passed / 6 skipped / 0 failed. The 6 skips are `pytest.importorskip("bnpm.*")` strict-port parity gates; they run and pass when the suite is executed inside `frsb` (which still has bnpm 0.6.0).
+- Windows pytest (in the new `stroke_orofacial` env on Priya's Windows box, via `--basetemp=C:/Users/sabatini/pytest_tmp` to sidestep stale admin-owned tmpdirs): 201 passed / 28 skipped / 0 failed. Skip split = 22 pre-existing integration/real-data gates + 6 bnpm-importorskip gates. Torch/bnpm/numba/llvmlite/cmake all absent from the new Windows env.
+- HDF5 stack clean on both: `h5py==3.16.0`, `pytables==3.10.2`, `pywavesurfer` loads without DLL errors.
+- Drift from vendored bnpm bug fixes measured on PS46/20250307 terminal masks — scope of affected downstream artifacts: **none** (running_bouts 0 differ, lick_bool_bad 2 differ / 5.4e-7, quiet_bool 51 differ / 1.4e-5 isolated singletons, peri_reward_bool 0 differ). Table lives in MIGRATION_LOG.md Sub-phase 13b.
 
-1. Check whether Priya's Windows test-env install eventually finished. If it's still hung past ~15 min, `Ctrl-C`, upgrade pip (`python -m pip install --upgrade pip`), and re-run with `-v` for resolver output, OR switch jupyter to conda-installed.
-2. If the test-env came up, verify `conda env create -f environment.yml` installs cleanly on both Mac and Windows.
-3. Run `pytest tests/` inside the new `stroke_orofacial` env on both machines — expect 103+ tests to still pass (Phase 2 baseline).
-4. Once verified on both platforms, `git rm environment-mac.yml environment-windows.yml`, update all CLAUDE.md + docs references from `frsb`/`deeplabcut` to `stroke_orofacial`, add a Phase 13 entry to `docs/MIGRATION_LOG.md`, PR-merge to main, tag `v0.7-phase-13-env-unified`.
+**Outstanding housekeeping (non-code, do when back at the Windows box):**
+
+From an elevated PowerShell:
+```powershell
+Remove-Item -Recurse -Force C:\Users\sabatini\AppData\Local\Temp\pytest-of-sabatini
+Remove-Item -Recurse -Force C:\Users\sabatini\GitHub\stroke_orofacial_pipeline\.pytest_cache
+```
+Both are stale admin-owned directories that produced `WinError 5: Access is denied` on the non-elevated Windows #1 pytest run. Not a code issue; not in scope for any phase.
+
+**Next-phase candidates** (all unblocked now that #13 is done — Priya to pick):
+
+1. **#3 — Phase 4.5-lite execution** (eye-midpoint centering). Smallest deliverable; already has a kickoff prompt at `docs/prompts/phase-4.5-lite-eye-midpoint-centering-kickoff.md` from the audit-closure session. Decision trail: DECISIONS entry 2026-04-19 "Phase 4.5-lite eye-midpoint centering".
+2. **#9 — Phase 6.7 SessionManifest refactor** (kickoff at `docs/prompts/phase-6.7-session-manifest-refactor-kickoff.md`). Unblocks #17 → #14 → #15, the main DLC-spatial queue.
+3. **#10 — Phase 8a spout-only recovery trajectories.** Mid-experiment deliverable — DLC-independent, parallelizable with 6.7/6.75/6.8. Scope per Audit Item 10 Q9: 8 new spout endpoints + recovery-phenotype viz + legacy `facerhythm_stroke_biomarker_exp_Priya` behavior-report walkthrough. No kickoff prompt yet.
+
+**Recent session log — 2026-04-19 through 2026-04-20 (Phase 13 closure):**
+
+- **Mac-side vendoring work (cross two Mac Claude Code sessions):** Vendored 4 bnpm helpers into `src/stroke_orofacial/_utils/bool_indexing.py` under MIT license (© 2021 RichieHakim) with full license-text reproduction in the module docstring. Strict ports: `idx2bool`, `gaussian_smooth_1d`. Intentional divergences (bug fixes over bnpm 0.6.0): `widen_bool_sparse` (upstream over-widens falling edges by `n_after + 1`), `set_short_bool_to_low` (upstream under-counts trailing True runs by 1). Dropped `bnpm[core]` + `numba` + `cmake` from `environment.yml` and `pyproject.toml`. Moved `pywavesurfer` out of `pyproject.toml` into post-env-create `pip install --no-deps` (its wheel pins `h5py==3.8.0` with no Py3.11 wheel). `wavesurfer_io.py` numpy 2.x fix: `float(Fs_in)` → `float(np.asarray(Fs_in).item())`. Integration-test tolerances un-lumped into two effects: `test_timebase.py` rtol 1e-10→1e-8 (LAPACK drift from numpy/scipy bump, unrelated) vs `test_bouts.py` + `test_session_processing.py` bool-array `bool_near_equal` helper with `max_frac=1e-4` (measured drift from vendored bug fixes).
+- **Drift quantification on PS46/20250307 against frozen `session_processing3/*.npz`:** running_bouts 0 differ (identical), lick_bool_bad 2 differ (5.4e-7 fraction, max-run=2), quiet_bool 51 differ (1.4e-5 fraction, max-run=1 isolated singletons), peri_reward_bool 0 differ (identical). Scope of affected downstream artifacts: **none** — bool masks are terminal outputs, no module under `src/stroke_orofacial/` reads them as input.
+- **Docs un-lumping (commit `cdd1e1e`, docs-only):** Reframed the narrative from "parity vendoring" to "vendoring + two intentional bug fixes over upstream bnpm 0.6.0." MIGRATION_LOG Sub-phase 13b expanded to 7-point Intentional-behavior-differences section with drift table and scope analysis. DECISIONS.md 2026-04-20 entry rewritten with dedicated "Intentional bug fixes" block between Decision and Rationale. In-source test comments in `test_bouts.py` and `test_session_processing.py` corrected from "LAPACK jitter" to "measured drift from vendored bug fixes."
+- **Windows verification:** New `stroke_orofacial` env created on Windows under the per-user prefix `C:\Users\sabatini\.conda\envs\stroke_orofacial\` (not the ProgramData default, which was write-locked to non-admin shells). First rebuild attempt hit `EnvironmentNotWritableError`; cleared via admin-shell `conda env remove`, then the per-user rebuild succeeded cleanly. Full suite green (201/28/0). Torch/bnpm/numba/llvmlite/cmake all confirmed absent.
+- **PR + merge + tag (commits `5de3597` + `e244c0b`, then merge `d031486`):** `5de3597` added a Windows-env-prefix note to MIGRATION_LOG Sub-phase 13a. Doc sweep (`e244c0b`) rewrote README Setup blocks into a single unified recipe and updated `docs/DESIGN.md` §2.3, §3 repo-layout tree, and §8 Environment Setup to reflect the unified env. PR #31 merged via `gh pr merge --merge` (matching prior-phase convention); `--delete-branch` intentionally not passed so the feature branch stays on origin. Tag `v0.7-phase-13-env-unification` annotated on `d031486` and pushed.
 
 **Recent session log — 2026-04-19 (Phase 13 env-unification drafting, after audit merge):**
 
@@ -88,19 +105,16 @@ The authoritative source is the Cowork TaskList widget in the current session. M
 
 **In progress:**
 
-- *(none — Audit Item 10 closed this session)*
-
-**In progress — Phase 13 env unification:**
-
-- **#13** — Unified `stroke_orofacial` env. `environment.yml` drafted this session. Dep audit captured in `docs/DECISIONS.md` 2026-04-19 "Phase 13 env unification". Still needs: compat verification on both platforms, CLAUDE.md/docs reference updates (`frsb`/`deeplabcut` → `stroke_orofacial`), `git rm` of the deprecation-stub env files, MIGRATION_LOG entry, PR-merge, tag `v0.7-phase-13-env-unified`.
+- *(none — Phase 13 closed this session)*
 
 **Completed since last state refresh:**
 
+- **#13** — Phase 13 env unification + bnpm vendoring. Full details in MIGRATION_LOG.md Phase 13 (sub-phases 13a + 13b) and DECISIONS.md 2026-04-19 + 2026-04-20 entries. Merged to main as `d031486`, tagged `v0.7-phase-13-env-unification`. Feature branch `phase-13-env-unification` preserved on origin.
 - **#8** — Audit branch `audit-item-6-phase5-details` merged to `main` and tagged `v0.6.5-audit-complete`. Branch preserved as permanent reference per CLAUDE.md rule 8.
 
 **Pending — queued phases and mini-phases**, in rough execution order (dependencies noted):
-- **#3 (completed)** — Phase 4.5 decision was "build lite". **Execution of Phase 4.5-lite** per `docs/prompts/phase-4.5-lite-eye-midpoint-centering-kickoff.md` does not have its own task yet; slot it after #13 unless Priya decides otherwise.
-- **#9** — Phase 6.7 SessionManifest refactor. Kickoff at `docs/prompts/phase-6.7-session-manifest-refactor-kickoff.md`. Blocked on #13 (env unification).
+- **#3 (completed)** — Phase 4.5 decision was "build lite". **Execution of Phase 4.5-lite** per `docs/prompts/phase-4.5-lite-eye-midpoint-centering-kickoff.md` does not have its own task yet; unblocked and available as a candidate next phase.
+- **#9** — Phase 6.7 SessionManifest refactor. Kickoff at `docs/prompts/phase-6.7-session-manifest-refactor-kickoff.md`. Unblocked (Phase 13 done); ready to execute.
 - **#17** — Phase 6.75 output directory reorganization (figure-type-first inside dlc_analysis and spout_behavior). Blocked on #9 so Phase 6.7's byte-parity checks remain valid at old paths.
 - **#14** — Phase 6.8 full heatmap/binned/Δ × session/reward-aligned matrix. Blocked on #17.
 - **#15** — Axis sharing (`share_xy_within_mouse` + percentile fallback + reward-aligned-specific axis config). Blocked on #14.
@@ -146,7 +160,7 @@ The authoritative source is the Cowork TaskList widget in the current session. M
 
 **Claude Code in VSCode** (on Priya's Windows machine, ethernet-connected to MICROSCOPE) is the executor. It has:
 
-- The `deeplabcut` conda env on Windows (analytics-capable; pandas / numpy / matplotlib / h5py / tables / pyarrow / jupyter / nbconvert). **Note:** Mac uses `frsb` env for the same purpose — cross-platform env-name unification is tracked as task #13.
+- The unified `stroke_orofacial` conda env on Windows (Python 3.11, conda-forge primary; see `environment.yml`). Installed at the per-user prefix `C:\Users\sabatini\.conda\envs\stroke_orofacial\` because `C:\ProgramData\anaconda3\envs\` is write-locked to non-admin shells. Same env name and deps as Mac. Legacy envs still exist and are parallel: `deeplabcut` remains the correct env for DLC training / O2 inference / Keypoint-MoSeq; `frsb` on Mac is preserved so the strict-port bnpm parity tests can run against live bnpm 0.6.0 on demand.
 - Direct ethernet access to MICROSCOPE at `\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\` (Windows UNC path; no VPN).
 - The repo checked out at `C:\Users\sabatini\GitHub\stroke_orofacial_pipeline`.
 - Git access with `.githooks/pre-commit` that blocks direct commits to `main` / `master`.
@@ -160,7 +174,7 @@ The authoritative source is the Cowork TaskList widget in the current session. M
 ### Opening Claude Code in VSCode on Windows
 
 1. File → Open Folder → select `C:\Users\sabatini\GitHub\stroke_orofacial_pipeline`.
-2. Open the integrated terminal (Ctrl+backtick) and `conda activate deeplabcut`.
+2. Open the integrated terminal (Ctrl+backtick) and `conda activate stroke_orofacial` (the unified env from Phase 13; `conda activate deeplabcut` still works but is only correct for DLC training / O2 inference / Keypoint-MoSeq).
 3. Click the Claude Code icon in the left activity bar (or Ctrl+Esc as the shortcut).
 4. Paste the Cowork-drafted prompt.
 
@@ -274,18 +288,20 @@ Result: no Cowork tab appears in the Windows desktop app. The Claude VM (`yukonS
 - **Whiskers naming.** The DLC model uses `L_whiskers_1` (plural "whiskers", left/right as prefix). Legacy `whisker_L1` / `whisker_R1` style appears in some stale configs and should be rejected.
 - **Eye bodypart names.** DLC uses `L_eye` / `R_eye`, not `medial_edge_L_eye` / `medial_edge_R_eye` (stale legacy convention).
 - **Slim-cache pattern for sweeps.** Aligned-point arrays are transient — derive histograms + drop `aligned_points` before pickling. See Phase 4.5 alignment-sweep notebook for the reference implementation. Retaining raw points in the per-animal pickle produces 5–19 GB files and OOM-kills the kernel on long-record animals.
-- **Conda env cross-platform.** Mac env is `frsb`, Windows env is `deeplabcut` (inherited from legacy). Don't confuse them in paste-in prompts. Unification is task #13.
+- **Conda env cross-platform.** As of Phase 13 the unified analysis env is `stroke_orofacial` on both Mac and Windows (created from `environment.yml`). Legacy envs are preserved as parallel: `deeplabcut` (Windows) remains the DLC training / O2 inference / Keypoint-MoSeq env; `frsb` (Mac) is kept so strict-port bnpm parity tests can run against live bnpm 0.6.0. Use `stroke_orofacial` for all pipeline-analysis work; only fall back to `deeplabcut` / `frsb` for their specific residual purposes.
+- **Windows env prefix.** On Priya's Windows box, `stroke_orofacial` is installed at `C:\Users\sabatini\.conda\envs\` (per-user, user-writable) rather than `C:\ProgramData\anaconda3\envs\` (machine-level, write-locked to non-admin shells). If a rebuild ever hits `EnvironmentNotWritableError` on ProgramData, use an admin-shell `conda env remove` to clear, then re-create from a non-admin shell so conda defaults to the per-user location.
+- **Stale admin-owned pytest tmpdirs on Windows.** `C:\Users\sabatini\AppData\Local\Temp\pytest-of-sabatini\` and `C:\Users\sabatini\GitHub\stroke_orofacial_pipeline\.pytest_cache\` can end up owned by an elevated account after a prior admin-shell pytest run and will produce `PermissionError: [WinError 5]` on setup from a non-elevated shell. Workaround: `pytest --basetemp=C:/Users/sabatini/pytest_tmp`. Proper fix: elevated PowerShell `Remove-Item -Recurse -Force` on both paths.
 - **Cowork's folder view can be stale.** If Priya pushes from Windows and doesn't pull on Mac, Cowork's read of the Mac's disk lags behind origin. Workaround: have Priya `git pull` on Mac before Cowork needs the fresh files, or have Cowork ask her to pull when it seems stale.
 
 ---
 
 ## Best warm-start prompt (paste into a new Cowork chat)
 
-Audit merge landed; Phase 13 env unification is in flight. The immediate next-session action is to verify the new env installs cleanly on both platforms and finish Phase 13. Use:
+Phase 13 is closed (merged as `d031486`, tagged `v0.7-phase-13-env-unification`). Mac + Windows are on the unified `stroke_orofacial` env. No work is in flight. Use this prompt to open the next session:
 
-> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. The audit is merged to main (`v0.6.5-audit-complete`). We're mid-Phase-13 on branch `phase-13-env-unification` — `environment.yml` has been drafted, `pyproject.toml` trimmed, and `docs/DECISIONS.md` updated with the Phase 13 rationale. Priya was running a Windows test-env install that got stuck on jinja2; check whether that resolved and pick up from the next-session action list in the Current state section.
+> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Phase 13 (env unification + bnpm vendoring with two upstream bug fixes) merged to main as `d031486` and is tagged `v0.7-phase-13-env-unification`. I want to pick the next phase to work on. The Current-state section lists the three unblocked candidates — #3 (Phase 4.5-lite eye-midpoint centering, smallest, has a kickoff prompt), #9 (Phase 6.7 SessionManifest refactor, unblocks the DLC-spatial queue, has a kickoff prompt), and #10 (Phase 8a spout-only recovery trajectories, DLC-independent, mid-experiment deliverable, no kickoff prompt yet). Summarize the tradeoffs briefly and ask me which one to go with before doing anything else.
 
-For sessions further out (once Phase 13 has landed), the generic warm-start is:
+For sessions further out, once you've moved past whichever phase you pick here, the generic warm-start remains:
 
 > Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Then ask me what we're working on.
 
@@ -297,3 +313,4 @@ For sessions further out (once Phase 13 has landed), the generic warm-start is:
 - **2026-04-19** — Major refresh at end of multi-day session. Audit progressed from 6/10 to 9/10 items resolved; Phase 4.5-lite decision locked; several new tasks created (#14, #15, #16, #17); Cowork-on-Windows permanently deferred; `docs/SCIENTIFIC_ENDPOINTS.md` created with Q1–Q10 for next session. Transcribed all session decisions into DECISIONS.md. Next expected update: after Item 10 Q1–Q10 discussion completes.
 - **2026-04-19 (audit closure)** — Walked Q1–Q10 with Priya in a focused second session the same day; all 10 decisions landed as a single grouped entry at the top of DECISIONS.md. Audit now 10/10. Phase 9 split into 9a/9.1/9b; task #12 refactored into #12a–e; new tasks #18 (sex/DOB schema) and #19 (facerhythm_tca stub) created; task #16 extended with DTW per-edge-shift QC plot carve-out; task #10 and #11 scopes expanded with locked Phase 8a/7 content. Next session opens with audit merge (#8).
 - **2026-04-19 (Phase 13 drafting)** — Third session same day. Audit branch merged to `main`, tagged `v0.6.5-audit-complete`. Feature branch `phase-13-env-unification` cut from `main`. Full import audit performed across `src/`, `tests/`, `notebooks/`, and `/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/code/` to determine the minimum dep set for the new unified env. Drafted `environment.yml` (single env, Python 3.11, conda-forge primary, `bnpm[core]`). Added `patsy`, `pot`, `scicomap` (in-flight-port prereqs). Dropped `opencv-contrib-python` and `tqdm` (audit confirms zero imports). Brought `pyproject.toml` into agreement. Reduced old per-platform env files to deprecation stubs. Cowork context compacted mid-session (summary preserved). Windows test-env install was still spinning on jinja2 at session end — resolution deferred to next session.
+- **2026-04-20 (Phase 13 closure)** — Windows env couldn't import bnpm because the PyPI torch 2.11.0 wheel on Windows bundles `libiomp5md.dll` that collides with conda-forge MKL's `libomp.dll` (`OMP: Error #15` + `WinError 127` on `shm.dll`). Resolved by vendoring the 4 pure-numpy bnpm helpers the repo actually uses into `src/stroke_orofacial/_utils/bool_indexing.py` under MIT attribution and dropping `bnpm[core]` + `numba` + `cmake` from the env. Two vendored helpers intentionally diverge from upstream bnpm 0.6.0 to fix off-by-one bugs discovered while writing parity tests; drift measured (0 / 2 / 51 / 0 per-array on PS46/20250307 terminal masks; scope downstream: none). Full Mac + Windows verification green (Mac 223/6/0; Windows 201/28/0). PR #31 merged to main as `d031486`; tag `v0.7-phase-13-env-unification` pushed; feature branch preserved on origin. README + DESIGN.md §§2.3/3/8 + MIGRATION_LOG.md 13a+13b + DECISIONS.md 2026-04-19 + 2026-04-20 all written/reframed to reflect the unified env and the vendor-plus-bug-fixes narrative. All three next-phase candidates (#3 / #9 / #10) unblocked.

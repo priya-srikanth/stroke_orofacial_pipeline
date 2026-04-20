@@ -965,10 +965,18 @@ manual verification, debugging, batch-size scout monitoring).
 - [x] `conda env create -f environment.yml` succeeds on Windows.
 - [x] `pip install -e .` succeeds in the new env on both platforms.
 - [x] `pip install pywavesurfer --no-deps` completes cleanly.
-- [x] `pytest tests/` passes in the new env on Mac (6 tests skip —
-  strict-port parity tests requiring live bnpm; 223 pass including
-  the 6 hand-rolled tests for the intentionally-divergent helpers).
-- [ ] `pytest tests/` passes in the new env on Windows (the same 6
-  parity tests skip because bnpm isn't installed; remaining 223 green).
+- [x] `pytest tests/` passes in the new env on Mac (223 passed / 6 skipped
+  / 0 failures — 6 tests skip because `frsb` is the parity machine and the
+  rest run and pass; when run inside `frsb` itself with bnpm still present,
+  all 229 pass including the strict-port parity tests that use
+  `pytest.importorskip`).
+- [x] `pytest tests/` passes in the new env on Windows (201 passed /
+  28 skipped / 0 failures — 22 pre-existing integration/real-data gates
+  skip because no real data is mounted on Windows; 6 `pytest.importorskip(
+  "bnpm.*")` strict-port parity gates skip cleanly because bnpm isn't
+  installed in the new env; 5 divergent-port tests run and pass against
+  their hand-rolled references; no torch DLL errors).
 - [x] `environment-mac.yml` + `environment-windows.yml` stubs `git rm`-ed.
-- [ ] PR merged to main and tagged `v0.7-phase-13-env-unified`.
+- [x] PR #31 merged to main as `d031486` and tagged
+  `v0.7-phase-13-env-unification` (annotated, pushed). Feature branch
+  `phase-13-env-unification` preserved on origin per CLAUDE.md §8.
