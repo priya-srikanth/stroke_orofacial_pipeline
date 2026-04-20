@@ -44,16 +44,28 @@ dependencies:
   - matplotlib      # dlc_spatial/{heatmaps,difference_maps}.py + notebooks
   - pyyaml          # configs/paths loader, animals.yaml, defaults.yaml
   # HDF5 stack — the three packages below MUST agree on HDF5 major version.
-  # Conda-forge ships pytables 3.11+ linked against HDF5 2.x and pytables
-  # 3.10.x linked against HDF5 1.14.x; h5py wheels on conda-forge currently
-  # target HDF5 1.14.x. Pinning hdf5 to the 1.14 LTS line forces conda to
-  # solve a consistent set of builds (likely pytables 3.10.x + h5py 3.x +
-  # hdf5 1.14.x) and avoids the Windows ABI skew that surfaced as
-  # `import h5py → DLL load failed while importing _errors` even after
-  # `import tables` worked. See docs/DECISIONS.md (Phase 13 env unification).
-  - hdf5=1.14.*     # pin LTS line (see HDF5 stack note above)
-  - pytables        # required by pd.read_hdf on DLC filtered H5 files
-  - h5py            # transitive via pywavesurfer; pin explicitly for robustness
+  # Conda-forge ships pytables 3.11+ linked against HDF5 2.x AND a separate
+  # build of 3.11 linked against 1.14.x; h5py wheels target HDF5 1.14.x.
+  # Pinning hdf5=1.14.* alone is NOT enough on Windows — the solver will
+  # happily pick a pytables 3.11 build whose `tableextension.pyd` was built
+  # against a different 1.14 micro-version than what actually gets installed,
+  # producing `ImportError: DLL load failed while importing tableextension:
+  # The specified procedure could not be found` in bare `python -c`.
+  # Pinning pytables to the 3.10.x series (the last series unambiguously
+  # built against hdf5 1.14.x on conda-forge) is the fix. See
+  # docs/DECISIONS.md (2026-04-19 Phase 13 env unification) for the trail.
+  - hdf5=1.14.*
+  - pytables=3.10.* # pin to 3.10.x series (see HDF5 stack note above)
+  # h5py pinned to 3.8.* because pywavesurfer's wheel pins h5py to 3.8.0,
+  # and without a matching conda pin pip will silently DOWNGRADE the
+  # conda-forge h5py (built against the env's hdf5 1.14.6) to a PyPI
+  # h5py 3.8.0 wheel (which bundles its OWN hdf5 dll). Two HDF5 DLLs in
+  # the same process produce silent symbol resolution failures on Windows
+  # (manifesting as `tableextension` ImportError even when
+  # tables.which_lib_version reports the correct version). Conda-forge
+  # ships h5py 3.8.* builds for all platforms we need, so this pin is
+  # safe. Bump only after pywavesurfer relaxes its h5py pin.
+  - h5py=3.8.*
 
   # ---- Reserved for Phase 5+ (no current imports, but close on the horizon) ----
   # Not imported by src/ or tests/ yet, but every entry here is imported by
