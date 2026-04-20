@@ -56,16 +56,19 @@ dependencies:
   # docs/DECISIONS.md (2026-04-19 Phase 13 env unification) for the trail.
   - hdf5=1.14.*
   - pytables=3.10.* # pin to 3.10.x series (see HDF5 stack note above)
-  # h5py pinned to 3.8.* because pywavesurfer's wheel pins h5py to 3.8.0,
-  # and without a matching conda pin pip will silently DOWNGRADE the
-  # conda-forge h5py (built against the env's hdf5 1.14.6) to a PyPI
-  # h5py 3.8.0 wheel (which bundles its OWN hdf5 dll). Two HDF5 DLLs in
-  # the same process produce silent symbol resolution failures on Windows
-  # (manifesting as `tableextension` ImportError even when
-  # tables.which_lib_version reports the correct version). Conda-forge
-  # ships h5py 3.8.* builds for all platforms we need, so this pin is
-  # safe. Bump only after pywavesurfer relaxes its h5py pin.
-  - h5py=3.8.*
+  # h5py is installed by conda-forge at whatever version is compatible with
+  # pytables 3.10.* + hdf5 1.14.3+. We do NOT pin h5py to 3.8.* because
+  # h5py-3.8 py311 builds require hdf5=1.14.0 exactly, which conflicts with
+  # pytables 3.10.*'s py311 builds requiring hdf5>=1.14.3 (the solver chokes
+  # with LibMambaUnsatisfiableError). IMPORTANT: pywavesurfer's wheel pins
+  # `h5py==3.8.0` and, if installed via the usual `pip install pywavesurfer`,
+  # will silently downgrade the conda h5py to a PyPI wheel whose bundled
+  # hdf5.dll collides with pytables' conda hdf5.dll, producing DLL-load
+  # errors on Windows even though pytest appears to pass. The workaround:
+  # pywavesurfer is NOT in the pip: block below. Install it manually with
+  # `pip install pywavesurfer --no-deps` after `conda env create` completes
+  # (see README / Phase 13 section of docs/MIGRATION_LOG.md).
+  - h5py
 
   # ---- Reserved for Phase 5+ (no current imports, but close on the horizon) ----
   # Not imported by src/ or tests/ yet, but every entry here is imported by
@@ -102,8 +105,17 @@ dependencies:
   - nbconvert       # used by the `jupyter nbconvert --execute --inplace` pattern
 
   # ---- pip-only (not on conda-forge, or extras syntax required) ----
+  #
+  # NOTE: pywavesurfer is deliberately NOT listed here. Its wheel pins
+  # `h5py==3.8.0`, which would cause pip to downgrade the conda-forge h5py
+  # to a PyPI wheel bundling its own hdf5.dll, colliding with conda's
+  # hdf5.dll and breaking pytables' tableextension on Windows (the import
+  # fails in bare `python -c "import tables"` shells). Install it manually
+  # after env creation with `pip install pywavesurfer --no-deps` — its
+  # h5py usage is basic and works fine with any modern h5py. See the h5py
+  # note above for the full diagnosis; see docs/MIGRATION_LOG.md Phase 13
+  # for the exact post-create install sequence.
   - pip:
-      - pywavesurfer                # raw wavesurfer .h5 reader
       - "bnpm[core]"                # bnpm.indexing + bnpm.timeSeries helpers.
                                     # The [core] extra installs only the
                                     # lightweight deps we actually use — see
