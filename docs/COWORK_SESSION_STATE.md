@@ -25,33 +25,49 @@ A new Cowork session works through this in order before answering any substantiv
 
 ## Current state
 
-**As of:** 2026-04-20 (Phase 13 closed).
+**As of:** 2026-04-20 (Phase 8a.7 closed; Phase 8a.7.5 teed up for execution on Windows).
 
-**Repo phase:** Mid-consolidation audit **complete** (tag `v0.6.5-audit-complete`). Phases 1 through 6 + 13 delivered. Phase 13 merged via PR #31 as `d031486` and tagged `v0.7-phase-13-env-unification`. No work in flight; ready to pick the next phase.
+**Repo phase:** Phases 1–6 + 13 + 4.5-lite + 8a.1–8a.7 delivered. Latest tag: `v0.8-phase-4.5-lite-eye-midpoint` (on the Phase 4.5-lite merge commit). Phase 8a sub-phases after 4.5-lite have not yet been tagged — the convention has been to tag at phase-close, and Phase 8a is still mid-flight.
 
-**Current branch:** `main` at `d031486`. The `phase-13-env-unification` branch is preserved on origin at `e244c0b` per CLAUDE.md §8.
+**Current branch:** `main` at `209acd4` (the follow-up commit "Add env activation rule + legacy snippet for 8a.7.5 parity" that landed as PR #40). Preceding tip commits on main: `7164ffa` (merge of PR #39, 8a.7.5 kickoff prompt), `4996bdf` (8a.7.5 kickoff doc itself), `65d8917` (merge of PR #38, 8a.7 JSON writer), `c98ef73` (Phase 8a.7 implementation). All relevant feature branches preserved on origin per CLAUDE.md §8.
 
-**In flight:** *None.* Phase 13 is fully closed on both Mac and Windows:
+**In flight:** **Phase 8a.7.5 criteria hierarchy port** (C3, C4, C2 as real per-session-computable values; C1 stays sentinel). Kickoff prompt at `docs/prompts/phase-8a.7.5-criteria-hierarchy-port-kickoff.md` is ready to paste into a fresh Windows Claude Code session. Branch not yet cut (will be `phase-8a-part4-criteria-hierarchy`).
 
-- Mac pytest (in the new `stroke_orofacial` env): 223 passed / 6 skipped / 0 failed. The 6 skips are `pytest.importorskip("bnpm.*")` strict-port parity gates; they run and pass when the suite is executed inside `frsb` (which still has bnpm 0.6.0).
-- Windows pytest (in the new `stroke_orofacial` env on Priya's Windows box, via `--basetemp=C:/Users/sabatini/pytest_tmp` to sidestep stale admin-owned tmpdirs): 201 passed / 28 skipped / 0 failed. Skip split = 22 pre-existing integration/real-data gates + 6 bnpm-importorskip gates. Torch/bnpm/numba/llvmlite/cmake all absent from the new Windows env.
-- HDF5 stack clean on both: `h5py==3.16.0`, `pytables==3.10.2`, `pywavesurfer` loads without DLL errors.
-- Drift from vendored bnpm bug fixes measured on PS46/20250307 terminal masks — scope of affected downstream artifacts: **none** (running_bouts 0 differ, lick_bool_bad 2 differ / 5.4e-7, quiet_bool 51 differ / 1.4e-5 isolated singletons, peri_reward_bool 0 differ). Table lives in MIGRATION_LOG.md Sub-phase 13b.
+**Unblockers that landed in this session (for the 8a.7.5 Windows handoff):**
 
-**Outstanding housekeeping (non-code, do when back at the Windows box):**
+- `docs/legacy_snippets/behavior_report_PS_455_551.py` — in-repo read-only excerpt of canonical `behavior_report_PS.py:385-565` (C3/C4/C34/C2/C1 + helpers) with provenance header. Avoids the Windows-side blocker where the legacy Github clone is Mac-local only. First instance of the new "legacy-snippets pattern" — see DECISIONS 2026-04-20 "Phase 8a architecture" entry.
+- `CLAUDE.md` — new "Environment activation" section requiring `conda activate stroke_orofacial` + `python -c "import stroke_orofacial"` + `pytest --collect-only` before any test/impl work. Durable rule for all future sessions.
+- `docs/prompts/phase-8a.7.5-criteria-hierarchy-port-kickoff.md` — updated to reference the legacy snippet as the canonical parity source and include the env-activation block.
 
-From an elevated PowerShell:
-```powershell
-Remove-Item -Recurse -Force C:\Users\sabatini\AppData\Local\Temp\pytest-of-sabatini
-Remove-Item -Recurse -Force C:\Users\sabatini\GitHub\stroke_orofacial_pipeline\.pytest_cache
-```
-Both are stale admin-owned directories that produced `WinError 5: Access is denied` on the non-elevated Windows #1 pytest run. Not a code issue; not in scope for any phase.
+**Test state (pre-8a.7.5):**
 
-**Next-phase candidates** (all unblocked now that #13 is done — Priya to pick):
+- Windows pytest (in `stroke_orofacial` env on Priya's box): **335 passed / 28 skipped / 0 failed** (reported by Claude Code end of 8a.7 session). Skip split: 22 pre-existing integration/real-data gates + 6 bnpm-importorskip gates.
+- Mac pytest state last measured at Phase 13 close was 223 pass / 6 skip; Phase 8a additions (~112 new tests across 8a.1–8a.7) not yet re-verified on Mac. Full-suite Mac re-run is not blocking — Phase 8a is Windows-driven execution. Worth running on Mac opportunistically at a quiet moment.
+- Pre-existing ruff warnings: 8 unused-import errors carried forward from before 8a (noted in prior Claude Code session summaries). Backlog item; not blocking.
 
-1. **#3 — Phase 4.5-lite execution** (eye-midpoint centering). Smallest deliverable; already has a kickoff prompt at `docs/prompts/phase-4.5-lite-eye-midpoint-centering-kickoff.md` from the audit-closure session. Decision trail: DECISIONS entry 2026-04-19 "Phase 4.5-lite eye-midpoint centering".
-2. **#9 — Phase 6.7 SessionManifest refactor** (kickoff at `docs/prompts/phase-6.7-session-manifest-refactor-kickoff.md`). Unblocks #17 → #14 → #15, the main DLC-spatial queue.
-3. **#10 — Phase 8a spout-only recovery trajectories.** Mid-experiment deliverable — DLC-independent, parallelizable with 6.7/6.75/6.8. Scope per Audit Item 10 Q9: 8 new spout endpoints + recovery-phenotype viz + legacy `facerhythm_stroke_biomarker_exp_Priya` behavior-report walkthrough. No kickoff prompt yet.
+**Next-phase candidates** (after 8a.7.5 closes):
+
+1. **#10 remainder — Phase 8a.8** (visualization + recovery-phenotype prototype). First actual user-facing output of Phase 8a. No kickoff prompt yet; will need Cowork drafting once 8a.7.5 is done.
+2. **#10 remainder — Phase 8a.9** (close-out — legacy behavior-report walkthrough rollup per Audit Item 10 Q9's "systematic walkthrough of legacy behavior_report code to match each of the 8 new endpoints to existing implementations + surface additional worth-keeping metrics + explicitly discard stale/redundant ones"). Scope TBD at 8a.8 close.
+3. **#9 — Phase 6.7 SessionManifest refactor** (kickoff at `docs/prompts/phase-6.7-session-manifest-refactor-kickoff.md`). Unblocks #17 → #14 → #15, the main DLC-spatial queue. Can execute in parallel with 8a.8 if resources allow (both DLC-independent + orthogonal code paths).
+4. **#18 — Add `sex` + `date_of_birth` to `AnimalInfo` schema + `configs/animals.yaml`.** Ungated, small. Nice to land before any Phase 9 stats work begins.
+5. **#16 — Phase 5.5 polish** (SSH helper, recovery docs, ControlMaster, auto-rename, unified SVG save, DTW per-edge-shift QC plot). Ungated.
+
+**Deferred follow-ups still pending (from earlier sessions):**
+
+- **Cohort-wide Phase 5 re-run** (after the Phase 4.5-lite eye-midpoint centering landed — affects eye-centered outputs). Not yet scheduled; ask Priya whether to batch with 8a.8.
+- **Phase 6 reward-aligned live-data re-test** with the new 4.5-lite-aware pipeline. Same category.
+- **Windows housekeeping** (from Phase 13): stale admin-owned `C:\Users\sabatini\AppData\Local\Temp\pytest-of-sabatini\` + `.pytest_cache\` directories — only if a future pytest run actually hits `WinError 5` again.
+
+**Recent session log — 2026-04-20 (Phase 4.5-lite + Phase 8a.1 through 8a.7 + 8a.7.5 kickoff prep):**
+
+- **Phase 4.5-lite execution** (eye-midpoint centering), branch `phase-4.5-lite-eye-midpoint-centering`. Gate 1 + Gate 2 committed and PR-merged as PR #33 (`685d3f7`), tagged `v0.8-phase-4.5-lite-eye-midpoint`. Post-merge validation follow-up merged as PR #34 (`d2a928c`). PS46/20250307 parquet hashes preserved across the centering change. Image-boundary axis-limit clamp tracked as Phase 5.x polish item (PR #35).
+- **Phase 8a.1** (merged via PR #36, `1c798cb`): criteria slug-rename foundation — slug map + bijective validator in `src/stroke_orofacial/spout_behavior/criteria_slugs.py`; hardcoded constants renamed in `configs/defaults.yaml`. Four final slugs locked: `criteria_first_correct_lick_present`, `criteria_correct_lick_count_threshold`, `criteria_session_trial_pass_fraction_above_threshold`, `criteria_training_pass_consecutive_sessions` (see DECISIONS 2026-04-20 "Phase 8a architecture" entry).
+- **Phase 8a.2–8a.6** (merged via PR #37, `531c5d7`): lick-bout detector (`find_lick_bouts`, `LickBout`); per-trial endpoint primitives + shared contracts (`TrialRecord`, `EndpointResult`, `build_per_trial_records`); within-session trend endpoints (`within_session_learning_curve`, `within_session_change`); inter-session persistence scaffold (per-session side; cross-session aggregation deferred to cohort layer); engagement-extras endpoints (`switch_cost`, `directional_lick_accuracy`, `first_lick_latency`, `latency_variability`).
+- **Phase 8a.7** (merged via PR #38, `65d8917`): per-session JSON writer + schema 2.0.0 with all criteria emitted as sentinels. `src/stroke_orofacial/spout_behavior/endpoints_writer.py` with `write_session_endpoints_json()` + `lick_bouts_to_endpoint_result()` adapter + `SCHEMA_VERSION = "2.0.0"` + `CANONICAL_ENDPOINT_NAMES` frozenset + two sentinel dicts. Schema 2.0.0 has three top-level blocks (`metadata`, `endpoints`, `criteria`). Strict key validation; atomic write; SHA-256 provenance hashing. Parallel to legacy `report.json` (no parity required). D5–D8 scoping decisions captured in the DECISIONS 2026-04-20 "Phase 8a architecture" entry. Post-8a.7 housekeeping: `_v2` suffix dropped from file/config/kwarg/test-fixture names in the live codebase (`a41b643`); frozen archaeology / kickoff docs retain `_v2` as historical context.
+- **Phase 8a.7.5 kickoff drafted** (merged via PR #39, `7164ffa`): `docs/prompts/phase-8a.7.5-criteria-hierarchy-port-kickoff.md` saved as a first-class repo artifact. Scope: port C3, C4, C2 as real per-session-computable values; C1 stays sentinel per provenance contract (cohort aggregation deferred to a future phase). Parity reference: `behavior_report_PS.py:455-551` on PS46/20250307.
+- **Env-activation rule + legacy-snippets pattern** (merged via PR #40, `209acd4`): bundle of three changes. (a) New "Environment activation" section in `CLAUDE.md` (durable rule for all future sessions). (b) Mirror of the env-activation block into the 8a.7.5 kickoff (follow-up after PR #39 merged without it due to an SMB mount write race). (c) First instance of the legacy-snippets pattern: `docs/legacy_snippets/behavior_report_PS_455_551.py` is a read-only in-repo excerpt of canonical `behavior_report_PS.py:385-565` (C3/C4/C34/C2/C1 + `fn_convert_window_to_samples` + `fn_flip_lr`) with a provenance header. This unblocks byte-identical parity validation on machines without the legacy Github clone (specifically Windows).
+- **Scope note surfaced while reading legacy C3/C4:** `bnpm.indexing.find_idx_within_eps` is a **fifth** bnpm helper used in the legacy C3/C4 path that is NOT in the Phase 13 vendored set (which covers `idx2bool`, `widen_bool_sparse`, `set_short_bool_to_low`, `gaussian_smooth_1d`). The 8a.7.5 port should **sidestep** it by using `TrialRecord`'s per-trial lick/reward indices (established in 8a.3) rather than vendoring a fifth helper. Flagged in the legacy-snippet provenance header and in the 8a.7.5 kickoff.
 
 **Recent session log — 2026-04-19 through 2026-04-20 (Phase 13 closure):**
 
@@ -105,16 +121,20 @@ The authoritative source is the Cowork TaskList widget in the current session. M
 
 **In progress:**
 
-- *(none — Phase 13 closed this session)*
+- **#10 (subtask) — Phase 8a.7.5 criteria hierarchy port.** Kickoff prompt ready at `docs/prompts/phase-8a.7.5-criteria-hierarchy-port-kickoff.md`; legacy snippet + env rule landed as PR #40. Next action: fresh Windows Claude Code session, paste the kickoff one-liner, have it draft the plan, approve, execute.
 
 **Completed since last state refresh:**
 
+- **#3** — Phase 4.5-lite execution (eye-midpoint centering). Merged via PR #33 (`685d3f7`), tagged `v0.8-phase-4.5-lite-eye-midpoint`. Post-merge validation (PR #34, `d2a928c`). Image-boundary axis-limit clamp carved out to Phase 5.x polish (PR #35). Full details in MIGRATION_LOG.md Phase 4.5-lite.
+- **#10 (subtasks 8a.1 through 8a.7)** — Phase 8a criteria slug foundation + lick-bout detector + per-trial endpoint primitives + within-session / inter-session / engagement-extras endpoints + per-session JSON writer with schema 2.0.0. Merged via PRs #36, #37, #38 and the housekeeping / kickoff / unblock follow-ups #39 + #40. Full details in MIGRATION_LOG.md Phase 8a.7 entry + DECISIONS.md 2026-04-20 "Phase 8a architecture" entry.
 - **#13** — Phase 13 env unification + bnpm vendoring. Full details in MIGRATION_LOG.md Phase 13 (sub-phases 13a + 13b) and DECISIONS.md 2026-04-19 + 2026-04-20 entries. Merged to main as `d031486`, tagged `v0.7-phase-13-env-unification`. Feature branch `phase-13-env-unification` preserved on origin.
 - **#8** — Audit branch `audit-item-6-phase5-details` merged to `main` and tagged `v0.6.5-audit-complete`. Branch preserved as permanent reference per CLAUDE.md rule 8.
 
 **Pending — queued phases and mini-phases**, in rough execution order (dependencies noted):
-- **#3 (completed)** — Phase 4.5 decision was "build lite". **Execution of Phase 4.5-lite** per `docs/prompts/phase-4.5-lite-eye-midpoint-centering-kickoff.md` does not have its own task yet; unblocked and available as a candidate next phase.
-- **#9** — Phase 6.7 SessionManifest refactor. Kickoff at `docs/prompts/phase-6.7-session-manifest-refactor-kickoff.md`. Unblocked (Phase 13 done); ready to execute.
+- **#10 (subtask) — Phase 8a.7.5 criteria hierarchy port.** In progress (above). Next-up execution on Windows.
+- **#10 (subtask) — Phase 8a.8 recovery-trajectory visualization + phenotype-classification prototype.** Blocked on 8a.7.5. Needs Cowork-drafted kickoff prompt once 8a.7.5 merges.
+- **#10 (subtask) — Phase 8a.9 close-out** (legacy behavior-report systematic walkthrough per Audit Item 10 Q9; surface additional worth-keeping endpoints; discard stale ones). Scope TBD at 8a.8 close.
+- **#9** — Phase 6.7 SessionManifest refactor. Kickoff at `docs/prompts/phase-6.7-session-manifest-refactor-kickoff.md`. Unblocked; can run in parallel with 8a.8 / 8a.9 (orthogonal code paths).
 - **#17** — Phase 6.75 output directory reorganization (figure-type-first inside dlc_analysis and spout_behavior). Blocked on #9 so Phase 6.7's byte-parity checks remain valid at old paths.
 - **#14** — Phase 6.8 full heatmap/binned/Δ × session/reward-aligned matrix. Blocked on #17.
 - **#15** — Axis sharing (`share_xy_within_mouse` + percentile fallback + reward-aligned-specific axis config). Blocked on #14.
@@ -297,11 +317,11 @@ Result: no Cowork tab appears in the Windows desktop app. The Claude VM (`yukonS
 
 ## Best warm-start prompt (paste into a new Cowork chat)
 
-Phase 13 is closed (merged as `d031486`, tagged `v0.7-phase-13-env-unification`). Mac + Windows are on the unified `stroke_orofacial` env. No work is in flight. Use this prompt to open the next session:
+Phase 8a.7 is closed (merged as `65d8917`). Phase 8a.7.5 (criteria hierarchy port: C3/C4/C2 real; C1 stays sentinel) is teed up to execute on Windows — kickoff at `docs/prompts/phase-8a.7.5-criteria-hierarchy-port-kickoff.md`. Follow-up PR #40 (`209acd4`) landed the env-activation rule, the kickoff's env block, and `docs/legacy_snippets/behavior_report_PS_455_551.py` so Windows parity validation is unblocked. Use this prompt to open the next Cowork session:
 
-> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Phase 13 (env unification + bnpm vendoring with two upstream bug fixes) merged to main as `d031486` and is tagged `v0.7-phase-13-env-unification`. I want to pick the next phase to work on. The Current-state section lists the three unblocked candidates — #3 (Phase 4.5-lite eye-midpoint centering, smallest, has a kickoff prompt), #9 (Phase 6.7 SessionManifest refactor, unblocks the DLC-spatial queue, has a kickoff prompt), and #10 (Phase 8a spout-only recovery trajectories, DLC-independent, mid-experiment deliverable, no kickoff prompt yet). Summarize the tradeoffs briefly and ask me which one to go with before doing anything else.
+> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Phase 8a.7.5 (criteria hierarchy port) is queued for Windows Claude Code execution; the kickoff prompt and legacy-snippet unblocker are in place (merged as `209acd4` via PR #40). I want to [drive 8a.7.5 execution from the Cowork side / draft the 8a.8 kickoff / pick another task]. Confirm the current state and then ask me which direction before doing anything else.
 
-For sessions further out, once you've moved past whichever phase you pick here, the generic warm-start remains:
+The generic warm-start once you've moved past the in-flight work:
 
 > Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Then ask me what we're working on.
 
@@ -314,3 +334,4 @@ For sessions further out, once you've moved past whichever phase you pick here, 
 - **2026-04-19 (audit closure)** — Walked Q1–Q10 with Priya in a focused second session the same day; all 10 decisions landed as a single grouped entry at the top of DECISIONS.md. Audit now 10/10. Phase 9 split into 9a/9.1/9b; task #12 refactored into #12a–e; new tasks #18 (sex/DOB schema) and #19 (facerhythm_tca stub) created; task #16 extended with DTW per-edge-shift QC plot carve-out; task #10 and #11 scopes expanded with locked Phase 8a/7 content. Next session opens with audit merge (#8).
 - **2026-04-19 (Phase 13 drafting)** — Third session same day. Audit branch merged to `main`, tagged `v0.6.5-audit-complete`. Feature branch `phase-13-env-unification` cut from `main`. Full import audit performed across `src/`, `tests/`, `notebooks/`, and `/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/code/` to determine the minimum dep set for the new unified env. Drafted `environment.yml` (single env, Python 3.11, conda-forge primary, `bnpm[core]`). Added `patsy`, `pot`, `scicomap` (in-flight-port prereqs). Dropped `opencv-contrib-python` and `tqdm` (audit confirms zero imports). Brought `pyproject.toml` into agreement. Reduced old per-platform env files to deprecation stubs. Cowork context compacted mid-session (summary preserved). Windows test-env install was still spinning on jinja2 at session end — resolution deferred to next session.
 - **2026-04-20 (Phase 13 closure)** — Windows env couldn't import bnpm because the PyPI torch 2.11.0 wheel on Windows bundles `libiomp5md.dll` that collides with conda-forge MKL's `libomp.dll` (`OMP: Error #15` + `WinError 127` on `shm.dll`). Resolved by vendoring the 4 pure-numpy bnpm helpers the repo actually uses into `src/stroke_orofacial/_utils/bool_indexing.py` under MIT attribution and dropping `bnpm[core]` + `numba` + `cmake` from the env. Two vendored helpers intentionally diverge from upstream bnpm 0.6.0 to fix off-by-one bugs discovered while writing parity tests; drift measured (0 / 2 / 51 / 0 per-array on PS46/20250307 terminal masks; scope downstream: none). Full Mac + Windows verification green (Mac 223/6/0; Windows 201/28/0). PR #31 merged to main as `d031486`; tag `v0.7-phase-13-env-unification` pushed; feature branch preserved on origin. README + DESIGN.md §§2.3/3/8 + MIGRATION_LOG.md 13a+13b + DECISIONS.md 2026-04-19 + 2026-04-20 all written/reframed to reflect the unified env and the vendor-plus-bug-fixes narrative. All three next-phase candidates (#3 / #9 / #10) unblocked.
+- **2026-04-20 (Phase 4.5-lite + Phase 8a.1 through 8a.7 + 8a.7.5 prep)** — Multi-session sweep executed predominantly on Windows Claude Code with Cowork-on-Mac providing advisory + kickoff-drafting + session-state maintenance. Phase 4.5-lite eye-midpoint centering merged (PR #33 + #34 + #35), tagged `v0.8-phase-4.5-lite-eye-midpoint`. Phase 8a sub-phases 8a.1 (slug foundation, PR #36), 8a.2–8a.6 (bout detector + per-trial primitives + within-session / inter-session / engagement-extras endpoints, PR #37), and 8a.7 (JSON writer + schema 2.0.0 with sentinel criteria, PR #38) all landed. `_v2` suffix dropped from file / config / kwarg / test-fixture names (`a41b643`); frozen historical docs retain `_v2` as decision-trail context. Phase 8a.7.5 kickoff prompt saved as first-class repo artifact (PR #39). Follow-up PR #40 bundled three changes: new "Environment activation" durable rule in CLAUDE.md, mirror of the env-activation block into the 8a.7.5 kickoff, and new `docs/legacy_snippets/behavior_report_PS_455_551.py` establishing the legacy-snippets pattern (unblocks Windows byte-identical parity validation for the 8a.7.5 port without the legacy Github clone being present locally). DECISIONS.md 2026-04-20 "Phase 8a architecture" entry captures criteria slug finalization (fulfills Q2), 8a sub-phasing, schema 2.0.0 design, 8a.7.5 split rationale, `_v2` drop, and the legacy-snippets pattern.
