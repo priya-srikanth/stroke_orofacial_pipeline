@@ -108,6 +108,51 @@ def get_session_params(
     return copy.deepcopy(defaults)
 
 
+def default_center_mode(defaults: dict[str, Any], bodypart: str) -> str:
+    """Return the default DLC centering mode for one bodypart.
+
+    Resolution order:
+      1. ``dlc_spatial.bodyparts.{bodypart}.center_mode`` (primary source,
+         added in Phase 4.5-lite).
+      2. ``dlc_centering.default_mode`` (ultimate fallback).
+
+    Parameters
+    ----------
+    defaults : dict
+        Cohort-wide defaults (from ``load_defaults()``).
+    bodypart : str
+        Bodypart name, e.g. ``"tongue"`` or ``"L_eye"``.
+
+    Returns
+    -------
+    str
+        A centering-mode string ("nose", "spout_midpoint", or "eye_midpoint").
+
+    Raises
+    ------
+    KeyError
+        If neither a per-bodypart nor a top-level default is configured.
+    ValueError
+        If the resolved mode is not a legal ``CenterMode`` value.
+    """
+    # Deferred import to keep config_loader light when this helper is unused.
+    from stroke_orofacial.dlc_io.centering import CenterMode
+
+    bp_cfg = defaults.get("dlc_spatial", {}).get("bodyparts", {}).get(bodypart) or {}
+    mode = bp_cfg.get("center_mode")
+    if mode is None:
+        mode = defaults.get("dlc_centering", {}).get("default_mode")
+    if mode is None:
+        raise KeyError(
+            f"No center_mode configured for bodypart {bodypart!r}: "
+            f"neither dlc_spatial.bodyparts.{bodypart}.center_mode nor "
+            f"dlc_centering.default_mode is set in defaults.yaml."
+        )
+    # Validate against the canonical enum; raises ValueError on unknown.
+    CenterMode(mode)
+    return mode
+
+
 def check_merge_required(
     animal: str,
     date_str: str,

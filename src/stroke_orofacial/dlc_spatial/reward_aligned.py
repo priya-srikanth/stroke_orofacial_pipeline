@@ -210,41 +210,39 @@ def build_reward_aligned_analysis(
     fps = float(reward_config.get("fps", 250.0))
     window = build_reward_aligned_window(reward_ws, sig_camIdx, window_ms, fps, n_frames)
 
-    # Build histogram with window
+    # Build histogram with window.
+    # Reward-aligned analyses use the Phase 6 `dlc_spatial_reward_aligned`
+    # config for likelihood thresholds and (per-bodypart, non-center-mode-aware)
+    # x_range filters; axis limits come from the Phase 5 `dlc_spatial` config
+    # which IS per-(bodypart, center_mode).
     bp_config = reward_config.get("bodyparts", {}).get(bodypart, {})
-    bp_x_range = bp_config.get("x_range")
+    bp_x_range_reward = bp_config.get("x_range")
     lik_thresholds = bp_config.get("likelihood_thresholds", [0.8])
-
-    # Use first threshold as default
     lik_thr = lik_thresholds[0] if lik_thresholds else 0.8
-
-    # Determine axis limits from spatial config
-    bp_spatial = spatial_config.get("bodyparts", {}).get(bodypart, {})
-    per_mode = bp_spatial.get("per_center_mode", {}).get(center_mode)
-    if per_mode and isinstance(per_mode, dict):
-        x_limits = tuple(per_mode.get("xlim", [-200, 200]))
-        y_limits = tuple(per_mode.get("ylim", [-150, 150]))
-    else:
-        x_limits = (-200, 200)
-        y_limits = (-150, 150)
 
     nbins_list = reward_config.get("default_nbins", [80, 80])
     nbins = nbins_list[0] if isinstance(nbins_list[0], int) else int(nbins_list[0])
 
-    # Temporarily override bodypart config for the histogram call
+    # Override only the likelihood threshold (reward-aligned thresholds differ
+    # from whole-session thresholds). All other per-(bodypart, center_mode)
+    # values (xlim, ylim, x_range) come from the Phase 5 spatial_config via
+    # the build_histogram center_mode kwarg.
     config_for_hist = dict(spatial_config)
-    config_for_hist.setdefault("bodyparts", {})
     config_for_hist["bodyparts"] = dict(config_for_hist.get("bodyparts", {}))
-    config_for_hist["bodyparts"][bodypart] = {
-        "likelihood_threshold": lik_thr,
-    }
-    if bp_x_range is not None:
-        config_for_hist["apply_x_range"] = True
-        config_for_hist["x_range"] = list(bp_x_range)
+    existing_bp = dict(config_for_hist["bodyparts"].get(bodypart, {}))
+    existing_bp["likelihood_threshold"] = lik_thr
+    config_for_hist["bodyparts"][bodypart] = existing_bp
+
+    # Reward-aligned per-bodypart x_range (Phase 6 config) takes precedence
+    # over the Phase 5 per_center_mode.x_range when provided; fall back to
+    # Phase 5's value otherwise by passing x_range=None to build_histogram.
+    x_range_override = tuple(bp_x_range_reward) if bp_x_range_reward is not None else None
 
     histogram = build_histogram(
         df, bodypart, config_for_hist,
-        x_limits=x_limits, y_limits=y_limits, nbins=nbins,
+        center_mode=center_mode,
+        x_range=x_range_override,
+        nbins=nbins,
         window=window,
     )
 

@@ -24,6 +24,36 @@ import numpy as np
 import pandas as pd
 
 
+def _get_per_center_mode_params(
+    config: dict[str, Any], bodypart: str, center_mode: str | None
+) -> dict[str, Any]:
+    """Look up per-(bodypart, center_mode) plotting parameters.
+
+    Returns a dict with keys ``xlim``, ``ylim``, ``x_range`` — each either a
+    ``tuple[float, float]`` or ``None`` if the corresponding entry is missing
+    or set to ``null`` in config.
+
+    Added in Phase 4.5-lite: the sub-block
+    ``dlc_spatial.bodyparts.{bp}.per_center_mode.{mode}`` now optionally
+    includes ``x_range`` as a pre-histogram filter (legacy behavior), in
+    addition to ``xlim`` and ``ylim`` which control axis rendering.
+    """
+    if center_mode is None:
+        return {"xlim": None, "ylim": None, "x_range": None}
+    bp_cfg = config.get("bodyparts", {}).get(bodypart, {}) or {}
+    per_mode = bp_cfg.get("per_center_mode", {}).get(center_mode)
+    if per_mode is None or not isinstance(per_mode, dict):
+        return {"xlim": None, "ylim": None, "x_range": None}
+    xl = per_mode.get("xlim")
+    yl = per_mode.get("ylim")
+    xr = per_mode.get("x_range")
+    return {
+        "xlim": tuple(xl) if xl else None,
+        "ylim": tuple(yl) if yl else None,
+        "x_range": tuple(xr) if xr else None,
+    }
+
+
 def get_masked_xy(
     df: pd.DataFrame,
     bodypart: str,
@@ -85,8 +115,10 @@ def build_histogram(
     bodypart: str,
     config: dict[str, Any],
     *,
-    x_limits: tuple[float, float] = (-200, 200),
-    y_limits: tuple[float, float] = (50, 550),
+    center_mode: str | None = None,
+    x_limits: tuple[float, float] | None = None,
+    y_limits: tuple[float, float] | None = None,
+    x_range: tuple[float, float] | None = None,
     nbins: int | None = None,
     window: Any | None = None,
 ) -> dict[str, Any] | None:
@@ -100,8 +132,20 @@ def build_histogram(
         Bodypart name.
     config : dict
         The ``dlc_spatial`` section from defaults.yaml.
-    x_limits, y_limits : tuple
-        Histogram range.
+    center_mode : str, optional
+        Centering mode used for *df* (e.g. ``"eye_midpoint"``). When given,
+        the function reads ``config.bodyparts.{bp}.per_center_mode.{mode}``
+        and uses its ``xlim``, ``ylim``, and ``x_range`` values — unless an
+        explicit kwarg overrides. Added in Phase 4.5-lite; prior behavior
+        (no config consumption) is preserved when center_mode is None.
+    x_limits, y_limits : tuple, optional
+        Explicit axis range override. If None, falls back to the config's
+        per-(bodypart, center_mode) block, then to ``(-200, 200)`` /
+        ``(50, 550)`` as ultimate fallbacks.
+    x_range : tuple, optional
+        Pre-histogram x filter override. If None, falls back to per-(bodypart,
+        center_mode).x_range, then to the legacy top-level
+        ``config.apply_x_range`` / ``config.x_range`` fallback (deprecated).
     nbins : int, optional
         Number of bins per axis. Defaults to ``config["heatmap_nbins"]``.
     window : WindowSelector, optional
@@ -118,16 +162,24 @@ def build_histogram(
     if nbins is None:
         nbins = int(config.get("heatmap_nbins", 100))
 
-    x_range_filter = None
-    if config.get("apply_x_range", False):
-        x_range_filter = tuple(config.get("x_range", [-200, 200]))
+    per_mode = _get_per_center_mode_params(config, bodypart, center_mode)
+    if x_limits is None:
+        x_limits = per_mode["xlim"] or (-200, 200)
+    if y_limits is None:
+        y_limits = per_mode["ylim"] or (50, 550)
+    if x_range is None:
+        x_range = per_mode["x_range"]
+        # Legacy fallback: top-level apply_x_range / x_range (deprecated,
+        # kept for pre-4.5-lite config compatibility).
+        if x_range is None and config.get("apply_x_range", False):
+            x_range = tuple(config.get("x_range", [-200, 200]))
 
     # Apply window mask if provided
     frame_mask = None
     if window is not None:
         frame_mask = window.select_frames(df)
 
-    x, y = get_masked_xy(df, bodypart, lik_thr, x_range=x_range_filter, frame_mask=frame_mask)
+    x, y = get_masked_xy(df, bodypart, lik_thr, x_range=x_range, frame_mask=frame_mask)
     if x is None:
         return None
 
@@ -151,6 +203,8 @@ def build_stats_grid(
     bodypart: str,
     config: dict[str, Any],
     *,
+    center_mode: str | None = None,
+    x_range: tuple[float, float] | None = None,
     window: Any | None = None,
 ) -> dict[str, Any] | None:
     """Build a coarser histogram grid for occupancy statistics.
@@ -166,6 +220,13 @@ def build_stats_grid(
         Bodypart name.
     config : dict
         The ``dlc_spatial`` section from defaults.yaml.
+    center_mode : str, optional
+        When provided, reads ``config.bodyparts.{bp}.per_center_mode.{mode}.x_range``
+        as the pre-histogram x filter. Added in Phase 4.5-lite.
+    x_range : tuple, optional
+        Explicit pre-histogram x filter override. Falls back to
+        per-(bodypart, center_mode).x_range, then to legacy top-level
+        ``config.apply_x_range`` / ``config.x_range``.
     window : WindowSelector, optional
         Frame selection window. Default None = whole session.
 
@@ -180,15 +241,17 @@ def build_stats_grid(
     target_dx = float(config.get("target_bin_size_x", 25.0))
     target_dy = float(config.get("target_bin_size_y", 25.0))
 
-    x_range_filter = None
-    if config.get("apply_x_range", False):
-        x_range_filter = tuple(config.get("x_range", [-200, 200]))
+    per_mode = _get_per_center_mode_params(config, bodypart, center_mode)
+    if x_range is None:
+        x_range = per_mode["x_range"]
+        if x_range is None and config.get("apply_x_range", False):
+            x_range = tuple(config.get("x_range", [-200, 200]))
 
     frame_mask = None
     if window is not None:
         frame_mask = window.select_frames(df)
 
-    x, y = get_masked_xy(df, bodypart, lik_thr, x_range=x_range_filter, frame_mask=frame_mask)
+    x, y = get_masked_xy(df, bodypart, lik_thr, x_range=x_range, frame_mask=frame_mask)
     if x is None:
         return None
 

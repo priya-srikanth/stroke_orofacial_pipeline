@@ -73,7 +73,9 @@ alignment:
 
 dlc_centering:
   likelihood_threshold: 0.7   # used ONLY for computing center, NOT for dropping rows
-  default_mode: "nose"        # also supports "spout_midpoint", "eye_midpoint"
+  default_mode: "nose"        # ultimate fallback only; per-bodypart defaults under
+                              # dlc_spatial.bodyparts.{bp}.center_mode are the primary
+                              # source (added in Phase 4.5-lite, 2026-04-20)
   compression: "zstd"         # parquet compression
 
 # ---- DLC spatial analyses ----
@@ -84,8 +86,8 @@ dlc_spatial:
   heatmap_nbins: 100              # fine-resolution grid for per-session heatmap viz
   target_bin_size_x: 25.0         # coarser stats grid: nx = round(span_x / bin_size), min 5
   target_bin_size_y: 25.0         # coarser stats grid: ny = round(span_y / bin_size), min 5
-  apply_x_range: false            # optional x-range filter on coordinates
-  x_range: [-200, 200]            # applied only when apply_x_range is true
+  apply_x_range: false            # DEPRECATED fallback (Phase 4.5-lite): use
+  x_range: [-200, 200]            # bodyparts.{bp}.per_center_mode.{mode}.x_range instead.
   save_dpi: 200                   # PNG save resolution
   # Per-(bodypart, center_mode) axis limits.
   # Derived from PS46/20250307 data ranges with ~25% margin.
@@ -94,6 +96,7 @@ dlc_spatial:
   bodyparts:
     nose:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "gist_ncar"
       per_center_mode:
         nose:
@@ -102,11 +105,12 @@ dlc_spatial:
         spout_midpoint:
           xlim: [-150, 150]
           ylim: [-300, -60]
-        eye_midpoint:
-          xlim: [-150, 150]
-          ylim: [120, 360]
+        eye_midpoint:                 # Phase 4.5-lite: cohort-pooled q00001_9999 + 40% pad
+          xlim: [-100, 95]            # (supersedes prior [-150, 150] single-session estimate)
+          ylim: [100, 330]            # (supersedes prior [120, 360])
     jaw:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "gnuplot2"
       per_center_mode:
         nose:
@@ -115,66 +119,105 @@ dlc_spatial:
         spout_midpoint:
           xlim: [-400, 300]
           ylim: [-220, 110]
-        eye_midpoint:
-          xlim: [-400, 300]
-          ylim: [200, 530]
+        eye_midpoint:                 # Phase 4.5-lite: cohort-pooled q00001_9999 + 40% pad,
+          xlim: [-80, 80]             # clamped to legacy x_range filter [-80, 80] (from
+          ylim: [195, 520]            # 20251117_DLC_analysis_jaw.ipynb X_MIN,X_MAX = -80,80).
+          x_range: [-80, 80]          # Pre-histogram filter: drops DLC mis-detections far
+                                      # from the midline. Phase 4.5-lite plumbs this into
+                                      # build_histogram/plot_heatmap via the center_mode kwarg.
     tongue:
       likelihood_threshold: 0.70
+      center_mode: spout_midpoint # Phase 4.5-lite: anatomically spout-anchored; sweep confirms
       cmap: "jet"
       per_center_mode:
         nose:
           xlim: [-420, 420]
           ylim: [-300, 310]
-        spout_midpoint:
-          xlim: [-420, 420]
-          ylim: [-490, 120]
+        spout_midpoint:               # Phase 4.5-lite: cohort-pooled q00001_9999 + 40% pad,
+          xlim: [-175, 175]           # clamped to legacy x_range filter [-175, 175] (from
+          ylim: [-235, 225]           # 20260323_DLC_build-parquet_reward-aligned X_MIN,X_MAX=-175,175).
+          x_range: [-175, 175]        # Pre-histogram filter: drops DLC mis-detections
+                                      # (picket-fence pattern spanning ±600 px otherwise).
         eye_midpoint:
           xlim: [-420, 420]
           ylim: [-70, 540]
     L_whiskers_1:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "plasma"
       per_center_mode:
         nose:
           xlim: [-380, 220]
           ylim: [-150, 80]
         spout_midpoint: null  # Phase 6+ will fill in
-        eye_midpoint: null
+        eye_midpoint:                 # Phase 4.5-lite: cohort-pooled q00001_9999 + 40% pad
+          xlim: [15, 135]
+          ylim: [55, 250]
     L_whiskers_2:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "inferno"
       per_center_mode:
         nose: null
         spout_midpoint: null
-        eye_midpoint: null
+        eye_midpoint:                 # Phase 4.5-lite: cohort-pooled q00001_9999 + 40% pad
+          xlim: [15, 165]
+          ylim: [145, 355]
     L_whiskers_3:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "viridis"
       per_center_mode:
         nose: null
         spout_midpoint: null
-        eye_midpoint: null
+        eye_midpoint:                 # Phase 4.5-lite: cohort-pooled q00001_9999 + 40% pad
+          xlim: [60, 165]
+          ylim: [75, 270]
     R_whiskers_1:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "plasma"
       per_center_mode:
         nose: null
         spout_midpoint: null
-        eye_midpoint: null
+        eye_midpoint:                 # Phase 4.5-lite: cohort-pooled q00001_9999 + 40% pad
+          xlim: [-140, -15]
+          ylim: [70, 235]
     R_whiskers_2:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "inferno"
       per_center_mode:
         nose: null
         spout_midpoint: null
-        eye_midpoint: null
+        eye_midpoint:                 # Phase 4.5-lite: cohort-pooled q00001_9999 + 40% pad
+          xlim: [-165, 0]
+          ylim: [155, 350]
     R_whiskers_3:
       likelihood_threshold: 0.80
+      center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
       cmap: "viridis"
       per_center_mode:
         nose: null
         spout_midpoint: null
-        eye_midpoint: null
+        eye_midpoint:                 # Phase 4.5-lite: cohort-pooled q00001_9999 + 40% pad
+          xlim: [-185, -40]
+          ylim: [95, 265]
+    # Fiducial bodyparts — null-baseline controls for Phase 9 significance testing
+    # (DECISIONS 2026-04-19 Phase 4.5-lite §Constraints). Each fiducial is centered
+    # under its own regime. No cmap / per_center_mode: no heatmaps for fiducials today.
+    L_eye:
+      likelihood_threshold: 0.80
+      center_mode: eye_midpoint
+    R_eye:
+      likelihood_threshold: 0.80
+      center_mode: eye_midpoint
+    L_spout:
+      likelihood_threshold: 0.80
+      center_mode: spout_midpoint
+    R_spout:
+      likelihood_threshold: 0.80
+      center_mode: spout_midpoint
 
 # ---- DLC spatial (reward-aligned) ----
 # Per-bodypart reward-aligned config. Tongue has legacy values from
