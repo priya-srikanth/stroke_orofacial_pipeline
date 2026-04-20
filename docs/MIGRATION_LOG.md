@@ -1580,6 +1580,38 @@ divergence-rationale entry is needed for this sub-phase.
   caller-override-able.
 - [x] Implemented on feature branch `phase-8a-part4-criteria-hierarchy`.
 
+**Post-merge appendix (2026-04-20) — external bnpm parity finding:**
+
+After PR #42 merged, an independent external-bnpm parity sweep (Mac-local
+scratch script running the inline reference with bnpm 0.6.0's
+`find_idx_within_eps` substituted for the numpy mask, across 3 animals × 1
+session each) found one Category 2 divergence at **PS50/20250324 trial
+k=40, L side**. Reproducer: reward_idx = 3,422,003; C4 window (0, 2.5) s;
+L licks in the window are [3,422,497, 3,422,906, 3,423,057, 3,423,239,
+3,423,436]; window right edge 3,424,503 > last lick 3,423,436.
+Root cause is an upstream bug in **bnpm 0.6.0 `find_idx_within_eps`**:
+`np.searchsorted(arr, v + eps[1], side='left')` returns `len(arr) = 26`
+when the right edge is past every element, and the upstream implementation
+clamps to `len(arr) - 1 = 25`, which excludes `arr[25]` — the final lick.
+Production (`criteria.py:_sub_window_counts` using
+`(licks >= lo) & (licks < hi)` on pre-windowed `TrialRecord.licks_*_indices_in_window`)
+is correct and includes all 5 licks, so PS50's C4 L-side trial k=40
+correctly passes. The PS46/20250307 parity that sub-phase 8a.7.5 gated on
+remains byte-identical — this finding does not affect the sub-phase's exit
+criteria. **Verdict:** intentional divergence from upstream bnpm under the
+Phase 13 vendoring pattern (production untouched, correct; upstream wrong).
+Captured as a new bullet under DECISIONS.md 2026-04-20 "Phase 8a
+architecture" entry and guarded by
+`tests/test_criteria.py::TestClampBugRegressionGuards::test_last_lick_inside_subwindow_with_right_edge_past_it`.
+PS51/20250502 re-run skipped (not needed for triage). Upstream bnpm issue
+filing is deferred / optional. **Forward obligation:** the same clamp bug
+exists in the private `_find_idx_within_eps` port at
+`src/stroke_orofacial/spout_behavior/bouts.py:236-256` (peri-reward mask
+caller); it does not affect criteria.py (which never calls it), but a
+Phase-13-pattern fix-PR will follow the Phase 5/6 indexing-module refactor
+(`_find_idx_within_eps` → `_utils/indexing.py`) and must land before Phase
+5/6 code writes begin so Phase 5/6 does not consume the buggy helper.
+
 ---
 
 ## Phase 5/6-prep — Factor `_find_idx_within_eps` into shared `_utils/indexing.py`
@@ -1616,18 +1648,20 @@ callers.
 **Forward obligation — clamp-bug fix before Phase 5/6 kickoff:** The
 post-merge external bnpm 0.6.0 parity check documented in the DECISIONS
 2026-04-20 "Phase 8a architecture" entry under the "External bnpm parity
-finding" bullet identified a `len(arr) - 1` right-edge clamp bug inherited
-from the upstream `bnpm.indexing.find_idx_within_eps` that this helper
-faithfully ports. The current refactor deliberately preserves the bug (no
-behavior change in this PR — easier review). A separate follow-up PR
-must land the clamp-bug fix **before** any Phase 5/6 implementation PRs
-begin, so Phase 5/6 peri-reward extraction does not consume the buggy
-helper. That fix is a behavior change; its parity implications will be
-re-verified against `tests/test_session_processing.py` baselines under
-the Phase 13b `max_frac=1e-4` boolean-tolerance policy. A regression
-guard for the "last lick inside sub-window with right edge past it"
-primitive path already landed in `tests/test_criteria.py::TestClampBugRegressionGuards`
-via the docs+test PR on `docs/8a.7.5-external-bnpm-parity-findings`.
+finding — Phase-13-pattern intentional divergence from upstream bnpm 0.6.0
+(post-merge of 8a.7.5)" bullet identified a `len(arr) - 1` right-edge
+clamp bug inherited from the upstream `bnpm.indexing.find_idx_within_eps`
+that this helper faithfully ports. The current refactor deliberately
+preserves the bug (no behavior change in this PR — easier review). A
+separate follow-up PR must land the clamp-bug fix **before** any Phase
+5/6 implementation PRs begin, so Phase 5/6 peri-reward extraction does not
+consume the buggy helper. That fix is a behavior change; its parity
+implications will be re-verified against `tests/test_session_processing.py`
+baselines under the Phase 13b `max_frac=1e-4` boolean-tolerance policy. A
+regression guard for the "last lick inside sub-window with right edge past
+it" primitive path already landed in
+`tests/test_criteria.py::TestClampBugRegressionGuards` via the docs+test
+PR on `docs/8a.7.5-external-bnpm-parity-findings`.
 
 **Exit criteria:**
 - [ ] `pytest tests/test_bouts.py -v` byte-identical pass.
@@ -1637,4 +1671,3 @@ via the docs+test PR on `docs/8a.7.5-external-bnpm-parity-findings`.
   tests/test_session_processing.py` clean.
 - [ ] Implemented on feature branch `prep-indexing-module-for-phase-5-6`
   cut from `main`.
-
