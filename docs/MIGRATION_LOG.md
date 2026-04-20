@@ -724,6 +724,23 @@ captures the full pooling + comparison + proposal pipeline. Outputs at
   refactor removed a config-injection hack. `test_reward_aligned.py`
   passed (5 tests; 2 skipped for missing data). Live-data re-run on PS46
   recommended once Priya re-executes notebook 12.
+- **Image-boundary clamping for per-(bodypart, center_mode) axis limits**
+  (2026-04-20 review): the approved `q00001_9999 + 40% pad` limits are
+  clamped to legacy x-filter ranges where applicable (`jaw [-80, 80]`,
+  `tongue [-175, 175]`) but not to the raw image frame. For some
+  bodyparts (notably tongue `ylim=[-235, 225]` under spout_midpoint),
+  the +40% pad extends into centered-frame regions that map past the
+  image edge for some sessions — rendered as harmless white space but
+  technically not a region where data could exist. Fix options (park for
+  future Phase 5.x polish mini-phase):
+  - (A) Add image dims to `configs/defaults.yaml` and clamp at plot time
+    using per-session midpoint offsets.
+  - (B) Cohort-conservative fixed clamp derived from min-across-sessions
+    of `(image_edge − session_midpoint)`.
+  - (C) Manual per-bodypart `ylim` override in config for the 1-3
+    affected combinations (simplest).
+  Priya (2026-04-20) elected to defer to Phase 5.x polish and will decide
+  between option C (manual override) and option A at that time.
 
 ### Post-merge validation (2026-04-20, post-PR-#33-merge)
 
