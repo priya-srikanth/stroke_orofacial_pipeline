@@ -1579,3 +1579,62 @@ divergence-rationale entry is needed for this sub-phase.
 - [x] C1 slot emitted as `requires_cohort_aggregation` sentinel, not
   caller-override-able.
 - [x] Implemented on feature branch `phase-8a-part4-criteria-hierarchy`.
+
+---
+
+## Phase 5/6-prep — Factor `_find_idx_within_eps` into shared `_utils/indexing.py`
+
+**Date:** 2026-04-20.
+
+**What was done:**
+- Created new package-private module
+  `src/stroke_orofacial/_utils/indexing.py` (~35 lines incl. docstring) as
+  the home for sorted-array / integer-index utilities that complement the
+  boolean-mask helpers already in
+  `src/stroke_orofacial/_utils/bool_indexing.py`. Module split is by return
+  type (bool mask vs. integer index array), not provenance.
+- Moved `_find_idx_within_eps` verbatim from
+  `src/stroke_orofacial/spout_behavior/bouts.py:236-256` into the new
+  module. The function keeps its underscore prefix (still package-private)
+  and its original docstring; implementation is byte-identical to the prior
+  location — no behavior change in this refactor.
+- Updated `bouts.py` to import `_find_idx_within_eps` from
+  `stroke_orofacial._utils.indexing`. Two caller sites inside `bouts.py`
+  (`find_peri_reward_periods`, `_make_peri_event_bool`) unchanged.
+
+**Motivation:** Phase 5/6 (reward-aligned kinematics / DLC peri-reward
+windows, including 8-s-post-reward windows used in later analyses) will
+need the same sorted-array index helper without cross-importing from
+`spout_behavior`. This preparatory refactor ahead of Phase 5/6 kickoff
+keeps the Phase 5/6 PR focused on peri-reward extraction logic rather than
+entangling it with a cross-module import change.
+
+**Intentional behavior differences vs. legacy:** None. Pure move + import
+rewrite; byte-identical parity expected against the prior `bouts.py`
+callers.
+
+**Forward obligation — clamp-bug fix before Phase 5/6 kickoff:** The
+post-merge external bnpm 0.6.0 parity check documented in the DECISIONS
+2026-04-20 "Phase 8a architecture" entry under the "External bnpm parity
+finding" bullet identified a `len(arr) - 1` right-edge clamp bug inherited
+from the upstream `bnpm.indexing.find_idx_within_eps` that this helper
+faithfully ports. The current refactor deliberately preserves the bug (no
+behavior change in this PR — easier review). A separate follow-up PR
+must land the clamp-bug fix **before** any Phase 5/6 implementation PRs
+begin, so Phase 5/6 peri-reward extraction does not consume the buggy
+helper. That fix is a behavior change; its parity implications will be
+re-verified against `tests/test_session_processing.py` baselines under
+the Phase 13b `max_frac=1e-4` boolean-tolerance policy. A regression
+guard for the "last lick inside sub-window with right edge past it"
+primitive path already landed in `tests/test_criteria.py::TestClampBugRegressionGuards`
+via the docs+test PR on `docs/8a.7.5-external-bnpm-parity-findings`.
+
+**Exit criteria:**
+- [ ] `pytest tests/test_bouts.py -v` byte-identical pass.
+- [ ] `pytest tests/test_session_processing.py -v` byte-identical pass.
+- [ ] `ruff check src/stroke_orofacial/_utils/indexing.py
+  src/stroke_orofacial/spout_behavior/bouts.py tests/test_bouts.py
+  tests/test_session_processing.py` clean.
+- [ ] Implemented on feature branch `prep-indexing-module-for-phase-5-6`
+  cut from `main`.
+
