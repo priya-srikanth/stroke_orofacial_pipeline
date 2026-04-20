@@ -821,6 +821,15 @@ manual verification, debugging, batch-size scout monitoring).
   `environment.yml` so `pip install -e .` produces an equivalent install.
 - See docs/DECISIONS.md "2026-04-19 Phase 13 env unification" for the
   full channel / pin / exclusion rationale.
+- On Windows, `conda env create -f environment.yml` defaults the env
+  prefix to the per-user `C:\Users\<user>\.conda\envs\` rather than
+  `C:\ProgramData\anaconda3\envs\` when the latter is write-locked to
+  non-admin shells. This matches where `deeplabcut` already lives on
+  Priya's Windows box and is user-writable (avoids perms-driven rebuild
+  failures). Initial rebuild-from-scratch attempt against the
+  ProgramData install hit `EnvironmentNotWritableError` and required an
+  admin-shell `conda env remove` before the per-user rebuild succeeded
+  cleanly.
 
 ### Sub-phase 13b: Vendor 4 bnpm helpers, drop bnpm / torch
 - After 13a, pytest couldn't collect on Windows: `import bnpm.indexing`
