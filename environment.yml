@@ -23,7 +23,15 @@
 name: stroke_orofacial
 channels:
   - conda-forge
-  - defaults
+# `defaults` is intentionally omitted. Mixing conda-forge and defaults caused
+# silent ABI skew on Windows in the HDF5 stack: conda pulled h5py from one
+# channel and hdf5/pytables from another, producing builds linked against
+# incompatible HDF5 binaries. Symptom: `import h5py` raised
+# `ImportError: DLL load failed while importing _errors: The specified
+# procedure could not be found.` even though `import tables` worked. Keeping
+# all C-extension deps (h5py, pytables, hdf5, blosc, numba, llvmlite) on a
+# single channel avoids this entirely. See docs/DECISIONS.md
+# (2026-04-19 Phase 13 env unification) for the full diagnosis.
 dependencies:
   - python=3.11
   - pip
@@ -35,6 +43,15 @@ dependencies:
   - scipy           # scipy.interpolate in alignment/frame_sync.py
   - matplotlib      # dlc_spatial/{heatmaps,difference_maps}.py + notebooks
   - pyyaml          # configs/paths loader, animals.yaml, defaults.yaml
+  # HDF5 stack — the three packages below MUST agree on HDF5 major version.
+  # Conda-forge ships pytables 3.11+ linked against HDF5 2.x and pytables
+  # 3.10.x linked against HDF5 1.14.x; h5py wheels on conda-forge currently
+  # target HDF5 1.14.x. Pinning hdf5 to the 1.14 LTS line forces conda to
+  # solve a consistent set of builds (likely pytables 3.10.x + h5py 3.x +
+  # hdf5 1.14.x) and avoids the Windows ABI skew that surfaced as
+  # `import h5py → DLL load failed while importing _errors` even after
+  # `import tables` worked. See docs/DECISIONS.md (Phase 13 env unification).
+  - hdf5=1.14.*     # pin LTS line (see HDF5 stack note above)
   - pytables        # required by pd.read_hdf on DLC filtered H5 files
   - h5py            # transitive via pywavesurfer; pin explicitly for robustness
 
