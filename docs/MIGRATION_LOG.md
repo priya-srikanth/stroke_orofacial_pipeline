@@ -1671,3 +1671,126 @@ PR on `docs/8a.7.5-external-bnpm-parity-findings`.
   tests/test_session_processing.py` clean.
 - [ ] Implemented on feature branch `prep-indexing-module-for-phase-5-6`
   cut from `main`.
+
+---
+
+## Clamp-fix for `_utils/indexing.py:_find_idx_within_eps` — right-edge clamp removed
+
+**Date:** 2026-04-20.
+
+**What was done:**
+- Removed the two `il = min(max(0, il), len(arr) - 1)` and
+  `ir = min(max(0, ir), len(arr) - 1)` clamp lines from
+  `_find_idx_within_eps` in `src/stroke_orofacial/_utils/indexing.py`.
+  `np.searchsorted` returns values in `[0, len(arr)]` and `np.arange(il,
+  ir)` handles both endpoints at `len(arr)` correctly: the empty-range
+  case (window entirely past `arr[-1]`) yields `np.arange(n, n) == []`
+  and the overhanging-window case yields the full tail
+  `np.arange(il, n)` that includes `arr[-1]`.
+- Expanded the module-level docstring with a new
+  "Intentional divergence from upstream bnpm 0.6.0 — right-edge clamp
+  bug" section explaining the bug, the production reproducer
+  (PS50/20250324 trial k=40), and the cross-reference to the regression
+  guards in `tests/test_criteria.py::TestClampBugRegressionGuards` and
+  the new mirror-in-minimum tests in `tests/test_indexing.py`.
+- Expanded the `_find_idx_within_eps` docstring with a
+  "Right-edge (no-clamp) semantics" note describing the
+  `np.searchsorted(..., side="left") == len(arr)` path and a
+  "Lower-bound subtlety (latent, not fixed here)" note flagging the
+  `side="right"` strict-greater-than behavior at the lower bound as an
+  out-of-scope follow-up (see below).
+- Added `tests/test_indexing.py` (~210 lines) mirroring the
+  divergent-port test pattern from `tests/test_vendored_bool_indexing.py`:
+  hand-rolled clamp-bug regressions
+  (`TestClampBugRegression::test_ps50_trial_40_reproducer` plus a
+  synthetic minimal case and a "right edge exactly at last element"
+  sanity check confirming the un-clamped path still excludes the
+  boundary value), edge cases (empty arr, empty vals, window
+  before/after arr, single-element arr inside / past-end, multi-val
+  concatenation), and random-input parity (500 sorted-int arr × 50 vals
+  × four `eps` variants, plus a construction that forces the right edge
+  past `arr[-1]` on every trial) against an independent numpy-mask
+  reference `_reference_find_idx_within_eps` using
+  `(arr > lo) & (arr < hi)` — matches the open-at-lower / strict-below-
+  upper convention and has no clamp, so it is always correct at the
+  right edge.
+
+**Motivation:** Closes the forward obligation set in the immediately-
+preceding "Phase 5/6-prep" entry above and in the DECISIONS.md 2026-04-20
+"External bnpm parity finding — Phase-13-pattern intentional divergence
+from upstream bnpm 0.6.0 (post-merge of 8a.7.5)" bullet. Phase 5/6
+peri-reward extraction (8-s-post-reward windows over kinematic and DLC
+streams) routinely hits the overhanging-window path near session-end
+licks; consuming the un-fixed helper would carry the
+`arr[-1]`-dropping bug into reward-aligned downstream analyses. Landing
+the fix on a separate PR (rather than folding it into the Phase 5/6-prep
+move) keeps the diff scoped and reviewable: the move PR is byte-
+identical, this PR is the behavior change.
+
+**Intentional behavior differences vs. legacy:**
+- vs. legacy `bouts.py:236-256` (pre-Phase 5/6-prep) and vs. upstream
+  `bnpm.indexing.find_idx_within_eps` 0.6.0: when
+  `v + eps[1] > arr[-1]` for some `v` in `vals`, the returned index
+  array now includes `len(arr) - 1` (i.e., `arr[-1]`) where previously
+  it was clamped out. The PS50/20250324 trial k=40 reward path is the
+  canonical reproducer: pre-fix returned 4 indices (`[0, 1, 2, 3]`),
+  post-fix returns 5 (`[0, 1, 2, 3, 4]`).
+- All other paths (window strictly before arr, window strictly after
+  arr's end, window strictly inside arr, empty arr, empty vals,
+  multi-val concatenation, lower-bound `side="right"` strict-greater
+  semantics) are byte-identical to the pre-fix implementation. The
+  random-parity tests in `TestRandomParity::test_random_inputs_match_reference`
+  cover these paths and pass against the same numpy-mask reference both
+  before and after the change — the only diverging path is the
+  right-edge overhang, which is exactly the targeted fix.
+
+**Measured parity drift vs. `session_processing3` baselines:**
+- _PS46/20250307 (frozen baseline animal-session, no licks at the
+  right-edge overhang path):_ **Zero drift.**
+  `tests/test_session_processing.py::TestIntegrationParity::test_parity[20250307]`
+  passes byte-identical against the `session_processing3` baseline
+  post-fix — no tolerance fallback needed (pass predates the Phase 13b
+  `max_frac=1e-4` allowance). Confirmed 2026-04-20 on Mac
+  (`fix/indexing-find-idx-within-eps-clamp-bug` @ pre-commit tree), full
+  impact-set run: 58/58 pass, 4 unrelated pre-existing pywavesurfer
+  file-version warnings. This matches the pre-fix prediction that PS46's
+  lick array does not exhibit the overhanging-window pattern (no licks
+  beyond the last reward's post-window), so the code path being altered
+  is never taken on this session.
+- _PS50/20250324 (right-edge overhang animal-session, trial k=40 path):_
+  Drift expected and intentional — `per_side_per_trial_pass["L"]`
+  flips from `[False]` to `[True]` for this trial, propagating to the
+  C2 fraction-pass count and the C4 lick-count threshold. Already
+  guarded by
+  `tests/test_criteria.py::TestClampBugRegressionGuards::test_last_lick_inside_subwindow_with_right_edge_past_it`
+  via the prior docs+test PR.
+
+**Exit criteria:**
+- [ ] `pytest tests/test_indexing.py -v` — all tests pass (new file).
+- [ ] `pytest tests/test_criteria.py -v` — all tests pass, including
+  the pre-existing `TestClampBugRegressionGuards`.
+- [ ] `pytest tests/test_bouts.py -v` — pass; only behavior change
+  affects the right-edge overhang path which the bouts caller does not
+  exercise on existing fixtures (verify byte-identical).
+- [ ] `pytest tests/test_session_processing.py -v` — pass under the
+  Phase 13b `max_frac=1e-4` boolean tolerance policy, with measured
+  drift recorded in this entry.
+- [ ] `ruff check src/stroke_orofacial/_utils/indexing.py
+  tests/test_indexing.py` clean.
+- [ ] Implemented on feature branch
+  `fix/indexing-find-idx-within-eps-clamp-bug` cut from `main` (post
+  Phase 5/6-prep merge, commit 92b5d88).
+
+**Out-of-scope follow-ups (deliberately not in this PR):**
+- The `side="right"` lower-bound semantics enforce strict
+  `arr[i] > v - eps[0]` rather than the half-open
+  `[v - eps[0], v + eps[1])` window the upstream docstring implies.
+  This is a latent docstring/code mismatch inherited from upstream
+  bnpm; it only matters when an `arr` element exactly equals
+  `v - eps[0]` (rare in production lick/reward index arrays). Flagged
+  in the function docstring; investigation deferred. If a later phase
+  needs the half-open convention, the fix is a one-line
+  `side="right"` → `side="left"` swap at the lower bound, plus
+  expanded `TestClampBugRegression` coverage and a parity re-run.
+- Optional upstream bnpm issue filing for the right-edge clamp bug
+  remains deferred / Priya's call.
