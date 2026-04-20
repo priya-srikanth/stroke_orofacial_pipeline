@@ -470,6 +470,263 @@ All frames preserved (no 975K cap — per DECISIONS.md "keep all frames").
 
 ---
 
+## Phase 4.5-lite — Eye-midpoint centering defaults + Phase 5 x_range + axis-limit fix
+
+**Date:** 2026-04-20
+
+**Scope-reduction finding at session start:** the kickoff
+(`docs/prompts/phase-4.5-lite-eye-midpoint-centering-kickoff.md`) proposed
+~150-200 lines across 5 sub-phases. Two of those are already satisfied by
+Phase 4:
+- **§4.5a** (add `eye_midpoint` branch to `compute_center`): already present
+  in [src/stroke_orofacial/dlc_io/centering.py:104-112](../src/stroke_orofacial/dlc_io/centering.py#L104-L112);
+  test at [tests/test_dlc_centering.py:49-54](../tests/test_dlc_centering.py#L49-L54).
+- **§4.5c** (regenerate centered parquets): Phase 4 built all three modes
+  cohort-wide; hashes (`c23dc714` / `2a6efb6a` / `b13af51c`) preserved.
+  Per 2026-04-20 Priya decision: hash-verify instead of rebuild.
+
+**Scope-expansion finding mid-session:** while investigating axis limits,
+discovered a pre-existing bug in Phase 5: `plot_heatmap` / `build_histogram` /
+`build_stats_grid` used hardcoded default `x_limits=(-200, 200)` /
+`y_limits=(50, 550)` and never consumed `per_center_mode.xlim/ylim` from
+config. Evidence: the sole existing Phase 5 output
+`stroke_orofacial_pipeline_outputs/dlc_analysis/spatial_whole_session/nose_nose/PS46/heatmap_20250307.png`
+is **entirely blank** (defaults are un-centered-pixel ranges; data is
+centered at ~0). DECISIONS 2026-04-18 had stipulated per-(bodypart, center_mode)
+axis limits but the code never actually read them. Priya approved expanding
+Phase 4.5-lite scope to fix this bug + add `x_range` pre-histogram filter
+support simultaneously.
+
+### Sub-phase 4.5-A — Per-bodypart `center_mode` defaults in `configs/defaults.yaml`
+
+Added `center_mode` key under every `dlc_spatial.bodyparts.{bp}` block (13 total):
+- `tongue` → `spout_midpoint` (anatomically spout-anchored)
+- `jaw`, `nose`, all 6 whiskers → `eye_midpoint` (sweep winner)
+- `L_eye`, `R_eye`, `L_spout`, `R_spout` → their own fiducial regime
+  (null-baseline control for Phase 9 significance testing)
+
+Fiducial bodypart blocks (`L_eye`, `R_eye`, `L_spout`, `R_spout`) are new;
+they contain `likelihood_threshold: 0.80` and `center_mode` only. No
+`cmap` / `per_center_mode` since no heatmaps are generated for fiducials
+today; downstream code tolerates the missing keys via `.get()` fallbacks.
+
+The top-level `dlc_centering.default_mode: "nose"` is retained as ultimate
+fallback; a comment marks per-bodypart defaults as the primary source.
+
+### Sub-phase 4.5-B — `default_center_mode()` accessor
+
+Added to [src/stroke_orofacial/config_loader.py](../src/stroke_orofacial/config_loader.py):
+resolution order is `dlc_spatial.bodyparts.{bp}.center_mode` →
+`dlc_centering.default_mode`. Validates against `CenterMode` enum; raises
+`ValueError` on unknown mode, `KeyError` when nothing configured.
+
+### Sub-phase 4.5-C — `TestDefaultCenterMode` in `tests/test_config_loader.py`
+
+Six test cases: movement bodyparts, fiducials, fallback path, unknown
+bodypart, empty-config KeyError, invalid-mode ValueError. All pass against
+the real `configs/defaults.yaml`.
+
+### Sub-phase 4.5-D — Notebook 12 stale `CENTER_MODES` fix
+
+[notebooks/12_dlc_spatial_reward_aligned.ipynb](../notebooks/12_dlc_spatial_reward_aligned.ipynb):
+added `"eye_midpoint"` to `CENTER_MODES`. Previously `["nose", "spout_midpoint"]`
+— omission predates the sweep; no DECISIONS entry ever explained it.
+
+### Sub-phase 4.5-E — Cohort-wide parquet hash baseline
+
+[scripts/hash_centered_parquets.py](../scripts/hash_centered_parquets.py)
+walks `{pipeline_outputs}/dlc_analysis/centered_{mode}/{animal}/*.parquet`
+for all 8 animals × all 3 modes, computes SHA-256 content hashes plus the
+`_param_sig` from the filename, and verifies Phase 4 parity.
+
+Baseline as of 2026-04-20 (only PS46/20250307 exists on disk; other 7
+animals not yet built):
+
+| Animal | Date | Mode | param_sig | content_sha256[:12] | Size (MB) |
+|--------|------|------|-----------|---------------------|-----------|
+| PS46 | 20250307 | nose | c23dc714 | 7eac88e4e80d | 110.5 |
+| PS46 | 20250307 | spout_midpoint | 2a6efb6a | c2b24d3db76f | 109.6 |
+| PS46 | 20250307 | eye_midpoint | b13af51c | e87d7a93e26e | 110.1 |
+
+All three `_param_sig` values match Phase 4 baseline → 4.5-lite config
+change is parquet-neutral.
+
+### Sub-phase 4.5-F — Axis-limit investigation
+
+`notebooks/experiments/phase_4.5_lite_axis_limits.ipynb` pools the alignment-sweep
+cache histograms (8 animals × all sessions × all bodyparts) into production
+centered space (shift by `-ref_midpoint` per animal) and derives per-(bodypart,
+center_mode) xlim / ylim from the pooled marginal distributions.
+
+**Priya-approved strategy (2026-04-20):** `q00001_9999 + 40% symmetric pad,
+rounded to nearest 5 px, clamped to legacy x-filter where applicable`.
+Rationale: q001_999 + 20% pad was tested first and clipped density edges;
+wider quantile + more padding frame density with comfortable margin without
+including clear outliers.
+
+**Legacy x-filter values** (verified from legacy notebooks this session):
+- `jaw`:    `X_MIN, X_MAX = -80, 80` (from `20251117_DLC_analysis_jaw.ipynb`)
+- `tongue`: `X_MIN, X_MAX = -175, 175` (from `20260323_DLC_build-parquet_reward-aligned_tongue_jaw.ipynb`)
+
+**Final approved limits** (cohort-pooled, applied to `configs/defaults.yaml`
+under `dlc_spatial.bodyparts.{bp}.per_center_mode`):
+
+| bodypart | center_mode | xlim | ylim | x_range (pre-filter) |
+|---|---|---|---|---|
+| jaw | eye_midpoint | [-80, 80] | [195, 520] | [-80, 80] |
+| nose | eye_midpoint | [-100, 95] | [100, 330] | — |
+| L_whiskers_1 | eye_midpoint | [15, 135] | [55, 250] | — |
+| L_whiskers_2 | eye_midpoint | [15, 165] | [145, 355] | — |
+| L_whiskers_3 | eye_midpoint | [60, 165] | [75, 270] | — |
+| R_whiskers_1 | eye_midpoint | [-140, -15] | [70, 235] | — |
+| R_whiskers_2 | eye_midpoint | [-165, 0] | [155, 350] | — |
+| R_whiskers_3 | eye_midpoint | [-185, -40] | [95, 265] | — |
+| tongue | spout_midpoint | [-175, 175] | [-235, 225] | [-175, 175] |
+
+Pre-existing `nose` and `jaw` `eye_midpoint` limits were single-session
+estimates (PS46/20250307 + 25% margin, DECISIONS 2026-04-18) — superseded
+by the cohort-pooled values.
+
+### Sub-phase 4.5-G — Phase 5 plumbing fix + `x_range` support
+
+**Bug fix.** [src/stroke_orofacial/dlc_spatial/pixel_bins.py](../src/stroke_orofacial/dlc_spatial/pixel_bins.py)
+and [src/stroke_orofacial/dlc_spatial/heatmaps.py](../src/stroke_orofacial/dlc_spatial/heatmaps.py):
+added `center_mode` kwarg to `build_histogram`, `build_stats_grid`, and
+`plot_heatmap`. When provided, these functions now read
+`config.bodyparts.{bp}.per_center_mode.{mode}` for xlim, ylim, and (new)
+`x_range`. Explicit kwargs still override. Added `_get_per_center_mode_params`
+helper for consistent lookup across the module.
+
+**`x_range` pre-histogram filter.** `config.bodyparts.{bp}.per_center_mode.{mode}.x_range`
+is now plumbed through `get_masked_xy` (which already supported `x_range`).
+The Phase 6 `reward_aligned.py` hack that injected `apply_x_range` / `x_range`
+into the top-level config was removed; it now uses the new `x_range` kwarg
+on `build_histogram` directly. Phase 6 reward-aligned `x_range` (under
+`dlc_spatial_reward_aligned.bodyparts.{bp}.x_range`) takes precedence over
+Phase 5 `per_center_mode.x_range` when both are set — preserving Phase 6
+behavior.
+
+**Y-axis inversion.** `plot_heatmap` now calls `ax.invert_yaxis()` so
+rendered plots match camera-video convention (higher y = lower on screen).
+Existing Phase 5 blank output did not reflect y orientation at all; new
+output does.
+
+**Deprecated top-level x_range.** `config.apply_x_range` / `config.x_range`
+still consulted as fallback but marked deprecated in the config comment.
+
+**New tests.**
+- `tests/test_pixel_bins.py::TestGetPerCenterModeParams` (5 cases).
+- `tests/test_pixel_bins.py::TestBuildHistogramCenterMode` (4 cases).
+- `tests/test_pixel_bins.py::TestBuildStatsGridCenterMode` (1 case).
+- `tests/test_heatmaps.py::TestPlotHeatmapCenterMode` (2 cases).
+
+**Phase 5 output regeneration required.** The single existing Phase 5 PNG
+(nose_nose/PS46/20250307, blank under the bug) re-renders correctly after
+the fix. Verified by a one-shot re-render script; produces a non-blank
+heatmap with density at (0, 0) inside `[-150, 150]` × `[-120, 130]` limits.
+Next cohort-wide Phase 5 run (when Priya re-executes notebook 11) will
+supersede all existing `*_nose.png` outputs. **Existing on-disk PNGs are
+NOT parity-equivalent under the new code** — this is the intentional bug
+fix, not a regression.
+
+### Sub-phase 4.5-H — Notebook 11 wire-up
+
+[notebooks/11_dlc_spatial_whole_session.ipynb](../notebooks/11_dlc_spatial_whole_session.ipynb)
+passes `center_mode=center_mode` to both `plot_heatmap` and `build_stats_grid`.
+One-line-per-call change. Tongue-offset concern for the future all-bodyparts
+overlay (DECISIONS 2026-04-18 "all bodyparts overlay heatmap design") is
+untouched; deferred to Phase 5.x as noted.
+
+### Sub-phase 4.5-I — Investigation notebook + outputs
+
+[notebooks/experiments/phase_4.5_lite_axis_limits.ipynb](../notebooks/experiments/phase_4.5_lite_axis_limits.ipynb)
+captures the full pooling + comparison + proposal pipeline. Outputs at
+[notebooks/experiments/outputs/phase_4.5_lite_axis_limits/](../notebooks/experiments/outputs/phase_4.5_lite_axis_limits/):
+- `approved_{bp}_{center_mode}.png` (9 files): pooled heatmap with the
+  approved xlim/ylim rectangle overlay.
+- `cropping_comparison_{bp}.png` (9 files): 5-panel side-by-side showing
+  different quantile/pad strategies.
+- `pooled_candidates_{bp}.png` (9 files): pooled heatmap with all
+  candidate rectangle overlays.
+- `filter_impact_{jaw,tongue}.png` (2 files): unfiltered vs `x_range`-filtered.
+- `candidate_limits_table.csv`, `proposed_limits_final.csv`: tabular outputs.
+
+### Intentional behavior differences vs. pre-4.5-lite
+
+1. **Phase 5 heatmap bug fix.** Pre-4.5-lite Phase 5 heatmaps used hardcoded
+   `x_limits=(-200, 200)` / `y_limits=(50, 550)` which for centered data
+   produces blank plots. Post-4.5-lite heatmaps consume per-(bodypart,
+   center_mode) limits from config. Existing nose_nose/PS46 Phase 5 PNG
+   on disk is blank and will be replaced by a correct non-blank plot on
+   next notebook 11 run.
+2. **Y-axis inversion.** `plot_heatmap` output flipped to camera-video
+   convention (higher y = lower on plot).
+3. **`x_range` filter now active for jaw and tongue.** Phase 5 whole-session
+   heatmaps for jaw (under eye_midpoint) and tongue (under spout_midpoint)
+   will drop DLC mis-detections outside `[-80, 80]` / `[-175, 175]`
+   respectively. Phase 6 reward-aligned `tongue.x_range` (under
+   `dlc_spatial_reward_aligned`, `[-150, 150]`) takes precedence when set.
+4. **Per-bodypart default `center_mode`** exposes sweep-experiment winners
+   as metadata. Downstream consumers (Phase 9) read via
+   `config_loader.default_center_mode()`; Phase 5/6 notebooks continue
+   iterating their own `CENTER_MODES` lists (no behavior change there).
+
+### What is NOT changed
+
+- `compute_center()`, `apply_centering()`, `_median_from_lik()` untouched.
+- Existing centered parquet outputs (PS46/20250307 all 3 modes) byte-identical.
+- Phase 4 hash baseline preserved (`c23dc714` / `2a6efb6a` / `b13af51c`).
+- `docs/DESIGN.md`: no edit.
+- `docs/DECISIONS.md`: 2026-04-19 Phase 4.5-lite entry already correctly
+  described the intended implementation.
+
+### Cross-references
+
+- DECISIONS 2026-04-19 "Phase 4.5-lite decision: eye-midpoint centering,
+  no similarity/rigid transform" (the green-light).
+- DECISIONS 2026-04-18 "Plot axis limits must be per-(bodypart, center_mode)"
+  (the principle; this phase finally makes the code consume those limits).
+- Sweep experiment at `notebooks/experiments/cross_session_alignment_sweep.ipynb`
+  + outputs at `notebooks/experiments/outputs/alignment_sweep/` (the data).
+- Legacy x-filter values verified in
+  `//research.files.med.harvard.edu/Neurobio/MICROSCOPE/Priya/DeepLabCut/code/20251117_DLC_analysis_jaw.ipynb`
+  (jaw ±80) and `.../20260323_DLC_build-parquet_reward-aligned_tongue_jaw.ipynb`
+  (tongue ±175).
+
+### Exit criteria met
+
+- [x] 219 pytest pass + 28 skipped (adds 14 new tests: 6 config_loader, 6
+  pixel_bins, 2 heatmaps).
+- [x] `ruff check` clean on all changed files.
+- [x] `scripts/hash_centered_parquets.py` exits 0; Phase 4 param_sig hashes
+  preserved.
+- [x] PS46/20250307 re-render proves Phase 5 bug fix produces non-blank output.
+- [x] Investigation notebook executes end-to-end and emits the final
+  proposal CSV matching the applied config values.
+- [x] Fiducial bodypart blocks present and loadable.
+- [x] Notebook 12 CENTER_MODES includes eye_midpoint.
+
+### Deferred / noted for follow-up
+
+- **All-bodyparts overlay tongue-offset**: future Phase 5.x (DECISIONS
+  2026-04-18) must handle tongue in spout-centered frame being offset
+  from jaw/nose/whiskers in eye-centered frame when co-plotting. Candidate
+  solutions (translate tongue by cohort-mean `spout_mid - eye_mid`, render
+  tongue in its own panel, or re-center tongue on eye_midpoint for overlay)
+  to be decided when that phase starts.
+- **Cohort-wide Phase 5 re-run**: required after Gate 2 for any future
+  Phase 5 outputs. Existing `nose_nose/PS46/heatmap_20250307.png` is the
+  only Phase 5 PNG on disk and is blank under the bug; delete or overwrite.
+- **Fiducial `per_center_mode` blocks**: left null since no Phase 5/6
+  heatmaps for fiducials. Phase 9 null-baseline stats read fiducials from
+  raw parquets directly, not from heatmap outputs.
+- **Phase 6 reward-aligned code path re-test**: the reward_aligned.py
+  refactor removed a config-injection hack. `test_reward_aligned.py`
+  passed (5 tests; 2 skipped for missing data). Live-data re-run on PS46
+  recommended once Priya re-executes notebook 12.
+
+---
+
 ## Phase 5 — DLC Spatial Analyses (Whole Session)
 
 **Date:** 2026-04-18

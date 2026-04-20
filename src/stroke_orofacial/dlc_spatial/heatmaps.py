@@ -20,7 +20,10 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from stroke_orofacial.dlc_spatial.pixel_bins import get_masked_xy
+from stroke_orofacial.dlc_spatial.pixel_bins import (
+    _get_per_center_mode_params,
+    get_masked_xy,
+)
 
 
 def plot_heatmap(
@@ -28,8 +31,10 @@ def plot_heatmap(
     bodypart: str,
     config: dict[str, Any],
     *,
-    x_limits: tuple[float, float] = (-200, 200),
-    y_limits: tuple[float, float] = (50, 550),
+    center_mode: str | None = None,
+    x_limits: tuple[float, float] | None = None,
+    y_limits: tuple[float, float] | None = None,
+    x_range: tuple[float, float] | None = None,
     title: str = "",
     figsize: tuple[float, float] = (8, 6),
     window: Any | None = None,
@@ -44,8 +49,21 @@ def plot_heatmap(
         Bodypart name.
     config : dict
         The ``dlc_spatial`` section from defaults.yaml.
-    x_limits, y_limits : tuple
-        Histogram range.
+    center_mode : str, optional
+        Centering mode used for *df*. When given, the function reads
+        ``config.bodyparts.{bp}.per_center_mode.{mode}`` and uses its
+        ``xlim``, ``ylim``, ``x_range`` — unless an explicit kwarg overrides.
+        Added in Phase 4.5-lite; prior behavior (no config consumption,
+        used hardcoded defaults which produced blank plots on centered
+        data) is preserved when center_mode is None but strongly
+        discouraged.
+    x_limits, y_limits : tuple, optional
+        Explicit axis range override. If None, falls back to the config's
+        per-(bodypart, center_mode) block, then to ``(-200, 200)`` /
+        ``(50, 550)`` as ultimate fallbacks.
+    x_range : tuple, optional
+        Pre-histogram x filter override. Falls back to per-(bodypart,
+        center_mode).x_range then legacy top-level fallback.
     title : str
         Plot title.
     figsize : tuple
@@ -63,15 +81,21 @@ def plot_heatmap(
     cmap_name = bp_config.get("cmap", "viridis")
     nbins = int(config.get("heatmap_nbins", 100))
 
-    x_range_filter = None
-    if config.get("apply_x_range", False):
-        x_range_filter = tuple(config.get("x_range", [-200, 200]))
+    per_mode = _get_per_center_mode_params(config, bodypart, center_mode)
+    if x_limits is None:
+        x_limits = per_mode["xlim"] or (-200, 200)
+    if y_limits is None:
+        y_limits = per_mode["ylim"] or (50, 550)
+    if x_range is None:
+        x_range = per_mode["x_range"]
+        if x_range is None and config.get("apply_x_range", False):
+            x_range = tuple(config.get("x_range", [-200, 200]))
 
     frame_mask = None
     if window is not None:
         frame_mask = window.select_frames(df)
 
-    x, y = get_masked_xy(df, bodypart, lik_thr, x_range=x_range_filter, frame_mask=frame_mask)
+    x, y = get_masked_xy(df, bodypart, lik_thr, x_range=x_range, frame_mask=frame_mask)
 
     fig, ax = plt.subplots(figsize=figsize)
 
@@ -96,6 +120,7 @@ def plot_heatmap(
     ax.set_title(title or f"{bodypart} heatmap")
     ax.set_xlim(x_limits)
     ax.set_ylim(y_limits)
+    ax.invert_yaxis()  # camera-view convention: higher y = lower on plot
 
     return fig
 
