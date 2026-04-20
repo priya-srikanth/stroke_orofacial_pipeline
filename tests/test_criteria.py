@@ -633,3 +633,47 @@ class TestRealDataParityPS46_20250307:
             Fs=Fs_real, defaults=DEFAULTS_STUB,
         )
         _assert_blocks_equal(produced, reference)
+
+
+# ---------------------------------------------------------------------------
+# Regression guards — external-bnpm parity finding (2026-04-20, PS50/20250324)
+# ---------------------------------------------------------------------------
+#
+# These guards protect the production numpy-mask path against a class of bug
+# demonstrated in upstream ``bnpm`` 0.6.0's ``find_idx_within_eps``: when the
+# sub-window right edge extends past the last element of the session-wide
+# lick array, ``np.searchsorted(arr, v + eps[1], side='left')`` returns
+# ``len(arr)`` and the upstream implementation then clamps to ``len(arr) -
+# 1``, dropping the final lick. Production (``criteria.py:_sub_window_counts``)
+# uses ``(licks >= lo) & (licks < hi)`` — no searchsorted, no clamp — and is
+# correct. See DECISIONS.md 2026-04-20 "External bnpm parity finding" and
+# MIGRATION_LOG.md Phase 8a.7.5 post-merge appendix for the governing
+# decision and the PS50/20250324 reproducer.
+
+
+class TestClampBugRegressionGuards:
+    def test_last_lick_inside_subwindow_with_right_edge_past_it(self):
+        """Guard the "last lick in TrialRecord array, window right edge past it" primitive path.
+
+        Mirrors the PS50/20250324 trial k=40 scenario reduced to synthetic
+        indices: 5 correct-side licks whose last element (at reward + 500
+        samples) sits well inside the C4 window, while the C4 window's right
+        edge (reward + 2500 samples) extends 2000 samples past that last
+        lick. Upstream bnpm would drop ``licks[-1]`` via the ``len(arr) - 1``
+        clamp and produce a 4-count, failing C4 (threshold = 5). Production's
+        numpy mask includes all 5 → C4 passes. If a future refactor ever
+        reintroduces a searchsorted-with-clamp pattern, this assertion flips
+        to ``[False]`` and surfaces the regression.
+        """
+        trial = _trial(
+            trial_idx=0,
+            reward_idx=1000,
+            reward_side="L",
+            licks_L=np.array([1100, 1200, 1300, 1400, 1500], dtype=int),
+            licks_R=np.array([], dtype=int),
+            window_seconds=(0.0, 2.5),
+        )
+        out = compute_c4_correct_lick_count_threshold(
+            [trial], defaults=DEFAULTS_STUB,
+        )
+        assert out["per_side_per_trial_pass"]["L"] == [True]
