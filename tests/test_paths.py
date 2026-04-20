@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import datetime
-import os
+import platform
 import textwrap
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
 
 import pytest
 
 from stroke_orofacial.paths import PathResolver
+
+# For tests that build YAML mounts from real on-disk tmp_path values,
+# we must use the HOST platform's key so PathResolver._make_path picks
+# the right PurePath subclass (PureWindowsPath for Windows tmp paths
+# like "C:/Users/...", PurePosixPath for Mac/Linux tmp paths).
+# Forcing platform_key='mac' on a Windows host loses the drive root
+# (PurePosixPath drops "C:" → drive-relative path → .exists() fails).
+_HOST_KEY = "windows" if platform.system() == "Windows" else "mac"
 
 
 @pytest.fixture()
@@ -94,14 +102,17 @@ class TestConvenienceMethods:
 
     def test_dlc_output_dir(self):
         result = self.resolver.dlc_output_dir("PS46")
-        expected = PurePosixPath(
+        # Compare via .as_posix() so the test is platform-independent:
+        # on Windows, `Path("/Volumes/...")` is a WindowsPath and would never
+        # equal a PurePosixPath even though the string content matches.
+        # as_posix() always emits forward-slash normalized form on both platforms.
+        assert result.as_posix() == (
             "/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/O2_analysis/PS46"
         )
-        assert result == expected
 
     def test_alignment_templates_dir(self):
         result = self.resolver.alignment_templates_dir("cam2")
-        assert result == PurePosixPath(
+        assert result.as_posix() == (
             "/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/O2_analysis/alignment_templates/cam2"
         )
 
@@ -109,13 +120,13 @@ class TestConvenienceMethods:
         result = self.resolver.alignment_template(
             "PS46", datetime.date(2025, 3, 7), cam="cam2"
         )
-        assert result == PurePosixPath(
+        assert result.as_posix() == (
             "/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/O2_analysis/alignment_templates/cam2/PS46/20250307.npz"
         )
 
     def test_session_processing_out(self):
         result = self.resolver.session_processing_out("v2")
-        assert result == PurePosixPath(
+        assert result.as_posix() == (
             "/Users/testuser/data/analysis/session_processing_v2"
         )
 
@@ -132,6 +143,10 @@ class TestListMounts:
         candidate_b.mkdir(parents=True)
         # Don't create candidate_a — it should be skipped
 
+        # Write mount under the HOST platform's key (see _HOST_KEY note at top).
+        # Use .as_posix() so Windows backslashes (C:\Users\...) don't trigger
+        # the YAML \U Unicode-escape parser inside a double-quoted scalar.
+        # Windows accepts forward-slash paths natively, so Path() resolves fine.
         cfg = tmp_path / "paths.yaml"
         cfg.write_text(
             textwrap.dedent(f"""\
@@ -139,16 +154,15 @@ class TestListMounts:
                   wavesurfer_raw:
                     description: "test list mount"
                     mounts:
-                      mac:
-                        - "{candidate_a}"
-                        - "{candidate_b}"
-                      windows: "\\\\\\\\server\\\\wavesurfer"
+                      {_HOST_KEY}:
+                        - "{candidate_a.as_posix()}"
+                        - "{candidate_b.as_posix()}"
             """)
         )
         return cfg
 
     def test_list_mount_uses_first_existing(self, monkeypatch, list_mount_yaml, tmp_path):
-        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(list_mount_yaml)
         result = resolver.root("wavesurfer_raw")
         expected = tmp_path / "fallback_mount" / "wavesurfer"
@@ -161,18 +175,19 @@ class TestListMounts:
         candidate_b.mkdir(parents=True)
 
         cfg = tmp_path / "paths.yaml"
+        # Host-platform key + .as_posix() — see list_mount_yaml fixture / _HOST_KEY.
         cfg.write_text(
             textwrap.dedent(f"""\
                 logical_roots:
                   wavesurfer_raw:
                     description: "both exist"
                     mounts:
-                      mac:
-                        - "{candidate_a}"
-                        - "{candidate_b}"
+                      {_HOST_KEY}:
+                        - "{candidate_a.as_posix()}"
+                        - "{candidate_b.as_posix()}"
             """)
         )
-        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(cfg)
         assert resolver.root("wavesurfer_raw") == candidate_a
 
@@ -221,6 +236,13 @@ class TestNewConvenienceMethods:
         cfg = tmp_path / "paths.yaml"
         ws_dir = tmp_path / "wavesurfer"
         ws_dir.mkdir()
+        # microscope_pipeline_outputs uses a static /Volumes path so we keep it
+        # under the "mac" key — the tests that read it force platform_key='mac'.
+        # wavesurfer_raw uses a real on-disk tmp_path, so it MUST go under the
+        # HOST platform's key (see _HOST_KEY note at top of file). Two mounts
+        # under potentially-different platform keys is fine because each test
+        # only touches one root. .as_posix() avoids Windows \U escape parsing
+        # inside double-quoted YAML.
         cfg.write_text(
             textwrap.dedent(f"""\
                 logical_roots:
@@ -231,22 +253,25 @@ class TestNewConvenienceMethods:
                   wavesurfer_raw:
                     description: "raw ws"
                     mounts:
-                      mac:
-                        - "{ws_dir}"
+                      {_HOST_KEY}:
+                        - "{ws_dir.as_posix()}"
             """)
         )
         return cfg
 
     def test_pipeline_outputs(self, monkeypatch, full_paths_yaml):
+        # Uses the static /Volumes mac mount; safe to force mac key.
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         resolver = PathResolver(full_paths_yaml)
         result = resolver.pipeline_outputs("spout_behavior")
-        assert result == PurePosixPath(
+        # See note in TestConvenienceMethods.test_dlc_output_dir.
+        assert result.as_posix() == (
             "/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/spout_behavior"
         )
 
     def test_wavesurfer_dir(self, monkeypatch, full_paths_yaml, tmp_path):
-        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        # Uses the real on-disk tmp_path mount, so must run under host key.
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(full_paths_yaml)
         result = resolver.wavesurfer_dir(datetime.date(2025, 3, 7), "PS46")
         ws_dir = tmp_path / "wavesurfer"

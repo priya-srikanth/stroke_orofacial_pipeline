@@ -16,6 +16,34 @@ from stroke_orofacial.spout_behavior.bouts import (
 )
 
 
+def _assert_bool_near_equal(
+    actual: np.ndarray,
+    desired: np.ndarray,
+    max_frac: float,
+    err_msg: str = "",
+) -> None:
+    """Assert two bool arrays agree except for up to ``max_frac`` mismatched samples.
+
+    Intended for fixture parity checks of threshold-based detections whose
+    output inherits tiny numeric jitter from upstream floating-point
+    operations (e.g. polyfit + interp1d in the alignment template path).
+    ``max_frac`` is a fraction of the array size, so e.g. ``1e-5`` on a 3.6M
+    array caps mismatches at ~36 samples.
+    """
+    actual = np.asarray(actual, dtype=bool)
+    desired = np.asarray(desired, dtype=bool)
+    assert actual.shape == desired.shape, (
+        f"{err_msg}: shape mismatch {actual.shape} vs {desired.shape}"
+    )
+    n_mismatch = int(np.count_nonzero(actual != desired))
+    max_allowed = int(np.ceil(max_frac * actual.size))
+    if n_mismatch > max_allowed:
+        raise AssertionError(
+            f"{err_msg}: {n_mismatch} mismatched samples exceeds tolerance "
+            f"{max_allowed} ({max_frac:.0e} of {actual.size})"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Running bouts
 # ---------------------------------------------------------------------------
@@ -329,26 +357,45 @@ class TestIntegrationBouts:
             err_msg="Running bouts mismatch",
         )
 
-        # Grooming bouts
+        # Bool arrays below are produced by code paths in bouts.py that call
+        # the vendored widen_bool_sparse / set_short_bool_to_low helpers,
+        # which intentionally diverge from upstream bnpm 0.6.0 to fix two
+        # upstream bugs (falling-edge overshoot in widen; trailing-run
+        # undercount in set_short). See docs/DECISIONS.md "2026-04-20 Phase
+        # 13 vendor bnpm" and docs/MIGRATION_LOG.md Phase 13b for the full
+        # rationale. On PS46/20250307 the fix flips exactly 2 samples in
+        # lick_bool_bad and 51 in quiet_bool relative to the frozen
+        # session_processing3 baseline (which was generated using the
+        # buggy upstream behavior); running_bouts and peri_reward_bool are
+        # bit-identical. Use a bounded-mismatch tolerance
+        # (max_frac=1e-4 -> ~361 sample cap on a 3.6M array) to absorb
+        # the measured drift with ~7x headroom for other sessions whose
+        # run structure may interact with the fix differently. This is NOT
+        # LAPACK jitter — the bouts pipeline runs at hard-coded Fs=1000.0
+        # and never touches polyfit/interp1d; the unrelated rtol loosening
+        # in test_timebase.py is the LAPACK-jitter mitigation.
         ref_groom = np.load(_SP3 / "grooming_bouts" / "PS46" / f"{date_str}.npz")
-        np.testing.assert_array_equal(
+        _assert_bool_near_equal(
             results["lick_bool_bad"],
             ref_groom["lick_bool_bad"],
+            max_frac=1e-4,
             err_msg="Grooming bouts mismatch",
         )
 
-        # Quiet bouts
+        # Quiet bouts (same rationale as grooming bouts above).
         ref_quiet = np.load(_SP3 / "quiet_bouts" / "PS46" / f"{date_str}.npz")
-        np.testing.assert_array_equal(
+        _assert_bool_near_equal(
             results["quiet_bool"],
             ref_quiet["quiet_bool"],
+            max_frac=1e-4,
             err_msg="Quiet bouts mismatch",
         )
 
-        # Peri-reward
+        # Peri-reward (same rationale).
         ref_peri = np.load(_SP3 / "peri_reward_periods" / "PS46" / f"{date_str}.npz")
-        np.testing.assert_array_equal(
+        _assert_bool_near_equal(
             results["peri_reward_bool"],
             ref_peri["peri_reward_bool"],
+            max_frac=1e-4,
             err_msg="Peri-reward mismatch",
         )

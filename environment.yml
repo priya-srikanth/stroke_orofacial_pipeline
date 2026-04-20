@@ -1,0 +1,152 @@
+# Unified conda environment for the stroke_orofacial pipeline (Mac + Windows).
+#
+# Replaces the earlier per-platform pair (environment-mac.yml "frsb" +
+# environment-windows.yml "deeplabcut" placeholder). The new `stroke_orofacial`
+# env lives PARALLEL to any existing `frsb` / `deeplabcut` conda envs — neither
+# is touched. Keep `deeplabcut` intact for actual DLC training/inference; this
+# analysis env has no DLC / PyTorch / CUDA / ffmpeg dependencies.
+#
+# Usage (both platforms):
+#     conda env create -f environment.yml
+#     conda activate stroke_orofacial
+#     pip install -e .
+#
+# Dep scope is derived from a full import audit of src/ + tests/ + notebooks/
+# performed during Phase 13 (see docs/DECISIONS.md 2026-04-19 "Phase 13 env
+# unification" and 2026-04-20 "Phase 13 vendor bnpm"). Every package listed
+# below traces to a real import or is called out in a comment. bnpm was
+# dropped 2026-04-20 after its transitive torch dependency broke on Windows
+# (WinError 127 on shm.dll); the 4 helpers we used are vendored into
+# src/stroke_orofacial/_utils/bool_indexing.py under bnpm's MIT license.
+#
+# Python 3.11 is the target (matches `requires-python = ">=3.11"` in
+# pyproject.toml). The legacy Windows `deeplabcut` env pinned Python 3.10 to
+# satisfy DLC; this analysis env is free of that constraint.
+
+name: stroke_orofacial
+channels:
+  - conda-forge
+# `defaults` is intentionally omitted. Mixing conda-forge and defaults caused
+# silent ABI skew on Windows in the HDF5 stack: conda pulled h5py from one
+# channel and hdf5/pytables from another, producing builds linked against
+# incompatible HDF5 binaries. Symptom: `import h5py` raised
+# `ImportError: DLL load failed while importing _errors: The specified
+# procedure could not be found.` even though `import tables` worked. Keeping
+# all C-extension deps (h5py, pytables, hdf5, blosc) on a single channel
+# avoids this entirely. See docs/DECISIONS.md (2026-04-19 Phase 13 env
+# unification) for the full diagnosis.
+dependencies:
+  - python=3.11
+  - pip
+
+  # ---- Core runtime (actively imported by src/ or tests/) ----
+  - numpy           # everywhere
+  - pandas          # everywhere; pd.read_hdf for DLC *_filtered.h5
+  - pyarrow         # parquet I/O in dlc_io/parquet.py
+  - scipy           # scipy.interpolate in alignment/frame_sync.py
+  - matplotlib      # dlc_spatial/{heatmaps,difference_maps}.py + notebooks
+  - pyyaml          # configs/paths loader, animals.yaml, defaults.yaml
+  # HDF5 stack — the three packages below MUST agree on HDF5 major version.
+  # Conda-forge ships pytables 3.11+ linked against HDF5 2.x AND a separate
+  # build of 3.11 linked against 1.14.x; h5py wheels target HDF5 1.14.x.
+  # Pinning hdf5=1.14.* alone is NOT enough on Windows — the solver will
+  # happily pick a pytables 3.11 build whose `tableextension.pyd` was built
+  # against a different 1.14 micro-version than what actually gets installed,
+  # producing `ImportError: DLL load failed while importing tableextension:
+  # The specified procedure could not be found` in bare `python -c`.
+  # Pinning pytables to the 3.10.x series (the last series unambiguously
+  # built against hdf5 1.14.x on conda-forge) is the fix. See
+  # docs/DECISIONS.md (2026-04-19 Phase 13 env unification) for the trail.
+  - hdf5=1.14.*
+  - pytables=3.10.* # pin to 3.10.x series (see HDF5 stack note above)
+  # h5py is installed by conda-forge at whatever version is compatible with
+  # pytables 3.10.* + hdf5 1.14.3+. We do NOT pin h5py to 3.8.* because
+  # h5py-3.8 py311 builds require hdf5=1.14.0 exactly, which conflicts with
+  # pytables 3.10.*'s py311 builds requiring hdf5>=1.14.3 (the solver chokes
+  # with LibMambaUnsatisfiableError). IMPORTANT: pywavesurfer's wheel pins
+  # `h5py==3.8.0` and, if installed via the usual `pip install pywavesurfer`,
+  # will silently downgrade the conda h5py to a PyPI wheel whose bundled
+  # hdf5.dll collides with pytables' conda hdf5.dll, producing DLL-load
+  # errors on Windows even though pytest appears to pass. The workaround:
+  # pywavesurfer is NOT in the pip: block below. Install it manually with
+  # `pip install pywavesurfer --no-deps` after `conda env create` completes
+  # (see README / Phase 13 section of docs/MIGRATION_LOG.md).
+  - h5py
+
+  # ---- Reserved for Phase 5+ (no current imports, but close on the horizon) ----
+  # Not imported by src/ or tests/ yet, but every entry here is imported by
+  # one or more legacy notebooks under
+  # /Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/code/ that are scheduled
+  # for porting per the Q6/Q8/Q9 Phase 7/9 plans. Including proactively so the
+  # first Phase 5/6/7/9 port doesn't need an env bump.
+  - statsmodels     # Phase 9 stats framework; 5 legacy nbs
+  - scikit-learn    # Phase 9.1 recovery-phenotype classification
+  - seaborn         # Phase 5+ figure styling
+  - patsy           # R-style formulas for statsmodels; used in the locked
+                    #   Q6 re-read notebooks 20260203_tongue + 20260416_jaw
+  - pot             # Python Optimal Transport (Wasserstein distance for
+                    #   pixel-bin distribution comparison). Used in 3 legacy
+                    #   DLC stats notebooks. Conda-forge package name is `pot`.
+
+  # ---- Dev + notebook runtime ----
+  - pytest
+  - ruff
+  - ipykernel
+  - jupyter
+  - nbconvert       # used by the `jupyter nbconvert --execute --inplace` pattern
+
+  # ---- pip-only (not on conda-forge, or extras syntax required) ----
+  #
+  # NOTE: pywavesurfer is deliberately NOT listed here. Its wheel pins
+  # `h5py==3.8.0`, which would cause pip to downgrade the conda-forge h5py
+  # to a PyPI wheel bundling its own hdf5.dll, colliding with conda's
+  # hdf5.dll and breaking pytables' tableextension on Windows (the import
+  # fails in bare `python -c "import tables"` shells). Install it manually
+  # after env creation with `pip install pywavesurfer --no-deps` — its
+  # h5py usage is basic and works fine with any modern h5py. See the h5py
+  # note above for the full diagnosis; see docs/MIGRATION_LOG.md Phase 13
+  # for the exact post-create install sequence.
+  - pip:
+      - scicomap                    # scientific colormaps; used in 6 legacy
+                                    # DLC spatial notebooks. Not on conda-forge
+                                    # as of 2026-04; pip-install from PyPI.
+
+# Deliberately NOT included (audited unused across src/, tests/, and notebooks/):
+#   - opencv-contrib-python    — no imports anywhere (video I/O handled upstream by DLC on O2)
+#   - tqdm                     — no imports anywhere
+#
+# Deliberately NOT included (vendored — see docs/DECISIONS.md 2026-04-20 "Phase 13 vendor bnpm"):
+#   - bnpm / bnpm[core]        — only 4 pure-numpy helpers were used; vendored
+#                                into src/stroke_orofacial/_utils/bool_indexing.py
+#                                under bnpm's MIT license. The reason it is no
+#                                longer a dep is that bnpm imports torch at
+#                                module load, and PyPI torch on Windows clashes
+#                                with the conda-forge MKL/OpenMP stack (OMP
+#                                Error #15, WinError 127 on torch\lib\shm.dll).
+#   - torch / pytorch          — was pulled in transitively by bnpm; nothing in
+#                                src/ / tests/ / notebooks/ imports torch now
+#                                that the 4 bnpm helpers are vendored.
+#   - numba / llvmlite         — was pre-installed to dodge the bnpm[core] pip
+#                                source-build path for llvmlite on Intel Mac
+#                                + Python 3.11. With bnpm gone, no package in
+#                                this env needs numba.
+#   - cmake                    — was the belt-and-suspenders fallback for the
+#                                same bnpm[core] source build. No longer needed.
+#
+# Deliberately NOT included (belongs in `deeplabcut` env, not in analysis env):
+#   - deeplabcut, pytorch, torchvision, cudatoolkit, tensorflow, ffmpeg,
+#     dlclibrary, keras, cv2, paramiko, scp, ...
+# These are imported ONLY by src/stroke_orofacial/dlc_inference_o2/runner.py
+# (which runs on the O2 HPC cluster inside the `deeplabcut` conda env) and by
+# the legacy `20251112_DLC_batch_video_analysis_O2.ipynb` notebook whose
+# functionality has already been consolidated into dlc_inference_o2/. The
+# laptop-side submission helpers (batch.py / o2_job.py / transfer.py) use only
+# pyyaml + stdlib and are fully covered by this env.
+#
+# Deliberately NOT included (out-of-scope for v1 — separate analysis thread):
+#   - jax, jax_moseq, keypoint_moseq
+# These appear only in `20260209_keypoint_moseq*.ipynb`. Keypoint-MoSeq is an
+# unsupervised-behavior analysis that is not part of any v1 phase (Phases 1–10)
+# and is not covered by the Q1–Q10 audit decisions. If Keypoint-MoSeq becomes
+# a v2 deliverable, it should live in its own env to avoid dragging JAX into
+# the core analysis env.

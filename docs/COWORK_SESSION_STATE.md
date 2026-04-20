@@ -25,15 +25,38 @@ A new Cowork session works through this in order before answering any substantiv
 
 ## Current state
 
-**As of:** 2026-04-19 (audit closure session; Cowork-on-Mac + Windows-Claude-Code workflow now permanent).
+**As of:** 2026-04-19 (Phase 13 env-unification drafting session; context was compacted mid-session so next warm-start should scan "Recent session log" carefully).
 
-**Repo phase:** Mid-consolidation audit **complete — 10 of 10 items resolved**. Phases 1 through 6 delivered and on `main`. Audit branch ready to merge.
+**Repo phase:** Mid-consolidation audit **complete — 10 of 10 items resolved and merged to main** (tag `v0.6.5-audit-complete`). Phases 1 through 6 delivered. Phase 13 (env unification) in flight.
 
-**Current branch:** `audit-item-6-phase5-details` (off `main` at tag `v0.6-phase-6-complete`). Final uncommitted items sitting on Mac from this closure session: the DECISIONS.md addition for Audit Item 10 (Q1–Q10 grouped entry at top) and this COWORK_SESSION_STATE.md update. Priya to run `git add docs/DECISIONS.md docs/COWORK_SESSION_STATE.md && git commit && git push` on Mac to land them on origin.
+**Current branch:** `phase-13-env-unification` (off `main` at tag `v0.6.5-audit-complete`). Uncommitted changes on Mac from this session:
 
-**In flight:** None. Between-session state is clean. Next session picks up at **task #8 — audit merge to `main` + tag `v0.6.5-audit-complete`**.
+- `environment.yml` — NEW, unified Mac + Windows conda env (replaces the per-platform pair). Dep scope audited across `src/`, `tests/`, `notebooks/`, and every notebook under `/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/code/`.
+- `environment-mac.yml` and `environment-windows.yml` — reduced to deprecation stubs pointing at `environment.yml`. Priya to `git rm` both once the unified env is verified on both machines.
+- `pyproject.toml` — trimmed `opencv-contrib-python` + `tqdm` (unused anywhere); added `patsy`, `POT`, `scicomap` (imported by legacy DLC analysis notebooks queued for Phase 5/7/9 ports); switched plain `bnpm` → `bnpm[core]` per https://pypi.org/project/bnpm/.
+- `docs/DECISIONS.md` — new entry at top for "Phase 13 env unification" with full dep audit + rationale.
+- `docs/COWORK_SESSION_STATE.md` — this update.
 
-**Recent session log (2026-04-18 through 2026-04-19, consolidated):**
+**In flight:** **Phase 13 env unification.** Windows test-env install was stuck on jinja2 at last report — likely just pip backtracking on the jupyter stack rather than a real failure. Next-session action list:
+
+1. Check whether Priya's Windows test-env install eventually finished. If it's still hung past ~15 min, `Ctrl-C`, upgrade pip (`python -m pip install --upgrade pip`), and re-run with `-v` for resolver output, OR switch jupyter to conda-installed.
+2. If the test-env came up, verify `conda env create -f environment.yml` installs cleanly on both Mac and Windows.
+3. Run `pytest tests/` inside the new `stroke_orofacial` env on both machines — expect 103+ tests to still pass (Phase 2 baseline).
+4. Once verified on both platforms, `git rm environment-mac.yml environment-windows.yml`, update all CLAUDE.md + docs references from `frsb`/`deeplabcut` to `stroke_orofacial`, add a Phase 13 entry to `docs/MIGRATION_LOG.md`, PR-merge to main, tag `v0.7-phase-13-env-unified`.
+
+**Recent session log — 2026-04-19 (Phase 13 env-unification drafting, after audit merge):**
+
+- Audit branch merged to `main`; `v0.6.5-audit-complete` tag pushed to origin.
+- Feature branch `phase-13-env-unification` cut from `main`.
+- Full import audit of pipeline: walked `src/`, `tests/`, `notebooks/`, and every notebook under `/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/code/`. Confirmed `opencv-contrib-python` and `tqdm` are unused anywhere (dropped). Found `scicomap` (6 nbs), `pot` (3 nbs), `patsy` (2 nbs — the locked Q6 Phase 7 re-read notebooks) as needed-for-Phase-5/7/9 additions.
+- Confirmed the DLC/CUDA/PyTorch/ffmpeg stack is needed ONLY by `dlc_inference_o2/runner.py` (which runs on O2 inside the `deeplabcut` env) and by the legacy `20251112` O2 batch notebook (already consolidated). None of it belongs in the analysis env.
+- Confirmed Keypoint-MoSeq (jax, jax_moseq, keypoint_moseq) is out-of-scope for v1 and should not contaminate the analysis env.
+- Drafted `environment.yml` (unified, Python 3.11, conda-forge primary, `bnpm[core]` per https://pypi.org/project/bnpm/, pip-only for `scicomap` + `pywavesurfer` + `bnpm[core]`).
+- Brought `pyproject.toml` into agreement with `environment.yml`.
+- Reduced `environment-mac.yml` and `environment-windows.yml` to deprecation stubs.
+- Priya reported Windows test-env install stuck on jinja2 — likely pip backtracking on the jupyter stack. Resolution deferred to next session.
+
+**Recent session log (2026-04-18 through 2026-04-19, consolidated — audit work):**
 
 Completed across the multi-day session:
 
@@ -67,13 +90,15 @@ The authoritative source is the Cowork TaskList widget in the current session. M
 
 - *(none — Audit Item 10 closed this session)*
 
-**Pending — audit wrap-up gate:**
+**In progress — Phase 13 env unification:**
 
-- **#8** — Merge `audit-item-6-phase5-details` → `main`, tag `v0.6.5-audit-complete`. **Unblocked** (all 10 audit items closed). Next session's first action.
+- **#13** — Unified `stroke_orofacial` env. `environment.yml` drafted this session. Dep audit captured in `docs/DECISIONS.md` 2026-04-19 "Phase 13 env unification". Still needs: compat verification on both platforms, CLAUDE.md/docs reference updates (`frsb`/`deeplabcut` → `stroke_orofacial`), `git rm` of the deprecation-stub env files, MIGRATION_LOG entry, PR-merge, tag `v0.7-phase-13-env-unified`.
+
+**Completed since last state refresh:**
+
+- **#8** — Audit branch `audit-item-6-phase5-details` merged to `main` and tagged `v0.6.5-audit-complete`. Branch preserved as permanent reference per CLAUDE.md rule 8.
 
 **Pending — queued phases and mini-phases**, in rough execution order (dependencies noted):
-
-- **#13** — Unify analysis conda env to `stroke_orofacial` (cross-platform). Blocked on #8. Sequenced before any new long-running phase to avoid env-name drift.
 - **#3 (completed)** — Phase 4.5 decision was "build lite". **Execution of Phase 4.5-lite** per `docs/prompts/phase-4.5-lite-eye-midpoint-centering-kickoff.md` does not have its own task yet; slot it after #13 unless Priya decides otherwise.
 - **#9** — Phase 6.7 SessionManifest refactor. Kickoff at `docs/prompts/phase-6.7-session-manifest-refactor-kickoff.md`. Blocked on #13 (env unification).
 - **#17** — Phase 6.75 output directory reorganization (figure-type-first inside dlc_analysis and spout_behavior). Blocked on #9 so Phase 6.7's byte-parity checks remain valid at old paths.
@@ -256,11 +281,11 @@ Result: no Cowork tab appears in the Windows desktop app. The Claude VM (`yukonS
 
 ## Best warm-start prompt (paste into a new Cowork chat)
 
-Audit is now 10/10 complete. The immediate next-session action is the audit merge + tag. Use:
+Audit merge landed; Phase 13 env unification is in flight. The immediate next-session action is to verify the new env installs cleanly on both platforms and finish Phase 13. Use:
 
-> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. The audit is 10/10 done and the `audit-item-6-phase5-details` branch is ready to merge. Next action is task #8 — merge to `main` and tag `v0.6.5-audit-complete`. Draft the paste-in prompt for Windows-Claude-Code to run the merge, then we'll figure out what to pick up after that (likely #13 env unification, #18 sex/DOB schema add, or #16 Phase 5.5 polish — whichever is highest priority).
+> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. The audit is merged to main (`v0.6.5-audit-complete`). We're mid-Phase-13 on branch `phase-13-env-unification` — `environment.yml` has been drafted, `pyproject.toml` trimmed, and `docs/DECISIONS.md` updated with the Phase 13 rationale. Priya was running a Windows test-env install that got stuck on jinja2; check whether that resolved and pick up from the next-session action list in the Current state section.
 
-For sessions further out (once the audit merge has landed), the generic warm-start is:
+For sessions further out (once Phase 13 has landed), the generic warm-start is:
 
 > Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Then ask me what we're working on.
 
@@ -271,3 +296,4 @@ For sessions further out (once the audit merge has landed), the generic warm-sta
 - **2026-04-17** — Initial creation during mid-consolidation audit, after cross-session alignment sweep launched. Captured Audit Items 1–6 completion status, sweep-in-flight state, and two-tool operational knowledge.
 - **2026-04-19** — Major refresh at end of multi-day session. Audit progressed from 6/10 to 9/10 items resolved; Phase 4.5-lite decision locked; several new tasks created (#14, #15, #16, #17); Cowork-on-Windows permanently deferred; `docs/SCIENTIFIC_ENDPOINTS.md` created with Q1–Q10 for next session. Transcribed all session decisions into DECISIONS.md. Next expected update: after Item 10 Q1–Q10 discussion completes.
 - **2026-04-19 (audit closure)** — Walked Q1–Q10 with Priya in a focused second session the same day; all 10 decisions landed as a single grouped entry at the top of DECISIONS.md. Audit now 10/10. Phase 9 split into 9a/9.1/9b; task #12 refactored into #12a–e; new tasks #18 (sex/DOB schema) and #19 (facerhythm_tca stub) created; task #16 extended with DTW per-edge-shift QC plot carve-out; task #10 and #11 scopes expanded with locked Phase 8a/7 content. Next session opens with audit merge (#8).
+- **2026-04-19 (Phase 13 drafting)** — Third session same day. Audit branch merged to `main`, tagged `v0.6.5-audit-complete`. Feature branch `phase-13-env-unification` cut from `main`. Full import audit performed across `src/`, `tests/`, `notebooks/`, and `/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/code/` to determine the minimum dep set for the new unified env. Drafted `environment.yml` (single env, Python 3.11, conda-forge primary, `bnpm[core]`). Added `patsy`, `pot`, `scicomap` (in-flight-port prereqs). Dropped `opencv-contrib-python` and `tqdm` (audit confirms zero imports). Brought `pyproject.toml` into agreement. Reduced old per-platform env files to deprecation stubs. Cowork context compacted mid-session (summary preserved). Windows test-env install was still spinning on jinja2 at session end — resolution deferred to next session.

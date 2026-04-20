@@ -136,14 +136,21 @@ class TestIntegrationAlignment:
         )
         assert result.source == "computed"
 
-        # Compare (tolerances per amendment 1)
+        # Compare (tolerances per amendment 1 + Phase 13 env-migration note).
+        # rtol bumped 1e-10 -> 1e-8 when the pipeline moved from frsb
+        # (numpy 1.24, scipy 1.15) to stroke_orofacial (numpy 2.4, scipy 1.17):
+        # a different LAPACK backend produces ~5-ULP drift in np.polyfit's
+        # coefficients, which propagates through scipy.interpolate.interp1d
+        # to ~1e-10 rel diff on the sample-index mapping. 1e-8 remains tight
+        # enough to catch any real algorithmic regression while accommodating
+        # the legitimate numeric floor of the chain.
         both_finite = np.isfinite(ref["sig_camIdx__idx_ws"]) & np.isfinite(
             result.sig_camIdx__idx_ws
         )
         np.testing.assert_allclose(
             result.sig_camIdx__idx_ws[both_finite],
             ref["sig_camIdx__idx_ws"][both_finite],
-            rtol=1e-10,
+            rtol=1e-8,
         )
         np.testing.assert_allclose(
             result.slope_ws_per_camFrame,

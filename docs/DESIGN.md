@@ -101,8 +101,7 @@ These rules bind every Claude Code session working on this project. They should 
 
 ### 2.3 Environments `[DECIDED]`
 
-- **Mac:** conda env `frsb` (contains the current Python analysis stack used with the local legacy code).
-- **Windows:** conda env `deeplabcut` (faster server access; used for heavier server-I/O-bound work).
+- **Mac + Windows:** single unified conda env `stroke_orofacial` created from `environment.yml` (Python 3.11, conda-forge primary). Replaces the earlier per-platform pair as of Phase 13 (see MIGRATION_LOG §"Phase 13"). Legacy envs (`frsb` on Mac, `deeplabcut` on Windows) are not touched and run parallel to the new env.
 - **O2 (HMS):** inference-only; separate env, not in scope for consolidation.
 
 ### 2.4 Canonical master metadata (currently scattered) `[DECIDED]`
@@ -120,8 +119,7 @@ stroke_orofacial_pipeline/
 ├── README.md
 ├── CLAUDE.md                      # data-safety rules + repo conventions; auto-loaded by Claude Code
 ├── pyproject.toml                 # installable package `stroke_orofacial`
-├── environment-mac.yml            # pinned conda env (frsb clone, cleaned up)
-├── environment-windows.yml        # pinned conda env (deeplabcut clone + extras)
+├── environment.yml                # unified conda env (`stroke_orofacial`, Mac + Windows)
 ├── .gitignore
 ├── .gitattributes                 # exclude large binaries, set LF line endings
 ├── docs/
@@ -453,12 +451,9 @@ Each phase ends with a commit on a branch + a short section added to `MIGRATION_
 
 ## 8. ENVIRONMENT SETUP
 
-Target state: two conda env YAML files in the repo that recreate the existing Mac (`frsb`) and Windows (`deeplabcut`) envs, plus `pip install -e .` for the local package.
+**Current state (post-Phase 13):** a single unified `environment.yml` creates the `stroke_orofacial` conda env on both macOS and Windows. See README §"Setup" for the install recipe. Legacy per-platform envs (`frsb` on Mac, `deeplabcut` on Windows) are intentionally left intact and run parallel to the new env — `deeplabcut` remains the correct env for DLC training / O2 inference / Keypoint-MoSeq work, and `frsb` is preserved primarily so strict-port parity tests for the vendored bnpm helpers can run against live bnpm on demand.
 
-Claude Code's first job in Phase 0 is to:
-1. Inspect the current `frsb` env on Mac: `conda env export --from-history --name frsb > environment-mac.yml` (the `--from-history` flag keeps the YAML clean and cross-platform).
-2. Ask Priya to run the equivalent on Windows and drop `environment-windows.yml` into the repo — Claude Code on Mac cannot see the Windows env directly.
-3. Verify both envs contain at minimum: `numpy`, `pandas`, `pyarrow`, `scipy`, `statsmodels`, `matplotlib`, `seaborn`, `scikit-learn`, `h5py`, `pyyaml`, `opencv-python` (for video frame timestamps if needed), `ruff` and `pytest` as dev deps.
+**Historical note (Phase 0 → Phase 13):** the repo originally shipped a per-platform pair (`environment-mac.yml` generated from `frsb`, `environment-windows.yml` generated from `deeplabcut`). Phase 13 consolidated these into the single `environment.yml` after (a) auditing real imports and (b) vendoring four pure-numpy helpers out of `bnpm` so the env closure no longer depends on torch (which broke pytest collection on Windows via an OpenMP runtime collision). See `docs/DECISIONS.md` entries "2026-04-19 Phase 13 env unification" and "2026-04-20 Phase 13 vendor bnpm" and `docs/MIGRATION_LOG.md` Phase 13 for the full trail.
 
 ---
 
