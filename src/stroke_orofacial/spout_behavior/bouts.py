@@ -18,6 +18,7 @@ from stroke_orofacial._utils.bool_indexing import (
     set_short_bool_to_low,
     widen_bool_sparse,
 )
+from stroke_orofacial._utils.indexing import _find_idx_within_eps
 
 
 # ---------------------------------------------------------------------------
@@ -231,29 +232,6 @@ def find_quiet_bouts(
 # ---------------------------------------------------------------------------
 # Peri-reward periods
 # ---------------------------------------------------------------------------
-
-
-def _find_idx_within_eps(
-    arr: np.ndarray,
-    vals: np.ndarray,
-    eps: tuple[int, int],
-) -> np.ndarray:
-    """Return indices in *arr* within a window around each value in *vals*.
-
-    For each ``v`` in *vals*, finds indices ``i`` in *arr* such that
-    ``v - eps[0] <= arr[i] < v + eps[1]``.
-
-    Faithfully ports the legacy ``find_idx_within_eps`` function.
-    """
-    eps_l, eps_r = eps
-    out: list[np.ndarray] = []
-    for v in vals:
-        il = np.searchsorted(arr, v - eps_l, side="right")
-        ir = np.searchsorted(arr, v + eps_r, side="left")
-        il = min(max(0, il), len(arr) - 1)
-        ir = min(max(0, ir), len(arr) - 1)
-        out.append(np.arange(il, ir))
-    return np.concatenate(out) if out else np.array([], dtype=int)
 
 
 def find_peri_reward_periods(
