@@ -26,7 +26,7 @@ from stroke_orofacial.spout_behavior.endpoint_result import EndpointResult
 def inter_session_persistence(
     metric_sequence: np.ndarray,
     *,
-    endpoints_v2_params: dict[str, Any],
+    endpoints_params: dict[str, Any],
 ) -> EndpointResult:
     """Compute lag-k Pearson autocorrelation of an ordered per-session metric.
 
@@ -36,8 +36,8 @@ def inter_session_persistence(
         1-D ordered array of per-session metric values. Session ordering is
         the caller's responsibility (typically by session date ascending);
         this function operates purely on array position.
-    endpoints_v2_params : dict
-        The ``spout_behavior.endpoints_v2`` block. Reads
+    endpoints_params : dict
+        The ``spout_behavior.endpoints`` block. Reads
         ``inter_session_persistence.lag`` (default config: 1).
 
     Returns
@@ -49,7 +49,7 @@ def inter_session_persistence(
         - ``per_trial_array``: ``None`` (this is a session-axis metric).
         - ``per_trial_type_split``: ``None``.
     """
-    lag = int(endpoints_v2_params["inter_session_persistence"]["lag"])
+    lag = int(endpoints_params["inter_session_persistence"]["lag"])
     if lag < 1:
         raise ValueError(f"inter_session_persistence.lag must be >= 1, got {lag}")
 
@@ -60,7 +60,7 @@ def inter_session_persistence(
     n_input = seq.size
     if n_input <= lag:
         # No eligible pairs.
-        return _result(float("nan"), 0, lag, n_input, endpoints_v2_params)
+        return _result(float("nan"), 0, lag, n_input, endpoints_params)
 
     x = seq[:-lag]
     y = seq[lag:]
@@ -70,17 +70,17 @@ def inter_session_persistence(
     n_pairs = int(mask.sum())
 
     if n_pairs < 2:
-        return _result(float("nan"), n_pairs, lag, n_input, endpoints_v2_params)
+        return _result(float("nan"), n_pairs, lag, n_input, endpoints_params)
 
     # np.corrcoef returns a 2x2 matrix; off-diagonal is the Pearson r. It
     # emits an (unavoidable) RuntimeWarning when either input has zero
     # variance; we detect that case up-front to avoid the warning and to
     # return a clean NaN rather than whatever nan/inf np.corrcoef produces.
     if np.std(x_clean) == 0.0 or np.std(y_clean) == 0.0:
-        return _result(float("nan"), n_pairs, lag, n_input, endpoints_v2_params)
+        return _result(float("nan"), n_pairs, lag, n_input, endpoints_params)
 
     r = float(np.corrcoef(x_clean, y_clean)[0, 1])
-    return _result(r, n_pairs, lag, n_input, endpoints_v2_params)
+    return _result(r, n_pairs, lag, n_input, endpoints_params)
 
 
 def _result(
@@ -88,7 +88,7 @@ def _result(
     n_pairs: int,
     lag: int,
     n_input: int,
-    endpoints_v2_params: dict[str, Any],
+    endpoints_params: dict[str, Any],
 ) -> EndpointResult:
     return EndpointResult(
         per_session_aggregate={
@@ -100,7 +100,7 @@ def _result(
         per_trial_type_split=None,
         provenance={
             "endpoint_name": "inter_session_persistence",
-            "config_snapshot": copy.deepcopy(endpoints_v2_params),
+            "config_snapshot": copy.deepcopy(endpoints_params),
             "n_trials_input": n_input,
             "n_trials_used": n_pairs,
         },

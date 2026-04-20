@@ -56,14 +56,14 @@ find_peri_reward_and_tone_periods:
 
 # ---- Spout-behavior endpoints v2 (Phase 8a) ----
 # New endpoint suite consumed by Phase 8a's recovery-trajectory plots and
-# the per-session `spout_endpoints_v2.json` writer. Strictly additive:
+# the per-session `spout_endpoints.json` writer. Strictly additive:
 # legacy `report.json` (written by Phase 2) is byte-stable.
 # See docs/PHASE_8A_LEGACY_ENDPOINT_MAPPING.md for the evidence base and
 # docs/prompts/phase-8a-spout-recovery-trajectories-kickoff.md for the
 # full decision trail of the values below.
 
 spout_behavior:
-  endpoints_v2:
+  endpoints:
     # Hierarchical pass-criteria from legacy behavior_report_PS.py, renamed
     # to descriptive slugs (Phase 8a scoping decision Q1, 2026-04-20).
     # Legacy → new bijective mapping. Consumers read the new slugs; the

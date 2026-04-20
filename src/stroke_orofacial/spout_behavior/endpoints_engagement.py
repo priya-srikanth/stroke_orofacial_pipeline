@@ -38,7 +38,7 @@ from stroke_orofacial.spout_behavior.endpoint_result import EndpointResult
 def reward_trial_count_per_session(
     reward_indices: dict[str, np.ndarray],
     *,
-    endpoints_v2_params: dict[str, Any],
+    endpoints_params: dict[str, Any],
 ) -> EndpointResult:
     """Report per-side + total rewarded-trial counts for a session.
 
@@ -47,8 +47,8 @@ def reward_trial_count_per_session(
     reward_indices : dict
         ``{"Reward_L": np.ndarray, "Reward_R": np.ndarray}`` — reward-onset
         sample indices, as produced by Phase 2's lick-and-reward detection.
-    endpoints_v2_params : dict
-        ``spout_behavior.endpoints_v2`` config block (snapshot for provenance).
+    endpoints_params : dict
+        ``spout_behavior.endpoints`` config block (snapshot for provenance).
 
     Returns
     -------
@@ -65,7 +65,7 @@ def reward_trial_count_per_session(
         per_trial_type_split=None,
         provenance={
             "endpoint_name": "reward_trial_count_per_session",
-            "config_snapshot": copy.deepcopy(endpoints_v2_params),
+            "config_snapshot": copy.deepcopy(endpoints_params),
             "n_trials_input": n_L + n_R,
             "n_trials_used": n_L + n_R,
         },
@@ -98,7 +98,7 @@ def inter_trial_interval_distribution(
     reward_indices: dict[str, np.ndarray],
     Fs: float,
     *,
-    endpoints_v2_params: dict[str, Any],
+    endpoints_params: dict[str, Any],
 ) -> EndpointResult:
     """Summary stats of consecutive-reward gaps per side and overall.
 
@@ -111,8 +111,8 @@ def inter_trial_interval_distribution(
         ``{"Reward_L": np.ndarray, "Reward_R": np.ndarray}``.
     Fs : float
         Sampling rate in Hz (for samples → seconds).
-    endpoints_v2_params : dict
-        ``spout_behavior.endpoints_v2`` block (snapshot for provenance).
+    endpoints_params : dict
+        ``spout_behavior.endpoints`` block (snapshot for provenance).
 
     Returns
     -------
@@ -142,7 +142,7 @@ def inter_trial_interval_distribution(
         },
         provenance={
             "endpoint_name": "inter_trial_interval_distribution",
-            "config_snapshot": copy.deepcopy(endpoints_v2_params),
+            "config_snapshot": copy.deepcopy(endpoints_params),
             "n_trials_input": int(r_L.size + r_R.size),
             "n_trials_used": int(iti_all.size),
             "Fs": float(Fs),

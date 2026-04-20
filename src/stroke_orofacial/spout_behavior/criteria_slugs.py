@@ -2,7 +2,7 @@
 
 Legacy ``behavior_report_PS.py`` emitted per-session/per-trial pass booleans
 under numeric keys ``criteria_1/2/3/4``. Phase 8a renames these in the new
-``spout_endpoints_v2.json`` output to descriptive hierarchical slugs that
+``spout_endpoints.json`` output to descriptive hierarchical slugs that
 self-document the actual computation:
 
 - ``criteria_1`` → ``criteria_training_pass_consecutive_sessions`` (per-animal,
@@ -16,7 +16,7 @@ self-document the actual computation:
 
 The legacy ``report.json`` stays byte-stable; this mapping is consumed only
 by the Phase 8a report writer and by parity tests. Loaded from
-``configs/defaults.yaml`` at ``spout_behavior.endpoints_v2.criteria_slug_map``
+``configs/defaults.yaml`` at ``spout_behavior.endpoints.criteria_slug_map``
 so renames flow through config, not through a source edit.
 
 See ``docs/PHASE_8A_LEGACY_ENDPOINT_MAPPING.md`` §1 for the full rationale.
@@ -43,13 +43,13 @@ def load_slug_map(defaults: dict[str, Any]) -> dict[str, str]:
     Raises
     ------
     KeyError
-        If ``spout_behavior.endpoints_v2.criteria_slug_map`` is missing.
+        If ``spout_behavior.endpoints.criteria_slug_map`` is missing.
     """
     try:
-        return dict(defaults["spout_behavior"]["endpoints_v2"]["criteria_slug_map"])
+        return dict(defaults["spout_behavior"]["endpoints"]["criteria_slug_map"])
     except KeyError as e:
         raise KeyError(
-            "Missing spout_behavior.endpoints_v2.criteria_slug_map in defaults.yaml"
+            "Missing spout_behavior.endpoints.criteria_slug_map in defaults.yaml"
         ) from e
 
 

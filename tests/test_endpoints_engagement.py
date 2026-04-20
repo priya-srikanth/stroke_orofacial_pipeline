@@ -12,7 +12,7 @@ from stroke_orofacial.spout_behavior.endpoints_engagement import (
 )
 
 
-V2_PARAMS = {
+ENDPOINTS_PARAMS = {
     "engagement": {
         "compute_reward_trial_count_per_session": True,
         "compute_inter_trial_interval_distribution": True,
@@ -33,7 +33,7 @@ class TestRewardTrialCountPerSession:
             "Reward_L": np.array([], dtype=int),
             "Reward_R": np.array([], dtype=int),
         }
-        r = reward_trial_count_per_session(reward_idx, endpoints_v2_params=V2_PARAMS)
+        r = reward_trial_count_per_session(reward_idx, endpoints_params=ENDPOINTS_PARAMS)
         assert r.per_session_aggregate == {"L": 0, "R": 0, "total": 0}
         assert r.per_trial_array is None
         assert r.per_trial_type_split is None
@@ -43,7 +43,7 @@ class TestRewardTrialCountPerSession:
             "Reward_L": np.array([0, 1000, 2000]),
             "Reward_R": np.array([500, 1500]),
         }
-        r = reward_trial_count_per_session(reward_idx, endpoints_v2_params=V2_PARAMS)
+        r = reward_trial_count_per_session(reward_idx, endpoints_params=ENDPOINTS_PARAMS)
         assert r.per_session_aggregate == {"L": 3, "R": 2, "total": 5}
 
     def test_single_side_only(self):
@@ -51,13 +51,13 @@ class TestRewardTrialCountPerSession:
             "Reward_L": np.array([], dtype=int),
             "Reward_R": np.array([0, 500, 1000, 1500, 2000]),
         }
-        r = reward_trial_count_per_session(reward_idx, endpoints_v2_params=V2_PARAMS)
+        r = reward_trial_count_per_session(reward_idx, endpoints_params=ENDPOINTS_PARAMS)
         assert r.per_session_aggregate == {"L": 0, "R": 5, "total": 5}
 
     def test_missing_key_treated_as_empty(self):
         # Defensive: missing "Reward_L" treated as empty per .get() semantics.
         reward_idx = {"Reward_R": np.array([0])}
-        r = reward_trial_count_per_session(reward_idx, endpoints_v2_params=V2_PARAMS)
+        r = reward_trial_count_per_session(reward_idx, endpoints_params=ENDPOINTS_PARAMS)
         assert r.per_session_aggregate == {"L": 0, "R": 1, "total": 1}
 
 
@@ -72,7 +72,7 @@ class TestInterTrialIntervalDistribution:
             "Reward_L": np.array([], dtype=int),
             "Reward_R": np.array([], dtype=int),
         }
-        r = inter_trial_interval_distribution(reward_idx, Fs=FS, endpoints_v2_params=V2_PARAMS)
+        r = inter_trial_interval_distribution(reward_idx, Fs=FS, endpoints_params=ENDPOINTS_PARAMS)
         agg = r.per_session_aggregate
         assert agg["n"] == 0
         assert math.isnan(agg["mean_s"])
@@ -84,7 +84,7 @@ class TestInterTrialIntervalDistribution:
             "Reward_L": np.array([100]),
             "Reward_R": np.array([200]),
         }
-        r = inter_trial_interval_distribution(reward_idx, Fs=FS, endpoints_v2_params=V2_PARAMS)
+        r = inter_trial_interval_distribution(reward_idx, Fs=FS, endpoints_params=ENDPOINTS_PARAMS)
         assert r.per_session_aggregate["n"] == 0
         assert r.per_trial_type_split["L"]["n"] == 0
         assert r.per_trial_type_split["R"]["n"] == 0
@@ -96,7 +96,7 @@ class TestInterTrialIntervalDistribution:
             "Reward_L": np.array([100, 1000, 2500, 4000]),
             "Reward_R": np.array([], dtype=int),
         }
-        r = inter_trial_interval_distribution(reward_idx, Fs=FS, endpoints_v2_params=V2_PARAMS)
+        r = inter_trial_interval_distribution(reward_idx, Fs=FS, endpoints_params=ENDPOINTS_PARAMS)
         L_stats = r.per_trial_type_split["L"]
         assert L_stats["n"] == 3
         assert L_stats["mean_s"] == pytest.approx(1.3)
@@ -111,7 +111,7 @@ class TestInterTrialIntervalDistribution:
             "Reward_L": np.array([0, 2000]),   # ITI = 2.0 s
             "Reward_R": np.array([1000, 1500]),  # ITI = 0.5 s
         }
-        r = inter_trial_interval_distribution(reward_idx, Fs=FS, endpoints_v2_params=V2_PARAMS)
+        r = inter_trial_interval_distribution(reward_idx, Fs=FS, endpoints_params=ENDPOINTS_PARAMS)
         assert r.per_trial_type_split["L"]["mean_s"] == pytest.approx(2.0)
         assert r.per_trial_type_split["R"]["mean_s"] == pytest.approx(0.5)
         # Combined-sides: 2 ITIs = [2.0, 0.5] → mean 1.25.
@@ -124,7 +124,7 @@ class TestInterTrialIntervalDistribution:
             "Reward_L": np.array([0, 1000]),
             "Reward_R": np.array([], dtype=int),
         }
-        r = inter_trial_interval_distribution(reward_idx, Fs=FS, endpoints_v2_params=V2_PARAMS)
+        r = inter_trial_interval_distribution(reward_idx, Fs=FS, endpoints_params=ENDPOINTS_PARAMS)
         assert r.per_trial_type_split["L"]["n"] == 1
         assert math.isnan(r.per_trial_type_split["L"]["std_s"])
         assert r.per_trial_type_split["L"]["mean_s"] == pytest.approx(1.0)
@@ -136,7 +136,7 @@ class TestInterTrialIntervalDistribution:
             "Reward_L": np.array([2000, 0, 1000]),
             "Reward_R": np.array([], dtype=int),
         }
-        r = inter_trial_interval_distribution(reward_idx, Fs=FS, endpoints_v2_params=V2_PARAMS)
+        r = inter_trial_interval_distribution(reward_idx, Fs=FS, endpoints_params=ENDPOINTS_PARAMS)
         # After sort: diffs = [1000, 1000] → ITIs [1.0, 1.0] → mean 1.0, std 0.
         assert r.per_trial_type_split["L"]["mean_s"] == pytest.approx(1.0)
         assert r.per_trial_type_split["L"]["std_s"] == pytest.approx(0.0)
@@ -148,7 +148,7 @@ class TestInterTrialIntervalDistribution:
             "Reward_L": np.array([0, 250, 750]),
             "Reward_R": np.array([], dtype=int),
         }
-        r = inter_trial_interval_distribution(reward_idx, Fs=250.0, endpoints_v2_params=V2_PARAMS)
+        r = inter_trial_interval_distribution(reward_idx, Fs=250.0, endpoints_params=ENDPOINTS_PARAMS)
         assert r.per_trial_type_split["L"]["mean_s"] == pytest.approx(1.5)
         assert r.provenance["Fs"] == 250.0
 
@@ -157,7 +157,7 @@ class TestInterTrialIntervalDistribution:
             "Reward_L": np.array([0, 1000, 2000]),
             "Reward_R": np.array([500]),
         }
-        r = inter_trial_interval_distribution(reward_idx, Fs=FS, endpoints_v2_params=V2_PARAMS)
+        r = inter_trial_interval_distribution(reward_idx, Fs=FS, endpoints_params=ENDPOINTS_PARAMS)
         # 3 L + 1 R = 4 events total. 2 L-side ITIs + 0 R-side ITIs = 2 used.
         assert r.provenance["n_trials_input"] == 4
         assert r.provenance["n_trials_used"] == 2

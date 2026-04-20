@@ -68,7 +68,7 @@ def within_session_learning_curve(
     trials: Sequence[TrialRecord],
     *,
     metric_extractor: Callable[[TrialRecord], float],
-    endpoints_v2_params: dict[str, Any],
+    endpoints_params: dict[str, Any],
     metric_name: str = "unspecified",
 ) -> EndpointResult:
     """Bin trials by ordinal position, report per-bin mean + early-vs-late + slope.
@@ -84,8 +84,8 @@ def within_session_learning_curve(
     metric_extractor : Callable[[TrialRecord], float]
         Per-trial scalar extractor. May return NaN; such trials drop out of
         the per-bin means and linear slope.
-    endpoints_v2_params : dict
-        The ``spout_behavior.endpoints_v2`` config block. Reads
+    endpoints_params : dict
+        The ``spout_behavior.endpoints`` config block. Reads
         ``within_session_learning_curve.n_bins``.
     metric_name : str
         Human-readable metric label, stored in provenance for later traceability.
@@ -100,7 +100,7 @@ def within_session_learning_curve(
           where ``metric_extractor`` returned NaN).
         - ``per_trial_type_split``: ``None`` (grouping is temporal, not side-wise).
     """
-    n_bins = int(endpoints_v2_params["within_session_learning_curve"]["n_bins"])
+    n_bins = int(endpoints_params["within_session_learning_curve"]["n_bins"])
     metric_values = _extract_metric_values(trials, metric_extractor)
 
     n_trials = metric_values.size
@@ -139,7 +139,7 @@ def within_session_learning_curve(
         per_trial_type_split=None,
         provenance={
             "endpoint_name": "within_session_learning_curve",
-            "config_snapshot": copy.deepcopy(endpoints_v2_params),
+            "config_snapshot": copy.deepcopy(endpoints_params),
             "n_trials_input": n_trials,
             "n_trials_used": n_valid,
             "metric_name": metric_name,
@@ -156,7 +156,7 @@ def within_session_change(
     trials: Sequence[TrialRecord],
     *,
     metric_extractor: Callable[[TrialRecord], float],
-    endpoints_v2_params: dict[str, Any],
+    endpoints_params: dict[str, Any],
     metric_name: str = "unspecified",
 ) -> EndpointResult:
     """Single-number within-session linear-trend slope of metric vs trial ordinal.
@@ -173,7 +173,7 @@ def within_session_change(
         - ``per_trial_array``: the extracted per-trial metric values.
         - ``per_trial_type_split``: ``None``.
     """
-    method = endpoints_v2_params["within_session_change"]["detrend_method"]
+    method = endpoints_params["within_session_change"]["detrend_method"]
     if method != "linear":
         raise NotImplementedError(
             f"within_session_change.detrend_method={method!r} reserved for "
@@ -194,7 +194,7 @@ def within_session_change(
         per_trial_type_split=None,
         provenance={
             "endpoint_name": "within_session_change",
-            "config_snapshot": copy.deepcopy(endpoints_v2_params),
+            "config_snapshot": copy.deepcopy(endpoints_params),
             "n_trials_input": metric_values.size,
             "n_trials_used": n_valid,
             "metric_name": metric_name,
