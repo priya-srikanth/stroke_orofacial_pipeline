@@ -415,6 +415,7 @@ Each phase ends with a commit on a branch + a short section added to `MIGRATION_
 **Phase 6 — DLC spatial (reward-aligned).**
 - Implement `window_selector` with reward-aligned (0, 8000) ms default and parameterizable.
 - Generalize all spatial analyses to accept a window selector.
+- **Prereq:** `_find_idx_within_eps` (currently private inside `src/stroke_orofacial/spout_behavior/bouts.py`) must be factored into a shared package-private helper at `src/stroke_orofacial/_utils/indexing.py` so reward-aligned peri-event extraction can import it without depending on the lick-bout module. Trivial refactor (~20 lines moved, two import sites updated, byte-identical behavior), executed as its own PR before Phase 6 code writes begin. The same half-open `[v - eps[0], v + eps[1])` convention serves both the lick-bout window used in `spout_behavior` and the 8-s-post-reward windows used downstream in Phase 6 / Phase 7 kinematics. Matches the existing `_utils/bool_indexing.py` vendoring convention (package-private, bnpm-provenance-documented).
 
 **Phase 8a — Spout behavior report.** *(Moved ahead of Phase 7 for mid-experiment usability.)*
 - Port the spout-behavior-only portions of `batch_process_behavior_report_20260116PS.ipynb` into `reports/spout_behavior_report.py` + notebook `02a_spout_behavior_report.ipynb`.
