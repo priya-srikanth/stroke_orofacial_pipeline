@@ -172,6 +172,7 @@ The plan must pause for Priya's explicit approval before any files are written.
 - Every notebook has a single clearly-banner-commented "USER INPUTS" cell at the top for user-editable variables; all other cells only import from `stroke_orofacial` and orchestrate.
 - Before any refactor that touches more than 5 files, propose a plan and wait for approval.
 - Add docstrings to every public function. Inline comments should explain **why** a choice was made, not just what a line does.
+- **Tests must not write to the real `stroke_orofacial_pipeline_outputs/` tree.** Any test that invokes a pipeline writer (`overwrite="force"`/`"prompt"`) must use `PathResolver(output_root=tmp_path)`. Full rules + rationale in [docs/testing-conventions.md](docs/testing-conventions.md).
 
 ---
 
