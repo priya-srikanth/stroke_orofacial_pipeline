@@ -134,6 +134,12 @@ def writer_kwargs(tmp_path: Path) -> dict[str, Any]:
         "defaults": DEFAULTS_STUB,
         "n_trials": 87,
         "day_relative_to_stroke": -3,
+        # Task #17: matched-rig default in the fixture keeps the
+        # pre-existing per-side assertions semantically unchanged
+        # (no L/R flip at emit). TestSideConventionStamp /
+        # TestLRFlipAtEmit (added in commit 4) cover the flipped-rig
+        # path explicitly.
+        "wavesurfer_sides_match_mouse_sides": True,
     }
 
 
@@ -174,6 +180,8 @@ class TestBlockShapes:
         assert set(meta.keys()) == {
             "animal", "date", "phase", "day_relative_to_stroke",
             "n_trials", "source_npz_hashes", "writer_run_timestamp",
+            # Task #17 side-convention stamp.
+            "wavesurfer_sides_match_mouse_sides", "side_convention_version",
         }
         assert meta["animal"] == "PS46"
         assert meta["date"] == "2025-03-07"
@@ -183,6 +191,10 @@ class TestBlockShapes:
         assert set(meta["source_npz_hashes"].keys()) == {
             "licks_and_rewards", "wavesurfer_signals_processed",
         }
+        # The fixture passes wavesurfer_sides_match_mouse_sides=True, so
+        # the stamp records the matched-rig case here.
+        assert meta["wavesurfer_sides_match_mouse_sides"] is True
+        assert meta["side_convention_version"] == 1
 
     def test_endpoints_block_keys_match_canonical_set(
         self, writer_kwargs: dict[str, Any],

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import datetime
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -389,6 +388,12 @@ class TestIntegrationParity:
             ref = dict(np.load(ref_path, allow_pickle=True))
             new = dict(np.load(new_path, allow_pickle=True))
 
+            # Un-flip post-task-#17 mouse-frame labels back to wavesurfer
+            # frame before comparing to the frozen session_processing3
+            # baseline (which is wavesurfer-frame). Internal array values
+            # are byte-identical; only the L/R key names differ.
+            new = _unflip_new_to_wavesurfer_frame(new)
+
             for arr_name, method in arrays:
                 r, n = ref[arr_name], new[arr_name]
                 if method == "equal":
@@ -405,3 +410,52 @@ class TestIntegrationParity:
                         n, r, max_frac=1e-4,
                         err_msg=f"{output_type}/{arr_name} on {date_str}",
                     )
+
+
+def _unflip_new_to_wavesurfer_frame(
+    new_payload: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    """Translate a post-task-#17 mouse-frame NPZ payload back to wavesurfer frame.
+
+    Task #17 (2026-04-20) moved output-NPZ L/R labels from wavesurfer
+    frame to mouse frame via boundary-layer translation at emit time.
+    The frozen ``session_processing3`` baseline predates task #17 and
+    is wavesurfer-frame, so integration-parity tests need to un-flip
+    the new emitter's output before comparing.
+
+    The NPZ's own ``wavesurfer_sides_match_mouse_sides`` scalar drives
+    the un-flip: if True (matched rig, no translation at emit) the
+    payload is returned unchanged; if False (mirrored rig, L↔R swapped
+    at emit) keys ending in ``_L`` / ``_R`` are swapped back. The
+    ``side_convention_version`` / ``wavesurfer_sides_match_mouse_sides``
+    scalars themselves are dropped from the returned dict so downstream
+    ``ref[key]`` lookups don't see them.
+
+    This helper is test-side only; production code should never un-flip
+    — the emitted mouse-frame labels are the canonical artifact contract.
+    """
+    from stroke_orofacial.lr_convention import (
+        SIDE_CONVENTION_MATCH_KEY,
+        SIDE_CONVENTION_VERSION_KEY,
+    )
+
+    flag = new_payload.get(SIDE_CONVENTION_MATCH_KEY)
+    if flag is None:
+        # NPZ predates task #17. Pass through unchanged.
+        return new_payload
+    flag = bool(flag)  # numpy 0-d bool array → Python bool
+
+    out: dict[str, np.ndarray] = {}
+    for key, value in new_payload.items():
+        if key in (SIDE_CONVENTION_MATCH_KEY, SIDE_CONVENTION_VERSION_KEY):
+            continue
+        if flag:
+            out[key] = value
+            continue
+        if key.endswith("_L"):
+            out[key[:-2] + "_R"] = value
+        elif key.endswith("_R"):
+            out[key[:-2] + "_L"] = value
+        else:
+            out[key] = value
+    return out

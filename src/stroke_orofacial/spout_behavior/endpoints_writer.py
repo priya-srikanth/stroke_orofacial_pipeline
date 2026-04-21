@@ -75,6 +75,7 @@ from typing import Any
 
 import numpy as np
 
+from stroke_orofacial.lr_convention import stamp_side_convention
 from stroke_orofacial.spout_behavior.criteria_slugs import all_new_slugs
 from stroke_orofacial.spout_behavior.endpoint_result import EndpointResult
 from stroke_orofacial.spout_behavior.lick_bouts import LickBout
@@ -252,6 +253,95 @@ def _serialize_endpoint_value(value: EndpointResult | dict[str, Any]) -> Any:
     )
 
 
+def _translate_per_side_dict(
+    d: dict[str, Any] | None, wavesurfer_matches: bool,
+) -> dict[str, Any] | None:
+    """Translate ``{"L": ..., "R": ...}`` keys to mouse frame.
+
+    Returns the input unchanged if it's None or has no L/R keys to
+    translate. Values pass through untouched — only the top-level keys
+    are renamed.
+    """
+    if d is None or wavesurfer_matches:
+        return d
+    if not any(k in d for k in ("L", "R")):
+        return d
+    out: dict[str, Any] = {}
+    for k, v in d.items():
+        if k == "L":
+            out["R"] = v
+        elif k == "R":
+            out["L"] = v
+        else:
+            out[k] = v
+    return out
+
+
+#: Keys inside a criteria-block value whose contents are per-side dicts
+#: keyed by "L" / "R". Translated at emit time for flipped cohorts.
+_CRITERIA_PER_SIDE_KEYS: tuple[str, ...] = (
+    "per_side_per_trial_pass",
+    "per_side_pass",
+    "per_side_fraction",
+    "per_side_n_trials",
+)
+
+
+def _translate_criteria_block_to_mouse_frame(
+    criteria_block: dict[str, dict[str, Any]], wavesurfer_matches: bool,
+) -> dict[str, dict[str, Any]]:
+    """Translate per-side dicts inside the criteria block.
+
+    Every criteria slug may carry any of the keys in
+    :data:`_CRITERIA_PER_SIDE_KEYS`; each is a ``{"L": ..., "R": ...}``
+    dict that flips L↔R for flipped-rig animals. The C1 cohort sentinel
+    (``criteria_training_pass_consecutive_sessions``) has no per-side
+    keys and passes through unchanged.
+    """
+    if wavesurfer_matches:
+        return criteria_block
+    out: dict[str, dict[str, Any]] = {}
+    for slug, slug_block in criteria_block.items():
+        if not isinstance(slug_block, dict):
+            out[slug] = slug_block
+            continue
+        new_block = dict(slug_block)
+        for key in _CRITERIA_PER_SIDE_KEYS:
+            if key in new_block:
+                new_block[key] = _translate_per_side_dict(
+                    new_block[key], wavesurfer_matches,
+                )
+        out[slug] = new_block
+    return out
+
+
+def _translate_endpoints_block_to_mouse_frame(
+    endpoints_block: dict[str, Any], wavesurfer_matches: bool,
+) -> dict[str, Any]:
+    """Translate ``per_trial_type_split`` dicts inside the endpoints block.
+
+    Each endpoint's serialized form may carry a ``per_trial_type_split``
+    dict that splits per-trial data by reward side. The outer keys are
+    ``"L"`` / ``"R"`` — flipped in place for flipped-rig animals. Other
+    fields (``per_session_aggregate``, ``per_trial_array``,
+    ``provenance``) are untouched.
+    """
+    if wavesurfer_matches:
+        return endpoints_block
+    out: dict[str, Any] = {}
+    for name, value in endpoints_block.items():
+        if not isinstance(value, dict):
+            out[name] = value
+            continue
+        new_value = dict(value)
+        if "per_trial_type_split" in new_value:
+            new_value["per_trial_type_split"] = _translate_per_side_dict(
+                new_value["per_trial_type_split"], wavesurfer_matches,
+            )
+        out[name] = new_value
+    return out
+
+
 def _validate_endpoints_keys(endpoints: dict[str, Any]) -> None:
     """Enforce strict key set against ``CANONICAL_ENDPOINT_NAMES`` (D8)."""
     keys = frozenset(endpoints.keys())
@@ -306,6 +396,7 @@ def write_session_endpoints_json(
     defaults: dict[str, Any],
     n_trials: int,
     day_relative_to_stroke: int | None,
+    wavesurfer_sides_match_mouse_sides: bool,
 ) -> Path:
     """Atomically write ``spout_endpoints.json`` for one session.
 
@@ -343,6 +434,15 @@ def write_session_endpoints_json(
     day_relative_to_stroke : int | None
         Day index relative to stroke onset (negative = pre-stroke). ``None``
         when not yet known for this animal.
+    wavesurfer_sides_match_mouse_sides : bool
+        Copy of the per-animal flag from
+        :class:`stroke_orofacial.animals.AnimalInfo` /
+        :class:`stroke_orofacial.manifest.SessionManifest`. Drives
+        per-side dict-key translation at emit: when ``False`` (current
+        PS46–PS55 cohort, mirrored rig), every ``{"L": ..., "R": ...}``
+        inside the criteria and endpoints blocks has L↔R swapped so the
+        emitted JSON is mouse-frame. The convention scalars are stamped
+        into the metadata block so readers can confirm the frame.
 
     Returns
     -------
@@ -392,14 +492,25 @@ def write_session_endpoints_json(
         "source_npz_hashes": source_npz_hashes,
         "writer_run_timestamp": datetime.datetime.now().isoformat(),
     }
+    # Task #17: stamp the rig convention so downstream readers can
+    # unambiguously interpret L/R labels inside criteria + endpoints
+    # blocks. Version 1 of the scheme: two scalars embedded in
+    # metadata, per-side dict keys translated to mouse frame.
+    stamp_side_convention(metadata, wavesurfer_sides_match_mouse_sides)
 
     endpoints_block = {
         name: _serialize_endpoint_value(value) for name, value in endpoints.items()
     }
+    endpoints_block = _translate_endpoints_block_to_mouse_frame(
+        endpoints_block, wavesurfer_sides_match_mouse_sides,
+    )
 
     criteria_block: dict[str, dict[str, Any]] = dict(criteria)
     criteria_block[COHORT_AGGREGATED_CRITERIA_SLUG] = dict(
         INTER_SESSION_REQUIRES_COHORT_SENTINEL
+    )
+    criteria_block = _translate_criteria_block_to_mouse_frame(
+        criteria_block, wavesurfer_sides_match_mouse_sides,
     )
 
     payload = {
