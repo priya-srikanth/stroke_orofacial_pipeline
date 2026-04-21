@@ -15,15 +15,19 @@ sanity-check-only defaults.
 
 from __future__ import annotations
 
+import datetime
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from stroke_orofacial.animals import get_animal
 from stroke_orofacial.dlc_spatial.window_selector import (
     RewardAlignedWindow,
     _ws_to_cam_frames,
 )
+from stroke_orofacial.manifest import SessionManifest, build_manifest
+from stroke_orofacial.paths import PathResolver
 
 
 def load_reward_events(
@@ -122,28 +126,36 @@ def build_reward_aligned_window(
 
 
 def build_reward_aligned_analysis(
-    animal: str,
-    date_str: str,
+    manifest: SessionManifest,
     bodypart: str,
     center_mode: str,
     trial_group: str,
     window_ms: tuple[float, float],
-    resolver: Any,
+    resolver: PathResolver,
     spatial_config: dict[str, Any],
     reward_config: dict[str, Any],
 ) -> dict[str, Any] | None:
     """Run a complete reward-aligned spatial analysis for one session.
 
+    Primary entry point — consumes a ``SessionManifest`` produced by
+    ``build_manifest()``. Reads DLC h5 files from ``manifest.dlc_h5_files``
+    and the cam2 alignment template from ``manifest.alignment_template``
+    instead of re-discovering. Phase 6 is DLC-required (it reads the
+    centered parquet derived from DLC h5).
+
     Pure function — no module-level state. Loads all inputs from disk,
     builds the reward-aligned window, computes the histogram, and returns
     the results.
 
+    For callers that prefer the legacy (animal, date_str) entry point,
+    see ``build_reward_aligned_analysis_by_animal_date()`` below.
+
     Parameters
     ----------
-    animal : str
-        Animal ID.
-    date_str : str
-        Session date (YYYYMMDD).
+    manifest : SessionManifest
+        Per-session manifest. ``dlc_h5_files`` must be populated.
+        ``alignment_template`` (cam2) and the Phase 2 licks NPZ must
+        exist on disk for the analysis to proceed.
     bodypart : str
         Bodypart name.
     center_mode : str
@@ -153,7 +165,8 @@ def build_reward_aligned_analysis(
     window_ms : tuple[float, float]
         Reward window in ms.
     resolver : PathResolver
-        Configured path resolver.
+        Configured path resolver (used for output-tree placement and as
+        a cam2 alignment-template fallback when the manifest didn't see it).
     spatial_config : dict
         The ``dlc_spatial`` section from defaults.yaml.
     reward_config : dict
@@ -163,22 +176,34 @@ def build_reward_aligned_analysis(
     -------
     dict or None
         ``{"histogram": ..., "window": ..., "n_rewards": ..., "n_selected_frames": ...}``
-        or None if data is missing.
+        or None if upstream artefacts (centered parquet, licks NPZ, or
+        alignment template) are missing.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``manifest.dlc_h5_files`` is empty (Phase 6 requires DLC).
     """
-    from stroke_orofacial.dlc_io.loaders import discover_dlc_filtered_files
+    if not manifest.dlc_h5_files:
+        raise FileNotFoundError(
+            f"{manifest.session_id}: manifest.dlc_h5_files is empty. "
+            f"Phase 6 reward-aligned spatial analysis requires DLC. "
+            f"Either provide a manifest with DLC files, or run DLC "
+            f"inference first."
+        )
+
     from stroke_orofacial.dlc_io.parquet import _param_sig, read_centered_parquet
     from stroke_orofacial.dlc_spatial.pixel_bins import build_histogram
 
-    # Load centered parquet
-    dlc_dir = resolver.dlc_output_dir(animal)
-    h5_files = discover_dlc_filtered_files(dlc_dir, date_str)
-    if not h5_files:
-        return None
+    animal = manifest.animal
+    date = manifest.date
+    date_str = date.strftime("%Y%m%d")
 
+    # Locate the centered parquet derived from this manifest's first DLC h5.
     lik_thr_centering = 0.7  # Phase 4 centering threshold
     sig = _param_sig(center_mode, lik_thr_centering)
     parquet_dir = resolver.pipeline_outputs("dlc_analysis") / f"centered_{center_mode}" / animal
-    parquet_name = f"{h5_files[0].name}.intermediate.{sig}.parquet"
+    parquet_name = f"{manifest.dlc_h5_files[0].name}.intermediate.{sig}.parquet"
     parquet_path = parquet_dir / parquet_name
     if not parquet_path.exists():
         return None
@@ -186,7 +211,7 @@ def build_reward_aligned_analysis(
     df = read_centered_parquet(parquet_path)
     n_frames = len(df)
 
-    # Load reward events
+    # Load reward events from Phase 2 licks NPZ (manifest gives animal+date).
     spout_root = resolver.pipeline_outputs("spout_behavior")
     licks_path = spout_root / "licks_and_rewards" / animal / f"{date_str}.npz"
     if not licks_path.exists():
@@ -196,10 +221,11 @@ def build_reward_aligned_analysis(
     if len(reward_ws) == 0:
         return None
 
-    # Load alignment template
-    import datetime as dt
-    date = dt.datetime.strptime(date_str, "%Y%m%d").date()
-    align_path = resolver.alignment_template(animal, date, cam="cam2")
+    # Alignment template: prefer the manifest's cam2 entry; fall back to
+    # the resolver if the manifest didn't see it at build time.
+    align_path = manifest.alignment_template
+    if align_path is None or not align_path.exists():
+        align_path = resolver.alignment_template(animal, date, cam="cam2")
     if not align_path.exists():
         return None
 
@@ -256,3 +282,38 @@ def build_reward_aligned_analysis(
         "bodypart": bodypart,
         "center_mode": center_mode,
     }
+
+
+def build_reward_aligned_analysis_by_animal_date(
+    animal: str,
+    date_str: str,
+    bodypart: str,
+    center_mode: str,
+    trial_group: str,
+    window_ms: tuple[float, float],
+    resolver: PathResolver,
+    spatial_config: dict[str, Any],
+    reward_config: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Convenience wrapper: builds a SessionManifest then calls build_reward_aligned_analysis().
+
+    Equivalent to::
+
+        animal_info = get_animal(animal)
+        date = datetime.datetime.strptime(date_str, "%Y%m%d").date()
+        manifest = build_manifest(animal, date, resolver, animal_info)
+        return build_reward_aligned_analysis(
+            manifest, bodypart, center_mode, trial_group, window_ms,
+            resolver, spatial_config, reward_config,
+        )
+
+    Phase 6 is DLC-required; if DLC inference hasn't run for this session,
+    the underlying ``build_reward_aligned_analysis`` raises FileNotFoundError.
+    """
+    animal_info = get_animal(animal)
+    date = datetime.datetime.strptime(date_str, "%Y%m%d").date()
+    manifest = build_manifest(animal, date, resolver, animal_info)
+    return build_reward_aligned_analysis(
+        manifest, bodypart, center_mode, trial_group, window_ms,
+        resolver, spatial_config, reward_config,
+    )

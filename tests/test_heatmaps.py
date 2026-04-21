@@ -8,7 +8,12 @@ import pandas as pd
 
 matplotlib.use("Agg")  # non-interactive backend for tests
 
-from stroke_orofacial.dlc_spatial.heatmaps import plot_heatmap, save_heatmap_png
+from stroke_orofacial.dlc_spatial.heatmaps import (
+    plot_heatmap,
+    save_heatmap_npz,
+    save_heatmap_png,
+)
+from stroke_orofacial.dlc_spatial.pixel_bins import build_histogram
 
 
 def _make_dlc_df(n: int = 1000) -> pd.DataFrame:
@@ -81,3 +86,103 @@ class TestSaveHeatmapPng:
         save_heatmap_png(fig, out, dpi=72)
         assert out.exists()
         assert out.stat().st_size > 1000  # non-trivial PNG
+
+
+class TestSaveHeatmapNpz:
+    """save_heatmap_npz wraps build_histogram and writes the dict to NPZ.
+
+    Per DECISIONS.md "2026-04-19 Save fine-grid heatmap NPZ" — saves the
+    fine-grid array alongside the PNG so future figure tweaks and Phase 9
+    fine-resolution stats don't have to recompute from parquet.
+    """
+
+    def test_saves_file_with_expected_keys(self, tmp_path):
+        df = _make_dlc_df()
+        config = {
+            "heatmap_nbins": 100,
+            "bodyparts": {"nose": {"likelihood_threshold": 0.80}},
+        }
+        out = tmp_path / "test_heatmap.npz"
+        ok = save_heatmap_npz(
+            df, "nose", config, out,
+            x_limits=(-50, 50), y_limits=(-50, 50), nbins=100,
+        )
+        assert ok is True
+        assert out.exists()
+
+        loaded = np.load(out)
+        for key in (
+            "H_counts", "H_proportion", "xedges", "yedges",
+            "x_limits", "y_limits", "nbins",
+        ):
+            assert key in loaded.files, f"missing key {key} in NPZ"
+
+        # Bin shapes are nbins x nbins (counts) and nbins+1 (edges)
+        assert loaded["H_counts"].shape == (100, 100)
+        assert loaded["xedges"].shape == (101,)
+        assert loaded["yedges"].shape == (101,)
+        assert int(loaded["nbins"]) == 100
+
+    def test_matches_build_histogram_directly(self, tmp_path):
+        """Parity guard: NPZ contents equal what build_histogram returns
+        when called with the same args. The new helper is a thin wrapper —
+        any drift means the helper is computing differently than the
+        existing PNG-producing pipeline reads."""
+        df = _make_dlc_df()
+        config = {
+            "heatmap_nbins": 100,
+            "bodyparts": {"nose": {"likelihood_threshold": 0.80}},
+        }
+        out = tmp_path / "test_heatmap.npz"
+        save_heatmap_npz(
+            df, "nose", config, out,
+            x_limits=(-50, 50), y_limits=(-50, 50), nbins=100,
+        )
+        loaded = np.load(out)
+
+        direct = build_histogram(
+            df, "nose", config,
+            x_limits=(-50, 50), y_limits=(-50, 50), nbins=100,
+        )
+        np.testing.assert_array_equal(loaded["H_counts"], direct["H_counts"])
+        np.testing.assert_array_equal(loaded["H_proportion"], direct["H_proportion"])
+        np.testing.assert_array_equal(loaded["xedges"], direct["xedges"])
+        np.testing.assert_array_equal(loaded["yedges"], direct["yedges"])
+
+    def test_returns_false_when_no_valid_points(self, tmp_path):
+        """Empty / all-low-likelihood data: build_histogram returns None;
+        save_heatmap_npz returns False without writing a file."""
+        df = _make_dlc_df()
+        df["nose_likelihood"] = 0.0  # all below threshold
+        config = {
+            "heatmap_nbins": 50,
+            "bodyparts": {"nose": {"likelihood_threshold": 0.80}},
+        }
+        out = tmp_path / "test_empty.npz"
+        ok = save_heatmap_npz(
+            df, "nose", config, out,
+            x_limits=(-50, 50), y_limits=(-50, 50),
+        )
+        assert ok is False
+        assert not out.exists()
+
+    def test_nbins_param_changes_resolution(self, tmp_path):
+        """nbins is exposed as an explicit per-call parameter (Priya 2026-04-20)."""
+        df = _make_dlc_df()
+        config = {
+            "heatmap_nbins": 100,
+            "bodyparts": {"nose": {"likelihood_threshold": 0.80}},
+        }
+        out_50 = tmp_path / "n50.npz"
+        out_200 = tmp_path / "n200.npz"
+        save_heatmap_npz(df, "nose", config, out_50,
+                         x_limits=(-50, 50), y_limits=(-50, 50), nbins=50)
+        save_heatmap_npz(df, "nose", config, out_200,
+                         x_limits=(-50, 50), y_limits=(-50, 50), nbins=200)
+
+        n50 = np.load(out_50)
+        n200 = np.load(out_200)
+        assert n50["H_counts"].shape == (50, 50)
+        assert n200["H_counts"].shape == (200, 200)
+        assert int(n50["nbins"]) == 50
+        assert int(n200["nbins"]) == 200

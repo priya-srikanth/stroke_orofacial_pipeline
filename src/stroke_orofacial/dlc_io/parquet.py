@@ -27,9 +27,11 @@ from typing import Any, Literal
 
 import pandas as pd
 
+from stroke_orofacial.animals import get_animal
 from stroke_orofacial.config_loader import load_defaults
 from stroke_orofacial.dlc_io.centering import apply_centering, compute_center
-from stroke_orofacial.dlc_io.loaders import discover_dlc_filtered_files, read_dlc
+from stroke_orofacial.dlc_io.loaders import read_dlc
+from stroke_orofacial.manifest import SessionManifest, build_manifest
 from stroke_orofacial.paths import PathResolver
 
 logger = logging.getLogger(__name__)
@@ -95,8 +97,7 @@ def read_centered_parquet(path: Path | str) -> pd.DataFrame:
 
 
 def build_centered_parquet(
-    animal: str,
-    date_str: str,
+    manifest: SessionManifest,
     center_mode: str,
     resolver: PathResolver,
     params: dict[str, Any] | None = None,
@@ -105,19 +106,25 @@ def build_centered_parquet(
 ) -> Path | None:
     """Build a centered DLC parquet for one session + one centering mode.
 
+    Primary entry point — consumes a ``SessionManifest`` produced by
+    ``build_manifest()``. Reads DLC h5 files from ``manifest.dlc_h5_files``
+    instead of re-discovering via ``discover_dlc_filtered_files``.
+
     Pure function — no module-level state. Can be called in a loop over
-    animals/dates/modes without accumulating globals.
+    manifests/modes without accumulating globals.
+
+    For callers that prefer the legacy (animal, date_str) entry point,
+    see ``build_centered_parquet_by_animal_date()`` below.
 
     Parameters
     ----------
-    animal : str
-        Animal ID (e.g. "PS46").
-    date_str : str
-        Session date as YYYYMMDD.
+    manifest : SessionManifest
+        Per-session manifest. ``dlc_h5_files`` must be populated — Phase 4
+        is the first DLC-consuming phase, so this is a hard requirement.
     center_mode : str
         One of "nose", "spout_midpoint", "eye_midpoint".
     resolver : PathResolver
-        Configured path resolver.
+        Configured path resolver (used for output-tree placement).
     params : dict, optional
         The ``dlc_centering`` section from defaults.yaml. Loaded if None.
     overwrite : str
@@ -127,24 +134,31 @@ def build_centered_parquet(
     -------
     Path or None
         Path to the written parquet, or None if skipped.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``manifest.dlc_h5_files`` is empty (DLC inference hasn't run
+        for this session yet).
     """
+    if not manifest.dlc_h5_files:
+        raise FileNotFoundError(
+            f"{manifest.session_id}: manifest.dlc_h5_files is empty. "
+            f"Phase 4 parquet building requires DLC. Either provide a "
+            f"manifest with DLC files, or run DLC inference first."
+        )
+
     if params is None:
         params = load_defaults().get("dlc_centering", {})
 
     lik_thr = float(params.get("likelihood_threshold", 0.7))
     compression = str(params.get("compression", "zstd"))
 
-    # Discover DLC filtered H5 files
-    dlc_dir = resolver.dlc_output_dir(animal)
-    h5_files = discover_dlc_filtered_files(dlc_dir, date_str)
-    if not h5_files:
-        logger.warning("No DLC filtered H5 files for %s/%s", animal, date_str)
-        return None
-
+    animal = manifest.animal
     output_root = resolver.pipeline_outputs("dlc_analysis")
     results: list[Path] = []
 
-    for h5_path in h5_files:
+    for h5_path in manifest.dlc_h5_files:
         # Build output path matching legacy convention
         sig = _param_sig(center_mode, lik_thr)
         out_name = f"{h5_path.name}.intermediate.{sig}.parquet"
@@ -171,6 +185,35 @@ def build_centered_parquet(
         results.append(out_path)
 
     return results[0] if results else None
+
+
+def build_centered_parquet_by_animal_date(
+    animal: str,
+    date_str: str,
+    center_mode: str,
+    resolver: PathResolver,
+    params: dict[str, Any] | None = None,
+    *,
+    overwrite: Literal["skip", "force"] = "skip",
+) -> Path | None:
+    """Convenience wrapper: builds a SessionManifest then calls build_centered_parquet().
+
+    Equivalent to::
+
+        animal_info = get_animal(animal)
+        date = datetime.datetime.strptime(date_str, "%Y%m%d").date()
+        manifest = build_manifest(animal, date, resolver, animal_info)
+        return build_centered_parquet(manifest, center_mode, resolver, params, ...)
+
+    Phase 4 is DLC-required; if DLC inference hasn't run for this session,
+    the underlying ``build_centered_parquet`` raises FileNotFoundError.
+    """
+    animal_info = get_animal(animal)
+    date = datetime.datetime.strptime(date_str, "%Y%m%d").date()
+    manifest = build_manifest(animal, date, resolver, animal_info)
+    return build_centered_parquet(
+        manifest, center_mode, resolver, params, overwrite=overwrite,
+    )
 
 
 def _save_dlc_session_params(

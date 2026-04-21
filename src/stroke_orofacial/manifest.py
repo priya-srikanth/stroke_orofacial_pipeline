@@ -123,27 +123,28 @@ def build_manifest(
     Returns
     -------
     SessionManifest
-
-    Raises
-    ------
-    FileNotFoundError
-        If the DLC output directory does not exist or no DLC files are found.
+        Always returned. Discoverable inputs (DLC files, wavesurfer file,
+        video files, alignment template) are populated when present and
+        left empty/None when not. Phase orchestrators that require a
+        specific input check for it themselves and raise with a clear,
+        phase-scoped error message.
     """
-    # Resolve DLC paths
-    dlc_dir = resolver.dlc_output_dir(animal)
-    if not dlc_dir.exists():
-        raise FileNotFoundError(
-            f"DLC output directory not found: {dlc_dir}\n"
-            f"Is the MICROSCOPE server mounted?"
-        )
-
-    # Discover DLC files
-    dlc_h5_files, dlc_csv_files = _discover_dlc_files(dlc_dir, date)
-    if not dlc_h5_files and not dlc_csv_files:
-        raise FileNotFoundError(
-            f"No filtered DLC files found for {animal} on {date} in {dlc_dir}.\n"
-            f"Looked for: video2_{date.strftime('%Y-%m-%d')}T*_filtered.{{h5,csv}}"
-        )
+    # Discover DLC files (optional — DLC inference may not have run yet
+    # for this session, or the DLC output mount may be unavailable). DLC
+    # is treated symmetrically with wavesurfer and video: discover if
+    # present, else emit empty lists. The "I need DLC" assertion lives
+    # in each DLC-consuming orchestrator (Phase 3+) so that DLC-free
+    # workflows (Phase 2 spout behavior; pre-DLC behavior analysis;
+    # video-failed sessions where wavesurfer is still clean) can build
+    # and use a manifest without hitting a hard failure here.
+    dlc_h5_files: list[Path] = []
+    dlc_csv_files: list[Path] = []
+    try:
+        dlc_dir = resolver.dlc_output_dir(animal)
+        if dlc_dir.exists():
+            dlc_h5_files, dlc_csv_files = _discover_dlc_files(dlc_dir, date)
+    except (FileNotFoundError, ValueError):
+        pass  # DLC outputs not available — leave lists empty
 
     # Resolve alignment template (optional — may not exist for every session)
     alignment_path = resolver.alignment_template(animal, date)

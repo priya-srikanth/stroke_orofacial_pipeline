@@ -98,15 +98,24 @@ _WS_LOCAL = Path(
     reason="MICROSCOPE mount or wavesurfer data not available",
 )
 class TestIntegrationAlignment:
+    """Integration tests via the by_animal_date wrapper.
+
+    The wrapper builds a SessionManifest internally; the manifest-first
+    primary signature is exercised in
+    ``TestIntegrationAlignmentWithManifest`` below.
+    """
+
     def test_load_existing_template(self, monkeypatch):
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
-        from stroke_orofacial.alignment.timebase import load_or_compute_alignment
+        from stroke_orofacial.alignment.timebase import (
+            load_or_compute_alignment_by_animal_date,
+        )
         from stroke_orofacial.config_loader import load_defaults
         from stroke_orofacial.paths import PathResolver
 
         resolver = PathResolver()
         params = load_defaults()["alignment"]
-        result = load_or_compute_alignment(
+        result = load_or_compute_alignment_by_animal_date(
             "PS46", datetime.date(2025, 3, 7), resolver, params
         )
         assert result.source == "loaded"
@@ -118,7 +127,9 @@ class TestIntegrationAlignment:
         """Recomputed template matches the existing one (parity)."""
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         from stroke_orofacial.alignment.templates import load_alignment_template
-        from stroke_orofacial.alignment.timebase import load_or_compute_alignment
+        from stroke_orofacial.alignment.timebase import (
+            load_or_compute_alignment_by_animal_date,
+        )
         from stroke_orofacial.config_loader import load_defaults
         from stroke_orofacial.paths import PathResolver
 
@@ -130,8 +141,8 @@ class TestIntegrationAlignment:
         ref_path = resolver.alignment_template("PS46", date, cam="cam2")
         ref = load_alignment_template(ref_path)
 
-        # Recompute
-        result = load_or_compute_alignment(
+        # Recompute via wrapper
+        result = load_or_compute_alignment_by_animal_date(
             "PS46", date, resolver, params, force_recompute=True
         )
         assert result.source == "computed"
@@ -157,3 +168,93 @@ class TestIntegrationAlignment:
             float(ref["slope_ws_per_camFrame"]),
             rtol=1e-8,
         )
+
+
+@pytest.mark.skipif(
+    not _MOUNT.exists() or not (_WS_LOCAL / "20250307" / "PS46").exists(),
+    reason="MICROSCOPE mount or wavesurfer data not available",
+)
+class TestIntegrationAlignmentWithManifest:
+    """Exercise the manifest-first primary signature on real data."""
+
+    def test_load_with_manifest_uses_manifest_alignment_template(self, monkeypatch):
+        """Build manifest explicitly, pass to load_or_compute_alignment(manifest, ...).
+
+        The manifest's pre-resolved alignment_template path should be used
+        verbatim for the existing-template load path."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        from stroke_orofacial.alignment.timebase import load_or_compute_alignment
+        from stroke_orofacial.animals import get_animal
+        from stroke_orofacial.config_loader import load_defaults
+        from stroke_orofacial.manifest import build_manifest
+        from stroke_orofacial.paths import PathResolver
+
+        resolver = PathResolver()
+        params = load_defaults()["alignment"]
+        date = datetime.date(2025, 3, 7)
+        animal_info = get_animal("PS46")
+        manifest = build_manifest("PS46", date, resolver, animal_info)
+        assert manifest.alignment_template is not None, (
+            "build_manifest did not locate the cam2 alignment template"
+        )
+
+        result = load_or_compute_alignment(manifest, resolver, params)
+        assert result.source == "loaded"
+        assert result.sig_camIdx__idx_ws.shape[0] > 0
+
+    def test_recompute_with_manifest_uses_manifest_inputs(self, monkeypatch):
+        """force_recompute path consumes manifest.wavesurfer_file +
+        manifest.video_files[0].parent (for cam2 CSV discovery)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        from stroke_orofacial.alignment.timebase import load_or_compute_alignment
+        from stroke_orofacial.animals import get_animal
+        from stroke_orofacial.config_loader import load_defaults
+        from stroke_orofacial.manifest import build_manifest
+        from stroke_orofacial.paths import PathResolver
+
+        resolver = PathResolver()
+        params = load_defaults()["alignment"]
+        date = datetime.date(2025, 3, 7)
+        animal_info = get_animal("PS46")
+        manifest = build_manifest("PS46", date, resolver, animal_info)
+        assert manifest.wavesurfer_file is not None
+        assert len(manifest.video_files) > 0, (
+            "build_manifest did not locate cam2 video files"
+        )
+
+        result = load_or_compute_alignment(
+            manifest, resolver, params, force_recompute=True
+        )
+        assert result.source == "computed"
+        assert result.sig_camIdx__idx_ws.shape[0] > 0
+
+
+class TestLoadOrComputeAlignmentRaisesOnMissingWavesurfer:
+    """Pure-unit guard: recompute path must raise when manifest lacks
+    wavesurfer (and ws_signals not provided), regardless of mount state."""
+
+    def test_raises_when_recompute_needed_but_wavesurfer_missing(self, tmp_path):
+        from unittest.mock import MagicMock
+
+        from stroke_orofacial.alignment.timebase import load_or_compute_alignment
+        from stroke_orofacial.manifest import SessionManifest
+        from stroke_orofacial.paths import PathResolver
+
+        # Force-recompute on a manifest with no wavesurfer + no template path.
+        resolver = MagicMock(spec=PathResolver)
+        # Resolver-fallback path doesn't exist either (forces recompute branch).
+        resolver.alignment_template.return_value = tmp_path / "nope.npz"
+
+        manifest = SessionManifest(
+            session_id="PS46_20250307",
+            animal="PS46",
+            date=datetime.date(2025, 3, 7),
+            day_relative_to_stroke=-6,
+            phase="baseline",
+            wavesurfer_file=None,  # the missing input
+            alignment_template=None,
+        )
+        with pytest.raises(FileNotFoundError, match="wavesurfer"):
+            load_or_compute_alignment(
+                manifest, resolver, params={"cam_idx": 2}, force_recompute=True
+            )

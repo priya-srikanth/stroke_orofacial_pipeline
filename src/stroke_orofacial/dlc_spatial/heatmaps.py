@@ -18,10 +18,12 @@ from typing import Any
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 from stroke_orofacial.dlc_spatial.pixel_bins import (
     _get_per_center_mode_params,
+    build_histogram,
     get_masked_xy,
 )
 
@@ -145,3 +147,90 @@ def save_heatmap_png(
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(str(path), dpi=dpi, bbox_inches="tight")
     plt.close(fig)
+
+
+def save_heatmap_npz(
+    df: pd.DataFrame,
+    bodypart: str,
+    config: dict[str, Any],
+    path: Path,
+    *,
+    center_mode: str | None = None,
+    nbins: int = 100,
+    x_limits: tuple[float, float] | None = None,
+    y_limits: tuple[float, float] | None = None,
+    x_range: tuple[float, float] | None = None,
+    window: Any | None = None,
+) -> bool:
+    """Save the fine-grid heatmap histogram array as NPZ alongside the PNG.
+
+    Wraps ``build_histogram`` and writes the resulting dict to disk so future
+    figure tweaks (different colormaps, axis limits, normalization) and
+    Phase 9 fine-resolution spatial stats don't have to recompute from
+    parquet. Per DECISIONS.md "2026-04-19 Save fine-grid heatmap NPZ".
+
+    The default ``nbins=100`` matches ``plot_heatmap``'s internal default
+    (``config["heatmap_nbins"]``) that produced the existing PNG outputs,
+    so adding NPZs alongside existing PNGs leaves the PNG content
+    unchanged. Pass a different ``nbins`` to explore alternative
+    resolutions per Priya 2026-04-20.
+
+    NPZ keys (matches ``build_histogram`` return + adds ``x_limits`` /
+    ``y_limits`` / ``nbins`` for self-description):
+      - ``H_counts`` — raw 2D histogram counts (nbins × nbins)
+      - ``H_proportion`` — normalized so total = 1
+      - ``xedges``, ``yedges`` — bin edges
+      - ``x_limits``, ``y_limits`` — axis range used for binning
+      - ``nbins`` — bin count per axis
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Centered DLC DataFrame.
+    bodypart : str
+        Bodypart name.
+    config : dict
+        The ``dlc_spatial`` section from defaults.yaml (passed through to
+        ``build_histogram`` for likelihood / per-(bodypart, center_mode)
+        axis-limit lookup).
+    path : Path
+        Destination NPZ path. Parent dirs created automatically.
+    center_mode : str, optional
+        Centering mode. Forwarded to ``build_histogram``.
+    nbins : int
+        Bins per axis. Default 100 matches the existing PNG-producing
+        histogram resolution.
+    x_limits, y_limits, x_range, window : same as ``build_histogram``.
+
+    Returns
+    -------
+    bool
+        True if NPZ was written, False if ``build_histogram`` returned None
+        (no valid points after masking).
+    """
+    hist = build_histogram(
+        df, bodypart, config,
+        center_mode=center_mode,
+        x_limits=x_limits,
+        y_limits=y_limits,
+        x_range=x_range,
+        nbins=nbins,
+        window=window,
+    )
+    if hist is None:
+        return False
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    extent = hist["extent"]
+    np.savez(
+        str(path),
+        H_counts=hist["H_counts"],
+        H_proportion=hist["H_proportion"],
+        xedges=hist["xedges"],
+        yedges=hist["yedges"],
+        x_limits=np.asarray([extent[0], extent[1]], dtype=np.float64),
+        y_limits=np.asarray([extent[2], extent[3]], dtype=np.float64),
+        nbins=int(nbins),
+    )
+    return True

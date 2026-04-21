@@ -154,18 +154,38 @@ class TestBuildManifest:
         )
         assert m.excluded is False
 
-    def test_missing_dlc_dir_raises(self, ps46_info):
+    def test_missing_dlc_dir_yields_empty_lists(self, ps46_info, tmp_path):
+        """When DLC dir is missing, build_manifest emits a manifest with
+        empty dlc_h5_files / dlc_csv_files (no raise).
+
+        DLC is symmetric with wavesurfer/video: discoverable-if-present,
+        empty-if-not. The "I need DLC" assertion belongs to each
+        DLC-consuming orchestrator, not to manifest construction.
+        """
         resolver = MagicMock(spec=PathResolver)
         resolver.dlc_output_dir.return_value = Path("/nonexistent/path")
-        with pytest.raises(FileNotFoundError, match="DLC output directory not found"):
-            build_manifest("PS46", datetime.date(2025, 3, 7), resolver, ps46_info)
+        # Alignment template path is constructed but won't exist
+        resolver.alignment_template.return_value = tmp_path / "no_template.npz"
 
-    def test_no_dlc_files_raises(self, mock_resolver, ps46_info):
-        # Date with no matching files
-        with pytest.raises(FileNotFoundError, match="No filtered DLC files found"):
-            build_manifest(
-                "PS46", datetime.date(2025, 1, 1), mock_resolver, ps46_info,
-            )
+        manifest = build_manifest(
+            "PS46", datetime.date(2025, 3, 7), resolver, ps46_info
+        )
+        assert manifest.session_id == "PS46_20250307"
+        assert manifest.animal == "PS46"
+        assert manifest.dlc_h5_files == []
+        assert manifest.dlc_csv_files == []
+        assert manifest.alignment_template is None
+
+    def test_no_dlc_files_yields_empty_lists(self, mock_resolver, ps46_info):
+        """When DLC dir exists but no filtered files match the date,
+        build_manifest emits empty lists (no raise)."""
+        # Date with no matching files in mock_dlc_dir
+        manifest = build_manifest(
+            "PS46", datetime.date(2025, 1, 1), mock_resolver, ps46_info,
+        )
+        assert manifest.session_id == "PS46_20250101"
+        assert manifest.dlc_h5_files == []
+        assert manifest.dlc_csv_files == []
 
 
 # ---- Integration test (requires real mount) ----
