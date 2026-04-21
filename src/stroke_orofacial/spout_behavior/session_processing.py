@@ -357,10 +357,10 @@ def process_session_by_animal_date(
         manifest = build_manifest(animal, date, resolver, animal_info)
         return process_session(manifest, resolver, ...)
 
-    Note: ``build_manifest()`` requires DLC filtered files to exist for the
-    session — for animal/date combinations where DLC inference hasn't run
-    yet, build the manifest manually with empty ``dlc_h5_files`` and call
-    ``process_session()`` directly.
+    Phase 2 (spout behavior) is DLC-free by design: ``build_manifest()``
+    treats DLC files as optional and yields empty lists when missing, so
+    this wrapper works for sessions where DLC inference hasn't run yet
+    or where video recording failed but wavesurfer is still clean.
     """
     animal_info = get_animal(animal)
     manifest = build_manifest(animal, date, resolver, animal_info)

@@ -68,6 +68,10 @@ class TestProcessSessionRaisesOnMissingWavesurfer:
         resolver = MagicMock(spec=PathResolver)
         resolver.pipeline_outputs.return_value = tmp_path
 
+        # Empty dlc_h5_files / dlc_csv_files (defaults) intentionally:
+        # process_session must NOT check DLC fields — Phase 2 is DLC-free
+        # by design. The error must originate from the missing wavesurfer
+        # file, not from the missing DLC files.
         manifest = SessionManifest(
             session_id="PS46_20250307",
             animal="PS46",
@@ -276,6 +280,30 @@ class TestIntegrationProcessSessionWithManifest:
         )
         assert manifest.animal == "PS46"
         assert manifest.date == date
+
+        result = process_session(manifest, resolver, overwrite="force")
+        assert len(result) == 7
+
+    def test_process_session_succeeds_with_empty_dlc(self, monkeypatch):
+        """Phase 2 is DLC-free: manifest with empty dlc_h5_files still
+        processes successfully (sessions where DLC inference hasn't run
+        yet, or where video failed but wavesurfer is clean)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        from stroke_orofacial.animals import get_animal
+        from stroke_orofacial.manifest import build_manifest
+        from stroke_orofacial.paths import PathResolver
+        from stroke_orofacial.spout_behavior.session_processing import process_session
+
+        resolver = PathResolver()
+        date = datetime.date(2025, 3, 7)
+        animal_info = get_animal("PS46")
+        manifest = build_manifest("PS46", date, resolver, animal_info)
+
+        # Synthesize the DLC-less case by clearing the discovered DLC fields.
+        # Wavesurfer must still be present (Phase 2 requires it).
+        manifest.dlc_h5_files = []
+        manifest.dlc_csv_files = []
+        assert manifest.wavesurfer_file is not None
 
         result = process_session(manifest, resolver, overwrite="force")
         assert len(result) == 7
