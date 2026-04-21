@@ -46,6 +46,44 @@ class TestParamsJsonPath:
         assert result == tmp_path / "params" / "PS46" / "20250307.json"
 
 
+class TestProcessSessionRaisesOnMissingWavesurfer:
+    """Pure-unit-level guard: process_session must raise a clear error when
+    the manifest has no wavesurfer file (regardless of whether real data is
+    mounted)."""
+
+    def test_raises_when_wavesurfer_file_is_none(self, tmp_path):
+        from unittest.mock import MagicMock
+
+        from stroke_orofacial.config_loader import (
+            load_defaults,
+            load_session_overrides,
+        )
+        from stroke_orofacial.manifest import SessionManifest
+        from stroke_orofacial.paths import PathResolver
+        from stroke_orofacial.spout_behavior.session_processing import process_session
+
+        # Mock resolver: pipeline_outputs returns an empty tmp dir so that
+        # _check_overwrite sees no existing outputs and proceeds to the
+        # wavesurfer-load step (which is where the FileNotFoundError fires).
+        resolver = MagicMock(spec=PathResolver)
+        resolver.pipeline_outputs.return_value = tmp_path
+
+        manifest = SessionManifest(
+            session_id="PS46_20250307",
+            animal="PS46",
+            date=datetime.date(2025, 3, 7),
+            day_relative_to_stroke=-6,
+            phase="baseline",
+            wavesurfer_file=None,
+        )
+        with pytest.raises(FileNotFoundError, match="wavesurfer"):
+            process_session(
+                manifest, resolver, overwrite="force",
+                defaults=load_defaults(),
+                overrides_config=load_session_overrides(),
+            )
+
+
 class TestSaveSessionParams:
     def test_writes_json_with_all_fields(self, tmp_path):
         params = {
@@ -147,17 +185,25 @@ _MOUNT = Path("/Volumes/Neurobio/MICROSCOPE/Priya")
     reason="Wavesurfer data or MICROSCOPE mount not available",
 )
 class TestIntegrationProcessSession:
-    """Run process_session on real data and verify params.json provenance."""
+    """Run process_session via the by_animal_date wrapper on real data and
+    verify params.json provenance.
+
+    The wrapper builds a SessionManifest internally; the primary
+    ``process_session(manifest, resolver, ...)`` API is exercised separately
+    in ``TestIntegrationProcessSessionWithManifest`` below.
+    """
 
     def test_process_and_params_json_written(self, monkeypatch):
-        """process_session writes per-session params.json with skipped=False."""
+        """process_session_by_animal_date writes per-session params.json with skipped=False."""
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         from stroke_orofacial.paths import PathResolver
-        from stroke_orofacial.spout_behavior.session_processing import process_session
+        from stroke_orofacial.spout_behavior.session_processing import (
+            process_session_by_animal_date,
+        )
 
         resolver = PathResolver()
         date = datetime.date(2025, 3, 7)
-        result = process_session("PS46", date, resolver, overwrite="force")
+        result = process_session_by_animal_date("PS46", date, resolver, overwrite="force")
 
         # Should have returned paths for all 7 output types
         assert len(result) == 7
@@ -176,16 +222,18 @@ class TestIntegrationProcessSession:
         """When overwrite='skip' and outputs exist, params.json is still written."""
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         from stroke_orofacial.paths import PathResolver
-        from stroke_orofacial.spout_behavior.session_processing import process_session
+        from stroke_orofacial.spout_behavior.session_processing import (
+            process_session_by_animal_date,
+        )
 
         resolver = PathResolver()
         date = datetime.date(2025, 3, 7)
 
         # First run ensures outputs exist (force)
-        process_session("PS46", date, resolver, overwrite="force")
+        process_session_by_animal_date("PS46", date, resolver, overwrite="force")
 
         # Second run with skip — should return empty dict but write params.json
-        result = process_session("PS46", date, resolver, overwrite="skip")
+        result = process_session_by_animal_date("PS46", date, resolver, overwrite="skip")
         assert result == {}
 
         params_path = _V2 / "params" / "PS46" / "20250307.json"
@@ -195,6 +243,43 @@ class TestIntegrationProcessSession:
         assert record["skipped"] is True
         assert len(record["processing_log"]) == 7
         assert all(e["action"] == "skipped" for e in record["processing_log"])
+
+
+@pytest.mark.skipif(
+    not (_WS_LOCAL / "20250307" / "PS46").exists() or not _MOUNT.exists(),
+    reason="Wavesurfer data or MICROSCOPE mount not available",
+)
+class TestIntegrationProcessSessionWithManifest:
+    """Exercise the manifest-first primary signature of process_session.
+
+    The notebook orchestrator pattern (build manifest in a visible cell,
+    pass to process_session) is the canonical entry point post-Phase-6.7.
+    These tests verify the manifest-first path on real data.
+    """
+
+    def test_process_session_with_manifest(self, monkeypatch):
+        """Build manifest explicitly, pass to process_session(manifest, ...)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        from stroke_orofacial.animals import get_animal
+        from stroke_orofacial.manifest import build_manifest
+        from stroke_orofacial.paths import PathResolver
+        from stroke_orofacial.spout_behavior.session_processing import process_session
+
+        resolver = PathResolver()
+        date = datetime.date(2025, 3, 7)
+        animal_info = get_animal("PS46")
+        manifest = build_manifest("PS46", date, resolver, animal_info)
+
+        # Manifest must have wavesurfer_file populated for process_session.
+        assert manifest.wavesurfer_file is not None, (
+            "build_manifest did not locate the wavesurfer .h5"
+        )
+        assert manifest.animal == "PS46"
+        assert manifest.date == date
+
+        result = process_session(manifest, resolver, overwrite="force")
+        assert len(result) == 7
+
 
 
 @pytest.mark.skipif(

@@ -17,12 +17,14 @@ from typing import Any, Literal
 
 import numpy as np
 
+from stroke_orofacial.animals import get_animal
 from stroke_orofacial.config_loader import (
     check_merge_required,
     get_session_params,
     load_defaults,
     load_session_overrides,
 )
+from stroke_orofacial.manifest import SessionManifest, build_manifest
 from stroke_orofacial.paths import PathResolver
 from stroke_orofacial.spout_behavior.bouts import (
     find_grooming_bouts,
@@ -34,7 +36,6 @@ from stroke_orofacial.spout_behavior.bouts import (
 from stroke_orofacial.spout_behavior.lick_detection import find_licks_and_rewards
 from stroke_orofacial.spout_behavior.wavesurfer_io import (
     calibrate_treadmill,
-    find_wavesurfer_file,
     load_wavesurfer_signals,
     smooth_treadmill,
 )
@@ -171,8 +172,7 @@ def _check_overwrite(
 
 
 def process_session(
-    animal: str,
-    date: datetime.date,
+    manifest: SessionManifest,
     resolver: PathResolver,
     *,
     overwrite: Literal["skip", "prompt", "force"] = "skip",
@@ -181,14 +181,19 @@ def process_session(
 ) -> dict[str, Path]:
     """Run the full spout-behavior pipeline for one session.
 
+    Primary entry point — consumes a ``SessionManifest`` produced by
+    ``build_manifest()``. The wavesurfer file path is read from
+    ``manifest.wavesurfer_file``; animal/date come from the manifest.
+
+    For callers that prefer the legacy (animal, date) entry point, see
+    ``process_session_by_animal_date()`` below.
+
     Parameters
     ----------
-    animal : str
-        Animal ID (e.g. "PS46").
-    date : datetime.date
-        Session date.
+    manifest : SessionManifest
+        Per-session manifest. Must have ``wavesurfer_file`` populated.
     resolver : PathResolver
-        Configured path resolver.
+        Configured path resolver (used for output-tree placement).
     overwrite : str
         Overwrite mode: "skip" (default), "prompt", or "force".
     defaults : dict, optional
@@ -207,8 +212,11 @@ def process_session(
     NotImplementedError
         If this session has a ``merges`` entry in session_overrides.yaml.
     FileNotFoundError
-        If wavesurfer file or directory is missing.
+        If ``manifest.wavesurfer_file`` is None (wavesurfer data not
+        located when the manifest was built).
     """
+    animal = manifest.animal
+    date = manifest.date
     date_str = date.strftime("%Y%m%d")
     output_root = resolver.pipeline_outputs("spout_behavior")
     processing_log: list[dict] = []
@@ -240,8 +248,13 @@ def process_session(
     logger.info("Processing %s/%s ...", animal, date_str)
 
     # ---- Step 1: Load wavesurfer signals ----
-    ws_dir = resolver.wavesurfer_dir(date, animal)
-    ws_file = find_wavesurfer_file(ws_dir)
+    ws_file = manifest.wavesurfer_file
+    if ws_file is None:
+        raise FileNotFoundError(
+            f"manifest.wavesurfer_file is None for {animal}/{date_str}. "
+            f"build_manifest() did not locate a wavesurfer .h5 — is the "
+            f"wavesurfer_raw mount available?"
+        )
     signals = load_wavesurfer_signals(ws_file)
     Fs = float(signals["sample_rate_input"])
 
@@ -327,6 +340,39 @@ def process_session(
     return paths
 
 
+def process_session_by_animal_date(
+    animal: str,
+    date: datetime.date,
+    resolver: PathResolver,
+    *,
+    overwrite: Literal["skip", "prompt", "force"] = "skip",
+    defaults: dict[str, Any] | None = None,
+    overrides_config: dict[str, Any] | None = None,
+) -> dict[str, Path]:
+    """Convenience wrapper: builds a SessionManifest then calls process_session().
+
+    Equivalent to::
+
+        animal_info = get_animal(animal)
+        manifest = build_manifest(animal, date, resolver, animal_info)
+        return process_session(manifest, resolver, ...)
+
+    Note: ``build_manifest()`` requires DLC filtered files to exist for the
+    session — for animal/date combinations where DLC inference hasn't run
+    yet, build the manifest manually with empty ``dlc_h5_files`` and call
+    ``process_session()`` directly.
+    """
+    animal_info = get_animal(animal)
+    manifest = build_manifest(animal, date, resolver, animal_info)
+    return process_session(
+        manifest,
+        resolver,
+        overwrite=overwrite,
+        defaults=defaults,
+        overrides_config=overrides_config,
+    )
+
+
 def process_animal(
     animal: str,
     dates: list[datetime.date],
@@ -335,6 +381,10 @@ def process_animal(
     overwrite: Literal["skip", "prompt", "force"] = "skip",
 ) -> list[dict[str, Path]]:
     """Run the spout-behavior pipeline for all sessions of one animal.
+
+    Thin loop over ``process_session_by_animal_date()``. Loads
+    ``defaults.yaml`` and ``session_overrides.yaml`` once for the whole
+    animal.
 
     Parameters
     ----------
@@ -359,7 +409,7 @@ def process_animal(
     results = []
     for date in dates:
         try:
-            result = process_session(
+            result = process_session_by_animal_date(
                 animal, date, resolver,
                 overwrite=overwrite,
                 defaults=defaults,
