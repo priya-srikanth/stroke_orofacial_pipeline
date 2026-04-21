@@ -98,6 +98,23 @@ class AnimalInfo:
         Laser power used for the photothrombotic stroke induction, in
         milliwatts. None for animals without recorded stroke laser power
         (including future sham/no-stroke controls).
+    wavesurfer_sides_match_mouse_sides : bool
+        Whether the wavesurfer acquisition's ``Lick_L``/``Lick_R``/
+        ``Reward_L``/``Reward_R`` channel labels correspond directly to
+        the mouse's left/right sides (``True``) or are mirrored
+        (``False``, meaning wavesurfer L = mouse R). Default ``False``
+        — fail-conservative for the current PS46–PS55 cohort acquired
+        on the mirrored rig. This flag is consumed by
+        :mod:`stroke_orofacial.lr_convention` at every output emission
+        boundary: output NPZ / JSON / parquet artifacts carry
+        mouse-frame labels, stamped with
+        ``wavesurfer_sides_match_mouse_sides`` and
+        ``side_convention_version`` scalars so downstream consumers
+        can unambiguously interpret the frame. Internal pipeline
+        arithmetic stays on the wavesurfer frame to preserve parity
+        with the Phase 3/4/5/6 baselines. See DECISIONS.md 2026-04-20
+        "Wavesurfer L/R ↔ mouse-frame boundary-layer translation" and
+        ``docs/prompts/phase-7-dlc-kinematics-kickoff.md`` Prereq #3.
     """
 
     animal_id: str
@@ -114,6 +131,9 @@ class AnimalInfo:
     date_of_birth: datetime.date | None = None
     genotype: str | None = None
     stroke_laser_power_mW: float | None = None
+    # L/R rig convention (added 2026-04-20 per task #17). Default False
+    # is fail-conservative: current PS46–PS55 cohort is wavesurfer=mirror.
+    wavesurfer_sides_match_mouse_sides: bool = False
 
     def day_relative_to_stroke(self, session_date: datetime.date) -> int:
         """Return the difference in days from stroke_date.
@@ -230,6 +250,18 @@ def load_animals(config_path: Path | str | None = None) -> dict[str, AnimalInfo]
                 f"got {sex_raw!r}"
             )
 
+        # L/R rig convention (task #17). Absent key defaults to False
+        # (fail-conservative — current cohort is mirrored). YAML booleans
+        # arrive as Python bools; reject anything else to catch typos
+        # (e.g. "false" as a string) at load time.
+        ws_match_raw = spec.get("wavesurfer_sides_match_mouse_sides", False)
+        if not isinstance(ws_match_raw, bool):
+            raise ValueError(
+                f"Animal {animal_id!r}: wavesurfer_sides_match_mouse_sides "
+                f"must be a bool (true/false); got "
+                f"{type(ws_match_raw).__name__}={ws_match_raw!r}"
+            )
+
         animals[animal_id] = AnimalInfo(
             animal_id=animal_id,
             stroke_date=_parse_date(spec["stroke_date"]),
@@ -242,6 +274,7 @@ def load_animals(config_path: Path | str | None = None) -> dict[str, AnimalInfo]
             date_of_birth=dob,
             genotype=spec.get("genotype"),
             stroke_laser_power_mW=spec.get("stroke_laser_power_mW"),
+            wavesurfer_sides_match_mouse_sides=ws_match_raw,
         )
     return animals
 
