@@ -149,6 +149,62 @@ Phase 7 is gated on these landing on `main` first:
    (a) wait, or (b) proceed but emit `animal_sex` / `age_at_session` as
    `None` columns with a TODO marker and add them in a Phase-7-followup
    commit once #18 lands. Pick (b) only if Priya explicitly approves.
+3. **Task #17 — Wavesurfer L/R ↔ mouse frame convention.** Wavesurfer
+   channel labels `L`/`R` are **experimenter-facing** — flipped from the
+   mouse's own perspective. Convention: wavesurfer `L` channel is on the
+   mouse's RIGHT side of the face; wavesurfer `R` is on the mouse's LEFT.
+   Legacy handling splits in two:
+   - Legacy tongue/jaw kinematics notebooks
+     (`20260203_DLC_analysis_ws_aligned_parquet_input_tongue.ipynb` cell
+     25 and `20260416_..._jaw.ipynb` cells 22 & 24) apply a **data-level
+     flip at load time** — `ws_lick_mouseL = lk["Lick_R"]` etc. —
+     so all downstream parquet/trial/figure code sees mouse-frame labels.
+   - Legacy `behavior_report_PS.py` keeps data in wavesurfer frame and
+     translates to mouse frame **only at plot-label time** via
+     `fn_flip_lr` (lines 250, 413, 437, 690, 760, 792, 839, 886–887).
+   - Our port of Phases 2 (spout_behavior) and 5/6 (dlc_spatial) currently
+     inherits the behavior_report convention — wavesurfer frame throughout
+     with no translation at emit. JSON outputs label `"L"`/`"R"` in
+     experimenter frame without a schema annotation.
+
+   **Resolution per 2026-04-20 Cowork decision (Priya):
+   boundary-layer translation, NOT flip-at-load.** Phase 7 must implement:
+   - Internal processing stays on wavesurfer frame. Trial grouping,
+     per-trial arithmetic, PSD computation, interpolation — all keyed by
+     wavesurfer channel names. This preserves parity with the legacy
+     kinematics notebooks' *numerical* outputs (the flip is purely a
+     relabeling; every scalar endpoint value is identical).
+   - `AnimalInfo.to_mouse_side(ws_side: str) -> str` helper (added in
+     task #17) returns the mouse-frame label, controlled by per-animal
+     `wavesurfer_sides_flipped_from_mouse: bool` (default `True` for the
+     current PS46–PS55 cohort; future animals with corrected wiring set
+     `False`).
+   - **Every Phase 7 output boundary translates to mouse frame:**
+     - Parquet `side` column values (final per-trial parquet written per
+       sub-phase).
+     - PNG / SVG figure labels, axis titles, legend entries.
+     - Any per-side JSON writers (whole-session endpoint aggregates if
+       we add them in Phase 7).
+     - Output filenames that include a side in the name (e.g.
+       `{animal}_{date}_{endpoint}_mouseL.png`, not `_L.png`).
+   - **Schema annotation:** any JSON or parquet that emits a `side`
+     column must include a top-level `"side_convention": "mouse"`
+     field/attribute so the convention is self-documenting for future
+     consumers.
+
+   **Parity note:** The boundary-layer approach means Phase 7 per-trial
+   numerical parity against the legacy tongue/jaw notebooks' outputs is
+   checked *after un-flipping the legacy labels* — i.e., legacy
+   `side=L` rows map to our `side=R` (mouse-frame), and vice versa. The
+   parity test in each sub-phase must apply this mapping before
+   comparing arrays. Document this explicitly in each sub-phase's
+   parity script.
+
+   If task #17 has NOT landed when Phase 7 starts, STOP and ask Priya.
+   Do not begin Phase 7 sub-phases against a pre-#17 codebase — the
+   convention migration touches output filenames and would create
+   a painful retroactive rename sweep if the emissions are written out
+   first in wavesurfer frame.
 
 ## Branch setup
 
@@ -377,6 +433,18 @@ pipeline_outputs_v2/dlc_analysis/
   PSD code, even if the "USE ME" cells look canonical.
 - The interpolation logic IS to be ported faithfully (Q6 prerequisite);
   do not redesign it without Priya's explicit approval.
+- **Wavesurfer L/R ↔ mouse-frame convention.** Internal computation
+  operates on wavesurfer frame (trial grouping, per-trial arithmetic,
+  PSD, interpolation — all keyed by `L`/`R` wavesurfer channel names).
+  All output boundaries translate to mouse frame via
+  `AnimalInfo.to_mouse_side()` (task #17): parquet `side` column
+  values, figure labels, legends, axis titles, output filenames, and
+  any JSON aggregates. Any emitted parquet / JSON / NPZ that contains
+  a `side` field must also include a `side_convention: "mouse"`
+  top-level metadata field. The legacy tongue/jaw notebooks applied
+  this flip at *load* time — our port applies it at *emit* time.
+  Per-trial parity comparisons against the legacy notebooks' arrays
+  must un-flip the legacy labels before comparing.
 
 ## Exit criteria
 
