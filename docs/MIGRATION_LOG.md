@@ -2223,3 +2223,122 @@ orchestrator. Each of the five notebooks grew from 4 → 5 cells.
   captures the re-emit procedure and the Phase 5/6 follow-up gate.
 - [x] Implemented on feature branch `feat/wavesurfer-side-convention`
   cut from `main` at `0ff6fd9`.
+
+---
+
+## Task #17 follow-up — Phase 2 re-emit across PS46–PS55
+
+**Date:** 2026-04-21.
+
+**Scope:** Executed `docs/runbooks/reemit-phase-5-6-after-lr-fix.md`
+§1–§4 + §7 on the Windows clone against the MICROSCOPE SMB mount.
+
+**Phase 2 re-emit:** 257 sessions emitted across all 8 cohort animals
+(PS46–PS55) via the manifest-first `process_session(manifest, resolver,
+overwrite="force")` path (post-6.7a). 138 sessions skipped (no
+wavesurfer file present on MICROSCOPE — raw wavesurfer mirror from
+Mac-local is still pending per the Phase 2 entry's "Known constraints"
+bullet). 0 errors. Total artifact count: 1799 NPZs (257 × 7 types).
+
+| Animal | Sessions emitted | NPZs (×7 types) |
+|--------|-----------------:|----------------:|
+| PS46 | 21 | 147 |
+| PS47 | 21 | 147 |
+| PS48 | 20 | 140 |
+| PS49 | 22 | 154 |
+| PS50 | 19 | 133 |
+| PS51 | 52 | 364 |
+| PS54 | 52 | 364 |
+| PS55 | 50 | 350 |
+| **TOTAL** | **257** | **1799** |
+
+**Stamp verification:** every emitted NPZ (1799/1799) carries both
+`wavesurfer_sides_match_mouse_sides` (False, matches cohort yaml) and
+`side_convention_version=1`.
+
+**Label-flip verification:** of the 2 pre-re-emit PS46 sessions in the
+backup, only PS46/20250320 was actually pre-task-#17 (no stamps;
+`run_timestamp` 2026-04-17). Re-emit correctly flipped L↔R across all
+3 side-keyed NPZ types (`wavesurfer_signals_processed`,
+`licks_and_rewards`, `peri_reward_periods`): 8/8 L/R pairs, all
+non-trivial (counts e.g. `Lick_L`: 1200 → 756, `Lick_R`: 756 → 1200).
+PS46/20250307's backup was already post-task-#17 (stamps present;
+`run_timestamp` 2026-04-21T06:17:15 — predates the re-emit), so the
+re-emit produced byte-identical output. See the hygiene note below for
+why the 20250307 artifact was already post-task-#17 pre-re-emit.
+
+**§5 (Phase 8a.7.5 JSON re-emit) — no-op, not executed:** no
+production cohort orchestrator currently calls
+`write_session_endpoints_json()` — the writer + criteria are unit-
+tested only (`tests/test_endpoints_writer.py`, `tests/test_criteria.py`).
+`stroke_orofacial_pipeline_outputs/spout_behavior/endpoints/` does
+not exist on MICROSCOPE; there is no cohort of 8a.7.5 JSONs on disk to
+re-emit. Matches the Phase 8a.7.5 "no pre-existing parity fixture"
+callout earlier in this log. Cohort emit is deferred to a future phase;
+no action taken on the re-emit runbook §5 this pass.
+
+**Backup scope:** narrowed to the `spout_behavior/` subtree (16 files,
+0.397 GB) rather than the runbook's literal full-tree copy. Backed up
+to the sibling `stroke_orofacial_pipeline_outputs/spout_behavior.pre-task17.bak/`
+following the runbook's `.pre-task17.bak` naming. Phase 4 parquets
+(`dlc_analysis/centered_*/`), Phase 3 alignment templates
+(`alignment/cam2/`), and all Phase 5/6 outputs
+(`dlc_analysis/spatial_*/`) were untouched by the re-emit so backing
+them up adds no recovery value for this operation — rationale recorded
+for review.
+
+**§7 (Phase 5/6 deferral) verified:** `dlc_analysis/spatial_whole_session/`
+(18 files, max mtime 2026-04-20T09:38:13) and
+`dlc_analysis/spatial_reward_aligned/` (54 files, max mtime
+2026-04-20T09:41:57) are both strictly pre-re-emit. Re-emit ran on
+2026-04-21 and did not touch either tree. Heatmap NPZ convention-flip
+deferral per runbook §7 remains tracked as a Phase-7-blocking follow-up.
+
+**Known-benign drift on `Treadmill_smoothed`:** comparing the
+post-task-#17 PS46/20250307 backup to the re-emit of the same session
+shows max abs diff 1.78e-14, max rel diff 4.17e-9 on the
+`Treadmill_smoothed` float64 array (3,610,000 samples; 3,153,308
+elements differ by 1–2 ULP, 456,692 exactly equal).
+`np.allclose(rtol=1e-10, atol=1e-10)` passes. This is threaded-scipy
+filter-order reordering between consecutive runs on the same Windows
+host — well inside the integration-parity tolerance
+(`TestIntegrationParity` uses `rtol=1e-10, atol=1e-10` for allclose
+arrays). Not a regression.
+
+**Hygiene finding triggered by the PS46/20250307 timestamp anomaly:**
+two Mac-gated integration test cases write to the real
+`stroke_orofacial_pipeline_outputs/spout_behavior/` tree (rather than
+`tmp_path`) via `overwrite="force"`:
+
+- [tests/test_session_processing.py:152-173](../tests/test_session_processing.py#L152-L173)
+  `TestIntegrationProcessSession.test_process_and_params_json_written`
+  — `process_session_by_animal_date("PS46", 2025-03-07, resolver,
+  overwrite="force")` emits the PS46/20250307 artifacts into the
+  production output path. On a Mac with MICROSCOPE mounted, running
+  `pytest` on this branch after task #17 merged is sufficient to
+  re-emit 20250307 with mouse-frame labels — which is exactly what
+  happened to the pre-re-emit backup observed at
+  `run_timestamp 2026-04-21T06:17:15`.
+- [tests/test_session_processing.py:175-198](../tests/test_session_processing.py#L175-L198)
+  `TestIntegrationProcessSession.test_skip_path_writes_params_json` —
+  same pattern; runs once with force, once with skip, same target
+  session + real output path.
+
+This is a test-hygiene smell (integration test mutating the real
+production output tree instead of a scratch path) flagged for a
+separate cleanup pass; no fix in this entry. Other integration tests
+(`TestIntegrationParity` in `test_dlc_parquet.py`,
+`TestIntegrationRewardAligned` in `test_reward_aligned.py`) reference
+the real output dir for reads only — not a concern.
+
+**`pytest -q` post-re-emit:** 439 passed / 34 skipped / 0 failed / 1
+pre-existing warning (Windows). Matches the same counts observed
+pre-re-emit on this branch; the re-emit does not affect test
+collection or results. Mac-side count differs due to Mac-gated
+integration tests skipping on Windows — the 482-passed count recorded
+in the task-#17 entry above reflects the Mac baseline.
+
+**No source data modified, no Phase 5/6 outputs modified, no commits
+created during re-emit.** Re-emit wrote only to the gitignored
+`stroke_orofacial_pipeline_outputs/` tree plus the one-shot
+`spout_behavior.pre-task17.bak/` sibling backup.
