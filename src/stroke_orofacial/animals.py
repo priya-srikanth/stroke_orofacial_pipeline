@@ -9,7 +9,7 @@ from __future__ import annotations
 import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
@@ -81,6 +81,23 @@ class AnimalInfo:
         Recovery phenotype label (filled in later by recovery_epochs module).
     analysis_params : dict
         Per-animal analysis parameters (e.g. break thresholds).
+    sex : {"M", "F"} or None
+        Biological sex. None if not recorded. Handled as a covariate in
+        Phase 9 stats (not as a cohort split) per DECISIONS.md 2026-04-19
+        Audit-10 Q7.
+    date_of_birth : datetime.date or None
+        Animal's date of birth. None if not recorded. Enables
+        age-at-session and age-at-stroke covariate computation.
+    genotype : str or None
+        Genotype / breeding-line annotation. Free-form string. For the
+        2025 PS46–PS55 cohort this is "C57BL/6J" with an optional
+        "(negative littermate)" annotation indicating a breeding-scheme
+        negative result (still received stroke induction; still on the
+        C57BL/6J base line).
+    stroke_laser_power_mW : float or None
+        Laser power used for the photothrombotic stroke induction, in
+        milliwatts. None for animals without recorded stroke laser power
+        (including future sham/no-stroke controls).
     """
 
     animal_id: str
@@ -90,6 +107,13 @@ class AnimalInfo:
     exclusions: list[Exclusion] = field(default_factory=list)
     recovery_phenotype: str | None = None
     analysis_params: dict[str, Any] = field(default_factory=dict)
+    # Cohort metadata (added 2026-04-20 per Audit-10 Q7 / task #18).
+    # Optional — each field may be None for animals where the data is not
+    # yet recorded, keeps old yaml files loadable without migration.
+    sex: Literal["M", "F"] | None = None
+    date_of_birth: datetime.date | None = None
+    genotype: str | None = None
+    stroke_laser_power_mW: float | None = None
 
     def day_relative_to_stroke(self, session_date: datetime.date) -> int:
         """Return the difference in days from stroke_date.
@@ -122,6 +146,24 @@ class AnimalInfo:
             if exc.date == session_date and exc.applies(analysis_type):
                 return True, exc.reason
         return False, None
+
+    def age_at_date(self, session_date: datetime.date) -> int | None:
+        """Age in days on a given session date.
+
+        Returns None if ``date_of_birth`` is unset — consumers should
+        treat age as a missing covariate rather than substituting a
+        default value.
+        """
+        if self.date_of_birth is None:
+            return None
+        return (session_date - self.date_of_birth).days
+
+    def age_at_stroke(self) -> int | None:
+        """Age in days at stroke induction (i.e., on ``stroke_date``).
+
+        Returns None if ``date_of_birth`` is unset.
+        """
+        return self.age_at_date(self.stroke_date)
 
 
 def _parse_date(value: Any) -> datetime.date:
@@ -175,6 +217,19 @@ def load_animals(config_path: Path | str | None = None) -> dict[str, AnimalInfo]
         if spec.get("stroke_date") is None:
             # Skip animals with null stroke_date (placeholder entries)
             continue
+        # Cohort metadata fields (added 2026-04-20 per Audit-10 Q7).
+        # All optional — use .get() so older yaml files without these keys
+        # still load cleanly with None defaults.
+        dob_raw = spec.get("date_of_birth")
+        dob = _parse_date(dob_raw) if dob_raw is not None else None
+
+        sex_raw = spec.get("sex")
+        if sex_raw is not None and sex_raw not in ("M", "F"):
+            raise ValueError(
+                f"Animal {animal_id!r}: sex must be 'M', 'F', or unset; "
+                f"got {sex_raw!r}"
+            )
+
         animals[animal_id] = AnimalInfo(
             animal_id=animal_id,
             stroke_date=_parse_date(spec["stroke_date"]),
@@ -183,6 +238,10 @@ def load_animals(config_path: Path | str | None = None) -> dict[str, AnimalInfo]
             exclusions=_parse_exclusions(spec.get("exclusions")),
             recovery_phenotype=spec.get("recovery_phenotype"),
             analysis_params=spec.get("analysis_params", {}),
+            sex=sex_raw,
+            date_of_birth=dob,
+            genotype=spec.get("genotype"),
+            stroke_laser_power_mW=spec.get("stroke_laser_power_mW"),
         )
     return animals
 

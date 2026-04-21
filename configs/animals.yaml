@@ -13,6 +13,13 @@
 #
 # Exclusions: union of both notebooks, upgraded to universal ("all") where
 # the underlying reason applies across analyses (see MIGRATION_LOG.md).
+#
+# Cohort metadata (sex, date_of_birth, genotype, stroke_laser_power_mW) added
+# 2026-04-20 per Audit-10 Q7 resolution (see DECISIONS.md 2026-04-19 entry).
+# Source: Priya's direct cohort records. Ages at stroke range 95–101 days
+# (~14 weeks, standard adult-mouse age). Genotype annotation "negative
+# littermate" on PS49 / PS50 refers to breeding-scheme negative result
+# (still C57BL/6J base line, still received stroke induction).
 
 PS46:
   stroke_date: 2025-03-13
@@ -21,6 +28,10 @@ PS46:
     end: 2025-04-06
   exclusions: []
   recovery_phenotype: null
+  sex: F
+  date_of_birth: 2024-12-03
+  genotype: "C57BL/6J"
+  stroke_laser_power_mW: 2.2
   analysis_params:
     break_thr_trialmax: 12000.0
     break_thr_alllicks: 9000.0
@@ -32,6 +43,10 @@ PS47:
     end: 2025-04-06
   exclusions: []
   recovery_phenotype: null
+  sex: F
+  date_of_birth: 2024-12-03
+  genotype: "C57BL/6J"
+  stroke_laser_power_mW: 2.2
   analysis_params:
     break_thr_trialmax: 12000.0
     break_thr_alllicks: 9000.0
@@ -43,6 +58,10 @@ PS48:
     end: 2025-04-06
   exclusions: []
   recovery_phenotype: null
+  sex: F
+  date_of_birth: 2024-12-03
+  genotype: "C57BL/6J"
+  stroke_laser_power_mW: 2.2
   analysis_params:
     break_thr_trialmax: 12000.0
     break_thr_alllicks: 9000.0
@@ -54,6 +73,10 @@ PS49:
     end: 2025-04-06
   exclusions: []
   recovery_phenotype: null
+  sex: F
+  date_of_birth: 2024-12-12
+  genotype: "C57BL/6J (negative littermate)"
+  stroke_laser_power_mW: 2.5
   analysis_params:
     break_thr_trialmax: 12000.0
     break_thr_alllicks: 9000.0
@@ -65,6 +88,10 @@ PS50:
     end: 2025-04-06
   exclusions: []
   recovery_phenotype: null
+  sex: F
+  date_of_birth: 2024-12-12
+  genotype: "C57BL/6J (negative littermate)"
+  stroke_laser_power_mW: 2.5
   analysis_params:
     break_thr_trialmax: 12000.0
     break_thr_alllicks: 9000.0
@@ -79,6 +106,10 @@ PS51:
       reason: "excluded across all analyses (Rose Bengal sham with delayed licking)"
       applies_to: [all]
   recovery_phenotype: null
+  sex: M
+  date_of_birth: 2025-01-23
+  genotype: "C57BL/6J"
+  stroke_laser_power_mW: 3.0
   analysis_params:
     break_thr_trialmax: 9000.0
     break_thr_alllicks: 7000.0
@@ -93,6 +124,10 @@ PS54:
       reason: "excluded across all analyses (Rose Bengal sham with delayed licking)"
       applies_to: [all]
   recovery_phenotype: null
+  sex: M
+  date_of_birth: 2025-01-23
+  genotype: "C57BL/6J"
+  stroke_laser_power_mW: 3.0
   analysis_params:
     break_thr_trialmax: 12000.0
     break_thr_alllicks: 9000.0
@@ -110,6 +145,10 @@ PS55:
       reason: "excluded across all analyses (messed up reward delivery during session)"
       applies_to: [all]
   recovery_phenotype: null
+  sex: M
+  date_of_birth: 2025-01-23
+  genotype: "C57BL/6J"
+  stroke_laser_power_mW: 5.0
   analysis_params:
     break_thr_trialmax: 12000.0
     break_thr_alllicks: 9000.0

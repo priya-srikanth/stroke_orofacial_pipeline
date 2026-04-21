@@ -29,6 +29,10 @@ def animals_yaml(tmp_path: Path) -> Path:
                 end: 2025-04-06
               exclusions: []
               recovery_phenotype: null
+              sex: F
+              date_of_birth: 2024-12-03
+              genotype: "C57BL/6J"
+              stroke_laser_power_mW: 2.2
               analysis_params:
                 break_thr_trialmax: 12000.0
                 break_thr_alllicks: 9000.0
@@ -81,6 +85,41 @@ class TestLoadAnimals:
         exc = ps54.exclusions[0]
         assert exc.date == datetime.date(2025, 4, 26)
         assert exc.applies_to == ["tongue"]
+
+    def test_ps46_cohort_metadata(self, animals_yaml):
+        """PS46 has all 4 cohort metadata fields populated in the fixture."""
+        animals = load_animals(animals_yaml)
+        ps46 = animals["PS46"]
+        assert ps46.sex == "F"
+        assert ps46.date_of_birth == datetime.date(2024, 12, 3)
+        assert ps46.genotype == "C57BL/6J"
+        assert ps46.stroke_laser_power_mW == 2.2
+
+    def test_ps54_cohort_metadata_missing_defaults_to_none(self, animals_yaml):
+        """Animals without cohort metadata in yaml should load with None
+        defaults — this keeps old yaml files loadable without migration."""
+        animals = load_animals(animals_yaml)
+        ps54 = animals["PS54"]
+        assert ps54.sex is None
+        assert ps54.date_of_birth is None
+        assert ps54.genotype is None
+        assert ps54.stroke_laser_power_mW is None
+
+    def test_invalid_sex_raises(self, tmp_path):
+        """sex must be 'M', 'F', or unset — anything else should fail fast."""
+        cfg = tmp_path / "bad_sex.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  sex: "unknown"
+            """)
+        )
+        with pytest.raises(ValueError, match="sex must be"):
+            load_animals(cfg)
 
 
 class TestGetAnimal:
@@ -168,6 +207,42 @@ class TestAnimalInfoMethods:
         # Not excluded when no analysis type specified (only universal applies)
         excluded, _ = info.is_excluded(datetime.date(2025, 1, 5))
         assert excluded is False
+
+
+class TestAgeHelpers:
+    def test_age_at_date_returns_days(self):
+        info = AnimalInfo(
+            animal_id="PS46",
+            stroke_date=datetime.date(2025, 3, 13),
+            session_start=datetime.date(2025, 3, 7),
+            session_end=datetime.date(2025, 4, 6),
+            date_of_birth=datetime.date(2024, 12, 3),
+        )
+        # 2024-12-03 → 2025-03-07 is exactly 94 days.
+        assert info.age_at_date(datetime.date(2025, 3, 7)) == 94
+
+    def test_age_at_stroke(self):
+        info = AnimalInfo(
+            animal_id="PS46",
+            stroke_date=datetime.date(2025, 3, 13),
+            session_start=datetime.date(2025, 3, 7),
+            session_end=datetime.date(2025, 4, 6),
+            date_of_birth=datetime.date(2024, 12, 3),
+        )
+        # 2024-12-03 → 2025-03-13 = 100 days.
+        assert info.age_at_stroke() == 100
+
+    def test_age_at_date_none_when_dob_missing(self):
+        """Callers should treat None as a missing covariate — never
+        substitute a default age value."""
+        info = AnimalInfo(
+            animal_id="PS54",
+            stroke_date=datetime.date(2025, 4, 30),
+            session_start=datetime.date(2025, 4, 16),
+            session_end=datetime.date(2025, 7, 9),
+        )
+        assert info.age_at_date(datetime.date(2025, 5, 1)) is None
+        assert info.age_at_stroke() is None
 
 
 class TestExclusion:
