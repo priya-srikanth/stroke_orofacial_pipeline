@@ -646,7 +646,11 @@ values.
 
 ## Next
 
-Cell 53 scope question resolved (2026-04-21, option b → 7c). All five
-Phase-7 reference notebooks are now classified under `docs/phase-7/`.
-7.0b deliverable is complete and ready to commit+PR+merge+tag as
-`v7.0b-cell-classification`.
+Cell 53 scope question resolved (2026-04-21, option b → 7c; see
+DECISIONS.md entry). All five Phase-7 reference notebooks classified
+under `docs/phase-7/`. 7.0b shipped as PR #60 (commit `2f34aad`), tagged
+`v7.0b-cell-classification`. Next Phase-7 sub-phase (7a-design brief,
+`docs/phase-7/interpolation-strategy.md`) is blocked on the Phase 5/6
+`trial_group` translation mini-PR
+(`v6.8a-phase-5-6-trial-group-translation`), per task #7 and
+`docs/runbooks/reemit-phase-5-6-after-lr-fix.md` §7.

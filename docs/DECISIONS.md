@@ -15,6 +15,55 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-04-21 — Tongue cell 53 (tongue-jaw mismatch classifier) scope → 7c jaw-kinematics
+
+- *Context:* The canonical tongue notebook
+  (`20260203_DLC_analysis_ws_aligned_parquet_input_tongue.ipynb`) cell 53
+  implements a "candidate trial classifier: few/no tongue licks + jaw
+  movement" that emits per-mouse `df_trials_candidates.csv`. It is not
+  in the Q6 locked endpoint list but is a first-class analytical output
+  in the notebook. Three scope options surfaced during 7.0b
+  classification: (a) add it to 7b as a tongue-jaw joint endpoint, (b)
+  defer to 7c and ship as a jaw-initiated mismatch endpoint, or (c) log
+  as an out-of-Phase-7 backlog sideband.
+
+- *Decision:* **Option (b) — port in 7c (jaw-kinematics module).** The
+  cross-bodypart classifier lives in a new function
+  `classify_tongue_jaw_mismatch_trials()` (likely in
+  `stroke_orofacial.dlc.jaw_kinematics` or a thin sibling
+  `tongue_jaw_joint.py`), consuming tongue Cell 23 NPZs + jaw Cell 22
+  NPZs and emitting per-mouse `df_trials_candidates.csv` under
+  `stroke_orofacial_pipeline_outputs/dlc_analysis/7c/`. Dep order stays
+  7b → 7c (no reshuffle); 7b ships tongue-only endpoints including the
+  tongue NPZ, 7c picks up the cross-bodypart classifier after 7b's
+  tongue Cell 23 output is available.
+
+- *Rationale:* (a) **Cleanest dependency direction.** Tongue endpoints
+  elsewhere in 7b don't consume jaw data, so keeping 7b tongue-only
+  preserves a clean module-per-bodypart shape. The one cross-bodypart
+  analysis lives in the downstream (jaw) module, which naturally
+  already depends on tongue-side outputs through the existing
+  SessionManifest wiring. (b) **Matches where the biological logic
+  lives.** The classifier's core question ("did the jaw move without a
+  tongue extension?") is jaw-initiated — the jaw Y-threshold is the
+  primary discriminator, tongue lick-count is the gating condition. (c)
+  **Avoids reshuffling 7b ↔ 7c.** Option (a) would have forced 7b to
+  wait on jaw NPZs from 7c-impl, collapsing the natural 7b-first
+  ordering. Option (c) would strand the classifier in backlog
+  indefinitely despite its first-class status in the canonical
+  notebook.
+
+- *Enforced at:* `docs/phase-7/classification-tongue.md` §Cell 53
+  port-surface block ("Sub-phase owner — 7c"). `docs/phase-7/classification-jaw.md`
+  §top-level summary (tongue-jaw mismatch listed as 7c input).
+  `docs/phase-7/classification-nose.md` cross-notebook Phase-7-summary
+  table (7c row). Implementation lands in the Phase 7c port PR
+  (forthcoming). 605 source lines in cell 53; plotting/scrubbing UI is
+  most of it — the classifier logic itself is expected to be < 80
+  lines.
+
+---
+
 ## 2026-04-21 — Wavesurfer L/R ↔ mouse-frame boundary-layer translation (task #17, Phase 6.8)
 
 - *Context:* Wavesurfer channel labels `L`/`R` are experimenter-facing
