@@ -1661,7 +1661,13 @@ baselines under the Phase 13b `max_frac=1e-4` boolean-tolerance policy. A
 regression guard for the "last lick inside sub-window with right edge past
 it" primitive path already landed in
 `tests/test_criteria.py::TestClampBugRegressionGuards` via the docs+test
-PR on `docs/8a.7.5-external-bnpm-parity-findings`.
+PR on `docs/8a.7.5-external-bnpm-parity-findings`. **Closure (2026-04-20):**
+clamp-fix landed via PR #46 on branch `fix/indexing-find-idx-within-eps-clamp-bug`
+— production `_find_idx_within_eps` no longer clamps the upper bound, mirror-
+in-minimum regression tests live at `tests/test_indexing.py`, and the full
+post-merge details are captured in the "Clamp-fix for
+`_utils/indexing.py:_find_idx_within_eps`" entry below. Forward obligation
+discharged; Phase 5/6 kickoff is unblocked.
 
 **Exit criteria:**
 - [ ] `pytest tests/test_bouts.py -v` byte-identical pass.

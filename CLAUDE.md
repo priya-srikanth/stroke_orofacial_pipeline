@@ -41,7 +41,12 @@ These rules bind every Claude Code session working on this project.
    - Never delete a feature branch with `git branch -D` (force-delete). Use
      `git branch -d` (lowercase), which refuses to delete unmerged branches,
      and only after the branch has been PR-merged to main and the merge has
-     been verified locally.
+     been verified locally. **Important `-d` subtlety:** `git branch -d` only
+     checks that the branch tip is reachable from its configured upstream
+     (i.e., fully pushed), NOT whether the PR was merged to main. A fully-
+     pushed but unmerged branch will delete cleanly under `-d`. The merged-
+     to-main check is yours to enforce — confirm the PR shows as merged on
+     GitHub (`gh pr view <N>` → `state: MERGED`) before running `-d`.
    - After PR-merge, leave the feature branch intact on origin as a permanent
      reference. Pruning is Priya's call, not Claude Code's.
    - When completing a phase, tag the merge commit on main with
