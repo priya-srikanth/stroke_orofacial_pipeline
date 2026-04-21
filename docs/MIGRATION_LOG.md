@@ -2420,3 +2420,83 @@ writers and their callers are unchanged.
   use only. Production callers should never pass it — the real output
   tree is the canonical landing spot for pipeline artifacts and its
   location is controlled by `configs/paths.yaml`.
+
+---
+
+## Phase 7.0b — Cell-by-cell dead-code classification for Phase-7 reference notebooks
+
+**Date:** 2026-04-21. Merged as PR #60 (commit `2f34aad`), tagged
+`v7.0b-cell-classification`.
+
+**What was done:**
+
+Cell-by-cell dead-code classification — option-(b) depth, i.e. label +
+port-surface extraction — for all five Phase-7 reference notebooks, per
+CLAUDE.md §"Phase plan requirements" item (2). Every candidate cell is
+labeled **Production / Exploratory / Deprecated / Ambiguous**; every
+Production cell additionally carries algorithm, inputs, outputs,
+sub-phase owner, and port approach.
+
+Documents added under `docs/phase-7/`:
+- `classification-tongue.md` (59 cells; Q6 tongue-endpoint surface)
+- `classification-jaw.md` (45 cells; 7c jaw-kinematics surface)
+- `classification-whiskers.md` (whisker-kinematics surface)
+- `classification-pixelbin.md` (canonical multi-bodypart heatmap module;
+  sibling of per-bodypart heatmap cells in nose/jaw)
+- `classification-nose.md` (zero Phase-7 port targets — all Production
+  cells are already ported under Phase 4.5 or 5, or scheduled under
+  Phase 5.x mini)
+
+No source code changes.
+
+**Scope findings:**
+
+- **Nose has zero Phase-7 port targets.** 9 code cells split: Production
+  already-ported under Phase 4.5 (cells 6, 8); Production already-ported
+  under Phase 5 with minor gap notes (cells 11, 15); Production scheduled
+  for Phase 5.x mini (cell 13); Exploratory (cells 1, 3, 4, 16). Zero
+  Deprecated, zero Ambiguous. No interpolation, per-trial endpoint, PSD,
+  trial-window, or lick-merge cells in this notebook.
+- **Pixelbin subsumes per-bodypart heatmaps.** Nose cells 11/13/15 map
+  1:1 to pixelbin cells 11/13/15 as single-bodypart variants of the
+  multi-bodypart overlay canonical; the Phase 5.x mini's
+  `plot_all_bodyparts_heatmap_binned(bodyparts=["nose"])` subsumes them.
+- **Tongue cell 53 scope resolved.** The tongue-jaw mismatch trial
+  classifier (not in the Q6 locked endpoint list but a first-class
+  analytical output in the canonical tongue notebook) is assigned to
+  7c (jaw-kinematics). Recorded in DECISIONS.md
+  (2026-04-21 — Tongue cell 53 scope → 7c jaw-kinematics).
+
+**Follow-ups logged (tracked on the TaskList, not in this PR):**
+
+- Docstring cleanup: `dlc_spatial/difference_maps.py` ("cell 12" → cell
+  15 reference, off by 3) and `dlc_spatial/heatmaps.py` ("cells 10-11
+  of jaw.ipynb" reference doesn't match current jaw extract).
+- Phase 5.x mini cell-11 gap: `hist_mode="counts"`, `NORMALIZE_TO_TOTAL`,
+  `NORM_MODE ∈ {power, linear}` enhancements for
+  `dlc_spatial/heatmaps.py`.
+- Phase 5.x mini cell-15 gap: `PRE_BASE_REL_RANGE` config knob for
+  baseline-window selection.
+- Per-mouse nose axis knobs (`x_trim_each_side`, `y_min_override`,
+  `y_max_offset`) to move into `configs/animals.yaml`.
+
+**Unblocks:** Phase 7a-design brief
+(`docs/phase-7/interpolation-strategy.md`), which remains blocked on the
+Phase 5/6 `trial_group` translation mini-PR
+(`v6.8a-phase-5-6-trial-group-translation`) per task #7. That mini-PR is
+the documented §7 follow-up of
+`docs/runbooks/reemit-phase-5-6-after-lr-fix.md` — `save_heatmap_npz`
+and `build_reward_aligned_histograms` get a
+`wavesurfer_sides_match_mouse_sides` parameter so reward-aligned
+`trial_group` slugs translate to mouse frame at emit time.
+
+**Intentional behavior differences vs. legacy notebooks:** None —
+docs-only.
+
+**Exit criteria met:**
+- [x] All 5 notebook classifications present under `docs/phase-7/`.
+- [x] Every Production cell carries algorithm / inputs / outputs /
+      sub-phase owner / port approach.
+- [x] Tongue cell 53 scope question resolved (→ 7c).
+- [x] PR #60 merged to main, tagged `v7.0b-cell-classification`, feature
+      branch preserved on origin.

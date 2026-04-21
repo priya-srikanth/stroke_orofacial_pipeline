@@ -598,16 +598,20 @@ Next actions in sequence:
 
 1. ~~Mark task #11 completed.~~ **Done.**
 2. ~~Resolve tongue cell 53 scope decision~~ **Resolved 2026-04-21:
-   option (b) → 7c.** Updated in `classification-tongue.md` and
-   `classification-jaw.md`.
-3. **Commit + PR + merge + tag 7.0b.** Branch
-   `docs/phase-7-cell-classification`. Tag `v7.0b-cell-classification`
-   with message `Phase 7.0b: cell-by-cell dead-code classification
-   for tongue / jaw / whiskers / pixelbin / nose notebooks`.
-4. **7a-design brief** (`docs/phase-7/interpolation-strategy.md`)
-   opens after 7.0b merges. Blocked by the Phase 5/6 trial_group
-   translation mini-PR (`v6.8a-phase-5-6-trial-group-translation`)
-   per task #7's resolution.
+   option (b) → 7c.** Recorded in DECISIONS.md entry
+   "2026-04-21 — Tongue cell 53 scope → 7c jaw-kinematics" and updated
+   in `classification-tongue.md` and `classification-jaw.md`.
+3. ~~Commit + PR + merge + tag 7.0b.~~ **Shipped** as PR #60 (merge
+   commit `2f34aad`), tagged `v7.0b-cell-classification`.
+4. **Phase 5/6 `trial_group` translation mini-PR**
+   (`v6.8a-phase-5-6-trial-group-translation`) — next unblock in the
+   chain. Scoped in `docs/runbooks/reemit-phase-5-6-after-lr-fix.md`
+   §7: add `wavesurfer_sides_match_mouse_sides` kwarg to
+   `save_heatmap_npz` + `build_reward_aligned_histograms`, translate
+   `trial_group` slug mouse-frame at emit, re-emit existing Phase 6
+   reward-aligned NPZs.
+5. **7a-design brief** (`docs/phase-7/interpolation-strategy.md`)
+   opens once the Phase 5/6 mini-PR lands.
 
 Phase-7 summary of port surface found across all 5 notebooks:
 
