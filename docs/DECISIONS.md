@@ -15,6 +15,109 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-04-20 — Phase 6.7 closes "SessionManifest is dead code" + makes `build_manifest()` symmetric across discoverable inputs
+
+- *Context:* The mid-consolidation audit (2026-04-19) flagged that
+  `SessionManifest` (Phase 1, DESIGN.md §4.2 — designed as the "single
+  source of truth for what belongs to a session") was implemented but
+  never consumed by any production orchestrator. Phases 2/3/4/6 each
+  took `(animal, date, resolver)` and re-discovered their own files,
+  duplicating discovery logic across phases and leaving the manifest
+  effectively dead. A second issue surfaced during 6.7a's mid-phase
+  review: `build_manifest()` was asymmetric — wavesurfer and video were
+  optional (try/except → None / []), but DLC was required (raised
+  `FileNotFoundError` on missing dir or empty filtered-file glob). This
+  blocked Phase 2 spout-behavior processing on (a) sessions where video
+  recording failed but wavesurfer is clean, and (b) newly-collected
+  sessions before DLC inference has been run.
+
+- *Decision (in three parts):*
+  - **Wire `SessionManifest` in as the primary input contract for every
+    phase orchestrator.** Each orchestrator gains a manifest-first
+    primary signature `fn(manifest, resolver, ...)` plus a
+    `fn_by_animal_date(animal, date, resolver, ...)` convenience
+    wrapper that builds the manifest internally. Notebooks build the
+    manifest in a new visible cell so the per-session discovery
+    (wavesurfer / video / DLC / alignment template) is in notebook
+    state rather than hidden inside the orchestrator. Done across
+    Phase 2 (`process_session`), Phase 3 (`load_or_compute_alignment`),
+    Phase 4 (`build_centered_parquet`), and Phase 6
+    (`build_reward_aligned_analysis`). Phase 5 spatial functions
+    operate on already-loaded parquets and don't need the manifest —
+    only the Phase 5 orchestrator notebook builds manifests.
+  - **Make `build_manifest()` symmetric across all discoverable
+    inputs.** DLC is now discovered the same way as wavesurfer and
+    video — present-or-empty, no raise. The "I need DLC to proceed"
+    assertion is pushed into each DLC-consuming orchestrator (Phase 4
+    parquet builder, Phase 6 reward-aligned analysis) at the top of
+    its primary function, with a clear session-scoped error message.
+    Phase 2 (DLC-free by design) does not add the guard. Phase 3
+    alignment is also DLC-agnostic (it relates wavesurfer to camera
+    frames; camera frames exist whether or not DLC has been run) and
+    does not add the guard either — the first DLC guard fires in
+    Phase 4. Strict input-dependency: each phase guards only what it
+    actually reads.
+  - **Two small orthogonal additions** surfaced by the audit are
+    folded in as part of the refactor since they are scope-coupled to
+    the manifest-first APIs:
+    - `load_centered_fresh(h5_path, center_mode, likelihood_threshold)`
+      in `src/stroke_orofacial/dlc_io/centering.py` — exploration
+      escape hatch alongside the parquet-based pathway. Returns a
+      centered DataFrame matching the parquet schema *without* writing
+      to disk, so callers can sweep `likelihood_threshold`
+      interactively for centering-reference picking. Complements the
+      parquet cache; does not replace it.
+    - `save_heatmap_npz(...)` in
+      `src/stroke_orofacial/dlc_spatial/heatmaps.py` — writes the
+      fine-grid histogram array as `heatmap_{date}.npz` alongside the
+      existing PNG. Resolves the deferred 2026-04-19 fine-grid NPZ ask.
+
+- *Rationale:* (a) Honest about what each phase consumes — the manifest
+  abstraction fits the real use cases rather than forcing them. (b) The
+  asymmetric DLC handling was an architectural bug, not a design
+  limitation: the wrapper for Phase 2 inherited the DLC-required
+  failure mode in 6.7a, blocking real workflows; the fix was to make
+  manifest construction total and push the requirement check into the
+  consuming phase. (c) Manifest-first orchestrators have a single
+  consistent shape that's easy to learn and easy to wrap. (d) Notebook
+  visibility: building the manifest in a cell makes the per-session
+  picture inspectable mid-run rather than hidden inside per-phase
+  discovery functions. (e) `load_centered_fresh()` and
+  `save_heatmap_npz()` were called for in the Phase 6.7 kickoff
+  scope; folding them in alongside the manifest-first signature
+  changes amortizes one PR-review pass over both.
+
+- *Enforced at:*
+  - `src/stroke_orofacial/manifest.py` — `build_manifest()` lenient
+    DLC discovery (post-6.7a-fix).
+  - `src/stroke_orofacial/spout_behavior/session_processing.py`,
+    `src/stroke_orofacial/alignment/timebase.py`,
+    `src/stroke_orofacial/dlc_io/parquet.py`,
+    `src/stroke_orofacial/dlc_spatial/reward_aligned.py` — manifest-
+    first primary signatures + `*_by_animal_date` wrappers.
+  - `src/stroke_orofacial/dlc_io/centering.py` —
+    `load_centered_fresh()`.
+  - `src/stroke_orofacial/dlc_spatial/heatmaps.py` —
+    `save_heatmap_npz()`.
+  - Notebooks `00_session_processing.ipynb`, `01_alignment.ipynb`,
+    `10_dlc_build_parquets.ipynb`,
+    `11_dlc_spatial_whole_session.ipynb`,
+    `12_dlc_spatial_reward_aligned.ipynb` — each grew from 4 → 5 cells
+    with a manifest-build cell.
+  - `tests/test_manifest.py` — `test_missing_dlc_dir_raises` /
+    `test_no_dlc_files_raises` rewritten to `*_yields_empty_lists`
+    variants enforcing the new contract.
+  - DLC-required guards in `build_centered_parquet` and
+    `build_reward_aligned_analysis` cover-tested by
+    `TestBuildCenteredParquetRaisesOnEmptyDlc` and
+    `TestBuildRewardAlignedAnalysisRaisesOnEmptyDlc`.
+  - `docs/MIGRATION_LOG.md` Phase 6.7 entry — full per-sub-phase
+    summary, parity verification, and out-of-scope follow-ups.
+  - Branch `phase-6.7-session-manifest-refactor`; commits `ee64ca3`,
+    `276148b`, `d2e89c1`, `0126156`, `0ce63d1`, plus this docs commit.
+
+---
+
 ## 2026-04-20 — Phase 8a architecture (criteria slugs, sub-phasing, schema 2.0.0, 8a.7.5 split, legacy-snippets pattern)
 
 - *Context:* Phase 8a (spout-only recovery trajectories) was sequenced as a mid-experiment deliverable after the Audit Item 10 Q1–Q10 resolutions. Execution spanned seven sub-phases (8a.1 through 8a.7) over 2026-04-20, plus the pending 8a.7.5 criteria hierarchy port. Several cross-cutting decisions made during that span were not individually captured — this entry bundles them for future readers.

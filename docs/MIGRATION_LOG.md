@@ -1800,3 +1800,287 @@ identical, this PR is the behavior change.
   expanded `TestClampBugRegression` coverage and a parity re-run.
 - Optional upstream bnpm issue filing for the right-edge clamp bug
   remains deferred / Priya's call.
+
+---
+
+## Phase 6.7 — SessionManifest consolidation refactor
+
+**Date:** 2026-04-20.
+
+**Branch:** `phase-6.7-session-manifest-refactor` (commits `ee64ca3`,
+`276148b`, `d2e89c1`, `0126156`, `0ce63d1`, `<this commit>`).
+
+**Pre-refactor pytest baseline (Windows):** 374 passed / 28 skipped /
+0 failed. **Post-refactor:** 385 passed / 34 skipped / 0 failed (+11
+passes, +6 skips — all from new tests added in 6.7a–d; net behavior
+preserved).
+
+**Scope:** Wire the existing `SessionManifest` (Phase 1, DESIGN.md §4.2)
+in as the primary input contract for every phase orchestrator, closing
+the mid-consolidation audit's "SessionManifest is dead code" observation.
+Strictly a refactor — no analysis behavior changes. All Phase 2/3/4
+parity guarantees preserved.
+
+Two small orthogonal additions surfaced by the audit are folded in:
+- `load_centered_fresh(h5_path, center_mode, likelihood_threshold=0.7)`
+  in `src/stroke_orofacial/dlc_io/centering.py` — exploration escape
+  hatch alongside the parquet-based pathway. Returns a
+  centered DataFrame matching the parquet schema *without* writing to
+  disk, so callers can sweep `likelihood_threshold` interactively for
+  centering-reference picking. `likelihood_threshold` is exposed as an
+  explicit per-call parameter (per Priya 2026-04-20) so different
+  thresholds can be explored without rewriting the on-disk parquet
+  cache. Resolves the Phase 6.7 plan §3 "exploration escape hatch"
+  scope item.
+- `save_heatmap_npz(df, bodypart, config, path, *, center_mode,
+  nbins=100, ...)` in `src/stroke_orofacial/dlc_spatial/heatmaps.py`
+  — saves the fine-grid histogram array as `heatmap_{date}.npz`
+  alongside the existing `heatmap_{date}.png` so future figure tweaks
+  (different colormaps, axis limits, normalization) and Phase 9
+  fine-resolution spatial stats can re-render from disk without
+  recomputing from parquet. Wraps `pixel_bins.build_histogram()` (which
+  already returns the dict shape we need); does not refactor
+  `plot_heatmap` since `build_histogram` is the cleaner integration
+  point. NPZ resolution is configurable via `nbins` (default 100
+  matches the existing PNG-producing histogram resolution, so adding
+  NPZs alongside existing PNGs leaves the PNG content unchanged).
+  Resolves DECISIONS.md "2026-04-19 Save fine-grid heatmap NPZ".
+
+### Sub-phase summaries
+
+#### 6.7a — Phase 2 orchestrator (commit `ee64ca3`)
+
+- `process_session(manifest, resolver, ...)` is now primary; reads
+  `manifest.wavesurfer_file` instead of re-discovering via
+  `resolver.wavesurfer_dir + find_wavesurfer_file`.
+- `process_session_by_animal_date(animal, date, resolver, ...)` is the
+  new convenience wrapper.
+- `process_animal()` rewritten as a thin loop over the wrapper —
+  preserves its public surface.
+- Notebook `00_session_processing.ipynb` grew from 4 → 5 cells: new
+  cell 3 builds `manifests = [(animal, date, manifest), ...]` so the
+  per-session discovery is visible in notebook state; cell 4 iterates
+  and calls `process_session(manifest, resolver, ...)`.
+- New tests: `TestIntegrationProcessSessionWithManifest` (manifest-first
+  integration on real data); `TestProcessSessionRaisesOnMissingWavesurfer`
+  (unit guard).
+
+#### 6.7a-fix — Symmetric DLC discovery in `build_manifest()` (commit `276148b`)
+
+Architectural bug surfaced during 6.7a's mid-phase review: `build_manifest()`
+treated DLC as REQUIRED (raising `FileNotFoundError` on missing DLC dir
+or empty filtered-file glob) while wavesurfer and video were OPTIONAL
+(try/except → None / []). The asymmetry blocked two first-class
+workflows:
+  (a) Phase 2 spout behavior on sessions where video recording failed
+      but wavesurfer is still clean.
+  (b) Behavior analysis on newly-collected sessions before DLC inference
+      has been run.
+
+**Fix:** discover DLC the same way as wavesurfer/video — present-or-empty,
+no raise. The "I need DLC to proceed" assertion belongs in each
+DLC-consuming orchestrator, not in manifest construction. Test contract
+updated accordingly: `test_missing_dlc_dir_raises` /
+`test_no_dlc_files_raises` rewritten to `*_yields_empty_lists` variants.
+
+#### 6.7b — Phase 3 alignment (commit `d2e89c1`)
+
+- `load_or_compute_alignment(manifest, resolver, params, ...)` is now
+  primary. Reads `manifest.wavesurfer_file`,
+  `manifest.video_files[0].parent` for cam2 CSV discovery, and
+  `manifest.alignment_template` for the existing-template path. Falls
+  back to `resolver.alignment_template(animal, date, cam=cam_name)` for
+  cam_idx != 2 (manifest only tracks cam2's template).
+- `load_or_compute_alignment_by_animal_date(...)` wrapper added.
+- **Phase 3 is DLC-agnostic by design** (per Priya 2026-04-20 strict
+  input-dependency decision): alignment relates wavesurfer samples to
+  camera frames, and camera frames exist whether or not DLC inference
+  has run. No DLC guard here — the first DLC guard fires in 6.7c.
+- Notebook `01_alignment.ipynb` grew from 4 → 5 cells: new cell 3
+  builds manifests (surfaces alignment_template / wavesurfer / video
+  discovery); cell 4 iterates and calls
+  `load_or_compute_alignment(manifest, ...)`.
+- Tests updated: `TestIntegrationAlignment` rerouted through wrapper;
+  `TestIntegrationAlignmentWithManifest` (load + force_recompute via
+  manifest) and `TestLoadOrComputeAlignmentRaisesOnMissingWavesurfer`
+  (unit guard) added.
+
+#### 6.7c — Phase 4 parquet builder + `load_centered_fresh` (commit `0126156`)
+
+- `build_centered_parquet(manifest, center_mode, resolver, params, ...)`
+  is now primary. Reads `manifest.dlc_h5_files` directly (drops the
+  `discover_dlc_filtered_files` call).
+- **Phase 4 is the FIRST DLC-required orchestrator.** Raises
+  `FileNotFoundError` at the top if `manifest.dlc_h5_files` is empty,
+  with a clear session-scoped message ("Phase 4 parquet building
+  requires DLC. Either provide a manifest with DLC files, or run DLC
+  inference first.").
+- `build_centered_parquet_by_animal_date(...)` wrapper added.
+- New `load_centered_fresh()` helper (described above).
+- Notebook `10_dlc_build_parquets.ipynb` grew from 4 → 5 cells:
+  manifest-build cell with up-front DLC-availability count.
+- Tests: `TestBuildCenteredParquetWithManifest` (Mac-gated integration
+  — also closes the existing test-coverage gap that there was no test
+  exercising `build_centered_parquet` end-to-end);
+  `TestBuildCenteredParquetRaisesOnEmptyDlc` (unit guard);
+  `TestLoadCenteredFresh` (3 unit tests for the new helper).
+
+#### 6.7d — Phase 5/6 spatial + `save_heatmap_npz` (commit `0ce63d1`)
+
+- `build_reward_aligned_analysis(manifest, bodypart, center_mode,
+  trial_group, window_ms, resolver, spatial_config, reward_config)` is
+  now primary. Uses `manifest.dlc_h5_files[0]` for parquet locating and
+  `manifest.alignment_template` (cam2) for the alignment LUT.
+- Phase 6 is DLC-required (same guard pattern as Phase 4).
+- `build_reward_aligned_analysis_by_animal_date(...)` wrapper added.
+- Phase 5/6 spatial functions (`pixel_bins.build_histogram`,
+  `heatmaps.plot_heatmap`, etc.) operate on already-loaded parquets and
+  don't need the manifest — only the orchestrator notebooks build
+  manifests and use them to locate parquets.
+- New `save_heatmap_npz()` helper (described above).
+- Notebook `11_dlc_spatial_whole_session.ipynb` grew from 4 → 5 cells:
+  manifest-build cell + `HEATMAP_NBINS = 100` USER INPUT + writes the
+  fine-grid NPZ alongside the existing PNG via `save_heatmap_npz`.
+- Notebook `12_dlc_spatial_reward_aligned.ipynb` grew from 4 → 5 cells:
+  manifest-build cell + `HEATMAP_NBINS` USER INPUT (reserved for future
+  per-call overrides; reward-aligned analyses currently use the
+  `dlc_spatial_reward_aligned.default_nbins` from config).
+- Tests: `TestIntegrationRewardAligned` rerouted through wrapper;
+  `TestIntegrationRewardAlignedWithManifest` (manifest-first
+  integration);
+  `TestBuildRewardAlignedAnalysisRaisesOnEmptyDlc` (unit guard);
+  `TestSaveHeatmapNpz` (4 unit tests including parity guard against
+  `build_histogram`).
+
+#### 6.7e — Docs (this commit)
+
+- This MIGRATION_LOG entry.
+- DECISIONS.md entry closing the mid-consolidation audit's
+  "SessionManifest is dead code" observation, plus a one-line note
+  that `load_centered_fresh()` complements parquets as an exploration
+  escape hatch.
+
+### Refactor pattern (applied consistently)
+
+Every orchestrator follows the same shape:
+
+```python
+# Primary signature — takes manifest
+def fn(manifest: SessionManifest, resolver: PathResolver, *, ...): ...
+
+# Convenience wrapper — builds manifest from (animal, date)
+def fn_by_animal_date(animal, date, resolver, *, ...):
+    animal_info = get_animal(animal)
+    manifest = build_manifest(animal, date, resolver, animal_info)
+    return fn(manifest, resolver, ...)
+```
+
+Notebooks build the manifest in a new visible cell so the session
+picture is in the notebook state rather than hidden inside the
+orchestrator. Each of the five notebooks grew from 4 → 5 cells.
+
+### Parity status
+
+- **Test-suite parity:** 374/28/0 → 385/34/0. The +11 passes are unit
+  tests added across 6.7a–d (3+1+4+4+1 across the sub-phases minus the
+  2 raise-asserting manifest tests rewritten as empty-list-asserting,
+  but with new replacements running) covering the new manifest-first
+  signatures, the new helpers, and the DLC-required guards. The +6
+  skips are Mac-only integration tests. Zero existing passing tests
+  flipped to failing or skipping.
+- **Phase 2 byte-level (NPZ) parity:**
+  `tests/test_session_processing.py::TestIntegrationParity` passes on
+  Mac (skipped on Windows). PS46/20250307 + PS46/20250320 bouts NPZ
+  comparisons unchanged.
+- **Phase 3 array parity:** Spot-check on PS46/20250307 via the
+  manifest-first path produces slope=4.006195, intercept=-8747.4 — matches
+  this log's Phase 3 entry (lines 330–331) verbatim. Recompute matches
+  loaded at rtol=1e-8.
+- **Phase 4 parquet hash parity:** Spot-check on PS46/20250307 via the
+  manifest-first path produces hashes `c23dc714` (nose) and `2a6efb6a`
+  (spout_midpoint) — matches this log's Phase 4 entry (lines 430–432)
+  verbatim. `eye_midpoint` hash `b13af51c` preserved by construction
+  (the `_param_sig` function is unchanged).
+  `tests/test_dlc_parquet.py::TestIntegrationParity` integration test
+  unchanged; new
+  `TestBuildCenteredParquetWithManifest::test_skip_path_via_manifest`
+  asserts the c23dc714-named parquet is returned via the manifest-first
+  signature.
+- **Phase 5 fine-heatmap parity:** Spot-check via `save_heatmap_npz` on
+  PS46/20250307 nose, nose-centered: H_counts.sum() = 925,098 — matches
+  this log's Phase 5 entry (line 891) verbatim.
+- **Phase 6 reward-aligned parity:** Spot-check on PS46/20250307 tongue
+  via the manifest-first path: 96 rewards, 132,096 selected frames,
+  histogram H_counts = 54,159 — matches this log's Phase 6 entry (line
+  1094) verbatim.
+- **Phase 5/6/8a tests untouched:** `tests/test_criteria.py`,
+  `tests/test_endpoints_writer.py`, `tests/test_indexing.py`,
+  `tests/test_pixel_bins.py`, `tests/test_difference_maps.py`,
+  `tests/test_window_selector.py` not modified
+  (verified by `git diff main -- tests/test_*` excluding the four
+  test files this phase touched: test_session_processing.py,
+  test_manifest.py, test_timebase.py, test_dlc_parquet.py,
+  test_dlc_centering.py, test_reward_aligned.py, test_heatmaps.py).
+- **Ruff `src/`:** clean throughout.
+
+### Intentional behavior differences vs. legacy
+
+1. **`build_manifest()` no longer raises on missing DLC** (per 6.7a-fix
+   above). Two callsite paths formerly relying on the raise to short-
+   circuit must now check `manifest.dlc_h5_files` themselves; only
+   DLC-consuming orchestrators do so (Phase 4 + Phase 6 guard added).
+   The two affected `tests/test_manifest.py` tests rewritten from
+   `*_raises` to `*_yields_empty_lists`.
+2. **All Phase 2/3/4/6 orchestrator primary signatures changed**
+   (manifest-first). Existing notebook code calling them with
+   `(animal, date, ...)` would break; the `*_by_animal_date` wrappers
+   preserve that ergonomic for callers that prefer it. `process_animal`
+   rewritten internally to use `process_session_by_animal_date`;
+   public surface unchanged.
+3. **Notebook orchestrators all build manifests in a visible cell**
+   (new cell 3 in each of the five notebooks). Prior notebook code
+   passed `(animal, date)` directly; the manifest pattern is more
+   inspectable but the orchestration semantics are identical.
+4. **New `heatmap_{date}.npz` artifacts written by Notebook 11**
+   alongside the existing PNGs. PNG content unchanged (same nbins=100
+   default). Resolves DECISIONS.md 2026-04-19 fine-grid NPZ ask. The
+   NPZ is additive: existing `heatmap_{date}.png` paths remain
+   byte-identical to pre-6.7d outputs.
+
+### Exit criteria
+
+- [x] `pytest -q` 385 passed / 34 skipped / 0 failed (Windows; baseline
+  was 374/28/0).
+- [x] `ruff check src/` clean.
+- [x] Phase 4 parquet hashes (c23dc714 / 2a6efb6a / b13af51c) preserved
+  through the manifest-first path; verified via spot-check.
+- [x] Phase 3 alignment slope/intercept for PS46/20250307 unchanged at
+  rtol=1e-8.
+- [x] Phase 5 fine-heatmap H_counts.sum() = 925,098 unchanged
+  (PS46/20250307 nose, nose-centered).
+- [x] Phase 6 reward-aligned counts (96 rewards, 132,096 selected
+  frames, tongue H_counts=54,159) unchanged.
+- [x] Phase 5/6/8a test files (`tests/test_criteria.py`,
+  `tests/test_endpoints_writer.py`, `tests/test_indexing.py`,
+  `tests/test_pixel_bins.py`, `tests/test_difference_maps.py`,
+  `tests/test_window_selector.py`) not modified.
+- [x] DECISIONS.md entry closing "SessionManifest is dead code"
+  observation + `load_centered_fresh()` escape-hatch note.
+
+### Out-of-scope follow-ups (deliberately not in this phase)
+
+- **Per-bodypart centering thresholds** (eg nose 0.7, eyes 0.5, spouts
+  0.9 instead of cohort-wide 0.7). Per Priya 2026-04-20: keep all
+  centering at 0.7 for now; threshold-flexibility work is separately
+  tracked as a follow-on if the cohort grows past PS46–PS55.
+- **Per-call-site likelihood thresholds at every analysis point** for
+  whole-session spatial / reward-aligned / kinematics. Partially
+  available today via existing config dicts; formalizing as explicit
+  per-call kwargs across all spatial / kinematic functions is a
+  separate refactor.
+- **`process_session` exclusion-handling integration with
+  `manifest.excluded`.** Currently `process_session` does not act on
+  `manifest.excluded`; callers pre-filter. Adding a skip-if-excluded
+  short-circuit would change behavior on dates currently being
+  processed despite an exclusion, which is out of scope for this
+  refactor.
