@@ -628,4 +628,32 @@ This project is tractable only if each migration phase closes cleanly. The two m
 1. **Silent behavior changes** in ported code. Mitigation: every phase includes a parity check against legacy outputs on at least one session, documented in `MIGRATION_LOG.md`.
 2. **Scope creep into stats while migrating I/O.** Mitigation: Phases 2–8 are strictly "port and tidy"; Phase 9 is where the stats pipeline is redesigned. Resist the urge to rewrite stats during earlier phases.
 
+---
+
+## 14. CONVENTIONS
+
+Project-wide invariants that every module must honor. Separate from module-specific rules (those live in module docstrings).
+
+### 14.1 L/R frame: wavesurfer (experimenter) vs. mouse
+
+The wavesurfer acquisition records four side-labeled digital channels: `Lick_L`, `Lick_R`, `Reward_L`, `Reward_R`. These labels are in the **experimenter frame** — physical left/right from the experimenter's perspective facing the rig. Whether those labels correspond to the *mouse's* left/right sides depends on the rig layout (camera/spout mirroring). The entire PS46–PS55 cohort was acquired on a mirrored rig: **wavesurfer L = mouse R, wavesurfer R = mouse L**. Future cohorts acquired on a matched-orientation rig will have wavesurfer L = mouse L.
+
+The project handles this via **boundary-layer translation** (introduced by task #17, 2026-04-20):
+
+- **Internal pipeline arithmetic stays on the wavesurfer frame.** Every Phase 2–8a module (lick detection, bout detection, criteria computation, endpoint aggregation) keeps side-keyed dicts and arrays in wavesurfer frame throughout. This preserves byte-for-byte parity against the frozen Phase 3/4/5/6 baselines and means no churn inside the logic modules.
+- **Translation happens at every output emission boundary.** Just before an NPZ / JSON / parquet is written, the emitter applies [`to_mouse_frame`](../src/stroke_orofacial/lr_convention.py) to side labels and [`stamp_side_convention`](../src/stroke_orofacial/lr_convention.py) to payload metadata. The emitted artifact carries mouse-frame labels and the convention metadata so downstream readers can assert the frame.
+- **The flag lives on `AnimalInfo`.** `configs/animals.yaml` carries `wavesurfer_sides_match_mouse_sides: bool` per animal (default `False`, fail-conservative for the current cohort). `SessionManifest` copies the flag from `AnimalInfo` at `build_manifest()` time so every orchestrator has it without re-loading the config.
+- **Every stamped artifact carries two scalars**: `wavesurfer_sides_match_mouse_sides` (bool) and `side_convention_version` (int, currently `1`). The version bumps on any change to the scheme itself (e.g., renaming the scalars, adding a third side category). Downstream code gates on the version to refuse artifacts it doesn't understand.
+- **Consumers must never un-flip** in production code paths. The emitted mouse-frame labels are the canonical artifact contract; any code that reads an NPZ or JSON should treat `"L"` as mouse-L, full stop. The only exception is test code that compares against the pre-task-#17 `session_processing3` baselines (which are wavesurfer-frame) — see [`tests/test_session_processing.py::_unflip_new_to_wavesurfer_frame`](../tests/test_session_processing.py) for the test-side helper.
+
+**Implications:**
+
+- When a notebook loads `licks_and_rewards.npz` and reads `Lick_L`, the array is mouse-L lick indices on every post-task-#17 artifact. This differs from the `session_processing3` legacy artifacts, which are wavesurfer-frame.
+- When plotting output, side labels on axes (`"L"`, `"R"`) already refer to the mouse — no additional translation needed.
+- When porting a legacy notebook that loaded wavesurfer data directly and applied its own flip (like `20260203_..._tongue.ipynb` cell 25's `ws_lick_mouseL = lk["Lick_R"]`), the new code should load from the consolidated NPZ and skip the ad-hoc flip — the emit boundary already did it.
+
+See `docs/MIGRATION_LOG.md` "Task #17 — Wavesurfer L/R ↔ mouse-frame boundary-layer translation" for the full migration narrative and `docs/runbooks/reemit-phase-5-6-after-lr-fix.md` for the re-emit procedure when a yaml flag flips.
+
+---
+
 End of design doc. When you're ready, follow §11.2 in Claude Code.

@@ -2084,3 +2084,142 @@ orchestrator. Each of the five notebooks grew from 4 → 5 cells.
   short-circuit would change behavior on dates currently being
   processed despite an exclusion, which is out of scope for this
   refactor.
+
+---
+
+## Task #17 — Wavesurfer L/R ↔ mouse-frame boundary-layer translation
+
+**Date:** 2026-04-21.
+
+**What was done:**
+- Established the project-wide convention that **every output artifact
+  (NPZ, JSON, parquet) is emitted in the mouse frame** with two
+  metadata scalars declaring the rig convention, while **internal
+  pipeline arithmetic stays on the wavesurfer frame** to preserve
+  Phase 3/4/5/6 parity baselines. Five-commit PR:
+  - **Commit 1 — schema.** New `wavesurfer_sides_match_mouse_sides:
+    bool = False` field on `AnimalInfo`. All 8 animals in
+    `configs/animals.yaml` (PS46–PS55) get explicit
+    `wavesurfer_sides_match_mouse_sides: false` (fail-conservative,
+    current cohort is mirrored). `load_animals()` parses with `.get()`
+    default False and rejects non-bool values to catch yaml-typo'd
+    `"false"` strings at load time. `SessionManifest` gains the same
+    field, populated from `AnimalInfo` in `build_manifest()` so every
+    orchestrator has it without re-loading the animals config.
+  - **Commit 2 — helper module.** New
+    `src/stroke_orofacial/lr_convention.py` with `to_mouse_frame(side,
+    wavesurfer_matches)` (returns unchanged when matched, flips L↔R
+    when mirrored; rejects anything other than exact `"L"`/`"R"`) and
+    `stamp_side_convention(payload, wavesurfer_matches, version=1)`
+    (adds two scalar keys in-place; rejects non-bool flag, non-int
+    version, bool-as-version, and collisions on either scalar).
+    `SIDE_CONVENTION_VERSION = 1` is the initial scheme; bumps on any
+    change to the scheme itself.
+  - **Commit 3 — apply at emitters.** Wired translation + stamp into:
+    - `src/stroke_orofacial/spout_behavior/session_processing.py`:
+      new `_translate_side_keys` renames `*_L`/`*_R` suffixed NPZ keys
+      to mouse frame; new `_save_npz_with_side_convention` wraps
+      `np.savez` with translation + stamp. All 7 Phase 2 NPZs now carry
+      the convention scalars; the three L/R-carrying ones
+      (`wavesurfer_signals_processed`, `licks_and_rewards`,
+      `peri_reward_periods`) get key translation.
+    - `src/stroke_orofacial/spout_behavior/endpoints_writer.py`:
+      `write_session_endpoints_json` gains required
+      `wavesurfer_sides_match_mouse_sides` kwarg. Three new helpers
+      (`_translate_per_side_dict`,
+      `_translate_criteria_block_to_mouse_frame`,
+      `_translate_endpoints_block_to_mouse_frame`) walk the criteria
+      block's four per-side dicts (`per_side_per_trial_pass`,
+      `per_side_pass`, `per_side_fraction`, `per_side_n_trials`) and
+      the endpoints block's `per_trial_type_split` dicts and flip L↔R
+      keys for flipped-rig animals. The metadata block is stamped
+      with the convention scalars via `stamp_side_convention`.
+  - **Commit 4 — regression guards.** 14 new tests across two
+    classes: `tests/test_session_processing.py::TestSideConventionAtEmit`
+    (7 tests, direct unit tests of `_translate_side_keys` +
+    `_save_npz_with_side_convention`; parametrized matched/mirrored
+    stamp presence; foundational emit-invariant pin) and
+    `tests/test_endpoints_writer.py::TestSideConventionAtEmit`
+    (5 tests: matched-rig key preservation, flipped-rig key swaps in
+    criteria + endpoints, parametrized metadata-stamp assertion, C1
+    sentinel pass-through on flipped rig).
+  - **Commit 5 — docs + runbook.** New DESIGN.md §14 "CONVENTIONS"
+    establishing the project-wide rule; new
+    `docs/runbooks/reemit-phase-5-6-after-lr-fix.md`; this
+    MIGRATION_LOG entry.
+
+**Parity strategy:**
+- Internal pipeline arithmetic untouched → Phase 3/4/5/6 parity against
+  the `session_processing3` baselines stays byte-identical in the
+  *array values*. Only the NPZ *key names* change at emit.
+- Test-side `_unflip_new_to_wavesurfer_frame` helper in
+  `tests/test_session_processing.py::TestIntegrationParity` un-flips
+  the emitted mouse-frame labels back to wavesurfer frame before
+  comparing against `session_processing3`. Verified on PS46/20250307
+  + PS46/20250320: all 6 compared arrays (Treadmill_smoothed,
+  Lick_L/R, Reward_L/R, running/grooming/quiet/peri_reward bools)
+  match the baseline to existing tolerances (equal / allclose /
+  bool_near_equal max_frac=1e-4). The un-flip helper is test-side
+  only — production readers consume mouse-frame labels as canonical.
+- Phase 8a.7.5 `spout_endpoints.json`: no pre-existing parity fixture
+  (schema is a clean break from legacy `report.json` per 8a.7
+  scoping decision Q6), so commit-3 parity is guarded by the
+  commit-4 regression tests which pin specific L/R dict values
+  through both matched and flipped paths.
+- Full suite: 454 → 482 passed (+28 from task #17: 4 animals +
+  31 lr_convention + 7 session-processing guards + 5 endpoints-writer
+  guards − 19 pre-existing reframings such as writer_kwargs fixture
+  edits). 6 integration tests skip when MICROSCOPE mount / legacy
+  baselines aren't available (unchanged).
+
+**Intentional behavior differences vs. legacy:**
+1. **Post-task-#17 NPZs and JSONs carry mouse-frame L/R labels** —
+   every consumer loading `licks_and_rewards.npz` and reading
+   `Lick_L` now gets mouse-L lick indices (on the current PS46–PS55
+   cohort, this is what wavesurfer recorded under `Lick_R`). Legacy
+   `session_processing3` artifacts are wavesurfer-frame and
+   unchanged; the consolidated output directory tree
+   (`stroke_orofacial_pipeline_outputs/spout_behavior/`) is now
+   mouse-frame. The two coexist; consumers choose based on which
+   tree they read from.
+2. **Every consolidated output artifact carries two convention
+   scalars** (`wavesurfer_sides_match_mouse_sides`,
+   `side_convention_version`). Legacy artifacts do not. Readers
+   should gate on the version: version 1 is the current scheme;
+   absent scalars means pre-task-#17 artifacts that must be
+   interpreted as wavesurfer frame.
+3. **The legacy `behavior_report_PS.py` plot-label flip** (via
+   `fn_flip_lr`) was a display-only flip that left stored data in
+   wavesurfer frame. The new convention is the strict opposite —
+   stored data is mouse-frame and plots can use the label directly.
+   Ports of legacy kinematics notebooks (Phase 7) should load from
+   consolidated NPZs rather than wavesurfer directly, and skip the
+   ad-hoc per-notebook flips (cell 25 in `20260203_..._tongue.ipynb`,
+   cells 22/24 in `20260416_..._jaw.ipynb`).
+
+**Deferred (documented in the runbook):**
+- `src/stroke_orofacial/dlc_spatial/heatmaps.py::save_heatmap_npz`:
+  the heatmap NPZ payload has no L/R keys; the only L/R surface is
+  the reward-aligned `trial_group` filename/directory slug
+  (`reward_L_trials` / `reward_R_trials`), which is set by the caller
+  (notebook 12). Threading the convention flag through the notebook
+  orchestrator to translate `trial_group` at the path layer is a
+  follow-up PR per the runbook.
+- `src/stroke_orofacial/dlc_spatial/reward_aligned.py::trial_group`
+  semantics: currently interpreted as wavesurfer frame. Flipping to
+  mouse frame is caller-visible and gated on the notebook-12 /
+  heatmap-path follow-up.
+
+**Exit criteria:**
+- [x] `pytest tests/ -q` → all pass, no regressions (454 passed, 6
+  skipped pre-task-#17; post-task-#17 adds 28 new tests).
+- [x] `ruff check` clean on all touched files.
+- [x] Integration parity on PS46/20250307 + PS46/20250320 via the
+  un-flip helper: byte-identical against `session_processing3`.
+- [x] Matched-rig and flipped-rig paths both exercised by
+  regression guards in commit 4.
+- [x] DESIGN.md §14 documents the convention.
+- [x] Runbook at `docs/runbooks/reemit-phase-5-6-after-lr-fix.md`
+  captures the re-emit procedure and the Phase 5/6 follow-up gate.
+- [x] Implemented on feature branch `feat/wavesurfer-side-convention`
+  cut from `main` at `0ff6fd9`.
