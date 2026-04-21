@@ -2342,3 +2342,81 @@ in the task-#17 entry above reflects the Mac baseline.
 created during re-emit.** Re-emit wrote only to the gitignored
 `stroke_orofacial_pipeline_outputs/` tree plus the one-shot
 `spout_behavior.pre-task17.bak/` sibling backup.
+
+---
+
+## Task #20 — Test-hygiene sweep: integration tests must not write to production output paths
+
+**Date:** 2026-04-21.
+
+**Context:**
+The task #17 Phase 2 re-emit (above) surfaced a test-hygiene smell: a
+fresh `pytest` run on the Mac against the task-#17 branch had already
+re-emitted `stroke_orofacial_pipeline_outputs/spout_behavior/PS46/20250307/`
+with mouse-frame labels before the re-emit runbook was executed. Tracing
+the timestamp anomaly (pre-re-emit backup's `run_timestamp 2026-04-21T06:17:15`)
+pointed at two integration tests in `tests/test_session_processing.py`
+that called `process_session_by_animal_date(..., overwrite="force")`
+with the default `PathResolver`, which resolves `pipeline_outputs()`
+to the real on-disk output tree. A broader sweep during the sweep
+itself found two additional offenders that had been added during Phase
+6.7a work — four total.
+
+**What was done (one atomic PR on branch `fix/test-hygiene-task-20`,
+merged as PR #57, commit `0d18a2b`):**
+
+- **Commit 1 — `feat(paths): add output_root kwarg to PathResolver`
+  (`e992433`).** New keyword-only `output_root: Path | str | None = None`
+  argument on `PathResolver.__init__`. When supplied,
+  `pipeline_outputs(subdir)` returns `output_root / subdir` instead of
+  resolving via `root("microscope_pipeline_outputs")`. This is the
+  only method that reaches `microscope_pipeline_outputs` (grep
+  verified), so the override is surgical — no risk of an unguarded
+  writer slipping through. Default behavior is unchanged for every
+  existing caller.
+
+- **Commit 2 — `fix(test-hygiene): redirect Phase 2 integration tests
+  off production output paths` (`2c4176a`).** Four offenders, all in
+  `tests/test_session_processing.py`, switched from the default
+  resolver to `PathResolver(output_root=tmp_path)`:
+  - `TestIntegrationProcessSession.test_process_and_params_json_written`
+  - `TestIntegrationProcessSession.test_skip_path_writes_params_json`
+  - `TestProcessSessionWithManifest.test_process_session_with_manifest`
+  - `TestProcessSessionEmptyDlc.test_process_session_succeeds_with_empty_dlc`
+
+  Each now writes to the per-test pytest `tmp_path` fixture (auto-
+  cleaned by pytest), so repeated test runs cannot mutate the real
+  production output tree.
+
+- **Commit 3 — `docs(testing): codify "tests must not write to
+  production output paths" (task #20)` (`f1bda6f`).** New
+  `docs/testing-conventions.md` documents the rule and the
+  `PathResolver(output_root=tmp_path)` pattern. `CLAUDE.md` Repo
+  Conventions section links to it. Future contributors (human or
+  agent) adding integration tests now have the rule in a durable
+  location rather than only in review-cycle memory.
+
+**Verification (before merge):**
+- Mac-side hash check before and after the fixed test run on the
+  `spout_behavior/` tree: mtime and SHA-256 of every file
+  byte-identical; the redirected tests write to `tmp_path` only, not
+  the real output tree.
+- Full-suite pytest on the PR branch: 469 pass / 6 skip / 0 fail on
+  Mac (the 6 skips are Mac-gated Priya integration tests that require
+  additional MICROSCOPE paths). `tests/test_session_processing.py`
+  alone: 20/20.
+
+**Intentional behavior differences vs. legacy:** None. The redirection
+changes where test output is written, not what is computed. Production
+writers and their callers are unchanged.
+
+**Notes:**
+- `tests/test_dlc_parquet.py::TestIntegrationParity` and
+  `tests/test_reward_aligned.py::TestIntegrationRewardAligned` were
+  spot-checked during the sweep and confirmed to reference the real
+  output dir for reads only (no `overwrite="force"` writes). Not
+  modified.
+- The `PathResolver.output_root` kwarg is intended for test-fixture
+  use only. Production callers should never pass it — the real output
+  tree is the canonical landing spot for pipeline artifacts and its
+  location is controlled by `configs/paths.yaml`.
