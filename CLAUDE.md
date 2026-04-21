@@ -49,8 +49,29 @@ These rules bind every Claude Code session working on this project.
      GitHub (`gh pr view <N>` → `state: MERGED`) before running `-d`.
    - After PR-merge, leave the feature branch intact on origin as a permanent
      reference. Pruning is Priya's call, not Claude Code's.
-   - When completing a phase, tag the merge commit on main with
-     `vX.Y-phase-N-short-name` so there is a permanent named reference.
+   - **Phase-close tags — every merge gets one.** Every PR that
+     represents a phase close (numbered phase, dotted sub-phase, or
+     letter-suffix atomic fix within a phase) gets a tag on its merge
+     commit. Format: `v{phase}-{short-slug}` where `{phase}` is the full
+     dotted-or-lettered phase identifier (e.g. `6.7`, `6.7a`, `6.8`, `7`,
+     `7.1`, `8a.7.5`) — NOT a repo-level semver. `{short-slug}` is a
+     hyphen-separated summary; do not repeat `phase-N` in the slug (the
+     version prefix already encodes it). Examples from existing history:
+     `v6.7-session-manifest-refactor`, `v6.8-wavesurfer-side-convention`,
+     `v8a.7.5-criteria-hierarchy-port`. Earlier tags use a legacy
+     `v0.X-phase-N-slug` format (visible in `git tag --list`); do not
+     rename them — they are permanent references in the history.
+   - **Tag message format.** `Phase {phase}: {short summary}`. Examples:
+     `Phase 6.7: SessionManifest refactor — every analysis takes a
+     manifest + resolver`; `Phase 6.8: wavesurfer↔mouse-frame
+     boundary-layer L/R translation`. Keep messages to one line where
+     possible; expand only when the short summary genuinely loses
+     critical information.
+   - **Push the tag immediately** so origin has the reference. Standard
+     sequence after a phase-close PR merges on main:
+     `git tag -a v{phase}-{slug} <merge-sha> -m "Phase {phase}: {summary}"`
+     then `git push origin v{phase}-{slug}`. Verify with
+     `git tag --list | tail -5`.
    - Before any potentially destructive git operation (`git reset --hard`,
      `git branch -D`, `git rebase`, `git checkout -- <file>`, `git clean -fd`,
      force-push), STOP and ask Priya first. Describe exactly what will change
