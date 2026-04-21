@@ -33,6 +33,7 @@ from stroke_orofacial.spout_behavior.bouts import (
     find_quiet_bouts,
     find_running_bouts,
 )
+from stroke_orofacial.lr_convention import stamp_side_convention
 from stroke_orofacial.spout_behavior.lick_detection import find_licks_and_rewards
 from stroke_orofacial.spout_behavior.wavesurfer_io import (
     calibrate_treadmill,
@@ -59,10 +60,61 @@ def _output_path(output_root: Path, output_type: str, animal: str, date_str: str
     return output_root / output_type / animal / f"{date_str}.npz"
 
 
+def _translate_side_keys(
+    payload: dict[str, Any], wavesurfer_matches: bool,
+) -> dict[str, Any]:
+    """Rename ``*_L``/``*_R`` suffixed keys to mouse frame.
+
+    When ``wavesurfer_matches`` is True this is a no-op. When False the
+    L/R suffixes are swapped, so what the caller passed as ``Lick_L`` —
+    wavesurfer-frame L — becomes the emitted ``Lick_R`` (since
+    wavesurfer-L is mouse-R on the mirrored rig). Only exact ``_L``/
+    ``_R`` suffixes are translated; keys like ``x_limits`` or
+    ``xedges`` pass through unchanged.
+
+    The translation is key-name-only — array values (lick indices,
+    bool masks) are byte-identical. The convention flip is purely
+    re-labeling.
+    """
+    if wavesurfer_matches:
+        return dict(payload)
+    out: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key.endswith("_L"):
+            out[key[:-2] + "_R"] = value
+        elif key.endswith("_R"):
+            out[key[:-2] + "_L"] = value
+        else:
+            out[key] = value
+    return out
+
+
 def _save_npz(path: Path, data: dict[str, Any], allow_pickle: bool = False) -> None:
     """Save a dict to NPZ, creating parent dirs as needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez(str(path), **data, allow_pickle=allow_pickle)
+
+
+def _save_npz_with_side_convention(
+    path: Path,
+    data: dict[str, Any],
+    wavesurfer_matches: bool,
+    *,
+    has_side_keys: bool,
+    allow_pickle: bool = False,
+) -> None:
+    """Translate L/R keys (if any) to mouse frame, stamp convention, write NPZ.
+
+    ``has_side_keys=True`` triggers :func:`_translate_side_keys` on the
+    payload; False skips translation (for NPZs whose payload has no
+    side labels — the stamp is still applied so every emitted artifact
+    carries its convention metadata). The stamp records the rig
+    orientation that was active at emit time; it does not depend on
+    whether the particular payload had translatable keys.
+    """
+    payload = _translate_side_keys(data, wavesurfer_matches) if has_side_keys else dict(data)
+    stamp_side_convention(payload, wavesurfer_matches)
+    _save_npz(path, payload, allow_pickle=allow_pickle)
 
 
 def _params_json_path(output_root: Path, animal: str, date_str: str) -> Path:
@@ -258,8 +310,16 @@ def process_session(
     signals = load_wavesurfer_signals(ws_file)
     Fs = float(signals["sample_rate_input"])
 
-    # Save wavesurfer_signals_processed
-    _save_npz(paths["wavesurfer_signals_processed"], signals)
+    # Rig-orientation flag — mirrored downstream to every emitted NPZ so
+    # consumers can interpret L/R labels unambiguously.
+    ws_match = manifest.wavesurfer_sides_match_mouse_sides
+
+    # Save wavesurfer_signals_processed — raw channel names include
+    # Lick_L/Lick_R etc., translated here to mouse frame at emit.
+    _save_npz_with_side_convention(
+        paths["wavesurfer_signals_processed"], signals, ws_match,
+        has_side_keys=True,
+    )
 
     # ---- Step 2: Calibrate and smooth treadmill ----
     tm_params = params["process_treadmill_signal"]
@@ -284,14 +344,26 @@ def process_session(
         "Fs": Fs,
     }
     tm_out.update(tm_params)
-    _save_npz(paths["treadmill_signals_preprocessed"], tm_out)
+    # No L/R content, but stamped for consistency so downstream readers
+    # can assert the convention-metadata contract on every NPZ.
+    _save_npz_with_side_convention(
+        paths["treadmill_signals_preprocessed"], tm_out, ws_match,
+        has_side_keys=False,
+    )
 
     # ---- Step 3: Lick and reward detection ----
+    # Internal lick_idx / reward_idx / tone_idx dicts stay in the
+    # wavesurfer frame so Phase 4/5/6 downstream logic is arithmetically
+    # unchanged. Translation to mouse frame happens only at the NPZ emit
+    # line below.
     lr_result = find_licks_and_rewards(signals, params["find_licks_and_rewards"])
     n_samples = int(lr_result["n_samples"])
 
     lr_out = copy.deepcopy(lr_result)
-    _save_npz(paths["licks_and_rewards"], lr_out, allow_pickle=True)
+    _save_npz_with_side_convention(
+        paths["licks_and_rewards"], lr_out, ws_match,
+        has_side_keys=True, allow_pickle=True,
+    )
 
     lick_idx = {"Lick_L": lr_result["Lick_L"], "Lick_R": lr_result["Lick_R"]}
     reward_idx = {"Reward_L": lr_result["Reward_L"], "Reward_R": lr_result["Reward_R"]}
@@ -301,13 +373,17 @@ def process_session(
     running = find_running_bouts(treadmill_smoothed, Fs, params["find_running_bouts"])
     run_out: dict[str, Any] = {"running_bouts": running}
     run_out.update(params["find_running_bouts"])
-    _save_npz(paths["running_bouts"], run_out)
+    _save_npz_with_side_convention(
+        paths["running_bouts"], run_out, ws_match, has_side_keys=False,
+    )
 
     # ---- Step 5: Grooming bouts ----
     grooming = find_grooming_bouts(lick_idx, n_samples, Fs, params["find_grooming_bouts"])
     groom_out: dict[str, Any] = {"lick_bool_bad": grooming}
     groom_out.update(params["find_grooming_bouts"])
-    _save_npz(paths["grooming_bouts"], groom_out)
+    _save_npz_with_side_convention(
+        paths["grooming_bouts"], groom_out, ws_match, has_side_keys=False,
+    )
 
     # ---- Step 6: Quiet bouts ----
     quiet = find_quiet_bouts(
@@ -316,7 +392,9 @@ def process_session(
     )
     quiet_out: dict[str, Any] = {"quiet_bool": quiet}
     quiet_out.update(params["find_quiet_bouts"])
-    _save_npz(paths["quiet_bouts"], quiet_out)
+    _save_npz_with_side_convention(
+        paths["quiet_bouts"], quiet_out, ws_match, has_side_keys=False,
+    )
 
     # ---- Step 7: Peri-reward periods (consolidated + per-side + per-tone) ----
     peri_reward = find_peri_reward_periods(
@@ -329,7 +407,10 @@ def process_session(
     peri_out: dict[str, Any] = {"peri_reward_bool": peri_reward}
     peri_out.update(peri_sided)  # peri_reward_L/R, peri_tone_L/R
     peri_out.update(params["find_peri_reward_periods"])
-    _save_npz(paths["peri_reward_periods"], peri_out)
+    # peri_reward_L/R + peri_tone_L/R keys translated at emit.
+    _save_npz_with_side_convention(
+        paths["peri_reward_periods"], peri_out, ws_match, has_side_keys=True,
+    )
 
     # ---- Save per-session params.json ----
     _save_session_params(

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import datetime
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -389,6 +388,12 @@ class TestIntegrationParity:
             ref = dict(np.load(ref_path, allow_pickle=True))
             new = dict(np.load(new_path, allow_pickle=True))
 
+            # Un-flip post-task-#17 mouse-frame labels back to wavesurfer
+            # frame before comparing to the frozen session_processing3
+            # baseline (which is wavesurfer-frame). Internal array values
+            # are byte-identical; only the L/R key names differ.
+            new = _unflip_new_to_wavesurfer_frame(new)
+
             for arr_name, method in arrays:
                 r, n = ref[arr_name], new[arr_name]
                 if method == "equal":
@@ -405,3 +410,166 @@ class TestIntegrationParity:
                         n, r, max_frac=1e-4,
                         err_msg=f"{output_type}/{arr_name} on {date_str}",
                     )
+
+
+class TestSideConventionAtEmit:
+    """Regression guards for the task-#17 boundary-layer translation.
+
+    Exercises :func:`_translate_side_keys` and
+    :func:`_save_npz_with_side_convention` from
+    :mod:`stroke_orofacial.spout_behavior.session_processing` directly
+    — avoids needing a real wavesurfer session on disk and keeps the
+    guard focused on the exact behaviors commit 3 introduces.
+    """
+
+    def test_translate_side_keys_no_op_when_matched(self):
+        from stroke_orofacial.spout_behavior.session_processing import (
+            _translate_side_keys,
+        )
+        payload = {"Lick_L": [1, 2], "Lick_R": [3, 4], "Fs": 1000}
+        out = _translate_side_keys(payload, wavesurfer_matches=True)
+        assert out == payload
+        assert out is not payload  # defensive copy
+
+    def test_translate_side_keys_swaps_L_and_R_when_mirrored(self):
+        from stroke_orofacial.spout_behavior.session_processing import (
+            _translate_side_keys,
+        )
+        payload = {
+            "Lick_L": np.array([1, 2]),
+            "Lick_R": np.array([3, 4]),
+            "Reward_L": np.array([10]),
+            "Reward_R": np.array([20]),
+            "Fs": 1000,
+        }
+        out = _translate_side_keys(payload, wavesurfer_matches=False)
+        # Keys with _L/_R suffix flipped; value arrays pass through.
+        np.testing.assert_array_equal(out["Lick_R"], payload["Lick_L"])
+        np.testing.assert_array_equal(out["Lick_L"], payload["Lick_R"])
+        np.testing.assert_array_equal(out["Reward_R"], payload["Reward_L"])
+        np.testing.assert_array_equal(out["Reward_L"], payload["Reward_R"])
+        # Non-suffixed keys pass through unchanged.
+        assert out["Fs"] == 1000
+
+    def test_translate_side_keys_preserves_non_LR_keys(self):
+        from stroke_orofacial.spout_behavior.session_processing import (
+            _translate_side_keys,
+        )
+        payload = {"xedges": np.arange(5), "nbins": 100, "Fs": 1000}
+        out = _translate_side_keys(payload, wavesurfer_matches=False)
+        assert out == payload
+
+    @pytest.mark.parametrize("ws_match", [True, False])
+    def test_save_npz_stamps_convention_scalars(self, tmp_path, ws_match):
+        """Every NPZ written via the task-#17 wrapper carries the two
+        convention scalars, regardless of whether L/R translation fired."""
+        from stroke_orofacial.lr_convention import (
+            SIDE_CONVENTION_MATCH_KEY,
+            SIDE_CONVENTION_VERSION,
+            SIDE_CONVENTION_VERSION_KEY,
+        )
+        from stroke_orofacial.spout_behavior.session_processing import (
+            _save_npz_with_side_convention,
+        )
+        path = tmp_path / "out.npz"
+        _save_npz_with_side_convention(
+            path,
+            {"Lick_L": np.array([1]), "Lick_R": np.array([2])},
+            ws_match,
+            has_side_keys=True,
+        )
+        loaded = dict(np.load(path, allow_pickle=True))
+        assert SIDE_CONVENTION_MATCH_KEY in loaded
+        assert SIDE_CONVENTION_VERSION_KEY in loaded
+        assert bool(loaded[SIDE_CONVENTION_MATCH_KEY]) is ws_match
+        assert int(loaded[SIDE_CONVENTION_VERSION_KEY]) == SIDE_CONVENTION_VERSION
+
+    def test_save_npz_flipped_cohort_emits_mouse_frame_labels(self, tmp_path):
+        """On a flipped cohort (ws_match=False), wavesurfer-L lick indices
+        are emitted under the 'Lick_R' key (mouse-R = wavesurfer-L on
+        the mirrored rig) and vice versa — the foundational invariant
+        task #17 establishes."""
+        from stroke_orofacial.spout_behavior.session_processing import (
+            _save_npz_with_side_convention,
+        )
+        ws_lick_L = np.array([100, 200, 300])  # wavesurfer-L indices
+        ws_lick_R = np.array([150, 250])  # wavesurfer-R indices
+        path = tmp_path / "out.npz"
+        _save_npz_with_side_convention(
+            path,
+            {"Lick_L": ws_lick_L, "Lick_R": ws_lick_R},
+            wavesurfer_matches=False,
+            has_side_keys=True,
+        )
+        loaded = dict(np.load(path, allow_pickle=True))
+        # Mouse-frame "Lick_L" contains what was wavesurfer-R indices.
+        np.testing.assert_array_equal(loaded["Lick_L"], ws_lick_R)
+        np.testing.assert_array_equal(loaded["Lick_R"], ws_lick_L)
+
+    def test_save_npz_matched_cohort_no_flip(self, tmp_path):
+        """On a matched cohort (ws_match=True), labels pass through
+        unchanged — the translation is a strict no-op."""
+        from stroke_orofacial.spout_behavior.session_processing import (
+            _save_npz_with_side_convention,
+        )
+        ws_lick_L = np.array([100, 200, 300])
+        ws_lick_R = np.array([150, 250])
+        path = tmp_path / "out.npz"
+        _save_npz_with_side_convention(
+            path,
+            {"Lick_L": ws_lick_L, "Lick_R": ws_lick_R},
+            wavesurfer_matches=True,
+            has_side_keys=True,
+        )
+        loaded = dict(np.load(path, allow_pickle=True))
+        np.testing.assert_array_equal(loaded["Lick_L"], ws_lick_L)
+        np.testing.assert_array_equal(loaded["Lick_R"], ws_lick_R)
+
+
+def _unflip_new_to_wavesurfer_frame(
+    new_payload: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    """Translate a post-task-#17 mouse-frame NPZ payload back to wavesurfer frame.
+
+    Task #17 (2026-04-20) moved output-NPZ L/R labels from wavesurfer
+    frame to mouse frame via boundary-layer translation at emit time.
+    The frozen ``session_processing3`` baseline predates task #17 and
+    is wavesurfer-frame, so integration-parity tests need to un-flip
+    the new emitter's output before comparing.
+
+    The NPZ's own ``wavesurfer_sides_match_mouse_sides`` scalar drives
+    the un-flip: if True (matched rig, no translation at emit) the
+    payload is returned unchanged; if False (mirrored rig, L↔R swapped
+    at emit) keys ending in ``_L`` / ``_R`` are swapped back. The
+    ``side_convention_version`` / ``wavesurfer_sides_match_mouse_sides``
+    scalars themselves are dropped from the returned dict so downstream
+    ``ref[key]`` lookups don't see them.
+
+    This helper is test-side only; production code should never un-flip
+    — the emitted mouse-frame labels are the canonical artifact contract.
+    """
+    from stroke_orofacial.lr_convention import (
+        SIDE_CONVENTION_MATCH_KEY,
+        SIDE_CONVENTION_VERSION_KEY,
+    )
+
+    flag = new_payload.get(SIDE_CONVENTION_MATCH_KEY)
+    if flag is None:
+        # NPZ predates task #17. Pass through unchanged.
+        return new_payload
+    flag = bool(flag)  # numpy 0-d bool array → Python bool
+
+    out: dict[str, np.ndarray] = {}
+    for key, value in new_payload.items():
+        if key in (SIDE_CONVENTION_MATCH_KEY, SIDE_CONVENTION_VERSION_KEY):
+            continue
+        if flag:
+            out[key] = value
+            continue
+        if key.endswith("_L"):
+            out[key[:-2] + "_R"] = value
+        elif key.endswith("_R"):
+            out[key[:-2] + "_L"] = value
+        else:
+            out[key] = value
+    return out

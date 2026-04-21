@@ -134,6 +134,12 @@ def writer_kwargs(tmp_path: Path) -> dict[str, Any]:
         "defaults": DEFAULTS_STUB,
         "n_trials": 87,
         "day_relative_to_stroke": -3,
+        # Task #17: matched-rig default in the fixture keeps the
+        # pre-existing per-side assertions semantically unchanged
+        # (no L/R flip at emit). TestSideConventionStamp /
+        # TestLRFlipAtEmit (added in commit 4) cover the flipped-rig
+        # path explicitly.
+        "wavesurfer_sides_match_mouse_sides": True,
     }
 
 
@@ -174,6 +180,8 @@ class TestBlockShapes:
         assert set(meta.keys()) == {
             "animal", "date", "phase", "day_relative_to_stroke",
             "n_trials", "source_npz_hashes", "writer_run_timestamp",
+            # Task #17 side-convention stamp.
+            "wavesurfer_sides_match_mouse_sides", "side_convention_version",
         }
         assert meta["animal"] == "PS46"
         assert meta["date"] == "2025-03-07"
@@ -183,6 +191,10 @@ class TestBlockShapes:
         assert set(meta["source_npz_hashes"].keys()) == {
             "licks_and_rewards", "wavesurfer_signals_processed",
         }
+        # The fixture passes wavesurfer_sides_match_mouse_sides=True, so
+        # the stamp records the matched-rig case here.
+        assert meta["wavesurfer_sides_match_mouse_sides"] is True
+        assert meta["side_convention_version"] == 1
 
     def test_endpoints_block_keys_match_canonical_set(
         self, writer_kwargs: dict[str, Any],
@@ -462,3 +474,117 @@ class TestLickBoutAdapter:
         assert result.per_session_aggregate["mean_n_licks"] == pytest.approx(2.75)
         # std of per-trial counts [2, 1] = 0.5
         assert result.per_session_aggregate["std_bouts_per_trial"] == pytest.approx(0.5)
+
+
+# ---------------------------------------------------------------------------
+# Side-convention regression guards (task #17 commit 4/5)
+# ---------------------------------------------------------------------------
+
+
+class TestSideConventionAtEmit:
+    """Regression guards for task-#17 L/R translation inside
+    ``write_session_endpoints_json``. Exercises both the matched-rig
+    (flag=True, no flip) and flipped-rig (flag=False, L↔R swapped)
+    paths, plus the convention-scalar stamping in the metadata block."""
+
+    def _writer_kwargs_with_flag(
+        self, tmp_path: Path, ws_match: bool,
+    ) -> dict[str, Any]:
+        """Helper: writer_kwargs variant with an explicit flag value."""
+        npz = _write_synthetic_npz(
+            tmp_path / "src" / "licks_and_rewards.npz",
+            {"x": np.arange(3)},
+        )
+        return {
+            "animal": "PS46",
+            "date": datetime.date(2025, 3, 7),
+            "endpoints": _make_full_endpoints_dict(),
+            "criteria": _make_full_criteria_dict(),
+            "source_npz_paths": {"licks_and_rewards": npz},
+            "output_path": tmp_path / "out.json",
+            "defaults": DEFAULTS_STUB,
+            "n_trials": 87,
+            "day_relative_to_stroke": -3,
+            "wavesurfer_sides_match_mouse_sides": ws_match,
+        }
+
+    def test_matched_rig_preserves_per_side_keys_unchanged(self, tmp_path):
+        """flag=True → no translation. L/R values survive byte-for-byte."""
+        kwargs = self._writer_kwargs_with_flag(tmp_path, ws_match=True)
+        out = write_session_endpoints_json(**kwargs)
+        loaded = json.loads(out.read_text())
+        c3 = loaded["criteria"]["criteria_first_correct_lick_present"]
+        # Caller passed per_side_per_trial_pass={"L": [T, F], "R": [T]}.
+        # Matched rig → emitted unchanged.
+        assert c3["per_side_per_trial_pass"]["L"] == [True, False]
+        assert c3["per_side_per_trial_pass"]["R"] == [True]
+        c2 = loaded["criteria"][
+            "criteria_session_trial_pass_fraction_above_threshold"
+        ]
+        assert c2["per_side_pass"] == {"L": True, "R": False}
+        assert c2["per_side_fraction"] == {"L": 0.5, "R": 0.0}
+        assert c2["per_side_n_trials"] == {"L": 2, "R": 1}
+
+    def test_flipped_rig_swaps_per_side_keys_in_criteria(self, tmp_path):
+        """flag=False → per-side dict keys flipped at emit. Caller-supplied
+        wavesurfer-frame L values are emitted under mouse-frame L = old R."""
+        kwargs = self._writer_kwargs_with_flag(tmp_path, ws_match=False)
+        out = write_session_endpoints_json(**kwargs)
+        loaded = json.loads(out.read_text())
+
+        # C3: caller passed L=[T, F], R=[T]. Flipped rig emits L=[T], R=[T, F].
+        c3 = loaded["criteria"]["criteria_first_correct_lick_present"]
+        assert c3["per_side_per_trial_pass"]["L"] == [True]
+        assert c3["per_side_per_trial_pass"]["R"] == [True, False]
+
+        # C4: caller passed L=[T, T], R=[F]. Flipped → L=[F], R=[T, T].
+        c4 = loaded["criteria"]["criteria_correct_lick_count_threshold"]
+        assert c4["per_side_per_trial_pass"]["L"] == [False]
+        assert c4["per_side_per_trial_pass"]["R"] == [True, True]
+
+        # C2: all three per_side_* dicts flip.
+        c2 = loaded["criteria"][
+            "criteria_session_trial_pass_fraction_above_threshold"
+        ]
+        assert c2["per_side_pass"] == {"L": False, "R": True}
+        assert c2["per_side_fraction"] == {"L": 0.0, "R": 0.5}
+        assert c2["per_side_n_trials"] == {"L": 1, "R": 2}
+
+    def test_flipped_rig_swaps_per_trial_type_split_in_endpoints(self, tmp_path):
+        """flag=False also flips per_trial_type_split L/R keys in
+        every endpoint that has that field."""
+        kwargs = self._writer_kwargs_with_flag(tmp_path, ws_match=False)
+        out = write_session_endpoints_json(**kwargs)
+        loaded = json.loads(out.read_text())
+
+        # The fixture's _make_endpoint_result sets
+        # per_trial_type_split={"L": {"mean": 0.15}, "R": {"mean": 0.45}}.
+        # Flipped rig emits L={"mean": 0.45}, R={"mean": 0.15}.
+        for name, endpoint in loaded["endpoints"].items():
+            if name == "inter_session_persistence":
+                continue  # sentinel, no per_trial_type_split
+            split = endpoint["per_trial_type_split"]
+            assert split["L"] == {"mean": 0.45}, name
+            assert split["R"] == {"mean": 0.15}, name
+
+    @pytest.mark.parametrize("ws_match", [True, False])
+    def test_metadata_block_stamped_with_convention_scalars(
+        self, tmp_path, ws_match,
+    ):
+        """Every emitted JSON's metadata block carries the two
+        convention scalars regardless of flag value."""
+        kwargs = self._writer_kwargs_with_flag(tmp_path, ws_match=ws_match)
+        out = write_session_endpoints_json(**kwargs)
+        meta = json.loads(out.read_text())["metadata"]
+        assert meta["wavesurfer_sides_match_mouse_sides"] is ws_match
+        assert meta["side_convention_version"] == 1
+
+    def test_c1_sentinel_passes_through_unchanged_on_flipped_rig(self, tmp_path):
+        """The C1 cohort-aggregation sentinel has no L/R structure;
+        translation must leave it as the verbatim sentinel dict."""
+        kwargs = self._writer_kwargs_with_flag(tmp_path, ws_match=False)
+        out = write_session_endpoints_json(**kwargs)
+        loaded = json.loads(out.read_text())
+        assert loaded["criteria"][COHORT_AGGREGATED_CRITERIA_SLUG] == dict(
+            INTER_SESSION_REQUIRES_COHORT_SENTINEL
+        )

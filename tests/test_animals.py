@@ -257,3 +257,71 @@ class TestExclusion:
         assert exc.applies("tongue") is True
         assert exc.applies("jaw") is False
         assert exc.applies(None) is False
+
+
+class TestWavesurferSidesMatchMouseSides:
+    """Per task #17: controls whether the wavesurfer Lick_L/Reward_L
+    channels correspond directly to the mouse's L side (true) or are
+    mirrored (false). Default is False — fail-conservative for the
+    current PS46–PS55 cohort acquired on the mirrored rig."""
+
+    def test_default_false_when_key_absent(self, animals_yaml):
+        """Absent key → False (fail-conservative). The fixture's PS46
+        has no wavesurfer_sides_match_mouse_sides entry, so it must
+        default to False, matching the current cohort's rig orientation."""
+        animals = load_animals(animals_yaml)
+        assert animals["PS46"].wavesurfer_sides_match_mouse_sides is False
+        assert animals["PS54"].wavesurfer_sides_match_mouse_sides is False
+
+    def test_explicit_false_loads_as_false(self, tmp_path):
+        cfg = tmp_path / "explicit_false.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  wavesurfer_sides_match_mouse_sides: false
+            """)
+        )
+        animals = load_animals(cfg)
+        assert animals["PS99"].wavesurfer_sides_match_mouse_sides is False
+
+    def test_explicit_true_loads_as_true(self, tmp_path):
+        """When a future cohort is acquired on a matched-orientation
+        rig, the yaml flag flips and the output-boundary translation
+        becomes a no-op."""
+        cfg = tmp_path / "explicit_true.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  wavesurfer_sides_match_mouse_sides: true
+            """)
+        )
+        animals = load_animals(cfg)
+        assert animals["PS99"].wavesurfer_sides_match_mouse_sides is True
+
+    def test_invalid_type_raises(self, tmp_path):
+        """Non-bool values (e.g. the string "false", or an int) must
+        fail fast — YAML parses actual booleans as bools, so a string
+        almost certainly means the author typo'd the value."""
+        cfg = tmp_path / "invalid_type.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  wavesurfer_sides_match_mouse_sides: "false"
+            """)
+        )
+        with pytest.raises(
+            ValueError, match="wavesurfer_sides_match_mouse_sides"
+        ):
+            load_animals(cfg)

@@ -50,6 +50,15 @@ class SessionManifest:
         Whether this session is excluded from analysis.
     exclusion_reason : str or None
         Reason for exclusion, if excluded.
+    wavesurfer_sides_match_mouse_sides : bool
+        Copy of the per-animal flag from
+        :class:`stroke_orofacial.animals.AnimalInfo`. Propagates the rig
+        convention through the manifest so every downstream emitter has
+        it without re-loading the animals config. Default ``False``
+        (fail-conservative for the current PS46–PS55 cohort). See
+        DECISIONS.md 2026-04-20 "Wavesurfer L/R ↔ mouse-frame
+        boundary-layer translation" and
+        :mod:`stroke_orofacial.lr_convention`.
     """
 
     session_id: str
@@ -64,6 +73,11 @@ class SessionManifest:
     alignment_template: Path | None = None
     excluded: bool = False
     exclusion_reason: str | None = None
+    # Task #17: rig-orientation flag propagated from AnimalInfo at
+    # build_manifest() time so emitters can translate wavesurfer-frame
+    # labels to mouse-frame at output boundaries without re-loading the
+    # animals config.
+    wavesurfer_sides_match_mouse_sides: bool = False
 
 
 def _discover_dlc_files(
@@ -191,4 +205,7 @@ def build_manifest(
         alignment_template=alignment_template,
         excluded=excluded,
         exclusion_reason=exclusion_reason,
+        wavesurfer_sides_match_mouse_sides=(
+            animal_info.wavesurfer_sides_match_mouse_sides
+        ),
     )
