@@ -196,23 +196,28 @@ class TestIntegrationProcessSession:
     in ``TestIntegrationProcessSessionWithManifest`` below.
     """
 
-    def test_process_and_params_json_written(self, monkeypatch):
-        """process_session_by_animal_date writes per-session params.json with skipped=False."""
+    def test_process_and_params_json_written(self, monkeypatch, tmp_path):
+        """process_session_by_animal_date writes per-session params.json with skipped=False.
+
+        Uses ``PathResolver(output_root=tmp_path)`` so the emit goes under
+        ``tmp_path/spout_behavior/`` instead of the real production tree
+        (task #20 hygiene fix).
+        """
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         from stroke_orofacial.paths import PathResolver
         from stroke_orofacial.spout_behavior.session_processing import (
             process_session_by_animal_date,
         )
 
-        resolver = PathResolver()
+        resolver = PathResolver(output_root=tmp_path)
         date = datetime.date(2025, 3, 7)
         result = process_session_by_animal_date("PS46", date, resolver, overwrite="force")
 
         # Should have returned paths for all 7 output types
         assert len(result) == 7
 
-        # Per-session params.json should exist
-        params_path = _V2 / "params" / "PS46" / "20250307.json"
+        # Per-session params.json should exist under the tmp_path output root
+        params_path = tmp_path / "spout_behavior" / "params" / "PS46" / "20250307.json"
         assert params_path.exists()
         with open(params_path) as f:
             record = json.load(f)
@@ -221,15 +226,19 @@ class TestIntegrationProcessSession:
         assert "run_timestamp" in record
         assert "process_treadmill_signal" in record["params"]
 
-    def test_skip_path_writes_params_json(self, monkeypatch):
-        """When overwrite='skip' and outputs exist, params.json is still written."""
+    def test_skip_path_writes_params_json(self, monkeypatch, tmp_path):
+        """When overwrite='skip' and outputs exist, params.json is still written.
+
+        Uses ``PathResolver(output_root=tmp_path)`` so the two emits (force
+        then skip) land under ``tmp_path/spout_behavior/`` — task #20.
+        """
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         from stroke_orofacial.paths import PathResolver
         from stroke_orofacial.spout_behavior.session_processing import (
             process_session_by_animal_date,
         )
 
-        resolver = PathResolver()
+        resolver = PathResolver(output_root=tmp_path)
         date = datetime.date(2025, 3, 7)
 
         # First run ensures outputs exist (force)
@@ -239,7 +248,7 @@ class TestIntegrationProcessSession:
         result = process_session_by_animal_date("PS46", date, resolver, overwrite="skip")
         assert result == {}
 
-        params_path = _V2 / "params" / "PS46" / "20250307.json"
+        params_path = tmp_path / "spout_behavior" / "params" / "PS46" / "20250307.json"
         assert params_path.exists()
         with open(params_path) as f:
             record = json.load(f)
@@ -260,15 +269,22 @@ class TestIntegrationProcessSessionWithManifest:
     These tests verify the manifest-first path on real data.
     """
 
-    def test_process_session_with_manifest(self, monkeypatch):
-        """Build manifest explicitly, pass to process_session(manifest, ...)."""
+    def test_process_session_with_manifest(self, monkeypatch, tmp_path):
+        """Build manifest explicitly, pass to process_session(manifest, ...).
+
+        Uses ``PathResolver(output_root=tmp_path)`` so the emit goes to
+        ``tmp_path`` instead of the real production tree (task #20).
+        The override scopes to ``pipeline_outputs()`` only, so
+        ``build_manifest`` still discovers real wavesurfer / video / DLC
+        / alignment_template inputs from the MICROSCOPE mount.
+        """
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         from stroke_orofacial.animals import get_animal
         from stroke_orofacial.manifest import build_manifest
         from stroke_orofacial.paths import PathResolver
         from stroke_orofacial.spout_behavior.session_processing import process_session
 
-        resolver = PathResolver()
+        resolver = PathResolver(output_root=tmp_path)
         date = datetime.date(2025, 3, 7)
         animal_info = get_animal("PS46")
         manifest = build_manifest("PS46", date, resolver, animal_info)
@@ -283,17 +299,20 @@ class TestIntegrationProcessSessionWithManifest:
         result = process_session(manifest, resolver, overwrite="force")
         assert len(result) == 7
 
-    def test_process_session_succeeds_with_empty_dlc(self, monkeypatch):
+    def test_process_session_succeeds_with_empty_dlc(self, monkeypatch, tmp_path):
         """Phase 2 is DLC-free: manifest with empty dlc_h5_files still
         processes successfully (sessions where DLC inference hasn't run
-        yet, or where video failed but wavesurfer is clean)."""
+        yet, or where video failed but wavesurfer is clean).
+
+        Uses ``PathResolver(output_root=tmp_path)`` for task #20.
+        """
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         from stroke_orofacial.animals import get_animal
         from stroke_orofacial.manifest import build_manifest
         from stroke_orofacial.paths import PathResolver
         from stroke_orofacial.spout_behavior.session_processing import process_session
 
-        resolver = PathResolver()
+        resolver = PathResolver(output_root=tmp_path)
         date = datetime.date(2025, 3, 7)
         animal_info = get_animal("PS46")
         manifest = build_manifest("PS46", date, resolver, animal_info)
