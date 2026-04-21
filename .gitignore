@@ -24,3 +24,6 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Scratch: one-off parity / exploration scripts + their logs (never committed)
+scratch/
