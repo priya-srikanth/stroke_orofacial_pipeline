@@ -21,6 +21,8 @@ from stroke_orofacial.alignment.templates import (
     load_camera_csv,
     pick_camera_csv,
 )
+from stroke_orofacial.animals import get_animal
+from stroke_orofacial.manifest import SessionManifest, build_manifest
 from stroke_orofacial.paths import PathResolver
 
 
@@ -132,8 +134,7 @@ def session_time_to_frame(
 
 
 def load_or_compute_alignment(
-    animal: str,
-    date: datetime.date,
+    manifest: SessionManifest,
     resolver: PathResolver,
     params: dict[str, Any],
     *,
@@ -142,35 +143,63 @@ def load_or_compute_alignment(
 ) -> AlignmentResult:
     """Load an existing alignment template, or compute one if missing.
 
-    Default behavior: load from ``alignment_templates/cam2/{animal}/{YYYYMMDD}.npz``.
-    If the template doesn't exist (or ``force_recompute=True``), compute fresh
-    from wavesurfer sync signal + camera CSV.
+    Primary entry point — consumes a ``SessionManifest`` produced by
+    ``build_manifest()``. Phase 3 alignment is DLC-agnostic by design: it
+    relates wavesurfer samples to camera frames, and camera frames exist
+    whether or not DLC inference has run. The DLC guard belongs in
+    Phase 4 (parquet builder), not here.
+
+    Default behavior: load from ``manifest.alignment_template`` (cam2 only)
+    or ``alignment_templates/{cam_name}/{animal}/{YYYYMMDD}.npz`` for other
+    cams. If the template doesn't exist (or ``force_recompute=True``),
+    compute fresh from ``manifest.wavesurfer_file`` + camera CSV.
+
+    For callers that prefer the legacy (animal, date) entry point, see
+    ``load_or_compute_alignment_by_animal_date()`` below.
 
     Parameters
     ----------
-    animal : str
-        Animal ID.
-    date : datetime.date
-        Session date.
+    manifest : SessionManifest
+        Per-session manifest. ``wavesurfer_file`` (and, for cam2,
+        ``video_files``) must be populated when ``force_recompute=True`` or
+        the existing template is missing.
     resolver : PathResolver
-        Configured path resolver.
+        Configured path resolver. Used for the alignment-template path
+        when ``cam_idx != 2`` (manifest only tracks cam2's template), and
+        as a fallback for the camera directory when the manifest's
+        ``video_files`` is empty.
     params : dict
         The ``alignment`` section from defaults.yaml.
     ws_signals : dict, optional
         Pre-loaded wavesurfer signals. If None and recompute is needed,
-        loads from the processed wavesurfer NPZ in stroke_orofacial_pipeline_outputs.
+        loads from ``manifest.wavesurfer_file``.
     force_recompute : bool
         If True, always recompute even if an existing template exists.
 
     Returns
     -------
     AlignmentResult
+
+    Raises
+    ------
+    FileNotFoundError
+        If recomputation is needed but the required wavesurfer or camera
+        CSV inputs are missing from the manifest and unavailable via the
+        resolver.
     """
     cam_idx = int(params.get("cam_idx", 2))
     cam_name = f"cam{cam_idx}"
+    animal = manifest.animal
+    date = manifest.date
 
-    # Try loading existing template
-    existing_path = resolver.alignment_template(animal, date, cam=cam_name)
+    # Existing-template path: prefer the manifest's cam2 entry; fall back
+    # to the resolver for other cams (manifest only tracks cam2) or when
+    # the manifest didn't see the template at build time but it now exists.
+    if cam_idx == 2 and manifest.alignment_template is not None:
+        existing_path = manifest.alignment_template
+    else:
+        existing_path = resolver.alignment_template(animal, date, cam=cam_name)
+
     if not force_recompute and existing_path.exists():
         tmpl = load_alignment_template(existing_path)
         return AlignmentResult(
@@ -184,16 +213,25 @@ def load_or_compute_alignment(
 
     # Need to compute — get wavesurfer signals
     if ws_signals is None:
+        if manifest.wavesurfer_file is None:
+            raise FileNotFoundError(
+                f"{manifest.session_id}: manifest.wavesurfer_file is None. "
+                f"Phase 3 alignment requires wavesurfer + camera CSV to "
+                f"recompute. Provide ws_signals explicitly, ensure the "
+                f"wavesurfer mount is available, or rerun build_manifest()."
+            )
         from stroke_orofacial.spout_behavior.wavesurfer_io import (
-            find_wavesurfer_file,
             load_wavesurfer_signals,
         )
-        ws_dir = resolver.wavesurfer_dir(date, animal)
-        ws_file = find_wavesurfer_file(ws_dir)
-        ws_signals = load_wavesurfer_signals(ws_file)
+        ws_signals = load_wavesurfer_signals(manifest.wavesurfer_file)
 
-    # Get camera CSV
-    cam_dir = resolver.camera_dir(date, animal)
+    # Get camera CSV. For cam2, prefer the directory the manifest already
+    # discovered for video_files; fall back to the resolver for other cams
+    # or when the manifest has no videos discovered.
+    if cam_idx == 2 and manifest.video_files:
+        cam_dir = manifest.video_files[0].parent
+    else:
+        cam_dir = resolver.camera_dir(date, animal)
     csv_path = pick_camera_csv(cam_dir, cam_idx=cam_idx)
     cam_csv = load_camera_csv(csv_path)
 
@@ -207,4 +245,33 @@ def load_or_compute_alignment(
         intercept_ws_samples=float(tmpl["intercept_ws_samples"]),
         Fs_ws=float(tmpl["Fs_ws_input"]),
         source="computed",
+    )
+
+
+def load_or_compute_alignment_by_animal_date(
+    animal: str,
+    date: datetime.date,
+    resolver: PathResolver,
+    params: dict[str, Any],
+    *,
+    ws_signals: dict[str, np.ndarray] | None = None,
+    force_recompute: bool = False,
+) -> AlignmentResult:
+    """Convenience wrapper: builds a SessionManifest then calls load_or_compute_alignment().
+
+    Equivalent to::
+
+        animal_info = get_animal(animal)
+        manifest = build_manifest(animal, date, resolver, animal_info)
+        return load_or_compute_alignment(manifest, resolver, params, ...)
+
+    Phase 3 alignment is DLC-agnostic; ``build_manifest()`` treats DLC
+    files as optional, so this wrapper works for sessions where DLC
+    inference hasn't run yet.
+    """
+    animal_info = get_animal(animal)
+    manifest = build_manifest(animal, date, resolver, animal_info)
+    return load_or_compute_alignment(
+        manifest, resolver, params,
+        ws_signals=ws_signals, force_recompute=force_recompute,
     )
