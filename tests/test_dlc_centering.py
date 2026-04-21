@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -10,6 +12,7 @@ from stroke_orofacial.dlc_io.centering import (
     CenterMode,
     apply_centering,
     compute_center,
+    load_centered_fresh,
 )
 
 
@@ -95,3 +98,59 @@ class TestApplyCentering:
         df = _make_synthetic_dlc(50)
         result = apply_centering(df, 0.0, 0.0)
         assert result.shape == df.shape
+
+
+class TestLoadCenteredFresh:
+    """`load_centered_fresh` is the read_dlc → compute_center → apply_centering
+    pipeline minus the parquet write — exposes likelihood_threshold for
+    interactive exploration."""
+
+    def test_pipeline_equivalence(self, monkeypatch):
+        """Result equals the manual three-step chain."""
+        df = _make_synthetic_dlc()
+
+        # Stub read_dlc to return our synthetic frame
+        from stroke_orofacial.dlc_io import loaders as _loaders
+        monkeypatch.setattr(_loaders, "read_dlc", lambda path: df.copy())
+
+        manual_cx, manual_cy, _ = compute_center(df, "nose", 0.7)
+        manual = apply_centering(df, manual_cx, manual_cy)
+
+        fresh = load_centered_fresh(Path("/dummy.h5"), "nose", 0.7)
+
+        pd.testing.assert_frame_equal(fresh, manual)
+
+    def test_likelihood_threshold_is_per_call(self, monkeypatch):
+        """Different likelihood_thresholds produce different center points
+        (when low-likelihood points get filtered out)."""
+        df = _make_synthetic_dlc()
+        # Force half the nose points to low likelihood with a non-median offset
+        df.loc[: len(df) // 2, "nose_x"] = 999.0
+        df.loc[: len(df) // 2, "nose_likelihood"] = 0.1
+
+        from stroke_orofacial.dlc_io import loaders as _loaders
+        monkeypatch.setattr(_loaders, "read_dlc", lambda path: df.copy())
+
+        # Threshold 0.7 filters out the bad half — center is near the good half
+        fresh_strict = load_centered_fresh(Path("/dummy.h5"), "nose", 0.7)
+        # Threshold 0.0 keeps everything — center includes the 999 outliers
+        fresh_loose = load_centered_fresh(Path("/dummy.h5"), "nose", 0.0)
+
+        # The two outputs should differ in the nose_x column (different cx subtracted)
+        assert not np.allclose(
+            fresh_strict["nose_x"].values, fresh_loose["nose_x"].values
+        )
+
+    def test_returns_parquet_compatible_schema(self, monkeypatch):
+        """Output dtypes match what build_centered_parquet writes (float32)."""
+        df = _make_synthetic_dlc()
+        from stroke_orofacial.dlc_io import loaders as _loaders
+        monkeypatch.setattr(_loaders, "read_dlc", lambda path: df.copy())
+
+        fresh = load_centered_fresh(Path("/dummy.h5"), "nose", 0.7)
+        # All x/y columns must be float32 (likelihoods preserved as input dtype)
+        for col in fresh.columns:
+            if col.endswith("_x") or col.endswith("_y"):
+                assert fresh[col].dtype == np.float32, (
+                    f"{col} dtype is {fresh[col].dtype}, expected float32"
+                )

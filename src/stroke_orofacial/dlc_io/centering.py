@@ -15,6 +15,7 @@ drop or overwrite any rows. All frames are kept in the output.
 from __future__ import annotations
 
 import enum
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -140,3 +141,58 @@ def apply_centering(
         elif col.endswith("_y"):
             out[col] = (out[col] - cy).astype(np.float32)
     return out
+
+
+def load_centered_fresh(
+    h5_path: Path | str,
+    center_mode: str,
+    likelihood_threshold: float = 0.7,
+) -> pd.DataFrame:
+    """Read a DLC H5 and return a centered DataFrame *without* writing to disk.
+
+    Exploration escape hatch alongside the parquet-based pathway: lets
+    callers sweep ``likelihood_threshold`` interactively (different
+    thresholds for centering reference picking) without rebuilding the
+    on-disk centered parquet cache. The returned DataFrame matches the
+    schema produced by ``build_centered_parquet()`` (39 float32 columns,
+    integer row index, all frames kept) so downstream spatial / kinematic
+    code paths can consume it interchangeably.
+
+    Equivalent to:
+
+    .. code-block:: python
+
+        df_raw = read_dlc(h5_path)
+        cx, cy, _ = compute_center(df_raw, center_mode, likelihood_threshold)
+        df = apply_centering(df_raw, cx, cy)
+
+    Parameters
+    ----------
+    h5_path : Path or str
+        Path to a filtered DLC H5 file (or CSV — ``read_dlc`` will pick
+        the right reader).
+    center_mode : str
+        One of "nose", "spout_midpoint", "eye_midpoint".
+    likelihood_threshold : float
+        Minimum likelihood for frames used to compute the center reference.
+        Default 0.7 matches the cohort-wide centering threshold in
+        ``configs/defaults.yaml``. Pass a different value to explore
+        sensitivity without rewriting the parquet.
+
+    Returns
+    -------
+    pd.DataFrame
+        Centered DLC DataFrame. Same shape and dtypes as the parquet
+        cache produces.
+
+    Raises
+    ------
+    RuntimeError
+        Propagated from ``compute_center`` when too few high-likelihood
+        points exist for the chosen reference landmark.
+    """
+    from stroke_orofacial.dlc_io.loaders import read_dlc
+
+    df_raw = read_dlc(h5_path)
+    cx, cy, _ = compute_center(df_raw, center_mode, likelihood_threshold)
+    return apply_centering(df_raw, cx, cy)

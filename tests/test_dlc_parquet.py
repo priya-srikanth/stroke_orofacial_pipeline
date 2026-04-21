@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import datetime
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -10,9 +12,12 @@ import pytest
 
 from stroke_orofacial.dlc_io.parquet import (
     _param_sig,
+    build_centered_parquet,
     read_centered_parquet,
     write_centered_parquet,
 )
+from stroke_orofacial.manifest import SessionManifest
+from stroke_orofacial.paths import PathResolver
 
 
 class TestParamSig:
@@ -58,6 +63,28 @@ class TestWriteAndReadParquet:
     def test_missing_file_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             read_centered_parquet(tmp_path / "nonexistent.parquet")
+
+
+class TestBuildCenteredParquetRaisesOnEmptyDlc:
+    """Phase 4 is the first DLC-required orchestrator (per Phase 6.7
+    architectural decision). build_centered_parquet must raise a clear
+    error if the manifest has no DLC files."""
+
+    def test_raises_when_manifest_has_no_dlc(self, tmp_path):
+        resolver = MagicMock(spec=PathResolver)
+        resolver.pipeline_outputs.return_value = tmp_path
+        manifest = SessionManifest(
+            session_id="PS46_20250101",
+            animal="PS46",
+            date=datetime.date(2025, 1, 1),
+            day_relative_to_stroke=-71,
+            phase="baseline",
+            wavesurfer_file=None,
+            dlc_h5_files=[],
+            dlc_csv_files=[],
+        )
+        with pytest.raises(FileNotFoundError, match="dlc_h5_files"):
+            build_centered_parquet(manifest, "nose", resolver, params={})
 
 
 # ---- Integration: parity against legacy parquets ----
@@ -109,3 +136,37 @@ class TestIntegrationParity:
 
         # Value match
         pd.testing.assert_frame_equal(new_df, legacy_df, check_dtype=True, atol=1e-6)
+
+
+_MOUNT = Path("/Volumes/Neurobio/MICROSCOPE/Priya")
+
+
+@pytest.mark.skipif(
+    not _MOUNT.exists() or not _DLC_DIR.exists(),
+    reason="MICROSCOPE mount or DLC data not available",
+)
+class TestBuildCenteredParquetWithManifest:
+    """Closes the test-coverage gap noted in the 6.7 plan: there was
+    previously NO test exercising the build_centered_parquet orchestrator
+    end-to-end. Adds one for the manifest-first path."""
+
+    def test_skip_path_via_manifest(self, monkeypatch):
+        """build_centered_parquet(manifest, 'nose', resolver) succeeds on
+        an existing parquet (skip path). Outputs already exist on
+        MICROSCOPE — the integration-parity tests above wrote them."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        from stroke_orofacial.animals import get_animal
+        from stroke_orofacial.manifest import build_manifest
+
+        resolver = PathResolver()
+        animal_info = get_animal("PS46")
+        manifest = build_manifest("PS46", datetime.date(2025, 3, 7), resolver, animal_info)
+        assert len(manifest.dlc_h5_files) >= 1
+
+        result = build_centered_parquet(
+            manifest, "nose", resolver, overwrite="skip",
+        )
+        # Skip path returns the existing parquet path (not None)
+        assert result is not None
+        assert result.exists()
+        assert result.name.endswith(".c23dc714.parquet")
