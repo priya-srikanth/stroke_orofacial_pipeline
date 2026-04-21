@@ -94,6 +94,11 @@ dependencies:
   - ipykernel
   - jupyter
   - nbconvert       # used by the `jupyter nbconvert --execute --inplace` pattern
+  - ijson           # streaming JSON parser; used by tools/extract_streaming.py
+                    # to summarize 400+ MB legacy DLC notebooks without OOM
+                    # during phase-plan dead-code classification (CLAUDE.md
+                    # §"Phase plan requirements"). Dev-only; no pipeline code
+                    # depends on it.
 
   # ---- pip-only (not on conda-forge, or extras syntax required) ----
   #
