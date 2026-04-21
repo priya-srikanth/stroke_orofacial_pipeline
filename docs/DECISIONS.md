@@ -15,6 +15,129 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-04-21 — Wavesurfer L/R ↔ mouse-frame boundary-layer translation (task #17, Phase 6.8)
+
+- *Context:* Wavesurfer channel labels `L`/`R` are experimenter-facing
+  (the physical spout positions from the experimenter's viewpoint) and
+  are flipped relative to the mouse's own perspective on the current
+  PS46–PS55 cohort. Legacy handling was inconsistent: the tongue/jaw
+  kinematics notebooks (`20260203_..._tongue.ipynb` cell 25,
+  `20260416_..._jaw.ipynb` cells 22 & 24) applied a data-level flip at
+  load time so all downstream code saw mouse-frame labels, while
+  `behavior_report_PS.py` kept data in wavesurfer frame and flipped
+  labels only at plot time via `fn_flip_lr`. Our consolidated ports of
+  Phases 2 (spout_behavior) and 5/6 (dlc_spatial) inherited the
+  behavior_report convention — wavesurfer-frame throughout with no
+  translation at emit, and no schema annotation on emitted JSON/NPZ.
+  Continuing into Phase 7 (DLC kinematics) without resolving this would
+  have forced a retroactive rename sweep across every per-side output
+  file and figure label once the convention was settled; choosing
+  between the two legacy patterns was the blocker.
+
+- *Decision:* **Boundary-layer translation, NOT flip-at-load.** Internal
+  pipeline arithmetic stays on the wavesurfer frame; every output
+  boundary (NPZ, JSON, parquet `side` columns, figure labels, output
+  filenames) translates to the mouse frame and stamps two scalars —
+  `wavesurfer_sides_match_mouse_sides: bool` (per-animal, from
+  `animals.yaml`) and `side_convention_version: int` (currently 1). A
+  new per-animal `wavesurfer_sides_match_mouse_sides` field is
+  added to `AnimalInfo` with default `False` (fail-conservative for
+  the current cohort; future animals with corrected wiring set `True`).
+  Translation + stamping is provided by
+  `src/stroke_orofacial/lr_convention.py::to_mouse_frame(side,
+  wavesurfer_matches)` and `stamp_side_convention(payload, flag,
+  version)`, applied at the Phase 2 NPZ emit layer and the Phase 8a
+  per-session JSON writer. Phase 5/6 heatmap NPZ reward-aligned
+  `trial_group` slug translation is deferred to a follow-up PR tracked
+  in `docs/runbooks/reemit-phase-5-6-after-lr-fix.md` §7.
+
+- *Rationale:* (a) **Preserves Phase 3/4/5/6 numerical parity** against
+  the `session_processing3` baselines byte-identically — only output
+  key names change, never array values. A flip-at-load would have
+  rewritten every internal buffer and broken parity tests requiring
+  per-phase re-verification. (b) **Single source of truth per
+  artifact.** Every file emitted post-task-#17 can be interpreted
+  without external context: `wavesurfer_sides_match_mouse_sides=False`
+  + `side_convention_version=1` stamps tell a reader exactly what a
+  `Lick_L` key means. Absent stamps means pre-task-#17 (wavesurfer
+  frame). (c) **Cheap incrementality.** Phase 7 ports can now write
+  outputs in mouse frame from day one without inheriting either
+  legacy pattern; the convention is not renegotiated per sub-phase.
+  (d) **Fail-conservative default.** Setting the yaml default `False`
+  (not `True`) means a new animal added without the flag defaults to
+  the current cohort's behavior (mirrored); an animal with corrected
+  wiring must be explicitly opted-in via yaml, which is the safer
+  failure mode than a silent over-flip on a new rig.
+
+- *Enforced at:* `src/stroke_orofacial/lr_convention.py` (helpers +
+  `SIDE_CONVENTION_VERSION = 1`). `src/stroke_orofacial/paths.py` and
+  `configs/animals.yaml` (per-animal flag on PS46–PS55; all `false`).
+  `src/stroke_orofacial/manifest.py` (`SessionManifest` carries the
+  flag through to orchestrators). `src/stroke_orofacial/spout_behavior/session_processing.py`
+  (`_translate_side_keys`, `_save_npz_with_side_convention` at every
+  Phase 2 NPZ emit). `src/stroke_orofacial/spout_behavior/endpoints_writer.py`
+  (`write_session_endpoints_json` translates per-side criteria/endpoint
+  dict keys and stamps the metadata block). `tests/test_session_processing.py::TestSideConventionAtEmit`
+  (7 tests) + `tests/test_endpoints_writer.py::TestSideConventionAtEmit`
+  (5 tests) + `tests/test_lr_convention.py` (31 tests). `docs/DESIGN.md`
+  §14 (new "CONVENTIONS" section — the canonical rule). `docs/MIGRATION_LOG.md`
+  "Task #17" entry (implementation + Phase 2 re-emit of 1799 NPZs
+  across 257 sessions for PS46–PS55). `docs/runbooks/reemit-phase-5-6-after-lr-fix.md`
+  (deferred Phase 5/6 trial_group translation). Merged as PR #54
+  (commit `d7c1571`), re-emit logged via PR #55 (commit `38b1781`),
+  tagged `v6.8-wavesurfer-side-convention`.
+
+---
+
+## 2026-04-21 — Phase-close tag convention: tag every phase-close merge (Path A)
+
+- *Context:* The original CLAUDE.md §8 bullet said "tags per phase" but
+  did not specify which merges are "phase-close" vs atomic fix-ups vs
+  dotted sub-phases. By 2026-04-20 we had accumulated a mix of tag
+  formats (`v0.8-phase-4.5-lite-eye-midpoint` legacy-style;
+  `v8a.7.5-criteria-hierarchy-port` new-style) and inconsistent
+  coverage (Phase 8a.1 through 8a.7 merged without tags while 8a.7.5
+  got one). With task #17 closing via PR #54 and tasks #20 / #8 queued
+  behind it, the ambiguity forced a decision before more merges
+  accumulated.
+
+- *Decision: **Path A — tag every phase-close PR, including dotted
+  sub-phases and letter-suffix atomic fixes.*** Format: `v{phase}-{slug}`
+  where `{phase}` is the full dotted-or-lettered phase identifier
+  (e.g. `6.7`, `6.7a`, `6.8`, `7`, `7.1`, `8a.7.5`) and `{slug}` is a
+  hyphen-separated summary (don't repeat `phase-N` — the version prefix
+  already encodes it). Tag message: `Phase {phase}: {short summary}`,
+  one line where possible. Push the tag immediately after the merge so
+  origin has the reference. Legacy `v0.X-phase-N-slug` tags
+  (`v0.1-phase-1-foundations` through `v0.8-phase-4.5-lite-eye-midpoint`)
+  are preserved as-is — they are permanent references in history and
+  must not be renamed.
+
+- *Rationale:* Priya asked "what is the actual utility of the tag?"
+  and we enumerated four: (1) **named checkout** — `git checkout
+  v6.7-session-manifest-refactor` is cheaper to type and remember than
+  the merge SHA; (2) **diff anchor** — `git diff v6.7...v6.8` reads as
+  intent ("what changed from SessionManifest refactor to L/R fix")
+  rather than as raw commit range; (3) **branch-survival
+  redundancy** — even if a feature branch is one day pruned, the tag
+  keeps the merge commit permanently reachable; (4) **narrative
+  boundary** — a phase-close tag is the atomic unit of "work that
+  passed review together," which is the granularity users most often
+  want to roll back to or reference. All four utilities benefit from
+  per-phase-close coverage rather than "milestone" coverage; skipping
+  sub-phases produced exactly the 8a.7 / 8a.7.5 inconsistency that
+  motivated the question. Path B ("tag only round-numbered phases")
+  was rejected because the atomic unit of review in this repo is the
+  PR, and PRs map to sub-phases much more often than to round phases.
+
+- *Enforced at:* `CLAUDE.md` §8 Git discipline (three bullets: format,
+  message, push-immediately sequence). Observed as of 2026-04-21: tags
+  `v6.7-session-manifest-refactor`, `v6.8-wavesurfer-side-convention`,
+  `v8a.7-spout-endpoints-json-writer`, `v8a.7.5-criteria-hierarchy-port`
+  all follow the new convention.
+
+---
+
 ## 2026-04-20 — Phase 6.7 closes "SessionManifest is dead code" + makes `build_manifest()` symmetric across discoverable inputs
 
 - *Context:* The mid-consolidation audit (2026-04-19) flagged that

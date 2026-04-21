@@ -200,11 +200,29 @@ Phase 7 is gated on these landing on `main` first:
    comparing arrays. Document this explicitly in each sub-phase's
    parity script.
 
-   If task #17 has NOT landed when Phase 7 starts, STOP and ask Priya.
-   Do not begin Phase 7 sub-phases against a pre-#17 codebase — the
-   convention migration touches output filenames and would create
-   a painful retroactive rename sweep if the emissions are written out
-   first in wavesurfer frame.
+   **Status as of Phase 7 kickoff (2026-04-21):** Task #17 has landed
+   on `main` (PR #54, commit `d7c1571`, tagged
+   `v6.8-wavesurfer-side-convention`). `AnimalInfo` now carries
+   `wavesurfer_sides_match_mouse_sides: bool = False` (all 8 cohort
+   animals explicitly `false` in `configs/animals.yaml`),
+   `src/stroke_orofacial/lr_convention.py` provides `to_mouse_frame()`
+   and `stamp_side_convention()`, and `SessionManifest` threads the
+   flag into every orchestrator. Phase 2 NPZs and Phase 8a JSON
+   writers translate + stamp at emit. Phase 2 cohort artifacts have
+   been re-emitted in mouse frame (PS46–PS55, 257 sessions, 1799 NPZs;
+   see MIGRATION_LOG "Task #17 Phase 2 re-emit"). **Use
+   `to_mouse_frame(side, manifest.wavesurfer_sides_match_mouse_sides)`
+   + `stamp_side_convention(payload, flag, SIDE_CONVENTION_VERSION)`
+   at every Phase 7 emit site.** Do not reinvent the translation.
+
+   **Deferred follow-up (Phase 7-blocking, per task #17 runbook §7):**
+   Phase 5/6 heatmap NPZs and reward-aligned `trial_group` slugs
+   (`reward_L_trials` / `reward_R_trials`) are still in wavesurfer
+   frame. If Phase 7 writes outputs whose filenames include a
+   `reward_{side}_trials` slug, the trial_group translation must land
+   first — either as a Phase 7 sub-phase prerequisite or as its own
+   mini-PR before the first Phase 7 output-writing sub-phase. See
+   `docs/runbooks/reemit-phase-5-6-after-lr-fix.md` §7 for scope.
 
 ## Branch setup
 
