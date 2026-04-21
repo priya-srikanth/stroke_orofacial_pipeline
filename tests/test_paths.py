@@ -278,6 +278,46 @@ class TestNewConvenienceMethods:
         assert result == ws_dir / "20250307" / "PS46"
 
 
+class TestOutputRootOverride:
+    """Task #20: ``output_root=`` kwarg on PathResolver.__init__ overrides the
+    ``microscope_pipeline_outputs`` logical root without touching other roots.
+    Used by integration tests that write via ``process_session(...,
+    overwrite="force")`` to keep those writes inside ``tmp_path`` instead of
+    contaminating the real production output tree.
+    """
+
+    def test_default_preserves_real_config_derived_path(self, monkeypatch):
+        """Omitting the kwarg leaves pipeline_outputs() byte-identical to
+        the pre-task-#20 behavior."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver()  # no output_root
+        result = resolver.pipeline_outputs("spout_behavior")
+        # Real config resolves microscope_pipeline_outputs to the MICROSCOPE path
+        assert result.as_posix() == (
+            "/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs"
+            "/spout_behavior"
+        )
+        assert resolver._output_root_override is None
+
+    def test_override_redirects_pipeline_outputs_only(self, monkeypatch, tmp_path):
+        """output_root=tmp_path redirects pipeline_outputs() to tmp_path.
+        All other roots (wavesurfer_raw, camera_raw, microscope_server, ...)
+        continue to resolve from the real config.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver(output_root=tmp_path)
+        # pipeline_outputs() now returns tmp_path-rooted paths
+        assert resolver.pipeline_outputs("spout_behavior") == tmp_path / "spout_behavior"
+        assert resolver.pipeline_outputs("dlc_analysis") == tmp_path / "dlc_analysis"
+        # Other convenience methods unaffected — they resolve from their own
+        # logical roots (microscope_server, wavesurfer_raw, camera_raw).
+        # On the real config those remain real paths even under override.
+        alignment = resolver.alignment_template("PS46", datetime.date(2025, 3, 7))
+        assert "stroke_orofacial_pipeline_outputs" not in alignment.as_posix()
+        assert "DeepLabCut" in alignment.as_posix()
+        assert resolver._output_root_override == tmp_path
+
+
 class TestDefaultConfig:
     def test_loads_repo_config(self, monkeypatch):
         """PathResolver() with no args loads configs/paths.yaml from the repo."""

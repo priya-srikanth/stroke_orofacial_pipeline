@@ -50,6 +50,14 @@ class PathResolver:
     config_path : Path or str, optional
         Path to the paths.yaml config file. Defaults to ``configs/paths.yaml``
         at the repo root.
+    output_root : Path or str, optional
+        If provided, overrides the ``microscope_pipeline_outputs`` logical
+        root that backs ``pipeline_outputs()``. All OTHER logical roots
+        (wavesurfer_raw, camera_raw, microscope_server, etc.) continue to
+        resolve from the real config unchanged. Primarily a test-fixture
+        hook — production callers should leave this ``None`` so the real
+        config-driven default stands (task #20). When omitted, behavior
+        is byte-identical to the pre-task-#20 code path.
 
     Attributes
     ----------
@@ -57,13 +65,22 @@ class PathResolver:
         The platform key used for resolution ('mac' or 'windows').
     """
 
-    def __init__(self, config_path: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        config_path: Path | str | None = None,
+        *,
+        output_root: Path | str | None = None,
+    ) -> None:
         if config_path is None:
             config_path = _default_config_path()
         config_path = Path(config_path)
 
         with open(config_path) as f:
             self._config = yaml.safe_load(f)
+
+        self._output_root_override: Path | None = (
+            Path(output_root) if output_root is not None else None
+        )
 
         # Determine platform key: env var override or auto-detect
         env_override = os.environ.get("STROKE_PIPELINE_MACHINE")
@@ -186,7 +203,13 @@ class PathResolver:
         """Return the output directory for pipeline outputs on MICROSCOPE.
 
         E.g. ``/Volumes/.../stroke_orofacial_pipeline_outputs/spout_behavior``
+
+        If the resolver was constructed with ``output_root=<path>`` (test
+        hook — task #20), returns ``<path>/<subdir>`` instead. All other
+        methods are unaffected by the override.
         """
+        if self._output_root_override is not None:
+            return self._output_root_override / subdir
         return self.root("microscope_pipeline_outputs") / subdir
 
     def wavesurfer_dir(self, date: datetime.date, animal: str) -> Path:
