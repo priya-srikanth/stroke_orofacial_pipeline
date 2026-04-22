@@ -3372,3 +3372,144 @@ pushed. Docs-only; no parity needed.
    from legacy NPZ `X0`/`Y0` keys on MICROSCOPE.
 3. Produce a per-stage drift table in its own MIGRATION_LOG entry
    per the 2026-04-22 parity-gate principle decision.
+
+---
+
+## Phase 7a.0 — Legacy-cell vendoring + baseline-seed probe + scipy pilot
+
+**Date:** 2026-04-22. PR #79 merged (landed on `main`). **Intentionally
+untagged** — 7a.0 is a probe/scaffold phase inside the 7a design-brief →
+7a implementation boundary; per the Cowork paste-in amendment that
+drove Task 1–3, phase-close tagging resumes at 7a.1. No source data
+modified; no pipeline code paths changed. Every deliverable lives
+under `docs/` or `tests/scripts/` and is consumed by 7a.1 / 7a.2
+rather than by the runtime pipeline.
+
+**What this entry is.** A retrospective trace-line covering the PR #79
+scope — the Cowork-drafted / CC-executed three-task amendment
+(scipy pilot, seed-table scope filter, DECISIONS entry) layered on
+the original legacy-probe kickoff (legacy-cell disambiguation and
+vendoring + unfiltered baseline-seed probe). PR #79 is the combined
+merge; this entry documents it as a single close.
+
+**What landed.**
+
+1. **Legacy-cell vendoring.** Canonical notebooks identified per
+   CLAUDE.md §"Legacy code version disambiguation" 3-tier rule:
+   - Tongue: `20260203_DLC_analysis_ws_aligned_parquet_input_tongue.ipynb`
+     (Priya-named canonical, mtime 2026-04-20). Other tongue
+     notebooks are SIBLINGS with distinct scope markers
+     (`build-parquet`, `reward-aligned`), not dated-supersession
+     candidates.
+   - Jaw: `20260416_DLC_analysis_ws_aligned_parquet_input_jaw.ipynb`
+     (Priya-named canonical, mtime 2026-04-17). The 2025-11-17
+     `DLC_analysis_jaw.ipynb` is superseded (older mtime + narrower
+     scope). The `reward-aligned` sibling has distinct scope.
+   - Vendored cells (byte-identical captures with SHA256 provenance
+     headers) at `docs/legacy_snippets/`:
+     - `tongue_cell23_interp_v5p3.py` — Cell[23], 763 lines, SHA256
+       `41f54f0d04371622e3838f93785e8c051d506109cf448215b7ffdc203f9067b3`.
+     - `jaw_cell22_interp_v5p3.py` — Cell[22], 755 lines, SHA256
+       `a9277879546b901bbe7860c4a21df7091abc4d34bae1fe6450290f2c10fcf438`.
+
+2. **Baseline-seed probe.** NPZ enumeration under
+   `\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\DeepLabCut\O2_analysis\`
+   for all 8 animals (PS46, PS47, PS48, PS49, PS50, PS51, PS54,
+   PS55 — PS52 and PS53 never existed in this project) × 2
+   bodyparts (tongue, jaw) = 16 combos. Unfiltered probe across
+   every NPZ on disk yielded **14 STABLE / 2 NEEDS_HUMAN_DECISION /
+   0 INSUFFICIENT**. The two NHD combos were PS49 tongue and PS50
+   tongue, both showing a Y0 spread of -110 / -100 across their
+   on-disk NPZ sets.
+
+3. **Scope-filtered re-analysis** (added by the Cowork amendment,
+   Task 2). Restricted the probe to the in-scope session range per
+   animal as defined by `configs/animals.yaml sessions.{start, end}`.
+   The PS49 and PS50 tongue Y0 spreads collapsed under the filter:
+   - PS49 tongue: 3 out-of-scope NPZs excluded (20250307, 20250308,
+     20250309 — all Y0=-100, pre-scope); 22 in-scope sessions all
+     at Y0=-110.
+   - PS50 tongue: 10 out-of-scope NPZs excluded (20250307 through
+     20250317 excluding 20250314 — all Y0=-100, pre-scope); 19
+     in-scope sessions all at Y0=-110.
+   - Verified the no-scope-change invariant on every STABLE combo:
+     no STABLE combo's scope-filtered X0/Y0 differs from its
+     unfiltered median. The scope filter resolves the two NHD
+     combos without perturbing any previously-STABLE combo.
+   - **Revised verdict roll-up: 16 STABLE / 0 NEEDS_HUMAN_DECISION /
+     0 INSUFFICIENT.** Authoritative seed values for
+     `configs/animals.yaml kinematics_baselines:` (consumed by
+     Phase 7a.1 Task 1):
+
+     | Animal | tongue.y0 | tongue.x0 | jaw.y0 | jaw.x0 |
+     |---|---|---|---|---|
+     | PS46 | -110.0 | 0.0 | 310.0 | 0.0 |
+     | PS47 | -110.0 | 0.0 | 310.0 | 0.0 |
+     | PS48 | -110.0 | 0.0 | 310.0 | 0.0 |
+     | PS49 | -110.0 | 0.0 | 310.0 | 0.0 |
+     | PS50 | -110.0 | 0.0 | 310.0 | 0.0 |
+     | PS51 | -110.0 | 0.0 | 290.0 | 12.0 |
+     | PS54 | -110.0 | 0.0 | 290.0 | 12.0 |
+     | PS55 | -110.0 | 0.0 | 290.0 | 0.0 |
+
+4. **scipy-version pilot** (Cowork amendment, Task 1). Reproduced
+   the legacy v5p3 PCHIP call under both scipy 1.15.1 (legacy-era,
+   from Priya's local `deeplabcut` conda env) and scipy 1.17.1
+   (consolidated `stroke_orofacial` env) on PS46/20250307 tongue
+   (STABLE, in-scope, 931,834 frames). **Bit-for-bit identical** on
+   all 914,012 common non-NaN frames (x and y both `max|Δ| = 0.0`);
+   NaN boundaries agree exactly (17,822 leading/trailing positions
+   each). **Verdict: Option A — no scipy pin, no tolerance widening.**
+   Phase 7a.1 parity will run under the consolidated env's scipy
+   1.17.1 with `atol=1e-6` per `interpolation-strategy.md` §6
+   default tolerance. Caveat: single-session pilot isolating stage
+   4 (`interp`) only; a second-session stress pilot (PS51/20250430,
+   high-NaN session per §6) is deferred to Phase 7a.1 per the
+   2026-04-22 DECISIONS entry.
+
+5. **DECISIONS grouped entry** (Cowork amendment, Task 3).
+   2026-04-22 entry logged two decisions:
+   - **Parity-scope principle** — parity comparisons for Phase 7a
+     (and all future DLC-kinematics phases) are restricted to the
+     in-scope session set defined by `configs/animals.yaml
+     sessions.{start, end}`. Out-of-scope legacy NPZs are pre-
+     narrowing pipeline artifacts and are not parity targets.
+   - **scipy Option A** — no pin, `atol=1e-6` on PCHIP outputs
+     under consolidated-env scipy 1.17.1. Stress pilot on
+     PS51/20250430 deferred to 7a.1 before opening the 7a
+     implementation PR.
+
+**Artifacts landed in the repo.**
+- `docs/legacy_snippets/tongue_cell23_interp_v5p3.py` (vendored).
+- `docs/legacy_snippets/jaw_cell22_interp_v5p3.py` (vendored).
+- `docs/phase-7/baseline-seed-table.md` — full 16-combo probe table,
+  per-session appendix, scope-filtered re-analysis, seed values for
+  7a.2.
+- `docs/phase-7/scipy-pilot-results.md` — pilot methodology, diff
+  summary, Option A recommendation, caveats.
+- `tests/scripts/scipy_version_pilot.py` — pilot runner reused by
+  7a.1 for the PS51/20250430 stress pilot.
+- `docs/prompts/phase-7a.0-legacy-probe-kickoff.md` — the kickoff
+  prompt Cowork drafted / CC executed (preserved for audit trail).
+
+**Ground-rule compliance.** CLAUDE.md rule 1 — no source data
+modified (MICROSCOPE NPZs read-only). Rule 2 — no legacy-repo
+edits (canonical cells vendored as byte-identical captures with
+SHA256 provenance). Rule 8 — merged on feature branch; **tag
+intentionally omitted** per paste-in constraint, phase-close tagging
+resumes at 7a.1.
+
+**Forward follow-ups for Phase 7a.1** (docs/prompts/phase-7a.1-kickoff.md):
+
+1. Seed `configs/animals.yaml kinematics_baselines:` from the 8-row
+   seed table above; extend `AnimalInfo` with a
+   `kinematics_baselines: dict[str, dict[str, float]]` field and a
+   `get_kinematics_baseline(bodypart)` accessor.
+2. Stand up the 14-session parity harness at
+   `tests/scripts/parity_phase7a_interpolation.py` with the full
+   scope-filter + legacy-NPZ loader + stubbed consolidated loader
+   (implementation lands in 7a.2).
+3. Run the PS51/20250430 scipy stress pilot; attach result to the
+   2026-04-22 DECISIONS entry as a second-session confirmation of
+   Option A, or flip to atol=1e-4 + drift-log if the stress session
+   surfaces version-dependent divergence.
