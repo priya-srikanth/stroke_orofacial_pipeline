@@ -1614,6 +1614,37 @@ Phase-13-pattern fix-PR will follow the Phase 5/6 indexing-module refactor
 
 ---
 
+## Phase 8a.9 — Legacy behavior-report rollup (docs-only)
+
+**Date:** 2026-04-22.
+
+**What was done:**
+- Added `docs/phase-8a/legacy-behavior-report-rollup.md` as the compact
+  close-out index for the legacy behavior-report walkthrough required by Audit
+  Item 10 Q9.
+- Linked the rollup from `docs/PHASE_8A_LEGACY_ENDPOINT_MAPPING.md`, while
+  leaving that archaeology document as the detailed evidence base.
+- Recorded canonical sources (`behavior_report_PS.py`, `summary_PS.py`,
+  `batch_process_behavior_report_20260116PS.ipynb`), the superseded
+  non-target (`behavior_report.py`), Q9 endpoint dispositions, criteria
+  hierarchy status, and explicit non-goals.
+
+**Intentional behavior differences vs. legacy:** None. Documentation-only
+rollup; no source code, schema, notebook, config, output, or source-data changes.
+
+**Scope guard:** The rollup keeps Phase 8a.8 visualization, Phase 5.5 polish,
+external-bnpm script disposition, cohort Phase 5/6 retests, and PS48 multi-half
+handling on the docket. PS48 multi-half handling remains separate because it
+touches shared I/O and can affect Phase 7 DLC loading.
+
+**Exit criteria:**
+- [x] Rollup points to `docs/PHASE_8A_LEGACY_ENDPOINT_MAPPING.md` as the evidence
+  base.
+- [x] No DECISIONS.md entry added; no new project decision was made.
+- [x] Docs-only validation via `git diff --check` and targeted `rg` searches.
+
+---
+
 ## Phase 5/6-prep — Factor `_find_idx_within_eps` into shared `_utils/indexing.py`
 
 **Date:** 2026-04-20.
