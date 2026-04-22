@@ -26,6 +26,7 @@ from stroke_orofacial.dlc_spatial.pixel_bins import (
     build_histogram,
     get_masked_xy,
 )
+from stroke_orofacial.lr_convention import stamp_side_convention
 
 
 def plot_heatmap(
@@ -161,6 +162,9 @@ def save_heatmap_npz(
     y_limits: tuple[float, float] | None = None,
     x_range: tuple[float, float] | None = None,
     window: Any | None = None,
+    wavesurfer_sides_match_mouse_sides: bool | None = None,
+    trial_group: str | None = None,
+    window_ms: tuple[float, float] | None = None,
 ) -> bool:
     """Save the fine-grid heatmap histogram array as NPZ alongside the PNG.
 
@@ -175,13 +179,26 @@ def save_heatmap_npz(
     unchanged. Pass a different ``nbins`` to explore alternative
     resolutions per Priya 2026-04-20.
 
-    NPZ keys (matches ``build_histogram`` return + adds ``x_limits`` /
+    Base NPZ keys (matches ``build_histogram`` return + adds ``x_limits`` /
     ``y_limits`` / ``nbins`` for self-description):
+
       - ``H_counts`` — raw 2D histogram counts (nbins × nbins)
       - ``H_proportion`` — normalized so total = 1
       - ``xedges``, ``yedges`` — bin edges
       - ``x_limits``, ``y_limits`` — axis range used for binning
       - ``nbins`` — bin count per axis
+
+    Optional Phase 6.8a keys (present only when the corresponding kwarg
+    is supplied — callers that don't care about L/R can omit them and
+    the saved NPZ matches the pre-6.8a schema):
+
+      - ``wavesurfer_sides_match_mouse_sides`` + ``side_convention_version``
+        — stamped via :func:`stroke_orofacial.lr_convention.stamp_side_convention`
+        when ``wavesurfer_sides_match_mouse_sides`` is not None.
+      - ``trial_group`` — string scalar (``"all"`` / ``"L"`` / ``"R"``) so the
+        NPZ is self-describing without its filename.
+      - ``window_ms`` — 2-element float array ``[pre_ms, post_ms]`` so
+        Phase 6 NPZs are self-describing without their filename slug.
 
     Parameters
     ----------
@@ -201,6 +218,21 @@ def save_heatmap_npz(
         Bins per axis. Default 100 matches the existing PNG-producing
         histogram resolution.
     x_limits, y_limits, x_range, window : same as ``build_histogram``.
+    wavesurfer_sides_match_mouse_sides : bool, optional
+        Per-animal rig-orientation flag. When provided, the NPZ is
+        stamped with this value + :data:`SIDE_CONVENTION_VERSION` so
+        downstream consumers can tell whether the ``H_counts`` /
+        ``H_proportion`` were computed under a L↔R-mirrored rig. Pass
+        ``None`` (default) for Phase 5 whole-session outputs where
+        L/R stratification doesn't apply; pass the animal's actual
+        flag for Phase 6 reward-aligned outputs where ``trial_group``
+        was consulted to build the ``window``.
+    trial_group : str, optional
+        ``"all"`` / ``"L"`` / ``"R"`` (mouse-frame). Saved as a
+        ``numpy`` string scalar when provided.
+    window_ms : tuple[float, float], optional
+        ``(pre_ms, post_ms)`` — saved as a 2-element float array when
+        provided.
 
     Returns
     -------
@@ -223,14 +255,32 @@ def save_heatmap_npz(
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     extent = hist["extent"]
-    np.savez(
-        str(path),
-        H_counts=hist["H_counts"],
-        H_proportion=hist["H_proportion"],
-        xedges=hist["xedges"],
-        yedges=hist["yedges"],
-        x_limits=np.asarray([extent[0], extent[1]], dtype=np.float64),
-        y_limits=np.asarray([extent[2], extent[3]], dtype=np.float64),
-        nbins=int(nbins),
-    )
+    payload: dict[str, Any] = {
+        "H_counts": hist["H_counts"],
+        "H_proportion": hist["H_proportion"],
+        "xedges": hist["xedges"],
+        "yedges": hist["yedges"],
+        "x_limits": np.asarray([extent[0], extent[1]], dtype=np.float64),
+        "y_limits": np.asarray([extent[2], extent[3]], dtype=np.float64),
+        "nbins": int(nbins),
+    }
+
+    # Phase 6.8a: optional self-describing scalars. Added conditionally
+    # so Phase 5 whole-session callers that don't pass them still write
+    # a pre-6.8a-shape NPZ (backward-compat for any stats code already
+    # reading existing outputs).
+    if trial_group is not None:
+        # np.savez coerces Python strings to numpy unicode scalars.
+        payload["trial_group"] = np.asarray(trial_group)
+    if window_ms is not None:
+        payload["window_ms"] = np.asarray(
+            [float(window_ms[0]), float(window_ms[1])], dtype=np.float64,
+        )
+    if wavesurfer_sides_match_mouse_sides is not None:
+        # stamp_side_convention mutates payload in place and rejects
+        # non-bool / collision-with-existing-key; piggy-backs on the
+        # same validation Phase 2 uses for its NPZs.
+        stamp_side_convention(payload, wavesurfer_sides_match_mouse_sides)
+
+    np.savez(str(path), **payload)
     return True

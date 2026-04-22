@@ -134,38 +134,115 @@ mouse-frame labels back to wavesurfer frame before comparing, so they
 continue to validate against the frozen `session_processing3`
 baselines.
 
-## 7. Phase 5/6 follow-up (deferred from task #17)
+## 7. Phase 5/6 follow-up (deferred from task #17) — RESOLVED
 
-Phase 5/6 outputs (`dlc_spatial` heatmap NPZs + reward-aligned NPZs)
-are **not covered by task #17's commit 3**. Rationale:
+**Status: RESOLVED by PR `v6.8a-phase-5-6-trial-group-translation`
+(2026-04-21).** See `docs/MIGRATION_LOG.md` "Phase 6.8a — Phase 5/6
+mouse-frame trial_group translation + reward-aligned NPZ writer" for
+full details.
 
-- The heatmap NPZ payload has no `L`/`R` keys; only the reward-aligned
-  filename/directory slug (`reward_L_trials` / `reward_R_trials`)
-  encodes side information, and that slug is set by the caller
-  (notebook 12 → `build_reward_aligned_histograms`).
-- `dlc_spatial/reward_aligned.py::trial_group` is currently interpreted
-  as wavesurfer frame. Flipping to mouse frame is caller-visible and
-  needs coordinated updates in notebook 12 + the heatmap-output path
-  convention.
+Summary of what landed vs. what this section originally called for:
 
-A follow-up PR must:
+1. ✓ `save_heatmap_npz` gained optional
+   `wavesurfer_sides_match_mouse_sides` / `trial_group` / `window_ms`
+   kwargs; default `None` preserves backward compat.
+2. ✓ `build_reward_aligned_analysis` (and
+   `build_reward_aligned_analysis_by_animal_date` + notebook 12) gained
+   the parameter. The `_by_animal_date` wrapper auto-populates from
+   `AnimalInfo.wavesurfer_sides_match_mouse_sides` when the caller
+   doesn't pass it.
+3. **Revised interpretation:** Phase 2 NPZs are ALREADY mouse-frame
+   post-Task-#17 re-emit, so `trial_group="L"` → read `Reward_L` from
+   the Phase 2 NPZ directly (no translation inside Phase 6). The
+   orchestrator instead *verifies* the Phase 2 stamp is present and
+   (if the caller supplied it) matches; a pre-re-emit NPZ errors out
+   rather than silently swapping L/R.
+4. **Additional: new `save_reward_aligned_npz` writer + notebook 12
+   emits NPZs alongside PNGs.** Phase 6 had no pre-existing NPZ
+   reference (cell 16 of the canonical notebook was never run to save
+   outputs on MICROSCOPE pre-consolidation). Writing NPZs within the
+   PR restores drift-diagnostic capability via
+   `scripts/phase_6_8a_first_run_health_report.py`.
 
-1. Add a `wavesurfer_sides_match_mouse_sides: bool` parameter to
-   `save_heatmap_npz` (default `None` for backward compat; stamp only
-   when provided).
-2. Add the parameter to `build_reward_aligned_histograms` and the
-   notebook 12 orchestrator.
-3. Define the mouse-frame `trial_group` interpretation: caller passes
-   `trial_group="L"` meaning "mouse-L reward trials"; the orchestrator
-   internally translates to the wavesurfer-frame reward array before
-   filtering, and emits the mouse-frame slug in the output filename.
-4. Update any existing Phase 6 heatmap NPZs via a step-4-style
-   re-emit for the reward-aligned variants specifically.
+With Phase 6.8a merged, Phase 7 (DLC kinematics) is no longer
+blocked on convention alignment. See §8 below for the Phase 6 first-
+emit procedure.
 
-Track this via a task-#17 follow-up issue; do NOT start Phase 7
-(DLC kinematic endpoints) until this follow-up lands — Phase 7 will
-be built on top of Phase 6 outputs, and consuming mixed-convention
-heatmap NPZs would be an unnecessary source of confusion.
+## 8. Phase 6 reward-aligned NPZ first emission (post-6.8a)
+
+Phase 6.8a added NPZ output to notebook 12 (alongside existing PNGs)
+and requires the Phase 2 stamp to be present on the licks NPZ it
+reads. Execute this section once after pulling the 6.8a merge.
+
+### 8.1 Prerequisites
+
+```bash
+cd ~/Github/stroke_orofacial_pipeline
+conda activate stroke_orofacial
+git checkout main && git pull --ff-only origin main
+git log --oneline -1   # expect the v6.8a-phase-5-6-trial-group-translation merge
+pip install -e . --no-deps
+```
+
+Phase 2 must already have been re-emitted under §4 (every
+`spout_behavior/licks_and_rewards/{animal}/{date}.npz` carries the
+convention stamp). Confirm for one session:
+
+```python
+import numpy as np
+d = np.load(
+    "/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs"
+    "/spout_behavior/licks_and_rewards/PS46/20250307.npz",
+    allow_pickle=True,
+)
+assert "side_convention_version" in d.files
+assert "wavesurfer_sides_match_mouse_sides" in d.files
+```
+
+### 8.2 Run notebook 12
+
+Open `notebooks/12_dlc_spatial_reward_aligned.ipynb`, set `ANIMALS` /
+`DATES` / `OVERWRITE` per your needs, and run all cells. The default
+`OVERWRITE = "skip"` will emit NPZs for sessions whose `heatmap_*.png`
+is absent; set to `"force"` to (re-)emit the PNG + NPZ pair
+everywhere. For a partial re-emit (only missing NPZs where PNG
+already exists), you currently need `OVERWRITE="force"`; a future
+refinement could add `"skip-if-npz-exists"` but is out of scope for
+6.8a.
+
+**Expected output tree:**
+
+```
+stroke_orofacial_pipeline_outputs/dlc_analysis/spatial_reward_aligned/
+  {bodypart}_{center_mode}/trials-{group}_{win_tag}/{animal}/
+    heatmap_{YYYYMMDD}.png
+    heatmap_{YYYYMMDD}.npz   <-- NEW in Phase 6.8a
+```
+
+### 8.3 Post-emit health report
+
+```bash
+python scripts/phase_6_8a_first_run_health_report.py --verbose
+```
+
+Checks every emitted NPZ for stamp presence, stamp matches
+`configs/animals.yaml`, and `n_rewards[all] == n_rewards[L] +
+n_rewards[R]` per (animal, date, bodypart, center_mode, window)
+bundle. Exit 0 = healthy; otherwise fix per the failure lines before
+starting Phase 7. Typical failure modes:
+
+- *"missing side_convention_version"* — the notebook emitted an NPZ
+  without stamping. Confirm `save_reward_aligned_npz` was called
+  (not an older inline `np.savez`) and the 6.8a merge is actually on
+  the PYTHONPATH (`pip install -e . --no-deps`).
+- *"stamp disagrees with animals.yaml"* — the yaml was edited after
+  the NPZ was written. Re-run notebook 12 under `OVERWRITE="force"`
+  to regenerate under the new flag. Phase 2 NPZs should also be
+  re-emitted (§4) if the yaml flag actually changed.
+- *"n_rewards[all] != n_rewards[L] + n_rewards[R]"* — indicates the
+  Phase 2 licks NPZ used for L/R differs from the one used for "all"
+  (e.g. a re-emit landed between notebook-12 sub-runs). Re-run
+  notebook 12 under `OVERWRITE="force"` for the affected bundle.
 
 ## 8. Troubleshooting
 

@@ -11,6 +11,18 @@ This is the first phase without array-level parity reference — the legacy
 cell 16 was coded but never run to produce saved outputs on MICROSCOPE.
 Tongue config is legacy-ported; jaw, nose, and whisker configs are
 sanity-check-only defaults.
+
+**Phase 6.8a (mouse-frame trial_group):** Phase 2 NPZs carry mouse-frame
+``Reward_L`` / ``Reward_R`` keys post-task-#17 re-emit, stamped with
+``wavesurfer_sides_match_mouse_sides`` + ``side_convention_version``
+scalars. :func:`load_reward_events` now verifies that stamp is present
+and, if the caller supplies ``wavesurfer_sides_match_mouse_sides``, that
+it agrees with what Phase 2 wrote — guarding against silently reading a
+pre-re-emit NPZ as if it were mouse-frame. Callers pass
+``trial_group="L"`` / ``"R"`` meaning *mouse*-L / *mouse*-R and the
+orchestrator forwards that meaning through the return dict so downstream
+writers (notebook 12 → :func:`save_heatmap_npz`) can stamp the Phase 6
+output with the same convention.
 """
 
 from __future__ import annotations
@@ -26,6 +38,12 @@ from stroke_orofacial.dlc_spatial.window_selector import (
     RewardAlignedWindow,
     _ws_to_cam_frames,
 )
+from stroke_orofacial.lr_convention import (
+    SIDE_CONVENTION_MATCH_KEY,
+    SIDE_CONVENTION_VERSION,
+    SIDE_CONVENTION_VERSION_KEY,
+    stamp_side_convention,
+)
 from stroke_orofacial.manifest import SessionManifest, build_manifest
 from stroke_orofacial.paths import PathResolver
 
@@ -33,24 +51,98 @@ from stroke_orofacial.paths import PathResolver
 def load_reward_events(
     licks_npz_path: Path | str,
     trial_group: str = "all",
+    *,
+    wavesurfer_sides_match_mouse_sides: bool | None = None,
 ) -> np.ndarray:
     """Load reward onset indices from a licks_and_rewards NPZ.
+
+    Per Phase 6.8a, ``trial_group`` is interpreted in the **mouse frame**:
+    ``"L"`` means mouse-left reward trials, ``"R"`` means mouse-right.
+    Phase 2's licks NPZ must carry the :mod:`stroke_orofacial.lr_convention`
+    stamp so this function can verify it was emitted in the mouse frame
+    (via task #17's re-emit). A pre-re-emit NPZ without the stamp would
+    still have ``Reward_L`` / ``Reward_R`` keys — but interpreted as
+    experimenter-frame — and reading it as mouse-frame would silently
+    swap L and R on the mirrored rig. We raise instead.
 
     Parameters
     ----------
     licks_npz_path : Path or str
         Path to the ``licks_and_rewards/{animal}/{YYYYMMDD}.npz`` file
-        from Phase 2.
+        from Phase 2 (mouse-frame post task #17).
     trial_group : str
-        ``"all"`` (both sides), ``"L"`` (left rewards only), or
-        ``"R"`` (right rewards only).
+        ``"all"`` (both sides), ``"L"`` (mouse-left rewards only), or
+        ``"R"`` (mouse-right rewards only).
+    wavesurfer_sides_match_mouse_sides : bool, optional
+        When provided, verifies the Phase 2 NPZ's stamped value equals
+        this boolean. Mismatch → :class:`ValueError` (typically means
+        the caller's ``AnimalInfo`` is out of sync with the NPZ on disk
+        — e.g. the yaml flag was edited after the NPZ was emitted).
+        When ``None``, the stamp is still required to exist but its
+        value is not cross-checked.
 
     Returns
     -------
     np.ndarray
         Sorted array of reward onset indices in wavesurfer sample space.
+        (L/R is mouse-frame; the *array values* are WS sample indices
+        — those are frame-neutral, since the alignment LUT is
+        per-session and cares only about WS↔camera, not L↔R.)
+
+    Raises
+    ------
+    ValueError
+        If the Phase 2 NPZ is missing the side-convention stamp
+        (pre-re-emit file), if the stamped version doesn't match
+        :data:`SIDE_CONVENTION_VERSION`, or if
+        ``wavesurfer_sides_match_mouse_sides`` was provided and
+        disagrees with the stamped value.
     """
     data = np.load(str(licks_npz_path), allow_pickle=True)
+
+    # Phase 6.8a: require the Phase 2 side-convention stamp (task #17
+    # re-emit). Without it we can't tell whether Reward_L in this file
+    # is experimenter-L (pre-re-emit) or mouse-L (post-re-emit), and
+    # silently picking the wrong interpretation on the mirrored rig
+    # swaps the stratification.
+    if SIDE_CONVENTION_VERSION_KEY not in data.files:
+        raise ValueError(
+            f"{licks_npz_path}: Phase 2 NPZ is missing "
+            f"{SIDE_CONVENTION_VERSION_KEY!r} — this is a pre-task-#17 "
+            f"emission and its Reward_L/Reward_R keys are in the "
+            f"wavesurfer frame, not the mouse frame. Re-emit Phase 2 "
+            f"(see docs/runbooks/reemit-phase-5-6-after-lr-fix.md §4) "
+            f"before running reward-aligned Phase 6 analyses."
+        )
+    if SIDE_CONVENTION_MATCH_KEY not in data.files:
+        raise ValueError(
+            f"{licks_npz_path}: Phase 2 NPZ has "
+            f"{SIDE_CONVENTION_VERSION_KEY!r} but is missing "
+            f"{SIDE_CONVENTION_MATCH_KEY!r} — malformed stamp. Re-emit "
+            f"Phase 2."
+        )
+    stamped_version = int(data[SIDE_CONVENTION_VERSION_KEY])
+    if stamped_version != SIDE_CONVENTION_VERSION:
+        raise ValueError(
+            f"{licks_npz_path}: stamped side_convention_version="
+            f"{stamped_version} but this code expects "
+            f"{SIDE_CONVENTION_VERSION}. The convention scheme changed; "
+            f"re-emit Phase 2 under the new scheme before running "
+            f"Phase 6 analyses."
+        )
+    stamped_match = bool(data[SIDE_CONVENTION_MATCH_KEY])
+    if (
+        wavesurfer_sides_match_mouse_sides is not None
+        and stamped_match != wavesurfer_sides_match_mouse_sides
+    ):
+        raise ValueError(
+            f"{licks_npz_path}: caller passed "
+            f"wavesurfer_sides_match_mouse_sides="
+            f"{wavesurfer_sides_match_mouse_sides} but the Phase 2 NPZ "
+            f"was emitted with {stamped_match}. This typically means "
+            f"configs/animals.yaml was edited after the NPZ was "
+            f"written — re-emit Phase 2 to pick up the new flag."
+        )
 
     if trial_group == "L":
         return np.sort(data["Reward_L"].astype(int))
@@ -134,6 +226,8 @@ def build_reward_aligned_analysis(
     resolver: PathResolver,
     spatial_config: dict[str, Any],
     reward_config: dict[str, Any],
+    *,
+    wavesurfer_sides_match_mouse_sides: bool | None = None,
 ) -> dict[str, Any] | None:
     """Run a complete reward-aligned spatial analysis for one session.
 
@@ -161,7 +255,9 @@ def build_reward_aligned_analysis(
     center_mode : str
         Centering mode (nose, spout_midpoint, eye_midpoint).
     trial_group : str
-        "all", "L", or "R".
+        ``"all"``, ``"L"``, or ``"R"`` — mouse-frame per Phase 6.8a
+        (post task #17 re-emit of Phase 2). ``"L"`` means mouse-left
+        reward trials regardless of rig orientation.
     window_ms : tuple[float, float]
         Reward window in ms.
     resolver : PathResolver
@@ -171,18 +267,37 @@ def build_reward_aligned_analysis(
         The ``dlc_spatial`` section from defaults.yaml.
     reward_config : dict
         The ``dlc_spatial_reward_aligned`` section from defaults.yaml.
+    wavesurfer_sides_match_mouse_sides : bool, optional
+        Per-animal rig-orientation flag from
+        :attr:`stroke_orofacial.animals.AnimalInfo.wavesurfer_sides_match_mouse_sides`.
+        When provided, the loader verifies the Phase 2 NPZ's stamp
+        agrees with this value (catches stale NPZs after yaml edits)
+        and the value is forwarded into the returned dict so the
+        downstream writer (notebook 12 → :func:`save_heatmap_npz`)
+        can stamp the Phase 6 NPZ with the same convention. When
+        ``None``, the Phase 2 stamp is still required to exist (else
+        we can't tell mouse-frame from wavesurfer-frame) but its value
+        is not cross-checked.
 
     Returns
     -------
     dict or None
-        ``{"histogram": ..., "window": ..., "n_rewards": ..., "n_selected_frames": ...}``
-        or None if upstream artefacts (centered parquet, licks NPZ, or
-        alignment template) are missing.
+        ``{"histogram": ..., "window": ..., "n_rewards": ..., "n_selected_frames": ..., "trial_group": ..., "window_ms": ..., "bodypart": ..., "center_mode": ..., "wavesurfer_sides_match_mouse_sides": ...}``
+        — or None if upstream artefacts (centered parquet, licks NPZ,
+        or alignment template) are missing. The
+        ``wavesurfer_sides_match_mouse_sides`` field echoes the kwarg
+        when provided, else the value stamped into the Phase 2 NPZ
+        (read back from disk), so notebook 12 can stamp the Phase 6
+        output without having to re-lookup ``AnimalInfo``.
 
     Raises
     ------
     FileNotFoundError
         If ``manifest.dlc_h5_files`` is empty (Phase 6 requires DLC).
+    ValueError
+        Propagated from :func:`load_reward_events` if the Phase 2 NPZ
+        is un-stamped (pre-task-#17) or its stamp disagrees with
+        ``wavesurfer_sides_match_mouse_sides``.
     """
     if not manifest.dlc_h5_files:
         raise FileNotFoundError(
@@ -217,9 +332,22 @@ def build_reward_aligned_analysis(
     if not licks_path.exists():
         return None
 
-    reward_ws = load_reward_events(licks_path, trial_group)
+    reward_ws = load_reward_events(
+        licks_path, trial_group,
+        wavesurfer_sides_match_mouse_sides=wavesurfer_sides_match_mouse_sides,
+    )
     if len(reward_ws) == 0:
         return None
+
+    # Phase 6.8a: surface the effective L/R convention on the return dict
+    # so the caller (notebook 12) can stamp the Phase 6 NPZ without a
+    # second AnimalInfo lookup. If the caller supplied the flag we echo
+    # it; otherwise read back what Phase 2 stamped (authoritative).
+    if wavesurfer_sides_match_mouse_sides is not None:
+        effective_flag = wavesurfer_sides_match_mouse_sides
+    else:
+        licks_data = np.load(str(licks_path), allow_pickle=True)
+        effective_flag = bool(licks_data[SIDE_CONVENTION_MATCH_KEY])
 
     # Alignment template: prefer the manifest's cam2 entry; fall back to
     # the resolver if the manifest didn't see it at build time.
@@ -281,6 +409,7 @@ def build_reward_aligned_analysis(
         "window_ms": window_ms,
         "bodypart": bodypart,
         "center_mode": center_mode,
+        "wavesurfer_sides_match_mouse_sides": effective_flag,
     }
 
 
@@ -294,6 +423,8 @@ def build_reward_aligned_analysis_by_animal_date(
     resolver: PathResolver,
     spatial_config: dict[str, Any],
     reward_config: dict[str, Any],
+    *,
+    wavesurfer_sides_match_mouse_sides: bool | None = None,
 ) -> dict[str, Any] | None:
     """Convenience wrapper: builds a SessionManifest then calls build_reward_aligned_analysis().
 
@@ -305,7 +436,21 @@ def build_reward_aligned_analysis_by_animal_date(
         return build_reward_aligned_analysis(
             manifest, bodypart, center_mode, trial_group, window_ms,
             resolver, spatial_config, reward_config,
+            wavesurfer_sides_match_mouse_sides=(
+                animal_info.wavesurfer_sides_match_mouse_sides
+                if wavesurfer_sides_match_mouse_sides is None
+                else wavesurfer_sides_match_mouse_sides
+            ),
         )
+
+    Per Phase 6.8a, if the caller doesn't pass
+    ``wavesurfer_sides_match_mouse_sides`` explicitly, the wrapper
+    auto-populates it from the animal's yaml config. This is the
+    common path for scripts/tests that identify a session by
+    (animal, date) — callers who are already holding an
+    ``AnimalInfo`` or ``SessionManifest`` should use the primary
+    ``build_reward_aligned_analysis()`` signature directly and pass
+    the flag from there.
 
     Phase 6 is DLC-required; if DLC inference hasn't run for this session,
     the underlying ``build_reward_aligned_analysis`` raises FileNotFoundError.
@@ -313,7 +458,96 @@ def build_reward_aligned_analysis_by_animal_date(
     animal_info = get_animal(animal)
     date = datetime.datetime.strptime(date_str, "%Y%m%d").date()
     manifest = build_manifest(animal, date, resolver, animal_info)
+    # Auto-populate the L/R flag from AnimalInfo when the caller didn't
+    # pass it explicitly. Explicit kwarg wins — used by tests that need
+    # to exercise the flag-mismatch rejection path.
+    effective_flag = (
+        animal_info.wavesurfer_sides_match_mouse_sides
+        if wavesurfer_sides_match_mouse_sides is None
+        else wavesurfer_sides_match_mouse_sides
+    )
     return build_reward_aligned_analysis(
         manifest, bodypart, center_mode, trial_group, window_ms,
         resolver, spatial_config, reward_config,
+        wavesurfer_sides_match_mouse_sides=effective_flag,
     )
+
+
+def save_reward_aligned_npz(
+    result: dict[str, Any],
+    path: Path | str,
+) -> None:
+    """Serialize a reward-aligned analysis result dict to NPZ.
+
+    Phase 6.8a addition — complements the PNG that notebook 12 already
+    writes. The NPZ captures the fine-grid histogram arrays (previously
+    discarded after PNG render) so Phase 9 stats and post-merge drift
+    diagnostics can read ``H_counts`` programmatically without
+    re-rendering from parquet.
+
+    NPZ schema:
+
+      - ``H_counts`` — raw 2D histogram counts (nbins × nbins).
+      - ``H_proportion`` — normalized so total = 1.
+      - ``xedges``, ``yedges`` — bin edges.
+      - ``x_limits``, ``y_limits`` — 2-element float arrays giving the
+        axis range used for binning (extracted from ``hist["extent"]``).
+      - ``nbins`` — histogram resolution per axis.
+      - ``trial_group`` — string scalar (``"all"`` / ``"L"`` / ``"R"``,
+        mouse-frame per Phase 6.8a).
+      - ``window_ms`` — 2-element float array ``[pre_ms, post_ms]``.
+      - ``n_rewards`` — int, number of reward events contributing.
+      - ``n_selected_frames`` — int, number of DLC frames in the window.
+      - ``bodypart`` — string scalar.
+      - ``center_mode`` — string scalar.
+      - ``wavesurfer_sides_match_mouse_sides`` + ``side_convention_version``
+        — stamped via :func:`stamp_side_convention`.
+
+    Parameters
+    ----------
+    result : dict
+        The dict returned by :func:`build_reward_aligned_analysis`.
+        Must contain a non-None ``histogram`` entry (callers that
+        receive ``None`` from the analysis should skip NPZ saving).
+    path : Path or str
+        Destination NPZ path. Parent directories are created.
+
+    Raises
+    ------
+    ValueError
+        If ``result["histogram"]`` is ``None``.
+    """
+    hist = result["histogram"]
+    if hist is None:
+        raise ValueError(
+            "save_reward_aligned_npz: result['histogram'] is None; "
+            "caller should skip saving for sessions with no valid "
+            "histogram rather than calling this function."
+        )
+
+    extent = hist["extent"]
+    payload: dict[str, Any] = {
+        "H_counts": hist["H_counts"],
+        "H_proportion": hist["H_proportion"],
+        "xedges": hist["xedges"],
+        "yedges": hist["yedges"],
+        "x_limits": np.asarray([extent[0], extent[1]], dtype=np.float64),
+        "y_limits": np.asarray([extent[2], extent[3]], dtype=np.float64),
+        "nbins": int(hist["H_counts"].shape[0]),
+        "trial_group": np.asarray(result["trial_group"]),
+        "window_ms": np.asarray(
+            [float(result["window_ms"][0]), float(result["window_ms"][1])],
+            dtype=np.float64,
+        ),
+        "n_rewards": int(result["n_rewards"]),
+        "n_selected_frames": int(result["n_selected_frames"]),
+        "bodypart": np.asarray(result["bodypart"]),
+        "center_mode": np.asarray(result["center_mode"]),
+    }
+    stamp_side_convention(
+        payload, result["wavesurfer_sides_match_mouse_sides"],
+    )
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(str(path), **payload)

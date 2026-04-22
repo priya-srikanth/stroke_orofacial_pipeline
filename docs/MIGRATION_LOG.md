@@ -2345,6 +2345,104 @@ created during re-emit.** Re-emit wrote only to the gitignored
 
 ---
 
+## Phase 6.8a — Phase 5/6 mouse-frame trial_group translation + reward-aligned NPZ writer
+
+**Date:** 2026-04-21.
+
+**Scope:** Closes the Phase 5/6 deferral from Task #17 (runbook §7).
+Three coupled changes in one mini-PR (target tag
+`v6.8a-phase-5-6-trial-group-translation`):
+
+1. **`load_reward_events` stamp verification.** Reads the
+   `side_convention_version` + `wavesurfer_sides_match_mouse_sides`
+   scalars stamped on Phase 2 NPZs by Task #17's re-emit and raises
+   `ValueError` if the stamp is absent (pre-re-emit file), the version
+   drifts, or a caller-supplied flag disagrees with the stamp. After
+   this phase, `trial_group="L"` unambiguously means *mouse*-left
+   reward trials — a stale pre-re-emit NPZ errors out instead of
+   silently swapping L/R on the mirrored rig.
+2. **`build_reward_aligned_analysis` flag plumbing.** New
+   `wavesurfer_sides_match_mouse_sides` kwarg forwards into
+   `load_reward_events` and is echoed on the return dict so the
+   downstream writer can stamp without re-lookup. The
+   `_by_animal_date` wrapper auto-populates it from
+   `AnimalInfo.wavesurfer_sides_match_mouse_sides`; an explicit kwarg
+   still wins (used by tests exercising the stamp-mismatch path).
+3. **New `save_reward_aligned_npz(result, path)` writer + notebook 12
+   adoption.** The canonical reward-aligned notebook (cell 16 of
+   `20260323_DLC_build-parquet_reward-aligned_tongue_jaw.ipynb`) only
+   emitted PNGs — no legacy array-level reference existed. Notebook 12
+   now emits an NPZ alongside the PNG, carrying `H_counts`,
+   `H_proportion`, edges, axis limits, `trial_group`, `window_ms`,
+   `n_rewards`, `n_selected_frames`, `bodypart`, `center_mode`, plus
+   the two convention scalars. `dlc_spatial/heatmaps.py::save_heatmap_npz`
+   also gains optional stamping kwargs (`wavesurfer_sides_match_mouse_sides`,
+   `trial_group`, `window_ms`) so Phase 5 whole-session callers can
+   adopt the convention non-invasively.
+
+**Rationale for also adding NPZ writing (option A):** Phase 6 had
+no legacy array-level parity fixture — cell 16 of the canonical
+reward-aligned notebook was never run to produce saved outputs on
+MICROSCOPE pre-consolidation (verified 2026-04-21: no
+`dlc_analysis/spatial_reward_aligned/*.npz` existed before this PR;
+Phase 2 NPZs in `spout_behavior/` were the only reward-keyed artifacts
+on disk). This made pre-vs-post drift programmatically unmeasurable.
+Writing NPZs within this PR restores that capability, turning drift
+into an explicit post-re-emit health-report check rather than a
+latent divergence visible only by re-rendering PNGs.
+
+**What didn't change:**
+- `lr_convention.py` — untouched; the Phase 6.8 helpers
+  (`stamp_side_convention`, `SIDE_CONVENTION_VERSION`) remain
+  authoritative.
+- PNG content — notebook 12's heatmap PNGs are byte-identical to
+  pre-6.8a output for a given session (we only added the NPZ
+  alongside; no colormap / axis / binning changes).
+- Internal pipeline arithmetic — `trial_group` is routed through
+  `load_reward_events` against Phase 2 NPZs that are already
+  mouse-frame post-Task-#17, so nothing new is flipped here.
+
+**Test coverage added (tests all new; existing tests retained unchanged):**
+
+- `tests/test_reward_aligned.py`:
+  - `TestLoadRewardEvents` (4 pre-existing tests) — fixtures updated
+    to stamp NPZs with `stamp_side_convention` so they continue to
+    exercise the happy path under the new stamp requirement.
+  - `TestLoadRewardEventsStamp` (6 new tests) — one per rejection
+    branch: unstamped NPZ, missing match-key, version mismatch,
+    caller-flag mismatch, caller-flag-matches happy path, caller-flag-
+    None skips cross-check.
+- `tests/test_dlc_spatial_side_convention.py` (new file, ~10 tests):
+  - `TestSaveRewardAlignedNpz` — schema roundtrip, stamp-matches-flag
+    (parametrized True/False), within-PR flag-swap byte-divergence
+    symmetry, None-histogram rejection, non-bool-flag rejection,
+    parent-dir creation, str-path acceptance.
+  - `TestBuildRewardAlignedAnalysisFlagPlumbing` — the primary entry
+    point echoes the caller's flag on the return dict (parametrized
+    True/False; mocks parquet read + alignment load).
+  - `TestBuildRewardAlignedAnalysisByAnimalDate` — wrapper auto-
+    populates from `AnimalInfo` (parametrized True/False) and an
+    explicit kwarg overrides AnimalInfo (used by mismatch tests).
+
+**Post-merge health report:** `scripts/phase_6_8a_first_run_health_report.py`
+walks the emitted tree and asserts, per NPZ, that the stamp is
+present and matches `configs/animals.yaml`; and per (animal, date,
+bodypart, center_mode, window) bundle that `n_rewards[all] ==
+n_rewards[L] + n_rewards[R]` + that metadata is consistent across
+L/R/all siblings. Exit 0 = healthy, 1 = at least one failure, 2 = no
+NPZs found. Run this once after Priya executes notebook 12 under the
+new convention.
+
+**Runbook update:** `docs/runbooks/reemit-phase-5-6-after-lr-fix.md`
+§7 marked RESOLVED (this PR is what §7 called for); new §8 documents
+the first-time Phase 6 NPZ emit procedure (notebook 12 under
+`OVERWRITE="force"` then the health-report script). Existing §4
+procedure for Phase 2 re-emit is unchanged.
+
+**PR / tag:** target `v6.8a-phase-5-6-trial-group-translation`.
+
+---
+
 ## Task #20 — Test-hygiene sweep: integration tests must not write to production output paths
 
 **Date:** 2026-04-21.
