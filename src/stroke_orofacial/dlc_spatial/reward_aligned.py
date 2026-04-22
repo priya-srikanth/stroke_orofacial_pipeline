@@ -283,8 +283,9 @@ def build_reward_aligned_analysis(
     -------
     dict or None
         ``{"histogram": ..., "window": ..., "n_rewards": ..., "n_selected_frames": ..., "trial_group": ..., "window_ms": ..., "bodypart": ..., "center_mode": ..., "wavesurfer_sides_match_mouse_sides": ...}``
-        — or None if upstream artefacts (centered parquet, licks NPZ,
-        or alignment template) are missing. The
+        — or None if the manifest has zero rewards for the requested
+        ``trial_group`` (a valid-but-empty data condition; e.g. a
+        post-stroke session with no L-only trials). The
         ``wavesurfer_sides_match_mouse_sides`` field echoes the kwarg
         when provided, else the value stamped into the Phase 2 NPZ
         (read back from disk), so notebook 12 can stamp the Phase 6
@@ -293,7 +294,14 @@ def build_reward_aligned_analysis(
     Raises
     ------
     FileNotFoundError
-        If ``manifest.dlc_h5_files`` is empty (Phase 6 requires DLC).
+        If any Phase-6 prerequisite is missing: empty
+        ``manifest.dlc_h5_files`` (need DLC inference), missing Phase 4
+        centered parquet (need ``scripts/run_notebook_10_phase_4_centering.py``),
+        missing Phase 2 licks NPZ (need Phase 2 re-emit), or missing
+        cam2 alignment template (need
+        ``scripts/make_alignment_templates.py``). Each variant names
+        the exact missing artefact so log triage points at the right
+        upstream stage.
     ValueError
         Propagated from :func:`load_reward_events` if the Phase 2 NPZ
         is un-stamped (pre-task-#17) or its stamp disagrees with
@@ -321,7 +329,13 @@ def build_reward_aligned_analysis(
     parquet_name = f"{manifest.dlc_h5_files[0].name}.intermediate.{sig}.parquet"
     parquet_path = parquet_dir / parquet_name
     if not parquet_path.exists():
-        return None
+        raise FileNotFoundError(
+            f"{manifest.session_id}/{center_mode}: Phase 4 centered parquet "
+            f"missing at {parquet_path}. Run "
+            f"`python scripts/run_notebook_10_phase_4_centering.py "
+            f"--animals {animal} --dates {date_str} --center-modes {center_mode}` "
+            f"(or notebook 10) to emit it."
+        )
 
     df = read_centered_parquet(parquet_path)
     n_frames = len(df)
@@ -330,7 +344,11 @@ def build_reward_aligned_analysis(
     spout_root = resolver.pipeline_outputs("spout_behavior")
     licks_path = spout_root / "licks_and_rewards" / animal / f"{date_str}.npz"
     if not licks_path.exists():
-        return None
+        raise FileNotFoundError(
+            f"{manifest.session_id}: Phase 2 licks NPZ missing at "
+            f"{licks_path}. Run notebook 06 (lick/reward extraction) "
+            f"for this session before Phase 6.8a."
+        )
 
     reward_ws = load_reward_events(
         licks_path, trial_group,
@@ -355,7 +373,12 @@ def build_reward_aligned_analysis(
     if align_path is None or not align_path.exists():
         align_path = resolver.alignment_template(animal, date, cam="cam2")
     if not align_path.exists():
-        return None
+        raise FileNotFoundError(
+            f"{manifest.session_id}: cam2 alignment template missing at "
+            f"{align_path} (and not on manifest). Run "
+            f"`python scripts/make_alignment_templates.py` for this "
+            f"session before Phase 6.8a."
+        )
 
     align_data = np.load(str(align_path), allow_pickle=True)
     sig_camIdx = align_data["sig_camIdx__idx_ws"]
