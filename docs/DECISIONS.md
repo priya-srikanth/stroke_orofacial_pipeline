@@ -64,6 +64,95 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-04-21 — Phase 6.8a: Phase 5/6 trial_group mouse-frame translation + heatmap NPZ writer
+
+- *Context:* Phase 6.8 (task #17) landed the wavesurfer↔mouse-frame
+  boundary-layer translation for Phase 2 NPZs and Phase 8a JSONs but
+  explicitly deferred Phase 5/6 (`dlc_spatial` heatmaps + reward-aligned
+  heatmaps) to a follow-up — documented in
+  `docs/runbooks/reemit-phase-5-6-after-lr-fix.md` §7. The reward-aligned
+  analysis in `dlc_spatial/reward_aligned.py` accepted a `trial_group`
+  argument (`"all"` / `"L"` / `"R"`) whose frame of reference was
+  ambiguous post-task-#17: the Phase 2 NPZ it reads now carries
+  mouse-frame `Reward_L`/`Reward_R` keys, so `trial_group="L"` silently
+  shifted from experimenter-L to mouse-L — but nothing in the pipeline
+  asserted that the upstream NPZ was actually in mouse frame, nor
+  stamped the resulting Phase 6 output. Phase 7 (DLC kinematics) cannot
+  start on top of mixed-convention heatmap outputs.
+  An additional wrinkle discovered during design: Phase 6 never
+  emitted NPZs — cell 16 of the canonical reward-aligned notebook
+  only produced PNGs. Without an array-level output there was no way
+  to programmatically verify drift after the convention flip.
+
+- *Decision:* **Extend the boundary-layer pattern to Phase 5/6 in this
+  single PR, AND add NPZ writing to Phase 6 so drift is measurable.**
+  Three coupled changes:
+  (1) `load_reward_events` requires the Phase 2 stamp to be present
+  (raises ValueError on pre-re-emit NPZs), verifies the version matches
+  :data:`SIDE_CONVENTION_VERSION`, and if the caller passes
+  `wavesurfer_sides_match_mouse_sides` cross-checks it against the
+  stamped value. `trial_group` is re-documented as mouse-frame.
+  (2) `build_reward_aligned_analysis` gains a
+  `wavesurfer_sides_match_mouse_sides` kwarg that forwards into
+  `load_reward_events` and is echoed on the return dict. The
+  `_by_animal_date` wrapper auto-populates it from `AnimalInfo` when
+  None. (3) New writer
+  `dlc_spatial.reward_aligned.save_reward_aligned_npz(result, path)`
+  serializes the full histogram payload — `H_counts`, `H_proportion`,
+  edges, axis limits, `trial_group`, `window_ms`, `n_rewards`,
+  `n_selected_frames`, `bodypart`, `center_mode` — stamped via
+  `stamp_side_convention`. Notebook 12 calls the helper alongside the
+  existing PNG save. `save_heatmap_npz` also gains optional stamping
+  kwargs for Phase 5 (whole-session) callers that want to stamp going
+  forward.
+
+- *Rationale:* (a) **Fail-loud on pre-re-emit upstream.** The
+  task-#17 re-emit of Phase 2 NPZs produced mouse-frame outputs, but
+  a stale local checkout would still hold wavesurfer-frame NPZs.
+  Silently reading those as mouse-frame would swap L and R on every
+  PS46–PS55 session (flag default is False = mirrored rig). Raising
+  at `load_reward_events` means the first Phase 6 run after a stale
+  checkout errors out immediately rather than producing plausible-
+  looking but mis-labeled heatmaps. (b) **Stamp-matches-yaml
+  cross-check catches a specific foot-gun:** editing
+  `configs/animals.yaml` after an NPZ was written. Without the check,
+  the next Phase 6 run would read the stale NPZ under the new flag
+  interpretation. (c) **NPZ alongside PNG unlocks drift
+  diagnostics and Phase 9 stats.** Phase 6 had no legacy array-level
+  reference (cell 16 was never run to save outputs on MICROSCOPE
+  pre-consolidation), so "parity against legacy" is not available
+  as a parity strategy. Writing NPZs within this PR makes future
+  drift measurable programmatically — the post-merge health-report
+  script (`scripts/phase_6_8a_first_run_health_report.py`) runs
+  n_rewards[all]=L+R, stamp, and H_counts sanity checks across the
+  whole output tree. (d) **`save_reward_aligned_npz` not
+  `save_heatmap_npz`.** Reward-aligned outputs carry more metadata
+  (trial_group, window_ms, n_rewards) than whole-session heatmaps;
+  a bespoke writer is cleaner than overloading `save_heatmap_npz`
+  with Phase-6-only kwargs. `save_heatmap_npz` still gains optional
+  stamping so Phase 5 can adopt the same convention non-invasively.
+
+- *Enforced at:* `src/stroke_orofacial/dlc_spatial/reward_aligned.py`
+  (`load_reward_events` stamp verification, `build_reward_aligned_analysis`
+  flag forwarding + return-dict field, `_by_animal_date` auto-populate,
+  new `save_reward_aligned_npz`). `src/stroke_orofacial/dlc_spatial/heatmaps.py`
+  (`save_heatmap_npz` optional stamp kwargs). `notebooks/12_dlc_spatial_reward_aligned.ipynb`
+  (cell 2 import swap, cell 4 calls `save_reward_aligned_npz` alongside
+  PNG save; passes `wavesurfer_sides_match_mouse_sides` from
+  `AnimalInfo`). `tests/test_reward_aligned.py::TestLoadRewardEventsStamp`
+  (6 tests: unstamped / missing-match / version-mismatch / flag-mismatch
+  / flag-matches / flag-None rejection & happy paths) + stamped fixtures
+  in `TestLoadRewardEvents`. `tests/test_dlc_spatial_side_convention.py`
+  (schema roundtrip, stamp-matches-flag parametrized, flag-swap
+  byte-divergence, None-histogram rejection, non-bool-flag rejection,
+  parent-dir creation, str-path acceptance; plus `build_reward_aligned_analysis`
+  flag-echo parametrized and `_by_animal_date` auto-populate + explicit
+  override). `scripts/phase_6_8a_first_run_health_report.py` (post-
+  re-emit health check). `docs/runbooks/reemit-phase-5-6-after-lr-fix.md`
+  §7 RESOLVED + new §8 Phase 6 re-emit procedure.
+
+---
+
 ## 2026-04-21 — Wavesurfer L/R ↔ mouse-frame boundary-layer translation (task #17, Phase 6.8)
 
 - *Context:* Wavesurfer channel labels `L`/`R` are experimenter-facing
