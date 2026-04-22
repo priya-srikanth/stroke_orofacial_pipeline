@@ -15,6 +15,121 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-04-21 — PS48 2025-03-14 multi-session handling (merge two acquisition halves into one analysis session)
+
+- *Context:* Priya flagged during the Phase 6.8a diagnostic post-mortem
+  that PS48 2025-03-14 was split across two acquisitions within one
+  behavior day. The session has two sets of Flea3 videos, two sets of
+  per-frame-timestamp CSVs, and two sets of Wavesurfer `.h5` files —
+  one set per acquisition half. The legacy DLC analysis code merges the
+  two halves into one logical session for downstream analysis. The new
+  consolidated pipeline does not yet handle this case. PS48 2025-03-14
+  is known; additional multi-half sessions may exist in the cohort and
+  should be audited opportunistically.
+
+- *Decision:* **Multi-half support ports into the new pipeline at
+  two load-boundaries.**
+  1. **Phase 2 (spout behavior) — wavesurfer I/O in
+     `src/stroke_orofacial/wavesurfer_io.py`.** `read_wavesurfer_h5`
+     (or a new thin wrapper) must accept *either* a single path *or*
+     an ordered list of paths, concatenate per-sweep samples in
+     acquisition-time order, and expose a single merged timebase +
+     merged channel arrays to downstream Phase 2 consumers.
+     Per-sweep metadata (`Fs`, sweep boundaries, acquisition UTC
+     timestamps) preserved so `SessionManifest` can carry provenance.
+     Config + discovery layer: `SessionManifest` construction must
+     enumerate all `.h5` files for a given animal+date and sort them
+     by the acquisition UTC timestamp encoded in the filename.
+  2. **Phase 4+ (DLC) — parquet I/O in `src/stroke_orofacial/dlc_io/
+     parquet.py` (centered parquet builder) and any upstream DLC H5
+     reader.** Same shape: accept ordered list of per-half DLC H5s +
+     ordered list of per-half timestamp CSVs, concatenate frame rows
+     in acquisition-time order, preserve per-half provenance in
+     parquet-column metadata. Downstream reward-aligned / heatmap
+     callers see one logical session.
+
+- *Rationale:*
+  - Legacy code already does this merge — without it we cannot
+    reproduce known-good outputs on PS48 2025-03-14.
+  - Merging at load time (Phase 2 wavesurfer I/O + Phase 4+ DLC I/O)
+    is the shallowest intervention — everything downstream stays
+    single-session-shaped.
+  - Ordered lists (not globs) make the merge deterministic and
+    testable with synthetic two-half fixtures.
+  - Per-half provenance preserved in metadata lets cohort-level
+    auditors confirm which halves contributed to a given output.
+  - Out-of-scope alternatives considered: (a) process halves
+    independently + merge at endpoint level — rejected, breaks the
+    whole-session-endpoint contract in Phase 8a; (b) manual
+    concatenation script run once before pipeline — rejected, not
+    reproducible from source data.
+
+- *Enforced at:*
+  - **To be coded.** Tracked as a TaskList entry opened 2026-04-21.
+  - `CLAUDE.md` rule 1 still applies — the per-half raw files remain
+    read-only source data; merging happens in-memory at load time,
+    no merged artefacts written back to source paths.
+  - `configs/session_overrides.yaml` may gain a `multi_half_sessions`
+    registry (PS48 20250314 explicit listing) so discovery doesn't
+    depend on accidental filename-sort behavior.
+
+- *Immediate action:* None — noted now so the Phase 2 wavesurfer-I/O
+  refactor (if any) and the Phase 4+ DLC-I/O port (Phase 7 or a
+  dedicated mini-phase) both pick this up. Cohort-scan pass over the
+  other 7 animals deferred until the first multi-half fixture lands.
+
+---
+
+## 2026-04-21 — Phase 6.8a.1 distinct prerequisite errors in `build_reward_aligned_analysis`
+
+- *Context:* Phase 6.8a's first cohort re-emit surfaced 14,202
+  reward-aligned-build failures out of 14,256 attempts (264
+  DLC-carrying manifests × 54 combos). All failures collapsed into a
+  single indistinguishable "FileNotFoundError" because
+  `build_reward_aligned_analysis` had three silent `return None`
+  paths (centered parquet missing, licks NPZ missing, alignment
+  template missing) and one raise-path (empty DLC H5 list). Callers
+  could not distinguish "Phase 4 hasn't centered this session yet"
+  from "Phase 2 didn't emit licks" from "alignment template never
+  built" from "this trial_group has no rewards."
+
+- *Decision:* **Convert three of the four prerequisite-miss paths
+  from silent `return None` to explicit
+  `raise FileNotFoundError(<artefact-specific message>)`.** Kept the
+  zero-rewards-for-trial_group path as `return None` (valid-but-empty
+  data condition, not a missing-prerequisite condition). Each raise
+  names the missing artefact, the upstream phase, and the script that
+  would produce it. Docstring `Raises` + `Returns` blocks updated to
+  reflect the new contract.
+
+- *Rationale:*
+  - Silent `return None` on prerequisite miss made diagnostic impossible
+    at cohort scale (14,202 failures all indistinguishable).
+  - The only callers (`notebook 12` runner and `phase_6_8a_first_run_
+    health_report.py`) already catch `FileNotFoundError` — richer
+    messages flow through without code changes.
+  - Zero-rewards-for-trial_group is a legitimately-empty data
+    condition (PS48 2025-03-14 has sessions where only one spout was
+    rewarded), distinct from a missing-prerequisite condition; it
+    stays `return None`.
+  - Diagnostic-value-vs-emit-latency trade-off: PR'd and merged ahead
+    of Windows's in-progress cohort emit (Path B) so the cohort runs
+    under the distinct-error contract. Running under the old contract
+    would have burned the diagnostic opportunity the fix was designed
+    for.
+
+- *Enforced at:*
+  - `src/stroke_orofacial/dlc_spatial/reward_aligned.py::
+    build_reward_aligned_analysis` (3 raise paths with
+    artefact-specific messages; 1 `return None` retained for
+    zero-rewards).
+  - `tests/test_reward_aligned.py::
+    TestBuildRewardAlignedAnalysisRaisesOnMissingPrerequisites`
+    (scoped to centered-parquet path).
+  - `docs/MIGRATION_LOG.md` Phase 6.8a.1 entry.
+
+---
+
 ## 2026-04-21 — Tongue cell 53 (tongue-jaw mismatch classifier) scope → 7c jaw-kinematics
 
 - *Context:* The canonical tongue notebook
