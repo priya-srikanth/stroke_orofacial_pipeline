@@ -109,8 +109,12 @@ Keep these queued for future scoped PRs:
 
 - Phase 8a.8 recovery-trajectory visualization implementation.
 - Phase 5.5 polish.
-- `scripts/parity_external_bnpm.py` disposition.
 - Cohort-wide Phase 5 re-run.
 - Phase 6 reward-aligned live-data retest.
 - PS48 2025-03-14 multi-half handling, as a separate I/O-facing mini-phase or
   coordinated Phase 7 prerequisite because it can affect DLC loading.
+
+Closed 2026-04-22: `scripts/parity_external_bnpm.py` remains an ignored
+scratch-only probe rather than a permanent repo script. The durable record is
+the DECISIONS/MIGRATION_LOG narrative plus the committed clamp-bug regression
+tests.

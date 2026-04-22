@@ -27,3 +27,4 @@ Thumbs.db
 
 # Scratch: one-off parity / exploration scripts + their logs (never committed)
 scratch/
+scripts/parity_external_bnpm.py
