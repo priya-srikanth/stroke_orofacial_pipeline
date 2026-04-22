@@ -285,32 +285,63 @@ starting Phase 7. Typical failure modes:
   (e.g. a re-emit landed between notebook-12 sub-runs). Re-run
   notebook 12 under `OVERWRITE="force"` for the affected bundle.
 
-### 8.4 Reading the runner's `n_err` tally
+### 8.4 Reading the runner's per-bundle counter line
 
-`run_notebook_12_first_emit.py` (and notebook 12 cell 4) count four
-distinct failure modes into one `n_err` bucket. Only the first mode
-emits a log warning; the other three `return None` silently from
-`build_reward_aligned_analysis` and the runner just tallies them.
-When diagnosing why `n_err` is higher than expected, check each in
-turn:
+Post-6.8a.1 + 6.8a.3, `run_notebook_12_first_emit.py` (and notebook 12
+cell 4) report six distinct outcomes per
+(bodypart, center_mode, trial_group, window) bundle. Three of the
+prerequisite-miss modes now raise distinct `FileNotFoundError`
+messages (v6.8a.1); the two remaining legitimate-empty modes have
+their own counters + per-session `logging.info` lines (v6.8a.3); the
+catch-all `Exception` branch is the sixth bucket for anything
+unexpected. Each per-bundle summary line looks like:
 
-1. *"manifest.dlc_h5_files is empty"* — upstream DLC inference has
-   not been run for this (animal, date), or the DLC output mount
-   isn't visible from this machine. Only this mode logs as a warning.
-2. *Centered parquet missing* (silent) — Phase 4 has not been run
-   for this (animal, date, center_mode). The per-animal inventory in
-   §8.1 diagnoses this. Fix by running
-   `scripts/run_notebook_10_phase_4_centering.py`.
-3. *Phase 2 licks NPZ missing* (silent) — Phase 2 has not been
-   re-emitted for this session. Re-run §4.
-4. *Zero rewards for the requested trial_group* (silent) — session
-   genuinely has no L-side or R-side rewards (or no rewards at all
-   for `trial_group="all"`). Expected for some sessions; not a bug.
+```
+  tongue/eye_midpoint/trials-R/-100to1000ms: ok=48 skip=0 skip_no_rewards=0 skip_no_frames=1 err=0
+```
 
-A follow-up refactor will replace the silent `return None` paths
-with distinct `FileNotFoundError` messages so the runner can tally
-each mode separately; until then, the inventory from §8.1 is the
-cheapest way to disambiguate #2 from #3.
+The six buckets:
+
+1. `ok` — a `heatmap_{YYYYMMDD}.png` + `heatmap_{YYYYMMDD}.npz`
+   pair was written. `err` = 0 and all three skip buckets = 0
+   means a fully-emitted bundle.
+2. `skip` — `OVERWRITE="skip"` and the PNG already exists on
+   disk. Pre-emitted; nothing new written.
+3. `skip_no_rewards` (v6.8a.3) — `build_reward_aligned_analysis`
+   returned `None` because `load_reward_events(trial_group)` found
+   zero rewards of the requested trial_group in this session. Valid-
+   but-empty data condition. One `logging.info` line per (animal,
+   date) showing the skip reason. Expected for sessions where the
+   animal received only L or only R rewards but the loop asks for
+   the other side.
+4. `skip_no_frames` (v6.8a.3) — `build_histogram` returned `None`
+   because `get_masked_xy` filtered every frame out (DLC likelihood
+   below threshold on every frame inside the reward window, after
+   `x_range` masking). Valid-but-empty data condition. One
+   `logging.info` line per (animal, date) showing the skip reason.
+   This is the condition that produced the 3 PS51/20250430 tongue
+   R-side misses in the 2026-04-21 cohort first emit — tight
+   `-100to1000ms` window + low tongue DLC confidence + R-trial-only
+   slice.
+5. `err` from `FileNotFoundError` (v6.8a.1) — one of
+   `build_reward_aligned_analysis`'s three prerequisite paths
+   (centered parquet missing / licks NPZ missing / alignment
+   template missing) raised with an artefact-specific message. One
+   `logging.warning` per session; read the message tail for
+   which upstream script to re-run (Phase 4 centering / Phase 2
+   lick re-emit / alignment template build).
+6. `err` from catch-all `Exception` — anything else. One
+   `logging.warning` per session with the error text. If this
+   bucket is non-zero, inspect the emit log; these are the cases
+   that warrant code investigation rather than just a re-run of an
+   upstream phase.
+
+Benign `skip_no_rewards` / `skip_no_frames` counts are expected for
+tight windows and side-biased sessions and do not require
+intervention. Non-zero `err` under the distinct-`FileNotFoundError`
+contract is diagnosable from the message alone — no need to run the
+§8.1 inventory by hand unless the warning volume is high enough to
+want a cohort-wide summary.
 
 ## 9. Troubleshooting
 
