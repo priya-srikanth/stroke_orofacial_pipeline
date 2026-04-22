@@ -23,14 +23,14 @@ into a single bodypart-parametric module
 `src/stroke_orofacial/dlc_kinematics/interpolation.py` emitting
 
 ```
-pipeline_outputs_v2/dlc_analysis/interpolated_traces/{bodypart}/{animal}/{date}.parquet
+stroke_orofacial_pipeline_outputs/dlc_analysis/interpolated_traces/{bodypart}/{animal}/{date}.parquet
 ```
 
 The tongue and jaw cells share **identical algorithmic skeleton** (same
 `interp_small_gaps_method`, `_build_reward_aligned_pool_mask`,
 `_fill_nan_with`, `compute_session_x_range`, identical 7-stage control
 flow). They differ only in bodypart-parametric constants (X_RANGE_PM,
-N_NEIGH, max_gap_ms, center_mode) and per-cohort baseline Y0/X0 values.
+N_NEIGH, max_gap_ms, center_mode) and per-animal, per-bodypart baseline Y0/X0 values.
 One module, two callers.
 
 **Downstream consumers of 7a output:** 7b (tongue endpoints), 7c (jaw
@@ -74,8 +74,12 @@ date):
    `frame_idx` (int), `x_final` (float), `y_final` (float),
    `likelihood_raw` (float), `is_interp_fill` (bool — true when the
    frame was NaN-filled by PCHIP), `is_baseline_fill` (bool — true when
-   the frame was `_fill_nan_with(X0)`-filled). Plus file-level metadata
-   attributes: `X0`, `Y0`, `fps`, `n_frames`, `center_mode`,
+   the frame was `_fill_nan_with(X0)`-filled), `fill_method`
+   (categorical small-int enum: `0=none, 1=pchip, 2=linear, 3=baseline`
+   — supports QC like "how often did the linear fallback fire?" without
+   reading the companion QC NPZ). Plus file-level metadata attributes:
+   `X0`, `Y0`, `fps`, `n_frames`, `center_mode`, `baseline_stage`
+   (legacy NPZ carries this — preserved for provenance),
    `interpolation_version`, `wavesurfer_sides_match_mouse_sides`,
    `side_convention_version`.
 
@@ -148,38 +152,52 @@ exists (`baseline_y_lk_thr`, `baseline_y_percentile`, etc. — roughly
 40 lines) but is cold — no current analysis uses it.
 
 **Proposal — preserve the data-driven path as an option, default to
-forced.** The data-driven path was the original (pre-v5p3) baseline
-computation. It matters for sessions where the hardcoded cohort-specific
-Y0 is wrong (e.g., camera reposition; future animals not in the PS46–55
-cohort). Dropping it now would require re-deriving it if a new cohort
-arrives. Cost to keep: 40 lines inside a clearly-named branch; negligible
-maintenance.
+forced.** The data-driven path matters for sessions where the
+per-animal hardcoded Y0 is wrong (e.g., camera reposition; future
+animals). Dropping it now would require re-deriving it if a new cohort
+arrives. Cost to keep: 40 lines inside a clearly-named branch;
+negligible maintenance.
 
-**Proposal in defaults.yaml:**
+**Legacy percentile semantics (corrected 2026-04-22 by Priya).** The
+data-driven path has one primary percentile (on Y) and a *derived* X
+baseline:
+
+- `Y0` (when `force: false`) = the lowest *n*'th percentile of Y
+  values drawn from a **trial-aligned sample pool** (not all frames).
+  Two parameters: the percentile itself (e.g. 5.0) and the likelihood
+  threshold that gates inclusion in the trial-aligned pool.
+- `X0` (when `force: false`) is NOT an independent percentile. It is
+  the **median of X values among the samples selected by the Y
+  percentile filter** — a conditional median, where the conditioning
+  set is whichever rows ended up in the bottom Y-percentile bucket.
+
+Config layout reflecting this:
 
 ```yaml
 dlc_kinematics:
   <bodypart>:
     baseline:
       force: true                   # set false to use data-driven path
-      # when force: true —
-      y0: null                      # required; fail loudly if null
-      x0: null                      # required; fail loudly if null
       # when force: false —
-      y0_lk_thr: 0.95
-      y0_percentile: 5.0
-      x0_lk_thr: 0.95
-      x0_percentile: 50.0
+      y0_lk_thr: 0.95                    # likelihood gate for trial-aligned pool
+      y0_percentile: 5.0                  # lowest n'th percentile of Y in pool
+      x0: "median_of_y_percentile_subset" # explicit: X0 is median-X of the Y-percentile samples, no independent percentile
 ```
 
-Baseline values themselves move to `configs/animals.yaml` per the jaw
-notebook's strict-correctness concern (next section).
+The `x0_lk_thr` / `x0_percentile` keys from earlier drafts of this
+brief are removed — they don't correspond to legacy behavior. The
+module function's docstring must spell out the "conditional median"
+semantics explicitly so future readers don't misread this as an
+independent X percentile estimator.
+
+Per-animal forced baselines themselves move to `configs/animals.yaml`
+per §3.1 below.
 
 **Parity implication.** No change vs legacy; parity runs use the
-forced path with the cohort-specific Y0/X0 from `animals.yaml`.
+forced path with per-animal Y0/X0 from `animals.yaml`.
 
 > **Priya's call:** Keep-as-option vs. drop-entirely. If keep, confirm
-> the config layout above.
+> the corrected percentile-semantics config layout above.
 
 ### Knob 4 — X-range source: `"lk"` vs `"finite"`
 
@@ -215,109 +233,141 @@ port-time refactor.
 
 ## 3. Jaw-specific additions (from classification-jaw.md)
 
-### 3.1 Per-cohort baseline Y0/X0 → `configs/animals.yaml`
+### 3.1 Per-animal, per-bodypart baselines → `configs/animals.yaml`
 
-**Strict correctness requirement.** The legacy jaw cell has:
+**Reframe (2026-04-22 Priya Cowork).** This is a **faithful port**, not
+a bug fix. The legacy jaw notebook's final-saved state carries PS55's
+X0/Y0 values, but the legacy production outputs on
+`{MICROSCOPE}/Priya/DeepLabCut/O2_analysis/PS{NN}/` were generated by
+Priya manually editing X0/Y0 between per-animal runs. Each saved NPZ
+was computed with the correct per-animal baseline; the notebook's
+final state just shows the last animal run (PS55). The port's job is
+to encode those per-animal values into `configs/animals.yaml` so
+future runs are reproducible without manual per-run editing. No
+legacy-output divergence; no MIGRATION_LOG "deliberate divergence"
+entry needed.
 
-```
-PS46-50:  Y0 = 310, X0 = 0
-PS51, PS54:  Y0 = 290, X0 = 12  # tongue cohort, reused for jaw
-PS55:  Y0 = 290, X0 = 0
-```
+**Per-animal, per-bodypart values.** Tongue and jaw carry different
+Y0/X0 per animal. Derivation approach for CC: each legacy NPZ at
+`{MICROSCOPE}/Priya/DeepLabCut/O2_analysis/PS{NN}/PS{NN}_{bodypart}_kinematics/processed_interpolated_data/{center_mode}/PS{NN}_{YYYYMMDD}_cam2_{bodypart}_interp_v5p3.npz`
+carries its own `X0` / `Y0` keys recording the baselines actually used
+for that run. Read one representative NPZ per (animal, bodypart),
+extract `X0` and `Y0`, seed `configs/animals.yaml`. If a value is
+missing or ambiguous (e.g., the per-animal X0/Y0 differs across
+sessions for the same bodypart, suggesting Priya retuned mid-cohort),
+**STOP and ask** before proceeding.
 
-as in-cell comments. The notebook's active branch uses `PS55`'s values
-for **every** mouse. This is a latent bug — the notebook's current
-"production" output for PS46-50 and PS51/PS54 is computed with PS55's
-baselines.
-
-**Proposal.** Add per-mouse `kinematics_baselines:` block to
-`configs/animals.yaml`:
+**Config layout.**
 
 ```yaml
 PS46:
   # ... existing fields ...
   kinematics_baselines:
-    jaw:
-      y0: 310.0
-      x0: 0.0
     tongue:
-      y0: -110.0
-      x0: 0.0
+      y0: <seed from O2_analysis PS46 tongue NPZ>
+      x0: <seed from O2_analysis PS46 tongue NPZ>
+    jaw:
+      y0: <seed from O2_analysis PS46 jaw NPZ>
+      x0: <seed from O2_analysis PS46 jaw NPZ>
 ```
 
 Load into `AnimalInfo.kinematics_baselines: dict[str, dict[str, float]]`.
-The interpolation module reads the per-mouse baseline; if missing, raises
-with an explicit error naming the missing `(animal, bodypart)` pair.
+The interpolation module reads the per-animal baseline for the requested
+bodypart; if missing, raises with an explicit error naming the
+`(animal, bodypart)` pair.
 
-**This is a deliberate scope-in for 7a-impl** — we are fixing a latent
-correctness issue at port time, not propagating the bug. Log this
-divergence explicitly in MIGRATION_LOG with the legacy-output diff
-numbers for PS46-50 and PS51/PS54 (the mice whose jaw legacy NPZs used
-the wrong baseline).
+**DECISIONS entry (no MIGRATION_LOG divergence entry).** Record:
+"Per-animal, per-bodypart kinematics baselines (`X0`/`Y0`) encoded in
+`configs/animals.yaml` `kinematics_baselines:` block, replacing
+in-notebook manual editing. Rationale: reproducibility without manual
+per-run edits. Per-animal values derived by Priya via plot-inspection
+tuning, targeting per-trial baselines close to zero while preserving
+cross-session position changes. Faithful port of legacy
+`O2_analysis/` outputs."
 
-> **Priya's call:** Confirm the per-mouse config layout + the
-> fix-at-port scope-in. The alternative is preserving the buggy
-> PS55-for-everyone behavior for byte-parity, then filing a
-> post-port follow-up to fix it — strictly worse, but strictly closer
-> to legacy parity.
+> **Priya's call:** Confirm the seed-from-legacy-NPZ approach. If any
+> per-animal baselines are not recorded in the legacy NPZs (e.g., the
+> data-repair sessions where the legacy run was aborted mid-edit),
+> call them out now so CC can STOP-and-ask early.
 
-### 3.2 `EXCLUDE_DATES` dict → `configs/animals.yaml`
+### 3.2 `AnimalInfo.exclusions` schema extension — scope: Phase 7-pre, not 7a
 
-Legacy jaw cell has:
+**Cross-phase schema change.** Extend `AnimalInfo.exclusions` to carry
+an `applies_to: [dlc | spout_behavior | ...]` list on each exclusion
+entry, so sessions can be marked excluded from DLC analyses without
+also excluding them from spout behavior (or vice versa). The current
+`applies_to` field takes bodypart strings like `"tongue"` / `"jaw"` —
+this extension broadens the vocabulary to also include instrument /
+phase tags (`dlc`, `spout_behavior`) so one exclusion entry can
+cleanly scope to a whole analysis pipeline.
 
-```python
-EXCLUDE_DATES = {"PS55": ["20250427", "20250428"]}
-```
+**Scope this as its own mini-PR (Phase 7-pre)** before 7a-impl starts.
+Touches: `AnimalInfo` loader, `is_excluded()` signature + all call
+sites in `src/stroke_orofacial/spout_behavior/`, `configs/animals.yaml`
+(backfill existing exclusions with explicit `applies_to`).
 
-`AnimalInfo.exclusions` already exists. Add these two entries as
-`exclusions` with `applies_to: ["jaw"]` so the interpolation module
-skips them via `animal_info.is_excluded(session_date, "jaw")`.
+**Exclusions to add once schema lands:**
 
-**Proposal.** Add to `configs/animals.yaml` under PS55:
+- PS51 2025-05-17 — `applies_to: [dlc]`
+  reason: missing camera data
+- PS51 2025-04-26 — `applies_to: [dlc, spout_behavior]`
+  reason: sham rose bengal administration caused delayed licking
+- PS54 2025-04-26 — `applies_to: [dlc, spout_behavior]`
+  reason: sham rose bengal administration caused delayed licking
+- PS55 2025-04-27 — `applies_to: [dlc, spout_behavior]`
+  reason: sham rose bengal administration caused delayed licking
+- PS55 2025-04-28 — `applies_to: [dlc, spout_behavior]`
+  reason: experimenter error caused inaccurate reward delivery
 
-```yaml
-PS55:
-  exclusions:
-    - date: 2025-04-27
-      reason: "jaw DLC quality too low for interpolation (legacy EXCLUDE_DATES)"
-      applies_to: [jaw]
-    - date: 2025-04-28
-      reason: "jaw DLC quality too low for interpolation (legacy EXCLUDE_DATES)"
-      applies_to: [jaw]
-```
+**Pre-schema task.** Audit existing `AnimalInfo.exclusions` call sites
++ `configs/animals.yaml` entries. Backfill existing exclusions with
+explicit `applies_to` (likely most are `[spout_behavior]` historically;
+verify per-entry). **Silent default-flip is not acceptable** — any
+existing exclusion whose current behavior would change under the new
+schema must be migrated with an explicit `applies_to` marker preserving
+its current effective scope.
 
-> **Priya's call:** Confirm port + verify the exclusion reason. If
-> there are similar implicit exclusions anywhere in tongue Cell 23,
-> flag them now so we catch them together.
+**Sweep tongue Cell 23** + any other DLC-bodypart notebooks for
+implicit date-skipping patterns beyond the jaw `EXCLUDE_DATES` dict
+(e.g., `if (mouse, date) in SKIP_SET: continue`, hardcoded KEY literal
+guards). Report findings before schema design finalizes so the
+7-pre PR captures every implicit exclusion in one sweep rather than
+surfacing them one-at-a-time during 7a/7b/7c impl.
+
+**Design concern for 7-pre (do not decide here — surface to the 7-pre
+implementer).** Broadening `applies_to` to mix bodypart strings
+(`tongue`, `jaw`) with instrument/phase tags (`dlc`,
+`spout_behavior`) in a single flat list creates a namespace-collision
+ambiguity: what does `applies_to: [tongue, dlc]` mean — exclude the
+tongue DLC pipeline only, or exclude all tongue analysis AND all DLC
+analysis? The current `is_excluded(session_date, analysis_type)`
+signature takes a single string, which papers over the ambiguity at
+check time but makes the configured intent unclear. The 7-pre PR
+should choose one of three clean shapes and document the rationale:
+
+1. **Rename + split:** two separate lists,
+   `applies_to_phases: [dlc, spout_behavior]` +
+   `applies_to_bodyparts: [tongue, jaw]`, AND-combined at check time.
+2. **Nested structure:**
+   `applies_to: {phases: [dlc], bodyparts: [tongue]}` — single field,
+   two sub-keys.
+3. **Namespaced tags:** flat list with dotted keys,
+   `applies_to: [dlc.tongue, dlc.jaw, spout_behavior]` — semantically
+   unambiguous, single field.
+
+Each option carries migration cost (the existing `applies_to: ["all"]`
+/ `applies_to: ["tongue"]` entries need translation). The 7-pre PR's
+design phase decides; this brief only flags the collision risk so the
+7-pre implementer doesn't walk into it mid-coding.
 
 ### 3.3 Bodypart-parametric constants under `dlc_kinematics.<bodypart>:`
 
-```yaml
-dlc_kinematics:
-  tongue:
-    center_mode: centered_spout_midpoint
-    interpolation:
-      x_range_pm: 150.0
-      lk_thr: 0.5
-      n_neigh: 2
-      neighbor_ms: 16.0
-      max_gap_ms: 56.0
-      interp_n_side: 6
-      require_bracketed_by_hilk: true
-  jaw:
-    center_mode: centered_eye_midpoint
-    interpolation:
-      x_range_pm: 75.0
-      lk_thr: 0.5
-      n_neigh: 3
-      neighbor_ms: 16.0
-      max_gap_ms: 120.0
-      interp_n_side: 6
-      require_bracketed_by_hilk: true
-```
-
-> **Priya's call:** Confirm the default values (lifted verbatim from
-> legacy).
+Bodypart-parametric interpolation constants (`X_RANGE_PM`, `LK_THR`,
+`N_NEIGH`, `neighbor_ms`, `max_gap_ms`, `interp_n_side`,
+`require_bracketed_by_hilk`, `x_range_source`, `center_mode`) configured
+under `dlc_kinematics.<bodypart>.interpolation` — **full YAML in §7**
+(the authoritative single source of truth for the `dlc_kinematics:`
+config section).
 
 ---
 
@@ -426,39 +476,60 @@ avoids duplicating reward-event data across parquets.
 
 **Targets.** Legacy NPZs at
 ```
-{MICROSCOPE}/O2_analysis/PS{NN}/PS{NN}_tongue_kinematics/processed_interpolated_data/centered_spout_midpoint/PS{NN}_{YYYYMMDD}_cam2_tongue_interp_v5p3.npz
-{MICROSCOPE}/O2_analysis/PS{NN}/PS{NN}_jaw_kinematics/processed_interpolated_data/centered_eye_midpoint/PS{NN}_{YYYYMMDD}_cam2_jaw_interp_v5p3.npz
+{MICROSCOPE}/Priya/DeepLabCut/O2_analysis/PS{NN}/PS{NN}_{bodypart}_kinematics/processed_interpolated_data/{center_mode}/PS{NN}_{YYYYMMDD}_cam2_{bodypart}_interp_v5p3.npz
 ```
 
-**Parity set.** `PS46 {20250307, 20250310, 20250313}`,
-`PS54 {20250506, 20250509, 20250512}`, and
-`PS55 {20250501, 20250504, 20250507}` — nine sessions chosen to span
-baseline + post-stroke across three mice representing the three
-cohort-baseline groups (PS46-50, PS51/PS54, PS55).
+with `{center_mode}` ∈ {`centered_spout_midpoint` for tongue,
+`centered_eye_midpoint` for jaw} and `{bodypart}` ∈ {`tongue`, `jaw`}.
+Each legacy NPZ additionally carries its own `X0` / `Y0` keys — this
+is the authoritative seed for per-animal baselines in
+`configs/animals.yaml` (§3.1).
+
+**Parity set (14 sessions).** Chosen to span baseline + post-stroke
+across all three per-animal-baseline groups plus stress the degenerate
+paths in the interpolation module.
+
+*Primary set (9 sessions, routine-case parity):*
+- PS46: 20250307, 20250310, 20250313
+- PS54: 20250506, 20250509, 20250512
+- PS55: 20250501, 20250504, 20250507
+
+*Stress-test set (3 sessions, little-to-no licking):* exercises the
+degenerate-pool path — few or zero reward events means
+`_build_reward_aligned_pool_mask` returns sparse masks, which in turn
+stresses the PCHIP context-bracketing logic (fewer hi-lk samples
+surrounding each gap; higher probability of hitting the linear
+fallback or the `REQUIRE_BRACKETED_BY_HILK=True` rejection path).
+- PS51: 20250430
+- PS54: 20250501
+- PS55: 20250502
+
+*Later post-stroke set (2 sessions, recovery-period drift):* catches
+drift patterns that only emerge well after the stroke — camera settling
++ baseline slow-drift + any per-animal recovery trajectory.
+- PS54: 20250607
+- PS55: 20250607
 
 **Tolerances.**
 - `x_final`, `y_final` — `atol=1e-6` element-wise
-- `X0`, `Y0` — exact match
+- `X0`, `Y0` — exact match (these are the per-animal config values;
+  must match the NPZ-stored baselines)
 - `fps`, `n_frames` — exact match
 
-**Expected mismatch — deliberate divergence.** The jaw-baseline fix
-(§3.1) makes PS46-50 and PS51/PS54 numerically differ from legacy.
-Parity script for those mice compares **the fixed baselines' output
-against a re-derivation of what the legacy NPZ would have been with the
-correct baseline** (i.e., `x_final_legacy + (Y0_legacy - Y0_correct)`
-for the jaw Y trace — the baseline subtraction is linear, so
-we can analytically back out the legacy-with-bug values). This lets us
-parity-check every mouse, with the jaw-baseline fix being the only
-permitted numerical difference.
+**scipy-version note.** PCHIP interpolation is implementation-dependent
+across scipy versions (bugfixes / numerical-stability tweaks to the
+cubic-Hermite constructor have landed historically). The parity script
+asserts `scipy.__version__` matches the legacy-era scipy version.
+Record the legacy-era scipy version from the legacy notebook's import
+cell (likely visible in tongue Cell 1 / jaw Cell 1); pin the version in
+the parity script header. `atol=1e-6` holds for scipy-version-matched
+runs. If Priya explicitly accepts running parity under a newer scipy,
+widen to `atol=1e-4` and log the scipy-version drift in DECISIONS.
 
 **Parity script location.**
 `tests/scripts/parity_phase7a_interpolation.py PS46 20250307 tongue`.
 Invoked as part of 7a-impl sign-off, not as a pytest fixture (real-data
 reads from MICROSCOPE mount).
-
-> **Priya's call:** Confirm the nine-session parity set. Swap in
-> different sessions if there's a session you want prioritized (e.g.,
-> one with a known occlusion-heavy trial).
 
 ---
 
@@ -487,8 +558,7 @@ dlc_kinematics:
       force: true
       y0_lk_thr: 0.95
       y0_percentile: 5.0
-      x0_lk_thr: 0.95
-      x0_percentile: 50.0
+      x0: "median_of_y_percentile_subset"   # see Knob 3 — not an independent percentile
   jaw:
     center_mode: centered_eye_midpoint
     interpolation:
@@ -504,8 +574,7 @@ dlc_kinematics:
       force: true
       y0_lk_thr: 0.95
       y0_percentile: 5.0
-      x0_lk_thr: 0.95
-      x0_percentile: 50.0
+      x0: "median_of_y_percentile_subset"   # see Knob 3 — not an independent percentile
 ```
 
 Per-mouse Y0/X0 go to `configs/animals.yaml` under each animal's
@@ -536,8 +605,8 @@ Unit tests (pure-function, no I/O, use synthetic DataFrames):
   `AnimalInfo.kinematics_baselines`, raises on missing.
 - `test_excluded_session_returns_none` — interpolation respects
   `AnimalInfo.is_excluded(date, bodypart)`.
-- `test_parquet_schema` — emitted parquet has the 5 expected columns +
-  the 6 expected file-level attributes.
+- `test_parquet_schema` — emitted parquet has the 7 expected columns +
+  the 9 expected file-level attributes.
 - `test_overwrite_skip_respects_existing` — `overwrite="skip"` returns
   existing path; `overwrite="force"` overwrites.
 - `test_emit_qc_bundle_emits_npz` — `emit_qc_bundle=True` writes the
@@ -558,28 +627,44 @@ All tests use `PathResolver(output_root=tmp_path)`.
 
 - Module `src/stroke_orofacial/dlc_kinematics/interpolation.py` passes
   all unit tests.
-- Nine-session parity script passes (§6).
+- One-session end-to-end smoke run on an animal/date combo NOT in the
+  parity set (e.g., PS50 20250306). Verifies the module runs to
+  completion, produces the parquet + (when `emit_qc_bundle=True`) the
+  QC NPZ with the expected schema. Catches integration glitches unit
+  tests miss (path resolution, animals.yaml loading, SessionManifest
+  threading).
+- 14-session parity script passes (§6).
 - `configs/defaults.yaml` has the `dlc_kinematics:` section (§7).
 - `configs/animals.yaml` has `kinematics_baselines:` populated for
-  PS46–PS55.
-- `AnimalInfo` loads `kinematics_baselines` and `exclusions` with
-  `applies_to: [jaw]`.
+  PS46–PS55 (seeded from legacy NPZ `X0`/`Y0` keys per §3.1).
+- `AnimalInfo` loads `kinematics_baselines`. The `exclusions`
+  `applies_to` schema extension is Phase 7-pre territory (§3.2) — 7a
+  depends on it landing first for the PS51/PS54/PS55 DLC exclusions.
 - Ruff clean.
-- MIGRATION_LOG entry + DECISIONS entry on the 4 knobs + jaw-baseline
-  fix.
+- DECISIONS entries: (a) the 4 knob resolutions, (b) per-animal
+  per-bodypart baseline encoding rationale. No MIGRATION_LOG
+  "deliberate divergence" entry (§3.1 is a faithful port).
 
 ---
 
-## 10. Open questions for Priya
+## 10. Resolutions (2026-04-22 Cowork pass w/ Priya)
 
-1. Knob 1 — split emit (parquet canonical + optional QC NPZ) vs
-   alternatives?
-2. Knob 2 — PCHIP/linear fallback config layout?
-3. Knob 3 — keep or drop data-driven percentile baseline path?
-4. Knob 4 — keep `"lk"` X-range source for parity, or switch to
-   `"finite"` at port time?
-5. §3.1 — per-mouse jaw baseline fix-at-port vs preserve-legacy-bug?
-6. §3.2 — confirm PS55 2025-04-27 and 2025-04-28 jaw exclusions?
-7. §5 — interpolated-trace parquet pure-bodypart (Option A) vs
-   side-aware (Option B)?
-8. §6 — nine-session parity set OK as chosen?
+1. **Knob 1** — split emit confirmed; `fill_method` column added;
+   `baseline_stage` metadata added.
+2. **Knob 2** — PCHIP default + linear fallback; config knob in
+   `defaults.yaml` with "do not change" comment.
+3. **Knob 3** — keep data-driven path; percentile semantics clarified
+   (Y0 = lowest *n*'th percentile of trial-aligned pool; X0 = median of
+   X in Y-percentile subset, not an independent percentile).
+4. **Knob 4** — keep `"lk"` for port parity.
+5. **§3.1** — per-animal per-bodypart baselines in `animals.yaml`;
+   faithful port, not a bug fix; parity target is
+   `{MICROSCOPE}/Priya/DeepLabCut/O2_analysis/{animal}/`.
+6. **§3.2** — schema extension routed to Phase 7-pre mini-PR; 5
+   exclusions added with correct `applies_to` scoping; sweep tongue
+   Cell 23 for implicit date-skipping.
+7. **§5** — Option A (pure-bodypart parquet).
+8. **§6** — 14 sessions; stress-test (low-licking) + later post-stroke
+   additions. scipy-version pin documented.
+
+Brief signed off 2026-04-22, pending Cowork re-pass after edits land.
