@@ -215,14 +215,15 @@ Phase 7 is gated on these landing on `main` first:
    + `stamp_side_convention(payload, flag, SIDE_CONVENTION_VERSION)`
    at every Phase 7 emit site.** Do not reinvent the translation.
 
-   **Deferred follow-up (Phase 7-blocking, per task #17 runbook §7):**
-   Phase 5/6 heatmap NPZs and reward-aligned `trial_group` slugs
-   (`reward_L_trials` / `reward_R_trials`) are still in wavesurfer
-   frame. If Phase 7 writes outputs whose filenames include a
-   `reward_{side}_trials` slug, the trial_group translation must land
-   first — either as a Phase 7 sub-phase prerequisite or as its own
-   mini-PR before the first Phase 7 output-writing sub-phase. See
-   `docs/runbooks/reemit-phase-5-6-after-lr-fix.md` §7 for scope.
+   **Phase 5/6 `trial_group` translation — closed 2026-04-21 as Phase
+   6.8a (tag `v6.8a-phase-5-6-trial-group-translation`).** The
+   reward-aligned NPZ writer now threads
+   `wavesurfer_sides_match_mouse_sides` through notebook 12's
+   `trial_group` path layer, so `reward_L_trials` /
+   `reward_R_trials` slugs land in mouse frame at emit. Phase 7 is
+   no longer blocked on this; if Phase 7 writes outputs whose
+   filenames include a `reward_{side}_trials` slug, use those slugs
+   directly without additional translation.
 
 ## Branch setup
 
