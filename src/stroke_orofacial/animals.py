@@ -135,6 +135,18 @@ class AnimalInfo:
         with the Phase 3/4/5/6 baselines. See DECISIONS.md 2026-04-20
         "Wavesurfer L/R ↔ mouse-frame boundary-layer translation" and
         ``docs/prompts/phase-7-dlc-kinematics-kickoff.md`` Prereq #3.
+    kinematics_baselines : dict[str, dict[str, float]]
+        Per-bodypart ``(x0, y0)`` origin used by the Phase 7a
+        interpolation module to center the DLC kinematic traces.
+        Structure: ``{"tongue": {"x0": float, "y0": float}, "jaw":
+        {...}}``. Required at load time — a missing block or a missing
+        bodypart raises ``ValueError``. This is intentional: future
+        animals joining the cohort must explicitly declare their
+        baselines so ``interpolation.py`` never silently runs with a
+        cross-contaminated baseline from another animal. Seed values
+        come from ``docs/phase-7/baseline-seed-table.md`` §"Scope-
+        filtered re-analysis" (2026-04-22 Phase 7a.0 probe). Access
+        via :meth:`get_kinematics_baseline`.
     """
 
     animal_id: str
@@ -154,6 +166,10 @@ class AnimalInfo:
     # L/R rig convention (added 2026-04-20 per task #17). Default False
     # is fail-conservative: current PS46–PS55 cohort is wavesurfer=mirror.
     wavesurfer_sides_match_mouse_sides: bool = False
+    # Per-bodypart (x0, y0) baselines (Phase 7a.1, added 2026-04-22).
+    # Required at load time — default_factory is a safety net for direct
+    # AnimalInfo(...) instantiation in tests, not a YAML-loader fallback.
+    kinematics_baselines: dict[str, dict[str, float]] = field(default_factory=dict)
 
     def day_relative_to_stroke(self, session_date: datetime.date) -> int:
         """Return the difference in days from stroke_date.
@@ -211,6 +227,27 @@ class AnimalInfo:
         Returns None if ``date_of_birth`` is unset.
         """
         return self.age_at_date(self.stroke_date)
+
+    def get_kinematics_baseline(self, bodypart: str) -> dict[str, float]:
+        """Return ``{'x0': float, 'y0': float}`` for the given bodypart.
+
+        The Phase 7a interpolation module calls this with
+        ``bodypart='tongue'`` or ``bodypart='jaw'`` — either must be
+        present per the 2026-04-22 schema decision (see DECISIONS.md and
+        docs/phase-7/baseline-seed-table.md §"Scope-filtered re-analysis").
+
+        Raises
+        ------
+        KeyError
+            If ``bodypart`` is not configured for this animal.
+        """
+        if bodypart not in self.kinematics_baselines:
+            raise KeyError(
+                f"Animal {self.animal_id!r} has no kinematics_baselines for "
+                f"bodypart {bodypart!r}; configured: "
+                f"{sorted(self.kinematics_baselines)}"
+            )
+        return self.kinematics_baselines[bodypart]
 
 
 def _parse_date(value: Any) -> datetime.date:
@@ -281,6 +318,80 @@ def _parse_exclusions(
     return exclusions
 
 
+_REQUIRED_KINEMATICS_BODYPARTS: frozenset[str] = frozenset({"tongue", "jaw"})
+
+
+def _parse_kinematics_baselines(
+    raw: Any, animal_id: str
+) -> dict[str, dict[str, float]]:
+    """Parse the ``kinematics_baselines`` YAML block for one animal.
+
+    Required for every animal and for both bodyparts in
+    :data:`_REQUIRED_KINEMATICS_BODYPARTS`. The strictness is intentional
+    — silently defaulting a missing baseline would let
+    ``interpolation.py`` run with a cross-contaminated ``(X0, Y0)`` from
+    another animal, which is the exact failure mode this schema prevents.
+
+    Known bodyparts are ``tongue`` and ``jaw``. Unknown keys raise
+    (guards against typos).
+    """
+    if raw is None:
+        raise ValueError(
+            f"Animal {animal_id!r}: kinematics_baselines block is required. "
+            f"Add a kinematics_baselines section with tongue and jaw "
+            f"entries, each carrying numeric x0 and y0 keys. Seed values "
+            f"are in docs/phase-7/baseline-seed-table.md "
+            f'§"Scope-filtered re-analysis".'
+        )
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"Animal {animal_id!r}: kinematics_baselines must be a mapping; "
+            f"got {type(raw).__name__}."
+        )
+    given = set(raw.keys())
+    unknown = given - _REQUIRED_KINEMATICS_BODYPARTS
+    if unknown:
+        raise ValueError(
+            f"Animal {animal_id!r}: unknown kinematics_baselines "
+            f"bodypart(s) {sorted(unknown)}. Known bodyparts: "
+            f"{sorted(_REQUIRED_KINEMATICS_BODYPARTS)}."
+        )
+    missing = _REQUIRED_KINEMATICS_BODYPARTS - given
+    if missing:
+        raise ValueError(
+            f"Animal {animal_id!r}: missing kinematics_baselines "
+            f"bodypart(s) {sorted(missing)}. Required: "
+            f"{sorted(_REQUIRED_KINEMATICS_BODYPARTS)}."
+        )
+    out: dict[str, dict[str, float]] = {}
+    for bp, vals in raw.items():
+        if not isinstance(vals, dict):
+            raise ValueError(
+                f"Animal {animal_id!r} kinematics_baselines.{bp}: must be "
+                f"a mapping with x0 and y0 keys; got "
+                f"{type(vals).__name__}."
+            )
+        parsed: dict[str, float] = {}
+        for key in ("x0", "y0"):
+            if key not in vals:
+                raise ValueError(
+                    f"Animal {animal_id!r} kinematics_baselines.{bp}: "
+                    f"missing required key {key!r}."
+                )
+            v = vals[key]
+            # Reject bools: bool is a subclass of int in Python and would
+            # otherwise quietly coerce to 0.0 / 1.0.
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise ValueError(
+                    f"Animal {animal_id!r} kinematics_baselines.{bp}.{key}: "
+                    f"must be numeric (int or float); got "
+                    f"{type(v).__name__}={v!r}."
+                )
+            parsed[key] = float(v)
+        out[bp] = parsed
+    return out
+
+
 def load_animals(config_path: Path | str | None = None) -> dict[str, AnimalInfo]:
     """Load and parse configs/animals.yaml into a dict of AnimalInfo.
 
@@ -344,6 +455,9 @@ def load_animals(config_path: Path | str | None = None) -> dict[str, AnimalInfo]
             genotype=spec.get("genotype"),
             stroke_laser_power_mW=spec.get("stroke_laser_power_mW"),
             wavesurfer_sides_match_mouse_sides=ws_match_raw,
+            kinematics_baselines=_parse_kinematics_baselines(
+                spec.get("kinematics_baselines"), animal_id
+            ),
         )
     return animals
 

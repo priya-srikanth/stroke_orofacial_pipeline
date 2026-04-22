@@ -36,6 +36,13 @@ def animals_yaml(tmp_path: Path) -> Path:
               analysis_params:
                 break_thr_trialmax: 12000.0
                 break_thr_alllicks: 9000.0
+              kinematics_baselines:
+                tongue:
+                  x0: 0.0
+                  y0: -110.0
+                jaw:
+                  x0: 0.0
+                  y0: 310.0
 
             PS54:
               stroke_date: 2025-04-30
@@ -47,6 +54,13 @@ def animals_yaml(tmp_path: Path) -> Path:
                   reason: "excluded in tongue-kinematics analysis"
                   applies_to: [dlc.kinematics.tongue]
               recovery_phenotype: null
+              kinematics_baselines:
+                tongue:
+                  x0: 0.0
+                  y0: -110.0
+                jaw:
+                  x0: 12.0
+                  y0: 290.0
 
             PS_PLACEHOLDER:
               stroke_date: null
@@ -420,6 +434,9 @@ class TestExclusionLoaderValidation:
                     - date: 2025-01-01
                       reason: "test"
                       applies_to: "dlc"
+                  kinematics_baselines:
+                    tongue: {x0: 0.0, y0: -110.0}
+                    jaw:    {x0: 0.0, y0: 290.0}
             """)
         )
         animals = load_animals(cfg)
@@ -450,6 +467,9 @@ class TestWavesurferSidesMatchMouseSides:
                     start: 2025-01-01
                     end: 2025-01-02
                   wavesurfer_sides_match_mouse_sides: false
+                  kinematics_baselines:
+                    tongue: {x0: 0.0, y0: -110.0}
+                    jaw:    {x0: 0.0, y0: 290.0}
             """)
         )
         animals = load_animals(cfg)
@@ -468,6 +488,9 @@ class TestWavesurferSidesMatchMouseSides:
                     start: 2025-01-01
                     end: 2025-01-02
                   wavesurfer_sides_match_mouse_sides: true
+                  kinematics_baselines:
+                    tongue: {x0: 0.0, y0: -110.0}
+                    jaw:    {x0: 0.0, y0: 290.0}
             """)
         )
         animals = load_animals(cfg)
@@ -492,3 +515,176 @@ class TestWavesurferSidesMatchMouseSides:
             ValueError, match="wavesurfer_sides_match_mouse_sides"
         ):
             load_animals(cfg)
+
+
+class TestKinematicsBaselines:
+    """Phase 7a.1 (added 2026-04-22): per-animal per-bodypart (x0, y0)
+    baselines are required at load time for every animal, consumed by
+    the Phase 7a interpolation module via
+    :meth:`AnimalInfo.get_kinematics_baseline`. Seed values in
+    configs/animals.yaml come from the PR #79 baseline-seed probe,
+    scope-filtered re-analysis section."""
+
+    def test_loaded_for_all_animals(self):
+        """Every animal in the real configs/animals.yaml parses with
+        both bodyparts present and finite-float x0/y0."""
+        animals = load_animals()
+        assert len(animals) == 8
+        for animal_id, info in animals.items():
+            kb = info.kinematics_baselines
+            assert set(kb.keys()) == {"tongue", "jaw"}, (
+                f"{animal_id} missing a bodypart: {sorted(kb)}"
+            )
+            for bp in ("tongue", "jaw"):
+                for key in ("x0", "y0"):
+                    v = kb[bp][key]
+                    assert isinstance(v, float)
+                    # NaN check — math.isnan would also work; comparing
+                    # to itself is equivalent for finiteness.
+                    assert v == v, f"{animal_id} {bp}.{key} is NaN"
+                    assert abs(v) < 1e6, (
+                        f"{animal_id} {bp}.{key} out of plausible range: {v!r}"
+                    )
+
+    def test_tongue_uniform_across_cohort(self):
+        """All 8 animals carry tongue (x0, y0) = (0.0, -110.0). This is
+        the scope-filtered-re-analysis outcome — every in-scope PS46–PS55
+        legacy v5p3 NPZ carries Y0 = -110."""
+        animals = load_animals()
+        for animal_id, info in animals.items():
+            tongue = info.get_kinematics_baseline("tongue")
+            assert tongue == {"x0": 0.0, "y0": -110.0}, (
+                f"{animal_id} tongue baseline drift: {tongue}"
+            )
+
+    def test_jaw_per_animal_groups(self):
+        """Jaw baselines split into three groups per the seed table:
+        PS46–PS50 at (0, 310), PS51/PS54 at (12, 290), PS55 at (0, 290)."""
+        animals = load_animals()
+        expected_jaw = {
+            "PS46": {"x0": 0.0, "y0": 310.0},
+            "PS47": {"x0": 0.0, "y0": 310.0},
+            "PS48": {"x0": 0.0, "y0": 310.0},
+            "PS49": {"x0": 0.0, "y0": 310.0},
+            "PS50": {"x0": 0.0, "y0": 310.0},
+            "PS51": {"x0": 12.0, "y0": 290.0},
+            "PS54": {"x0": 12.0, "y0": 290.0},
+            "PS55": {"x0": 0.0, "y0": 290.0},
+        }
+        for animal_id, expected in expected_jaw.items():
+            got = animals[animal_id].get_kinematics_baseline("jaw")
+            assert got == expected, f"{animal_id} jaw: {got} != {expected}"
+
+    def test_missing_block_raises(self, tmp_path):
+        """An animal without a kinematics_baselines: block fails load
+        with a ValueError that names the animal — no silent default."""
+        cfg = tmp_path / "no_kinematics.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  exclusions: []
+            """)
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"PS99.*kinematics_baselines block is required",
+        ):
+            load_animals(cfg)
+
+    def test_missing_bodypart_raises(self, tmp_path):
+        """A block with only tongue: (jaw missing) fails — both bodyparts
+        are mandatory, so a partial entry cannot silently pass."""
+        cfg = tmp_path / "missing_jaw.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  exclusions: []
+                  kinematics_baselines:
+                    tongue:
+                      x0: 0.0
+                      y0: -110.0
+            """)
+        )
+        with pytest.raises(
+            ValueError, match=r"PS99.*missing kinematics_baselines bodypart"
+        ):
+            load_animals(cfg)
+
+    def test_unknown_bodypart_raises(self, tmp_path):
+        """Unknown bodypart keys (typos) fail at load time rather than
+        silently parsing into an unused dict entry."""
+        cfg = tmp_path / "unknown_bodypart.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  exclusions: []
+                  kinematics_baselines:
+                    tongue:
+                      x0: 0.0
+                      y0: -110.0
+                    jaw:
+                      x0: 0.0
+                      y0: 310.0
+                    whisker:
+                      x0: 0.0
+                      y0: 0.0
+            """)
+        )
+        with pytest.raises(
+            ValueError, match=r"PS99.*unknown kinematics_baselines bodypart"
+        ):
+            load_animals(cfg)
+
+    def test_missing_x0_raises(self, tmp_path):
+        """Partial per-bodypart dicts (e.g. tongue with only y0) fail
+        load — every bodypart must carry both x0 and y0."""
+        cfg = tmp_path / "missing_x0.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  exclusions: []
+                  kinematics_baselines:
+                    tongue:
+                      y0: -110.0
+                    jaw:
+                      x0: 0.0
+                      y0: 310.0
+            """)
+        )
+        with pytest.raises(ValueError, match=r"PS99.*tongue.*missing.*'x0'"):
+            load_animals(cfg)
+
+    def test_get_kinematics_baseline_unknown_bodypart_raises(self):
+        """Querying get_kinematics_baseline('whisker') on a configured
+        animal raises KeyError with the configured bodyparts listed."""
+        info = AnimalInfo(
+            animal_id="PS46",
+            stroke_date=datetime.date(2025, 3, 13),
+            session_start=datetime.date(2025, 3, 7),
+            session_end=datetime.date(2025, 4, 6),
+            kinematics_baselines={
+                "tongue": {"x0": 0.0, "y0": -110.0},
+                "jaw": {"x0": 0.0, "y0": 310.0},
+            },
+        )
+        with pytest.raises(KeyError, match="whisker"):
+            info.get_kinematics_baseline("whisker")
+        # Sanity: configured bodyparts return cleanly.
+        assert info.get_kinematics_baseline("tongue") == {"x0": 0.0, "y0": -110.0}
+        assert info.get_kinematics_baseline("jaw") == {"x0": 0.0, "y0": 310.0}

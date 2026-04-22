@@ -98,3 +98,60 @@ This recommendation is the input to the Task 3 DECISIONS entry's
   `max_gap_ms` gap-drop), which live in later stages. That is
   intentional — isolating PCHIP itself is what we want to measure.
   Those stages are pure numpy and version-insensitive.
+
+## Second-session stress pilot — PS51/20250430 tongue (2026-04-22)
+
+Per DECISIONS 2026-04-22 "scipy version handling" caveat 1, this
+second-session pilot validates Option A on a high-NaN stress-set
+session from `interpolation-strategy.md` §6. Run as part of Phase
+7a.1.
+
+### Session probed
+
+PS51 / 20250430 / tongue (STABLE combo per
+[`baseline-seed-table.md`](baseline-seed-table.md), in-scope per
+PS51 `sessions.start = 2025-04-16`).
+
+- NPZ: `O2_analysis/PS51/PS51_tongue_kinematics/.../PS51_20250430_cam2_tongue_interp_v5p3.npz`
+- `n_frames`: 950,833
+- NaN-in `x_drop` (post-likelihood-drop, pre-PCHIP): 949,695 (99.88%)
+- NaN-in `y_drop` (post-likelihood-drop, pre-PCHIP): 949,695 (99.88%)
+- NaN-out `x_interp` (post-PCHIP, both envs): 44,523 (4.68%)
+- NaN-out `y_interp` (post-PCHIP, both envs): 44,523 (4.68%)
+
+This session is a much higher NaN-in fraction than pilot #1
+(99.88% vs. 89.47%) — the intended stress condition per §6's
+"little-to-no licking" characterization. Both scipy versions
+produce identical NaN-out boundaries, so no version-dependent
+extrapolation behavior is exercised.
+
+### Diff summary
+
+All diffs computed on the 906,310-frame common non-NaN region.
+
+| Dim | max\|Δ\| | median\|Δ\| | p99\|Δ\| | p99.9\|Δ\| | n_exact_equal | n < 1e-6 |
+|---|---|---|---|---|---|---|
+| x | 0.000000e+00 | 0.000000e+00 | 0.000000e+00 | 0.000000e+00 | 906,310 | 906,310 |
+| y | 0.000000e+00 | 0.000000e+00 | 0.000000e+00 | 0.000000e+00 | 906,310 | 906,310 |
+
+NaN-boundary deltas:
+- NaN only in 1.15.1 output (x / y): 0 / 0
+- NaN only in 1.17.1 output (x / y): 0 / 0
+
+**Bit-for-bit identical.** Matches pilot #1 exactly in form: every
+non-NaN frame in the PCHIP output matches between scipy 1.15.1 and
+1.17.1; every NaN-boundary frame matches too.
+
+### Interpretation
+
+**Option A confirmed on a high-NaN stress session.** Pilot #2
+reproduces pilot #1's bit-identical result under a 10× higher NaN-in
+fraction. The scipy 1.15.1 → 1.17.1 PCHIP-constructor path is
+non-perturbing across both a low-NaN cohort-baseline session
+(PS46/20250307, 89.47% NaN-in) and a high-NaN stress session
+(PS51/20250430, 99.88% NaN-in). The DECISIONS 2026-04-22 caveat
+1 ("single-session pilot") is resolved.
+
+No DECISIONS amendment beyond recording this datapoint. 7a.1
+parity harness stays on the consolidated `stroke_orofacial` env
+(scipy 1.17.1) with `atol=1e-6` per `interpolation-strategy.md` §6.
