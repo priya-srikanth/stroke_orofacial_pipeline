@@ -3302,3 +3302,73 @@ Full suite: 482 passed, 34 skipped, 0 failed. Ruff clean.
 **Forward follow-ups.** None. 7a-impl now consumes the new schema
 directly (its per-animal kinematics baselines live alongside
 exclusions in `animals.yaml`).
+
+---
+
+## Phase 7a design brief — interpolation-strategy lock-in (docs-only)
+
+**Date:** 2026-04-22. PR #74 merge commit, tagged `v7a-design-brief`.
+No source / configs / notebooks / outputs changed — docs-only.
+
+**What this entry is.** A trace-line pointing at the canonical
+design document for Phase 7a. Phase 7 implementation PRs will
+cite the brief and its §10 resolution list.
+
+**What landed.** `docs/phase-7/interpolation-strategy.md` — a
+design brief for the v5p3 interpolation pipeline that produces
+continuous tongue/jaw traces from DLC outputs (the first in-scope
+piece of Phase 7 DLC kinematics). Specifies:
+
+- §1 — port scope: the 7-stage v5p3 algorithm
+  (`xrange → thr → drop → interp → interp_filled → final`) from
+  tongue notebook Cell 23 + jaw notebook Cell 22.
+- §2 — 8 knob decisions, including:
+  - **Knob 1** split emit: canonical parquet + optional QC NPZ.
+  - **Knob 3** percentile semantics: `Y0` = lowest n'th
+    percentile of the trial-aligned pool; `X0` = median of `X`
+    within the `Y`-percentile subset.
+  - **Knob 5** output shape: Option A — pure-bodypart parquet
+    (no trial-grouped variants at this layer).
+- §3.1 — per-animal per-bodypart baselines in
+  `configs/animals.yaml`. **Faithful port** of Priya's manual
+  per-run X0/Y0 editing against the legacy notebook; legacy
+  MICROSCOPE outputs are correct under this manual protocol.
+  Seed from `X0`/`Y0` keys in the legacy NPZs.
+- §3.2 — exclusion-scoping namespace-collision risk; escalated
+  to the Phase 7-pre schema extension above (new
+  `analysis_context` taxonomy + dotted-hierarchical prefix-match).
+- §5 — pure-bodypart parquet schema.
+- §6 — **parity-session set**: 9 primary + 3 low-licking
+  stress-test + 2 late-post-stroke = 14 sessions required before
+  any 7a implementation PR opens. See the 2026-04-22 DECISIONS
+  "Parity-gate principle" entry for the policy this enforces.
+- §10 — **canonical resolution list** for all 8 knobs (kept
+  separate from the earlier narrative-flow "Open Questions"
+  section, which §10 supersedes).
+
+**How the brief was produced.** CC drafted; Cowork reviewed in
+two passes — 11 edits round 1 addressing baseline-framing +
+namespace collision + output path; 5 more edits round 2 cleaning
+up stale references after the Knob 3 rewrite. Priya signed off
+on the §10 resolutions before the brief merged.
+
+**PRs in the 2026-04-22 close-out sequence** (context for future
+readers reconstructing the commit graph):
+- PR #73 — Phase 8a.8 recovery-trajectory visualization helpers
+  (tag `v8a.8-spout-recovery-trajectories`).
+- PR #74 — this brief (tag `v7a-design-brief`).
+- PR #75 — Phase 7-pre exclusions schema extension (tag
+  `v7-pre-exclusions-schema`). See the "Phase 7-pre" entry above
+  for that work.
+
+**Ground-rule compliance.** CLAUDE.md rule 1 — no source data
+modified. CLAUDE.md rule 8 — merged on feature branch, tag
+pushed. Docs-only; no parity needed.
+
+**Forward follow-ups.** Phase 7a implementation (next phase) must:
+
+1. Honor every §10 resolution.
+2. Seed `configs/animals.yaml` per-animal per-bodypart baselines
+   from legacy NPZ `X0`/`Y0` keys on MICROSCOPE.
+3. Produce a per-stage drift table in its own MIGRATION_LOG entry
+   per the 2026-04-22 parity-gate principle decision.
