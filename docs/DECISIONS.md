@@ -15,6 +15,145 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-04-22 — Phase 7a.0 follow-ups: parity-scope principle + scipy version handling
+
+Two decisions landing together as Phase 7a.0 wraps, both driven by
+PR #79's baseline-seed probe and scipy-version pilot findings.
+
+### Parity-scope principle (standing rule, all phases)
+
+- *Context:* The Phase 7a.0 baseline-seed probe on PR #79
+  enumerated every NPZ on disk under
+  `{MICROSCOPE}/Priya/DeepLabCut/O2_analysis/{animal}/` and flagged
+  PS49 tongue and PS50 tongue as NEEDS_HUMAN_DECISION because X0/Y0
+  differed across sessions. Priya clarified that the out-of-scope
+  NPZs (3 sessions for PS49, 10 for PS50, all at Y0=-100) are
+  leftovers from an earlier wider-scope pipeline run, superseded by
+  her narrowing of `configs/animals.yaml sessions.{start, end}`
+  (2026-04-17 transcription). Under the in-scope filter, both
+  combos are STABLE at Y0=-110 and match PS46–PS48 tongue from day
+  one. The general question this surfaced: when consolidated-pipeline
+  outputs are compared against legacy artifacts on disk, should
+  out-of-scope artifacts be parity targets?
+- *Decision:* **Parity comparisons against legacy outputs are
+  restricted to sessions within `configs/animals.yaml
+  sessions.{start, end}` per animal.** Legacy outputs from dates
+  outside that range are not parity targets; any parity harness
+  must load the per-animal scope and skip out-of-scope candidates
+  silently (not as a warning — the point is that out-of-scope
+  artifacts are not expected to parity).
+- *Rationale:*
+  - Priya's analysis scope has narrowed per-animal over time (e.g.,
+    PS49 `sessions.start` moved from 2025-03-07 to 2025-03-10;
+    PS50 from 2025-03-07 to 2025-03-19). Legacy NPZs, parquets,
+    etc. from pre-narrowing runs may carry preliminary parameters
+    (different Y0 baselines, different exclusion rules) that are no
+    longer authoritative. Parity-comparing against those artifacts
+    would either force the consolidated pipeline to reproduce
+    obsolete behavior or generate spurious parity failures. Neither
+    is acceptable.
+  - The rule retroactively no-ops for phases 3/4/5/6 — their
+    parity sets were already chosen from in-scope sessions by
+    convention. Making it explicit as a standing rule prevents
+    accidental cross-scope comparisons in phases 7a/7b/7c and
+    beyond.
+  - A silent skip is safer than a warning: a warning invites
+    "fix the warning" edits that turn into accidental re-baselining
+    of the legacy artifacts. The correct behavior is "that NPZ is
+    not a target; do not try." Making it silent encodes that.
+- *Example — PR #79 scope-filtered re-analysis.* The baseline-seed
+  probe's two NHD verdicts collapse to STABLE under scope filter.
+  22 in-scope PS49 tongue sessions all at Y0=-110; 19 in-scope PS50
+  tongue sessions all at Y0=-110. The 13 out-of-scope NPZs
+  (Y0=-100) are pre-narrowing artifacts and are excluded from
+  parity. No `animals.yaml` schema change needed. See
+  `docs/phase-7/baseline-seed-table.md` "Scope-filtered
+  re-analysis" section for the full per-session detail.
+- *Applies to:* all phases. Retroactive in spirit (no-op for
+  phases 3/4/5/6). Forward-applicable to 7a.1 (parity harness),
+  7a.2 (`animals.yaml` seeding), 7b, 7c, and all subsequent work
+  that compares new outputs against legacy artifacts on
+  `O2_analysis/` or `session_processing3/`.
+- *Enforced at:*
+  - `docs/phase-7/baseline-seed-table.md` — "Scope-filtered
+    re-analysis" section documents the first application.
+  - Future parity harness scripts must load
+    `configs/animals.yaml` `sessions.{start, end}` per animal and
+    skip legacy NPZ candidates whose session date is out-of-range.
+    The 7a.1 parity harness is the first code-level instance.
+  - Deliberately NOT auto-enforced programmatically — this is a
+    workflow/discipline rule. A future refactor could add a
+    `PathResolver.is_in_scope(animal, date)` helper if the rule
+    gets applied repeatedly, but that's 7a.1+ territory.
+
+### scipy version handling for Phase 7a parity (and downstream numerical-reproducibility checks)
+
+- *Context:* `docs/phase-7/interpolation-strategy.md` §6 specified
+  `atol=1e-6` for the 14-session parity harness but flagged PCHIP
+  as implementation-dependent across scipy versions (cubic-Hermite
+  constructor bugfixes have landed historically). The legacy-era
+  scipy is 1.15.1 (Priya's local `deeplabcut` conda env, confirmed
+  2026-04-22); the consolidated `stroke_orofacial` env is at 1.17.1.
+  Unanswered question: does minor-version drift between 1.15.1 and
+  1.17.1 perturb PCHIP output enough to require pinning the parity
+  env (or widening the tolerance)?
+- *Pilot:* `docs/phase-7/scipy-pilot-results.md`
+  (`tests/scripts/scipy_version_pilot.py`) measured PCHIP
+  interpolation-output drift between scipy 1.15.1 and 1.17.1 on
+  PS46/20250307 tongue (a STABLE, in-scope session, 931,834 frames,
+  914,012 common non-NaN after PCHIP). Measurements:
+  `max|Δ| = 0.0` on both x and y; `p99|Δ| = 0.0` on both;
+  `n_exact_equal / n_common = 914,012 / 914,012` on both. NaN
+  boundaries identical (17,822 leading/trailing on each side in
+  both envs). **Bit-for-bit identical PCHIP output on this session
+  between the two scipy versions.**
+- *Decision:* **Option A — no pin, no widening.** Run Phase 7a.1
+  parity under the consolidated `stroke_orofacial` env's scipy
+  1.17.1 with `atol=1e-6` per `interpolation-strategy.md` §6. The
+  scipy 1.15.1 → 1.17.1 upgrade path is confirmed non-perturbing
+  for the PCHIP call used in the v5p3 interpolation pipeline. No
+  pinned parity env, no DECISIONS-logged tolerance widening, no
+  scope change to 7a.1 on the scipy-version axis.
+- *Rationale:*
+  - The pilot's result isn't just "below 1e-6" — it's exactly
+    0 on every common non-NaN frame. Option A's precondition
+    (max|Δ| < 1e-6) is met in the strongest possible form.
+  - Pinning a separate parity env would add ongoing maintenance
+    cost (a second conda env to keep running, a version assertion
+    in the harness header) for no measurable parity benefit here.
+  - Widening `atol` beyond the brief's `1e-6` default would relax
+    parity further than the measurement supports. The
+    conservative-margin argument under bullet 2 of the three-bullet
+    tree (widen to 1e-4 if drift is in the 1e-6..1e-4 range) does
+    not apply here.
+- *Caveats (for 7a.1 + future phases):*
+  - Single-session pilot. Per Priya's 2026-04-22 sign-off, a
+    second-session stress pilot (suggested PS51/20250430, high-NaN
+    per `interpolation-strategy.md` §6 stress set) is deferred to
+    7a.1 — not required for this DECISIONS entry but should land
+    alongside the 7a.1 parity harness as a second datapoint.
+  - Pilot tests PCHIP only (stage 4 of the 7-stage pipeline).
+    Full 7-stage parity against the 14-session set is still the
+    gating 7a.1 acceptance criterion per the parity-gate principle
+    (2026-04-22 entry below) — pilot does not supersede it.
+  - Future phases that touch scipy.interpolate, scipy.signal, or
+    scipy.stats across version boundaries should re-run an
+    analogous pilot before locking a tolerance. The template
+    lives at `tests/scripts/scipy_version_pilot.py` and is
+    bodypart-agnostic at the PCHIP level.
+- *Applies to:* Phase 7a.1 (interpolation parity harness, `atol=1e-6`
+  decision), and any future parity gate that touches scipy routines
+  where cross-version drift might matter.
+- *Enforced at:*
+  - `docs/phase-7/scipy-pilot-results.md` — measurements + Option A
+    recommendation.
+  - `tests/scripts/scipy_version_pilot.py` — reusable pilot template.
+  - Phase 7a.1 implementation PR (future) cites this entry and
+    runs the 14-session parity harness under scipy 1.17.1 with
+    `atol=1e-6`.
+
+---
+
 ## 2026-04-22 — Phase 7-pre: dotted-hierarchical namespaced-tag schema for `AnimalInfo.exclusions.applies_to`
 
 - *Context:* The Phase 7a interpolation design brief
