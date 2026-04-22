@@ -1614,6 +1614,51 @@ Phase-13-pattern fix-PR will follow the Phase 5/6 indexing-module refactor
 
 ---
 
+## Phase 8a.8 — Recovery-trajectory visualization helpers
+
+**Date:** 2026-04-22.
+
+**What was done:**
+- Added `src/stroke_orofacial/spout_behavior/recovery_trajectories.py` as the
+  Phase 8a.8 data-assembly and plotting layer for per-session
+  `spout_endpoints.json` payloads.
+- Implemented endpoint JSON discovery/loading, scalar metric extraction via
+  dot paths (for example `per_session_aggregate.mean_s`), trajectory-point
+  assembly with an `animal -> group` visualization hook, cohort mean+SEM
+  summaries by day-relative-to-stroke, and Matplotlib figure save helpers.
+- Added `tests/test_recovery_trajectories.py` with synthetic coverage for
+  nested metric extraction, side-aware aggregate extraction, sentinel handling,
+  group assignment, missing-day skipping, cohort SEM, JSON discovery/loading,
+  and representative cohort plot/save behavior when Matplotlib is importable.
+
+**Intentional behavior differences vs. legacy:**
+- Legacy `summary_PS.py` tiled per-animal plots into per-metric grids but did
+  not implement cohort mean+SEM recovery curves or phenotype-group hooks.
+  Phase 8a.8 adds those as consolidated-pipeline visualization helpers.
+- Phenotype classification is still out of scope. The only Phase 8a.8 surface
+  is a caller-provided grouping function, defaulting to `"all"` for every
+  animal; Phase 9.1 supplies real phenotype labels later.
+
+**Scope guard:** No DLC, Phase 7, notebook, config, schema, source-data, or
+legacy-repo edits. The new module consumes existing Phase 8a endpoint JSON
+payloads and leaves endpoint computation unchanged.
+
+**Validation:**
+- [x] `ruff check src/stroke_orofacial/spout_behavior/recovery_trajectories.py tests/test_recovery_trajectories.py`
+  — clean under `conda run -n stroke_orofacial`.
+- [x] `python -c "import numpy; import matplotlib"` under
+  `conda run -n stroke_orofacial` — imports cleanly (`numpy 2.4.3`,
+  `matplotlib 3.10.8`). An earlier direct invocation of
+  `C:\Users\sabatini\.conda\envs\stroke_orofacial\python.exe` failed because it
+  bypassed conda activation / DLL path setup; that was an invocation issue, not
+  a missing NumPy install.
+- [x] `pytest tests/test_recovery_trajectories.py -q --basetemp=C:/Users/sabatini/pytest_tmp_phase8a8_conda_verify`
+  under `conda run -n stroke_orofacial` — 8 passed in 0.79s.
+- [x] `pytest --collect-only -q --basetemp=C:/Users/sabatini/pytest_tmp_collect_phase8a8_verify`
+  under `conda run -n stroke_orofacial` — 506 tests collected in 1.13s.
+
+---
+
 ## Phase 8a.9 — Legacy behavior-report rollup (docs-only)
 
 **Date:** 2026-04-22.
