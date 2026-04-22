@@ -435,16 +435,27 @@ def process_session_by_animal_date(
     Equivalent to::
 
         animal_info = get_animal(animal)
-        manifest = build_manifest(animal, date, resolver, animal_info)
+        manifest = build_manifest(
+            animal, date, resolver, animal_info,
+            analysis_context="spout_behavior",
+        )
         return process_session(manifest, resolver, ...)
 
     Phase 2 (spout behavior) is DLC-free by design: ``build_manifest()``
     treats DLC files as optional and yields empty lists when missing, so
     this wrapper works for sessions where DLC inference hasn't run yet
     or where video recording failed but wavesurfer is still clean.
+
+    The ``analysis_context="spout_behavior"`` argument scopes
+    exclusion checks to spout-behavior-relevant entries — sessions
+    marked ``applies_to: [dlc]`` (DLC-only exclusions) flow through
+    this pipeline unexcluded.
     """
     animal_info = get_animal(animal)
-    manifest = build_manifest(animal, date, resolver, animal_info)
+    manifest = build_manifest(
+        animal, date, resolver, animal_info,
+        analysis_context="spout_behavior",
+    )
     return process_session(
         manifest,
         resolver,

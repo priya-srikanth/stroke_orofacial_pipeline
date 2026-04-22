@@ -3169,3 +3169,136 @@ baseline); ruff clean on touched files.
 - If the cohort ever expands beyond PS46–PS55, the schema
   supports the additional animals by construction; no further
   migration required.
+
+---
+
+## Phase 7-pre — `AnimalInfo.exclusions.applies_to` schema extension
+
+**Date:** 2026-04-22. Companion to the Phase 7a interpolation design
+brief (`docs/phase-7/interpolation-strategy.md` §3.2), which flagged
+the namespace-collision risk of mixing bodypart strings (`tongue`)
+with phase tags (`dlc`, `spout_behavior`) in a flat `applies_to`
+list. Ships before 7a-impl to unblock the PS51 2025-05-17 DLC-only
+exclusion that 7a parity needs.
+
+**What changed.**
+
+`Exclusion.applies(analysis_context)` now uses **dotted hierarchical
+prefix-match** semantics:
+
+- An exclusion with `applies_to: [dlc]` matches any
+  `analysis_context` starting with `"dlc"` or `"dlc.*"` (e.g.,
+  `"dlc.spatial"`, `"dlc.kinematics.tongue"`).
+- `applies_to: [dlc.kinematics.tongue]` matches only
+  `"dlc.kinematics.tongue"` — not `"dlc.kinematics.jaw"` (sibling)
+  or `"dlc.kinematics"` (tag is longer than context).
+- Segment boundary is strict: `[dlc]` matches `dlc` and `dlc.*`
+  but NOT `dlc_spatial` (underscore) or `dlcx` (no boundary).
+- `analysis_context=None` never matches (callers must pass an
+  explicit context).
+
+`AnimalInfo.is_excluded(session_date, analysis_context)` parameter
+renamed from `analysis_type`. `build_manifest()` likewise renamed;
+threaded through all four existing convenience-wrapper call sites:
+
+- `spout_behavior.session_processing.process_session_by_animal_date` →
+  `analysis_context="spout_behavior"`
+- `alignment.timebase.load_or_compute_alignment_by_animal_date` →
+  `analysis_context="alignment"`
+- `dlc_io.parquet.build_centered_parquet_by_animal_date` →
+  `analysis_context="dlc.io"`
+- `dlc_spatial.reward_aligned.build_reward_aligned_analysis_by_animal_date` →
+  `analysis_context="dlc.spatial"`
+
+**Canonical `analysis_context` taxonomy:**
+```
+spout_behavior       # Phase 2
+alignment            # Phase 3 (wavesurfer↔camera index mapping)
+dlc.io               # Phase 4 (centered parquet)
+dlc.spatial          # Phase 5/6
+dlc.kinematics.{tongue,jaw,whisker,face_velocity,psd}   # Phase 7
+```
+
+**YAML loader validation.** The legacy `applies_to: [all]` sentinel
+is **rejected at load time** with a migration-guidance error message.
+`applies_to` is now required (no default) and must be a non-empty
+list of strings. Scalar strings (`applies_to: "dlc"`) are normalized
+to single-element lists for YAML ergonomics.
+
+**Config migration — `configs/animals.yaml`.** All four pre-existing
+exclusions migrated from `[all]` to explicit top-level tags. One new
+exclusion added per the 7a brief's audit:
+
+| Animal | Date | Before | After | Reason |
+|---|---|---|---|---|
+| PS51 | 2025-04-26 | `[all]` | `[dlc, spout_behavior]` | Rose Bengal sham, delayed licking |
+| PS51 | **2025-05-17** | *(new)* | `[dlc, alignment]` | Missing camera data |
+| PS54 | 2025-04-26 | `[all]` | `[dlc, spout_behavior]` | Rose Bengal sham, delayed licking |
+| PS55 | 2025-04-27 | `[all]` | `[dlc, spout_behavior]` | Rose Bengal sham, delayed licking |
+| PS55 | 2025-04-28 | `[all]` | `[dlc, spout_behavior]` | Experimenter error, inaccurate reward delivery |
+
+PS51 2025-05-17 is scoped to `[dlc, alignment]` rather than
+`[dlc]` alone because the wavesurfer↔camera alignment template
+builder also requires camera timestamp CSVs; a session with no
+camera data breaks both DLC and alignment even though
+spout-behavior-only analyses still work off the wavesurfer file.
+
+**Intentional behavior differences vs legacy.**
+
+1. **`analysis_context=None` no longer matches `[all]` exclusions.**
+   Previously `is_excluded(date, None)` returned `True` for any
+   `[all]`-scoped exclusion because the legacy wildcard path took
+   the short-circuit before checking `analysis_type`. After 7-pre
+   there is no `[all]` sentinel — callers must pass an explicit
+   context to trigger exclusion checks. In practice this didn't
+   fire anywhere: all four pre-7-pre `build_manifest()` call sites
+   dropped the parameter, so `excluded` was always `False` on the
+   emitted manifests regardless. Threading `analysis_context`
+   through all four call sites activates the previously-dormant
+   exclusion path.
+2. **Rose Bengal sham exclusions no longer block `alignment`.** Under
+   `[all]`, all four pre-existing exclusions would have fired for
+   any caller that actually passed a context. Under
+   `[dlc, spout_behavior]` those exclusions no longer apply to
+   `analysis_context="alignment"`. Rationale: the alignment
+   template itself (wavesurfer↔camera index map) is a mechanical
+   product of the acquired timestamps; the mouse's behavior-quality
+   issues don't corrupt the mapping. Downstream DLC/spout analyses
+   that consume the template are the ones that legitimately need
+   to skip these sessions.
+
+**Namespace-collision resolution.** The brief flagged three candidate
+schemas (rename+split, nested struct, namespaced tags). Phase 7-pre
+picked **namespaced tags** (Option 3) because it scales cleanly to
+future dimensions (e.g., a `trial_group.*` axis) without a schema
+migration, and avoids the empty-list ambiguity of AND-combined
+phase/bodypart lists.
+
+**Tests.**
+
+- `tests/test_animals.py` — `TestExclusionApplies` (7 tests:
+  exact, one-level prefix, multi-level prefix, sibling-no-match,
+  segment-boundary-strict, None-context, multiple-tags-any-match);
+  `TestExclusionLoaderValidation` (5 tests: `[all]` rejected,
+  missing `applies_to` rejected, empty list rejected, non-list
+  rejected, string normalized). Renamed
+  `TestAnimalInfoMethods.test_is_excluded_universal` →
+  `test_is_excluded_top_level_scope` and
+  `test_is_excluded_analysis_specific` →
+  `test_is_excluded_bodypart_specific` with updated assertions.
+- `tests/test_manifest.py` — renamed `test_excluded_session` →
+  `test_excluded_session_top_level_scope` and updated
+  `test_analysis_specific_exclusion` with dotted-tag scopes.
+
+Full suite: 482 passed, 34 skipped, 0 failed. Ruff clean.
+
+**Ground-rule compliance.**
+
+- `CLAUDE.md` rule 1 — no source data modified. Only code +
+  configs + docs.
+- `CLAUDE.md` rule 8 — feature branch `phase-7-pre-exclusions-schema`
+  off main; merge commit preserved.
+
+**Forward follow-ups.** None. 7a-impl now consumes the new schema
+directly (its per-animal kinematics baselines live alongside
+exclusions in `animals.yaml`).

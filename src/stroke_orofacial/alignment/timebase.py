@@ -262,15 +262,26 @@ def load_or_compute_alignment_by_animal_date(
     Equivalent to::
 
         animal_info = get_animal(animal)
-        manifest = build_manifest(animal, date, resolver, animal_info)
+        manifest = build_manifest(
+            animal, date, resolver, animal_info,
+            analysis_context="alignment",
+        )
         return load_or_compute_alignment(manifest, resolver, params, ...)
 
     Phase 3 alignment is DLC-agnostic; ``build_manifest()`` treats DLC
     files as optional, so this wrapper works for sessions where DLC
-    inference hasn't run yet.
+    inference hasn't run yet. The ``analysis_context="alignment"``
+    argument scopes exclusion checks: sessions with
+    ``applies_to: [dlc]`` exclusions (e.g., "missing camera data") also
+    block alignment since the wavesurfer↔camera mapping needs the camera
+    timestamp CSVs — mark those sessions with ``applies_to: [dlc,
+    alignment]`` or ``applies_to: [alignment]`` as appropriate.
     """
     animal_info = get_animal(animal)
-    manifest = build_manifest(animal, date, resolver, animal_info)
+    manifest = build_manifest(
+        animal, date, resolver, animal_info,
+        analysis_context="alignment",
+    )
     return load_or_compute_alignment(
         manifest, resolver, params,
         ws_signals=ws_signals, force_recompute=force_recompute,

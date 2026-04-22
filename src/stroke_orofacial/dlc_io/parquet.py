@@ -202,15 +202,24 @@ def build_centered_parquet_by_animal_date(
 
         animal_info = get_animal(animal)
         date = datetime.datetime.strptime(date_str, "%Y%m%d").date()
-        manifest = build_manifest(animal, date, resolver, animal_info)
+        manifest = build_manifest(
+            animal, date, resolver, animal_info,
+            analysis_context="dlc.io",
+        )
         return build_centered_parquet(manifest, center_mode, resolver, params, ...)
 
     Phase 4 is DLC-required; if DLC inference hasn't run for this session,
     the underlying ``build_centered_parquet`` raises FileNotFoundError.
+    The ``analysis_context="dlc.io"`` argument is a prefix of
+    ``"dlc"``, so exclusions scoped to ``[dlc]`` (or ``[dlc.io]``
+    specifically) match and block this pipeline.
     """
     animal_info = get_animal(animal)
     date = datetime.datetime.strptime(date_str, "%Y%m%d").date()
-    manifest = build_manifest(animal, date, resolver, animal_info)
+    manifest = build_manifest(
+        animal, date, resolver, animal_info,
+        analysis_context="dlc.io",
+    )
     return build_centered_parquet(
         manifest, center_mode, resolver, params, overwrite=overwrite,
     )

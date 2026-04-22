@@ -44,8 +44,8 @@ def animals_yaml(tmp_path: Path) -> Path:
                 end: 2025-07-09
               exclusions:
                 - date: 2025-04-26
-                  reason: "excluded in tongue analysis"
-                  applies_to: [tongue]
+                  reason: "excluded in tongue-kinematics analysis"
+                  applies_to: [dlc.kinematics.tongue]
               recovery_phenotype: null
 
             PS_PLACEHOLDER:
@@ -84,7 +84,7 @@ class TestLoadAnimals:
         assert len(ps54.exclusions) == 1
         exc = ps54.exclusions[0]
         assert exc.date == datetime.date(2025, 4, 26)
-        assert exc.applies_to == ["tongue"]
+        assert exc.applies_to == ["dlc.kinematics.tongue"]
 
     def test_ps46_cohort_metadata(self, animals_yaml):
         """PS46 has all 4 cohort metadata fields populated in the fixture."""
@@ -174,37 +174,63 @@ class TestAnimalInfoMethods:
         assert info.phase(datetime.date(2025, 3, 14)) == "post_stroke"
         assert info.phase(datetime.date(2025, 3, 20)) == "post_stroke"
 
-    def test_is_excluded_universal(self):
+    def test_is_excluded_top_level_scope(self):
+        """An exclusion scoped to [dlc, spout_behavior] fires for any
+        analysis_context under either namespace — the Phase 7-pre
+        replacement for the legacy ["all"] sentinel semantics."""
         info = AnimalInfo(
             animal_id="T",
             stroke_date=datetime.date(2025, 1, 1),
             session_start=datetime.date(2025, 1, 1),
             session_end=datetime.date(2025, 1, 1),
             exclusions=[
-                Exclusion(datetime.date(2025, 1, 5), "bad session", ["all"]),
+                Exclusion(
+                    datetime.date(2025, 1, 5),
+                    "bad session",
+                    ["dlc", "spout_behavior"],
+                ),
             ],
         )
-        excluded, reason = info.is_excluded(datetime.date(2025, 1, 5))
+        # dlc.kinematics.tongue is under dlc namespace
+        excluded, reason = info.is_excluded(
+            datetime.date(2025, 1, 5), "dlc.kinematics.tongue"
+        )
         assert excluded is True
         assert reason == "bad session"
+        # spout_behavior is top-level
+        excluded, reason = info.is_excluded(
+            datetime.date(2025, 1, 5), "spout_behavior"
+        )
+        assert excluded is True
+        # alignment is NOT in the scope (neither dlc nor spout_behavior prefix)
+        excluded, _ = info.is_excluded(datetime.date(2025, 1, 5), "alignment")
+        assert excluded is False
 
-    def test_is_excluded_analysis_specific(self):
+    def test_is_excluded_bodypart_specific(self):
+        """Bodypart-scoped exclusion with dotted tag — prefix-match
+        distinguishes sibling bodyparts under the same phase prefix."""
         info = AnimalInfo(
             animal_id="T",
             stroke_date=datetime.date(2025, 1, 1),
             session_start=datetime.date(2025, 1, 1),
             session_end=datetime.date(2025, 1, 1),
             exclusions=[
-                Exclusion(datetime.date(2025, 1, 5), "tongue issue", ["tongue"]),
+                Exclusion(
+                    datetime.date(2025, 1, 5),
+                    "tongue issue",
+                    ["dlc.kinematics.tongue"],
+                ),
             ],
         )
-        # Excluded for tongue analysis
-        excluded, _ = info.is_excluded(datetime.date(2025, 1, 5), "tongue")
+        excluded, _ = info.is_excluded(
+            datetime.date(2025, 1, 5), "dlc.kinematics.tongue"
+        )
         assert excluded is True
-        # Not excluded for jaw analysis
-        excluded, _ = info.is_excluded(datetime.date(2025, 1, 5), "jaw")
+        excluded, _ = info.is_excluded(
+            datetime.date(2025, 1, 5), "dlc.kinematics.jaw"
+        )
         assert excluded is False
-        # Not excluded when no analysis type specified (only universal applies)
+        # None context — no match (callers must pass an explicit context)
         excluded, _ = info.is_excluded(datetime.date(2025, 1, 5))
         assert excluded is False
 
@@ -245,18 +271,159 @@ class TestAgeHelpers:
         assert info.age_at_stroke() is None
 
 
-class TestExclusion:
-    def test_applies_all(self):
-        exc = Exclusion(datetime.date(2025, 1, 1), "reason", ["all"])
-        assert exc.applies("tongue") is True
-        assert exc.applies("jaw") is True
-        assert exc.applies(None) is True
+class TestExclusionApplies:
+    """Phase 7-pre prefix-match semantics on dotted analysis-context tags."""
 
-    def test_applies_specific(self):
-        exc = Exclusion(datetime.date(2025, 1, 1), "reason", ["tongue"])
-        assert exc.applies("tongue") is True
-        assert exc.applies("jaw") is False
+    def test_exact_match(self):
+        exc = Exclusion(datetime.date(2025, 1, 1), "r", ["spout_behavior"])
+        assert exc.applies("spout_behavior") is True
+
+    def test_prefix_match_one_level(self):
+        """[dlc] matches any dlc.* context."""
+        exc = Exclusion(datetime.date(2025, 1, 1), "r", ["dlc"])
+        assert exc.applies("dlc.spatial") is True
+        assert exc.applies("dlc.kinematics.tongue") is True
+        assert exc.applies("dlc.io") is True
+
+    def test_prefix_match_multi_level(self):
+        """[dlc.kinematics] matches dlc.kinematics.* but not dlc.spatial."""
+        exc = Exclusion(datetime.date(2025, 1, 1), "r", ["dlc.kinematics"])
+        assert exc.applies("dlc.kinematics") is True
+        assert exc.applies("dlc.kinematics.tongue") is True
+        assert exc.applies("dlc.kinematics.face_velocity") is True
+        assert exc.applies("dlc.spatial") is False
+        assert exc.applies("dlc") is False  # tag is longer than context
+
+    def test_sibling_no_match(self):
+        """[dlc.kinematics.tongue] must not match [dlc.kinematics.jaw]."""
+        exc = Exclusion(datetime.date(2025, 1, 1), "r", ["dlc.kinematics.tongue"])
+        assert exc.applies("dlc.kinematics.tongue") is True
+        assert exc.applies("dlc.kinematics.jaw") is False
+
+    def test_segment_boundary_strict(self):
+        """[dlc] matches dlc and dlc.* but NOT dlc_spatial or dlcx.
+
+        Prefix-match is on dot-separated segments, not raw string prefix.
+        """
+        exc = Exclusion(datetime.date(2025, 1, 1), "r", ["dlc"])
+        assert exc.applies("dlc") is True
+        assert exc.applies("dlc.spatial") is True
+        assert exc.applies("dlc_spatial") is False  # underscore, not dot
+        assert exc.applies("dlcx") is False  # no boundary
+
+    def test_none_context_never_matches(self):
+        """Passing analysis_context=None always returns False — the
+        schema requires an explicit context to match anything."""
+        exc = Exclusion(datetime.date(2025, 1, 1), "r", ["dlc", "spout_behavior"])
         assert exc.applies(None) is False
+
+    def test_multiple_tags_any_match(self):
+        """A context matches if ANY tag in applies_to is a prefix."""
+        exc = Exclusion(
+            datetime.date(2025, 1, 1), "r",
+            ["dlc.kinematics.tongue", "spout_behavior"],
+        )
+        assert exc.applies("dlc.kinematics.tongue") is True
+        assert exc.applies("spout_behavior") is True
+        assert exc.applies("dlc.kinematics.jaw") is False
+        assert exc.applies("alignment") is False
+
+
+class TestExclusionLoaderValidation:
+    """The post-Phase-7-pre loader rejects the legacy [all] sentinel and
+    enforces explicit applies_to scoping."""
+
+    def test_all_sentinel_rejected(self, tmp_path):
+        cfg = tmp_path / "legacy_all.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  exclusions:
+                    - date: 2025-01-01
+                      reason: "test"
+                      applies_to: [all]
+            """)
+        )
+        with pytest.raises(ValueError, match="'all' sentinel is deprecated"):
+            load_animals(cfg)
+
+    def test_missing_applies_to_rejected(self, tmp_path):
+        cfg = tmp_path / "no_applies_to.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  exclusions:
+                    - date: 2025-01-01
+                      reason: "test"
+            """)
+        )
+        with pytest.raises(ValueError, match="'applies_to' is required"):
+            load_animals(cfg)
+
+    def test_empty_applies_to_rejected(self, tmp_path):
+        cfg = tmp_path / "empty_applies_to.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  exclusions:
+                    - date: 2025-01-01
+                      reason: "test"
+                      applies_to: []
+            """)
+        )
+        with pytest.raises(ValueError, match="must not be empty"):
+            load_animals(cfg)
+
+    def test_non_list_applies_to_rejected(self, tmp_path):
+        """applies_to: 42 (non-string-non-list) must fail fast."""
+        cfg = tmp_path / "bad_applies_to.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  exclusions:
+                    - date: 2025-01-01
+                      reason: "test"
+                      applies_to: 42
+            """)
+        )
+        with pytest.raises(ValueError, match="must be a list of strings"):
+            load_animals(cfg)
+
+    def test_string_applies_to_is_normalized(self, tmp_path):
+        """applies_to: 'dlc' (scalar string) loads as ['dlc']. Common
+        YAML typo — accept without forcing the user to type brackets."""
+        cfg = tmp_path / "string_applies_to.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  exclusions:
+                    - date: 2025-01-01
+                      reason: "test"
+                      applies_to: "dlc"
+            """)
+        )
+        animals = load_animals(cfg)
+        assert animals["PS99"].exclusions[0].applies_to == ["dlc"]
 
 
 class TestWavesurferSidesMatchMouseSides:

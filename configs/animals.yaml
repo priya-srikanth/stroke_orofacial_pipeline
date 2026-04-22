@@ -11,8 +11,14 @@
 #   Cross-checked: all stroke dates, session ranges, and analysis params are
 #   identical across both notebooks' three repeated declarations.
 #
-# Exclusions: union of both notebooks, upgraded to universal ("all") where
-# the underlying reason applies across analyses (see MIGRATION_LOG.md).
+# Exclusions: scoped to dotted hierarchical analysis-context tags
+# (Phase 7-pre, 2026-04-22). Valid top-level tags: spout_behavior,
+# alignment, dlc (with sub-tags dlc.io, dlc.spatial, dlc.kinematics.*).
+# Prefix-match semantics — applies_to: [dlc] matches
+# dlc.kinematics.tongue, dlc.spatial, etc. Legacy applies_to: [all]
+# is rejected at load time; use the explicit tag list instead.
+# See src/stroke_orofacial/animals.py Exclusion.applies docstring
+# and MIGRATION_LOG.md Phase 7-pre entry.
 #
 # Cohort metadata (sex, date_of_birth, genotype, stroke_laser_power_mW) added
 # 2026-04-20 per Audit-10 Q7 resolution (see DECISIONS.md 2026-04-19 entry).
@@ -117,8 +123,11 @@ PS51:
     end: 2025-07-09
   exclusions:
     - date: 2025-04-26
-      reason: "excluded across all analyses (Rose Bengal sham with delayed licking)"
-      applies_to: [all]
+      reason: "Rose Bengal sham administration caused delayed licking"
+      applies_to: [dlc, spout_behavior]
+    - date: 2025-05-17
+      reason: "missing camera data"
+      applies_to: [dlc, alignment]
   recovery_phenotype: null
   sex: M
   date_of_birth: 2025-01-23
@@ -136,8 +145,8 @@ PS54:
     end: 2025-07-09
   exclusions:
     - date: 2025-04-26
-      reason: "excluded across all analyses (Rose Bengal sham with delayed licking)"
-      applies_to: [all]
+      reason: "Rose Bengal sham administration caused delayed licking"
+      applies_to: [dlc, spout_behavior]
   recovery_phenotype: null
   sex: M
   date_of_birth: 2025-01-23
@@ -155,11 +164,11 @@ PS55:
     end: 2025-07-09
   exclusions:
     - date: 2025-04-27
-      reason: "excluded across all analyses (Rose Bengal sham with delayed licking)"
-      applies_to: [all]
+      reason: "Rose Bengal sham administration caused delayed licking"
+      applies_to: [dlc, spout_behavior]
     - date: 2025-04-28
-      reason: "excluded across all analyses (messed up reward delivery during session)"
-      applies_to: [all]
+      reason: "experimenter error caused inaccurate reward delivery"
+      applies_to: [dlc, spout_behavior]
   recovery_phenotype: null
   sex: M
   date_of_birth: 2025-01-23

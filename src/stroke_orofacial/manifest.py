@@ -115,7 +115,7 @@ def build_manifest(
     date: datetime.date,
     resolver: PathResolver,
     animal_info: AnimalInfo,
-    analysis_type: str | None = None,
+    analysis_context: str | None = None,
 ) -> SessionManifest:
     """Build a SessionManifest for one animal + date.
 
@@ -129,10 +129,15 @@ def build_manifest(
         Configured path resolver.
     animal_info : AnimalInfo
         Animal metadata (from animals.yaml).
-    analysis_type : str or None
-        If provided, exclusions are filtered to those that apply to this
-        analysis type (e.g. "tongue", "jaw"). If None, only universal
-        exclusions are checked.
+    analysis_context : str or None
+        Dotted hierarchical tag naming the analysis that will consume
+        this manifest — e.g. ``"spout_behavior"``, ``"dlc.spatial"``,
+        ``"dlc.kinematics.tongue"``. Threaded into
+        :meth:`AnimalInfo.is_excluded` to populate ``excluded`` and
+        ``exclusion_reason`` on the returned manifest using
+        prefix-match semantics on the exclusion entries' ``applies_to``
+        tags. If None, ``excluded`` is always False — callers should
+        pass an explicit context.
 
     Returns
     -------
@@ -169,7 +174,7 @@ def build_manifest(
     phase = animal_info.phase(date)
 
     # Check exclusions
-    excluded, exclusion_reason = animal_info.is_excluded(date, analysis_type)
+    excluded, exclusion_reason = animal_info.is_excluded(date, analysis_context)
 
     session_id = f"{animal}_{date.strftime('%Y%m%d')}"
 

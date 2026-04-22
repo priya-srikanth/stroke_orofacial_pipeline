@@ -455,7 +455,10 @@ def build_reward_aligned_analysis_by_animal_date(
 
         animal_info = get_animal(animal)
         date = datetime.datetime.strptime(date_str, "%Y%m%d").date()
-        manifest = build_manifest(animal, date, resolver, animal_info)
+        manifest = build_manifest(
+            animal, date, resolver, animal_info,
+            analysis_context="dlc.spatial",
+        )
         return build_reward_aligned_analysis(
             manifest, bodypart, center_mode, trial_group, window_ms,
             resolver, spatial_config, reward_config,
@@ -475,12 +478,19 @@ def build_reward_aligned_analysis_by_animal_date(
     ``build_reward_aligned_analysis()`` signature directly and pass
     the flag from there.
 
+    The ``analysis_context="dlc.spatial"`` argument scopes exclusion
+    checks to DLC-spatial-relevant entries per the Phase 7-pre
+    prefix-match schema.
+
     Phase 6 is DLC-required; if DLC inference hasn't run for this session,
     the underlying ``build_reward_aligned_analysis`` raises FileNotFoundError.
     """
     animal_info = get_animal(animal)
     date = datetime.datetime.strptime(date_str, "%Y%m%d").date()
-    manifest = build_manifest(animal, date, resolver, animal_info)
+    manifest = build_manifest(
+        animal, date, resolver, animal_info,
+        analysis_context="dlc.spatial",
+    )
     # Auto-populate the L/R flag from AnimalInfo when the caller didn't
     # pass it explicitly. Explicit kwarg wins — used by tests that need
     # to exercise the flag-mismatch rejection path.
