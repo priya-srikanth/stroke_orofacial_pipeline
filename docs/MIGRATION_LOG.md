@@ -3513,3 +3513,171 @@ resumes at 7a.1.
    2026-04-22 DECISIONS entry as a second-session confirmation of
    Option A, or flip to atol=1e-4 + drift-log if the stress session
    surfaces version-dependent divergence.
+
+---
+
+## Phase 7a.1 — `kinematics_baselines` seed + parity-harness scaffold + scipy stress pilot
+
+**Date:** 2026-04-22
+**PR:** #<FILL> (landing 2026-04-22)
+**Tag on merge:** `v7a.1-kinematics-baselines-parity-scaffold`
+**Branch:** `phase/7a.1-kinematics-baselines-parity-scaffold`
+
+**Scope.** The three smallest unblocked pieces between the 7a.0 close
+(PR #79) and the 7a.2 interpolation.py implementation, bundled into one
+PR so that 7a.2 becomes the single focused PR that writes module code.
+Per the 7a.1 kickoff (`docs/prompts/phase-7a.1-kickoff.md`, committed as
+commit 1 of this branch), the three pieces are (A) `kinematics_baselines`
+seed + loader, (B) parity-harness scaffold with stubbed consolidated
+reader, (C) second-session scipy stress pilot confirming 7a.0 Option A.
+
+**What landed.**
+
+1. **`configs/animals.yaml` kinematics_baselines seed.** Added a
+   `kinematics_baselines:` block to every animal (PS46–PS55, 8 animals)
+   with `tongue.{x0, y0}` and `jaw.{x0, y0}`, seeded from the PR #79
+   scope-filtered re-analysis (16 STABLE / 0 NHD / 0 INSUFFICIENT).
+   - Tongue uniform across cohort at (x0=0.0, y0=-110.0).
+   - Jaw splits into three groups: PS46–PS50 at (0, 310);
+     PS51/PS54 at (12, 290); PS55 at (0, 290).
+   - Per-animal block documented with a dedicated header comment
+     block pointing at the seed-table and the loader/accessor in
+     `src/stroke_orofacial/animals.py`.
+
+2. **`AnimalInfo` loader extension.** Added
+   `kinematics_baselines: dict[str, dict[str, float]]` field to the
+   dataclass, a `get_kinematics_baseline(bodypart)` accessor, and a
+   `_parse_kinematics_baselines()` strict validator in
+   `load_animals()` that fails loud on: missing block, missing bodypart
+   (tongue/jaw are both required), unknown bodypart keys (typo guard),
+   missing `x0`/`y0` inside a bodypart, non-numeric values, or bools
+   sneaking in as ints. Intentional: future animals must explicitly
+   declare baselines so `interpolation.py` never silently runs with a
+   cross-contaminated `(X0, Y0)` from another animal. The validator is
+   invoked as the *last* kwarg of the `AnimalInfo()` constructor so
+   exclusion-related validation errors (via `_parse_exclusions`) keep
+   firing first, preserving existing test behavior without fixture
+   changes to those failure-path tests.
+
+3. **8 new tests in `TestKinematicsBaselines`.** Full-cohort
+   parse, tongue-uniform invariant, jaw three-group invariant,
+   missing-block / missing-bodypart / unknown-bodypart / missing-x0
+   raises, KeyError on unknown-bodypart accessor. Existing
+   "successful load" fixtures (`animals_yaml` shared fixture and the
+   three standalone tmp_path yamls that load successfully) updated
+   with `kinematics_baselines` blocks so they parse cleanly under the
+   new strict loader.
+
+4. **14-session parity harness scaffold.**
+   `tests/scripts/parity_phase7a_interpolation.py` — scope filter
+   against `animals.yaml sessions.{start, end}` per animal,
+   legacy-NPZ loader for `x_final / y_final / X0 / Y0 / fps /
+   n_frames` from MICROSCOPE, atol=1e-6 element-wise comparator per
+   7a.0 Option A, scalar-metadata strict-equality check. Sessions =
+   9 primary + 3 stress + 2 late-post-stroke per
+   `interpolation-strategy.md` §6 (28 comparisons across both
+   bodyparts). Consolidated-side `_load_consolidated_trace()` is a
+   stub that raises `NotImplementedError` by design — 7a.2 replaces
+   it with a real parquet read. Exit codes: 0 pass / 1 fail / 2 stub
+   / 3 MICROSCOPE unreachable / 4 scope drop-all. Stub wins over
+   skip_missing in the cascade so the 7a.1 smoke returns 2 even with
+   real data gaps.
+
+   Smoke outcomes: `--animal PS46 --date 20250307 --bodypart tongue`
+   → exit 2 (1 stub); `--sessions auto` → exit 2,
+   `by_status = {'stub': 26, 'skip_missing': 2}`. The 2 skip_missing
+   are PS54/20250512 tongue + jaw — legacy NPZs genuinely absent on
+   MICROSCOPE (real data gap, cohort-acquisition intermittency; same
+   pattern appears for other PS51/54/55 days and is expected per
+   Priya 2026-04-22 sign-off).
+
+5. **Second-session scipy stress pilot — PS51/20250430 tongue.**
+   Ran `tests/scripts/scipy_version_pilot.py` under both
+   `sop_scipy_pilot` (scipy 1.15.1) and `stroke_orofacial` (scipy
+   1.17.1) on a high-NaN-fraction session (99.88% NaN-in x/y vs.
+   89.47% on pilot #1's PS46/20250307). Result: **max|Δ| = 0.0 on
+   both x and y across 906,310 common non-NaN frames; NaN masks
+   identical** (44,523 boundary NaNs per axis on both envs).
+   Option A (no pin, no widening, `atol=1e-6` under consolidated
+   scipy 1.17.1) validated on both a low-NaN baseline and a
+   high-NaN stress session. DECISIONS 2026-04-22 "scipy version
+   handling" caveat 1 (single-session pilot) resolved; new
+   `Update 2026-04-22 (Phase 7a.1)` sub-bullet added under that
+   caveat pointing at the new
+   `docs/phase-7/scipy-pilot-results.md` §"Second-session stress
+   pilot" section.
+
+**Commits on this branch** (five, plus a sixth for this MIGRATION_LOG
+entry):
+
+1. `docs(prompts): Phase 7a.1 kickoff` — kickoff doc committed in-branch
+   for provenance.
+2. `feat(animals): kinematics_baselines schema + per-animal seed from
+   PR #79 probe` — tasks 1a–1e.
+3. `feat(tests/scripts): Phase 7a parity harness scaffold (stub until
+   7a.2)` — task 2.
+4. `docs(phase-7a.1): second-session scipy stress pilot confirms
+   Option A` — task 3.
+5. `docs(migration-log): Phase 7a.1 entry` — this task.
+
+**Parity / tests / ruff.**
+
+- Full pytest: 490 passed, 34 skipped (no regressions).
+- `tests/test_animals.py`: 42 passed (34 existing + 8 new).
+- Ruff: clean on all touched `.py` files (configs/animals.yaml
+  excluded — ruff does not parse YAML).
+- Parity harness smoke: single-session exit 2; `--sessions auto`
+  exit 2.
+
+**Behavior differences vs. legacy notebooks.** None. The
+`kinematics_baselines` YAML values match the `X0`/`Y0` that legacy
+NPZs were computed with under the in-scope session range — this is
+the faithful-port path per `interpolation-strategy.md` §3.1
+"faithful port, not a bug fix".
+
+**Intentional convention.** `kinematics_baselines` is REQUIRED for
+every animal at load time — no silent default. Rationale: future
+animals joining the cohort must explicitly declare their baselines
+so `interpolation.py` never silently runs with a cross-contaminated
+baseline from another animal. The strict loader is the enforcement
+mechanism.
+
+**Ground-rule compliance.** CLAUDE.md rule 1 — no source data
+modified (MICROSCOPE NPZs read-only via `np.load`). Rule 2 — no
+legacy-repo edits. Rule 8 — feature branch; tag
+`v7a.1-kinematics-baselines-parity-scaffold` to be applied by Priya
+on the merge commit. Tests + ruff green.
+
+**Prep-PR context.** Before this branch opened, a separate PR (#80
+— `docs/pre-7a1-state-refresh`, merged 2026-04-22) landed two
+end-of-day housekeeping docs that had accumulated unstaged on
+`main`'s working tree after PR #79: the
+`docs/COWORK_SESSION_STATE.md` refresh and the retrospective
+`Phase 7a.0 — Legacy-cell vendoring + baseline-seed probe + scipy
+pilot` MIGRATION_LOG entry (immediately above this one). PR #80 is
+why Phase 7a.0 has a retrospective MIGRATION_LOG entry even though
+7a.0's original PR #79 did not include one. No content overlap:
+PR #80 covers 7a.0, this entry covers 7a.1.
+
+**Forward follow-ups for Phase 7a.2.**
+
+1. Port the 7-stage v5p3 interpolation algorithm (`xrange → thr →
+   drop → interp → interp_filled → final`) from
+   `docs/legacy_snippets/{tongue_cell23,jaw_cell22}_interp_v5p3.py`
+   into `src/stroke_orofacial/dlc_kinematics/interpolation.py`.
+   Consume `AnimalInfo.get_kinematics_baseline(bodypart)` for the
+   per-animal (x0, y0) baseline.
+2. Replace `_load_consolidated_trace` stub in
+   `tests/scripts/parity_phase7a_interpolation.py` with the real
+   parquet reader; run the 14-session parity set under scipy 1.17.1
+   with `atol=1e-6`; expected outcome per the two-session scipy
+   pilots is bit-for-bit identity on non-NaN frames and identical
+   NaN masks.
+3. Add `dlc_kinematics:` block to `configs/defaults.yaml` for
+   bodypart-parametric constants (likelihood thresholds,
+   max-gap-ms, per-stage knobs per `interpolation-strategy.md` §7).
+4. Decide how to handle the PS54/20250512-style MICROSCOPE gaps in
+   the 14-session set: swap for a neighbor date (e.g. 20250511 or
+   20250514), accept the 2/28 skip_missing as steady state, or add
+   explicit `exclusions:` entries with a reason annotation. No
+   action required in 7a.1 — the harness already tolerates these.
