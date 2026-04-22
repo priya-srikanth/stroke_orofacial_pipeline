@@ -2684,8 +2684,49 @@ contract would have wasted the diagnostic opportunity.
 `v6.8a.1-distinct-prereq-errors` on the squash-merge commit
 (`a1844b1`). Feature branch preserved on origin.
 
-**Follow-up deferred:** A post-cohort health-report entry summarizing
-the 264-vs-1 root-cause breakdown (how many of the 14,202 failures
-were centered-parquet misses vs. licks NPZ misses vs. alignment
-misses vs. zero-rewards) lands here once the Windows cohort completes
-under the new distinct-error contract.
+**Cohort first emit (2026-04-21, PS46–PS55):** Windows Claude Code ran
+notebook 12 under `OVERWRITE="force"` on `feat/phase-6-8a-first-emit-
+runner` after merging `origin/main` (picking up the v6.8a.1 distinct-
+error fix before the emit). Results:
+
+- **Emit totals:** 13,821 NPZs written across 256 distinct (animal,
+  date) pairs (PS46: 21, PS47: 21, PS48: 20, PS49: 22, PS50: 19,
+  PS51: 51, PS54: 52, PS55: 50). `n_err = 7,509` during emit — these
+  are the distinct-FileNotFoundError-caught prerequisite misses the
+  v6.8a.1 contract was designed to surface (per-category breakdown —
+  centered-parquet vs. licks-NPZ vs. alignment-template vs. empty-
+  DLC-files — to be extracted from the emit log in a follow-up).
+- **Per-NPZ health check:** 13,821 / 13,821 pass — every emitted NPZ
+  carries a valid side-convention stamp matching `configs/animals.yaml`.
+- **Per-bundle health check:** 4,605 / 4,608 bundle-level checks pass
+  (99.93%). Three failures, all benign-confirmed: PS51/20250430/tongue
+  × {eye_midpoint, nose, spout_midpoint} × `−100to1000ms` window,
+  each missing the R `trial_group` NPZ. Sibling `−500to5000ms` R
+  bundles for the same session pass, so R-rewards exist on that
+  session — the tight `−100to1000ms` window simply has zero
+  qualifying tongue frames (DLC likelihood below threshold on every
+  R-trial inside that ±post-reward span). `build_histogram` returns
+  None, notebook 12's save loop falls through the guard at
+  `notebooks/12_dlc_spatial_reward_aligned.ipynb:166` (`if result is
+  None or result["histogram"] is None`), no NPZ is written. Data
+  condition, not a code bug.
+- **Notebook-log-diagnostic gap surfaced by the 3 PS51 failures:**
+  notebook 12's save-loop guard conflates two legitimate "skip this
+  bundle" conditions — `result is None` (zero rewards for trial_group)
+  vs. `result["histogram"] is None` (zero qualifying frames after
+  likelihood filtering). Both collapse into a single `n_err++;
+  continue` with no emit-log distinction. Splitting into two counters
+  + a per-condition warning lands as its own follow-up PR
+  (target tag `v6.8a.3-notebook-12-skip-diagnostic`) after the
+  v6.8a.2 runner-branch PR merges.
+- **Task-runner exit-code masking gap surfaced during the gate
+  review:** the Windows CC task-notification "exit 0" was misleading
+  — the health-report script actually exited non-zero (conda surfaced
+  `execute(125)`), but the wrapper's `| tail -80` pipeline absorbed
+  the non-zero status. Fix: `set -o pipefail` in the task wrapper
+  (or PIPESTATUS-based capture before tailing). Rolls into the same
+  v6.8a.3 follow-up.
+
+**PR / tag:** merged via PR #64 (squash, `00ab3b7`); tagged
+`v6.8a.1-distinct-prereq-errors` on the squash-merge commit
+(`a1844b1`). Feature branch preserved on origin.
