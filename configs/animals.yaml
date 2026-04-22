@@ -35,6 +35,19 @@
 # to mouse frame happens at output emission boundaries per
 # src/stroke_orofacial/lr_convention.py; internal pipeline arithmetic
 # stays on the wavesurfer frame to preserve Phase 3/4/5/6 parity.
+#
+# kinematics_baselines (Phase 7a.1, added 2026-04-22) carries the per-
+# animal per-bodypart (x0, y0) origin used by the Phase 7a interpolation
+# module to center the DLC kinematic traces. Required for every animal
+# and for both bodyparts (tongue, jaw) — missing entries fail load.
+# Seed values come from docs/phase-7/baseline-seed-table.md §"Scope-
+# filtered re-analysis": the X0/Y0 scalars stored in every in-scope
+# legacy v5p3 NPZ on MICROSCOPE, which the consolidated pipeline must
+# reproduce bit-identically for parity. Tongue is uniform at (0, -110)
+# across the cohort; jaw varies — (0, 310) for PS46–PS50, (12, 290)
+# for PS51/PS54, (0, 290) for PS55. See AnimalInfo.kinematics_baselines
+# and AnimalInfo.get_kinematics_baseline() in
+# src/stroke_orofacial/animals.py.
 
 PS46:
   stroke_date: 2025-03-13
@@ -51,6 +64,13 @@ PS46:
   analysis_params:
     break_thr_trialmax: 12000.0
     break_thr_alllicks: 9000.0
+  kinematics_baselines:
+    tongue:
+      x0: 0.0
+      y0: -110.0
+    jaw:
+      x0: 0.0
+      y0: 310.0
 
 PS47:
   stroke_date: 2025-03-13
@@ -67,6 +87,13 @@ PS47:
   analysis_params:
     break_thr_trialmax: 12000.0
     break_thr_alllicks: 9000.0
+  kinematics_baselines:
+    tongue:
+      x0: 0.0
+      y0: -110.0
+    jaw:
+      x0: 0.0
+      y0: 310.0
 
 PS48:
   stroke_date: 2025-03-13
@@ -83,6 +110,13 @@ PS48:
   analysis_params:
     break_thr_trialmax: 12000.0
     break_thr_alllicks: 9000.0
+  kinematics_baselines:
+    tongue:
+      x0: 0.0
+      y0: -110.0
+    jaw:
+      x0: 0.0
+      y0: 310.0
 
 PS49:
   stroke_date: 2025-03-17
@@ -99,6 +133,13 @@ PS49:
   analysis_params:
     break_thr_trialmax: 12000.0
     break_thr_alllicks: 9000.0
+  kinematics_baselines:
+    tongue:
+      x0: 0.0
+      y0: -110.0
+    jaw:
+      x0: 0.0
+      y0: 310.0
 
 PS50:
   stroke_date: 2025-03-23
@@ -115,6 +156,13 @@ PS50:
   analysis_params:
     break_thr_trialmax: 12000.0
     break_thr_alllicks: 9000.0
+  kinematics_baselines:
+    tongue:
+      x0: 0.0
+      y0: -110.0
+    jaw:
+      x0: 0.0
+      y0: 310.0
 
 PS51:
   stroke_date: 2025-04-29
@@ -137,6 +185,13 @@ PS51:
   analysis_params:
     break_thr_trialmax: 9000.0
     break_thr_alllicks: 7000.0
+  kinematics_baselines:
+    tongue:
+      x0: 0.0
+      y0: -110.0
+    jaw:
+      x0: 12.0
+      y0: 290.0
 
 PS54:
   stroke_date: 2025-04-30
@@ -156,6 +211,13 @@ PS54:
   analysis_params:
     break_thr_trialmax: 12000.0
     break_thr_alllicks: 9000.0
+  kinematics_baselines:
+    tongue:
+      x0: 0.0
+      y0: -110.0
+    jaw:
+      x0: 12.0
+      y0: 290.0
 
 PS55:
   stroke_date: 2025-04-30
@@ -178,3 +240,10 @@ PS55:
   analysis_params:
     break_thr_trialmax: 12000.0
     break_thr_alllicks: 9000.0
+  kinematics_baselines:
+    tongue:
+      x0: 0.0
+      y0: -110.0
+    jaw:
+      x0: 0.0
+      y0: 290.0
