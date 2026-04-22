@@ -249,11 +249,13 @@ def main(argv: list[str] | None = None) -> int:
 
     # Cell 4: quadruple-nested loop.
     grand_ok = grand_skip = grand_err = 0
+    grand_skip_no_rewards = grand_skip_no_frames = 0
     for center_mode in args.center_modes:
         for bodypart in args.bodyparts:
             for window_ms in reward_windows_ms:
                 for trial_group in args.trial_groups:
                     n_ok = n_skip = n_err = 0
+                    n_skip_no_rewards = n_skip_no_frames = 0
                     win_tag = f"{int(window_ms[0])}to{int(window_ms[1])}ms"
 
                     for animal_id, date, manifest in manifests:
@@ -278,8 +280,25 @@ def main(argv: list[str] | None = None) -> int:
                                     animal_info.wavesurfer_sides_match_mouse_sides
                                 ),
                             )
-                            if result is None or result["histogram"] is None:
-                                n_err += 1
+                            # Phase 6.8a.3: split the two legitimate-empty
+                            # skip conditions so the emit log
+                            # distinguishes them. See notebook 12 cell 4
+                            # for rationale.
+                            if result is None:
+                                n_skip_no_rewards += 1
+                                log.info(
+                                    "skip_no_rewards %s/%s/%s/%s/%s/%s",
+                                    animal_id, date_str, bodypart,
+                                    center_mode, trial_group, win_tag,
+                                )
+                                continue
+                            if result["histogram"] is None:
+                                n_skip_no_frames += 1
+                                log.info(
+                                    "skip_no_frames %s/%s/%s/%s/%s/%s",
+                                    animal_id, date_str, bodypart,
+                                    center_mode, trial_group, win_tag,
+                                )
                                 continue
                             _render_and_save(
                                 result,
@@ -308,14 +327,26 @@ def main(argv: list[str] | None = None) -> int:
                             )
 
                     tag = f"{bodypart}/{center_mode}/trials-{trial_group}/{win_tag}"
-                    if n_ok + n_skip + n_err > 0:
-                        print(f"  {tag}: ok={n_ok} skip={n_skip} err={n_err}")
+                    if (
+                        n_ok + n_skip + n_err
+                        + n_skip_no_rewards + n_skip_no_frames
+                        > 0
+                    ):
+                        print(
+                            f"  {tag}: ok={n_ok} skip={n_skip} "
+                            f"skip_no_rewards={n_skip_no_rewards} "
+                            f"skip_no_frames={n_skip_no_frames} err={n_err}"
+                        )
                     grand_ok += n_ok
                     grand_skip += n_skip
+                    grand_skip_no_rewards += n_skip_no_rewards
+                    grand_skip_no_frames += n_skip_no_frames
                     grand_err += n_err
 
     print(
-        f"\nTotals: ok={grand_ok} skip={grand_skip} err={grand_err} "
+        f"\nTotals: ok={grand_ok} skip={grand_skip} "
+        f"skip_no_rewards={grand_skip_no_rewards} "
+        f"skip_no_frames={grand_skip_no_frames} err={grand_err} "
         f"(output_root={output_root})"
     )
     print(
