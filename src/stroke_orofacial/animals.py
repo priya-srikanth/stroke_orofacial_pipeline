@@ -30,28 +30,48 @@ class Exclusion:
     reason : str
         Why this session is excluded.
     applies_to : list[str]
-        Which analyses this exclusion applies to (e.g. ["tongue"], ["jaw"],
-        or ["all"] for universal exclusion). An empty list is treated as ["all"].
+        Dotted hierarchical analysis-context tags this exclusion scopes to.
+        Examples: ``["dlc"]`` (all DLC-derived analyses), ``["spout_behavior"]``
+        (spout-only), ``["dlc", "spout_behavior"]`` (both instrument phases —
+        the post-2026-04-22 replacement for the legacy ``["all"]`` sentinel),
+        ``["dlc.kinematics.tongue"]`` (tongue-specific). Match logic is
+        prefix-match on dot-separated tag segments — see :meth:`applies`.
+        The legacy ``["all"]`` sentinel is rejected by :func:`load_animals`;
+        migrate existing entries to explicit top-level tags (``[dlc,
+        spout_behavior]``).
     """
 
     date: datetime.date
     reason: str
-    applies_to: list[str] = field(default_factory=lambda: ["all"])
+    applies_to: list[str] = field(default_factory=list)
 
-    def applies(self, analysis_type: str | None = None) -> bool:
-        """Check whether this exclusion applies to a given analysis type.
+    def applies(self, analysis_context: str | None = None) -> bool:
+        """Check whether this exclusion applies to a given analysis context.
+
+        Match semantics: prefix-match on dot-separated tag segments. An
+        exclusion with ``applies_to: [dlc]`` matches
+        ``analysis_context="dlc.kinematics.tongue"`` because ``"dlc"`` is
+        a tag prefix of ``"dlc.kinematics.tongue"``. Matching is strict on
+        segment boundaries — ``"dlc"`` does NOT match ``"dlc_spatial"``
+        (underscore not dot) or ``"dlcx"`` (no segment break).
 
         Parameters
         ----------
-        analysis_type : str or None
-            The analysis type to check (e.g. "tongue", "jaw"). If None,
-            returns True only for universal ("all") exclusions.
+        analysis_context : str or None
+            Dotted hierarchical tag naming the analysis being run, e.g.
+            ``"spout_behavior"``, ``"dlc.spatial"``,
+            ``"dlc.kinematics.tongue"``. If None, no exclusions match
+            (returns False) — the caller is not scoped to any analysis so
+            nothing should be filtered out. Phase 7-pre threaded
+            :func:`build_manifest`'s existing call sites through explicit
+            contexts; new callers should do the same.
         """
-        if "all" in self.applies_to:
-            return True
-        if analysis_type is None:
+        if analysis_context is None:
             return False
-        return analysis_type in self.applies_to
+        for tag in self.applies_to:
+            if analysis_context == tag or analysis_context.startswith(tag + "."):
+                return True
+        return False
 
 
 @dataclass
@@ -153,9 +173,16 @@ class AnimalInfo:
         return "baseline" if session_date <= self.stroke_date else "post_stroke"
 
     def is_excluded(
-        self, session_date: datetime.date, analysis_type: str | None = None
+        self, session_date: datetime.date, analysis_context: str | None = None
     ) -> tuple[bool, str | None]:
-        """Check if a session date is excluded for a given analysis type.
+        """Check if a session date is excluded for a given analysis context.
+
+        ``analysis_context`` is a dotted hierarchical tag — e.g.
+        ``"spout_behavior"``, ``"dlc.spatial"``,
+        ``"dlc.kinematics.tongue"`` — that names the analysis being run.
+        See :meth:`Exclusion.applies` for match semantics. If
+        ``analysis_context`` is None, no exclusions match (returns
+        ``(False, None)``); callers should pass an explicit context.
 
         Returns
         -------
@@ -163,7 +190,7 @@ class AnimalInfo:
             (is_excluded, reason) — reason is None if not excluded.
         """
         for exc in self.exclusions:
-            if exc.date == session_date and exc.applies(analysis_type):
+            if exc.date == session_date and exc.applies(analysis_context):
                 return True, exc.reason
         return False, None
 
@@ -197,17 +224,59 @@ def _parse_date(value: Any) -> datetime.date:
     raise TypeError(f"Cannot parse date from {type(value).__name__}: {value!r}")
 
 
-def _parse_exclusions(raw_list: list[dict] | None) -> list[Exclusion]:
-    """Parse the exclusions list from YAML."""
+def _parse_exclusions(
+    raw_list: list[dict] | None, animal_id: str | None = None
+) -> list[Exclusion]:
+    """Parse the exclusions list from YAML.
+
+    Validates the Phase 7-pre ``applies_to`` schema:
+
+    - ``applies_to`` must be present on every exclusion entry (no default
+      sentinel — the post-2026-04-22 schema has no ``["all"]`` wildcard).
+    - ``applies_to`` must be a non-empty list of dotted-tag strings.
+    - The legacy sentinel ``"all"`` is rejected with a migration-guidance
+      error; entries that previously used ``[all]`` must be rewritten as
+      explicit top-level tags, typically ``[dlc, spout_behavior]``.
+    """
     if not raw_list:
         return []
     exclusions = []
     for item in raw_list:
         date = _parse_date(item["date"])
         reason = item.get("reason", "")
-        applies_to = item.get("applies_to", ["all"])
+        if "applies_to" not in item:
+            raise ValueError(
+                f"Animal {animal_id!r} exclusion on {date}: 'applies_to' "
+                f"is required (no default sentinel post-Phase-7-pre). Use "
+                f"explicit dotted tags, e.g. ['dlc', 'spout_behavior'] or "
+                f"['dlc.kinematics.tongue']."
+            )
+        applies_to = item["applies_to"]
         if isinstance(applies_to, str):
             applies_to = [applies_to]
+        if not isinstance(applies_to, list) or not all(
+            isinstance(t, str) for t in applies_to
+        ):
+            raise ValueError(
+                f"Animal {animal_id!r} exclusion on {date}: 'applies_to' "
+                f"must be a list of strings; got {applies_to!r}."
+            )
+        if not applies_to:
+            raise ValueError(
+                f"Animal {animal_id!r} exclusion on {date}: 'applies_to' "
+                f"must not be empty. An empty list matches no analyses "
+                f"and would be a silent no-op; remove the exclusion "
+                f"entry instead."
+            )
+        if "all" in applies_to:
+            raise ValueError(
+                f"Animal {animal_id!r} exclusion on {date}: the 'all' "
+                f"sentinel is deprecated as of Phase 7-pre "
+                f"(2026-04-22). Replace with explicit top-level tags — "
+                f"for the current pipeline that is "
+                f"['dlc', 'spout_behavior']. Bodypart-scoped entries "
+                f"use dotted tags like 'dlc.kinematics.tongue'."
+            )
         exclusions.append(Exclusion(date=date, reason=reason, applies_to=applies_to))
     return exclusions
 
@@ -267,7 +336,7 @@ def load_animals(config_path: Path | str | None = None) -> dict[str, AnimalInfo]
             stroke_date=_parse_date(spec["stroke_date"]),
             session_start=_parse_date(spec["sessions"]["start"]),
             session_end=_parse_date(spec["sessions"]["end"]),
-            exclusions=_parse_exclusions(spec.get("exclusions")),
+            exclusions=_parse_exclusions(spec.get("exclusions"), animal_id),
             recovery_phenotype=spec.get("recovery_phenotype"),
             analysis_params=spec.get("analysis_params", {}),
             sex=sex_raw,

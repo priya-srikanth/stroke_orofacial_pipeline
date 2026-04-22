@@ -10,7 +10,6 @@ import pytest
 
 from stroke_orofacial.animals import AnimalInfo, Exclusion
 from stroke_orofacial.manifest import (
-    SessionManifest,
     build_manifest,
     _discover_dlc_files,
 )
@@ -117,40 +116,56 @@ class TestBuildManifest:
         assert manifest.day_relative_to_stroke == 7
         assert manifest.alignment_template is None  # non-existent
 
-    def test_excluded_session(self, mock_resolver):
+    def test_excluded_session_top_level_scope(self, mock_resolver):
+        """An exclusion scoped to [dlc, spout_behavior] fires for any
+        analysis_context under either of those namespaces."""
         info = AnimalInfo(
             animal_id="PS46",
             stroke_date=datetime.date(2025, 3, 13),
             session_start=datetime.date(2025, 3, 7),
             session_end=datetime.date(2025, 4, 6),
             exclusions=[
-                Exclusion(datetime.date(2025, 3, 7), "bad frames", ["all"]),
+                Exclusion(
+                    datetime.date(2025, 3, 7),
+                    "bad frames",
+                    ["dlc", "spout_behavior"],
+                ),
             ],
         )
-        manifest = build_manifest("PS46", datetime.date(2025, 3, 7), mock_resolver, info)
+        manifest = build_manifest(
+            "PS46", datetime.date(2025, 3, 7), mock_resolver, info,
+            analysis_context="dlc.spatial",
+        )
         assert manifest.excluded is True
         assert manifest.exclusion_reason == "bad frames"
 
     def test_analysis_specific_exclusion(self, mock_resolver):
+        """Bodypart-scoped exclusion: prefix-match means
+        [dlc.kinematics.tongue] hits dlc.kinematics.tongue but not
+        dlc.kinematics.jaw."""
         info = AnimalInfo(
             animal_id="PS46",
             stroke_date=datetime.date(2025, 3, 13),
             session_start=datetime.date(2025, 3, 7),
             session_end=datetime.date(2025, 4, 6),
             exclusions=[
-                Exclusion(datetime.date(2025, 3, 7), "tongue issue", ["tongue"]),
+                Exclusion(
+                    datetime.date(2025, 3, 7),
+                    "tongue issue",
+                    ["dlc.kinematics.tongue"],
+                ),
             ],
         )
-        # Excluded for tongue
+        # Excluded for tongue kinematics
         m = build_manifest(
             "PS46", datetime.date(2025, 3, 7), mock_resolver, info,
-            analysis_type="tongue",
+            analysis_context="dlc.kinematics.tongue",
         )
         assert m.excluded is True
-        # Not excluded for jaw
+        # Not excluded for jaw kinematics
         m = build_manifest(
             "PS46", datetime.date(2025, 3, 7), mock_resolver, info,
-            analysis_type="jaw",
+            analysis_context="dlc.kinematics.jaw",
         )
         assert m.excluded is False
 
