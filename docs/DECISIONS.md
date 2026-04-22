@@ -15,6 +15,168 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-04-22 — Cowork returns to Priya's Windows machine; two-tool workflow collapses to same-host
+
+- *Context:* On 2026-04-19 Cowork-on-Windows was declared permanently
+  unavailable after an extensive troubleshooting session (Hyper-V enabled,
+  Windows 11 Enterprise, Max subscription, Claude Desktop current, full
+  reinstall with cache wipe) failed to produce a Cowork tab in the Windows
+  desktop app — diagnosed as an account-level feature flag or
+  staged-rollout gate Anthropic controlled server-side. The permanent
+  workflow was locked in as Mac Cowork + Windows Claude Code in VSCode,
+  with file handoffs gated on a Mac-commit-and-push + Windows-pull
+  roundtrip. On 2026-04-22 the Cowork tab appeared on Priya's Windows
+  machine without any local change on her end (no support ticket filed,
+  no reinstall, no settings change) — the server-side gate cleared.
+- *Decision:* **Same-machine on Windows is the new default workflow.**
+  Cowork and Claude Code now run on the same host; Cowork's Linux sandbox
+  mounts the Windows repo tree directly. The advisor/executor division of
+  labor stays the same (Cowork plans / drafts / refreshes docs; CC
+  executes tests, runs conda work, does MICROSCOPE I/O, runs all git
+  state-changing commands), but the file-handoff layer collapses: files
+  Cowork writes to the repo are immediately visible to CC-in-VSCode on
+  disk with no commit-push-pull roundtrip. Mac Cowork is retained as a
+  secondary option for any ad-hoc Mac-specific task, but is no longer the
+  required primary channel.
+- *Rationale:*
+  - The 2026-04-19 disposition explicitly said "would require a support
+    ticket to resolve, deferred indefinitely" — the fix came with no
+    ticket, so there's no post-hoc "what unblocked it?" signal to chase.
+    The situation to note for future incident recovery is purely that
+    server-side flags can flip without notice; re-check the basics
+    (Hyper-V still running, Claude Desktop current, cache clean) first
+    if the tab ever disappears again, but don't assume a local
+    misconfiguration.
+  - Eliminating the Mac-commit-and-push roundtrip removes a non-trivial
+    source of doc-state drift (e.g., the 2026-04-21 "cohort-first-emit-
+    results docs lagging behind PR #65" scenario that forced a retroactive
+    no-tag PR #66 to reconcile).
+  - Same-machine does NOT eliminate the advisor/executor division: Cowork
+    still lacks the conda env, cannot touch MICROSCOPE UNC paths
+    (project-instructions warning), and cannot auth to GitHub. CC retains
+    all three. The boundary shifts from "different physical machine" to
+    "different sandbox on the same machine" — see the next entry for the
+    hard rule that makes this safe.
+- *Enforced at:* `docs/COWORK_SESSION_STATE.md` — "Cowork-on-Windows
+  status" section flipped NOT AVAILABLE → AVAILABLE with the 2026-04-19
+  troubleshooting preserved as recovery history; "Two-tool workflow"
+  section rewritten as "Two-tool workflow (same-machine on Windows since
+  2026-04-22)" with the new responsibilities and the handoff pattern
+  documented. The 2026-04-19 entry below that declared Cowork-on-Windows
+  permanent-deferred is now superseded by this entry.
+
+---
+
+## 2026-04-22 — Sandbox-git boundary rule (Cowork does not run state-changing git ops on cross-OS-mounted repos)
+
+- *Context:* Same-machine Cowork on Windows mounts the Windows repo tree
+  into a Linux sandbox for read/write. On 2026-04-22 a `git fetch --all
+  --tags` run from inside the sandbox failed partway through (no GitHub
+  credentials present in the sandbox, as expected) and left `.git/HEAD`
+  on disk truncated to `ref: refs/heads/docs/` (missing the branch-name
+  suffix). Subsequent `git branch --show-current` from CC's Windows
+  terminal failed with `fatal: Failed to resolve HEAD as a valid ref`.
+  Root-cause hypothesis: cross-OS filesystem sync between the Linux
+  sandbox and the Windows disk did not handle the partial write cleanly
+  when the fetch process was terminated mid-operation. The failure is
+  plausible enough (network-ish error without a `fatal: ...` — could
+  easily be treated as benign and followed by another command) that it
+  won't always be obvious the tree is broken until the next read.
+- *Decision:* **Cowork does not run state-changing git operations from
+  the Linux sandbox on the cross-OS-mounted Windows repo.** The hard
+  rule list: no `git fetch`, `git pull`, `git checkout <branch>`,
+  `git merge`, `git rebase`, `git reset`, `git gc`, or any other command
+  that writes to `.git/`. All git state-changing work routes through
+  CC's Windows terminal (GitHub Desktop credential store handles auth
+  via the Windows file system directly, without the cross-OS sync
+  layer). Read-only git inspection from the sandbox (`git status`,
+  `git log`, `git diff`, `git branch --show-current` on an intact ref)
+  remains fine.
+- *Rationale:*
+  - Sandbox has no GitHub credentials by design, so any network-touching
+    git op will fail — but the failure mode is "partial write to
+    `.git/`", not "no change", because git writes speculatively before
+    verifying auth. The corruption class of bug is inherent to the
+    partial-write-plus-cross-OS-sync combination, not a one-off glitch.
+  - Recovery is cheap and deterministic (one-line
+    `git symbolic-ref HEAD refs/heads/<branch>` from CC's Windows
+    terminal restores HEAD with no data loss) — but the only reliable
+    way to catch the corruption is to not cause it in the first place.
+    The rule eliminates the class without adding real friction: CC is
+    already the canonical git-operator per the advisor/executor split.
+  - The "read-only is safe" carve-out preserves Cowork's ability to
+    answer "what branch am I on / what's the diff / what's in the log"
+    questions without a CC handoff, which would otherwise be a
+    significant regression from pre-2026-04-22.
+- *Enforced at:* `docs/COWORK_SESSION_STATE.md` — "Two-tool workflow"
+  section states the rule explicitly with the 2026-04-22 incident as
+  the worked example; "Known gotchas" section has a dedicated
+  "Sandbox git ops can corrupt `.git/HEAD` on cross-OS-mounted repos"
+  bullet with the recovery one-liner. No `.git/`-level write-block is
+  enforced programmatically — this is a workflow rule, not a
+  filesystem-enforced invariant. Re-evaluate if a future Cowork release
+  supplies the sandbox with host credentials or eliminates the cross-OS
+  sync layer.
+
+---
+
+## 2026-04-22 — Audit Item 10 Q7 closure stamp (AnimalInfo cohort metadata shipped 2026-04-20)
+
+- *Context:* The 2026-04-19 audit-closure DECISIONS entry (Q1–Q10) locked
+  Q7 as "Add both `sex` and `date_of_birth` fields to `AnimalInfo` and
+  `configs/animals.yaml`" with a forward obligation but no closure stamp.
+  The work shipped 2026-04-20 — visible in `configs/animals.yaml` (header
+  dated 2026-04-20 citing this decision; all 8 PS46–PS55 animals
+  populated with `sex`, `date_of_birth`, `genotype`, `stroke_laser_power_mW`)
+  and in `src/stroke_orofacial/animals.py` (`AnimalInfo` dataclass fields
+  + YAML loader parsing + validation + `age_at_stroke` helper) — but the
+  `docs/MIGRATION_LOG.md` entry for it was missed, and the
+  `docs/COWORK_SESSION_STATE.md` Pending queue and Next-phase candidates
+  list still carried task #18 as unstarted. This closure stamp + the
+  retroactive 2026-04-20 MIGRATION_LOG entry land together in the
+  2026-04-22 docs-only bookkeeping PR.
+- *Decision:* **Q7 resolved as scoped, with implementation scope expanded
+  to include genotype + stroke_laser_power_mW alongside the originally-
+  scoped sex + date_of_birth.** The `AnimalInfo` dataclass now carries
+  four optional cohort-metadata fields:
+  `sex: Literal["M", "F"] | None`,
+  `date_of_birth: datetime.date | None`,
+  `genotype: str | None`,
+  `stroke_laser_power_mW: float | None`. All four are populated for the
+  PS46–PS55 cohort. The `age_at_stroke` helper derives age-in-days from
+  `date_of_birth` + `stroke_date` when both are present. Downstream
+  covariate use (Phase 9a/9.1/9b stats) picks up these fields directly
+  from the config; no retrofit of downstream callers is required beyond
+  reading them through the loader.
+- *Rationale:*
+  - Adding the two unscoped fields (genotype, stroke_laser_power_mW) at
+    the same moment costs almost nothing and saves a second schema
+    migration later. Both are cohort-level properties that any covariate
+    analysis will eventually want, and both were already available in
+    Priya's direct cohort records.
+  - The PS46–PS55 cohort ages at stroke range 95–101 days (~14 weeks,
+    standard adult-mouse age) — documented in the
+    `configs/animals.yaml` header so future readers don't have to
+    re-derive. Two animals (PS49, PS50) are annotated as "C57BL/6J
+    (negative littermate)" per the 2026-04-20 population pass — refers
+    to breeding-scheme negative result, not a base-strain difference.
+- *Enforced at:*
+  - `configs/animals.yaml` — all 8 PS46–PS55 animals carry all four
+    fields + `wavesurfer_sides_match_mouse_sides`. Header comment dated
+    2026-04-20 cites this audit resolution.
+  - `src/stroke_orofacial/animals.py` — `AnimalInfo` dataclass field
+    defs (lines 130–133), YAML loader with per-field parsing + validation
+    (lines 243–276), `age_at_date(session_date)` / `age_at_stroke()`
+    helpers (lines 170–186).
+  - `docs/MIGRATION_LOG.md` — retroactive 2026-04-20 entry added in the
+    same 2026-04-22 docs PR that lands this closure stamp.
+  - `docs/COWORK_SESSION_STATE.md` — task #18 removed from Pending queue
+    and Next-phase candidates list; surfaced as "shipped 2026-04-20" in
+    the Completed-since-last-refresh section + 2026-04-22 maintenance
+    log entry.
+
+---
+
 ## 2026-04-21 — PS48 2025-03-14 multi-session handling (merge two acquisition halves into one analysis session)
 
 - *Context:* Priya flagged during the Phase 6.8a diagnostic post-mortem

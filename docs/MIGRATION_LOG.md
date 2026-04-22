@@ -2945,3 +2945,151 @@ counter + log line, and the task-runner wrapper's exit-code
 contract is canonical in the repo. The next cohort emit run
 (whenever Phase 5/6 requires it) will be readable in the emit log
 without re-reading the code.
+
+---
+
+## 2026-04-20 — Task #18 — AnimalInfo cohort metadata (sex, date_of_birth, genotype, stroke_laser_power_mW) *(retroactive entry added 2026-04-22)*
+
+**Scope.** Implementation of the Audit-10 Q7 decision from
+2026-04-19: add cohort metadata fields to the `AnimalInfo`
+schema and populate them for every animal in
+`configs/animals.yaml`. Originally scoped as "sex + date_of_birth";
+expanded at implementation to include `genotype` and
+`stroke_laser_power_mW` at the same moment, since both were
+already in Priya's direct cohort records and both are the same
+kind of never-changing cohort-level property any downstream
+covariate analysis will want.
+
+**Why this is a retroactive entry.** The work landed
+2026-04-20 but the `MIGRATION_LOG.md` entry was missed at the
+time. Caught during the 2026-04-22 state-doc bookkeeping pass,
+which also noticed that `docs/COWORK_SESSION_STATE.md` still
+listed task #18 as unstarted in its Pending queue and
+Next-phase candidates list. The three-way docs fix (this
+entry + DECISIONS.md Q7 closure stamp + state-doc sync) lands
+together on the 2026-04-22 docs-only PR
+`docs/workflow-refresh-plus-task-18-closure`.
+
+**Source data.** Priya's direct cohort records. Not derived
+from any instrument output; not available in the legacy
+notebooks' `ANIMALS` dict (which carried only `stroke_date`,
+session range, exclusions, and analysis thresholds).
+
+**Schema change.** `src/stroke_orofacial/animals.py`
+`AnimalInfo` dataclass gained four optional fields (order as
+declared):
+
+- `sex: Literal["M", "F"] | None = None`
+- `date_of_birth: datetime.date | None = None`
+- `genotype: str | None = None`
+- `stroke_laser_power_mW: float | None = None`
+
+All four default to `None` for backward compatibility with any
+callsite that constructs `AnimalInfo` without cohort metadata
+(notably the `from_dict` / YAML loader path itself when a
+partial animal entry is supplied, and any test fixture that
+predates this change).
+
+**Loader change.** The YAML loader at lines 243–276 of
+`src/stroke_orofacial/animals.py` gained per-field parsing +
+validation:
+
+- `sex` parsed as string, validated against `{"M", "F"}` with a
+  raise-on-invalid path (prevents silent typos like `"male"` or
+  `"f"` from being accepted).
+- `date_of_birth` parsed via the same `_parse_date` helper
+  already used for `stroke_date` (accepts `YYYY-MM-DD` or
+  `YYYYMMDD` string, or a `datetime.date` object if PyYAML has
+  already parsed it natively).
+- `genotype` parsed as free-form string (no enum — the cohort
+  has two values: `"C57BL/6J"` and `"C57BL/6J (negative
+  littermate)"` — the latter annotating a breeding-scheme
+  negative result rather than a base-strain difference; see
+  `configs/animals.yaml` header).
+- `stroke_laser_power_mW` parsed as float.
+
+A missing key parses to `None` rather than raising — a
+pragmatic choice so partial test fixtures don't break, and so
+the `wavesurfer_sides_match_mouse_sides` task #17 migration
+didn't have to simultaneously retrofit every animal's
+cohort-metadata fields on day one. All 8 PS46–PS55 cohort
+animals are populated with all four fields as of 2026-04-20.
+
+**New helpers.** `AnimalInfo.age_at_date(session_date)` (method,
+lines 170–179) returns an `int | None` — the number of days
+between `date_of_birth` and the given `session_date`; `None` if
+`date_of_birth` is unset. `AnimalInfo.age_at_stroke()` (method,
+lines 181–186) is a thin wrapper that calls `age_at_date` with
+`self.stroke_date`. The two-method split lets future covariate
+analyses compute per-session age (not just age-at-stroke) from
+the same code path.
+
+**Config population.** `configs/animals.yaml` updated with all
+four fields on all 8 PS46–PS55 animals (PS46, PS47, PS48, PS49,
+PS50, PS51, PS54, PS55). Per-animal values (from Priya's
+records):
+
+| Animal | Sex | DOB          | Genotype                             | Laser power (mW) |
+|--------|-----|--------------|--------------------------------------|------------------|
+| PS46   | F   | 2024-12-03   | C57BL/6J                             | 2.2              |
+| PS47   | F   | 2024-12-03   | C57BL/6J                             | 2.2              |
+| PS48   | F   | 2024-12-03   | C57BL/6J                             | 2.2              |
+| PS49   | F   | 2024-12-12   | C57BL/6J (negative littermate)       | 2.5              |
+| PS50   | F   | 2024-12-12   | C57BL/6J (negative littermate)       | 2.5              |
+| PS51   | M   | 2025-01-23   | C57BL/6J                             | 3.0              |
+| PS54   | M   | 2025-01-23   | C57BL/6J                             | 3.0              |
+| PS55   | M   | 2025-01-23   | C57BL/6J                             | 5.0              |
+
+Cohort ages at stroke range **95–101 days** (~14 weeks —
+standard adult-mouse age). Documented in the
+`configs/animals.yaml` header comment so future readers
+don't have to re-derive. The two "negative littermate"
+annotations (PS49, PS50) refer to a breeding-scheme negative
+result — both animals are on the C57BL/6J base line and
+both received stroke induction; the note is preserved as
+provenance, not as a biological-difference flag.
+
+**Downstream reach.** No downstream callers required
+modification — `AnimalInfo` consumers either already accept
+`None` for unknown fields (every construction path pre-dates
+cohort-metadata) or simply don't access the new fields yet.
+Phase 9a/9.1/9b stats work (still unshipped as of this entry)
+will pick them up directly from the loader.
+
+**Ground-rule compliance.**
+
+- `CLAUDE.md` rule 1 — **no source data modified.** The
+  per-animal YAML entries are configuration, not source data
+  in the CLAUDE.md sense (which names raw wavesurfer `.h5`,
+  raw Flea3 AVI + timestamp CSV, DLC inference output, DLC
+  training project, alignment templates, and existing
+  processed behavior outputs).
+- `CLAUDE.md` rule 8 — work landed as a feature branch, not
+  direct-to-main.
+
+**Tests.** `tests/test_animals.py` gained coverage for:
+
+- Loading an animal with all four cohort-metadata fields
+  present — verifies correct parsing + correct types.
+- Loading an animal with all four fields absent — verifies
+  `None` defaults (backward-compat for partial test fixtures).
+- Invalid `sex` value raises (not silently accepted).
+- `age_at_stroke()` returns an `int` when both DOB and
+  stroke_date are present, and `None` when either is missing.
+- `age_at_date(session_date)` correctness for a couple of
+  reference dates on a known DOB.
+
+**Verification.** Full pytest suite green on both Mac and
+Windows after the change (count per the then-current session
+baseline); ruff clean on touched files.
+
+**Forward follow-ups.**
+
+- Phase 9a/9.1/9b — cohort-metadata fields are now available
+  as stats covariates. No retrofit to existing 9a test-bench
+  work; new endpoints pick them up.
+- No additional `animals.yaml` population work pending — the
+  PS46–PS55 cohort is fully populated.
+- If the cohort ever expands beyond PS46–PS55, the schema
+  supports the additional animals by construction; no further
+  migration required.
