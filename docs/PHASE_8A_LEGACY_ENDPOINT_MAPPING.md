@@ -2,6 +2,8 @@
 
 Compiled 2026-04-20 by Cowork as the scoping output for Phase 8a (task #10). Read alongside `docs/prompts/phase-8a-spout-recovery-trajectories-kickoff.md`, which uses this doc as its evidence base.
 
+For the compact Phase 8a.9 close-out index after 8a.1-8a.7.5 implementation, see `docs/phase-8a/legacy-behavior-report-rollup.md`; this archaeology doc remains the detailed source record.
+
 The 8 new spout endpoints locked at Audit Item 10 Q9 (DECISIONS.md, 2026-04-19) are the target deliverables. This doc maps each to its legacy implementation status (full / partial / none), provides the ground-truth definitions of the legacy `criteria_1/2/3/4` (so the Q2 slug renames can be finalized from the actual formulas rather than placeholder guesses), inventories the current `report.json` schema that Phase 8a will extend or supersede, characterizes the existing longitudinal-aggregation infrastructure, and lists open questions that need Priya's call at plan-mode time.
 
 Source repos walked (read-only, never modified):
