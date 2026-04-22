@@ -744,25 +744,53 @@ Per-session detail is collapsed under a `<details>` block per combo. Open the NE
 
 ## Verdicts requiring human decision
 
-**PS49 tongue:** X0 ranges from 0.0000 to 0.0000 (Δ=0.000000); Y0 ranges from -110.0000 to -100.0000 (Δ=10.000000). Retune pattern: **single mid-cohort jump**.
-
-Sessions on each side of the retune point:
-- X0=0.0000, Y0=-100.0000 — 3 sessions (20250307 … 20250309)
-- X0=0.0000, Y0=-110.0000 — 22 sessions (20250310 … 20250331)
-
-**Question for Priya:** which X0/Y0 is the intended "current" baseline for PS49 tongue, or should `animals.yaml` carry a date-scoped baseline (e.g., `kinematics_baselines.tongue.y0_by_date`)? If the latter, the config schema in `interpolation-strategy.md` §3.1 needs revision before 7a.2 can proceed.
-
-**PS50 tongue:** X0 ranges from 0.0000 to 0.0000 (Δ=0.000000); Y0 ranges from -110.0000 to -100.0000 (Δ=10.000000). Retune pattern: **single mid-cohort jump**.
-
-Sessions on each side of the retune point:
-- X0=0.0000, Y0=-100.0000 — 10 sessions (20250307 … 20250317)
-- X0=0.0000, Y0=-110.0000 — 19 sessions (20250319 … 20250406)
-
-**Question for Priya:** which X0/Y0 is the intended "current" baseline for PS50 tongue, or should `animals.yaml` carry a date-scoped baseline (e.g., `kinematics_baselines.tongue.y0_by_date`)? If the latter, the config schema in `interpolation-strategy.md` §3.1 needs revision before 7a.2 can proceed.
+- ~~PS49 tongue NHD~~ → resolved under in-scope filter. See "Scope-filtered re-analysis" section below. All 22 in-scope sessions at Y0=-110.
+- ~~PS50 tongue NHD~~ → resolved under in-scope filter. See "Scope-filtered re-analysis" section below. All 19 in-scope sessions at Y0=-110.
 
 ### INSUFFICIENT combos
 
 None.
+
+## Scope-filtered re-analysis (added 2026-04-22)
+
+The unfiltered probe above enumerates every NPZ on disk under `O2_analysis/`. That set is a superset of what the consolidated pipeline currently analyzes — each animal's `configs/animals.yaml sessions.{start,end}` defines the authoritative in-scope session range per animal. Legacy NPZs outside that range are leftover artifacts from prior wider-scope pipeline runs and are not targets for parity comparison in 7a or any subsequent phase (parity-scope principle, to be logged in DECISIONS by the Task 3 companion entry).
+
+Re-running the per-combo probe restricted to in-scope sessions per `sessions.{start,end}` collapses the two NEEDS_HUMAN_DECISION verdicts:
+
+| Animal | Bodypart | scope_start | scope_end | N in-scope | X0 | Y0 | Verdict |
+|---|---|---|---|---|---|---|---|
+| PS49 | tongue | 2025-03-10 | 2025-04-06 | 22 | 0.0000 | -110.0000 | **STABLE** |
+| PS50 | tongue | 2025-03-19 | 2025-04-06 | 19 | 0.0000 | -110.0000 | **STABLE** |
+
+Out-of-scope NPZs excluded:
+
+- PS49 tongue: 20250307, 20250308, 20250309 (Y0=-100, pre-scope) — 3 sessions
+- PS50 tongue: 20250307, 20250308, 20250309, 20250310, 20250311, 20250312, 20250313, 20250315, 20250316, 20250317 (Y0=-100, pre-scope) — 10 sessions
+
+All 13 out-of-scope NPZs represent an earlier Priya pipeline run with a preliminary Y0=-100 baseline, superseded when Priya narrowed analysis scope per-animal in `animals.yaml` (2026-04-17 transcription). The current Y0=-110 is the baseline for the entire in-scope cohort of both animals, matching PS46/PS47/PS48 tongue from day one.
+
+### No-scope-change invariant (every STABLE combo)
+
+Re-verified across all 16 combos: every in-scope combo has a single X0 value and a single Y0 value across every session in its `sessions.{start, end}` range — no STABLE combo's scope-filtered X0/Y0 differs from its unfiltered median. Confirms the scope filter resolves the two NHD combos without perturbing any previously-STABLE combo.
+
+### Revised verdict roll-up
+
+Under the in-scope filter: **16 STABLE / 0 NEEDS_HUMAN_DECISION / 0 INSUFFICIENT.**
+
+Seed values for `configs/animals.yaml kinematics_baselines:` (consumed by Phase 7a.2):
+
+| Animal | tongue.y0 | tongue.x0 | jaw.y0 | jaw.x0 |
+|---|---|---|---|---|
+| PS46 | -110.0 | 0.0 | 310.0 | 0.0 |
+| PS47 | -110.0 | 0.0 | 310.0 | 0.0 |
+| PS48 | -110.0 | 0.0 | 310.0 | 0.0 |
+| PS49 | -110.0 | 0.0 | 310.0 | 0.0 |
+| PS50 | -110.0 | 0.0 | 310.0 | 0.0 |
+| PS51 | -110.0 | 0.0 | 290.0 | 12.0 |
+| PS54 | -110.0 | 0.0 | 290.0 | 12.0 |
+| PS55 | -110.0 | 0.0 | 290.0 | 0.0 |
+
+Every value is the unique in-scope median (and also min and max — constant across every in-scope session per combo). Tongue is uniform across the full cohort at (x0=0.0, y0=-110.0). Jaw varies by animal: PS46–PS50 cluster at (x0=0.0, y0=310.0); PS51 and PS54 at (x0=12.0, y0=290.0); PS55 at (x0=0.0, y0=290.0).
 
 ## Unblocks for 7a.1 / 7a.2
 
