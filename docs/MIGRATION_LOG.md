@@ -2730,3 +2730,218 @@ error fix before the emit). Results:
 **PR / tag:** merged via PR #64 (squash, `00ab3b7`); tagged
 `v6.8a.1-distinct-prereq-errors` on the squash-merge commit
 (`a1844b1`). Feature branch preserved on origin.
+
+---
+
+## Phase 6.8a.3 — Notebook 12 save-loop skip-diagnostic split + task-runner pipefail
+
+**Date:** 2026-04-22.
+
+**Context:** The 2026-04-21 Phase 6.8a cohort first emit surfaced two
+diagnostic gaps that were out of scope for v6.8a.1 (distinct-prereq-
+errors) and v6.8a.2 (unattended runners), and were carved out as their
+own small follow-up:
+
+1. **Notebook 12's save-loop guard conflated two legitimately-empty
+   skip conditions into a single `n_err` bucket.** After v6.8a.1
+   converted three of the four `build_reward_aligned_analysis`
+   prerequisite-miss paths to distinct `FileNotFoundError`s, two
+   `return None` paths remained: (a) zero rewards for the requested
+   `trial_group` (valid-but-empty data), and (b) `build_histogram`
+   returning `None` because no DLC frames in the requested window
+   survived the likelihood threshold. The notebook's save loop
+   collapsed both into one `n_err++; continue` with no way to tell
+   them apart from the emit log. This was the specific condition that
+   made the 3 PS51/20250430 tongue R-side bundle failures hard to
+   triage — the notebook said "3 errors" when the actual condition
+   was "zero qualifying frames, no-op skip."
+2. **Task-runner `| tail -80` pipeline masked non-zero exit codes.**
+   The Windows ad-hoc task-runner wrapper piped
+   `phase_6_8a_first_run_health_report.py`'s stdout through
+   `tail -80` to cap the notification payload. Without `set -o
+   pipefail`, bash reports the LAST pipeline stage's exit — and
+   `tail` almost always returns 0 — so non-zero health-report exits
+   (including conda's `execute(125)`) silently surfaced as "task
+   completed successfully."
+
+**Root cause:**
+
+1. `notebooks/12_dlc_spatial_reward_aligned.ipynb` reward-loop cell
+   (around line 166 of the cell source) had:
+
+   ```python
+   if result is None or result["histogram"] is None:
+       n_err += 1
+       continue
+   ```
+
+   The two conditions are semantically distinct:
+   - `result is None` — `build_reward_aligned_analysis` returned
+     `None`, the post-v6.8a.1 meaning of which is exactly "zero
+     rewards for this trial_group" (all other prerequisite-miss paths
+     raise).
+   - `result["histogram"] is None` — `build_histogram` inside
+     `build_reward_aligned_analysis` returned `None` because the
+     likelihood-filtered frame count inside the reward-aligned window
+     was zero.
+
+   Both are valid-but-empty data conditions, neither is an error, and
+   both should be observable in the emit log without re-reading the
+   code.
+
+2. `scripts/run_notebook_12_first_emit.py` mirrored the same save
+   loop with the same collapsed guard.
+
+3. The task-runner wrapper was not committed to the repo — it lived
+   ad-hoc on the Windows machine. Without `set -o pipefail`, any
+   pipeline step that tee'd / tailed / grep'd the health-report's
+   output absorbed its exit status.
+
+**What was done:**
+
+1. **Notebook 12 save-loop split.** The guard in the reward-loop cell
+   now reads:
+
+   ```python
+   if result is None:
+       # zero rewards for this trial_group — legitimately-empty data,
+       # not an error
+       logging.info(f"skip_no_rewards {animal}/{date}/{bodypart}/"
+                    f"{center_mode}/{trial_group}/{window_tag}")
+       n_skip_no_rewards += 1
+       continue
+   if result["histogram"] is None:
+       # zero qualifying DLC frames in the window (likelihood below
+       # threshold on every candidate frame)
+       logging.info(f"skip_no_frames {animal}/{date}/{bodypart}/"
+                    f"{center_mode}/{trial_group}/{window_tag}")
+       n_skip_no_frames += 1
+       continue
+   ```
+
+   Counter initialization at the top of the `trial_group` loop gained
+   `n_skip_no_rewards` and `n_skip_no_frames`. The per-(bodypart,
+   center_mode, trial_group, window) summary `print` now surfaces all
+   five counters:
+
+   ```
+   {tag}: ok=… skip=… skip_no_rewards=… skip_no_frames=… err=…
+   ```
+
+2. **Runner-script mirror.** `scripts/run_notebook_12_first_emit.py`
+   picked up the identical split (same counter names, same log lines,
+   same summary format). The health-report script
+   (`scripts/phase_6_8a_first_run_health_report.py`) walks the on-
+   disk NPZ tree directly — it does not parse the runner's stdout —
+   so there was no parser contract to preserve.
+
+3. **Committed task-runner wrapper.** Added
+   `scripts/task_runner_wrapper.sh` as the canonical reference
+   wrapper for the Phase 6.8a runner + health-report chain, with
+   `set -euo pipefail` at the top and a docstring explaining the
+   2026-04-21 exit-code masking context. Future Windows Task
+   Scheduler / ad-hoc invocations should source this wrapper (or
+   copy its `set -o pipefail` prologue into their own scripts) to
+   avoid the same masking bug.
+
+4. **Runbook §8.4 refresh.** `docs/runbooks/reemit-phase-5-6-after-
+   lr-fix.md` §8.4 previously read "counts four distinct failure
+   modes into one `n_err` bucket. Only the first mode emits a log
+   warning; the other three `return None` silently…" — which was
+   doubly stale (three of four became `FileNotFoundError` in
+   v6.8a.1, and the remaining two got split counters in v6.8a.3).
+   Rewritten to describe the current 6-bucket layout (3 distinct
+   `FileNotFoundError` types + `n_skip_no_rewards` +
+   `n_skip_no_frames` + catch-all `Exception` → `n_err`) with an
+   example of the new summary print output. The "a follow-up
+   refactor will…" sentence at the bottom was removed (this PR is
+   the refactor).
+
+5. **Unit tests.** New `tests/test_notebook_runners.py` (+189 lines,
+   3 new tests) exercises the runner-script save loop with mocked
+   `build_reward_aligned_analysis` returning each of the three
+   outcomes (`None`, `{"histogram": None}`, `{"histogram": …valid…}`)
+   and asserts the right counter increments + the matching log
+   lines, without touching disk.
+
+**What stayed the same:**
+
+- No NPZ output shape or content changed — the split is pure
+  diagnostic refactoring at the caller. The same bundles that got
+  an emit before get an emit now; the same bundles that were
+  silently skipped before are still silently skipped (they just
+  now carry distinct counter + log evidence of *why*).
+- The health-report script contract is unchanged (on-disk NPZ
+  walk, no stdout coupling to the runner).
+- Tag on merge follows the v6.8a.1 / v6.8a.2 pattern —
+  `v6.8a.3-notebook-12-skip-diagnostic` on the PR #68 merge commit.
+
+**Intentional behavior differences vs. legacy notebooks:** None.
+There is no legacy equivalent of the `trial_group` save loop; the
+counter split is a repo-level diagnostic improvement.
+
+**Scope surprises (noted in the Windows CC report):**
+
+1. **Task-runner wrapper did not exist on disk as a committed file.**
+   The 2026-04-21 cohort-emit wrapper that surfaced the exit-code
+   masking was ad-hoc / interactive — nothing under `~/`,
+   `Documents/`, or anywhere under `/c/Users/sabatini/` matched the
+   health-report script invocation in any `.sh` / `.bat` / `.ps1`.
+   Windows CC wrote `scripts/task_runner_wrapper.sh` from scratch
+   as the canonical committed reference with the pipefail fix baked
+   in, so the bug context lives in the repo going forward. Any
+   existing Windows Task Scheduler or ad-hoc invocation must still
+   apply `set -o pipefail` manually (or source the wrapper).
+2. **Health-report script needed no parser extension.**
+   `phase_6_8a_first_run_health_report.py` reads the on-disk NPZ
+   tree, not the runner's stdout or counts, so the runner counter-
+   name change has no effect on the health-report contract.
+3. **Notebook diff larger than expected (tooling artefact, not
+   behavior).** The `NotebookEdit` tool re-serialized the reward-
+   loop cell's `source` from a line-array to a single JSON string
+   and normalized escaped `\u2014` → literal `—` across several
+   other cells. Semantically identical JSON; pytest + PS51 emit
+   verification confirm behavior is correct. Flagged in the PR
+   body.
+
+**Verification:**
+
+- **Full pytest (post-change):** 464 passed / 34 skipped / 0 failed
+  (+3 new tests in `test_notebook_runners.py` vs. the post-v6.8a.2
+  baseline). `ruff check` clean on touched files.
+- **PS51/20250430 reproducer (the known benign-skip case from the
+  2026-04-21 cohort first emit):** ran the runner under
+  `--animals PS51 --dates 20250430 --bodyparts tongue --center-modes
+  eye_midpoint --trial-groups R --reward-windows-ms=-100,1000
+  --overwrite skip --verbose`. Emit log:
+
+  ```
+  INFO: skip_no_frames PS51/20250430/tongue/eye_midpoint/R/-100to1000ms
+    tongue/eye_midpoint/trials-R/-100to1000ms: ok=0 skip=0 skip_no_rewards=0 skip_no_frames=1 err=0
+  Totals: ok=0 skip=0 skip_no_rewards=0 skip_no_frames=1 err=0
+  ```
+
+  Exactly as predicted — the single bundle that `build_histogram`
+  couldn't fill is now surfaced as `skip_no_frames=1`, not as a
+  fake `err=1`.
+- **Branch-setup verification.** Tag `v6.8a.2-unattended-runners`
+  peeled to `1f1b202`; base `HEAD` at branch-cut was
+  `ca01c052`; commits between tag and branch-cut were 2 (both
+  docs-only: `ca01c05` session-state refresh + `201923e` cohort-
+  first-emit results). No code drift between the tag and the
+  branch base.
+
+**PR / tag:** merged via PR #68
+(https://github.com/priya-srikanth/stroke_orofacial_pipeline/pull/68)
+as merge commit `5b20dd5` (feature-branch commit `19c3664`);
+tagged `v6.8a.3-notebook-12-skip-diagnostic` on the merge commit
+(`5b20dd5`) and pushed to origin. Feature branch
+`fix/notebook-12-skip-diagnostic-and-pipefail` preserved on origin.
+
+**Forward follow-ups:** None. The diagnostic-gap carve-out from the
+2026-04-21 cohort first emit is now fully discharged — every path
+through the notebook 12 / runner save loop carries a distinct
+counter + log line, and the task-runner wrapper's exit-code
+contract is canonical in the repo. The next cohort emit run
+(whenever Phase 5/6 requires it) will be readable in the emit log
+without re-reading the code.
