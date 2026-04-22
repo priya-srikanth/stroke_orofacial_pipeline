@@ -25,42 +25,44 @@ A new Cowork session works through this in order before answering any substantiv
 
 ## Current state
 
-**As of:** 2026-04-21 (Phase 6.8a.1 distinct-prereq-errors fix merged as PR #64, tagged `v6.8a.1-distinct-prereq-errors`; Phase 6.8a trial_group translation + first-emit NPZ writer merged earlier same day as PR #62, tagged `v6.8a-phase-5-6-trial-group-translation`; Phase 7.0b cell-classification merged as PR #60, tagged `v7.0b-cell-classification`; Phase 6.8a cohort first emit completed on Windows CC — 13,821 NPZs across 256 (animal, date) pairs, per-NPZ health check 13,821/13,821 pass, per-bundle health check 4,605/4,608 (99.93%), the 3 bundle failures at PS51/20250430 traced to benign "no qualifying tongue DLC frames in tight window" skip condition; results logged in MIGRATION_LOG Phase 6.8a.1 "Cohort first emit" section).
+**As of:** 2026-04-21 late (Phase 6.8a.2 unattended runners + runbook §8/§9 merged as PR #63 squash-commit `1f1b202`, tagged `v6.8a.2-unattended-runners`; cohort-first-emit-results docs merged as PR #66 onto main; Phase 6.8a.1 distinct-prereq-errors fix merged earlier same day as PR #64, tagged `v6.8a.1-distinct-prereq-errors`; Phase 6.8a trial_group translation + first-emit NPZ writer merged earlier same day as PR #62, tagged `v6.8a-phase-5-6-trial-group-translation`; Phase 7.0b cell-classification merged as PR #60, tagged `v7.0b-cell-classification`. Phase 6.8a cohort first emit completed on Windows CC under `feat/phase-6-8a-first-emit-runner` — 13,821 NPZs across 256 (animal, date) pairs, per-NPZ health check 13,821/13,821 pass, per-bundle health check 4,605/4,608 (99.93%), the 3 bundle failures at PS51/20250430 traced to benign "no qualifying tongue DLC frames in tight window" skip condition; full narrative in MIGRATION_LOG Phase 6.8a.1 "Cohort first emit" section).
 
-**Repo phase:** Phases 1–6 + 4.5-lite + 6.7 + 6.8 + 6.8a + 6.8a.1 + 7.0b + 13 + 8a.1–8a.7.5 delivered on `main`. Task #17 closed the last cross-cutting convention decision blocking Phase 7 (DLC kinematics): NPZ / JSON / parquet side-keys now emit in mouse frame with version+flag stamps. Phase 6.8a threaded the convention through the reward-aligned writer and opened first-time Phase 6 NPZ emits for programmatic drift measurement. Phase 6.8a.1 refactored `build_reward_aligned_analysis` prerequisite-miss paths from silent `return None` to distinct `FileNotFoundError` so the cohort's 14,202-failure triage is diagnosable. Latest tags: `v6.7-session-manifest-refactor`, `v6.8-wavesurfer-side-convention`, `v6.8a-phase-5-6-trial-group-translation`, `v6.8a.1-distinct-prereq-errors`, `v7.0b-cell-classification`, `v8a.7-spout-endpoints-json-writer`, `v8a.7.5-criteria-hierarchy-port` (per the 2026-04-21 tag-convention-Path-A decision — every phase-close merge gets a tag, including letter-suffix atomic fixes).
+**Repo phase:** Phases 1–6 + 4.5-lite + 6.7 + 6.8 + 6.8a + 6.8a.1 + 6.8a.2 + 7.0b + 13 + 8a.1–8a.7.5 delivered on `main`. Task #17 closed the last cross-cutting convention decision blocking Phase 7 (DLC kinematics): NPZ / JSON / parquet side-keys now emit in mouse frame with version+flag stamps. Phase 6.8a threaded the convention through the reward-aligned writer and opened first-time Phase 6 NPZ emits for programmatic drift measurement. Phase 6.8a.1 refactored `build_reward_aligned_analysis` prerequisite-miss paths from silent `return None` to distinct `FileNotFoundError` so the cohort's 14,202-failure triage is diagnosable. Phase 6.8a.2 added unattended-runner scripts (`run_notebook_10_phase_4_centering.py`, `run_notebook_12_first_emit.py`) + runbook §8 / §9 for cohort-scale headless emits; validated end-to-end by the 2026-04-21 first emit (13,821 NPZs, 99.93% bundle pass). Latest tags: `v6.7-session-manifest-refactor`, `v6.8-wavesurfer-side-convention`, `v6.8a-phase-5-6-trial-group-translation`, `v6.8a.1-distinct-prereq-errors`, `v6.8a.2-unattended-runners`, `v7.0b-cell-classification`, `v8a.7-spout-endpoints-json-writer`, `v8a.7.5-criteria-hierarchy-port` (per the 2026-04-21 tag-convention-Path-A decision — every phase-close merge gets a tag, including letter-suffix atomic fixes).
 
-**Current branch:** `main` at `a1844b1` (PR #64 squash-merge — Phase 6.8a.1 distinct-prereq-errors, commit `00ab3b7` on the squash merge, tag `v6.8a.1-distinct-prereq-errors` applied to the merge commit). Prior tips traversed since last state refresh: PR #62 (Phase 6.8a trial_group translation + first-emit NPZ writer + health-report script + runbook §8, tagged `v6.8a-phase-5-6-trial-group-translation`); PR #60 (Phase 7.0b cell classification, 5 classification docs, tagged `v7.0b-cell-classification`); earlier: PR #57 (test-hygiene), PR #56 (tag-convention), PR #55 (Phase 2 re-emit log), PR #54 (Task #17 implementation). All feature branches preserved on origin per CLAUDE.md §8.
+**Current branch:** `main` at `1f1b202` (PR #63 squash-merge — Phase 6.8a.2 unattended runners + runbook §8/§9; tag `v6.8a.2-unattended-runners` applied to the merge commit). Prior tips traversed since last state refresh: PR #66 (cohort-first-emit-results docs, no tag, retroactive); PR #64 squash-merge `00ab3b7` then `a1844b1` (Phase 6.8a.1 distinct-prereq-errors, tag `v6.8a.1-distinct-prereq-errors`); PR #65 merge at `c8db81c` (runbook §8 tightening + kickoff rewrite, no tag); PR #62 (Phase 6.8a trial_group translation + first-emit NPZ writer + health-report script + runbook §8, tagged `v6.8a-phase-5-6-trial-group-translation`); PR #60 (Phase 7.0b cell classification, 5 classification docs, tagged `v7.0b-cell-classification`); earlier: PR #57 (test-hygiene), PR #56 (tag-convention), PR #55 (Phase 2 re-emit log), PR #54 (Task #17 implementation). All feature branches preserved on origin per CLAUDE.md §8.
 
 **In flight:**
 
-1. **Runner-branch PR not yet opened.** Branch
-   `feat/phase-6-8a-first-emit-runner` carries three commits (Phase
-   6.8a runner script, Phase 4 runner script, runbook §8 + §9
-   additions) plus Priya's local merge of origin/main (picked up the
-   `v6.8a.1-distinct-prereq-errors` fix via Step 0 of the Windows
-   warm-start). The cohort emit under this branch confirmed the
-   runners work end-to-end (13,821 NPZs + 99.93% bundle pass). Branch
-   is 1 commit behind origin on the merge side — reconcile before PR.
-   Tag target on merge: `v6.8a.2-unattended-runners`.
+1. **v6.8a.3 — notebook-12 save-loop skip-diagnostic split + task-runner
+   pipefail fix (TaskList #19).** Unblocked now that `v6.8a.2-unattended-runners`
+   merged. Two small fixes in one PR (Windows CC work):
+   - **Notebook 12 + runner script save-loop split.** The save-loop
+     guard at `notebooks/12_dlc_spatial_reward_aligned.ipynb` line 166
+     (and the mirrored logic in `scripts/run_notebook_12_first_emit.py`)
+     collapses two legitimate skip conditions into one `n_err` bucket:
+     `result is None` (zero rewards for `trial_group` — one of two
+     remaining `return None` cases after 6.8a.1) and `result["histogram"]
+     is None` (zero qualifying DLC frames in the window — the cause of
+     the PS51/20250430 tongue R-side misses). Split into
+     `n_skip_no_rewards` + `n_skip_no_frames`, emit distinct log lines
+     per bucket, update the per-(bodypart, center_mode, trial_group,
+     window) summary `print` to surface all four counters (ok / skip /
+     skip_no_rewards / skip_no_frames / err).
+   - **Task-runner pipefail fix.** The Windows task-runner wrapper that
+     invoked the cohort health-report script piped through `| tail -80`,
+     which absorbed the script's non-zero exit code (conda's
+     `execute(125)` surfaced as "exit 0"). Add `set -o pipefail` or
+     explicit `PIPESTATUS` capture before tailing. The wrapper lives
+     outside the repo (on the Windows machine); fix in place + commit
+     a sanitized copy under `scripts/` or `docs/runbooks/` for future
+     reproducibility.
+   - **Runbook §8.4 refresh.** Update `docs/runbooks/reemit-phase-5-6-after-lr-fix.md`
+     §8.4 which currently reads "counts four distinct failure modes
+     into one `n_err` bucket" — now stale after 6.8a.1 (three of four
+     raise) and 6.8a.3 (the remaining two get separate counters).
 
-2. **Cohort-results docs PR pending.** +42-line MIGRATION_LOG diff
-   (Phase 6.8a.1 "Cohort first emit" section) + this COWORK_SESSION_STATE
-   refresh land together on new branch `docs/cohort-first-emit-results`
-   off `c8db81c` (the commit PR #65 squash-merged onto). No tag
-   (retroactive docs refresh only).
-
-3. **Follow-up #19 queued — v6.8a.3 notebook-12 skip-diagnostic split
-   + task-runner pipefail fix.** Notebook 12's save-loop guard at line
-   166 conflates two legitimate skip conditions (`result is None` from
-   zero rewards vs `result["histogram"] is None` from no qualifying
-   frames in the window); split `n_err` into `n_skip_no_rewards` +
-   `n_skip_no_frames` and emit a distinct log line for each. Separately,
-   the Windows task-runner wrapper pipes through `| tail -80` which
-   absorbs the health-report script's non-zero exit code (conda
-   surfaced `execute(125)` as "exit 0"); fix with `set -o pipefail` or
-   explicit `PIPESTATUS` capture before tailing. Blocked by
-   `v6.8a.2-unattended-runners` merging first. Tag target:
-   `v6.8a.3-notebook-12-skip-diagnostic`.
+   Tag on merge: `v6.8a.3-notebook-12-skip-diagnostic`. Kickoff prompt
+   drafted and ready to paste into Windows CC (see end of this file).
 
 **Deferred / carry-forward housekeeping:** `scripts/parity_external_bnpm.py`
 (the Phase 13 external-bnpm parity sweep script that surfaced the
@@ -184,9 +186,9 @@ The authoritative source is the Cowork TaskList widget in the current session. M
 
 **In progress:**
 
-- *(none — Phase 6.8a cohort first emit completed; see "Completed
-  since last state refresh" below and MIGRATION_LOG Phase 6.8a.1
-  "Cohort first emit" section for results.)*
+- **#19 — v6.8a.3 notebook-12 skip-diagnostic split + task-runner
+  pipefail fix.** Unblocked; Windows CC kickoff prompt ready at the
+  end of this file. See "In flight → item 1" above for full scope.
 
 **Pending open (new 2026-04-21):**
 
@@ -204,32 +206,27 @@ The authoritative source is the Cowork TaskList widget in the current session. M
   opportunistically audit the other 7 animals when the first fixture
   lands. See DECISIONS 2026-04-21 entry.
 
-- **Runner-branch PR — `feat/phase-6-8a-first-emit-runner`.** Three
-  commits (Phase 6.8a runner script, Phase 4 runner script, runbook
-  §8 + §9 updates) plus Priya's local merge of origin/main. Windows
-  cohort first emit under this branch confirmed runners work
-  end-to-end. Reconcile "1 commit behind origin" before opening the
-  PR. Tag `v6.8a.2-unattended-runners` on merge.
-
-- **#19 — v6.8a.3 notebook-12 skip-diagnostic split + task-runner
-  pipefail fix.** Two fixes in one PR: (a) split notebook 12's
-  `n_err` into `n_skip_no_rewards` + `n_skip_no_frames` at the
-  save-loop guard (line 166, currently conflates `result is None`
-  with `result["histogram"] is None`); (b) fix the Windows task-runner
-  wrapper's `| tail -80` pipeline which absorbs the health-report
-  script's non-zero exit code (conda surfaced execute(125) as "exit
-  0") — use `set -o pipefail` or capture `PIPESTATUS` before tailing.
-  Blocked by `v6.8a.2-unattended-runners` merging first. Tag
-  `v6.8a.3-notebook-12-skip-diagnostic` on merge.
-
-- **Cohort-results docs PR.** New branch
-  `docs/cohort-first-emit-results` off `c8db81c` (the commit PR #65
-  squash-merged onto). Carries the +42-line MIGRATION_LOG Phase 6.8a.1
-  "Cohort first emit" diff + this COWORK_SESSION_STATE refresh. No
-  tag (retroactive docs refresh).
+- *(v6.8a.3 moved to "In progress" above — it's the current active
+  work item once Windows CC picks up the kickoff prompt.)*
 
 **Completed since last state refresh:**
 
+- **Phase 6.8a.2 unattended runners + runbook §8/§9 (PR #63,
+  `1f1b202`, 2026-04-21 late).** `scripts/run_notebook_10_phase_4_centering.py`
+  (Phase 4 parquet emit runner) + `scripts/run_notebook_12_first_emit.py`
+  (Phase 6.8a reward-aligned NPZ emit runner) + runbook
+  `docs/runbooks/reemit-phase-5-6-after-lr-fix.md` §8 (runner
+  invocation sequence) + §9 (troubleshooting / health-report
+  interpretation). 5 commits (3 original + 2 merge commits
+  `9274cb7`/`d901f4c` for the origin/main reconciliation). Validated
+  end-to-end by the same-day cohort first emit (13,821 NPZs, 99.93%
+  bundle pass). Tagged `v6.8a.2-unattended-runners`.
+- **Cohort-first-emit-results docs (PR #66, 2026-04-21 late).**
+  Retroactive-docs PR off `c8db81c` (PR #65 squash-merge commit).
+  Added 51-line MIGRATION_LOG Phase 6.8a.1 "Cohort first emit
+  (2026-04-21, PS46–PS55)" section + COWORK_SESSION_STATE refresh
+  moving cohort-emit from in-flight to completed. No tag (retroactive
+  docs refresh). Commit `c4e7d08`.
 - **Phase 6.8a cohort first emit (Windows CC, 2026-04-21).** Notebook
   12 executed under `OVERWRITE="force"` across PS46–PS55 on the
   `feat/phase-6-8a-first-emit-runner` branch (origin/main merged in at
@@ -452,9 +449,130 @@ Result: no Cowork tab appears in the Windows desktop app. The Claude VM (`yukonS
 
 ## Best warm-start prompt (paste into a new Cowork chat)
 
-Phase 6.8a.1 distinct-prereq-errors merged (PR #64, tagged `v6.8a.1-distinct-prereq-errors`). Windows CC completed Phase 6.8a first cohort emit under the new contract: 13,821 NPZs, per-NPZ 13,821/13,821, per-bundle 4,605/4,608 (99.93%), 3 benign PS51/20250430 skip-condition failures. Phase 6.8a trial_group translation + first-emit writer merged earlier same day (PR #62, tagged `v6.8a-phase-5-6-trial-group-translation`). Phase 7.0b cell-classification merged (PR #60, tagged `v7.0b-cell-classification`). Three in-flight items: (a) `feat/phase-6-8a-first-emit-runner` branch pending PR (reconcile 1-commit-behind-origin first; tag `v6.8a.2-unattended-runners`); (b) cohort-results docs PR on `docs/cohort-first-emit-results` off `c8db81c` (retroactive, no tag); (c) `v6.8a.3` notebook-12 skip-diagnostic split + task-runner pipefail fix (TaskList #19, blocked by v6.8a.2 merging first). Ungated follow-up: PS48 2025-03-14 multi-session (two-half) port (TaskList #18 + DECISIONS 2026-04-21). Use this prompt to open the next Cowork session (including a fresh one from Windows):
+Phase 6.8a arc closed cleanly on 2026-04-21: 6.8a → 6.8a.1 → 6.8a.2, all tagged, cohort first emit validated (13,821 NPZs, 99.93% bundle pass, 3 benign PS51/20250430 tongue R-side skip-condition failures documented in MIGRATION_LOG). PR #66 (cohort-first-emit-results docs, no tag) and PR #63 (Phase 6.8a.2 unattended runners, tag `v6.8a.2-unattended-runners` at `1f1b202`) both merged. Main is clean at `1f1b202`.
 
-> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Phase 6.8a + 6.8a.1 closed on main and the first cohort emit completed cleanly (99.93% bundle pass, all failures triaged benign). Three items I may want to pick up: (a) the `feat/phase-6-8a-first-emit-runner` branch PR (tag `v6.8a.2-unattended-runners`); (b) the `docs/cohort-first-emit-results` docs PR (no tag); (c) the `v6.8a.3` follow-up (notebook-12 skip-diagnostic split + task-runner pipefail fix — TaskList #19, blocked by (a) merging first). Ungated follow-up: PS48 2025-03-14 multi-session handling port (TaskList #18). Confirm the current state — especially whether PR #63 / the cohort-results docs PR / v6.8a.3 have landed since this file was last written — and then ask me what we're working on before doing anything else.
+**Next active item: v6.8a.3 (TaskList #19)** — notebook-12 save-loop skip-diagnostic split + task-runner pipefail fix. Windows CC work. Kickoff prompt below.
+
+**Open Cowork prompt for a fresh session (Mac or Windows desktop):**
+
+> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Phase 6.8a arc closed on main (6.8a → 6.8a.1 → 6.8a.2, all tagged), cohort first emit validated end-to-end. Next active item is v6.8a.3 (TaskList #19) — small Windows CC PR to split notebook 12's save-loop `n_err` counter into `n_skip_no_rewards` + `n_skip_no_frames` and add `set -o pipefail` to the Windows task-runner wrapper. Kickoff prompt is at the end of the state doc, ready to paste into Windows Claude Code in VSCode. Confirm current state (check whether v6.8a.3 has landed since this file was last written) and then ask me what we're working on.
+
+**Windows CC kickoff prompt for v6.8a.3 (paste into Claude Code in VSCode on Windows):**
+
+> Working item: v6.8a.3 (TaskList #19) — notebook-12 save-loop skip-diagnostic split + task-runner pipefail fix. Main is at `1f1b202` (tag `v6.8a.2-unattended-runners`); the 2026-04-21 cohort first emit validated the runners end-to-end with 3 benign PS51/20250430 tongue R-side skips traced to `build_histogram` returning None when the tight -100to1000ms window has no qualifying DLC frames. The notebook currently conflates that "no frames" skip with the "zero rewards for trial_group" skip (from `build_reward_aligned_analysis` returning None) into one `n_err` counter — v6.8a.3 splits them so future runs are diagnosable without code-path analysis.
+>
+> **Before any code changes, read in order:** `CLAUDE.md` (ground rules — especially §8 git discipline: feature branch, never commit to main, `git branch -d` subtlety, phase-close tags); `docs/DESIGN.md` (phase plan); `docs/MIGRATION_LOG.md` (scan Phase 6.8a → 6.8a.1 → 6.8a.2 entries, then the "Cohort first emit (2026-04-21, PS46–PS55)" section inside the 6.8a.1 entry — that's the forward-ref to this task); `docs/COWORK_SESSION_STATE.md` (for current state + full v6.8a.3 scope under "In flight → item 1").
+>
+> **Env activation (per CLAUDE.md):**
+> ```bash
+> conda activate stroke_orofacial
+> which python                          # must print under .conda/envs/stroke_orofacial/
+> python -c "import stroke_orofacial"   # must succeed
+> pytest --collect-only > /dev/null     # must complete without import errors
+> ```
+>
+> **Branch setup:**
+> ```bash
+> cd ~/GitHub/stroke_orofacial_pipeline    # or C:\Users\sabatini\GitHub\stroke_orofacial_pipeline
+> git checkout main && git pull --ff-only origin main
+> git log --oneline -1    # expect 1f1b202 (v6.8a.2-unattended-runners)
+> git branch --show-current  # confirm on main before cutting branch
+> git checkout -b fix/notebook-12-skip-diagnostic-and-pipefail
+> ```
+>
+> **Scope — three parts in one PR:**
+>
+> **(1) Notebook 12 save-loop split.** In `notebooks/12_dlc_spatial_reward_aligned.ipynb`, find the `reward-loop` cell. At approx. line 166 the guard reads:
+> ```python
+> if result is None or result["histogram"] is None:
+>     n_err += 1
+>     continue
+> ```
+> Replace with a split that preserves the existing `try` / `except` structure:
+> ```python
+> if result is None:
+>     # zero rewards for this trial_group — expected for some sessions
+>     n_skip_no_rewards += 1
+>     continue
+> if result["histogram"] is None:
+>     # no qualifying DLC frames in window (likelihood below threshold)
+>     n_skip_no_frames += 1
+>     continue
+> ```
+> Update the counter initialization at the top of the innermost `for trial_group` loop:
+> ```python
+> n_ok, n_skip, n_err = 0, 0, 0
+> n_skip_no_rewards, n_skip_no_frames = 0, 0
+> ```
+> Update the per-(bodypart, center_mode, trial_group, window) summary `print` to surface all five counters:
+> ```python
+> if n_ok + n_skip + n_err + n_skip_no_rewards + n_skip_no_frames > 0:
+>     print(f"  {tag}: ok={n_ok} skip={n_skip} "
+>           f"skip_no_rewards={n_skip_no_rewards} skip_no_frames={n_skip_no_frames} err={n_err}")
+> ```
+> Also emit a distinct `logging.info` line per skip bucket (one per animal/date) so they show up in the runner log stream without going through the summary print.
+>
+> **(2) Runner-script mirror.** In `scripts/run_notebook_12_first_emit.py`, find the identical save-loop logic and apply the same split — same counter names, same log lines, same summary format. Keep the runner's output shape compatible with how `scripts/phase_6_8a_first_run_health_report.py` reads it (check the health-report script: if it parses the runner's stdout or a log file for counts, make sure the new counter names don't break that contract — extend the parser if needed, don't silently break it).
+>
+> **(3) Task-runner pipefail fix.** The Windows task-runner wrapper that invoked the cohort health-report script piped through `| tail -80`, absorbing the script's non-zero exit code. Find the wrapper script on your Windows box (likely under `~/scripts/` or `C:\Users\sabatini\Documents\` or wherever you keep ad-hoc run scripts — it's the one that piped `phase_6_8a_first_run_health_report.py` through `tail -80`). Add `set -o pipefail` near the top (for bash wrappers) OR capture `PIPESTATUS` explicitly before tailing:
+> ```bash
+> set -o pipefail
+> # ... existing body ...
+> python scripts/phase_6_8a_first_run_health_report.py --verbose 2>&1 | tail -80
+> ```
+> Once the wrapper is fixed in place, commit a sanitized copy to the repo under `scripts/` (e.g., `scripts/task_runner_wrapper.sh`) with a header docstring explaining its role + the pipefail fix context. Reference it from the runbook so the bug stays documented.
+>
+> **(4) Runbook §8.4 refresh.** `docs/runbooks/reemit-phase-5-6-after-lr-fix.md` §8.4 currently reads "counts four distinct failure modes into one `n_err` bucket. Only the first mode emits a log warning; the other three `return None` silently..." — this is doubly stale. Post-6.8a.1: three of four modes raise distinct `FileNotFoundError`, not `return None`. Post-6.8a.3: the remaining two `return None` cases (zero rewards, zero qualifying frames) get separate counters + log lines. Rewrite §8.4 to:
+> - Reflect the current state (3 `FileNotFoundError` types + 2 counter-split skip modes + the `Exception` catch-all as the 6th bucket).
+> - Show an example of the new summary `print` output.
+> - Remove the "A follow-up refactor will..." sentence at the bottom (the refactor is this PR).
+>
+> **Tests.** The counter split is behavior-preserving at the correctness layer (no NPZs emitted differently, no shape changes, no extra/missing files), so no new integration parity test is needed. Add one or two unit tests to `tests/test_notebook_runners.py` (create if absent) or to an existing test that exercises the runner: mock a manifest that triggers each skip bucket, assert the right counter increments. If `tests/test_notebook_runners.py` doesn't exist, consider whether a new test file is in scope or whether the assertion is better done via a mini-smoke-test docstring in the runner itself.
+>
+> **Verification sequence before committing:**
+> 1. `conda activate stroke_orofacial` → `pip install -e . --no-deps`
+> 2. `pytest -q` → expect no new failures. Report pass/skip/fail counts.
+> 3. Run the Phase 6.8a runner on PS51/20250430 specifically (the known benign-skip session) and confirm the new `skip_no_frames` counter picks up the 3 bundles + emits the matching log lines:
+>    ```bash
+>    python scripts/run_notebook_12_first_emit.py \
+>      --animals PS51 --dates 20250430 \
+>      --bodyparts tongue --center-modes eye_midpoint \
+>      --trial-groups R \
+>      --reward-windows-ms=-100,1000 \
+>      --overwrite skip \
+>      --verbose
+>    ```
+>    Expect: `skip_no_frames=1 err=0` (or similar, depending on how sessions bucket by `trial_group`) with one `logging.info` line per skipped (animal, date).
+> 4. Run the task-runner wrapper with a deliberately-broken health-report (e.g., pass a nonexistent `--root` path) and confirm the wrapper's exit code is now non-zero (not masked to 0 by `tail`).
+> 5. Stage files; `git branch --show-current` to confirm you're NOT on main; commit.
+>
+> **Commit discipline.** Per CLAUDE.md §8, `git branch --show-current` before every `git commit`. Never commit to main. Pre-commit hook at `.githooks/pre-commit` enforces this — do not bypass with `--no-verify` without explicit approval.
+>
+> **PR:**
+> ```bash
+> git push -u origin fix/notebook-12-skip-diagnostic-and-pipefail
+> gh pr create --base main \
+>   --title "fix(phase-6.8a.3): notebook 12 save-loop skip-diagnostic split + task-runner pipefail" \
+>   --body "Small follow-up to v6.8a.2. Splits notebook 12's (and the runner script's) conflated \`n_err\` counter into \`n_skip_no_rewards\` + \`n_skip_no_frames\` so the two legitimate skip conditions (zero rewards for trial_group; zero qualifying DLC frames in window) are diagnosable without code-path analysis. Also fixes the Windows task-runner wrapper's \`| tail -80\` pipeline which was absorbing the health-report script's non-zero exit code — \`set -o pipefail\` added; sanitized wrapper copy committed under \`scripts/\`.
+>
+> Validated against the known benign-skip case from the 2026-04-21 cohort first emit (PS51/20250430 tongue eye_midpoint R-side in -100to1000ms window): new \`skip_no_frames\` counter correctly picks up the bundle + emits a distinct log line.
+>
+> Runbook §8.4 refreshed: the stale 'counts four distinct failure modes into one n_err bucket' text is replaced with the current 3-FileNotFoundError + 2-counter-split-skip + catch-all-err layout.
+>
+> Tag on merge: \`v6.8a.3-notebook-12-skip-diagnostic\`."
+> ```
+>
+> **After PR merges:**
+> ```bash
+> git checkout main && git pull
+> MERGE_SHA=$(gh pr view <N> --json mergeCommit --jq '.mergeCommit.oid')
+> git tag -a v6.8a.3-notebook-12-skip-diagnostic "$MERGE_SHA" \
+>   -m "Phase 6.8a.3: notebook 12 save-loop skip-diagnostic split + task-runner pipefail"
+> git push origin v6.8a.3-notebook-12-skip-diagnostic
+> git tag --list | tail -5
+> ```
+>
+> Report back with: pytest counts post-change, the PS51/20250430 verification output, final commit SHA + PR number + tag, and any scope surprises (e.g., if the runner-script save-loop turned out NOT to mirror the notebook, or if the health-report parser needs extension).
 
 The generic warm-start once you've moved past the in-flight work:
 
@@ -474,3 +592,4 @@ The generic warm-start once you've moved past the in-flight work:
 - **2026-04-20 (post-8a.7.5 merge — external-bnpm parity + Phase 5/6-prep + clamp-fix chain)** — Five PRs landed on main in sequence: PR #41 (`b86c779`, Windows skip fix unblocking PR #42); PR #42 (`7953b97`, 8a.7.5 impl, merge commit); PR #43 (`d60e240` via `ac91771`, post-review docs); PR #44 (`d6f8e90`, external-bnpm parity finding docs + PS50 regression guard); PR #45 (`92b5d88`, Phase 5/6-prep indexing-module refactor — byte-identical move); PR #46 (`9f3378d`, clamp-fix). Each of PRs #44/#45/#46 followed the standard Phase-13-pattern narrative: identify an upstream divergence, document it in DECISIONS + MIGRATION_LOG, land a regression guard + scoped-minimum fix, preserve parity against session_processing3 baselines where unrelated paths are unaffected. Measured drift on PS46/20250307 after the clamp-fix: zero. Intentional drift on PS50/20250324 trial k=40 L-side: guarded. The forward obligation chain set by the external-bnpm finding ("clamp-fix before Phase 5/6 kickoff") is discharged. Closure stamps added to DECISIONS "External bnpm parity finding" bullet + MIGRATION_LOG Phase 5/6-prep entry. CLAUDE.md Ground Rule 8 gained a `git branch -d` subtlety clarification (the `-d` flag enforces "fully pushed to upstream", NOT "merged to main"; the latter check is the caller's responsibility) after two feature branches deleted cleanly before their PRs merged mid-session. `scratch/` + `scripts/parity_external_bnpm.py` remain local-untracked pending a gitignore vs. promote-to-scripts decision.
 - **2026-04-21 (Phase 7.0b + 6.8a + 6.8a.1 + Windows first-emit kickoff + doc state refresh)** — Four meaningful merges landed between the last refresh and this one: PR #60 (Phase 7.0b cell-classification, 5 classification docs under `docs/phase-7/`, tagged `v7.0b-cell-classification`); PR #62 (Phase 6.8a trial_group translation — load-stamp verification + build_reward_aligned_analysis flag plumbing + save_reward_aligned_npz writer + notebook 12 NPZ emit + health-report script + runbook §8 additions, tagged `v6.8a-phase-5-6-trial-group-translation`); PR #64 (Phase 6.8a.1 distinct-prereq-errors — three `return None` paths in `build_reward_aligned_analysis` converted to `FileNotFoundError` with artefact-specific messages; zero-rewards path kept as `return None`; squash-merged as `00ab3b7`, tagged `v6.8a.1-distinct-prereq-errors` on the merge commit `a1844b1`). Phase 6.8a.1 was a Path B sequencing (PR-merged-before-cohort-emit) so the 14,202-failure triage would run under the distinct-error contract; Windows CC picked up the fix via a `git merge origin/main` Step 0 before kicking off the notebook 12 cohort emit. Two carry-forwards: (a) `feat/phase-6-8a-first-emit-runner` branch has 3 commits (Phase 6.8a runner, Phase 4 runner, runbook update) pending a PR once the Windows cohort run confirms the runners work — tag target `v6.8a.2-unattended-runners`; (b) PS48 2025-03-14 multi-session (two-half acquisition) handling surfaced as a new port requirement (legacy DLC code merges the two halves; new pipeline doesn't) — captured as TaskList #18 + DECISIONS 2026-04-21 entry; ungated port at two load boundaries (Phase 2 wavesurfer I/O + Phase 4+ DLC I/O). This doc refresh is the third — it closes out Phase 6.8a + 6.8a.1 in the state doc and sets Windows up to warm-start a fresh Cowork session (once Cowork-on-Windows returns) or a fresh Mac session without friction.
 - **2026-04-21 (Phase 6.8a cohort first emit completion + docs PR #65 + cohort-results follow-up PR)** — Windows CC completed the first Phase 6.8a cohort emit under the distinct-error contract: 13,821 NPZs across 256 (animal, date) pairs, per-NPZ health 13,821/13,821, per-bundle health 4,605/4,608 (99.93%). The 3 failing bundles (all PS51/20250430 tongue eye_midpoint R-side in the tight -100to1000ms window) triaged to a benign skip condition — sibling wider-window passes show R rewards exist; tongue DLC likelihood falls below threshold in the tight window; `build_histogram` returns None; notebook 12's save-loop guard at line 166 skips without emitting. Verdict: no Phase 6.8a code bug; surfaces a diagnostic opportunity (the notebook conflates `result is None` with `result["histogram"] is None`) plus a task-runner pipefail bug (`| tail -80` absorbs the health-report script's non-zero exit) — both carved out as TaskList #19 for `v6.8a.3`. Docs PR #65 (`docs/phase-6-8a-1-cohort-emit-kickoff`) squash-merged as `c8db81c` with runbook §8 tightening + kickoff rewrite, but landed before the +42-line MIGRATION_LOG cohort-results diff was ready. Decision: route the cohort-results diff (MIGRATION_LOG Phase 6.8a.1 "Cohort first emit" section) + this state-doc refresh onto a new `docs/cohort-first-emit-results` branch off `c8db81c`, as a retroactive no-tag docs PR that preserves scope hygiene for PR #63 (runner-branch, tag-bearing) and PR #65 (merged).
+- **2026-04-21 late (Phase 6.8a.2 runner PR + cohort-results PR both merged + state doc refresh for v6.8a.3 handoff)** — PR #66 (cohort-first-emit-results docs) merged first as intended; PR #63 (`feat/phase-6-8a-first-emit-runner`) then reconciled (branch fast-forwarded to `d901f4c` after Windows CC's local `git merge origin/main` picked up the v6.8a.1 fix) and merged as squash-commit `1f1b202`, tagged `v6.8a.2-unattended-runners`. Ordering note: Mac CC's tag sequence correctly used `gh pr view 63 --json mergeCommit` to fetch the authoritative merge SHA rather than `git rev-parse HEAD` — the latter would have tagged the wrong commit if PR #66 had merged after PR #63. PR body of #63 was updated mid-flight to reflect the actual committed filenames (`run_notebook_10_phase_4_centering.py` + `run_notebook_12_first_emit.py`, not the guessed `phase_4_unattended_runner.py` + `phase_6_8a_unattended_runner.py`) + sharper Validation section citing the full cohort results. Next: v6.8a.3 (TaskList #19) notebook-12 skip-diagnostic split + task-runner pipefail fix — small Windows CC PR, kickoff prompt included at the end of this file.
