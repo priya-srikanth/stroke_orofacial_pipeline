@@ -654,6 +654,83 @@ The project handles this via **boundary-layer translation** (introduced by task 
 
 See `docs/MIGRATION_LOG.md` "Task #17 — Wavesurfer L/R ↔ mouse-frame boundary-layer translation" for the full migration narrative and `docs/runbooks/reemit-phase-5-6-after-lr-fix.md` for the re-emit procedure when a yaml flag flips.
 
+### 14.2 Session exclusions: dotted-hierarchical namespaced tags
+
+Sessions can be marked as excluded from specific analyses via
+`AnimalInfo.exclusions` (populated from `configs/animals.yaml`). As of
+2026-04-22 (Phase 7-pre), the `applies_to` field uses **dotted
+hierarchical namespaced tags** with strict prefix-match semantics
+rather than a flat sentinel-plus-strings list. This was introduced to
+let Phase 7a scope exclusions per bodypart (e.g., "PS51 tongue but
+not jaw") and per phase (e.g., "skip DLC but keep alignment") without
+the namespace collisions that mixing bodypart strings and phase
+strings in a single flat list would create.
+
+**Canonical `analysis_context` taxonomy.** Every orchestrator that
+checks exclusions passes an explicit `analysis_context` string drawn
+from:
+
+```
+spout_behavior                               # Phase 2
+alignment                                    # Phase 3 (wavesurfer ↔ camera)
+dlc.io                                       # Phase 4 (centered parquet)
+dlc.spatial                                  # Phase 5 / 6 (spatial / reward-aligned spatial)
+dlc.kinematics.tongue                        # Phase 7 (tongue kinematics)
+dlc.kinematics.jaw                           # Phase 7 (jaw kinematics)
+dlc.kinematics.whisker                       # Phase 7 (whisker kinematics)
+dlc.kinematics.face_velocity                 # Phase 7 (face-velocity PCs)
+dlc.kinematics.psd                           # Phase 7 (tongue / jaw / whisker PSD)
+```
+
+Future phases extend this tree downward (e.g., a `trial_group.*`
+axis) without a schema change.
+
+**Prefix-match rules:**
+
+- `applies_to: [dlc]` matches any `analysis_context` that is
+  exactly `"dlc"` or starts with `"dlc."` (`"dlc.spatial"`,
+  `"dlc.kinematics.tongue"`, etc.).
+- `applies_to: [dlc.kinematics.tongue]` matches only
+  `"dlc.kinematics.tongue"` — not `"dlc.kinematics.jaw"` (sibling)
+  and not `"dlc.kinematics"` (tag is longer than context).
+- Segment boundary is strict: `[dlc]` matches `"dlc"` and
+  `"dlc.*"` but NOT `"dlc_spatial"` (underscore) or `"dlcx"` (no
+  boundary).
+- `applies_to` with multiple tags is OR: the exclusion fires if
+  **any** tag prefix-matches the context
+  (`[dlc.kinematics.tongue, dlc.kinematics.jaw]` → "applies to
+  tongue or jaw kinematics").
+- `analysis_context=None` never matches — callers must pass an
+  explicit context to trigger exclusion checks. This makes the
+  "no context supplied" case safe by default.
+
+**YAML requirements:**
+
+- `applies_to` is required on every exclusion; no default. The
+  legacy `applies_to: [all]` sentinel is rejected at load time
+  with a migration-guidance error pointing at this section.
+- `applies_to` must be a non-empty list of strings. Scalar strings
+  (`applies_to: "dlc"`) are normalized to single-element lists for
+  YAML ergonomics.
+
+**Orchestrator call sites.** Four convenience wrappers pass an
+explicit context today; a future 7a wrapper
+(`dlc_kinematics.*_by_animal_date`) will extend the list:
+
+- `spout_behavior.session_processing.process_session_by_animal_date`
+  → `analysis_context="spout_behavior"`.
+- `alignment.timebase.load_or_compute_alignment_by_animal_date` →
+  `analysis_context="alignment"`.
+- `dlc_io.parquet.build_centered_parquet_by_animal_date` →
+  `analysis_context="dlc.io"`.
+- `dlc_spatial.reward_aligned.build_reward_aligned_analysis_by_animal_date`
+  → `analysis_context="dlc.spatial"`.
+
+See `docs/MIGRATION_LOG.md` "Phase 7-pre — `AnimalInfo.exclusions.applies_to`
+schema extension" (2026-04-22) for the full migration narrative,
+the cohort exclusion table, and the two intentional behavior
+differences vs. the pre-7-pre `[all]`-sentinel code path.
+
 ---
 
 End of design doc. When you're ready, follow §11.2 in Claude Code.

@@ -15,6 +15,219 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-04-22 — Phase 7-pre: dotted-hierarchical namespaced-tag schema for `AnimalInfo.exclusions.applies_to`
+
+- *Context:* The Phase 7a interpolation design brief
+  (`docs/phase-7/interpolation-strategy.md` §3.2) surfaced a namespace-
+  collision problem in the existing `applies_to` flat-list schema. The
+  legacy design used `applies_to: [all]` as a universal sentinel;
+  Phase 7a wanted to scope exclusions by bodypart (e.g., "PS51 tongue
+  but not jaw") and also by phase (e.g., "skip DLC paths but keep
+  spout_behavior analysis"). Mixing bodypart strings (`tongue`) with
+  phase tags (`dlc`, `spout_behavior`) in the same flat list creates
+  an ambiguity: does `applies_to: [dlc, tongue]` mean "DLC AND tongue"
+  (both-must-match, cross-axis) or "DLC OR tongue" (any-match,
+  same-axis)? The brief flagged three candidate resolutions: (1)
+  rename+split into two fields (`phases`, `bodyparts`); (2) nested
+  struct (`applies_to: {phases: [...], bodyparts: [...]}`); (3)
+  namespaced tags with hierarchical prefix-match (`dlc.kinematics.tongue`).
+  Priya also flagged a new PS51 2025-05-17 exclusion (missing camera
+  data → DLC+alignment break but spout_behavior still works) that
+  cannot be expressed under `[all]` and is needed for 7a parity.
+- *Decision:* **Namespaced tags with dotted-hierarchical prefix-match
+  (Option 3).** The canonical `analysis_context` taxonomy:
+  `spout_behavior`, `alignment`, `dlc.io`, `dlc.spatial`,
+  `dlc.kinematics.{tongue,jaw,whisker,face_velocity,psd}`. An
+  exclusion with `applies_to: [dlc]` matches any
+  `analysis_context` that starts with `dlc` or `dlc.*`; an exclusion
+  with `applies_to: [dlc.kinematics.tongue]` matches only that one
+  context. Segment boundary is strict (`[dlc]` does NOT match
+  `dlc_spatial` or `dlcx`). The legacy `applies_to: [all]` sentinel
+  is rejected at YAML load time with a migration-guidance error;
+  `applies_to` is now required and must be a non-empty list.
+  `is_excluded(date, analysis_context=None)` never matches when
+  context is `None` — callers must pass an explicit context. All
+  four pre-existing `[all]` exclusions migrated to
+  `[dlc, spout_behavior]`; PS51 2025-05-17 added as
+  `[dlc, alignment]`.
+- *Rationale:*
+  - **Option 3 scales without migration.** Adding a future axis
+    (e.g., `trial_group.rewarded`, `trial_group.unrewarded`) is a
+    new leaf in the tag tree, not a schema change. Options 1 and 2
+    would require adding a new top-level field for every new axis
+    and re-auditing every existing exclusion.
+  - **No empty-list ambiguity.** Under Option 1's split fields,
+    `phases: []` + `bodyparts: [tongue]` has to mean "all phases"
+    or "no phases" — either choice is surprising at the call site.
+    Under Option 3, there's no empty-list state: the tag either
+    matches a prefix or it doesn't.
+  - **Migration cost is bounded and discharged.** The four legacy
+    `[all]` exclusions each mapped to exactly one new tag set
+    (`[dlc, spout_behavior]` — the Rose Bengal sham + experimenter-
+    error cases that break mouse behavior but leave
+    wavesurfer↔camera alignment templates intact). Any future
+    cross-axis exclusion gets expressed as a list of tags, e.g.
+    `[dlc.kinematics.tongue, dlc.kinematics.jaw]` — OR semantics
+    within the list, which matches natural-language reading.
+  - **Explicit-context requirement activates a previously dormant
+    path.** All four pre-existing `build_manifest()` call sites
+    were dropping the `analysis_type` parameter, so exclusions
+    were effectively no-ops on emitted manifests. The rename to
+    `analysis_context` + threading it through all four call sites
+    activates the feature — documented as intentional-behavior-
+    difference #1 in the MIGRATION_LOG entry.
+- *Enforced at:*
+  - `src/stroke_orofacial/animals.py` — `Exclusion.applies()`
+    implements prefix-match; YAML loader rejects `[all]` and empty
+    lists; `AnimalInfo.is_excluded()` parameter renamed to
+    `analysis_context`.
+  - `src/stroke_orofacial/session.py` — `build_manifest()` accepts
+    and threads `analysis_context`.
+  - Four wrappers that pass the context explicitly:
+    `spout_behavior.session_processing.process_session_by_animal_date`
+    (`spout_behavior`),
+    `alignment.timebase.load_or_compute_alignment_by_animal_date`
+    (`alignment`),
+    `dlc_io.parquet.build_centered_parquet_by_animal_date` (`dlc.io`),
+    `dlc_spatial.reward_aligned.build_reward_aligned_analysis_by_animal_date`
+    (`dlc.spatial`).
+  - `configs/animals.yaml` — 4 legacy exclusions migrated; 1 new
+    exclusion (PS51 2025-05-17).
+  - `docs/MIGRATION_LOG.md` — "Phase 7-pre — `AnimalInfo.exclusions.applies_to`
+    schema extension" (2026-04-22).
+  - `docs/DESIGN.md` §14.2 — dotted-tag exclusions convention
+    (prefix-match semantics, taxonomy).
+  - Tag `v7-pre-exclusions-schema` on PR #75 merge commit.
+
+---
+
+## 2026-04-22 — Phase 7a interpolation design brief locked; §10 is the canonical resolution list
+
+- *Context:* Phase 7 DLC kinematics was unblocked by Phase 6.8 (L/R
+  convention) + Phase 6.8a (trial_group translation). The first
+  in-scope piece is the interpolation algorithm that produces
+  continuous tongue/jaw traces from DLC outputs (occlusion
+  handling). Priya's existing legacy notebooks
+  (`20260203_..._tongue.ipynb`, `20260416_..._jaw.ipynb`) implement
+  a 7-stage v5p3 algorithm with 8 open design choices (knobs 1–8
+  in the Phase 7 kickoff prompt). CC drafted a design brief
+  (`docs/phase-7/interpolation-strategy.md`) and Cowork reviewed
+  it across two passes (11 edits round 1, 5 more edits round 2),
+  closing all 8 open questions.
+- *Decision:* **Lock the design brief as the authoritative spec
+  for 7a implementation.** The §10 "Resolutions" section at the
+  end of the brief is the canonical source for all 8 knob
+  decisions — not the earlier "Open Questions" section (kept for
+  narrative flow but superseded). Key decisions:
+  - **Knob 1 (emit shape):** split emit — canonical parquet
+    (pure-bodypart, per-trial OR whole-session) + optional
+    `.qc.npz` sidecar with stage-by-stage diagnostics.
+  - **Knob 3 (percentile semantics):** `Y0` is the lowest
+    n'th-percentile of the trial-aligned pool; `X0` is the median
+    of `X` values within the `Y`-percentile subset (not a
+    separate percentile on X).
+  - **Knob 5 (output format):** Option A — pure-bodypart parquet
+    (no trial-grouped variants at this layer; trial-grouping
+    happens downstream in Phase 7b/8b/9b consumers).
+  - **§3.1 (baselines):** per-animal per-bodypart baselines in
+    `configs/animals.yaml`. Faithful port of Priya's manual
+    per-run X0/Y0 editing against the legacy notebook — legacy
+    MICROSCOPE outputs are correct under this manual protocol.
+    Seed from `X0`/`Y0` keys in the legacy NPZs.
+  - **§3.2 (exclusion scoping):** escalated to Phase 7-pre
+    mini-PR (see entry above) — the flat-list `applies_to`
+    couldn't express bodypart-scoped exclusions without a schema
+    change.
+- *Rationale:*
+  - Faithful-port framing (not "latent-bug fix"): legacy
+    production outputs on MICROSCOPE are correct under the
+    manual-editing protocol; per-animal per-bodypart baselines in
+    animals.yaml reproduce that protocol without Priya having to
+    re-edit cells per run.
+  - Split-emit preserves parquet as the canonical downstream
+    contract (matches Phase 4 DLC I/O) while keeping QC NPZ
+    available for debugging without bloating the primary output.
+  - Option A on §5 keeps the per-bodypart file structure orthogonal
+    to trial grouping — downstream Phase 7b / 8b / 9b code can
+    compose trial-grouping independently. Mixing them at the 7a
+    layer would push trial-group definitions upstream of the
+    kinematics extraction and make per-session reruns harder.
+- *Enforced at:*
+  - `docs/phase-7/interpolation-strategy.md` §10 — canonical
+    resolution list (8 knobs closed).
+  - `docs/phase-7/interpolation-strategy.md` §2, §3.1, §3.2, §5,
+    §6 — updated sections per the two review passes.
+  - `docs/MIGRATION_LOG.md` — Phase 7a design brief entry
+    (2026-04-22).
+  - Tag `v7a-design-brief` on PR #74 merge commit.
+  - Phase 7a implementation PR (future) must cite §10 and honor
+    every resolution there.
+
+---
+
+## 2026-04-22 — Parity-gate principle: no kinematics algorithm lands without MICROSCOPE parity verification
+
+- *Context:* After the 7a design brief merged (PR #74) and the
+  Phase 7-pre schema extension merged (PR #75), there was an
+  opportunity to take a "thin slice" of the 7a algorithm — the
+  percentile-threshold-and-drop preamble (stages 1–3 of the
+  7-stage v5p3 pipeline) — on a short feature branch without
+  MICROSCOPE access, just to land runnable scaffolding. Cowork
+  flagged and Priya agreed that thin-slicing without a parity
+  check against Priya's legacy NPZ X0/Y0 keys creates a
+  maintenance hazard: any drift in the stage-1–3 intermediate
+  values against the legacy-notebook computation would either be
+  silently absorbed into later stages or surface as a
+  whack-a-mole divergence when stages 4–7 are added. The
+  Phase-13 precedent (strict port + drift quantification against
+  `session_processing3/` baselines) has been the project's
+  consistent pattern for every phase with a legacy reference.
+- *Decision:* **Algorithm ports that have a legacy reference do
+  not land on main until per-stage parity against MICROSCOPE
+  baselines has been measured and documented in MIGRATION_LOG.**
+  For 7a specifically: the 9 primary + 3 stress-test + 2
+  late-post-stroke parity sessions listed in
+  `docs/phase-7/interpolation-strategy.md` §6 must be evaluated
+  before the implementation PR opens. Intermediate stages are
+  validated in-process (e.g., parquet column-level or NPZ
+  key-level compare against the legacy output); a drift table
+  lives in the migration entry. Docs-only PRs (design briefs,
+  kickoff prompts, taxonomy extensions) do NOT fall under this
+  rule — they have no algorithmic content to drift against.
+- *Rationale:*
+  - Drift found at stage 7 is cheaper to triage if stages 1–6
+    are each known-clean against the legacy. Drift surfacing
+    only at the end of a 7-stage pipeline is extremely hard to
+    localize without per-stage parity anchors.
+  - Thin-slicing breaks this auditability: if stages 1–3 land
+    first without parity, later stages that depend on their
+    outputs can't be verified independently of whatever drift
+    was absorbed into the early stages. The per-stage parity
+    model only works if it's adopted from the first commit.
+  - The existing Phase-13-pattern precedent (vendored helpers +
+    intentional-divergence documentation + regression guards
+    per divergence) is the standing convention for every port
+    with a legacy reference; this principle makes it explicit
+    for Phase 7a's specific shape.
+  - No development-velocity cost for this wrap: MICROSCOPE is
+    already required for baseline-seeding per §3.1, so the
+    parity data is obtainable at the same moment the animals.yaml
+    seeding happens. The rule does not require a second trip.
+- *Enforced at:*
+  - `docs/phase-7/interpolation-strategy.md` §6 — parity-session
+    list (9 primary + 3 stress-test + 2 post-stroke) is the
+    parity scope for 7a.
+  - `docs/prompts/phase-7-dlc-kinematics-kickoff.md` — Phase 7
+    implementation PR must include a per-stage drift table in
+    its MIGRATION_LOG entry.
+  - Generalizes to any future kinematics / DLC / spout port with
+    a legacy notebook or `session_processing3` reference.
+    Deliberately NOT auto-enforced in code; this is a
+    workflow/discipline rule that lives in the PR review + the
+    migration-log template.
+
+---
+
 ## 2026-04-22 — Cowork returns to Priya's Windows machine; two-tool workflow collapses to same-host
 
 - *Context:* On 2026-04-19 Cowork-on-Windows was declared permanently
