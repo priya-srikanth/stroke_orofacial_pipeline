@@ -310,3 +310,48 @@ class TestBuildRewardAlignedAnalysisRaisesOnEmptyDlc:
                 manifest, "tongue", "nose", "all", (-500, 5000),
                 resolver, spatial_config={}, reward_config={},
             )
+class TestBuildRewardAlignedAnalysisRaisesOnMissingPrerequisites:
+    """Phase 6.8a follow-up: the silent ``return None`` path for the
+    missing Phase 4 centered parquet now raises FileNotFoundError with
+    a message naming the exact missing upstream artefact, so runner
+    logs distinguish prerequisite-miss from other failure modes
+    instead of lumping every silent skip into a single ``n_err`` count.
+    The licks-NPZ and alignment-template paths share the raise pattern
+    and are pinned by the docstring + inline code; separate tests would
+    require monkeypatching past read_centered_parquet and
+    load_reward_events with no commensurate diagnostic value."""
+
+    def test_raises_when_centered_parquet_missing(self, tmp_path):
+        import datetime
+        from unittest.mock import MagicMock
+
+        from stroke_orofacial.dlc_spatial.reward_aligned import (
+            build_reward_aligned_analysis,
+        )
+        from stroke_orofacial.manifest import SessionManifest
+        from stroke_orofacial.paths import PathResolver
+
+        # Touch a fake DLC h5 so dlc_h5_files[0] resolves. The parquet
+        # existence check fires before any read, so file contents are
+        # immaterial.
+        dlc_dir = tmp_path / "dlc_fake"
+        dlc_dir.mkdir()
+        fake_h5 = dlc_dir / "PS46_20250101_cam2DLC.h5"
+        fake_h5.write_bytes(b"")
+
+        resolver = MagicMock(spec=PathResolver)
+        resolver.pipeline_outputs.return_value = tmp_path
+        manifest = SessionManifest(
+            session_id="PS46_20250101",
+            animal="PS46",
+            date=datetime.date(2025, 1, 1),
+            day_relative_to_stroke=-71,
+            phase="baseline",
+            dlc_h5_files=[fake_h5],
+            dlc_csv_files=[],
+        )
+        with pytest.raises(FileNotFoundError, match="Phase 4 centered parquet"):
+            build_reward_aligned_analysis(
+                manifest, "tongue", "nose", "all", (-500, 5000),
+                resolver, spatial_config={}, reward_config={},
+            )

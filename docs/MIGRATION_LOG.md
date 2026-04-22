@@ -2439,7 +2439,9 @@ the first-time Phase 6 NPZ emit procedure (notebook 12 under
 `OVERWRITE="force"` then the health-report script). Existing §4
 procedure for Phase 2 re-emit is unchanged.
 
-**PR / tag:** target `v6.8a-phase-5-6-trial-group-translation`.
+**PR / tag:** merged via PR #62 (squash); tagged
+`v6.8a-phase-5-6-trial-group-translation` on the merge commit. Feature
+branch preserved on origin per CLAUDE.md §8.
 
 ---
 
@@ -2598,3 +2600,92 @@ docs-only.
 - [x] Tongue cell 53 scope question resolved (→ 7c).
 - [x] PR #60 merged to main, tagged `v7.0b-cell-classification`, feature
       branch preserved on origin.
+
+---
+
+## Phase 6.8a.1 — Distinct FileNotFoundError on prerequisite miss in `build_reward_aligned_analysis`
+
+**Date:** 2026-04-21.
+
+**Context:** Phase 6.8a's first cohort re-emit surfaced a diagnostic
+mystery: Windows Claude Code's runner reported 264 DLC-carrying
+manifests × 54 (bodypart, center_mode, window) combinations =
+14,256 potential reward-aligned builds, but only 1 call succeeded. The
+existing code swallowed four distinct prerequisite-miss conditions
+behind a single `FileNotFoundError` whose message pointed at whichever
+path the OS happened to stat first — a centered-parquet miss, a licks
+NPZ miss, an alignment-template miss, and an empty-DLC-files condition
+all surfaced as indistinguishable "file not found" errors with no way
+to tell which upstream stage had not yet emitted. Priya surfaced this
+during the 14,202-failure triage: "the error text doesn't say what was
+missing."
+
+**Root cause:** `src/stroke_orofacial/dlc_spatial/reward_aligned.py::
+build_reward_aligned_analysis` had three silent `return None` branches
+(centered parquet missing, licks NPZ missing, alignment template
+missing) plus one `raise FileNotFoundError` for empty `dlc_h5_files`
+plus one `return None` for zero rewards of a given `trial_group`. All
+three silent-return paths collapsed into the same "data not ready yet"
+signal at the caller, and the one raise-path surfaced with a generic
+OS-level message once a later `np.load()` hit a missing upstream file.
+Callers could not distinguish "Phase 4 hasn't centered this session
+yet" from "Phase 2 didn't emit licks" from "alignment templates never
+built" from "this trial_group has no rewards."
+
+**What was done:** Converted three of the four prerequisite-miss paths
+from silent `return None` to explicit `raise FileNotFoundError` with
+artefact-specific messages naming (a) the missing artefact, (b) the
+upstream phase that should have produced it, (c) the script to run to
+produce it. Kept the zero-rewards path as `return None` — that is a
+valid-but-empty data condition, not a missing-prerequisite condition.
+Docstring `Returns` + `Raises` blocks updated to reflect the new
+contract. New test class `TestBuildRewardAlignedAnalysisRaisesOnMissingPrerequisites`
+in `tests/test_reward_aligned.py` (scoped to the centered-parquet
+path; licks + alignment paths left uncovered by scope decision —
+identical shape, adding them would triple fixture complexity for
+marginal coverage gain).
+
+**What stayed the same:**
+- Zero-rewards path still returns `None` (distinct from a missing-
+  prerequisite condition — tested trial_group had no rewards this
+  session, legitimately-empty data).
+- Callers that already catch `FileNotFoundError` (notebook 12 runner,
+  health-report script) get richer error messages without code
+  changes — they were catching the generic exception anyway.
+- No array outputs changed; this is a pure error-message refactor.
+
+**Intentional behavior differences vs. legacy notebooks:** None — the
+legacy reward-aligned notebook (cell 16 of `20260323_DLC_build-parquet_
+reward-aligned_tongue_jaw.ipynb`) has no equivalent orchestrator; it
+raises naked Python errors at whichever line first touches a missing
+file. The new distinct-error pattern is a repo-level improvement with
+no legacy reference to diverge from.
+
+**Verification:**
+- Full pytest green on Mac (no new failures; 1 new test passing).
+- `pytest --collect-only` clean — no silent collection failures.
+- `ruff check` clean.
+- Cross-platform merge path: PR opened on Mac (PR #64, squash-merged
+  as commit `00ab3b7`); tag `v6.8a.1-distinct-prereq-errors`
+  annotated on the squash-merge commit (`a1844b1`) and pushed to
+  origin. Feature branch preserved per CLAUDE.md §8.
+
+**Sequencing note:** PR #64 was merged ahead of Windows's in-progress
+Phase 6.8a cohort emit so the emit would carry the distinct-error
+contract. Windows CC's notebook 12 runner picked up the fix via a
+`git merge origin/main` before the Phase 6.8a emit step (Step 0 of
+`docs/runbooks/reemit-phase-5-6-after-lr-fix.md` §8 prompt). This is
+an intentional Path B (PR-before-emit) over Path A (emit-then-PR):
+the 14,202-failure triage *is* the thing this PR was meant to make
+diagnosable, so running the cohort with the old misleading-error
+contract would have wasted the diagnostic opportunity.
+
+**PR / tag:** merged via PR #64 (squash, `00ab3b7`); tagged
+`v6.8a.1-distinct-prereq-errors` on the squash-merge commit
+(`a1844b1`). Feature branch preserved on origin.
+
+**Follow-up deferred:** A post-cohort health-report entry summarizing
+the 264-vs-1 root-cause breakdown (how many of the 14,202 failures
+were centered-parquet misses vs. licks NPZ misses vs. alignment
+misses vs. zero-rewards) lands here once the Windows cohort completes
+under the new distinct-error contract.
