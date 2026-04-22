@@ -199,9 +199,36 @@ assert "side_convention_version" in d.files
 assert "wavesurfer_sides_match_mouse_sides" in d.files
 ```
 
-### 8.2 Run notebook 12
+**Phase 4 centered parquets must also exist** for every (animal, date,
+center_mode) the notebook will analyze. Phase 6 reads
+`dlc_analysis/centered_{center_mode}/{animal}/<h5>.intermediate.<sig>.parquet`
+and silently skips sessions where that file is missing (see §8.4).
+Inventory what's present on the current filesystem:
 
-Open `notebooks/12_dlc_spatial_reward_aligned.ipynb`, set `ANIMALS` /
+```bash
+python -c "
+from pathlib import Path
+from stroke_orofacial.animals import load_animals
+from stroke_orofacial.paths import PathResolver
+r = PathResolver()
+root = r.pipeline_outputs('dlc_analysis')
+for animal in load_animals():
+    for mode in ['nose','spout_midpoint','eye_midpoint']:
+        d = root/f'centered_{mode}'/animal
+        n = len(list(d.glob('*.parquet'))) if d.exists() else 0
+        print(f'{animal}/{mode}: {n} parquets')
+"
+```
+
+If counts are well below the cohort size, run Phase 4 first via either
+`notebooks/10_dlc_build_parquets.ipynb` (interactive) or
+`scripts/run_notebook_10_phase_4_centering.py` (unattended — the
+right choice for headless machines).
+
+### 8.2 Run notebook 12 (or its runner script)
+
+**Option A — interactive (notebook).** Open
+`notebooks/12_dlc_spatial_reward_aligned.ipynb`, set `ANIMALS` /
 `DATES` / `OVERWRITE` per your needs, and run all cells. The default
 `OVERWRITE = "skip"` will emit NPZs for sessions whose `heatmap_*.png`
 is absent; set to `"force"` to (re-)emit the PNG + NPZ pair
@@ -209,6 +236,20 @@ everywhere. For a partial re-emit (only missing NPZs where PNG
 already exists), you currently need `OVERWRITE="force"`; a future
 refinement could add `"skip-if-npz-exists"` but is out of scope for
 6.8a.
+
+**Option B — unattended (runner script).** For cohort-scale emits on
+a headless machine, use the standalone runner that replicates the
+notebook's cell-3/cell-4 orchestration:
+
+```bash
+python scripts/run_notebook_12_first_emit.py --overwrite force --verbose
+```
+
+Flags: `--animals`, `--dates YYYYMMDD`, `--bodyparts`, `--center-modes`,
+`--trial-groups`, `--reward-windows-ms=-500,5000` (the `=` form is
+required because the leading minus would otherwise be parsed as a
+flag). Writes to the same output tree as the notebook — they're
+interchangeable.
 
 **Expected output tree:**
 
@@ -244,7 +285,34 @@ starting Phase 7. Typical failure modes:
   (e.g. a re-emit landed between notebook-12 sub-runs). Re-run
   notebook 12 under `OVERWRITE="force"` for the affected bundle.
 
-## 8. Troubleshooting
+### 8.4 Reading the runner's `n_err` tally
+
+`run_notebook_12_first_emit.py` (and notebook 12 cell 4) count four
+distinct failure modes into one `n_err` bucket. Only the first mode
+emits a log warning; the other three `return None` silently from
+`build_reward_aligned_analysis` and the runner just tallies them.
+When diagnosing why `n_err` is higher than expected, check each in
+turn:
+
+1. *"manifest.dlc_h5_files is empty"* — upstream DLC inference has
+   not been run for this (animal, date), or the DLC output mount
+   isn't visible from this machine. Only this mode logs as a warning.
+2. *Centered parquet missing* (silent) — Phase 4 has not been run
+   for this (animal, date, center_mode). The per-animal inventory in
+   §8.1 diagnoses this. Fix by running
+   `scripts/run_notebook_10_phase_4_centering.py`.
+3. *Phase 2 licks NPZ missing* (silent) — Phase 2 has not been
+   re-emitted for this session. Re-run §4.
+4. *Zero rewards for the requested trial_group* (silent) — session
+   genuinely has no L-side or R-side rewards (or no rewards at all
+   for `trial_group="all"`). Expected for some sessions; not a bug.
+
+A follow-up refactor will replace the silent `return None` paths
+with distinct `FileNotFoundError` messages so the runner can tally
+each mode separately; until then, the inventory from §8.1 is the
+cheapest way to disambiguate #2 from #3.
+
+## 9. Troubleshooting
 
 ### `wavesurfer_sides_match_mouse_sides must be bool` on load
 
