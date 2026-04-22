@@ -132,6 +132,16 @@ PR #79's baseline-seed probe and scipy-version pilot findings.
     per `interpolation-strategy.md` §6 stress set) is deferred to
     7a.1 — not required for this DECISIONS entry but should land
     alongside the 7a.1 parity harness as a second datapoint.
+    - **Update 2026-04-22 (Phase 7a.1):** Second-session stress pilot
+      on PS51/20250430 tongue run as part of 7a.1. Result: max|Δ|=0.0
+      on both x and y across 906,310 common non-NaN frames; NaN masks
+      identical (44,523 boundary NaNs per axis on both scipy versions).
+      Session stress profile: 99.88% NaN-in x/y (vs. 89.47% on pilot
+      #1 PS46/20250307). Caveat 1 is resolved; Option A now validated
+      on both a low-NaN session (PS46/20250307) and a high-NaN stress
+      session (PS51/20250430). No further scipy pilots required for 7a.
+      Full results: `docs/phase-7/scipy-pilot-results.md` §"Second-
+      session stress pilot — PS51/20250430 tongue".
   - Pilot tests PCHIP only (stage 4 of the 7-stage pipeline).
     Full 7-stage parity against the 14-session set is still the
     gating 7a.1 acceptance criterion per the parity-gate principle
