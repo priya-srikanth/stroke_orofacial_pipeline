@@ -1,12 +1,13 @@
 # Cowork Session State
 
-**Latest local refresh:** 2026-04-22 end-of-day — after PR #79 (Phase 7a.0
-legacy-probe + baseline-seed + scipy pilot) merged to `main`. Phase 7a.0
-is intentionally untagged (paste-in constraint — phase-close tagging
-resumes at 7a.1). Phase 7a.1 kickoff drafted and saved to
-`docs/prompts/phase-7a.1-kickoff.md`; ready for CC-in-VSCode execution.
-No active Cowork branch in flight — the `chore/external-bnpm-parity-disposition`
-docket item closed earlier today with PR #75 sequencing.
+**Latest local refresh:** 2026-04-23 mid-day — after PR #81 (Phase 7a.1
+kinematics_baselines seed + parity-harness scaffold + PS51/20250430 scipy
+stress pilot) merged to `main` as merge-commit `98e6ccd`, tagged
+`v7a.1-kinematics-baselines-parity-scaffold`. Phase 7a.0 (PR #79, legacy-
+probe + baseline-seed + scipy pilot) remains intentionally untagged per
+paste-in constraint; phase-close tagging resumed at 7a.1. Phase 7a.2
+kickoff drafted and saved to `docs/prompts/phase-7a.2-kickoff.md`; ready
+for CC-in-VSCode execution. No active Cowork branch in flight.
 
 This file is the single warm-start document for a new Cowork session. See the "Best warm-start prompt" section at the end of this file for the exact paste-in to use in a fresh Cowork chat.
 
@@ -33,30 +34,46 @@ A new Cowork session works through this in order before answering any substantiv
 
 ## Current state
 
-**As of:** 2026-04-22 (Phase 6.8a.3 notebook-12 save-loop skip-diagnostic split + task-runner pipefail fix merged as PR #68 merge-commit `5b20dd5`, tagged `v6.8a.3-notebook-12-skip-diagnostic`. The full Phase 6.8a arc — 6.8a → 6.8a.1 → 6.8a.2 → 6.8a.3 — is now closed on `main` with every sub-phase tagged. Phase 6.8a.2 unattended runners + runbook §8/§9 merged 2026-04-21 as PR #63 squash-commit `1f1b202`, tagged `v6.8a.2-unattended-runners`; cohort-first-emit-results docs merged same day as PR #66 onto main; Phase 6.8a.1 distinct-prereq-errors fix merged 2026-04-21 as PR #64, tagged `v6.8a.1-distinct-prereq-errors`; Phase 6.8a trial_group translation + first-emit NPZ writer merged 2026-04-21 as PR #62, tagged `v6.8a-phase-5-6-trial-group-translation`; Phase 7.0b cell-classification merged as PR #60, tagged `v7.0b-cell-classification`. Phase 6.8a cohort first emit completed on Windows CC under `feat/phase-6-8a-first-emit-runner` — 13,821 NPZs across 256 (animal, date) pairs, per-NPZ health check 13,821/13,821 pass, per-bundle health check 4,605/4,608 (99.93%), the 3 bundle failures at PS51/20250430 traced to benign "no qualifying tongue DLC frames in tight window" skip condition (the specific case v6.8a.3 was cut to make diagnosable). v6.8a.3 verification on PS51/20250430 reproduced the benign skip as the new `skip_no_frames=1` counter + matching `INFO: skip_no_frames` log line; pytest 464/34/0 post-change. Same-day follow-up PR #69 (`docs/v6.8a.3-migration-log-refresh`) merged as merge-commit `ecacec5` (feature commit `abf8be6`, merge-commit strategy per `gh pr merge` default) landing the Phase 6.8a.3 MIGRATION_LOG entry + state-doc refresh + two gotcha notes. This state-doc update is on a second docs-only follow-up branch (`docs/workflow-refresh-plus-task-18-closure`): flips Cowork-on-Windows status from NOT AVAILABLE → AVAILABLE (cleared server-side — Cowork now runs on Priya's Windows box alongside CC-in-VSCode on the same machine); rewrites the Two-tool workflow section for same-machine reality (advisor/executor shape retained, Mac-commit roundtrip eliminated, sandbox-git boundary rule made explicit after an empirical `git fetch`-from-sandbox HEAD-corruption incident); and retrocaptures task #18 (AnimalInfo cohort metadata — sex, date_of_birth, genotype, stroke_laser_power_mW fields + loader + `age_at_stroke` helper, populated for all 8 PS46–PS55 animals) as having shipped 2026-04-20 per Audit-10 Q7 resolution — the state-doc Pending queue had drifted and still listed it as unstarted. **2026-04-22 end-of-day wrap — three phase-close merges landed after that refresh:** PR #73 (Phase 8a.8 recovery-trajectory visualization helpers, tag `v8a.8-spout-recovery-trajectories`); PR #74 (Phase 7a interpolation design brief `docs/phase-7/interpolation-strategy.md` — 8 knob decisions closed in §10, §6 parity scope locked at 14 sessions, §3.1 framed as faithful port of manual baseline-editing protocol, tag `v7a-design-brief`); PR #75 (Phase 7-pre `AnimalInfo.exclusions.applies_to` schema extension — dotted-hierarchical namespaced tags replacing `[all]` sentinel, `analysis_context` taxonomy `spout_behavior` / `alignment` / `dlc.io` / `dlc.spatial` / `dlc.kinematics.{tongue,jaw,whisker,face_velocity,psd}`, 4 legacy `[all]` exclusions migrated to `[dlc, spout_behavior]`, PS51 2025-05-17 added as `[dlc, alignment]`, tag `v7-pre-exclusions-schema`). Main at `873f3d3` after the PR #75 merge. Next phase is Phase 7a implementation (gated on MICROSCOPE access for baseline-seeding from legacy NPZ `X0`/`Y0` keys AND per-stage parity verification required by the 2026-04-22 "no algorithm lands without MICROSCOPE parity" DECISIONS entry). See the 2026-04-22 end-of-day entry in "Recent session log" below and the three 2026-04-22 DECISIONS entries (namespaced-tag schema; 7a brief §10 lock-in; parity-gate principle) for full context.)
+**As of:** 2026-04-22 (Phase 6.8a.3 notebook-12 save-loop skip-diagnostic split + task-runner pipefail fix merged as PR #68 merge-commit `5b20dd5`, tagged `v6.8a.3-notebook-12-skip-diagnostic`. The full Phase 6.8a arc — 6.8a → 6.8a.1 → 6.8a.2 → 6.8a.3 — is now closed on `main` with every sub-phase tagged. Phase 6.8a.2 unattended runners + runbook §8/§9 merged 2026-04-21 as PR #63 squash-commit `1f1b202`, tagged `v6.8a.2-unattended-runners`; cohort-first-emit-results docs merged same day as PR #66 onto main; Phase 6.8a.1 distinct-prereq-errors fix merged 2026-04-21 as PR #64, tagged `v6.8a.1-distinct-prereq-errors`; Phase 6.8a trial_group translation + first-emit NPZ writer merged 2026-04-21 as PR #62, tagged `v6.8a-phase-5-6-trial-group-translation`; Phase 7.0b cell-classification merged as PR #60, tagged `v7.0b-cell-classification`. Phase 6.8a cohort first emit completed on Windows CC under `feat/phase-6-8a-first-emit-runner` — 13,821 NPZs across 256 (animal, date) pairs, per-NPZ health check 13,821/13,821 pass, per-bundle health check 4,605/4,608 (99.93%), the 3 bundle failures at PS51/20250430 traced to benign "no qualifying tongue DLC frames in tight window" skip condition (the specific case v6.8a.3 was cut to make diagnosable). v6.8a.3 verification on PS51/20250430 reproduced the benign skip as the new `skip_no_frames=1` counter + matching `INFO: skip_no_frames` log line; pytest 464/34/0 post-change. Same-day follow-up PR #69 (`docs/v6.8a.3-migration-log-refresh`) merged as merge-commit `ecacec5` (feature commit `abf8be6`, merge-commit strategy per `gh pr merge` default) landing the Phase 6.8a.3 MIGRATION_LOG entry + state-doc refresh + two gotcha notes. This state-doc update is on a second docs-only follow-up branch (`docs/workflow-refresh-plus-task-18-closure`): flips Cowork-on-Windows status from NOT AVAILABLE → AVAILABLE (cleared server-side — Cowork now runs on Priya's Windows box alongside CC-in-VSCode on the same machine); rewrites the Two-tool workflow section for same-machine reality (advisor/executor shape retained, Mac-commit roundtrip eliminated, sandbox-git boundary rule made explicit after an empirical `git fetch`-from-sandbox HEAD-corruption incident); and retrocaptures task #18 (AnimalInfo cohort metadata — sex, date_of_birth, genotype, stroke_laser_power_mW fields + loader + `age_at_stroke` helper, populated for all 8 PS46–PS55 animals) as having shipped 2026-04-20 per Audit-10 Q7 resolution — the state-doc Pending queue had drifted and still listed it as unstarted. **2026-04-22 end-of-day wrap — three phase-close merges landed after that refresh:** PR #73 (Phase 8a.8 recovery-trajectory visualization helpers, tag `v8a.8-spout-recovery-trajectories`); PR #74 (Phase 7a interpolation design brief `docs/phase-7/interpolation-strategy.md` — 8 knob decisions closed in §10, §6 parity scope locked at 14 sessions, §3.1 framed as faithful port of manual baseline-editing protocol, tag `v7a-design-brief`); PR #75 (Phase 7-pre `AnimalInfo.exclusions.applies_to` schema extension — dotted-hierarchical namespaced tags replacing `[all]` sentinel, `analysis_context` taxonomy `spout_behavior` / `alignment` / `dlc.io` / `dlc.spatial` / `dlc.kinematics.{tongue,jaw,whisker,face_velocity,psd}`, 4 legacy `[all]` exclusions migrated to `[dlc, spout_behavior]`, PS51 2025-05-17 added as `[dlc, alignment]`, tag `v7-pre-exclusions-schema`). Main at `873f3d3` after the PR #75 merge. Next phase is Phase 7a implementation (gated on MICROSCOPE access for baseline-seeding from legacy NPZ `X0`/`Y0` keys AND per-stage parity verification required by the 2026-04-22 "no algorithm lands without MICROSCOPE parity" DECISIONS entry). See the 2026-04-22 end-of-day entry in "Recent session log" below and the three 2026-04-22 DECISIONS entries (namespaced-tag schema; 7a brief §10 lock-in; parity-gate principle) for full context. **2026-04-22 very-end-of-day → 2026-04-23 follow-on sequence:** PR #79 merged Phase 7a.0 (legacy-probe + baseline-seed + scipy pilot; intentionally untagged). Phase 7a.1 kickoff drafted 2026-04-22 end-of-day at `docs/prompts/phase-7a.1-kickoff.md` and executed on CC-in-VSCode; merged 2026-04-22 as PR #81 merge-commit `98e6ccd`, tagged `v7a.1-kinematics-baselines-parity-scaffold`. 7a.1 shipped: (A) `configs/animals.yaml kinematics_baselines:` seeded for all 8 PS46–PS55 animals × tongue+jaw from the Phase 7a.0 scope-filtered 16 STABLE seed table (tongue uniform x0=0.0/y0=-110.0; jaw varies — PS46–50 (0, 310), PS51/54 (12, 290), PS55 (0, 290)); (B) `AnimalInfo.kinematics_baselines: dict[str, dict[str, float]]` field + `get_kinematics_baseline(bodypart)` accessor + 6 new tests; (C) 14-session parity-harness scaffold at `tests/scripts/parity_phase7a_interpolation.py` (scope filter + legacy-NPZ loader + stubbed `_load_consolidated_trace` for 7a.2; exit codes 0-4); (D) PS51/20250430 scipy stress pilot executed — bit-identical result matches PS46/20250307 pilot #1 (`max|Δ|=0.0` on 906,310 common non-NaN frames) confirming Option A on a 99.88%-NaN stress session. Phase 7a.2 kickoff drafted 2026-04-23 at `docs/prompts/phase-7a.2-kickoff.md`: port the 7-stage v5p3 algorithm (`xrange → thr → drop → interp → interp_filled → final`) from the vendored `tongue_cell23_interp_v5p3.py` + `jaw_cell22_interp_v5p3.py` into `src/stroke_orofacial/dlc_kinematics/interpolation.py`, emitting pure-bodypart parquet (Knob 5 Option A) + optional `.qc.npz` sidecar (Knob 1 split-emit), consuming per-animal per-bodypart baselines from the 7a.1-seeded YAML, and replacing the stub `_load_consolidated_trace` in the parity harness with the real reader. Target branch `phase/7a.2-interpolation-impl`; target tag `v7a.2-interpolation-impl`. MICROSCOPE access required for 7a.2 execution (per-stage parity verification on the 14-session set).)
 
 **Repo phase:** Phases 1–6 + 4.5-lite + 6.7 + 6.8 + 6.8a + 6.8a.1 + 6.8a.2 + 6.8a.3 + 7.0b + 13 + 8a.1–8a.7.5 + 8a.8 + 8a.9 + 7-pre delivered on `main`; Phase 7a design brief locked (`docs/phase-7/interpolation-strategy.md`, tag `v7a-design-brief`); no Phase-7a implementation PR yet (gated on MICROSCOPE-side parity verification per the 2026-04-22 parity-gate principle). Task #17 closed the last cross-cutting convention decision blocking Phase 7 (DLC kinematics): NPZ / JSON / parquet side-keys now emit in mouse frame with version+flag stamps. Phase 6.8a threaded the convention through the reward-aligned writer and opened first-time Phase 6 NPZ emits for programmatic drift measurement. Phase 6.8a.1 refactored `build_reward_aligned_analysis` prerequisite-miss paths from silent `return None` to distinct `FileNotFoundError` so the cohort's 14,202-failure triage is diagnosable. Phase 6.8a.2 added unattended-runner scripts (`run_notebook_10_phase_4_centering.py`, `run_notebook_12_first_emit.py`) + runbook §8 / §9 for cohort-scale headless emits; validated end-to-end by the 2026-04-21 first emit (13,821 NPZs, 99.93% bundle pass). Phase 6.8a.3 closed out the diagnostic-gap carve-out from that first emit: notebook 12 + runner save-loop split the conflated `n_err` bucket into `n_skip_no_rewards` + `n_skip_no_frames` with distinct log lines, `scripts/task_runner_wrapper.sh` committed with `set -o pipefail` to defeat the `| tail -80` exit-code masking bug, runbook §8.4 refreshed to the current 6-bucket layout. Latest tags: `v6.7-session-manifest-refactor`, `v6.8-wavesurfer-side-convention`, `v6.8a-phase-5-6-trial-group-translation`, `v6.8a.1-distinct-prereq-errors`, `v6.8a.2-unattended-runners`, `v6.8a.3-notebook-12-skip-diagnostic`, `v7.0b-cell-classification`, `v8a.7-spout-endpoints-json-writer`, `v8a.7.5-criteria-hierarchy-port`, `v8a.8-spout-recovery-trajectories`, `v7a-design-brief`, `v7-pre-exclusions-schema` (per the 2026-04-21 tag-convention-Path-A decision — every phase-close merge gets a tag, including letter-suffix atomic fixes and docs-only design-brief merges).
 
-**Current branch:** `main` (no active feature branch in flight at Cowork
-end-of-day). The `chore/external-bnpm-parity-disposition` scratch-script
-disposition docket closed earlier today. Phase 7a.0 legacy-probe + baseline-
-seed + scipy pilot merged as PR #79 (intentionally untagged per paste-in
-constraint — phase-close tagging resumes at 7a.1). Phase 7a.1 kickoff
-doc drafted and saved to `docs/prompts/phase-7a.1-kickoff.md`; CC-in-VSCode
+**Current branch:** `main` (no active feature branch in flight). Phase 7a.0
+merged as PR #79 (intentionally untagged per paste-in constraint). Phase
+7a.1 merged as PR #81 merge-commit `98e6ccd`, tagged
+`v7a.1-kinematics-baselines-parity-scaffold`. Phase 7a.2 kickoff doc
+drafted and saved to `docs/prompts/phase-7a.2-kickoff.md`; CC-in-VSCode
 paste-in prompt ready.
 
 **In flight:**
 
-Phase 7a.1 (combined A+B scope) — kickoff doc drafted, awaiting CC-in-VSCode
-execution. Scope: (A) `configs/animals.yaml kinematics_baselines:` seeding
-from the Phase 7a.0 scope-filtered seed table + `AnimalInfo` extension +
-`get_kinematics_baseline()` accessor + tests; (B) 14-session parity-harness
-scaffold at `tests/scripts/parity_phase7a_interpolation.py` (scope filter
-+ legacy-NPZ loader + stubbed consolidated loader, implementation deferred
-to 7a.2) + PS51/20250430 scipy stress pilot (second-session confirmation of
-2026-04-22 DECISIONS Option A). Target branch: `phase/7a.1-kinematics-
-baselines-parity-scaffold`. Target tag (post-merge): `v7a.1-kinematics-
-baselines-parity-scaffold`.
+Phase 7a.2 — interpolation.py implementation — kickoff doc drafted, awaiting
+CC-in-VSCode execution. Scope: port the 7-stage v5p3 algorithm (`xrange →
+thr → drop → interp → interp_filled → final`) from the vendored
+`tongue_cell23_interp_v5p3.py` + `jaw_cell22_interp_v5p3.py` into a new
+`src/stroke_orofacial/dlc_kinematics/interpolation.py`. Task 1: bodypart-
+parametric constants block in `configs/defaults.yaml` under
+`dlc_kinematics.<bodypart>:` (per interpolation-strategy §7) +
+`PathResolver.interpolated_trace(bodypart, animal, date, *, variant)`
+helper with `parquet` and `qc_npz` variants. Task 2: the module itself —
+`InterpolationResult` dataclass, private `_stage_*` helpers, baseline
+computation helpers, pure `_interpolate_bodypart_core`,
+`build_interpolated_trace` session writer emitting canonical pure-bodypart
+parquet (Knob 5 Option A — 7 columns + 10 file-level metadata keys) +
+optional `.qc.npz` sidecar (Knob 1 split-emit), and
+`build_interpolated_trace_by_animal_date` convenience wrapper. Task 3: 14
+unit tests per strategy §8. Task 4: replace the stubbed
+`_load_consolidated_trace` in the 7a.1 parity harness with the real reader;
+smoke on PS50/20250306 (NOT in the parity set); `--sessions auto` parity
+run against the 14-session set expecting exit 0, `max|Δ|=0.0`. Task 5:
+DECISIONS entry codifying Knobs 1-4 + §5 Option A + §3.1; MIGRATION_LOG
+7a.2 entry. Task 6: PR + post-merge tag. Target branch:
+`phase/7a.2-interpolation-impl`. Target tag (post-merge):
+`v7a.2-interpolation-impl`. **Gated on MICROSCOPE access** — the parity
+harness in Task 4 reads legacy NPZs from the MICROSCOPE UNC path on the
+14-session set; can be run either on CC-Mac with SMB mount or on
+CC-in-VSCode-Windows with the mapped drive. No MICROSCOPE writes;
+read-only NPZ loads only.
 
 **Deferred / carry-forward housekeeping:** Remaining safe parallel docket:
 Phase 5.5 polish docs, cohort-wide Phase 5 rerun planning, Phase 6
@@ -69,18 +86,94 @@ handling (only if explicitly coordinated with Phase 7 I/O work).
 - Windows pytest (last full-suite measurement in the 8a.7.5 session): 361 pass / 28 skip / 0 fail. Phase 8a.7.5 merge added +20 criteria tests + 6 writer-schema tests. Not yet re-measured post-merge or post-clamp-fix; worth a non-blocking re-run at quiet moment to confirm the clamp-fix PR didn't introduce Windows-specific drift (not expected — the fix is pure numpy arithmetic).
 - Pre-existing ruff warnings: 8 unused-import errors carried forward from before 8a (noted in prior Claude Code session summaries). Backlog item; not blocking.
 
-**Next-phase candidates** (in rough priority order, post-2026-04-22 end-of-day):
+**Next-phase candidates** (in rough priority order, post-2026-04-23 7a.1 merge):
 
-1. **Phase 7a.1 — kinematics_baselines seed + parity harness + scipy stress pilot.** Kickoff drafted at `docs/prompts/phase-7a.1-kickoff.md`. One-line CC invocation: `Read docs/prompts/phase-7a.1-kickoff.md and follow the instructions in full.` Baseline-seeding gate (Phase 7a §3.1) is CLEARED — Phase 7a.0 scope-filtered re-analysis produced 16 STABLE / 0 NHD seed values (`docs/phase-7/baseline-seed-table.md`). Parity-gate principle still holds — per-stage parity on the 14-session set lands in 7a.2 (interpolation.py implementation). 7a.1 itself is mostly config + scaffold + stress pilot, so it is ungated against MICROSCOPE write access (read-only NPZ loads only, for the stress pilot).
-2. **Phase 7a.2 — `interpolation.py` implementation.** Port the 7-stage v5p3 algorithm (`xrange → thr → drop → interp → interp_filled → final`) from the vendored `tongue_cell23_interp_v5p3.py` + `jaw_cell22_interp_v5p3.py` into `src/stroke_orofacial/dlc_kinematics/interpolation.py` (or sibling). Emit pure-bodypart parquet (Knob 5 Option A) + optional `.qc.npz` sidecar (Knob 1 split-emit), consume per-animal per-bodypart baselines from `configs/animals.yaml` (seeded in 7a.1). Gated on 7a.1 landing (needs the `kinematics_baselines:` YAML + `AnimalInfo` accessor + parity harness plugged in).
-3. **#16 — Phase 5.5 polish** (SSH helper, recovery docs, ControlMaster, auto-rename, unified SVG save, DTW per-edge-shift QC plot). **Ungated** — does not require MICROSCOPE and has no upstream dependencies. Best parallel candidate.
-4. **PS48 2025-03-14 multi-half acquisition port** (task #18-adjacent, in the Pending queue below). Ungated except for code-write effort; can be scoped into Phase 7a.2 kickoff or cut as its own mini-phase.
+1. **Phase 7a.2 — `interpolation.py` implementation.** Kickoff drafted at `docs/prompts/phase-7a.2-kickoff.md`. One-line CC invocation: `Read docs/prompts/phase-7a.2-kickoff.md and follow the instructions in full.` Port the 7-stage v5p3 algorithm (`xrange → thr → drop → interp → interp_filled → final`) from the vendored `tongue_cell23_interp_v5p3.py` + `jaw_cell22_interp_v5p3.py` into `src/stroke_orofacial/dlc_kinematics/interpolation.py`. Emits pure-bodypart parquet (Knob 5 Option A) + optional `.qc.npz` sidecar (Knob 1 split-emit), consumes per-animal per-bodypart baselines from `configs/animals.yaml` (seeded in 7a.1). Replaces the stubbed `_load_consolidated_trace` in `tests/scripts/parity_phase7a_interpolation.py` with the real reader and exercises the full 14-session parity set at `atol=1e-6`. **Gated on MICROSCOPE read access** (per-stage parity verification against legacy NPZs). Top candidate.
+2. **#16 — Phase 5.5 polish** (SSH helper, recovery docs, ControlMaster, auto-rename, unified SVG save, DTW per-edge-shift QC plot). **Ungated** — does not require MICROSCOPE and has no upstream dependencies. Best parallel candidate if MICROSCOPE is unreachable.
+3. **PS48 2025-03-14 multi-half acquisition port** (task #18-adjacent, in the Pending queue below). Ungated except for code-write effort; can be scoped into Phase 7a.2 kickoff or cut as its own mini-phase.
 
 **Deferred follow-ups still pending (from earlier sessions):**
 
 - **Cohort-wide Phase 5 re-run** (after the Phase 4.5-lite eye-midpoint centering landed — affects eye-centered outputs). Not yet scheduled; ask Priya whether to batch with 8a.8.
 - **Phase 6 reward-aligned live-data re-test** with the new 4.5-lite-aware pipeline. Same category.
 - **Windows housekeeping** (from Phase 13): stale admin-owned `C:\Users\sabatini\AppData\Local\Temp\pytest-of-sabatini\` + `.pytest_cache\` directories — only if a future pytest run actually hits `WinError 5` again.
+
+**Recent session log — 2026-04-23 (Phase 7a.1 merged; Phase 7a.2 kickoff drafted):**
+
+- **PR #81 merged** on branch `phase/7a.1-kinematics-baselines-parity-scaffold`
+  as merge-commit `98e6ccd`. Phase 7a.1 close — tagged
+  `v7a.1-kinematics-baselines-parity-scaffold` on the merge commit and
+  pushed to origin. Scope executed in full against the kickoff doc:
+  (A) `configs/animals.yaml` gained a `kinematics_baselines:` block for
+  all 8 PS46–PS55 animals with `tongue: {x0, y0}` + `jaw: {x0, y0}`
+  subkeys seeded from the Phase 7a.0 scope-filtered 16-STABLE table
+  (tongue uniform x0=0.0/y0=-110.0; jaw varies per the seed table — PS46–
+  50 (0, 310), PS51/54 (12, 290), PS55 (0, 290)). `AnimalInfo` dataclass
+  gained a `kinematics_baselines: dict[str, dict[str, float]]` field
+  (default `{}`) + `get_kinematics_baseline(bodypart: str) -> dict[str,
+  float]` accessor with `KeyError` on missing-bodypart. Loader parses the
+  new YAML block and validates presence/type of `x0`/`y0` floats. 6 new
+  unit tests in `tests/test_animals.py` covering seed-value round-trip,
+  accessor success+failure paths, and loader type-validation.
+  (B) New `tests/scripts/parity_phase7a_interpolation.py` parity-harness
+  scaffold — scope-filter (`configs/animals.yaml sessions.{start,end}`
+  window), legacy-NPZ loader (`O2_analysis/<animal>/<animal>_<bodypart>_
+  kinematics/.../*_interp_v5p3.npz`), 14-session list (9 primary + 3
+  stress + 2 late-post-stroke; PS54/20250512 MICROSCOPE gap tolerated via
+  graceful skip), stubbed `_load_consolidated_trace` that raises
+  `NotImplementedError("deferred to 7a.2")`, exit codes 0=all-match, 1=
+  mismatch, 2=missing-inputs, 3=NaN-boundary-divergence, 4=setup-error.
+  `ATOL=1e-6` per interpolation-strategy §6. Harness runs to exit 2 with
+  stub (expected; proves scope-filter + loader + session-list plumbing is
+  correct end-to-end).
+  (C) PS51/20250430 scipy stress pilot executed via the existing
+  `tests/scripts/scipy_version_pilot.py`. Reproduced the 2026-04-22
+  PS46/20250307 pilot #1 result exactly in form: **bit-identical
+  1.15.1 vs 1.17.1 output on 906,310 common non-NaN frames**
+  (`max|Δ|=0.0` on x and y; 44,523 NaN-boundary frames agree on both
+  envs). 99.88% NaN-in fraction (vs pilot #1's 89.47%) — the intended
+  stress condition per interpolation-strategy §6 low-licking set.
+  Results appended to `docs/phase-7/scipy-pilot-results.md` under a new
+  "Second-session stress pilot" section; DECISIONS 2026-04-22 Option A
+  caveat 1 ("single-session pilot") stamped as resolved.
+  Full suite pytest post-change: green (new tests +6 in test_animals.py,
+  ruff clean). MIGRATION_LOG entry "Phase 7a.1 — kinematics_baselines
+  seed + parity-harness scaffold + PS51 scipy stress pilot" appended
+  with all three (A)(B)(C) deliverables and the resolved Option A
+  caveat-1 note.
+- **Phase 7a.2 kickoff drafted** at `docs/prompts/phase-7a.2-kickoff.md`
+  — mirrors the 7a.1 kickoff structure (Context → Plan shape → Execute
+  on branch → Preflight → Tasks with STOP-report gates → Constraints).
+  6 tasks: (1) `configs/defaults.yaml dlc_kinematics.<bodypart>:`
+  constants block per interpolation-strategy §7 + `PathResolver.
+  interpolated_trace(bodypart, animal, date, *, variant)` helper with
+  `parquet` and `qc_npz` variants + 3 new tests; (2) port the 7-stage
+  v5p3 algorithm into `src/stroke_orofacial/dlc_kinematics/
+  interpolation.py` — `InterpolationResult` dataclass, private `_stage_
+  xrange/thr/drop/interp/interp_filled/final` helpers, baseline
+  computation helpers (`_compute_reward_aligned_pool_mask`, `_compute_
+  baseline_forced`, `_compute_baseline_data_driven`), pure
+  `_interpolate_bodypart_core`, `build_interpolated_trace` session
+  writer (pure-bodypart parquet with 7 columns + 10 file-level
+  metadata keys + optional `.qc.npz` sidecar), `build_interpolated_
+  trace_by_animal_date` convenience wrapper; (3) 14 unit tests per
+  strategy §8 (stage-by-stage, baseline-source branching, interpolation-
+  version stamps, side-convention Option A parquet schema, etc.);
+  (4) replace stub `_load_consolidated_trace` in the 7a.1 parity
+  harness with the real reader + PS50/20250306 smoke (NOT in parity
+  set) + `--sessions auto` full 14-session parity (expect exit 0,
+  `max|Δ|=0.0`); (5) DECISIONS entry codifying Knobs 1-4 + §5 Option A +
+  §3.1 + MIGRATION_LOG 7a.2 entry; (6) PR + post-merge tag. Target
+  branch `phase/7a.2-interpolation-impl`; target tag
+  `v7a.2-interpolation-impl`. **Warm-start one-line prompt:**
+  `Read docs/prompts/phase-7a.2-kickoff.md and follow the instructions in full.`
+- **MICROSCOPE access gate** for 7a.2: Task 4 parity runs read legacy
+  NPZs from `\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya`
+  for the 14-session set. CC-in-VSCode on Windows picks this up via
+  the mapped drive; no MICROSCOPE writes at any point (read-only
+  NPZ loads only).
+
+---
 
 **Recent session log — 2026-04-22 very-end-of-day (Phase 7a.0 legacy-probe + baseline-seed + scipy pilot merged; Phase 7a.1 kickoff drafted):**
 
@@ -513,13 +606,17 @@ Whatever the server-side feature flag or staged-rollout gate was doing on 2026-0
 
 ## Best warm-start prompt (paste into a new Cowork chat)
 
-End of 2026-04-22 session: three phase-close merges landed — PR #73 (Phase 8a.8 recovery-trajectory visualization, tag `v8a.8-spout-recovery-trajectories`), PR #74 (Phase 7a interpolation design brief, tag `v7a-design-brief`), PR #75 (Phase 7-pre `AnimalInfo.exclusions.applies_to` schema, tag `v7-pre-exclusions-schema`). Main at `873f3d3`. Three new 2026-04-22 DECISIONS entries captured the namespaced-tag schema, the §10 design-brief canonicalization, and a new **parity-gate principle** (no kinematics algorithm lands without MICROSCOPE per-stage parity verification). Phase 7a implementation NOT started — it is hard-gated on MICROSCOPE access per the parity-gate principle. In flight: `chore/external-bnpm-parity-disposition` (CC-driven scratch-script disposition PR, docs + .gitignore only). This state-doc wrap is queued to land as `docs/wrap-up-2026-04-22-state-refresh` after that chore PR merges. Next-phase candidates in priority order: Phase 7a impl (MICROSCOPE-gated, top priority), Phase 5.5 polish (ungated fallback), PS48 2025-03-14 multi-half port (ungated).
+End of 2026-04-23 session: Phase 7a.1 merged as PR #81 merge-commit `98e6ccd`, tagged `v7a.1-kinematics-baselines-parity-scaffold`. Seeded `configs/animals.yaml kinematics_baselines:` for all 8 PS46–PS55 animals × tongue+jaw from the Phase 7a.0 scope-filtered 16 STABLE seed table; added `AnimalInfo.kinematics_baselines` field + `get_kinematics_baseline(bodypart)` accessor + 6 new tests; scaffolded 14-session parity harness at `tests/scripts/parity_phase7a_interpolation.py` (scope filter + legacy-NPZ loader + stubbed `_load_consolidated_trace` deferred to 7a.2); ran PS51/20250430 scipy stress pilot — bit-identical result matches pilot #1 (`max|Δ|=0.0` on 906,310 common non-NaN frames), resolves DECISIONS 2026-04-22 Option A caveat 1. Phase 7a.2 kickoff drafted at `docs/prompts/phase-7a.2-kickoff.md` — port the 7-stage v5p3 algorithm into `src/stroke_orofacial/dlc_kinematics/interpolation.py` with per-stage parity against the 14-session set at `atol=1e-6`. MICROSCOPE read access required for 7a.2 Task 4 parity runs. Next-phase candidates in priority order: Phase 7a.2 impl (MICROSCOPE-gated, top priority), Phase 5.5 polish (ungated fallback), PS48 2025-03-14 multi-half port (ungated).
 
 **Open Cowork prompt for a fresh session (Windows same-machine with CC-in-VSCode):**
 
-> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Three phase-close merges landed on 2026-04-22: PR #73 Phase 8a.8 (recovery trajectories), PR #74 Phase 7a design brief, PR #75 Phase 7-pre exclusions schema. Main at `873f3d3`. A new parity-gate principle (2026-04-22 DECISIONS entry) gates Phase 7a implementation on MICROSCOPE access. Ask me whether MICROSCOPE is mounted today — if yes, Phase 7a interpolation implementation per `docs/phase-7/interpolation-strategy.md` §10 is the top candidate; if no, Phase 5.5 polish (task #16) is the best ungated fallback. Also check whether the `chore/external-bnpm-parity-disposition` PR has merged yet, and whether the `docs/wrap-up-2026-04-22-state-refresh` docs-only PR has also landed — if either is still open, flag it before doing anything else.
+> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Phase 7a.1 merged 2026-04-22 as PR #81 merge-commit `98e6ccd`, tagged `v7a.1-kinematics-baselines-parity-scaffold`. `configs/animals.yaml` now carries seeded `kinematics_baselines:` for all 8 animals × tongue+jaw; PS51/20250430 scipy stress pilot confirmed Option A bit-identical result. Phase 7a.2 kickoff is drafted at `docs/prompts/phase-7a.2-kickoff.md` and ready to hand off to CC-in-VSCode for execution. Ask me whether MICROSCOPE is mounted today — if yes, hand off the one-line prompt below to CC-in-VSCode; if no, Phase 5.5 polish (task #16) is the best ungated fallback. Also verify there is no stale open PR before starting anything new.
 
-*(The v6.8a.3 Windows-CC kickoff prompt that lived here has been retired — that work shipped as PR #68 merge-commit `5b20dd5`, tagged `v6.8a.3-notebook-12-skip-diagnostic`. Phase 8a.8 now also shipped as PR #73, tagged `v8a.8-spout-recovery-trajectories`. Future Phase 7a implementation work should be scoped off `docs/phase-7/interpolation-strategy.md` §10 rather than a separate kickoff prompt — the design brief is the kickoff.)*
+**One-line CC-in-VSCode paste-in for Phase 7a.2:**
+
+> Read `docs/prompts/phase-7a.2-kickoff.md` and follow the instructions in full.
+
+*(The 7a.1 warm-start prompt that lived here has been retired — that work shipped as PR #81 merge-commit `98e6ccd`, tagged `v7a.1-kinematics-baselines-parity-scaffold`. The 2026-04-22 three-phase-close prompt was retired when PR #79 (Phase 7a.0) landed. The v6.8a.3 prompt was retired when PR #68 landed. Historical prompts are preserved in git history on their feature-branch commits if needed.)*
 
 ---
 
@@ -543,3 +640,5 @@ End of 2026-04-22 session: three phase-close merges landed — PR #73 (Phase 8a.
 - **2026-04-22 (docs-only, Phase 8a.9 rollup) — Legacy behavior-report walkthrough close-out indexed.** Added `docs/phase-8a/legacy-behavior-report-rollup.md` as a compact close-out for Audit Item 10 Q9 using `docs/PHASE_8A_LEGACY_ENDPOINT_MAPPING.md` as the evidence base. The rollup records canonical legacy sources, superseded source, Q9 endpoint dispositions, C1/C2/C3/C4 status, engagement-extra disposition, non-goals, and the limited parallel-work docket. No code, notebooks, configs, outputs, DECISIONS entry, source data, or legacy repos changed.
 - **2026-04-22 (workflow refresh + task #18 retrocapture — docs-only PR)** — Same-day follow-up to PR #69 (Phase 6.8a.3 MIGRATION_LOG entry). Cowork returned to Priya's Windows box; the 2026-04-19 "permanently deferred" status reversed without Priya filing a support ticket or changing anything local — whatever server-side feature flag / staged-rollout gate was blocking Windows Cowork cleared. Triggered three bookkeeping updates, all scoped to a single docs-only branch `docs/workflow-refresh-plus-task-18-closure`: (a) **Cowork-on-Windows status flipped** NOT AVAILABLE → AVAILABLE with the 2026-04-19 troubleshooting preserved verbatim as "how it got fixed" history in case of regression; (b) **Two-tool workflow section rewritten** for same-machine reality — Cowork's Linux sandbox now mounts the Windows repo directly so files Cowork writes are immediately visible to CC-in-VSCode with no Mac→origin→pull roundtrip — but the **sandbox-git boundary rule** is now hard-stated after an empirical `git fetch`-from-sandbox incident on 2026-04-22 truncated `.git/HEAD` (`ref: refs/heads/docs/v6.8a.3-migration-log-refresh` → `ref: refs/heads/docs/`), with the one-line recovery (`git symbolic-ref HEAD refs/heads/main` from CC terminal) documented inline; (c) **Task #18 retrocapture** (AnimalInfo cohort metadata: `sex`, `date_of_birth`, `genotype`, `stroke_laser_power_mW` fields + loader + `age_at_stroke` helper, populated for all 8 PS46–PS55 animals) — verified shipped 2026-04-20 per `configs/animals.yaml` header dated 2026-04-20 citing Audit-10 Q7 + `src/stroke_orofacial/animals.py` AnimalInfo dataclass field defs (lines 130–133) + loader (lines 243–276) + `age_at_stroke` helper (lines 173–184), but the state-doc Pending queue and Next-phase candidates still listed it as unstarted. Scope expanded at implementation time beyond the originally-scoped sex+DOB to also include genotype + stroke_laser_power_mW (both trivial additions at the same audit-resolution moment; both now required by any downstream covariate analysis). New 2026-04-22 DECISIONS.md entry captures the workflow change + sandbox-git boundary rule + Q7 forward-commitment closure stamp; retroactive 2026-04-20 MIGRATION_LOG.md entry added for the task #18 work (it shipped without a migration-log entry, caught during this bookkeeping pass). Next: fresh Cowork session either picks up from "Next-phase candidates" (top: Phase 7 DLC kinematics) or — if the work continues — from a task #18-adjacent follow-up.
 - **2026-04-22 end-of-day (three phase-close merges + 7a design lock-in + parity-gate principle + wrap)** — After the workflow-refresh bookkeeping PR, the session continued through three more phase-close merges landing on `main`: PR #73 (Phase 8a.8 recovery-trajectory visualization helpers — `src/stroke_orofacial/spout_behavior/recovery_trajectories.py` + tests, tag `v8a.8-spout-recovery-trajectories`); PR #74 (Phase 7a DLC-kinematics interpolation design brief — docs-only, `docs/phase-7/interpolation-strategy.md` §10 canonical resolution list for all 8 knobs, tag `v7a-design-brief`); PR #75 (Phase 7-pre `AnimalInfo.exclusions.applies_to` schema extension — dotted-hierarchical namespaced tags, four legacy `[all]` exclusions migrated, `analysis_context` taxonomy locked, tag `v7-pre-exclusions-schema`). Main at `873f3d3`. Three new 2026-04-22 DECISIONS.md entries inserted above the external-bnpm scratch-script disposition entry (reverse-chronological preserved): namespaced-tag schema, §10 design-brief canonicalization, and a new standalone **parity-gate principle** entry (no kinematics algorithm lands without MICROSCOPE per-stage parity verification, generalizing the Phase-13 vendored-helper precedent; scope carve-out for docs-only PRs). DESIGN.md §14.2 added covering the namespaced-tag taxonomy + YAML contract + four orchestrator call sites. MIGRATION_LOG.md Phase 7a design-brief entry appended after the scratch-disposition entry. End-of-session decision: do NOT start a Phase 7a thin-slice implementation same-day — that would violate the parity-gate principle on the same day it was declared (MICROSCOPE was not mounted). Next Phase 7a work is hard-gated on a MICROSCOPE-mounted session. In flight at wrap: `chore/external-bnpm-parity-disposition` branch (CC-driven scratch-script disposition; docs + .gitignore only; pre-existing workstream). This state-doc wrap-up is queued to land as a separate docs-only branch `docs/wrap-up-2026-04-22-state-refresh` **after** the scratch-script-disposition PR merges, so the two docs-only workstreams don't collide on DECISIONS / MIGRATION_LOG / state-doc append-tails. No tag on the wrap-up PR (docs-only refresh, not a phase-close). Next fresh Cowork session: warm-start from this doc, confirm MICROSCOPE mount status, pick Phase 7a impl (if mounted) or Phase 5.5 polish (if not).
+- **2026-04-22 very-end-of-day (Phase 7a.0 merged + Phase 7a.1 kickoff drafted)** — Same-day follow-on: CC-in-VSCode on Windows executed the Phase 7a.0 two-stage paste-in (legacy-cell disambiguation + vendoring + NPZ baseline probe; scipy pilot) and merged PR #79 (Phase 7a.0, intentionally untagged per paste-in constraint). Cowork drafted the combined-scope Phase 7a.1 kickoff (A: `kinematics_baselines:` seed + `AnimalInfo` extension + tests; B: 14-session parity-harness scaffold + PS51/20250430 scipy stress pilot) at `docs/prompts/phase-7a.1-kickoff.md`. Two new 2026-04-22 DECISIONS entries grouped: parity-scope principle (scope-filter against `animals.yaml sessions.{start,end}` window) and scipy Option A (`atol=1e-6` on consolidated-env scipy 1.17.1, no pin, stress-pilot confirmation deferred to 7a.1). `docs/phase-7/baseline-seed-table.md` + `docs/phase-7/scipy-pilot-results.md` + `tests/scripts/scipy_version_pilot.py` landed. No source data modified.
+- **2026-04-23 (Phase 7a.1 merged + Phase 7a.2 kickoff drafted)** — CC-in-VSCode executed the Phase 7a.1 kickoff in full; PR #81 merged as merge-commit `98e6ccd` and tagged `v7a.1-kinematics-baselines-parity-scaffold`. Deliverables: (A) `configs/animals.yaml` seeded with `kinematics_baselines:` for all 8 PS46–PS55 animals × tongue+jaw from the Phase 7a.0 scope-filtered 16 STABLE seed table (tongue uniform x0=0.0/y0=-110.0; jaw varies per seed table); `AnimalInfo.kinematics_baselines: dict[str, dict[str, float]]` field + `get_kinematics_baseline(bodypart)` accessor + 6 new unit tests in `tests/test_animals.py`. (B) 14-session parity-harness scaffold at `tests/scripts/parity_phase7a_interpolation.py` — scope-filter + legacy-NPZ loader + stubbed `_load_consolidated_trace` (raises `NotImplementedError("deferred to 7a.2")`) + exit codes 0-4. (C) PS51/20250430 scipy stress pilot via the existing `scipy_version_pilot.py` — reproduced pilot #1 bit-identical result on 906,310 common non-NaN frames (`max|Δ|=0.0`, 99.88% NaN-in stress condition); DECISIONS 2026-04-22 Option A caveat 1 stamped as resolved, `docs/phase-7/scipy-pilot-results.md` gained a "Second-session stress pilot" appendix. MIGRATION_LOG 7a.1 entry landed (earlier placeholder `#<FILL>` stamped with PR #81 + merge-commit SHA on 2026-04-23 after the Cowork summary-continuation session-state pass). Cowork drafted the Phase 7a.2 implementation kickoff at `docs/prompts/phase-7a.2-kickoff.md` covering the full 7-stage v5p3 port into `src/stroke_orofacial/dlc_kinematics/interpolation.py` (6 tasks with STOP-report gates, mirrors the 7a.1 kickoff structure). Target branch `phase/7a.2-interpolation-impl`; target tag `v7a.2-interpolation-impl`. 7a.2 is MICROSCOPE-gated on Task 4 (per-stage parity against legacy NPZs on the 14-session set at `atol=1e-6`). No code or configs touched in this state-doc-refresh pass beyond the MIGRATION_LOG PR-number stamp + this file + the new kickoff prompt. Next fresh Cowork session: warm-start from this doc, confirm MICROSCOPE mount status, hand off `Read docs/prompts/phase-7a.2-kickoff.md and follow the instructions in full.` to CC-in-VSCode if MICROSCOPE is mounted; otherwise pick Phase 5.5 polish (task #16).

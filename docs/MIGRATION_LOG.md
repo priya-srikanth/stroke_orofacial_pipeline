@@ -3519,7 +3519,7 @@ resumes at 7a.1.
 ## Phase 7a.1 — `kinematics_baselines` seed + parity-harness scaffold + scipy stress pilot
 
 **Date:** 2026-04-22
-**PR:** #<FILL> (landing 2026-04-22)
+**PR:** #81 (merged 2026-04-22 as merge-commit `98e6ccd`)
 **Tag on merge:** `v7a.1-kinematics-baselines-parity-scaffold`
 **Branch:** `phase/7a.1-kinematics-baselines-parity-scaffold`
 
