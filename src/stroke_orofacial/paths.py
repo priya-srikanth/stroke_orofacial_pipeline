@@ -212,6 +212,46 @@ class PathResolver:
             return self._output_root_override / subdir
         return self.root("microscope_pipeline_outputs") / subdir
 
+    def interpolated_trace(
+        self,
+        bodypart: str,
+        animal: str,
+        date: datetime.date,
+        *,
+        variant: str = "parquet",
+    ) -> Path:
+        """Return the output path for a Phase 7a interpolated-trace artifact.
+
+        E.g. ``<outputs>/dlc_analysis/interpolated_traces/tongue/PS46/20250307.parquet``
+
+        Parameters
+        ----------
+        bodypart : {"tongue", "jaw"}
+        animal : str
+            Animal identifier (e.g. "PS46").
+        date : datetime.date
+        variant : {"parquet", "qc_npz"}
+            ``"parquet"`` → canonical output (always emitted by
+            :func:`stroke_orofacial.dlc_kinematics.build_interpolated_trace`).
+            ``"qc_npz"`` → optional QC sidecar (emitted when
+            ``emit_qc_bundle=True`` is passed to the builder).
+
+        Parent directory is created eagerly. Mirrors
+        :meth:`pipeline_outputs`'s ``output_root`` test-override behavior
+        via the same ``_output_root_override`` hook.
+        """
+        date_str = date.strftime("%Y%m%d")
+        ext = {"parquet": "parquet", "qc_npz": "qc.npz"}[variant]
+        out = (
+            self.pipeline_outputs(subdir="dlc_analysis")
+            / "interpolated_traces"
+            / bodypart
+            / animal
+            / f"{date_str}.{ext}"
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
     def wavesurfer_dir(self, date: datetime.date, animal: str) -> Path:
         """Return the wavesurfer session directory for an animal and date.
 

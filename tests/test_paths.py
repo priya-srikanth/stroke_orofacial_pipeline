@@ -328,6 +328,60 @@ class TestDefaultConfig:
         assert "MICROSCOPE" in str(path) or "Neurobio" in str(path)
 
 
+class TestInterpolatedTrace:
+    """Phase 7a.2: ``interpolated_trace(bodypart, animal, date, *, variant)``
+    returns
+    ``<output_root>/dlc_analysis/interpolated_traces/<bodypart>/<animal>/<YYYYMMDD>.<ext>``.
+    Mirrors ``pipeline_outputs()``'s ``output_root`` test-override hook so
+    tests never write to the real pipeline outputs tree."""
+
+    def test_parquet_path(self, monkeypatch, tmp_path):
+        """Default variant='parquet' returns a path ending in .parquet."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.interpolated_trace(
+            "tongue", "PS46", datetime.date(2025, 3, 7)
+        )
+        expected = (
+            tmp_path
+            / "dlc_analysis"
+            / "interpolated_traces"
+            / "tongue"
+            / "PS46"
+            / "20250307.parquet"
+        )
+        assert path == expected
+        # Parent directory should be created eagerly.
+        assert path.parent.exists() and path.parent.is_dir()
+
+    def test_qc_npz_variant(self, monkeypatch, tmp_path):
+        """variant='qc_npz' returns a path ending in .qc.npz."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.interpolated_trace(
+            "jaw", "PS51", datetime.date(2025, 4, 30), variant="qc_npz"
+        )
+        expected = (
+            tmp_path
+            / "dlc_analysis"
+            / "interpolated_traces"
+            / "jaw"
+            / "PS51"
+            / "20250430.qc.npz"
+        )
+        assert path == expected
+        assert path.parent.exists()
+
+    def test_invalid_variant_raises(self, monkeypatch, tmp_path):
+        """Unknown variant keyword raises KeyError — guards against typos."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        with pytest.raises(KeyError):
+            resolver.interpolated_trace(
+                "tongue", "PS46", datetime.date(2025, 3, 7), variant="foo"
+            )
+
+
 # ---- Integration test (requires real mount) ----
 
 _MOUNT = Path("/Volumes/Neurobio/MICROSCOPE/Priya")

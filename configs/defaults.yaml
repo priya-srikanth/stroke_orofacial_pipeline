@@ -335,6 +335,56 @@ dlc_spatial_reward_aligned:
       x_range: null
       parity_status: "sanity-check-only"
 
+# ---- DLC kinematics (Phase 7a.2) ----
+# Bodypart-parametric constants for the v5p3 interpolation pipeline.
+# Ported from tongue Cell 23 + jaw Cell 22 of the canonical notebooks
+# (see docs/legacy_snippets/ for the vendored source).
+#
+# Per-animal (X0, Y0) baselines live in configs/animals.yaml under each
+# animal's kinematics_baselines: block (seeded PR #81, Phase 7a.1). This
+# block carries only bodypart-parametric constants, not per-animal ones.
+#
+# DO NOT change interpolation_method or interpolation_fallback without
+# a DECISIONS entry — see 2026-04-22 Knob-2 resolution in
+# docs/phase-7/interpolation-strategy.md §10.
+
+dlc_kinematics:
+  interpolation_version: v5p3
+  interpolation_method: pchip
+  interpolation_fallback: linear
+  tongue:
+    center_mode: centered_spout_midpoint
+    interpolation:
+      x_range_pm: 150.0
+      x_range_source: lk          # keep "lk" for port parity (Knob 4)
+      lk_thr: 0.5
+      n_neigh: 2
+      neighbor_ms: 16.0
+      max_gap_ms: 56.0
+      interp_n_side: 6
+      require_bracketed_by_hilk: true
+    baseline:
+      force: true
+      y0_lk_thr: 0.95
+      y0_percentile: 5.0
+      x0: "median_of_y_percentile_subset"
+  jaw:
+    center_mode: centered_eye_midpoint
+    interpolation:
+      x_range_pm: 75.0
+      x_range_source: lk
+      lk_thr: 0.5
+      n_neigh: 3
+      neighbor_ms: 16.0
+      max_gap_ms: 120.0
+      interp_n_side: 6
+      require_bracketed_by_hilk: true
+    baseline:
+      force: true
+      y0_lk_thr: 0.95
+      y0_percentile: 5.0
+      x0: "median_of_y_percentile_subset"
+
 # ---- Wavesurfer ----
 
 wavesurfer:
