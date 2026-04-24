@@ -39,6 +39,11 @@ from scipy.interpolate import PchipInterpolator
 
 from stroke_orofacial.animals import AnimalInfo, get_animal
 from stroke_orofacial.config_loader import load_defaults
+from stroke_orofacial.lr_convention import (
+    SIDE_CONVENTION_MATCH_KEY,
+    SIDE_CONVENTION_VERSION,
+    SIDE_CONVENTION_VERSION_KEY,
+)
 from stroke_orofacial.manifest import SessionManifest, build_manifest
 from stroke_orofacial.paths import PathResolver
 
@@ -119,6 +124,10 @@ class InterpolationResult:
     bodypart: str = ""
     animal: str = ""
     date: dt.date | None = None
+    # Side-convention stamp — copied from ``AnimalInfo.
+    # wavesurfer_sides_match_mouse_sides`` so the writer can emit the
+    # v6.8 parquet metadata without re-looking-up AnimalInfo.
+    wavesurfer_sides_match_mouse_sides: bool = False
     # Cam-frame reward centers used for the baseline pool — kept for the
     # optional QC NPZ sidecar only.
     reward_centers_cam: np.ndarray = field(default_factory=lambda: np.array([]))
@@ -402,6 +411,14 @@ def _compute_baseline_data_driven(
     strategy.md`` §7 collapses these into one pool — with
     ``baseline.force=true`` (cohort default) this path is informational
     only, populating ``InterpolationResult.{X0_data, Y0_data}``.
+
+    Intentional divergence from the legacy cells under ``force=false``:
+    legacy used separate ``(lk_thr, percentile)`` pools for Y0 and X0;
+    the consolidated single-pool semantics here match
+    ``interpolation-strategy.md`` §7. See the 2026-04-24 Phase 7a.2
+    DECISIONS entry (data-driven-baseline pool unification) for
+    rationale and the forward commitment to revisit if a future
+    session genuinely requires ``force=false``.
     """
     base_finite = np.isfinite(y_base_src)
     if require_finite_x:
@@ -511,6 +528,13 @@ def _load_reward_centers_cam(
             f"reemit-phase-5-6-after-lr-fix.md) before Phase 7a.2."
         )
 
+    # v6.8 boundary-layer invariance: ``trial_group="all"`` returns the
+    # union of mouse-L and mouse-R reward WS indices. The legacy cells
+    # (pre-v6.8, wavesurfer-frame) concatenate Reward_R + Reward_L (the
+    # experimenter-labeled sides); the consolidated Phase 2 NPZ (post-
+    # v6.8, mouse-frame) concatenates mouse-L + mouse-R. The UNION is
+    # set-identical across the L/R flip — baseline pool-mask is
+    # bit-identical regardless of which side each label sits on.
     reward_ws = load_reward_events(
         licks_path, trial_group="all",
         wavesurfer_sides_match_mouse_sides=manifest.wavesurfer_sides_match_mouse_sides,
@@ -677,6 +701,9 @@ def _interpolate_bodypart_core(
         center_mode=str(center_mode),
         bodypart=bodypart,
         animal=animal_info.animal_id,
+        wavesurfer_sides_match_mouse_sides=bool(
+            animal_info.wavesurfer_sides_match_mouse_sides
+        ),
         reward_centers_cam=reward_centers_cam,
     )
 
@@ -687,12 +714,31 @@ def _interpolate_bodypart_core(
 
 
 def _write_parquet(result: InterpolationResult, path: Path) -> None:
-    """Write the canonical per-frame parquet (7 columns + file metadata).
+    """Write the canonical per-frame parquet.
 
-    File metadata per strategy §2c carries at minimum: X0, Y0, fps,
-    n_frames, center_mode, baseline_stage, interpolation_version,
-    bodypart, animal, date. Plus X0_data, Y0_data as diagnostic extras.
-    Read back via ``pq.ParquetFile(path).metadata.metadata``.
+    Schema locked by ``interpolation-strategy.md`` §2c:
+
+    - 7 columns: ``frame_idx`` (int64), ``x_final`` / ``y_final`` /
+      ``likelihood_raw`` (float64), ``is_interp_fill`` /
+      ``is_baseline_fill`` (bool), ``fill_method`` (int8 enum per
+      :data:`_FILL_METHOD_NONE`/``_PCHIP``/``_LINEAR``/``_BASELINE``).
+    - 9 file-level metadata keys: ``X0``, ``Y0``, ``fps``, ``n_frames``,
+      ``center_mode``, ``baseline_stage``, ``interpolation_version``,
+      plus the v6.8 side-convention stamp pair
+      (``wavesurfer_sides_match_mouse_sides``,
+      ``side_convention_version``).
+
+    ``bodypart``, ``animal``, ``date`` are NOT emitted as file metadata
+    — they are already encoded in the parquet path
+    (``interpolated_traces/<bodypart>/<animal>/<YYYYMMDD>.parquet``);
+    duplicating them in metadata is redundant.
+
+    Diagnostic scalars ``X0_data``/``Y0_data`` (data-driven baseline
+    estimates computed even under ``baseline.force=true``) live in the
+    optional ``.qc.npz`` sidecar per :func:`_write_qc_npz`, not here.
+
+    Read metadata back via
+    ``pq.ParquetFile(path).metadata.metadata``.
     """
     df = pd.DataFrame({
         "frame_idx": np.arange(result.n_frames, dtype=np.int64),
@@ -704,20 +750,18 @@ def _write_parquet(result: InterpolationResult, path: Path) -> None:
         "fill_method": result.fill_method.astype(np.int8),
     })
     table = pa.Table.from_pandas(df, preserve_index=False)
-    date_str = result.date.strftime("%Y%m%d") if result.date is not None else ""
     meta_updates = {
         b"X0": repr(result.X0).encode(),
         b"Y0": repr(result.Y0).encode(),
-        b"X0_data": repr(result.X0_data).encode(),
-        b"Y0_data": repr(result.Y0_data).encode(),
         b"fps": repr(result.fps).encode(),
         b"n_frames": str(result.n_frames).encode(),
         b"center_mode": result.center_mode.encode(),
         b"baseline_stage": result.baseline_stage.encode(),
         b"interpolation_version": result.interpolation_version.encode(),
-        b"bodypart": result.bodypart.encode(),
-        b"animal": result.animal.encode(),
-        b"date": date_str.encode(),
+        SIDE_CONVENTION_MATCH_KEY.encode(): repr(
+            result.wavesurfer_sides_match_mouse_sides
+        ).encode(),
+        SIDE_CONVENTION_VERSION_KEY.encode(): str(SIDE_CONVENTION_VERSION).encode(),
     }
     existing = table.schema.metadata or {}
     merged = {**{bytes(k): bytes(v) for k, v in existing.items()}, **meta_updates}
