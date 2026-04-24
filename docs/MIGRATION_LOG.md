@@ -3681,3 +3681,205 @@ PR #80 covers 7a.0, this entry covers 7a.1.
    20250514), accept the 2/28 skip_missing as steady state, or add
    explicit `exclusions:` entries with a reason annotation. No
    action required in 7a.1 — the harness already tolerates these.
+
+---
+
+## Phase 7a.2 — `interpolation.py` v5p3 port + 14-session cohort parity
+
+**Date:** 2026-04-24
+**PR:** #<FILL> (landing 2026-04-24)
+**Tag on merge:** `v7a.2-interpolation-impl`
+**Branch:** `phase/7a.2-interpolation-impl`
+
+**Scope.** The v5p3 7-stage interpolation pipeline ported from
+`docs/legacy_snippets/{tongue_cell23,jaw_cell22}_interp_v5p3.py` into
+`src/stroke_orofacial/dlc_kinematics/interpolation.py`. Delivers the
+single piece of code that blocked Phases 7b–7f: a bodypart-parametric
+pure-function core wrapped by the session-level writer, emitting a
+canonical 7-column parquet + optional 7-stage QC NPZ sidecar. Cohort-
+wide parity run confirms **bit-for-bit identity** against legacy v5p3
+NPZs on every reachable in-scope session at `atol=1e-6`.
+
+**What landed.**
+
+1. **`configs/defaults.yaml` `dlc_kinematics:` block.** Bodypart-
+   parametric constants per `interpolation-strategy.md` §7 (tongue:
+   x_range_pm=150, lk_thr=0.5, n_neigh=2, max_gap_ms=56; jaw: 75 / 0.5
+   / 3 / 120). Top-level `interpolation_method=pchip` /
+   `interpolation_fallback=linear` with a "DO NOT CHANGE without
+   DECISIONS entry" header comment per Knob 2. Inserted between
+   `dlc_spatial_reward_aligned:` and `wavesurfer:` so DLC analysis
+   configs stay co-located.
+
+2. **`PathResolver.interpolated_trace(bodypart, animal, date, *, variant)`
+   helper.** Returns
+   `<outputs>/dlc_analysis/interpolated_traces/<bodypart>/<animal>/
+   <YYYYMMDD>.{parquet|qc.npz}`. Mirrors `pipeline_outputs()`'s
+   `output_root` override for tests. 3 new unit tests.
+
+3. **`src/stroke_orofacial/dlc_kinematics/interpolation.py`.** 887-line
+   module:
+   - `InterpolationResult` dataclass (32 fields — 7 stages × 2 dims +
+     fill masks + fill_method int8 enum + X0/Y0 + X0_data/Y0_data +
+     fps/n_frames + bodypart/animal/date + center_mode +
+     baseline_stage + wavesurfer_sides_match_mouse_sides +
+     reward_centers_cam).
+   - Stage helpers transcribed byte-for-byte from the vendored cells:
+     `_stage_xrange`, `_stage_thr`, `_stage_drop`,
+     `_interp_small_gaps`, `_fill_nan_with`,
+     `_build_reward_aligned_pool_mask`.
+   - Baseline helpers: `_compute_baseline_forced` (reads
+     `AnimalInfo.kinematics_baselines`); `_compute_baseline_data_driven`
+     (simplified single-pool per strategy §7; DIVERGES from legacy
+     separate-pool semantics — intentional, documented in the
+     2026-04-24 DECISIONS entry).
+   - Data loaders: `_load_centered_df` (Phase 4.5-lite centered
+     parquet); `_load_reward_centers_cam` (Phase 2 licks NPZ + cam2
+     alignment template, v6.8 mouse-frame).
+   - Pure-function core: `_interpolate_bodypart_core` (no I/O).
+   - Writers: `_write_parquet` (7 columns + 9 metadata keys per
+     §2c locked schema, snappy compression); `_write_qc_npz`
+     (intermediate arrays + X0_data/Y0_data diagnostic scalars).
+   - Public API: `build_interpolated_trace(manifest, bodypart,
+     resolver, params, *, overwrite, emit_qc_bundle, animal_info) ->
+     Path | None`; `build_interpolated_trace_by_animal_date(animal,
+     date, bodypart, resolver, **kwargs)` convenience wrapper.
+   - Exclusion check via
+     `AnimalInfo.is_excluded(date, analysis_context=f"dlc.kinematics.{bodypart}")`
+     per Phase 7-pre prefix-match schema.
+
+4. **14 §8 unit tests + 7 review-adjustment extras.**
+   `tests/test_dlc_interpolation.py` — 7 new test *functions* beyond
+   §8, but `test_stage_drop_isolated_hilk` is parametrized over 4
+   neighbor counts so pytest counts 24 new test *runs*. All
+   MICROSCOPE-free: synthetic arrays, synthetic centered parquets
+   under `tmp_path`, synthetic Phase 2 licks NPZ with v6.8 stamp,
+   synthetic alignment template.
+
+5. **Parity harness wire-in.** `_load_consolidated_trace` stub in
+   `tests/scripts/parity_phase7a_interpolation.py` replaced with the
+   real parquet reader (reads x_final/y_final + 9 file-metadata keys
+   including the v6.8 side-convention stamp pair).
+
+6. **`scripts/phase_7a/emit_parity_sessions.py`.** Durable pre-emit
+   helper (promoted from `scratch/phase-7a2-probe/` on 2026-04-24 per
+   Priya's Task-5 directive) that drives
+   `build_interpolated_trace_by_animal_date` across the 14 × 2 parity
+   set before the harness runs. Needed because the harness only reads;
+   it does not emit. Re-usable for any post-7a.2 kinematics-algorithm
+   parity re-run under the 2026-04-22 parity-gate principle.
+
+7. **DECISIONS entry 2026-04-24** codifying Knobs 1–4, §5 Option A,
+   §3.1 baseline encoding, Task 2 fixup Items 1 + 4 (data-driven
+   single-pool semantics; 9-key parquet metadata with X0_data/Y0_data
+   routed to the QC NPZ sidecar).
+
+8. **`interpolation-strategy.md` §2 amendment** — QC NPZ sidecar spec
+   extended to include the diagnostic `X0_data`, `Y0_data` scalars per
+   Task 2 fixup Item 4.
+
+**Parity verification.**
+
+Cohort-wide parity at `atol=1e-6` under consolidated-env scipy 1.17.1
+(Option A per 2026-04-22 DECISIONS). Pre-flight exclusion sanity check:
+0 collisions between the 14 × 2 parity entries and
+`dlc` / `dlc.kinematics.{tongue,jaw}` exclusions in `animals.yaml`.
+
+Per-session 14-session run (`by_status = {'pass': 26, 'skip_missing': 2}`,
+exit 0):
+
+| animal | date | bodypart | status | max\|Δ\|x | max\|Δ\|y | common | nan_L | nan_C |
+|---|---|---|---|---|---|---|---|---|
+| PS46 | 2025-03-07 | both | pass | 0.000e+00 | 0.000e+00 | 931,834 | 0 | 0 |
+| PS46 | 2025-03-10 | both | pass | 0.000e+00 | 0.000e+00 | 907,882 | 0 | 0 |
+| PS46 | 2025-03-13 | both | pass | 0.000e+00 | 0.000e+00 | 931,471 | 0 | 0 |
+| PS54 | 2025-05-06 | both | pass | 0.000e+00 | 0.000e+00 | 906,555 | 0 | 0 |
+| PS54 | 2025-05-09 | both | pass | 0.000e+00 | 0.000e+00 | 905,269 | 0 | 0 |
+| PS54 | 2025-05-12 | both | **skip_missing** | — | — | — | — | — |
+| PS55 | 2025-05-01 | both | pass | 0.000e+00 | 0.000e+00 | 908,419 | 0 | 0 |
+| PS55 | 2025-05-04 | both | pass | 0.000e+00 | 0.000e+00 | 906,367 | 0 | 0 |
+| PS55 | 2025-05-07 | both | pass | 0.000e+00 | 0.000e+00 | 904,710 | 0 | 0 |
+| PS51 | 2025-04-30 | both | pass | 0.000e+00 | 0.000e+00 | 950,833 | 0 | 0 |
+| PS54 | 2025-05-01 | both | pass | 0.000e+00 | 0.000e+00 | 904,368 | 0 | 0 |
+| PS55 | 2025-05-02 | both | pass | 0.000e+00 | 0.000e+00 | 908,111 | 0 | 0 |
+| PS54 | 2025-06-07 | both | pass | 0.000e+00 | 0.000e+00 | 908,252 | 0 | 0 |
+| PS55 | 2025-06-07 | both | pass | 0.000e+00 | 0.000e+00 | 905,983 | 0 | 0 |
+
+PS54/20250512 skip is symmetric: legacy NPZ absent AND consolidated DLC
+h5 absent (cohort acquisition intermittency, confirmed 2026-04-22).
+
+**PS50/20250319 integration smoke** (non-parity — PS50 has zero entries
+in the 14-session parity set). Swapped from the kickoff's PS50/20250306
+because that date predates PS50's `sessions.start = 2025-03-19` so no
+Phase 4.5-lite centered parquet exists for it. Both bodyparts returned
+bit-identical max|Δ|x = max|Δ|y = 0.000e+00 vs legacy NPZ on 976,222
+frames; parquet + QC NPZ sidecar both emitted; strict schema check
+(7 cols + 9 metadata keys) passed.
+
+**Commits on this branch** (seven, in order):
+
+1. `docs(prompts): Phase 7a.2 kickoff` — kickoff doc committed in-branch.
+2. `feat(config,paths): dlc_kinematics defaults + interpolated_trace()
+   resolver` — Task 1.
+3. `feat(dlc_kinematics): v5p3 interpolation.py port (7-stage
+   tongue+jaw)` — Task 2 initial.
+4. `fix(dlc_kinematics): align parquet metadata to strategy §2c +
+   docstring refresh` — Task 2 fixup per 2026-04-24 review.
+5. `test(dlc_interpolation): 14 §8 unit tests + 10 review-adjustment
+   extras` — Task 3 (7 new test functions, 24 new test runs due to
+   parametrization).
+6. `feat(parity): wire Phase 7a harness to real consolidated parquet
+   reader` — Task 4.
+7. `docs(phase-7a.2): DECISIONS + interpolation-strategy §2 amendment
+   + MIGRATION_LOG + emit-parity-sessions script promotion` — Task 5
+   (this entry).
+
+**Test + ruff state.**
+
+- Full pytest: **517 passed, 34 skipped** (no regressions; +24 new
+  test runs from Task 3).
+- Ruff clean on all touched `.py` files.
+- Parity harness `--sessions auto` exit code 0; by_status per above.
+- Pre-emit sweep (`scripts/phase_7a/emit_parity_sessions.py`):
+  26 OK, 2 skip_missing, 0 fail.
+
+**Behavior differences vs. legacy notebooks.**
+
+- Split emit replaces the 7-stage monolithic NPZ (Knob 1). Legacy NPZ
+  on MICROSCOPE stays read-only; consolidated writes parquet + optional
+  QC NPZ under
+  `stroke_orofacial_pipeline_outputs/dlc_analysis/interpolated_traces/`.
+- `X0` / `Y0` read from `AnimalInfo.get_kinematics_baseline(bodypart)`
+  (seeded PR #81) instead of top-of-notebook literal constants.
+  Faithful port — the literals were per-animal-edited at run time in
+  the legacy workflow; the seeded baselines match the ones actually
+  used for the legacy NPZs.
+- `applies_to` namespaced-tag exclusion schema means the PS51
+  2025-05-17 (`[dlc, alignment]`) and 2025-04-26
+  (`[dlc, spout_behavior]`) exclusions correctly skip DLC kinematics
+  runs without blocking spout behavior. None of these dates intersect
+  the 14-session parity set (verified preflight — 0 collisions).
+- Data-driven baseline path (`baseline.force=false`) uses a unified
+  single Y-pool instead of legacy's separate Y0/X0 pools — see
+  2026-04-24 DECISIONS "Data-driven-baseline pool unification"
+  sub-entry. Invisible to the parity set since all 8 animals run
+  under `force=true` with seeded per-animal baselines.
+- Otherwise bit-equivalent on the 14-session parity set at
+  `atol=1e-6` — actually exact-equal / max|Δ|=0.0 on 26 of 26
+  reachable in-scope sessions × both bodyparts.
+
+**Ground-rule compliance.** CLAUDE.md rule 1 — no source data modified
+(legacy NPZs and DLC h5 read-only). Rule 2 — no legacy-repo edits.
+Rule 6 — new outputs live under
+`stroke_orofacial_pipeline_outputs/dlc_analysis/interpolated_traces/`.
+Rule 8 — feature branch; tag pushed post-merge.
+
+**Forward follow-ups for Phase 7b / 7c / 7e / 7f.** Per-trial endpoint
+modules read the interpolated-trace parquet via
+`resolver.interpolated_trace(bodypart, animal, date)` and the
+reward-events sub-table from Phase 2 `licks_and_rewards/...npz`. Side
+labels (L/R) are applied at 7b/7c emit via the Phase 6.8 boundary-layer
+translator per §5 Option A. Any future kinematics-algorithm change
+(parity-gate principle, 2026-04-22 DECISIONS) re-validates via
+`scripts/phase_7a/emit_parity_sessions.py` followed by
+`tests/scripts/parity_phase7a_interpolation.py --sessions auto`.

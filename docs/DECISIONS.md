@@ -15,6 +15,131 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-04-24 — Phase 7a.2 interpolation port + Knob resolutions codified
+
+**Context.** Phase 7a.2 ported the v5p3 7-stage interpolation pipeline
+(tongue Cell 23 + jaw Cell 22, vendored at `docs/legacy_snippets/`) into
+`src/stroke_orofacial/dlc_kinematics/interpolation.py`. The 8 knob
+decisions from `docs/phase-7/interpolation-strategy.md` §10 — previously
+locked in prose only — are now executed in code + config. This entry
+records them as the standing architectural baseline for all future
+edits to the DLC kinematics interpolation.
+
+**Decisions enacted (strategy §10 knobs, now code-enforced).**
+
+1. **Knob 1 — split emit.** Canonical parquet (7 columns per frame +
+   9 file-level metadata keys) + optional `.qc.npz` sidecar (7-stage
+   intermediate arrays + diagnostic scalars). Parquet is what
+   downstream phases (7b, 7c, 7e, 7f) consume; QC NPZ is opt-in via
+   `build_interpolated_trace(..., emit_qc_bundle=True)`.
+2. **Knob 2 — PCHIP with linear fallback.** Interpolation method is
+   not a runtime-tunable knob — exposed in `configs/defaults.yaml` as
+   `dlc_kinematics.interpolation_method: pchip` /
+   `interpolation_fallback: linear` with an explicit "do not change
+   without DECISIONS entry" comment.
+3. **Knob 3 — forced baseline default; data-driven path preserved.**
+   `baseline.force: true` in `configs/defaults.yaml` for both
+   bodyparts; per-animal `(X0, Y0)` read via
+   `AnimalInfo.get_kinematics_baseline(bodypart)` (seeded in PR #81 /
+   Phase 7a.1 from the PR #79 baseline probe).
+4. **Knob 4 — `x_range_source="lk"` for port parity.** Preserves
+   bit-identity against legacy NPZs. Revisiting to `"finite"` is a
+   post-7a scope change; the forward exit ramp is documented in
+   `interpolation-strategy.md` §2.
+5. **§5 Option A — pure-bodypart parquet.** No per-reward side labels
+   in the interpolated-trace parquet. Side labels enter downstream at
+   7b/7c per-trial endpoint modules that re-read reward events from
+   Phase 2 `licks_and_rewards/{animal}/{date}.npz` and apply the
+   boundary-layer L↔R translation at emit (per v6.8 convention).
+6. **§3.1 — per-animal `(X0, Y0)` in `configs/animals.yaml`.**
+   Faithful port of the legacy manual-editing protocol, NOT a bug fix;
+   legacy `O2_analysis/PS*/...` NPZs carry the actually-used baselines
+   for each run. Cohort-wide values seeded in PR #81 (16 STABLE combos
+   under the scope-filtered re-analysis).
+
+**Data-driven-baseline pool unification (Task 2 fixup Item 1).**
+
+- *Context:* The vendored cells used *separate* `(lk_thr, percentile)`
+  pools for Y0 and X0 baselines (tongue: `BASELINE_Y_LK_THR=0.7`,
+  `BASELINE_Y0_PERCENTILE=1.0` vs. `BASELINE_X_LK_THR=0.4`,
+  `BASELINE_X0_FROM_Y_PERCENTILE=25.0`; jaw similarly diverges).
+  Strategy §7 + the Phase 7a.2 kickoff consolidate these into one
+  pool: Y0 = median of Y over the lowest-`y0_percentile`th Y subset
+  under the hi-lk mask; X0 = median of X over the SAME subset.
+- *Decision:* Under `baseline.force=false` the consolidated module
+  uses the unified single-pool semantics, intentionally diverging
+  from the legacy separate-pool semantics.
+- *Rationale:* Fewer knobs; matches the simpler `interpolation-
+  strategy.md` §7 contract; parity against the legacy 14-session set
+  is gated on `force=true` (cohort default for all 8 animals per PR
+  #81's seed), so the divergence is invisible in the parity-critical
+  regime. Verified 2026-04-24: 26/26 reachable parity sessions return
+  bit-identical max|Δ|x=max|Δ|y=0 under `force=true`.
+- *Forward commitment:* If a future session genuinely requires
+  `force=false` (no seeded baseline, or a baseline-retune need), two
+  options: (a) reintroduce the split-pool option with a
+  `baseline.y_lk_thr` / `baseline.x_lk_thr` + matching percentiles
+  schema, or (b) document the per-session divergence and run with the
+  unified-pool estimates. Default: (a), land behind a new DECISIONS
+  entry at that time.
+
+**Parquet file-level metadata set locked to 9 keys (Task 2 fixup Item 4).**
+
+- *Context:* Kickoff §2c sketched 10 metadata keys (X0, Y0, fps,
+  n_frames, center_mode, baseline_stage, interpolation_version,
+  bodypart, animal, date). On review the `bodypart`, `animal`, `date`
+  trio were dropped — they are already encoded in the parquet path
+  (`interpolated_traces/<bodypart>/<animal>/<YYYYMMDD>.parquet`) and
+  duplicating them as metadata is redundant. The v6.8 side-convention
+  stamp pair (`wavesurfer_sides_match_mouse_sides`,
+  `side_convention_version`) was added so consumers can identify the
+  side-frame convention under which the parquet was written.
+- *Decision:* Parquet file-level metadata is exactly the 9-key set:
+  `X0`, `Y0`, `fps`, `n_frames`, `center_mode`, `baseline_stage`,
+  `interpolation_version`, `wavesurfer_sides_match_mouse_sides`,
+  `side_convention_version`. The diagnostic scalars `X0_data`,
+  `Y0_data` (data-driven baseline estimates computed unconditionally
+  when `emit_qc_bundle=True`) live in the `.qc.npz` sidecar, not in
+  parquet metadata.
+- *Rationale:* Lean canonical schema; the sidecar is the extensible
+  slot for future diagnostics. `test_parquet_schema` asserts strict
+  equality on both the 7-column set and the 9-metadata-key set so
+  any future accidental schema drift gets caught immediately.
+
+**Parity verification.** 14-session parity set at `atol=1e-6` under
+consolidated-env scipy 1.17.1 (Option A per 2026-04-22 DECISIONS):
+`by_status = {pass: 26, skip_missing: 2}`. Every pass session returns
+max|Δ|x = max|Δ|y = 0.000e+00 with zero NaN-boundary divergence. The
+2 skip_missing are PS54/20250512 × {tongue, jaw} — known MICROSCOPE
+gap carried over from Phase 7a.1 (legacy NPZ absent AND consolidated
+DLC h5 absent; symmetric absence routes to skip_missing on both
+sides, not fail). Reinforces pilot #1 (PS46/20250307, max|Δ|=0) and
+pilot #2 (PS51/20250430, max|Δ|=0) findings.
+
+**Enforced at.**
+- `configs/defaults.yaml dlc_kinematics:` block.
+- `configs/animals.yaml kinematics_baselines:` block (per animal).
+- `src/stroke_orofacial/dlc_kinematics/interpolation.py` module.
+- `tests/scripts/parity_phase7a_interpolation.py` harness.
+- `tests/test_dlc_interpolation.py` (14 §8 unit tests +
+  review-adjustment extras; strict-equality schema check).
+- `scripts/phase_7a/emit_parity_sessions.py` (durable pre-emit
+  helper for future parity re-runs).
+
+**Forward implication for 7b / 7c / 7e / 7f.** Per-trial endpoint
+modules consume
+`interpolated_traces/{bodypart}/{animal}/{date}.parquet`. Any future
+edit to the 7-stage pipeline that changes `x_final` / `y_final` by
+more than `atol=1e-6` on any in-scope session requires a DECISIONS
+entry documenting the drift and re-running the 14-session parity
+(via `scripts/phase_7a/emit_parity_sessions.py` +
+`tests/scripts/parity_phase7a_interpolation.py --sessions auto`).
+
+**Applies to:** Phase 7a.2 and every downstream DLC-kinematics phase
+that reads the interpolated-trace parquet.
+
+---
+
 ## 2026-04-22 — Phase 7a.0 follow-ups: parity-scope principle + scipy version handling
 
 Two decisions landing together as Phase 7a.0 wraps, both driven by
