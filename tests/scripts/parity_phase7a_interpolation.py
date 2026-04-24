@@ -166,25 +166,36 @@ def load_legacy_trace(animal: str, date: dt.date, bodypart: str) -> dict:
 def _load_consolidated_trace(animal: str, date: dt.date, bodypart: str) -> dict:
     """Load x_final / y_final / X0 / Y0 / fps / n_frames from the consolidated parquet.
 
-    7a.1 STUB — raises NotImplementedError. 7a.2 replaces this with::
+    Real reader (replaces the 7a.1 NotImplementedError stub). Reads the
+    Phase 7a.2 interpolated-trace parquet emitted by
+    :func:`stroke_orofacial.dlc_kinematics.build_interpolated_trace`.
+    The parquet schema (7 columns + 9 file-level metadata attributes) is
+    locked by ``interpolation-strategy.md`` §2c.
 
-        path = resolver.interpolated_trace(bodypart=bodypart, animal=animal, date=date)
-        df = pd.read_parquet(path)
-        meta = pq.ParquetFile(path).metadata.metadata
-        return {
-            "x_final": df["x_final"].to_numpy(),
-            "y_final": df["y_final"].to_numpy(),
-            "X0": float(meta[b"X0"]),
-            "Y0": float(meta[b"Y0"]),
-            "fps": float(meta[b"fps"]),
-            "n_frames": int(meta[b"n_frames"]),
-        }
+    Raises ``FileNotFoundError`` if the consolidated parquet is absent —
+    most commonly when the 14-session pre-emit step was skipped. The
+    harness treats that the same as a missing legacy NPZ
+    (``skip_missing``).
     """
-    raise NotImplementedError(
-        "Consolidated-pipeline read not implemented until Phase 7a.2. "
-        f"Target: {animal} / {date} / {bodypart}. "
-        "This stub is expected to disappear in 7a.2 — do not paper over it."
-    )
+    from stroke_orofacial.paths import PathResolver
+    import pandas as pd
+    import pyarrow.parquet as pq
+
+    resolver = PathResolver()
+    path = resolver.interpolated_trace(bodypart=bodypart, animal=animal, date=date)
+    if not path.exists():
+        raise FileNotFoundError(f"Consolidated parquet not found: {path}")
+    df = pd.read_parquet(path)
+    meta = pq.ParquetFile(path).metadata.metadata
+    return {
+        "x_final": df["x_final"].to_numpy().astype(float),
+        "y_final": df["y_final"].to_numpy().astype(float),
+        "X0": float(meta[b"X0"]),
+        "Y0": float(meta[b"Y0"]),
+        "fps": float(meta[b"fps"]),
+        "n_frames": int(meta[b"n_frames"]),
+        "path": path,
+    }
 
 
 # --- comparator ----------------------------------------------------------
