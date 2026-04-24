@@ -92,6 +92,18 @@ date):
    wants to inspect which stage dropped a given frame. Skipped by
    default.
 
+   Also carries the **diagnostic baseline scalars** `X0_data` and
+   `Y0_data` — the data-driven `(X0, Y0)` that the interpolation
+   module would have used under `baseline.force=false`, computed
+   unconditionally even when `force=true`. Useful for auditing
+   sessions run under the forced path: if `X0_data` / `Y0_data`
+   drift significantly from the seeded `X0` / `Y0` in
+   `configs/animals.yaml kinematics_baselines`, that's a signal the
+   per-animal baseline should be re-seeded. Added 2026-04-24 per the
+   Phase 7a.2 DECISIONS entry (Task 2 fixup Item 4 — diagnostic
+   scalars stay on the sidecar to keep the canonical parquet
+   metadata lean at 9 keys).
+
 **Rationale.** Parquet is the analytical primitive the rest of the
 pipeline uses (Phase 4 centered parquets, Phase 6 reward-aligned
 outputs). NPZs are fine for legacy but columnar parquet lets downstream
