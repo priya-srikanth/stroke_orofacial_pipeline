@@ -252,6 +252,128 @@ class PathResolver:
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 
+    def tongue_pertrial_angle_parquet(
+        self, animal: str, date: datetime.date,
+    ) -> Path:
+        """Return the Phase 7a.3 per-frame tongue-angle parquet path.
+
+        E.g. ``<outputs>/dlc_kinematics/features/tongue/PS50/20250319.parquet``.
+
+        Output filename uses ``%Y%m%d`` to match the existing 7a.2
+        :meth:`interpolated_trace` convention. Mirrors :meth:`pipeline_outputs`'s
+        ``output_root`` test-override behavior via ``_output_root_override``.
+        Parent directory is created eagerly.
+        """
+        date_str = date.strftime("%Y%m%d")
+        out = (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "features"
+            / "tongue"
+            / animal
+            / f"{date_str}.parquet"
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def tongue_pertrial_licking_dynamics_traces_parquet(
+        self, animal: str, date: datetime.date,
+    ) -> Path:
+        """Return the Phase 7a.3 per-session × side licking-dynamics traces parquet.
+
+        E.g. ``<outputs>/dlc_kinematics/licking_dynamics/traces/PS46/20250501.parquet``.
+
+        Output filename uses ``%Y%m%d`` to match
+        :meth:`interpolated_trace`'s convention. Parent directory is created
+        eagerly.
+        """
+        date_str = date.strftime("%Y%m%d")
+        out = (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "licking_dynamics"
+            / "traces"
+            / animal
+            / f"{date_str}.parquet"
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def tongue_pertrial_endpoints_json(
+        self, animal: str, date: datetime.date,
+    ) -> Path:
+        """Return the Phase 7a.3 per-trial endpoints JSON path.
+
+        E.g. ``<outputs>/dlc_kinematics/endpoints/PS54/20250607.json``.
+
+        Output filename uses ``%Y%m%d`` to match
+        :meth:`interpolated_trace`'s convention. Parent directory is created
+        eagerly.
+        """
+        date_str = date.strftime("%Y%m%d")
+        out = (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "endpoints"
+            / animal
+            / f"{date_str}.json"
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def dlc_centered_spout_midpoint_parquet(
+        self, animal: str, date: datetime.date,
+    ) -> Path:
+        """Resolve the consolidated centered_spout_midpoint parquet for one
+        ``(animal, date)``.
+
+        E.g. ``<outputs>/dlc_analysis/centered_spout_midpoint/PS50/
+        video2_2025-03-19T16_18_28DLC_Resnet50_video2Jan26shuffle5_snapshot_060_filtered.h5.intermediate.2a6efb6a.parquet``.
+
+        The upstream filename embeds a session-start timestamp + DLC model
+        name + param-signature hash, so the date alone does not uniquely
+        identify the file. This resolver globs ``video2_{YYYY-MM-DD}T*.parquet``
+        under
+        ``pipeline_outputs("dlc_analysis") / "centered_spout_midpoint" / animal``
+        and returns the unique match.
+
+        Date is formatted with :meth:`datetime.date.isoformat` (``YYYY-MM-DD``,
+        with hyphens) to match the upstream filename convention — this is
+        intentionally different from :meth:`interpolated_trace`'s ``%Y%m%d``
+        OUTPUT convention.
+
+        Caller invariant: the centered_spout_midpoint tree should have exactly
+        one parquet per session per animal in the current cohort
+        (Task 1.5 verified 14/15 in-scope sessions match this invariant; the
+        one missing is PS54/2025-05-12, a known data gap inheriting the
+        7a.1/7a.2 ``skip_missing`` pattern).
+
+        Raises
+        ------
+        FileNotFoundError
+            If zero parquets match the glob pattern.
+        RuntimeError
+            If multiple parquets match (signals an upstream re-emit produced
+            two param-sig versions; downstream loaders should not silently
+            guess which to use).
+        """
+        candidate_dir = (
+            self.pipeline_outputs(subdir="dlc_analysis")
+            / "centered_spout_midpoint"
+            / animal
+        )
+        # NB: isoformat = YYYY-MM-DD with hyphens, matches upstream filename.
+        pattern = f"video2_{date.isoformat()}T*.parquet"
+        matches = sorted(candidate_dir.glob(pattern))
+        if not matches:
+            raise FileNotFoundError(
+                f"No centered_spout_midpoint parquet for {animal}/{date.isoformat()} "
+                f"(searched {pattern!r} in {candidate_dir})"
+            )
+        if len(matches) > 1:
+            raise RuntimeError(
+                f"Multiple centered_spout_midpoint parquets for "
+                f"{animal}/{date.isoformat()}: {[m.name for m in matches]}"
+            )
+        return matches[0]
+
     def wavesurfer_dir(self, date: datetime.date, animal: str) -> Path:
         """Return the wavesurfer session directory for an animal and date.
 

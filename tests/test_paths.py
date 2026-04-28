@@ -382,6 +382,153 @@ class TestInterpolatedTrace:
             )
 
 
+class TestTonguePertrialPaths:
+    """Phase 7a.3 V3 resolver helpers.
+
+    Three OUTPUT resolvers (angle parquet, licking-dynamics traces parquet,
+    endpoints JSON) emit ``%Y%m%d`` filenames matching 7a.2's
+    ``interpolated_trace`` convention.
+
+    One INPUT resolver (centered_spout_midpoint) globs
+    ``video2_{YYYY-MM-DD}T*.parquet`` (ISO-format date with hyphens —
+    upstream filename convention) and asserts exactly-one match.
+    """
+
+    def test_tongue_pertrial_angle_parquet_path(self, monkeypatch, tmp_path):
+        """Output uses %Y%m%d (matches 7a.2 interpolated_trace)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tongue_pertrial_angle_parquet(
+            "PS50", datetime.date(2025, 3, 19)
+        )
+        expected = (
+            tmp_path
+            / "dlc_kinematics"
+            / "features"
+            / "tongue"
+            / "PS50"
+            / "20250319.parquet"
+        )
+        assert path == expected
+        assert path.parent.exists() and path.parent.is_dir()
+
+    def test_tongue_pertrial_licking_dynamics_traces_parquet_path(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tongue_pertrial_licking_dynamics_traces_parquet(
+            "PS46", datetime.date(2025, 5, 1)
+        )
+        expected = (
+            tmp_path
+            / "dlc_kinematics"
+            / "licking_dynamics"
+            / "traces"
+            / "PS46"
+            / "20250501.parquet"
+        )
+        assert path == expected
+        assert path.parent.exists()
+
+    def test_tongue_pertrial_endpoints_json_path(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tongue_pertrial_endpoints_json(
+            "PS54", datetime.date(2025, 6, 7)
+        )
+        expected = (
+            tmp_path
+            / "dlc_kinematics"
+            / "endpoints"
+            / "PS54"
+            / "20250607.json"
+        )
+        assert path == expected
+        assert path.parent.exists()
+
+    def test_dlc_centered_spout_midpoint_parquet_globs_and_returns_unique_match(
+        self, monkeypatch, tmp_path,
+    ):
+        """Resolver globs `video2_{YYYY-MM-DD}T*.parquet` (ISO-format date)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        target_dir = (
+            tmp_path / "dlc_analysis" / "centered_spout_midpoint" / "PS55"
+        )
+        target_dir.mkdir(parents=True)
+        fake_parquet = (
+            target_dir
+            / (
+                "video2_2025-04-30T12_00_00DLC_Resnet50_video2Jan26shuffle5"
+                "_snapshot_060_filtered.h5.intermediate.deadbeef.parquet"
+            )
+        )
+        fake_parquet.touch()
+        # Decoy: a parquet for a different date should be ignored.
+        decoy = (
+            target_dir
+            / (
+                "video2_2025-05-01T08_00_00DLC_Resnet50_video2Jan26shuffle5"
+                "_snapshot_060_filtered.h5.intermediate.deadbeef.parquet"
+            )
+        )
+        decoy.touch()
+        resolved = resolver.dlc_centered_spout_midpoint_parquet(
+            "PS55", datetime.date(2025, 4, 30)
+        )
+        assert resolved == fake_parquet
+
+    def test_dlc_centered_spout_midpoint_parquet_raises_on_zero_matches(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        target_dir = (
+            tmp_path / "dlc_analysis" / "centered_spout_midpoint" / "PS55"
+        )
+        target_dir.mkdir(parents=True)
+        with pytest.raises(
+            FileNotFoundError,
+            match="No centered_spout_midpoint parquet",
+        ):
+            resolver.dlc_centered_spout_midpoint_parquet(
+                "PS55", datetime.date(2025, 4, 30)
+            )
+
+    def test_dlc_centered_spout_midpoint_parquet_raises_on_multiple_matches(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        target_dir = (
+            tmp_path / "dlc_analysis" / "centered_spout_midpoint" / "PS55"
+        )
+        target_dir.mkdir(parents=True)
+        # Two param-sig versions of the same date — upstream re-emit smell.
+        (
+            target_dir
+            / (
+                "video2_2025-04-30T12_00_00DLC_Resnet50_video2Jan26shuffle5"
+                "_snapshot_060_filtered.h5.intermediate.deadbeef.parquet"
+            )
+        ).touch()
+        (
+            target_dir
+            / (
+                "video2_2025-04-30T12_00_00DLC_Resnet50_video2Jan26shuffle5"
+                "_snapshot_060_filtered.h5.intermediate.cafef00d.parquet"
+            )
+        ).touch()
+        with pytest.raises(
+            RuntimeError,
+            match="Multiple centered_spout_midpoint parquets",
+        ):
+            resolver.dlc_centered_spout_midpoint_parquet(
+                "PS55", datetime.date(2025, 4, 30)
+            )
+
+
 # ---- Integration test (requires real mount) ----
 
 _MOUNT = Path("/Volumes/Neurobio/MICROSCOPE/Priya")

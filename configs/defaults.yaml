@@ -385,6 +385,129 @@ dlc_kinematics:
       y0_percentile: 5.0
       x0: "median_of_y_percentile_subset"
 
+  # Phase 7a.3 V3 — tongue per-trial features (Cells 33/36/39/42/50)
+  tongue_pertrial:
+    # =========================================================
+    # Per-metric detection / apply windows (ms post-reward)
+    # =========================================================
+    lick12_detect_win_ms: [70, 3000]
+    peak_velocity_detect_win_ms: [70, 3000]
+    lick_count_detect_win_ms: [70, 8000]
+    lick_count_apply_win_ms: [70, 5000]
+    lick_count_bin_win_ms: [70, 5070]   # 5 × 1-s clean bins
+    licking_dyn_detect_win_ms: [70, 8000]
+    licking_dyn_apply_win_ms: [70, 5000]
+    angle_detect_win_ms: [70, 8000]
+    angle_apply_win_ms: [70, 5000]
+
+    # =========================================================
+    # Shared lick-detector knobs (applied uniformly across all 5 cells)
+    # =========================================================
+    detector:
+      slope_thr_px_per_s: 250.0
+      rise_min_ms: 16.0
+      fall_min_ms: 16.0
+      peak_pad_ms: 52.0
+      min_peak_y_abs: 20.0
+      min_finite_samples_per_lick: 5
+      strict_no_fallback: true
+      use_src: "final"
+      do_smooth_y_for_detection: true
+      smooth_ms_detect_y: 12.0
+      do_smooth_vel: true
+      smooth_ms_vel: 12.0
+
+    # =========================================================
+    # Bout configuration
+    # =========================================================
+    bout:
+      max_ili_ms: 300.0
+      min_ili_ms: 80.0
+      single_bout_win_ms: [-120, 200]
+      min_licks_in_bout_for_ili: 3
+      allow_single_lick_bouts: true
+
+    # =========================================================
+    # Per-metric bout mode
+    # Modes: "all" | "first_bout" | "first_multi_bout"
+    # =========================================================
+    bout_mode:
+      lick12: "all"
+      peak_velocity: "all"
+      n_licks: "all"
+      licking_dynamics_traces: "all"
+      licking_dynamics_bout_count: "first_multi_bout"
+      licking_dynamics_mean_within_bout_ili: "first_multi_bout"
+      licking_dynamics_lick_rate: "all"
+      angle_n_peaks: "all"
+      angle_n_bouts: "all"
+      angle_n_multi_lick_bouts: "first_multi_bout"
+      angle_first_peak_t_ms: "all"
+
+    # =========================================================
+    # Cell 39 — direction tally + categorical + binning
+    # =========================================================
+    direction_thresholds:
+      x_left_thr_px: 5.0
+      x_right_thr_px: -5.0
+    n_licks_categorical:
+      lick_ge10_thr: 10
+    n_licks_binning:
+      bin_count: 5
+      bin_ms: 1000.0
+    max_licks_per_trial: 40
+
+    # =========================================================
+    # Cell 42 — licking dynamics trace emission
+    # =========================================================
+    licking_dynamics:
+      bin_ms: 20.0
+      lickrate_smooth_sigma_ms: 50.0
+      ili_smooth_sigma_ms: 50.0
+      prob_smooth_movavg_ms: 200.0
+      min_trials_per_bin: 3
+      max_licks_per_trial: 80
+
+    # =========================================================
+    # Cell 50 — angle math
+    # =========================================================
+    angle:
+      sign_flip: -1.0
+      smoothing_gaussian_sigma_ms: 8.0
+      eye_likelihood_threshold: 0.70
+      min_valid_eye_frames: 100
+      allow_one_eye_fallback: true
+      eye_landmark_source: "consolidated_centered_spout_midpoint"
+      # Spout-frame sanity check (Task 1.5 finding 2026-04-28).
+      # Input parquet has no center_mode metadata, so we verify empirically:
+      # |0.5 * (median(L_spout_*) + median(R_spout_*))| must be <= this on
+      # both x and y, else raise (fail loud rather than silently emit
+      # angles in the wrong frame).
+      spout_frame_origin_tol_px: 2.0
+
+    # =========================================================
+    # Cell 50 — session-level inclusion thresholds
+    # (replaces V1/V2's per-trial tongue_angle_pass mask)
+    # =========================================================
+    session_inclusion:
+      min_time_trials_per_session: 0
+      min_firstpeak_trials_per_session: 5
+      min_phase_licks_per_session: 15
+      min_phase_trials_per_session: 5
+
+    # =========================================================
+    # Cell 50 — phase machinery
+    # =========================================================
+    phase:
+      n_phase_bins: 72
+      phase_summary_mode: "first_multi_bout"
+
+    # =========================================================
+    # Output schema versions (baked into parquet/JSON metadata)
+    # =========================================================
+    feature_extraction_version: "v7a.3"
+    interpolation_version: "v5p3"
+
 # ---- Wavesurfer ----
 
 wavesurfer:
