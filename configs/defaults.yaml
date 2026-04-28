@@ -444,11 +444,11 @@ dlc_kinematics:
       licking_dynamics_bout_count: "all"   # Q8: was "first_multi_bout" — wrong; bout_count tallies multi-lick bouts across the whole apply-window peak set, not a peak-set filter.
       licking_dynamics_mean_within_bout_ili: "first_multi_bout"
       licking_dynamics_lick_rate: "all"
-      licking_dynamics_n_licks_in_first_multi_bout: "first_multi_bout"   # Q9 NEW 2026-04-28: feeds session_inclusion.n_phase_licks aggregation.
       angle_n_peaks: "all"
       angle_n_bouts: "all"
       angle_n_multi_lick_bouts: "first_multi_bout"
       angle_first_peak_t_ms: "all"
+      angle_n_licks_in_first_multi_bout: "first_multi_bout"   # Q9 NEW 2026-04-28 (placement realigned to Cell 50 own-bout per kickoff §3a): peak count inside the first multi-lick bout. Feeds session_inclusion.n_phase_licks (sum across trials).
 
     # =========================================================
     # Cell 39 — direction tally + categorical + binning

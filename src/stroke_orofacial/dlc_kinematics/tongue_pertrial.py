@@ -663,8 +663,7 @@ def _extract_licking_dynamics_reductions(
     *, params: dict[str, Any],
 ) -> dict[str, float | int]:
     """Per-trial Cell 42 reductions: ``bout_count``,
-    ``mean_within_bout_ili_ms``, ``lick_rate_hz``,
-    ``n_licks_in_first_multi_bout`` (Q9 NEW).
+    ``mean_within_bout_ili_ms``, ``lick_rate_hz``.
 
     Bout-modes per V3 §2a (Q8 corrected 2026-04-28):
       * ``bout_count``: ``"all"`` (counts multi-lick bouts among all
@@ -672,10 +671,13 @@ def _extract_licking_dynamics_reductions(
         list, not a peak-set filter).
       * ``mean_within_bout_ili_ms``: ``"first_multi_bout"`` (mean ILI inside
         the first multi-lick bout, valid ILIs only).
-      * ``n_licks_in_first_multi_bout`` (Q9 NEW): ``"first_multi_bout"``
-        (peak count inside the first multi-lick bout). Used by the
-        session-inclusion ``n_phase_licks`` aggregation.
       * ``lick_rate_hz``: ``"all"`` (apply-window licks / window duration).
+
+    Note: ``n_licks_in_first_multi_bout`` is emitted by
+    :func:`_extract_cell50_own_bout_scalars` (Cell 50 own-bout, Q9 placement
+    lock per kickoff §3a 2026-04-28) — same value either side, since both
+    cells share the detector + ``bout.max_ili_ms`` config and use identical
+    detect/apply windows.
     """
     tp = params["dlc_kinematics"]["tongue_pertrial"]
     detect_win = tuple(tp["licking_dyn_detect_win_ms"])
@@ -705,16 +707,11 @@ def _extract_licking_dynamics_reductions(
     multi_bouts = [b for b in bouts if len(b) >= 2]
     bout_count = len(multi_bouts)
 
-    # Q9: n_licks_in_first_multi_bout — # licks in the first multi-lick bout.
-    # Feeds the session-inclusion n_phase_licks aggregation.
-    n_licks_first_multi = int(len(multi_bouts[0])) if multi_bouts else 0
-
     if not multi_bouts:
         return {
             "bout_count": int(bout_count),
             "mean_within_bout_ili_ms": float("nan"),
             "lick_rate_hz": lick_rate_hz,
-            "n_licks_in_first_multi_bout": n_licks_first_multi,
         }
     first = multi_bouts[0]
     if len(first) < min_in_bout:
@@ -722,7 +719,6 @@ def _extract_licking_dynamics_reductions(
             "bout_count": int(bout_count),
             "mean_within_bout_ili_ms": float("nan"),
             "lick_rate_hz": lick_rate_hz,
-            "n_licks_in_first_multi_bout": n_licks_first_multi,
         }
     sorted_t = np.sort(apply_peaks_t[first])
     ilis = np.diff(sorted_t)
@@ -732,14 +728,12 @@ def _extract_licking_dynamics_reductions(
             "bout_count": int(bout_count),
             "mean_within_bout_ili_ms": float("nan"),
             "lick_rate_hz": lick_rate_hz,
-            "n_licks_in_first_multi_bout": n_licks_first_multi,
         }
     mean_ili = float(np.mean(ilis[valid]))
     return {
         "bout_count": int(bout_count),
         "mean_within_bout_ili_ms": mean_ili,
         "lick_rate_hz": lick_rate_hz,
-        "n_licks_in_first_multi_bout": n_licks_first_multi,
     }
 
 
@@ -1012,10 +1006,12 @@ def _build_tongue_pertrial_core(
         apply_peaks_per_side, params=params,
     )
 
-    # Step 7: session inclusion (Q9 lock 2026-04-28).
-    # n_phase_licks = sum of n_licks_in_first_multi_bout per trial.
-    # n_phase_trials = trials with n_licks_in_first_multi_bout >= 2 (i.e.
-    #   trials that contributed at least one ILI to the phase summary).
+    # Step 7: session inclusion (Q9 lock 2026-04-28; placement realigned to
+    # Cell 50 own-bout per kickoff §3a).
+    #   n_time_trials       = trials with finite cell50.first_peak_t_ms
+    #   n_first_peak_trials = trials with finite lick1_t_peak_ms (Cell 33)
+    #   n_phase_licks       = sum(cell50.n_licks_in_first_multi_bout) across trials
+    #   n_phase_trials      = trials with cell50.n_multi_lick_bouts >= 1
     n_time_trials = sum(
         1 for r in cell50_own if np.isfinite(r["first_peak_t_ms"])
     )
@@ -1023,11 +1019,10 @@ def _build_tongue_pertrial_core(
         1 for r in lick12_records if np.isfinite(r["lick1_t_peak_ms"])
     )
     n_phase_licks = int(sum(
-        int(r["n_licks_in_first_multi_bout"]) for r in licking_dyn_records
+        int(r["n_licks_in_first_multi_bout"]) for r in cell50_own
     ))
     n_phase_trials = sum(
-        1 for r in licking_dyn_records
-        if int(r["n_licks_in_first_multi_bout"]) >= 2
+        1 for r in cell50_own if int(r["n_multi_lick_bouts"]) >= 1
     )
     inclusion = _evaluate_session_inclusion(
         n_time_trials=n_time_trials,
@@ -1122,10 +1117,6 @@ def _build_tongue_pertrial_core(
                     [r["mean_within_bout_ili_ms"] for r in licking_dyn_records],
                 "lick_rate_hz":
                     [r["lick_rate_hz"] for r in licking_dyn_records],
-                "n_licks_in_first_multi_bout": [
-                    int(r["n_licks_in_first_multi_bout"])
-                    for r in licking_dyn_records
-                ],
             },
             "tongue_angle": {
                 "lick1_angle_at_ypeak": angle_at_lick1,
@@ -1140,6 +1131,9 @@ def _build_tongue_pertrial_core(
                     [int(r["n_multi_lick_bouts"]) for r in cell50_own],
                 "first_peak_t_ms":
                     [r["first_peak_t_ms"] for r in cell50_own],
+                "n_licks_in_first_multi_bout": [
+                    int(r["n_licks_in_first_multi_bout"]) for r in cell50_own
+                ],
             },
         },
         "session_inclusion": inclusion,

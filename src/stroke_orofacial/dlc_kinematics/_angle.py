@@ -163,8 +163,13 @@ def _extract_cell50_own_bout_scalars(
     """Cell 50 own per-trial bout scalars (constrained to apply window).
 
     Returns ``n_peaks``, ``n_bouts``, ``n_multi_lick_bouts``,
-    ``first_peak_t_ms`` for the apply window ``angle_apply_win_ms``
-    (V3: ``[70, 5000]``).
+    ``first_peak_t_ms``, ``n_licks_in_first_multi_bout`` for the apply
+    window ``angle_apply_win_ms`` (V3: ``[70, 5000]``).
+
+    ``n_licks_in_first_multi_bout`` (Q9 NEW 2026-04-28): peak count inside
+    the first multi-lick bout (0 if no multi-lick bout). Feeds the
+    session-inclusion ``n_phase_licks`` aggregation
+    (``sum(n_licks_in_first_multi_bout)`` across trials).
     """
     tp = params["dlc_kinematics"]["tongue_pertrial"]
     detect_win = tuple(tp["angle_detect_win_ms"])
@@ -183,13 +188,16 @@ def _extract_cell50_own_bout_scalars(
     n_peaks = int(len(apply_t))
     bouts = _build_bouts(apply_t, float(bout["max_ili_ms"]))
     n_bouts = len(bouts)
-    n_multi = sum(1 for b in bouts if len(b) >= 2)
+    multi_bouts = [b for b in bouts if len(b) >= 2]
+    n_multi = len(multi_bouts)
     first_t = float(apply_t.min()) if n_peaks > 0 else float("nan")
+    n_licks_first_multi = int(len(multi_bouts[0])) if multi_bouts else 0
     return {
         "n_peaks": n_peaks,
         "n_bouts": n_bouts,
         "n_multi_lick_bouts": n_multi,
         "first_peak_t_ms": first_t,
+        "n_licks_in_first_multi_bout": n_licks_first_multi,
     }
 
 
