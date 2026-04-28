@@ -240,20 +240,29 @@ def build_tongue_pertrial_by_animal_date(
     animal: str,
     date: datetime.date,
     resolver: PathResolver,
-    trial_events: Sequence[TrialEvent],
+    *,
+    trial_events: Sequence[TrialEvent] | None = None,
     **kwargs: Any,
 ) -> dict[str, Path] | None:
     """Build tongue per-trial features from ``(animal, date)`` — manifests internally.
 
     Convenience wrapper analogous to
-    :func:`build_interpolated_trace_by_animal_date`. ``trial_events`` is
-    still required (see :func:`build_tongue_pertrial`).
+    :func:`build_interpolated_trace_by_animal_date`. If ``trial_events``
+    is ``None`` (default), they are auto-derived via
+    :func:`_derive_trial_events_from_spout_behavior` from the consolidated
+    ``licks_and_rewards`` NPZ + cam2 alignment template (see Task 5.0,
+    2026-04-28). Callers that want explicit control may still pass an
+    explicit list.
     """
     animal_info = get_animal(animal)
     manifest = build_manifest(
         animal, date, resolver, animal_info,
         analysis_context="dlc.kinematics.tongue_pertrial",
     )
+    if trial_events is None:
+        trial_events = _derive_trial_events_from_spout_behavior(
+            animal=animal, date=date, resolver=resolver, manifest=manifest,
+        )
     kwargs.setdefault("animal_info", animal_info)
     return build_tongue_pertrial(
         manifest=manifest,
@@ -261,6 +270,151 @@ def build_tongue_pertrial_by_animal_date(
         trial_events=trial_events,
         **kwargs,
     )
+
+
+# ===========================================================================
+# Trial-events auto-derive (Task 5.0, 2026-04-28)
+# ===========================================================================
+
+
+def _derive_trial_events_from_spout_behavior(
+    animal: str,
+    date: datetime.date,
+    resolver: PathResolver,
+    manifest: SessionManifest,
+) -> list[TrialEvent]:
+    """Auto-derive per-trial reward-frame + side from upstream pipeline products.
+
+    Mirrors legacy's ``Z["fr_reward_mouseL"]`` / ``Z["fr_reward_mouseR"]``
+    semantics by re-deriving at consume time. The 7a.2 consolidated parquet
+    deliberately drops the legacy reward arrays per §5 Option A pure-bodypart
+    schema, so 7a.3 reads the consolidated ``licks_and_rewards`` NPZ + cam2
+    alignment template and reapplies the WS→cam translation. No new alignment
+    code: this is a thin orchestration of public helpers already battle-tested
+    by Phase 6 + 7a.2's :func:`_load_reward_centers_cam`.
+
+    ``trial_index`` is **chronological-across-sides** (Option α lock 2026-04-28):
+    rewards are sorted by ``reward_frame_idx`` and assigned globally unique
+    ``trial_index = 0..N-1``. Per-side enumeration (legacy parity) is the
+    parity harness's responsibility (sort-by-(side, reward_frame_idx) →
+    re-key).
+
+    Side translation: NOT applied here. The licks NPZ keys ``Reward_L`` /
+    ``Reward_R`` are already in mouse-frame coords post task #17 re-emit
+    (Phase 6.8 boundary at Phase 2 emit). :func:`load_reward_events`
+    validates the ``side_convention_version=1`` + ``wavesurfer_sides_match_mouse_sides``
+    stamps and raises on pre-task-#17 NPZs — let it raise its own error
+    (don't wrap or pre-validate).
+
+    Parameters
+    ----------
+    animal, date
+        Session identifiers.
+    resolver
+        Configured PathResolver.
+    manifest
+        Session manifest. Used for ``manifest.wavesurfer_sides_match_mouse_sides``
+        (cross-checked against the licks NPZ stamp inside ``load_reward_events``).
+
+    Returns
+    -------
+    list[TrialEvent]
+        Sorted by ``reward_frame_idx``, ``trial_index`` 0-indexed contiguous.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the licks NPZ, the alignment template, or the upstream tongue
+        parquet is missing.
+    ValueError
+        If any reward_frame_idx falls outside ``[0, n_frames)`` after the
+        WS→cam translation. (``load_reward_events`` raises ValueError on
+        its own for pre-task-#17 / mismatched-stamp NPZs — propagated.)
+    """
+    # 1. n_frames from the upstream tongue parquet metadata (must match the
+    #    cam-frame count the alignment LUT was built for).
+    tongue_path = resolver.interpolated_trace(
+        bodypart="tongue", animal=animal, date=date,
+    )
+    if not tongue_path.exists():
+        raise FileNotFoundError(
+            f"7a.2 tongue interpolated_traces parquet missing for "
+            f"{animal}/{date.isoformat()}: expected at {tongue_path}. "
+            f"Run build_interpolated_trace first.",
+        )
+    schema = pq.read_schema(tongue_path)
+    raw_meta = schema.metadata or {}
+    n_frames_meta = raw_meta.get(b"n_frames")
+    if n_frames_meta is None:
+        raise ValueError(
+            f"7a.2 tongue parquet at {tongue_path} missing 'n_frames' "
+            f"metadata key (expected per the 7a.2 schema lock).",
+        )
+    n_frames = int(n_frames_meta)
+
+    # 2. licks_and_rewards NPZ path (no dedicated PathResolver helper as of
+    #    Task 5.0; pattern matches 7a.2's _load_reward_centers_cam).
+    date_str = date.strftime("%Y%m%d")
+    licks_path = (
+        resolver.pipeline_outputs("spout_behavior")
+        / "licks_and_rewards"
+        / animal
+        / f"{date_str}.npz"
+    )
+
+    # 3. Alignment template (cam2 — same fallback chain as 7a.2's
+    #    _load_reward_centers_cam: prefer manifest if set, else resolver).
+    align_path = manifest.alignment_template
+    if align_path is None or not align_path.exists():
+        align_path = resolver.alignment_template(animal, date, cam="cam2")
+    if not align_path.exists():
+        raise FileNotFoundError(
+            f"{animal}/{date_str}: cam2 alignment template missing at "
+            f"{align_path}. Run scripts/make_alignment_templates.py.",
+        )
+
+    from stroke_orofacial.alignment.templates import load_alignment_template
+    from stroke_orofacial.dlc_spatial.reward_aligned import (
+        load_reward_events,
+        ws_samples_to_frame_indices,
+    )
+
+    aln = load_alignment_template(align_path)
+    sig_camIdx__idx_ws = aln["sig_camIdx__idx_ws"]
+
+    # 4-5. Per-side: load WS reward indices (with side-stamp validation),
+    #      translate to cam frames, drop invalid (-1).
+    events: list[tuple[int, str]] = []  # (reward_frame_idx, side)
+    for side in ("L", "R"):
+        ws_idx = load_reward_events(
+            licks_path, trial_group=side,
+            wavesurfer_sides_match_mouse_sides=(
+                manifest.wavesurfer_sides_match_mouse_sides
+            ),
+        )
+        if len(ws_idx) == 0:
+            continue
+        cam_frames = ws_samples_to_frame_indices(
+            ws_idx, sig_camIdx__idx_ws, n_cam_frames=n_frames,
+        )
+        for f in cam_frames:
+            if f < 0:
+                continue  # invalid translation; legacy `centers >= 0` filter
+            if f >= n_frames:
+                raise ValueError(
+                    f"{animal}/{date_str}: reward_frame_idx={f} >= n_frames"
+                    f"={n_frames} after WS→cam translation. The alignment "
+                    f"LUT may be out of sync with the tongue parquet's "
+                    f"n_frames metadata.",
+                )
+            events.append((int(f), side))
+
+    # 6-7. Sort chronologically across sides; assign globally unique trial_index.
+    events.sort(key=lambda ev: ev[0])
+    return [
+        TrialEvent(trial_index=k, reward_frame_idx=fr, side=sd)
+        for k, (fr, sd) in enumerate(events)
+    ]
 
 
 # ===========================================================================

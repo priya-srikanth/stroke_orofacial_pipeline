@@ -49,6 +49,7 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
     FEATURE_EXTRACTION_VERSION,
     INTERPOLATION_VERSION,
     TrialEvent,
+    _derive_trial_events_from_spout_behavior,
     _extract_lick1_lick2,
     _extract_licking_dynamics_reductions,
     _extract_licking_dynamics_traces,
@@ -56,6 +57,11 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
     _extract_peak_velocity_first5,
     _resolve_eye_midpoint_session_median,
     build_tongue_pertrial,
+)
+from stroke_orofacial.lr_convention import (
+    SIDE_CONVENTION_MATCH_KEY,
+    SIDE_CONVENTION_VERSION,
+    SIDE_CONVENTION_VERSION_KEY,
 )
 from stroke_orofacial.manifest import SessionManifest
 from stroke_orofacial.paths import PathResolver
@@ -213,6 +219,9 @@ def _make_synthetic_eye_landmark_parquet(
 
 def _make_minimal_manifest(
     animal: str = "PS46", date: datetime.date = datetime.date(2025, 3, 7),
+    *,
+    alignment_template: Path | None = None,
+    wavesurfer_sides_match_mouse_sides: bool = False,
 ) -> SessionManifest:
     """A SessionManifest filled only with the fields the driver reads."""
     return SessionManifest(
@@ -222,7 +231,52 @@ def _make_minimal_manifest(
         day_relative_to_stroke=-6,
         phase="baseline",
         excluded=False,
+        alignment_template=alignment_template,
+        wavesurfer_sides_match_mouse_sides=wavesurfer_sides_match_mouse_sides,
     )
+
+
+def _make_synthetic_licks_npz(
+    path: Path, *,
+    reward_L_ws: np.ndarray | None = None,
+    reward_R_ws: np.ndarray | None = None,
+    wavesurfer_sides_match_mouse_sides: bool = False,
+) -> None:
+    """Phase-2-shaped licks NPZ with the v6.8 side-convention stamp.
+
+    Mirrors the writer in
+    ``src/stroke_orofacial/spout_behavior/session_processing.py:354-366``.
+    Only the fields :func:`load_reward_events` consumes are populated;
+    Lick_*/Tone_* are empty for these tests.
+    """
+    if reward_L_ws is None:
+        reward_L_ws = np.array([1000, 3000, 5000], dtype=np.int64)
+    if reward_R_ws is None:
+        reward_R_ws = np.array([2000, 4000], dtype=np.int64)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        path,
+        Reward_L=reward_L_ws.astype(np.int64),
+        Reward_R=reward_R_ws.astype(np.int64),
+        **{
+            SIDE_CONVENTION_MATCH_KEY: np.bool_(wavesurfer_sides_match_mouse_sides),
+            SIDE_CONVENTION_VERSION_KEY: np.int64(SIDE_CONVENTION_VERSION),
+        },
+    )
+
+
+def _make_synthetic_alignment_template_npz(
+    path: Path, n_ws: int = 20000, *, slope_ws_per_camFrame: float = 4.0,
+) -> None:
+    """Linear-ramp alignment template: ``cam_idx = ws_idx / slope_ws_per_camFrame``.
+
+    Default slope = 4.0 (typical for fps=250 Hz cam ↔ Fs=1000 Hz wavesurfer).
+    """
+    sig_camIdx__idx_ws = (np.arange(n_ws) / float(slope_ws_per_camFrame)).astype(
+        np.float64,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(path, sig_camIdx__idx_ws=sig_camIdx__idx_ws)
 
 
 @pytest.fixture()
@@ -1103,3 +1157,245 @@ class TestDriverAndSchema:
             "feature_extraction_version", "interpolation_version",
         }
         assert expected.issubset(meta_keys)
+
+    # 38 — sides array co-indexed with trial_indices (Task 5.0 schema add)
+    def test_endpoints_json_schema_includes_sides_array(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver, manifest, trial_events = self._setup_session_outputs(tmp_path)
+        out = build_tongue_pertrial(
+            manifest=manifest, resolver=resolver,
+            trial_events=trial_events, params=base_params,
+            overwrite="force",
+        )
+        with open(out["endpoints_json"]) as f:
+            payload = json.load(f)
+        # Top-level "sides" present, length matches n_trials, all values "L"/"R".
+        assert "sides" in payload
+        assert len(payload["sides"]) == payload["n_trials"]
+        assert len(payload["sides"]) == len(payload["trial_indices"])
+        assert all(s in ("L", "R") for s in payload["sides"])
+        # Co-indexed: the i-th side corresponds to trial_index i.
+        for i, te in enumerate(trial_events):
+            assert payload["sides"][i] == te.side
+
+
+# ===========================================================================
+# 38-43. Trial-events auto-derive (Task 5.0)
+# ===========================================================================
+
+
+class TestTrialEventsAutoDerive:
+    """Cover :func:`_derive_trial_events_from_spout_behavior` end-to-end.
+
+    Synthetic upstream products under ``tmp_path``: tongue parquet,
+    licks_and_rewards NPZ, alignment template (linear ramp WS→cam).
+    """
+
+    @staticmethod
+    def _setup(
+        tmp_path: Path,
+        *,
+        animal: str = "PS46",
+        date: datetime.date = datetime.date(2025, 3, 7),
+        n_frames: int = 5000,
+        n_ws: int = 20000,
+        wavesurfer_sides_match_mouse_sides: bool = False,
+        reward_L_ws: np.ndarray | None = None,
+        reward_R_ws: np.ndarray | None = None,
+        write_licks: bool = True,
+        write_alignment: bool = True,
+        slope_ws_per_camFrame: float = 4.0,
+    ) -> tuple[PathResolver, SessionManifest, datetime.date, str, int]:
+        resolver = PathResolver(output_root=tmp_path)
+        # Tongue parquet (the helper reads n_frames from its metadata).
+        tongue_path = resolver.interpolated_trace(
+            "tongue", animal, date, variant="parquet",
+        )
+        _make_synthetic_tongue_parquet(tongue_path, n_frames)
+        # Licks NPZ.
+        licks_path = (
+            resolver.pipeline_outputs("spout_behavior")
+            / "licks_and_rewards" / animal / f"{date.strftime('%Y%m%d')}.npz"
+        )
+        if write_licks:
+            _make_synthetic_licks_npz(
+                licks_path,
+                reward_L_ws=reward_L_ws,
+                reward_R_ws=reward_R_ws,
+                wavesurfer_sides_match_mouse_sides=(
+                    wavesurfer_sides_match_mouse_sides
+                ),
+            )
+        # Alignment template under tmp_path so the manifest's direct-path
+        # plumbing is exercised (resolver.alignment_template's
+        # microscope_server fallback would otherwise be hit).
+        align_path = tmp_path / f"align_{animal}_{date.strftime('%Y%m%d')}.npz"
+        if write_alignment:
+            _make_synthetic_alignment_template_npz(
+                align_path, n_ws=n_ws,
+                slope_ws_per_camFrame=slope_ws_per_camFrame,
+            )
+        manifest = _make_minimal_manifest(
+            animal=animal, date=date,
+            alignment_template=align_path if write_alignment else None,
+            wavesurfer_sides_match_mouse_sides=(
+                wavesurfer_sides_match_mouse_sides
+            ),
+        )
+        return resolver, manifest, date, animal, n_frames
+
+    # 1
+    def test_derive_trial_events_returns_list_of_trialevent(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver, manifest, date, animal, n_frames = self._setup(tmp_path)
+        events = _derive_trial_events_from_spout_behavior(
+            animal=animal, date=date, resolver=resolver, manifest=manifest,
+        )
+        # Default fixture: 3 L + 2 R = 5 trials.
+        assert isinstance(events, list)
+        assert len(events) == 5
+        assert all(isinstance(ev, TrialEvent) for ev in events)
+        # trial_index contiguous 0..N-1.
+        assert [ev.trial_index for ev in events] == list(range(5))
+        # All sides in {"L", "R"}.
+        assert all(ev.side in ("L", "R") for ev in events)
+        # All reward_frame_idx in [0, n_frames).
+        assert all(0 <= ev.reward_frame_idx < n_frames for ev in events)
+
+    # 2 — alignment translation: WS index → cam frame
+    def test_derive_trial_events_alignment_translation(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        # Slope = 4 → ws_idx 4000 maps to cam frame 1000.
+        resolver, manifest, date, animal, _ = self._setup(
+            tmp_path,
+            reward_L_ws=np.array([4000], dtype=np.int64),
+            reward_R_ws=np.array([], dtype=np.int64),
+        )
+        events = _derive_trial_events_from_spout_behavior(
+            animal=animal, date=date, resolver=resolver, manifest=manifest,
+        )
+        assert len(events) == 1
+        assert events[0].reward_frame_idx == 1000
+        assert events[0].side == "L"
+
+    # 3 — sides pass through (NPZ already mouse-frame regardless of
+    # wavesurfer_sides_match_mouse_sides flag value)
+    def test_derive_trial_events_side_in_mouse_frame(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        # Match=True case: NPZ stamped True, manifest=True. Reward_L key →
+        # side "L".
+        resolver, manifest, date, animal, _ = self._setup(
+            tmp_path,
+            wavesurfer_sides_match_mouse_sides=True,
+            reward_L_ws=np.array([4000], dtype=np.int64),
+            reward_R_ws=np.array([8000], dtype=np.int64),
+        )
+        events = _derive_trial_events_from_spout_behavior(
+            animal=animal, date=date, resolver=resolver, manifest=manifest,
+        )
+        sides_by_frame = {ev.reward_frame_idx: ev.side for ev in events}
+        assert sides_by_frame == {1000: "L", 2000: "R"}
+
+        # Match=False case: NPZ stamped False, manifest=False. Same NPZ
+        # keys → same mouse-frame sides (translation already applied at
+        # NPZ emit, so 7a.3 reads them verbatim).
+        date2 = datetime.date(2025, 3, 8)
+        resolver2, manifest2, date2, animal2, _ = self._setup(
+            tmp_path,
+            date=date2,
+            wavesurfer_sides_match_mouse_sides=False,
+            reward_L_ws=np.array([4000], dtype=np.int64),
+            reward_R_ws=np.array([8000], dtype=np.int64),
+        )
+        events2 = _derive_trial_events_from_spout_behavior(
+            animal=animal2, date=date2,
+            resolver=resolver2, manifest=manifest2,
+        )
+        sides_by_frame2 = {ev.reward_frame_idx: ev.side for ev in events2}
+        assert sides_by_frame2 == {1000: "L", 2000: "R"}
+
+    # 4 — missing licks NPZ → FileNotFoundError
+    def test_derive_trial_events_raises_on_missing_licks_and_rewards(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver, manifest, date, animal, _ = self._setup(
+            tmp_path, write_licks=False,
+        )
+        with pytest.raises(FileNotFoundError):
+            _derive_trial_events_from_spout_behavior(
+                animal=animal, date=date, resolver=resolver, manifest=manifest,
+            )
+
+    # 5 — missing alignment template → FileNotFoundError
+    def test_derive_trial_events_raises_on_missing_alignment_template(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver, manifest, date, animal, _ = self._setup(
+            tmp_path, write_alignment=False,
+        )
+        # On Windows host, the resolver fallback hits microscope_server which
+        # may or may not actually contain the file. To make this test
+        # deterministic, also clear manifest.alignment_template (already
+        # None when write_alignment=False); resolver fallback target may
+        # exist on the real share. Patch resolver to a non-existent path.
+        # We do this by overriding the alignment_template method.
+        nonexistent = tmp_path / "no_alignment_anywhere.npz"
+        monkeypatch.setattr(
+            resolver, "alignment_template",
+            lambda animal, date, cam="cam2": nonexistent,
+        )
+        with pytest.raises(FileNotFoundError, match="alignment template missing"):
+            _derive_trial_events_from_spout_behavior(
+                animal=animal, date=date, resolver=resolver, manifest=manifest,
+            )
+
+    # 6 — reward_frame validation: in-range check + defensive ValueError branch
+    def test_derive_trial_events_validates_reward_frame_in_range(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        # Place a WS reward index that maps cam_frame >= n_frames. The
+        # underlying ws_samples_to_frame_indices clamps these to -1, so
+        # the helper drops them silently. Verify all returned events are
+        # in [0, n_frames).
+        # n_frames=5000 + slope=4 → cam_frame = ws_idx / 4. WS index
+        # 21000 → cam frame 5250 > n_frames=5000 → clamped to -1 → dropped.
+        resolver, manifest, date, animal, n_frames = self._setup(
+            tmp_path, n_frames=5000, n_ws=25000,
+            reward_L_ws=np.array([4000, 21000], dtype=np.int64),
+            reward_R_ws=np.array([], dtype=np.int64),
+        )
+        events = _derive_trial_events_from_spout_behavior(
+            animal=animal, date=date, resolver=resolver, manifest=manifest,
+        )
+        assert len(events) == 1  # the out-of-range one was dropped
+        assert events[0].reward_frame_idx == 1000
+        # Defensive ValueError: monkeypatch the translator to return a
+        # frame index >= n_frames (bypassing its built-in clamp).
+        from stroke_orofacial.dlc_kinematics import tongue_pertrial as _tp_mod
+
+        def _patched_translator(ws_samples, lut, n_cam_frames):
+            return np.full(len(ws_samples), n_cam_frames + 5, dtype=np.int64)
+
+        monkeypatch.setattr(
+            "stroke_orofacial.dlc_spatial.reward_aligned"
+            ".ws_samples_to_frame_indices",
+            _patched_translator,
+        )
+        # Re-import path: the helper imports inside its function body.
+        # Patch at the source module so the helper's local import resolves
+        # to the patched function.
+        with pytest.raises(ValueError, match="reward_frame_idx"):
+            _tp_mod._derive_trial_events_from_spout_behavior(
+                animal=animal, date=date, resolver=resolver, manifest=manifest,
+            )
