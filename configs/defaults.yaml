@@ -428,17 +428,23 @@ dlc_kinematics:
       allow_single_lick_bouts: true
 
     # =========================================================
-    # Per-metric bout mode
+    # Per-metric bout mode (Q8 correction 2026-04-28)
     # Modes: "all" | "first_bout" | "first_multi_bout"
+    # The mode declares the peak-set filter applied BEFORE the metric is
+    # computed. Metrics that operate on the whole apply-window peak set
+    # (counts, rates) use "all"; metrics that operate on a specific bout's
+    # peaks (within-bout ILI, lick count inside the first multi-lick bout)
+    # use "first_multi_bout".
     # =========================================================
     bout_mode:
       lick12: "all"
       peak_velocity: "all"
       n_licks: "all"
       licking_dynamics_traces: "all"
-      licking_dynamics_bout_count: "first_multi_bout"
+      licking_dynamics_bout_count: "all"   # Q8: was "first_multi_bout" — wrong; bout_count tallies multi-lick bouts across the whole apply-window peak set, not a peak-set filter.
       licking_dynamics_mean_within_bout_ili: "first_multi_bout"
       licking_dynamics_lick_rate: "all"
+      licking_dynamics_n_licks_in_first_multi_bout: "first_multi_bout"   # Q9 NEW 2026-04-28: feeds session_inclusion.n_phase_licks aggregation.
       angle_n_peaks: "all"
       angle_n_bouts: "all"
       angle_n_multi_lick_bouts: "first_multi_bout"
