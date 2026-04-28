@@ -412,6 +412,66 @@ class TestSlopeDetector:
         assert len(out) == 3
         assert out.peak_times_ms.max() < 800.0
 
+    # 7b — next-lick search starts at end_idx + 1 (post-fall-run-end)
+    # (port-bug fix C5.1, 2026-04-28)
+    def test_slope_detect_next_lick_starts_after_fall_run(self, base_params):
+        """Two close peaks separated by a fall run. Pre-fix our impl started
+        the next-lick search at ``i_peak + 1`` (peak position) and could
+        re-detect a phantom peak inside the first peak's fall edge. Post-fix
+        we use ``end_idx + 1`` (post-fall-run-end), matching legacy's
+        Cell 33 contract.
+
+        Synthetic: two narrow Gaussian bumps with a clean dy <= 0 fall
+        between them. We assert exactly 2 peaks come back (not 3+).
+        """
+        # σ = 10 ms peaks at 400 + 700 ms; close enough that a buggy
+        # next-start could find an extra peak in the fall tail.
+        y_t, x_t, t_ms = _make_lick_trace(
+            duration_ms=1500.0, peak_centers_ms=[400.0, 700.0],
+            amplitude=30.0, sigma_ms=10.0,
+        )
+        det = self._detector_params(base_params)
+        peaks = _slope_detect_lick_peaks(
+            y_t, x_t, t_ms, _SYNTH_FPS,
+            detect_win_ms=(70.0, 1500.0), detector_params=det,
+        )
+        assert len(peaks) == 2
+        assert peaks.peak_times_ms[0] == pytest.approx(400.0, abs=12.0)
+        assert peaks.peak_times_ms[1] == pytest.approx(700.0, abs=12.0)
+
+    # 7c — strict_no_fallback rejects peaks with no fall run after them
+    # (port-bug fix C5.1, 2026-04-28)
+    def test_slope_detect_strict_no_fallback_rejects_no_fall_run(
+        self, base_params,
+    ):
+        """A rise-then-plateau (no fall) lick must be rejected under
+        ``strict_no_fallback=True``. Pre-fix our impl accepted such peaks
+        because the fall validation was a soft/no-op check.
+        """
+        # Synthetic: ramp up from 0 to 50 over 100 ms, then HOLD at 50 to
+        # the end of the window. There's a strong rise, a clear apex, but
+        # no symmetric fall (dy is ~0 after the apex, never crosses below
+        # -slope_thr). Legacy + post-fix should reject.
+        n = int(round(2000.0 / 1000.0 * _SYNTH_FPS)) + 1
+        t_ms = np.arange(n, dtype=np.float64) / _SYNTH_FPS * 1000.0
+        y_t = np.zeros(n, dtype=np.float64)
+        # Linear ramp: 0 → 50 over [400, 500] ms (25 ms × 4 frames).
+        ramp_lo = int(round(400.0 / 1000.0 * _SYNTH_FPS))
+        ramp_hi = int(round(500.0 / 1000.0 * _SYNTH_FPS))
+        for i in range(ramp_lo, ramp_hi + 1):
+            y_t[i] = 50.0 * (i - ramp_lo) / max(1, ramp_hi - ramp_lo)
+        # Hold at 50 from ramp_hi to end.
+        y_t[ramp_hi:] = 50.0
+        x_t = np.zeros(n, dtype=np.float64)
+        det = self._detector_params(base_params)
+        assert det["strict_no_fallback"] is True
+        peaks = _slope_detect_lick_peaks(
+            y_t, x_t, t_ms, _SYNTH_FPS,
+            detect_win_ms=(70.0, 2000.0), detector_params=det,
+        )
+        # No fall run after the apex → rejected under strict mode.
+        assert len(peaks) == 0
+
     # 7
     def test_filter_peaks_by_bout_mode_first_multi_bout(self, base_params):
         # First bout = singleton (1 lick), then a multi-lick bout at 1500/1700/1900.

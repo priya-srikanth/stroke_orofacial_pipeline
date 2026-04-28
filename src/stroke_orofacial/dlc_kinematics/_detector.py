@@ -121,6 +121,7 @@ def _slope_detect_lick_peaks(
     min_finite = int(detector_params["min_finite_samples_per_lick"])
     do_smooth_y = bool(detector_params["do_smooth_y_for_detection"])
     smooth_ms_y = float(detector_params["smooth_ms_detect_y"])
+    strict_no_fallback = bool(detector_params.get("strict_no_fallback", True))
 
     if y_t.size == 0:
         return _LickPeaks.empty()
@@ -166,12 +167,24 @@ def _slope_detect_lick_peaks(
         if r0 is None:
             break
 
-        # Turnover: first sample after r1 where dy <= 0.
+        # Turnover: walk past dy > 0 OR non-finite dy samples (legacy
+        # tongue_cell33.py:326 semantics — fix #1 of three port bugs
+        # surfaced by the Task 5b smoke parity, 2026-04-28). Treating NaN
+        # as turnover (the prior buggy behavior) caused an extra early
+        # peak on trials with brief tracking dropouts in the rise→fall
+        # window.
         k = r1
-        while k < L - 1 and (np.isfinite(dy[k]) and dy[k] > 0):
+        while k < L and (not np.isfinite(dy[k]) or dy[k] > 0):
             k += 1
         if k >= L:
-            break
+            # No turnover found within the window. Legacy
+            # ``STRICT_NO_FALLBACK=True`` rejects the lick and stops
+            # searching (the loop has fallen off the end). Fix #3 (Task
+            # 5b): match legacy by breaking here under strict mode.
+            if strict_no_fallback:
+                break
+            start = r1 + 1
+            continue
 
         # Peak inside [r0, min(k + peak_pad, L-1)].
         k_end = min(L - 1, k + peak_pad_n)
@@ -182,13 +195,16 @@ def _slope_detect_lick_peaks(
         j_peak_local = int(np.nanargmax(seg))
         i_peak = r0 + j_peak_local
 
-        # MIN_PEAK_Y_ABS gate (V3-NEW for Cells 36/39/42).
+        # MIN_PEAK_Y_ABS gate (V3-NEW for Cells 36/39/42; pre-existing for
+        # Cell 33, value 20.0 — per-cell knob handling lives in the main
+        # module's _per_cell_detector helper).
         y_peak_val = yseg[i_peak]
         if not np.isfinite(y_peak_val) or abs(y_peak_val) < min_peak_y_abs:
             start = k + 1
             continue
 
-        # MIN_FINITE_SAMPLES_PER_LICK gate (V3-NEW for Cells 33/39/42).
+        # MIN_FINITE_SAMPLES_PER_LICK gate (V3-NEW for Cells 33/39/42;
+        # pre-existing for Cell 36, value 5).
         win_lo = max(0, i_peak - peak_pad_n)
         win_hi = min(L - 1, i_peak + peak_pad_n)
         n_finite = int(np.count_nonzero(np.isfinite(yseg[win_lo:win_hi + 1])))
@@ -196,9 +212,22 @@ def _slope_detect_lick_peaks(
             start = k + 1
             continue
 
-        # Optional fall validation (legacy pattern; soft check, doesn't reject).
-        _fall_run = _first_run_from(fall_mask, fall_min_n, k)
-        del _fall_run
+        # Fall validation + end_idx tracking (legacy tongue_cell33.py:348-355
+        # — fix #2 + fix #3 of three port bugs surfaced by the Task 5b smoke
+        # parity, 2026-04-28). The next-lick search must start at
+        # ``end_idx + 1`` (post-fall-run-end), not ``i_peak + 1``; otherwise
+        # the loop can re-detect an early peak that legacy walked past. And
+        # under ``strict_no_fallback=True``, a peak with no fall run is
+        # rejected entirely.
+        end_idx = i_peak
+        if fall_min_n > 1:
+            f0, f1 = _first_run_from(fall_mask, fall_min_n, i_peak)
+            if f0 is None:
+                if strict_no_fallback:
+                    start = i_peak + 1  # advance past peak; do not append
+                    continue
+            else:
+                end_idx = max(end_idx, f1 - 1)
 
         rise_starts.append(r0)
         turnovers.append(k)
@@ -206,7 +235,7 @@ def _slope_detect_lick_peaks(
         ys.append(float(y_peak_val))
         xs.append(float(xseg[i_peak]))
         times.append(float(tseg[i_peak]))
-        start = i_peak + 1
+        start = end_idx + 1
 
     return _LickPeaks(
         peak_times_ms=np.asarray(times, dtype=np.float64),
