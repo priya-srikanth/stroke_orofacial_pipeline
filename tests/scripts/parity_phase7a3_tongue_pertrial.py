@@ -141,22 +141,35 @@ LEGACY_APPROXIMATE_OVERRIDES: dict = {
         # Equivalent semantics, zero module changes.
         # Cell 33 legacy: MIN_PEAK_Y_ABS=20 (pre-existing) → keep V3 default
         #   of 20.0. MIN_FINITE_SAMPLES_PER_LICK absent → override to 1.
-        "cell33": {"min_finite_samples_per_lick": 1},
+        #   DO_SMOOTH_Y = False in legacy (V3 default True) → override.
+        "cell33": {
+            "min_finite_samples_per_lick": 1,
+            "do_smooth_y_for_detection": False,
+        },
         # Cell 36 legacy: MIN_FINITE=5 (pre-existing) → keep V3 default of 5.
         #   MIN_PEAK_Y_ABS absent → override to 0.0.
-        "cell36": {"min_peak_y_abs": 0.0},
-        # Cell 39 legacy: both absent → override both to "no filter".
+        #   DO_SMOOTH_DETECT = False in legacy (V3 default True) → override.
+        "cell36": {
+            "min_peak_y_abs": 0.0,
+            "do_smooth_y_for_detection": False,
+        },
+        # Cell 39 legacy: both filters absent → override both to "no filter".
+        #   DO_SMOOTH_Y = False in legacy (V3 default True) → override.
         "cell39": {
             "min_peak_y_abs": 0.0,
             "min_finite_samples_per_lick": 1,
+            "do_smooth_y_for_detection": False,
         },
-        # Cell 42 legacy: both absent → override both.
+        # Cell 42 legacy: both filters absent → override both.
+        #   DO_SMOOTH_Y = False in legacy (V3 default True) → override.
         "cell42": {
             "min_peak_y_abs": 0.0,
             "min_finite_samples_per_lick": 1,
+            "do_smooth_y_for_detection": False,
         },
         # Cell 50 per-trial scalars are NEW V3 features (no legacy parity);
-        # leave the V3 default detector behavior in place.
+        # cell50 keeps V3 default detector behavior (including smoothing ON,
+        # which matches legacy DO_SMOOTH_Y_FOR_DETECTION=True).
         "cell50": {},
     },
     "bout_per_cell": {
