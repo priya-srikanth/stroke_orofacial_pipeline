@@ -3883,3 +3883,213 @@ translator per §5 Option A. Any future kinematics-algorithm change
 (parity-gate principle, 2026-04-22 DECISIONS) re-validates via
 `scripts/phase_7a/emit_parity_sessions.py` followed by
 `tests/scripts/parity_phase7a_interpolation.py --sessions auto`.
+
+---
+
+## Phase 7a.3 V3 — tongue per-trial features (lick1/lick2, per-lick velocity, n_licks family, licking dynamics traces + reductions, tongue angle)
+
+**Date:** 2026-04-29
+**PR:** #<FILL after gh pr create>
+**Tag on merge:** `v7a.3-tongue-pertrial-features`
+**Branch:** `phase/7a.3-tongue-pertrial-features` (renamed from V1
+`phase/7a.3-kinematic-features-tongue-jaw` 2026-04-25 post-audit)
+
+**Scope.** Tongue per-trial scalars (Cells 33, 36, 39, 42 per-trial
+reductions) and per-frame tongue angle + Cell 50 own-bout scalars +
+per-session × side licking-dynamics time-binned traces, all ported from
+the canonical tongue notebook
+(`20260203_DLC_analysis_ws_aligned_parquet_input_tongue.ipynb`,
+SHA256 `ED12C54CD4CF348470CBD0FC05EE2FE20548195A52BE9832C1164737DABDB643`).
+First downstream phase consuming the 7a.2 tongue interpolated_traces
+parquets. Jaw deferred to Phase 7a.3-jaw (separate phase, distinct
+design).
+
+**What landed.**
+
+1. Vendored cells in
+   [`docs/legacy_snippets/tongue_pertrial_features.py`](legacy_snippets/tongue_pertrial_features.py)
+   (5,428 lines / 207,862 B). Per-cell SHA256s + canonical-notebook
+   SHA256 in the file's provenance header. Commit `0b78128`.
+2. [`configs/defaults.yaml`](../configs/defaults.yaml)
+   `dlc_kinematics.tongue_pertrial:` block. Knob families:
+   per-metric windows, `detector` (incl. C5.5
+   `accept_peaks_without_fall_run`), `detector_per_cell` (5 cells × per-
+   cell knob overrides for legacy_approximate parity, C5.2/C5.4/C5.5),
+   `bout`, `bout_per_cell` (5 cells), `bout_mode` (per-metric
+   `all`/`first_bout`/`first_multi_bout`), `direction_thresholds`,
+   `n_licks_categorical`, `n_licks_binning`, `licking_dynamics`,
+   `angle` (incl. `spout_frame_origin_tol_px=2.0`),
+   `session_inclusion`, `phase`, `feature_extraction_version="v7a.3"`,
+   `interpolation_version="v5p3"`.
+3. [`configs/animals.yaml`](../configs/animals.yaml) — NO change
+   (cohort-uniform algorithm; per-animal entries in legacy `MOUSE_SPECS`
+   are session-filter scope or plot-only knobs, neither relevant to the
+   V3 schema).
+4. Four `PathResolver` resolver helpers
+   ([`src/stroke_orofacial/paths.py`](../src/stroke_orofacial/paths.py)):
+   `tongue_pertrial_angle_parquet`,
+   `tongue_pertrial_licking_dynamics_traces_parquet`,
+   `tongue_pertrial_endpoints_json` (output, `%Y%m%d`), and
+   `dlc_centered_spout_midpoint_parquet` (input glob
+   `video2_{YYYY-MM-DD}T*.parquet` with exactly-one-match assertion).
+5. Module split (4 files, post-Task-3 split for review-ability):
+   - [`src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py`](../src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py)
+     (main): public API (`build_tongue_pertrial`,
+     `build_tongue_pertrial_by_animal_date`, `TonguePertrialResult`,
+     `TrialEvent`), loaders + 7-step eye-midpoint resolver with C5.6
+     likelihood-filtered spout-frame sanity check,
+     `_extract_trial_slice`, Cells 33/36/39/42 extractors, per-cell
+     knob helpers, `_derive_trial_events_from_spout_behavior`
+     (Task 5.0 auto-derive reusing 7a.2's `load_reward_events` +
+     `ws_samples_to_frame_indices` + alignment template — zero new
+     alignment code), driver core.
+   - [`src/stroke_orofacial/dlc_kinematics/_detector.py`](../src/stroke_orofacial/dlc_kinematics/_detector.py):
+     unified slope detector (post-C5.1 fixes + C5.5 knob),
+     `_LickPeaks`, `_first_run_from`, `_build_bouts`,
+     `_filter_peaks_by_bout_mode`, `_moving_avg_nan`.
+   - [`src/stroke_orofacial/dlc_kinematics/_angle.py`](../src/stroke_orofacial/dlc_kinematics/_angle.py):
+     Cell 50 angle math + NaN-aware gaussian smoothing + per-trial
+     scalar sampling + own-bout scalars (incl. Q9
+     `n_licks_in_first_multi_bout`) + session-inclusion evaluator.
+   - [`src/stroke_orofacial/dlc_kinematics/_writers.py`](../src/stroke_orofacial/dlc_kinematics/_writers.py):
+     three atomic writers (parquet × 2 + JSON, temp + os.replace) +
+     `_jsonify`.
+6. 52 unit tests in
+   [`tests/test_tongue_pertrial.py`](../tests/test_tongue_pertrial.py)
+   (37 cell extractors + driver/schema, 6 trial-events auto-derive,
+   3 slope-detector port-bug fixes, 4 per-cell knob overrides, 1
+   likelihood-filtered sanity check, 1 accept-no-fall knob).
+7. Parity harness
+   [`tests/scripts/parity_phase7a3_tongue_pertrial.py`](../tests/scripts/parity_phase7a3_tongue_pertrial.py)
+   (default + legacy_approximate modes, 14-session). `_HarnessResolver`
+   wrapper routes 7a.3 OUTPUT methods to a temp dir while delegating
+   INPUT reads (interpolated_trace, centered_spout_midpoint, licks NPZ,
+   alignment template) to a canonical PathResolver. Per-trial re-keying
+   handles Option α chronological-across-sides ↔ legacy per-side
+   `trial_index`.
+
+**Cohort numerical parity (14-session, legacy_approximate, atol=1e-6).**
+
+| Cell | Pass | Fail | max\|Δ\| range (pass) | max\|Δ\| range (fail) | Notes |
+|---|---:|---:|---|---|---|
+| 33 | 13/13 | 0 | 0 to 5.7e-14 | — | bit-identical cohort-wide |
+| 36 | 13/13 | 0 | 0 to 1.8e-12 | — | bit-identical cohort-wide |
+| 39 | 9/13 | 4 | 0 (where pass) | 1.0 (4 sessions) | CSV-stale residual, accepted |
+| 42 | 1/13 | 12 | 0 (PS55/2025-05-07 only) | 0.018 to 3.001 | drift, accepted |
+
+`by_status` overall: `{'pass': 1, 'fail': 12, 'skip_missing': 1}`.
+PS54/2025-05-12 inherits 7a.1/7a.2 `skip_missing` pattern (legacy NPZs
+absent on MICROSCOPE, accepted by Priya 2026-04-22). PS55/2025-05-07 is
+the only full pass — Cell 33/36/39/42 all bit-identical. The "fail"
+overall count is misleading per the per-cell breakdown — Cells 33+36
+are bit-identical cohort-wide; Cells 39+42 carry documented residuals.
+
+**Cell 39 + Cell 42 CSV-stale residual (accepted 2026-04-29 per Priya).**
+4 sessions (PS46/2025-03-07, 03-10, 03-13; PS54/2025-06-07) show exactly
+Δ=1 lick on `n_licks` for ~2 trials each (~2% of trials cohort-wide).
+Direct execution of the vendored Cell 39 `_lick_peaks_from_y_dydt` on
+those trials produces peak counts bit-identical to the consolidated
+output but disagrees with the saved legacy CSV by 1 peak per trial.
+**Saved CSVs were emitted by an older legacy-code revision than what was
+vendored.** Consolidated → vendored is the load-bearing parity.
+Regenerating the CSVs from the vendored code is out of 7a.3 scope.
+
+**Cell 42 small-drift band (accepted 2026-04-29 per Priya).** 8 of 13
+sessions where Cells 33/36/39 are bit-identical have Cell 42 traces
+differ by 0.018-0.033 Hz on ~10 Hz lick-rate signals (0.2% relative,
+well below any meaningful threshold). Likely numerical-precision
+sensitivity in `np.histogram` bin-edge inclusion or smoothing kernel
+arithmetic at sub-frame peak positions.
+
+**Acceptance.**
+- Default-mode cohort emit (Task 5c): 13/14 sessions, 39/42 files
+  emitted under
+  `pipeline_outputs/dlc_kinematics/{features/tongue,licking_dynamics/traces,endpoints}/`.
+  PS54/2025-05-12 = `skip_missing` (data gap inheriting 7a.1/7a.2).
+- legacy_approximate cohort parity (Task 5d): Cell 33 + Cell 36
+  bit-identical cohort-wide; Cell 39 + Cell 42 within accepted residual
+  bands per above.
+- Full pytest suite: 574 passed, 34 skipped, 0 failed.
+- Ruff: clean across the 4 module files + harness + tests.
+
+**Behavior differences vs. legacy notebooks.**
+
+- **V1 → V2 → V3 rescoping** (audit-driven; V1 promised wrong scalars,
+  V2 fixed scope, V3 expanded for Cell 39 richer set + Cell 42 dual
+  emission + Cell 50 production status + unified detector with V3-NEW
+  knobs).
+- **Output split**: per-frame angle parquet + per-session × side
+  traces parquet + per-trial JSON. Legacy emits monolithic per-cell
+  CSV/NPZ.
+- **`eye_midpoint` = session-wide median** (was implicit in legacy).
+- **Reference frame translation explicit** (`eye_in_spout_frame` baked
+  into parquet metadata).
+- **Cell 50 promoted from "exploratory" to production** (per Priya
+  2026-04-25).
+- **Per-cell windows shifted from legacy** on Cells 33/39/42/50;
+  default-mode cohort NOT byte-identical to legacy by design. Wrapper-
+  mode (legacy_approximate) restores legacy windows.
+- **`bout_max_ili_ms = 300` unified** (Cell 42 legacy was 400). Per-cell
+  `bout_per_cell.cell42` override in legacy_approximate restores 400.
+- **`tongue_angle_pass: bool[n_trials]` dropped** — no legacy precedent.
+  Replaced with `session_inclusion` 4-bool block.
+- **Cell 39 enriched output** (direction tally + categorical + bins).
+- **Cell 42 day-binned traces NOT ported** (deferred follow-up).
+- **`n_licks_in_first_multi_bout`** is a NEW per-trial Cell 50 own-bout
+  scalar (Q9, 2026-04-28) — not present in legacy.
+- **Three detector port-bug fixes (C5.1)** to faithfully replicate
+  legacy Cell 33's strict semantics: NaN-walking turnover, next-lick
+  start = end_idx + 1 (post-fall-run-end), strict-no-fall-run rejection.
+  Surfaced by the Task 5b smoke parity diagnostic.
+- **Per-cell detector + bout knob overrides (C5.2/C5.4/C5.5)** for
+  legacy_approximate parity. Legacy had per-cell-different
+  `MIN_PEAK_Y_ABS`, `MIN_FINITE_SAMPLES_PER_LICK`,
+  `DO_SMOOTH_Y_FOR_DETECTION`, `bout.max_ili_ms`, and
+  `accept_peaks_without_fall_run` semantics that a single global knob
+  set can't represent.
+- **C5.6 likelihood-filtered spout-frame sanity check.** PS55/2025-05-02
+  has bimodal degraded R_spout DLC tracking (92% of frames are low-lik
+  drift); the unfiltered median crashes the Task 1.5 sanity check at
+  +67 px. The C5.6 fix uses likelihood ≥ 0.7 (matching the upstream
+  centering algorithm's quality bar) so all 13 emit-eligible sessions
+  pass the sanity check.
+- **Otherwise** within `atol=1e-6` (or bit-identical) on Cells
+  33/36/39/42 in legacy_approximate mode (cohort-wide for 33+36;
+  residuals on 39+42 documented above). Cell 50 visual gate against
+  legacy figures **DEFERRED** to a follow-up phase per kickoff §5b.7
+  acceptance carve-out.
+
+**Ground-rule compliance** (CLAUDE.md).
+
+- Rule 1 (no source data modification): verified. Task 1.5 + cohort
+  emit reads MICROSCOPE upstream parquets read-only. Outputs land in
+  NEW `dlc_kinematics/` subtree under
+  `stroke_orofacial_pipeline_outputs/`.
+- Rule 2 (no legacy-repo edits): verified. All work in this consolidated
+  repo only.
+- Rule 6 (new outputs in fresh paths): verified.
+  `dlc_kinematics/{features/tongue,licking_dynamics/traces,endpoints,
+  figures_qc}/` are all new directories not previously in the
+  pipeline_outputs tree.
+- Rule 8 (git discipline): verified. 11 feature-branch commits
+  (V1 + V2 + vendor + 9 implementation), no force-push, V1 + V2 +
+  vendor commits preserved as paper trail in branch history.
+
+**Forward follow-ups (post-7a.3 PR merge).**
+
+- **Phase 7a.3-jaw** with jaw-specific design.
+- **Future face-velocity / PSD / mismatch-classifier phases** consume
+  the 7a.3 V3 outputs.
+- **Cell 42 day-binned traces** + per-trial pass-mask
+  (`tongue_angle_pass`) available as follow-up phases (deferred from V3
+  scope per Priya).
+- **Cell 50 visual gate** (5 plot families per session, side-by-side
+  compare against legacy `angle_phase_exploratory` PNGs).
+- **Regenerate stale legacy CSVs** from the vendored code (would close
+  Cell 39 + Cell 42 residuals at exact parity if it ever becomes a
+  real problem).
+- **Factor `licks_npz(animal, date)` into PathResolver** (currently
+  duplicated inline at 7a.2 + 7a.3; deferred per Priya 2026-04-28).
+- **Per-frame eye-midpoint emit** (resolver currently computes
+  session-wide median internally; downstream phases that want
+  per-frame values would need to re-derive).
