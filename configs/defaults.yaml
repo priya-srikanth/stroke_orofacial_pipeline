@@ -418,6 +418,27 @@ dlc_kinematics:
       smooth_ms_vel: 12.0
 
     # =========================================================
+    # Per-cell detector knob overrides (C5.2 2026-04-28)
+    # =========================================================
+    # The shared `detector:` block above is the V3 default for every cell.
+    # Legacy had per-cell-different knob values (e.g. Cell 33 had
+    # MIN_PEAK_Y_ABS=20 pre-existing while Cells 36/39/42 lacked it; Cell
+    # 36 had MIN_FINITE_SAMPLES_PER_LICK=5 pre-existing while Cells 33/
+    # 39/42 lacked it). The parity harness uses this block in
+    # `legacy_approximate` mode to recover bit-identical legacy semantics
+    # by setting per-cell overrides (shallow merge on top of the shared
+    # `detector:` dict) without disturbing default-mode behavior.
+    #
+    # In default mode every per-cell entry is empty → behavior unchanged.
+    # =========================================================
+    detector_per_cell:
+      cell33: {}
+      cell36: {}
+      cell39: {}
+      cell42: {}
+      cell50: {}
+
+    # =========================================================
     # Bout configuration
     # =========================================================
     bout:
@@ -426,6 +447,19 @@ dlc_kinematics:
       single_bout_win_ms: [-120, 200]
       min_licks_in_bout_for_ili: 3
       allow_single_lick_bouts: true
+
+    # =========================================================
+    # Per-cell bout knob overrides (C5.2 2026-04-28)
+    # Same shape as detector_per_cell. Cell 42 legacy used
+    # bout_max_ili=400 while V3 unified to 300; the harness sets the
+    # legacy value here in `legacy_approximate` mode for Cell 42 only.
+    # =========================================================
+    bout_per_cell:
+      cell33: {}
+      cell36: {}
+      cell39: {}
+      cell42: {}
+      cell50: {}
 
     # =========================================================
     # Per-metric bout mode (Q8 correction 2026-04-28)

@@ -174,8 +174,15 @@ def _extract_cell50_own_bout_scalars(
     tp = params["dlc_kinematics"]["tongue_pertrial"]
     detect_win = tuple(tp["angle_detect_win_ms"])
     apply_win = tuple(tp["angle_apply_win_ms"])
-    detector = tp["detector"]
-    bout = tp["bout"]
+    # Per-cell knob overrides (C5.2 2026-04-28). The shared detector + bout
+    # blocks are the V3 default; cell50 may carry parity-specific overrides
+    # via the harness in legacy_approximate mode.
+    from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
+        _per_cell_bout,
+        _per_cell_detector,
+    )
+    detector = _per_cell_detector(params, "cell50")
+    bout = _per_cell_bout(params, "cell50")
     peaks = _slope_detect_lick_peaks(
         y_t, x_t, t_ms, fps,
         detect_win_ms=detect_win, detector_params=detector,

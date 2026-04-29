@@ -597,6 +597,36 @@ def _extract_trial_slice(
 
 
 # ===========================================================================
+# Per-cell knob override helpers (C5.2 2026-04-28)
+# ===========================================================================
+# Legacy had per-cell-different detector + bout knob values (e.g. Cell 33's
+# MIN_PEAK_Y_ABS=20 pre-existing while Cells 36/39/42 lacked it; Cell 36's
+# MIN_FINITE_SAMPLES_PER_LICK=5 pre-existing while Cells 33/39/42 lacked
+# it; Cell 42's bout_max_ili=400 pre-existing while V3 unified to 300).
+# The shared-detector-with-shared-knobs design above can't apply per-cell-
+# different values via a single knob set. The parity harness uses these
+# helpers in `legacy_approximate` mode to recover bit-identical legacy
+# semantics by setting per-cell overrides in the YAML. Default mode has
+# empty per-cell dicts → behavior unchanged.
+
+
+def _per_cell_detector(params: dict[str, Any], cell_key: str) -> dict[str, Any]:
+    """Return the per-cell detector knob dict (shallow merge over base)."""
+    tp = params["dlc_kinematics"]["tongue_pertrial"]
+    base = tp["detector"]
+    override = (tp.get("detector_per_cell") or {}).get(cell_key, {}) or {}
+    return {**base, **override}
+
+
+def _per_cell_bout(params: dict[str, Any], cell_key: str) -> dict[str, Any]:
+    """Return the per-cell bout knob dict (shallow merge over base)."""
+    tp = params["dlc_kinematics"]["tongue_pertrial"]
+    base = tp["bout"]
+    override = (tp.get("bout_per_cell") or {}).get(cell_key, {}) or {}
+    return {**base, **override}
+
+
+# ===========================================================================
 # Cell 33 — lick1 / lick2 first-peak scalars
 # ===========================================================================
 
@@ -612,7 +642,7 @@ def _extract_lick1_lick2(
     """
     tp = params["dlc_kinematics"]["tongue_pertrial"]
     detect_win = tuple(tp["lick12_detect_win_ms"])
-    detector = tp["detector"]
+    detector = _per_cell_detector(params, "cell33")
     peaks = _slope_detect_lick_peaks(
         y_t, x_t, t_ms, fps,
         detect_win_ms=detect_win, detector_params=detector, n_max=2,
@@ -652,7 +682,7 @@ def _extract_peak_velocity_first5(
     """
     tp = params["dlc_kinematics"]["tongue_pertrial"]
     detect_win = tuple(tp["peak_velocity_detect_win_ms"])
-    detector = tp["detector"]
+    detector = _per_cell_detector(params, "cell36")
     smooth_vel = bool(detector["do_smooth_vel"])
     smooth_ms_vel = float(detector["smooth_ms_vel"])
     min_finite = int(detector["min_finite_samples_per_lick"])
@@ -746,7 +776,7 @@ def _extract_n_licks_family(
     detect_win = tuple(tp["lick_count_detect_win_ms"])
     apply_win = tuple(tp["lick_count_apply_win_ms"])
     bin_win = tuple(tp["lick_count_bin_win_ms"])
-    detector = tp["detector"]
+    detector = _per_cell_detector(params, "cell39")
     dir_thr = tp["direction_thresholds"]
     x_left_thr = float(dir_thr["x_left_thr_px"])
     x_right_thr = float(dir_thr["x_right_thr_px"])
@@ -836,8 +866,8 @@ def _extract_licking_dynamics_reductions(
     tp = params["dlc_kinematics"]["tongue_pertrial"]
     detect_win = tuple(tp["licking_dyn_detect_win_ms"])
     apply_win = tuple(tp["licking_dyn_apply_win_ms"])
-    detector = tp["detector"]
-    bout = tp["bout"]
+    detector = _per_cell_detector(params, "cell42")
+    bout = _per_cell_bout(params, "cell42")
     max_ili = float(bout["max_ili_ms"])
     min_ili = float(bout["min_ili_ms"])
     min_in_bout = int(bout["min_licks_in_bout_for_ili"])
@@ -916,7 +946,7 @@ def _extract_licking_dynamics_traces(
     sigma_ili_ms = float(ld["ili_smooth_sigma_ms"])
     movavg_prob_ms = float(ld["prob_smooth_movavg_ms"])
     min_trials_per_bin = int(ld["min_trials_per_bin"])
-    bout = tp["bout"]
+    bout = _per_cell_bout(params, "cell42")
     max_ili_ms = float(bout["max_ili_ms"])
     min_in_bout = int(bout["min_licks_in_bout_for_ili"])
 
@@ -1141,10 +1171,12 @@ def _build_tongue_pertrial_core(
         ))
 
         # Cell 42 traces per-side aggregation: gather apply-window peaks.
+        # Use per-cell-overridden detector (matches the per-trial reductions
+        # path) so legacy_approximate parity stays consistent.
         peaks_for_traces = _slope_detect_lick_peaks(
             y_slice, x_slice, t_ms, fps,
             detect_win_ms=tuple(tp["licking_dyn_detect_win_ms"]),
-            detector_params=detector,
+            detector_params=_per_cell_detector(params, "cell42"),
         )
         apply_lo, apply_hi = tuple(tp["licking_dyn_apply_win_ms"])
         in_apply = (

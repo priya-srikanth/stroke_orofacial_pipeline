@@ -55,6 +55,8 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
     _extract_licking_dynamics_traces,
     _extract_n_licks_family,
     _extract_peak_velocity_first5,
+    _per_cell_bout,
+    _per_cell_detector,
     _resolve_eye_midpoint_session_median,
     build_tongue_pertrial,
 )
@@ -493,6 +495,97 @@ class TestSlopeDetector:
         # Output should be the multi-lick bout, not the singleton.
         assert len(out) == 3
         assert out.peak_times_ms.min() > 1000.0
+
+
+# ===========================================================================
+# Per-cell knob override mechanism (C5.2 2026-04-28)
+# ===========================================================================
+
+
+class TestPerCellOverrides:
+    """Cover ``_per_cell_detector`` + ``_per_cell_bout`` (C5.2).
+
+    Default-mode params have empty per-cell dicts → behavior unchanged
+    (tested via TestSlopeDetector + TestCell33-50 already). These tests
+    exercise the override path.
+    """
+
+    # 7d — empty per-cell dicts fall back to base detector knobs
+    def test_per_cell_empty_override_uses_base_params(self, base_params):
+        for cell in ("cell33", "cell36", "cell39", "cell42", "cell50"):
+            base = base_params["dlc_kinematics"]["tongue_pertrial"]["detector"]
+            out = _per_cell_detector(base_params, cell)
+            assert out == base, f"cell={cell} not equal to base"
+            base_b = base_params["dlc_kinematics"]["tongue_pertrial"]["bout"]
+            out_b = _per_cell_bout(base_params, cell)
+            assert out_b == base_b, f"cell={cell} bout not equal to base"
+
+    # 7e — per-cell detector override applied in shallow merge + isolated
+    def test_per_cell_detector_override_isolation(self, base_params):
+        params = copy.deepcopy(base_params)
+        tp = params["dlc_kinematics"]["tongue_pertrial"]
+        # Override min_peak_y_abs on cell36 ONLY.
+        tp["detector_per_cell"]["cell36"] = {"min_peak_y_abs": 0.0}
+        cell33_det = _per_cell_detector(params, "cell33")
+        cell36_det = _per_cell_detector(params, "cell36")
+        # cell33 unaffected.
+        assert cell33_det["min_peak_y_abs"] == base_params[
+            "dlc_kinematics"]["tongue_pertrial"]["detector"]["min_peak_y_abs"]
+        # cell36 picks up the override.
+        assert cell36_det["min_peak_y_abs"] == 0.0
+        # Other knobs unchanged on cell36.
+        assert cell36_det["slope_thr_px_per_s"] == base_params[
+            "dlc_kinematics"]["tongue_pertrial"]["detector"]["slope_thr_px_per_s"]
+
+    # 7f — per-cell bout override applied + isolated
+    def test_per_cell_bout_override_isolation(self, base_params):
+        params = copy.deepcopy(base_params)
+        tp = params["dlc_kinematics"]["tongue_pertrial"]
+        # Override max_ili_ms on cell42 ONLY (legacy=400, V3=300).
+        tp["bout_per_cell"]["cell42"] = {"max_ili_ms": 400.0}
+        cell33_bout = _per_cell_bout(params, "cell33")
+        cell42_bout = _per_cell_bout(params, "cell42")
+        # cell33 unaffected.
+        assert cell33_bout["max_ili_ms"] == 300.0
+        # cell42 picks up the override.
+        assert cell42_bout["max_ili_ms"] == 400.0
+        # Other knobs unchanged on cell42.
+        assert cell42_bout["min_ili_ms"] == base_params[
+            "dlc_kinematics"]["tongue_pertrial"]["bout"]["min_ili_ms"]
+        assert cell42_bout["min_licks_in_bout_for_ili"] == base_params[
+            "dlc_kinematics"]["tongue_pertrial"]["bout"]["min_licks_in_bout_for_ili"]
+
+    # 7g — extractor under per-cell override produces a different result
+    # vs no override (smoke check that the override actually flows).
+    def test_per_cell_override_changes_extractor_output(self, base_params):
+        # Synthetic: 3 peaks in apply window, two close (bout 1 = [400, 700])
+        # and one far (4000 ms). With bout_max_ili=300 (V3 default), 400/700
+        # are ONE bout (Δ=300 borderline). With bout_max_ili=400 (legacy),
+        # they're definitively ONE bout. Either way the SAME 1 multi-bout
+        # exists, so bout_count = 1 in both cases. To get a divergent
+        # output, use peaks 400 and 750 (Δ=350): exceeds V3 threshold (300)
+        # → bout_count=0 multi-lick bouts; under legacy threshold (400) →
+        # bout_count=1 multi-lick bout.
+        y_t, x_t, t_ms = _make_lick_trace(
+            duration_ms=5000.0, peak_centers_ms=[400.0, 750.0],
+            amplitude=30.0,
+        )
+        # Default (V3): bout_max_ili=300 → 350 > 300, separate bouts → 0
+        # multi-bouts.
+        out_default = _extract_licking_dynamics_reductions(
+            y_t, x_t, t_ms, _SYNTH_FPS, params=base_params,
+        )
+        # Override cell42's bout_max_ili to 400 (legacy).
+        params = copy.deepcopy(base_params)
+        params["dlc_kinematics"]["tongue_pertrial"]["bout_per_cell"]["cell42"] = {
+            "max_ili_ms": 400.0,
+        }
+        out_override = _extract_licking_dynamics_reductions(
+            y_t, x_t, t_ms, _SYNTH_FPS, params=params,
+        )
+        # Under V3 default: 0 multi-bouts. Under legacy override: 1 multi-bout.
+        assert out_default["bout_count"] == 0
+        assert out_override["bout_count"] == 1
 
 
 # ===========================================================================
