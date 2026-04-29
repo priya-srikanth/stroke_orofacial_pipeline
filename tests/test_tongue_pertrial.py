@@ -179,6 +179,8 @@ def _make_synthetic_eye_landmark_df(
     R_spout_pos: tuple[float, float] = (-78.0, -1.0),
     L_eye_likelihood: float = 0.95,
     R_eye_likelihood: float = 0.95,
+    L_spout_likelihood: float = 0.95,
+    R_spout_likelihood: float = 0.95,
     seed: int = 0,
 ) -> pd.DataFrame:
     """Build a centered_spout_midpoint-shaped DataFrame.
@@ -200,8 +202,14 @@ def _make_synthetic_eye_landmark_df(
     data["R_eye_likelihood"] = np.full(n_frames, R_eye_likelihood, dtype=np.float32)
     data["L_spout_x"] = np.full(n_frames, L_spout_pos[0], dtype=np.float32)
     data["L_spout_y"] = np.full(n_frames, L_spout_pos[1], dtype=np.float32)
+    data["L_spout_likelihood"] = np.full(
+        n_frames, L_spout_likelihood, dtype=np.float32,
+    )
     data["R_spout_x"] = np.full(n_frames, R_spout_pos[0], dtype=np.float32)
     data["R_spout_y"] = np.full(n_frames, R_spout_pos[1], dtype=np.float32)
+    data["R_spout_likelihood"] = np.full(
+        n_frames, R_spout_likelihood, dtype=np.float32,
+    )
     return pd.DataFrame(data)
 
 
@@ -1076,6 +1084,44 @@ class TestEyeMidpointResolver:
         # 0.5 * ((140 + -120), (-430 + -430)) = (10.0, -430.0)
         assert eye_x == pytest.approx(10.0, abs=1e-6)
         assert eye_y == pytest.approx(-430.0, abs=1e-6)
+
+    # 31b — spout-frame check filters by likelihood (C5.6, 2026-04-29)
+    def test_resolve_eye_midpoint_filters_low_lik_spout_drift(
+        self, base_params,
+    ):
+        """Bimodal R_spout (high-lik on one side, low-lik drifted to L_spout's
+        side) must NOT trip the sanity check — the centering algorithm
+        used high-lik medians, so the sanity check should too.
+
+        Synthetic: 200 frames where R_spout likelihood is HIGH (0.95) and
+        positioned correctly at -78 px, but with 800 additional low-lik
+        (0.4) frames placed at +75 (drifted to where L_spout sits — same
+        pattern as PS55/2025-05-02). The unfiltered median falls at
+        ~+45 px (off-center, would fail). The likelihood-filtered median
+        correctly falls at -78 (R_spout's true location).
+        """
+        n_hi = 200
+        n_lo = 800
+        # High-lik frames (correct R_spout position).
+        df_hi = _make_synthetic_eye_landmark_df(
+            n_frames=n_hi,
+            R_spout_pos=(-78.0, -1.0), R_spout_likelihood=0.95,
+        )
+        # Low-lik drift frames (R_spout DLC drifted to L_spout's location).
+        df_lo = _make_synthetic_eye_landmark_df(
+            n_frames=n_lo,
+            R_spout_pos=(+75.0, +1.0), R_spout_likelihood=0.4,
+        )
+        df = pd.concat([df_hi, df_lo], ignore_index=True)
+        # Sanity-check the input distribution itself: unfilt R_spout median
+        # should be off-center (around +45), filtered should be at -78.
+        unfilt_R_x = float(np.nanmedian(df["R_spout_x"]))
+        assert unfilt_R_x > 0  # contaminated by low-lik drift
+        # Now invoke the resolver — should NOT raise.
+        eye_x, eye_y = _resolve_eye_midpoint_session_median(
+            df, params=base_params,
+        )
+        assert np.isfinite(eye_x) and np.isfinite(eye_y)
 
     # 32
     def test_resolve_eye_midpoint_session_median_one_eye_fallback(

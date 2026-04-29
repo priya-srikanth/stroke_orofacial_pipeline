@@ -503,7 +503,8 @@ def _resolve_eye_midpoint_session_median(
     needed_cols = (
         "L_eye_x", "L_eye_y", "L_eye_likelihood",
         "R_eye_x", "R_eye_y", "R_eye_likelihood",
-        "L_spout_x", "L_spout_y", "R_spout_x", "R_spout_y",
+        "L_spout_x", "L_spout_y", "L_spout_likelihood",
+        "R_spout_x", "R_spout_y", "R_spout_likelihood",
     )
     for col in needed_cols:
         if col not in eye_df.columns:
@@ -517,19 +518,49 @@ def _resolve_eye_midpoint_session_median(
         for col in needed_cols
     }
 
-    # Step 2: spout-frame sanity check.
+    # Step 2: spout-frame sanity check (C5.6, 2026-04-29). Filter L_spout
+    # / R_spout medians by likelihood >= eye_lik_thr to match the upstream
+    # centering algorithm's quality bar (see
+    # ``src/stroke_orofacial/dlc_io/centering.py:_median_from_lik``, which
+    # uses the same default threshold of 0.7). Without this filter, sessions
+    # where one spout has low-likelihood DLC drift to the OTHER spout's
+    # location (e.g. PS55/2025-05-02 R_spout: 92% of frames are low-lik
+    # and drifted to L_spout's image x ≈ 472, pulling the median off-center
+    # to +67 px) would erroneously fail this check even though the upstream
+    # centering correctly used only high-lik frames.
+    L_spout_mask = (
+        (arrs["L_spout_likelihood"] >= eye_lik_thr)
+        & np.isfinite(arrs["L_spout_x"])
+        & np.isfinite(arrs["L_spout_y"])
+    )
+    R_spout_mask = (
+        (arrs["R_spout_likelihood"] >= eye_lik_thr)
+        & np.isfinite(arrs["R_spout_x"])
+        & np.isfinite(arrs["R_spout_y"])
+    )
+    n_L_spout = int(np.count_nonzero(L_spout_mask))
+    n_R_spout = int(np.count_nonzero(R_spout_mask))
+    if n_L_spout < min_valid or n_R_spout < min_valid:
+        raise RuntimeError(
+            f"Spout-frame sanity check: insufficient high-likelihood spout "
+            f"frames (n_L={n_L_spout}, n_R={n_R_spout}, "
+            f"min={min_valid}); cannot verify centering."
+        )
     spout_mid_x = 0.5 * (
-        np.nanmedian(arrs["L_spout_x"]) + np.nanmedian(arrs["R_spout_x"])
+        float(np.nanmedian(arrs["L_spout_x"][L_spout_mask]))
+        + float(np.nanmedian(arrs["R_spout_x"][R_spout_mask]))
     )
     spout_mid_y = 0.5 * (
-        np.nanmedian(arrs["L_spout_y"]) + np.nanmedian(arrs["R_spout_y"])
+        float(np.nanmedian(arrs["L_spout_y"][L_spout_mask]))
+        + float(np.nanmedian(arrs["R_spout_y"][R_spout_mask]))
     )
     if abs(spout_mid_x) > spout_tol or abs(spout_mid_y) > spout_tol:
         raise RuntimeError(
-            f"Spout-frame sanity check failed: median spout midpoint at "
-            f"({spout_mid_x:.3f}, {spout_mid_y:.3f}) is outside ±{spout_tol} px "
-            f"of origin. The input parquet does not appear to be in the "
-            f"spout-centered frame V3 design assumes (Task 1.5 lock).",
+            f"Spout-frame sanity check failed: high-likelihood spout "
+            f"midpoint at ({spout_mid_x:.3f}, {spout_mid_y:.3f}) is "
+            f"outside ±{spout_tol} px of origin. The input parquet does "
+            f"not appear to be in the spout-centered frame V3 design "
+            f"assumes (Task 1.5 lock).",
         )
 
     # Step 3: per-eye finite/likelihood masks.
