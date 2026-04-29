@@ -122,6 +122,13 @@ def _slope_detect_lick_peaks(
     do_smooth_y = bool(detector_params["do_smooth_y_for_detection"])
     smooth_ms_y = float(detector_params["smooth_ms_detect_y"])
     strict_no_fallback = bool(detector_params.get("strict_no_fallback", True))
+    # C5.5 (2026-04-29): legacy Cell 33 requires a fall run for peak
+    # acceptance (under STRICT_NO_FALLBACK); Cells 36/39/42 accept peaks
+    # regardless of whether a fall run is found. Default False reproduces
+    # Cell 33's strict V3 behavior; per-cell override in
+    # legacy_approximate flips Cells 36/39/42 to legacy's accept-always
+    # semantics.
+    accept_no_fall = bool(detector_params.get("accept_peaks_without_fall_run", False))
 
     if y_t.size == 0:
         return _LickPeaks.empty()
@@ -216,16 +223,20 @@ def _slope_detect_lick_peaks(
         # — fix #2 + fix #3 of three port bugs surfaced by the Task 5b smoke
         # parity, 2026-04-28). The next-lick search must start at
         # ``end_idx + 1`` (post-fall-run-end), not ``i_peak + 1``; otherwise
-        # the loop can re-detect an early peak that legacy walked past. And
-        # under ``strict_no_fallback=True``, a peak with no fall run is
-        # rejected entirely.
+        # the loop can re-detect an early peak that legacy walked past.
+        # C5.5 (2026-04-29): the rejection-on-no-fall semantic is Cell 33-
+        # specific. Cells 36/39/42 always append regardless of fall validation
+        # (per their vendored detectors at cell{36,39,42}.py — no
+        # ``return (None, ...)`` on ``f0 is None``). The ``accept_no_fall``
+        # knob (per-cell, default False) controls this branch.
         end_idx = i_peak
         if fall_min_n > 1:
             f0, f1 = _first_run_from(fall_mask, fall_min_n, i_peak)
             if f0 is None:
-                if strict_no_fallback:
+                if strict_no_fallback and not accept_no_fall:
                     start = i_peak + 1  # advance past peak; do not append
                     continue
+                # else: accept the peak with end_idx = i_peak (no fall extension).
             else:
                 end_idx = max(end_idx, f1 - 1)
 

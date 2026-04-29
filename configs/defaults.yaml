@@ -411,6 +411,12 @@ dlc_kinematics:
       min_peak_y_abs: 20.0
       min_finite_samples_per_lick: 5
       strict_no_fallback: true
+      # C5.5 (2026-04-29): under strict_no_fallback=True, the detector
+      # normally rejects peaks with no fall run after the apex (Cell 33
+      # legacy behavior). Setting accept_peaks_without_fall_run=True
+      # accepts such peaks anyway (Cells 36/39/42 legacy behavior). Default
+      # False = Cell 33-strict, V3 design intent.
+      accept_peaks_without_fall_run: false
       use_src: "final"
       do_smooth_y_for_detection: true
       smooth_ms_detect_y: 12.0

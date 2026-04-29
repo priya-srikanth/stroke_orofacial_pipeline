@@ -139,9 +139,17 @@ LEGACY_APPROXIMATE_OVERRIDES: dict = {
     "detector_per_cell": {
         # 5b.3a: "no filter" sentinel values rather than a skip-filter flag.
         # Equivalent semantics, zero module changes.
+        #
+        # C5.5 (2026-04-29): legacy Cell 33 has strict-no-fall-run rejection
+        # (cell33.py:351-353), but Cells 36/39/42 always append peaks
+        # regardless of fall validation. ``accept_peaks_without_fall_run``
+        # set per-cell to flip the strictness for legacy_approximate.
+        #
         # Cell 33 legacy: MIN_PEAK_Y_ABS=20 (pre-existing) → keep V3 default
         #   of 20.0. MIN_FINITE_SAMPLES_PER_LICK absent → override to 1.
         #   DO_SMOOTH_Y = False in legacy (V3 default True) → override.
+        #   Strict-no-fall-run rejection: Cell 33 has it → keep default
+        #   (accept_peaks_without_fall_run=False).
         "cell33": {
             "min_finite_samples_per_lick": 1,
             "do_smooth_y_for_detection": False,
@@ -149,23 +157,29 @@ LEGACY_APPROXIMATE_OVERRIDES: dict = {
         # Cell 36 legacy: MIN_FINITE=5 (pre-existing) → keep V3 default of 5.
         #   MIN_PEAK_Y_ABS absent → override to 0.0.
         #   DO_SMOOTH_DETECT = False in legacy (V3 default True) → override.
+        #   Cell 36 always appends peaks → set accept_peaks_without_fall_run.
         "cell36": {
             "min_peak_y_abs": 0.0,
             "do_smooth_y_for_detection": False,
+            "accept_peaks_without_fall_run": True,
         },
         # Cell 39 legacy: both filters absent → override both to "no filter".
         #   DO_SMOOTH_Y = False in legacy (V3 default True) → override.
+        #   Cell 39 always appends peaks → set accept_peaks_without_fall_run.
         "cell39": {
             "min_peak_y_abs": 0.0,
             "min_finite_samples_per_lick": 1,
             "do_smooth_y_for_detection": False,
+            "accept_peaks_without_fall_run": True,
         },
         # Cell 42 legacy: both filters absent → override both.
         #   DO_SMOOTH_Y = False in legacy (V3 default True) → override.
+        #   Cell 42 always appends peaks → set accept_peaks_without_fall_run.
         "cell42": {
             "min_peak_y_abs": 0.0,
             "min_finite_samples_per_lick": 1,
             "do_smooth_y_for_detection": False,
+            "accept_peaks_without_fall_run": True,
         },
         # Cell 50 per-trial scalars are NEW V3 features (no legacy parity);
         # cell50 keeps V3 default detector behavior (including smoothing ON,

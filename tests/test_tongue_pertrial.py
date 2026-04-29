@@ -441,6 +441,34 @@ class TestSlopeDetector:
         assert peaks.peak_times_ms[0] == pytest.approx(400.0, abs=12.0)
         assert peaks.peak_times_ms[1] == pytest.approx(700.0, abs=12.0)
 
+    # 7c2 — accept_peaks_without_fall_run=True bypasses strict rejection
+    # (C5.5 2026-04-29). Cells 36/39/42 legacy accept peaks regardless of
+    # fall validation; per-cell knob flips the strict path off.
+    def test_slope_detect_accept_peaks_without_fall_run_overrides_strict(
+        self, base_params,
+    ):
+        # Same rise-then-plateau synthetic as test_slope_detect_strict_no_fallback
+        # below. Strict mode would reject (test 7c). With accept_no_fall=True
+        # the peak is accepted instead.
+        n = int(round(2000.0 / 1000.0 * _SYNTH_FPS)) + 1
+        t_ms = np.arange(n, dtype=np.float64) / _SYNTH_FPS * 1000.0
+        y_t = np.zeros(n, dtype=np.float64)
+        ramp_lo = int(round(400.0 / 1000.0 * _SYNTH_FPS))
+        ramp_hi = int(round(500.0 / 1000.0 * _SYNTH_FPS))
+        for i in range(ramp_lo, ramp_hi + 1):
+            y_t[i] = 50.0 * (i - ramp_lo) / max(1, ramp_hi - ramp_lo)
+        y_t[ramp_hi:] = 50.0
+        x_t = np.zeros(n, dtype=np.float64)
+        det = copy.deepcopy(self._detector_params(base_params))
+        det["accept_peaks_without_fall_run"] = True
+        peaks = _slope_detect_lick_peaks(
+            y_t, x_t, t_ms, _SYNTH_FPS,
+            detect_win_ms=(70.0, 2000.0), detector_params=det,
+        )
+        # Without strict-on-no-fall, the apex peak is accepted.
+        assert len(peaks) >= 1
+        assert peaks.peak_y[0] >= 20.0  # passes MIN_PEAK_Y_ABS
+
     # 7c — strict_no_fallback rejects peaks with no fall run after them
     # (port-bug fix C5.1, 2026-04-28)
     def test_slope_detect_strict_no_fallback_rejects_no_fall_run(
