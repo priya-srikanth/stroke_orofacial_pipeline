@@ -1626,3 +1626,201 @@ class TestTrialEventsAutoDerive:
             _tp_mod._derive_trial_events_from_spout_behavior(
                 animal=animal, date=date, resolver=resolver, manifest=manifest,
             )
+
+
+# ===========================================================================
+# Phase 7a.4 Task 3.5: visual bundle additive helper
+# ===========================================================================
+
+
+class TestVisualBundle:
+    """Phase 7a.4 Task 3.5 — :func:`build_tongue_visual_bundle` exposes the
+    in-memory per-trial DataFrames that the Cell 50 plot families
+    (tongue_visual.py, Task 4) consume. Bit-identical compute path to
+    :func:`build_tongue_pertrial` for shared fields (angle_per_frame +
+    metadata scalars); the bundle adds NEW intermediate DataFrames
+    (df_trials, df_bouts, df_phase) computed in the same trial loop."""
+
+    def test_returns_correct_dataclass_shape(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver, manifest, trial_events = (
+            TestDriverAndSchema._setup_session_outputs(tmp_path)
+        )
+        from stroke_orofacial.dlc_kinematics import (
+            TongueVisualBundle,
+            build_tongue_visual_bundle,
+        )
+        bundle = build_tongue_visual_bundle(
+            manifest=manifest, resolver=resolver,
+            trial_events=trial_events, params=base_params,
+        )
+        assert isinstance(bundle, TongueVisualBundle)
+        assert isinstance(bundle.df_trials, pd.DataFrame)
+        assert isinstance(bundle.df_bouts, pd.DataFrame)
+        assert isinstance(bundle.df_phase, pd.DataFrame)
+        assert isinstance(bundle.angle_per_frame, pd.DataFrame)
+        assert isinstance(bundle.metadata, dict)
+        # df_trials has one row per trial — synthetic fixture has 2 trials.
+        assert len(bundle.df_trials) == 2
+        # df_trials carries the per-trial array columns (object-dtype).
+        for col in (
+            "t_ms", "y_snip", "angle_snip",
+            "angle_allbouts_snip", "angle_firstbout_snip",
+            "angle_firstmulti_snip",
+            "t_firstpeak_align_ms", "angle_firstpeak_snip",
+        ):
+            assert col in bundle.df_trials.columns, col
+        # angle_per_frame schema lock: 2 cols, n_frames rows.
+        assert set(bundle.angle_per_frame.columns) == {
+            "frame_idx", "angle_deg_smoothed",
+        }
+        # metadata has the expected keys.
+        for key in (
+            "animal", "date", "fps", "n_frames",
+            "eye_in_spout_frame_x", "eye_in_spout_frame_y",
+            "angle_sign_flip", "smoothing_gaussian_sigma_ms",
+            "feature_extraction_version", "interpolation_version",
+            "plot_win_ms", "detect_win_ms", "first_peak_align_win_ms",
+            "n_phase_bins", "max_licks_per_trial",
+        ):
+            assert key in bundle.metadata, key
+
+    def test_bit_identical_metadata_and_angle_to_emit_set(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """Bit-identical-compute lock: shared fields between bundle and
+        emit set (angle_per_frame DataFrame + metadata scalars) must
+        match exactly. Run build_tongue_pertrial first (which writes the
+        emit set), then build_tongue_visual_bundle on the same inputs,
+        and compare angle_per_frame element-wise + metadata key-by-key."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver, manifest, trial_events = (
+            TestDriverAndSchema._setup_session_outputs(tmp_path)
+        )
+        from stroke_orofacial.dlc_kinematics import build_tongue_visual_bundle
+
+        # Emit set (writes 3 files).
+        out = build_tongue_pertrial(
+            manifest=manifest, resolver=resolver,
+            trial_events=trial_events, params=base_params,
+            overwrite="force",
+        )
+        with open(out["endpoints_json"]) as f:
+            payload = json.load(f)
+        emitted_meta = payload["metadata"]
+        emitted_angle = pq.read_table(str(out["angle_parquet"])).to_pandas()
+
+        # Bundle (same inputs, same params).
+        bundle = build_tongue_visual_bundle(
+            manifest=manifest, resolver=resolver,
+            trial_events=trial_events, params=base_params,
+        )
+
+        # angle_per_frame DataFrames must be element-wise identical.
+        pd.testing.assert_frame_equal(
+            bundle.angle_per_frame,
+            emitted_angle,
+            check_exact=True,
+            check_like=True,
+        )
+        # Shared metadata scalars must match exactly.
+        for key in (
+            "fps", "n_frames",
+            "eye_in_spout_frame_x", "eye_in_spout_frame_y",
+            "angle_sign_flip", "smoothing_gaussian_sigma_ms",
+            "feature_extraction_version", "interpolation_version",
+        ):
+            assert bundle.metadata[key] == emitted_meta[key], key
+
+    def test_does_not_write_files(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """Bundle helper is pure compute — no on-disk artifacts
+        produced. Verified by snapshotting the output tree before and
+        after the call (the inputs were already written by
+        _setup_session_outputs; the bundle helper must not add anything
+        under <output_root>/dlc_kinematics/)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver, manifest, trial_events = (
+            TestDriverAndSchema._setup_session_outputs(tmp_path)
+        )
+        from stroke_orofacial.dlc_kinematics import build_tongue_visual_bundle
+
+        kinematics_root = tmp_path / "dlc_kinematics"
+        before = (
+            sorted(kinematics_root.rglob("*"))
+            if kinematics_root.exists() else []
+        )
+        bundle = build_tongue_visual_bundle(
+            manifest=manifest, resolver=resolver,
+            trial_events=trial_events, params=base_params,
+        )
+        after = (
+            sorted(kinematics_root.rglob("*"))
+            if kinematics_root.exists() else []
+        )
+        assert before == after, (
+            f"build_tongue_visual_bundle wrote unexpected files: "
+            f"{set(after) - set(before)}"
+        )
+        # And the bundle is non-empty (sanity).
+        assert len(bundle.df_trials) > 0
+
+    def test_default_params_uses_defaults_yaml(
+        self, monkeypatch, tmp_path,
+    ):
+        """Passing ``params=None`` resolves to the loaded defaults.yaml
+        block (mirror of build_tongue_pertrial's behavior)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver, manifest, trial_events = (
+            TestDriverAndSchema._setup_session_outputs(tmp_path)
+        )
+        from stroke_orofacial.dlc_kinematics import build_tongue_visual_bundle
+
+        bundle = build_tongue_visual_bundle(
+            manifest=manifest, resolver=resolver,
+            trial_events=trial_events, params=None,
+        )
+        # Bundle metadata reflects the on-disk defaults.yaml values.
+        defaults = load_defaults()
+        expected_n_phase_bins = int(
+            defaults["dlc_kinematics"]["tongue_pertrial"]["phase"]["n_phase_bins"]
+        )
+        expected_plot_win = list(
+            defaults["dlc_kinematics"]["tongue_visual"]["bundle"]["plot_win_ms"]
+        )
+        assert bundle.metadata["n_phase_bins"] == expected_n_phase_bins
+        assert bundle.metadata["plot_win_ms"] == expected_plot_win
+
+    def test_pertrial_core_result_is_frozen(self):
+        """Defensive: _PertrialCoreResult and TongueVisualBundle are
+        frozen so callers cannot accidentally mutate the shared core
+        return after construction."""
+        from dataclasses import FrozenInstanceError
+
+        from stroke_orofacial.dlc_kinematics import (
+            TonguePertrialResult,
+            TongueVisualBundle,
+        )
+        from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
+            _PertrialCoreResult,
+        )
+        empty_df = pd.DataFrame()
+        tp = TonguePertrialResult(
+            angle_per_frame=empty_df,
+            licking_dynamics_traces=empty_df,
+            endpoints={},
+            angle_metadata={},
+            licking_dynamics_metadata={},
+        )
+        vb = TongueVisualBundle(
+            df_trials=empty_df, df_bouts=empty_df, df_phase=empty_df,
+            angle_per_frame=empty_df, metadata={},
+        )
+        core = _PertrialCoreResult(tongue_pertrial=tp, visual_bundle=vb)
+        with pytest.raises(FrozenInstanceError):
+            core.tongue_pertrial = tp  # type: ignore[misc]
+        with pytest.raises(FrozenInstanceError):
+            vb.df_trials = empty_df  # type: ignore[misc]
