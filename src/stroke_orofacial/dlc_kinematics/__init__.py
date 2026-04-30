@@ -1,5 +1,11 @@
 """DLC kinematics: filtering, interpolation, and feature extraction."""
 
+from stroke_orofacial.dlc_kinematics._day_binned import (
+    DAY_BINNED_VERSION,
+    DayBinnedResult,
+    aggregate_licking_dynamics_day_binned,
+    aggregate_licking_dynamics_day_binned_by_animal,
+)
 from stroke_orofacial.dlc_kinematics.interpolation import (
     INTERPOLATION_VERSION,
     InterpolationResult,
@@ -15,11 +21,15 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
 )
 
 __all__ = [
+    "DAY_BINNED_VERSION",
+    "DayBinnedResult",
     "FEATURE_EXTRACTION_VERSION",
     "INTERPOLATION_VERSION",
     "InterpolationResult",
     "TonguePertrialResult",
     "TrialEvent",
+    "aggregate_licking_dynamics_day_binned",
+    "aggregate_licking_dynamics_day_binned_by_animal",
     "build_interpolated_trace",
     "build_interpolated_trace_by_animal_date",
     "build_tongue_pertrial",
