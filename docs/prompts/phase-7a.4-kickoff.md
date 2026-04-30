@@ -49,10 +49,21 @@ modifying its core modules. Bundled into one PR for review economy.
 
 ### Phase 7a.4 scope: visual gate + day-binned aggregation
 
-**Cell 50 visual gate (~300–400 lines).** Render the 5 plot families
-from a session's per-frame angle parquet + per-trial endpoints JSON;
-save consolidated PNGs; side-by-side compare against legacy PNGs from
-MICROSCOPE; emit a comparison grid for human review.
+**Cell 50 visual gate (~400–500 lines).** Render the 5 plot families
+from an in-memory `TongueVisualBundle` (built by a new public helper
+`build_tongue_visual_bundle` added to `tongue_pertrial.py` —
+bit-identical compute path to `build_tongue_pertrial`, but returns the
+intermediate per-trial / per-bout / per-phase DataFrames instead of
+writing the JSON/parquet emit set). The on-disk emit set
+(per-frame angle parquet + per-trial endpoints JSON) carries scalars
++ summary arrays only; the 5 plot families need per-trial array
+snippets (`y_snip`, `angle_snip`, `t_ms`, `df_phase`, `df_bouts`)
+that the 7a.3 driver builds in memory but does not persist. Adding a
+parallel public entry point that exposes the in-memory bundle is
+additive (no algorithm change to 7a.3 V3 modules) and respects the
+emit-set schema lock. Save consolidated PNGs; side-by-side compare
+against legacy PNGs from MICROSCOPE; emit a comparison grid for
+human review.
 
 **Cell 42 day-binned aggregator (~200–300 lines).** Aggregate
 per-session × side traces parquet across sessions by
@@ -69,44 +80,66 @@ day-binned parquet; legacy_approximate parity at atol=1e-6 against
    `day_binned:` sub-block (rel-day-bin definition, smoothing knobs
    if needed) AND a new top-level `tongue_visual:` block (figure
    sizing, color schemes, plot-family enable/disable flags).
-3. `src/stroke_orofacial/dlc_kinematics/tongue_visual.py` — new
+3. `src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py` — Task 3.5
+   ADDITIVE EXTENSION: new `TongueVisualBundle` dataclass +
+   `build_tongue_visual_bundle(manifest, resolver, trial_events, *,
+   params=None)` public helper. Same compute path as the existing
+   `build_tongue_pertrial`; returns `(df_trials, df_bouts, df_phase,
+   angle_per_frame, metadata)` in memory instead of writing the
+   JSON/parquet emit set. Bit-identical compute; existing
+   `build_tongue_pertrial` callers unaffected. Internal refactor:
+   `_build_tongue_pertrial_core` returns both the bundle AND the JSON
+   payload; the existing writer path uses the JSON payload, the new
+   helper returns the bundle.
+4. `src/stroke_orofacial/dlc_kinematics/tongue_visual.py` — new
    module: `render_tongue_qc_figures(animal, date, resolver, ...)`
    driver + 5 plot-family helpers (`_plot_per_trial_angle_traces`,
    `_plot_first_peak_aligned`, `_plot_reward_aligned`,
    `_plot_phase_aligned_angle`, `_plot_xy_by_phase`) + side-by-side
-   comparison helper.
-4. `src/stroke_orofacial/dlc_kinematics/_day_binned.py` — new module:
+   comparison helper. Family 1 (QC trials) emits per-side PNGs
+   mirroring legacy convention (2 PNGs per session); families 2-5
+   emit one PNG each. Total: 6 PNGs per session per render.
+5. `src/stroke_orofacial/dlc_kinematics/_day_binned.py` — new module:
    `aggregate_licking_dynamics_day_binned(animals, dates, resolver,
    *, params)` driver; per-animal-day grouping; cross-session
-   averaging per (rel_day_bin, side, timebin).
-5. `src/stroke_orofacial/paths.py` — three new resolver helpers:
+   averaging per (rel_day_bin, side, timebin). Uses
+   `f"{lo}..{hi}"` rel_day_bin label format (matches legacy
+   convention; literal `..` in filenames).
+6. `src/stroke_orofacial/paths.py` — three new resolver helpers:
    - `tongue_visual_qc_dir(animal, date)` — output dir for
      consolidated PNGs.
    - `tongue_visual_comparison_dir(animal, date)` — output dir for
      side-by-side comparison grids.
    - `tongue_pertrial_licking_dynamics_day_binned_parquet(animal,
      rel_day_bin_label)` — day-binned aggregated traces parquet.
-6. `src/stroke_orofacial/dlc_kinematics/__init__.py` — export new
-   public symbols.
-7. `tests/test_tongue_visual.py` — synthetic-data unit tests for the
+7. `src/stroke_orofacial/dlc_kinematics/__init__.py` — export new
+   public symbols (`TongueVisualBundle`, `build_tongue_visual_bundle`,
+   `render_tongue_qc_figures`, `render_comparison_grid`,
+   `aggregate_licking_dynamics_day_binned`).
+8. `tests/test_tongue_visual.py` — synthetic-data unit tests for the
    plot-family helpers (smoke test: each helper produces a non-empty
    figure without crashing on synthetic input). Visual fidelity is
    the parity harness's job.
-8. `tests/test_day_binned.py` — synthetic-data unit tests for the
+9. `tests/test_day_binned.py` — synthetic-data unit tests for the
    day-binned aggregator (per-animal-day grouping, cross-session
    averaging, edge cases — single session per bin, empty bins).
-9. `tests/scripts/parity_phase7a4_day_binned.py` — 14-session parity
-   harness for day-binned traces, mirrors the 7a.3 harness's
-   `--mode {default, legacy_approximate}` flag.
-10. `tests/scripts/parity_phase7a4_visual_gate.py` — visual
+10. `tests/test_tongue_pertrial.py` — Task 3.5 EXTENSION: ~3-5 new
+    tests for `build_tongue_visual_bundle` (returns bundle of correct
+    shape; bit-identical to JSON payload of the same session via
+    `build_tongue_pertrial`; respects `params=None` default).
+11. `tests/scripts/parity_phase7a4_day_binned.py` — 14-session parity
+    harness for day-binned traces, mirrors the 7a.3 harness's
+    `--mode {default, legacy_approximate}` flag.
+12. `tests/scripts/parity_phase7a4_visual_gate.py` — visual
     comparison runner: emits side-by-side comparison grids for
     PS46/<dates with saved legacy figures>; output is for human
     review (not numerical pass/fail).
-11. `docs/DECISIONS.md` Phase 7a.4 entry — codifies the visual-gate
+13. `docs/DECISIONS.md` Phase 7a.4 entry — codifies the visual-gate
     pass criteria (semantic match: curve shapes, peak positions, sign
     conventions, distribution shapes); the day-binned schema; the
-    `bin_days` per-animal placement.
-12. `docs/MIGRATION_LOG.md` Phase 7a.4 entry.
+    `bin_days` per-animal placement; the additive
+    `build_tongue_visual_bundle` helper rationale.
+14. `docs/MIGRATION_LOG.md` Phase 7a.4 entry.
 
 ---
 
@@ -175,14 +208,16 @@ any ambiguity for Priya.
 
 | Commit | Task | Description | Est. lines | Stop-and-report? |
 |---|---|---|---|---|
-| C1 | 0 | Phase 7a.4 kickoff (this doc, written by Cowork) | ~700 doc | No (preflight) |
+| C0a | — | `chore: ignore .scratch_*/ working-area directories (7a.4 prep)` | ~3 .gitignore | No (housekeeping) |
+| C1 | 0 | Phase 7a.4 kickoff (this doc, written by Cowork) | ~1100 doc | No (preflight) |
 | C2 | 1.5 | Re-read vendored Cell 42 day-binning + Cell 50 plot families; surface schemas + extraction notes | ~30 doc | YES |
 | C3 | 2 | configs/animals.yaml `bin_days:` + configs/defaults.yaml `day_binned:` + `tongue_visual:` blocks + 3 path resolvers + path tests | ~250 src/test | YES |
 | C4 | 3 | `_day_binned.py` aggregator module + tests | ~400 src/test | YES |
-| C5 | 4 | `tongue_visual.py` rendering module + tests | ~500 src/test | YES |
-| C6 | 5 | Parity harness (day-binned legacy_approximate) + visual comparison runner + cohort runs | ~400 test | YES |
-| C7 | 6 | DECISIONS + MIGRATION_LOG entries | ~80 doc | No |
-| C8 | 7 | PR open + tag prep | n/a | No (final) |
+| C5 | 3.5 | `build_tongue_visual_bundle` helper + `TongueVisualBundle` dataclass added to `tongue_pertrial.py` (additive; same compute path as `build_tongue_pertrial`; returns in-memory `(df_trials, df_bouts, df_phase)`) + tests | ~150 src/test | YES |
+| C6 | 4 | `tongue_visual.py` rendering module (consumes `TongueVisualBundle`; 5 plot families × per-side variants where legacy emits per-side; comparison-grid renderer) + tests | ~500 src/test | YES |
+| C7 | 5 | Parity harness (day-binned legacy_approximate) + visual comparison runner + cohort runs | ~400 test | YES |
+| C8 | 6 | DECISIONS + MIGRATION_LOG entries | ~80 doc | No |
+| C9 | 7 | PR open + tag prep | n/a | No (final) |
 
 ### 4. Parity strategy
 
@@ -331,57 +366,64 @@ Do NOT advance to Task 2 until Priya acknowledges the audit findings
 
 #### 2a. `configs/animals.yaml` — `bin_days:` per-animal field
 
-Extend each PS46–PS55 animal entry with a `bin_days` field:
+Extend each in-cohort animal entry with a `bin_days` field. The cohort
+is 8 animals (PS46/47/48/49/50/51/54/55 — PS52/PS53 do not exist; the
+legacy `MOUSE_SPECS` dict has the same 8 keys):
 
 ```yaml
-PS46:
+PS46:  # PS47, PS48, PS49, PS50 — same value
   # ... existing fields ...
   bin_days: 2
 
-PS50:
-  # ... existing fields ...
-  bin_days: 2
-
-PS51:
-  # ... existing fields ...
-  bin_days: 7
-
-PS54:
-  # ... existing fields ...
-  bin_days: 7
-
-PS55:
+PS51:  # PS54, PS55 — same value
   # ... existing fields ...
   bin_days: 7
 ```
 
-(Apply to all 8 PS46–PS55 animals — PS47/PS48/PS49/PS52 follow the
-same per-cohort pattern; verify against legacy `MOUSE_SPECS` /
-`ANIMALS` dicts in vendored Cell 42 audit notes.)
+Values transcribed bit-for-bit from the legacy MOUSE_SPECS dict in
+`20260203_DLC_analysis_ws_aligned_parquet_input_tongue.ipynb` Cell 42
+(see `.scratch_7a4/cell42_day_binned_audit.md` §4 for the audit
+table). Cohort split is by experimental epoch: PS46-PS50 (the early
+cohort, 4-week stroke follow-up, dense sessions) → 2; PS51/PS54/PS55
+(later cohort, 12-week follow-up, sparse sessions) → 7.
 
 `AnimalInfo` dataclass extends with `bin_days: int = 1` (sensible
-default for any future animal). Loader validates int type. New tests
-in `tests/test_animals.py` covering the new field.
+default for any future animal). Loader validates int type and
+positivity (rejects bools — Python's bool-is-int subclass would
+silently coerce `bin_days: true` to 1 — and `bin_days < 1`). New
+tests in `tests/test_animals.py` covering the new field.
 
 #### 2b. `configs/defaults.yaml` — `day_binned:` + `tongue_visual:` blocks
 
-Add under `dlc_kinematics.tongue_pertrial:`:
+Per the Task 1.5 audit
+(`.scratch_7a4/cell42_day_binned_audit.md` §8;
+`.scratch_7a4/cell50_plot_families_audit.md` §"Proposed
+`dlc_kinematics.tongue_visual:` schema").
+
+Add under `dlc_kinematics.tongue_pertrial:` (last sub-block):
 
 ```yaml
 dlc_kinematics:
   tongue_pertrial:
     # ... existing 7a.3 V3 keys (do not modify) ...
+    feature_extraction_version: "v7a.3"
+    interpolation_version: "v5p3"
 
     # =========================================================
     # Day-binned cross-session aggregation (Phase 7a.4)
     # =========================================================
+    # Aggregates the per-session × side licking-dynamics traces
+    # parquet across sessions in each (side, rel_day_bin) group, where
+    # rel_day_bin width is the per-animal `bin_days` value in
+    # configs/animals.yaml. Algorithm anchors on rel_day=0; last
+    # pre-bin is [-(B-1), 0]; post bins start at [1, B]; labels are
+    # f"{lo}..{hi}" matching legacy convention. No per-aggregator
+    # filter (legacy has none); session-level `min_trials_per_bin: 3`
+    # is already baked into the input `ili_within_bout_rate_per_t`.
     day_binned:
-      # Knob list TBD by Task 1.5 audit. Likely candidates:
-      #   min_sessions_per_bin: 1
-      #   aggregation_function: "mean"  # or "median"
-      #   emit_sem: false               # if true, emits sem alongside mean
-      #   ...
-      <fill-from-1.5a>
+      aggregation_function: "mean"      # legacy: np.nanmean across sessions
+      emit_sem: true                    # legacy: nanstd / sqrt(n_sess)
+      emit_n_support_sessions: true     # legacy: per-timebin n contributing
 ```
 
 Add new top-level (sibling of `tongue_pertrial:`):
@@ -394,85 +436,156 @@ dlc_kinematics:
   # =========================================================
   # Tongue visual gate rendering (Phase 7a.4)
   # =========================================================
+  # Cell 50 plot families (port at Phase 7a.4): renders 6 PNGs per
+  # session (Family 1 = 2 PNGs per side mirroring legacy; Families 2-5
+  # = 1 PNG each). Consumes an in-memory TongueVisualBundle from
+  # build_tongue_visual_bundle (Task 3.5 additive helper on
+  # tongue_pertrial.py). Detector / bout / angle constants are sourced
+  # from the `tongue_pertrial:` block above (single source of truth);
+  # this block carries only knobs unique to the visual gate.
   tongue_visual:
+    # Snippet windows for the in-memory bundle helper.
+    bundle:
+      plot_win_ms: [0.0, 8000.0]
+      detect_win_ms: [70.0, 3000.0]
+      first_peak_align_win_ms: [-180.0, 1000.0]
+
+    # Render-time mode selectors (legacy default = "first_multi" all 3).
+    modes:
+      time_summary: "first_multi"     # "all_bouts"|"first_bout"|"first_multi"
+      phase_summary: "first_multi"    # "all_multi"|"first_multi"
+      xy_summary: "first_multi"       # "all_multi"|"first_multi"
+
+    # Render-time aggregation filters (NOT used by the bundle helper).
+    render:
+      min_phase_points_per_bin_single: 5
+      do_smooth_phase_curve: true
+      phase_curve_sigma_bins: 1.0
+
+    # Figure layout. 200 dpi matches legacy FIG_DPI.
     figure:
       width_inches: 12.0
       height_inches: 8.0
-      dpi: 100
+      dpi: 200
+
+    # Plot-family enable/disable + family-specific tweaks.
     plot_families:
-      # Each family enable/disable + family-specific tweaks
-      per_trial_angle_traces:
+      qc_trials:
         enabled: true
-        y_range_deg: [-90, 90]
-        # ... knob list TBD by Task 1.5b audit
+        view_n_trials_per_side: 10    # legacy VIEW_N_TRIALS_PER_SIDE
+        detect_alpha: 0.035            # legacy QC_DETECT_ALPHA
+        bout_alpha: 0.012              # legacy QC_BOUT_ALPHA
+        peak_size: 18                  # legacy QC_PEAK_SIZE
       first_peak_aligned:
         enabled: true
-        # ...
       reward_aligned:
         enabled: true
-        # ...
       phase_aligned_angle:
         enabled: true
-        n_phase_bins: 72   # mirrors tongue_pertrial.phase.n_phase_bins
-        # ...
       xy_by_phase:
         enabled: true
-        # ...
+        cmap: "twilight"
+        scatter_size: 8                # legacy s=8
+        scatter_alpha: 0.65
+
+    # Per-side colours (legacy SIDE_COLORS).
+    side_colors:
+      L: "dodgerblue"
+      R: "mediumvioletred"
+
+    # Side-by-side legacy-vs-consolidated comparison grid.
     comparison_grid:
-      cols: 2  # legacy | consolidated
-      include_diff: false  # zoom inset of difference, if useful
+      cols: 2
+      include_diff: false
 ```
 
 Validate YAML loads + assertion check on key values.
 
 #### 2c. `src/stroke_orofacial/paths.py` — three new resolver helpers
 
+The parquet resolver follows the 7a.3 V3 file-resolver convention
+(eager parent mkdir). The two directory resolvers do NOT eager-mkdir
+— the renderer creates the directory at write time. `..` in the
+rel_day_bin label is preserved literally (NTFS-legal; matches legacy
+CSV-name convention for traceability — Task 1.5a audit §9).
+
 ```python
-def tongue_visual_qc_dir(self, animal: str, date: dt.date) -> Path:
-    """Output directory for consolidated tongue-visual QC PNGs."""
-    return (
-        self.pipeline_outputs("dlc_kinematics") / "figures_qc" / "tongue"
-        / animal / f"{date.strftime('%Y%m%d')}"
-    )
-
-def tongue_visual_comparison_dir(self, animal: str, date: dt.date) -> Path:
-    """Output directory for legacy-vs-consolidated side-by-side comparison grids."""
-    return (
-        self.pipeline_outputs("dlc_kinematics") / "figures_qc" / "tongue_comparison"
-        / animal / f"{date.strftime('%Y%m%d')}"
-    )
-
 def tongue_pertrial_licking_dynamics_day_binned_parquet(
     self, animal: str, rel_day_bin_label: str,
 ) -> Path:
-    """Day-binned cross-session traces parquet, per-animal × per-rel_day_bin.
+    """Day-binned cross-session traces parquet.
 
-    rel_day_bin_label: e.g. 'pre', 'post_d0_d2', 'post_d3_d5' (exact
-    labeling decided in Task 1.5a audit + 2b YAML config).
+    rel_day_bin_label: legacy ``f"{lo}..{hi}"`` label (e.g. "-1..0",
+    "1..2", "-6..0", "1..7").
     """
+    out = (
+        self.pipeline_outputs(subdir="dlc_kinematics")
+        / "licking_dynamics" / "day_binned" / animal
+        / f"{rel_day_bin_label}.parquet"
+    )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    return out
+
+def tongue_visual_qc_dir(self, animal: str, date: dt.date) -> Path:
+    """Output directory for consolidated tongue-visual QC PNGs."""
+    date_str = date.strftime("%Y%m%d")
     return (
-        self.pipeline_outputs("dlc_kinematics") / "licking_dynamics"
-        / "day_binned" / animal / f"{rel_day_bin_label}.parquet"
+        self.pipeline_outputs(subdir="dlc_kinematics")
+        / "figures_qc" / "tongue" / animal / date_str
+    )
+
+def tongue_visual_comparison_dir(self, animal: str, date: dt.date) -> Path:
+    """Output directory for legacy-vs-consolidated comparison grids."""
+    date_str = date.strftime("%Y%m%d")
+    return (
+        self.pipeline_outputs(subdir="dlc_kinematics")
+        / "figures_qc" / "tongue_comparison" / animal / date_str
     )
 ```
 
 #### 2d. `tests/test_paths.py` — extend
 
 ```python
-def test_tongue_visual_qc_dir_path(tmp_path):
-    resolver = PathResolver(output_root=tmp_path)
-    p = resolver.tongue_visual_qc_dir("PS50", dt.date(2025, 3, 19))
-    assert p == tmp_path / "dlc_kinematics" / "figures_qc" / "tongue" / "PS50" / "20250319"
+class TestPhase7a4Paths:
+    def test_tongue_pertrial_licking_dynamics_day_binned_parquet_path(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        p = resolver.tongue_pertrial_licking_dynamics_day_binned_parquet(
+            "PS54", "1..7"
+        )
+        assert p == tmp_path / "dlc_kinematics" / "licking_dynamics" \
+            / "day_binned" / "PS54" / "1..7.parquet"
+        assert p.parent.exists()  # eager mkdir
 
-def test_tongue_visual_comparison_dir_path(tmp_path):
-    resolver = PathResolver(output_root=tmp_path)
-    p = resolver.tongue_visual_comparison_dir("PS46", dt.date(2025, 5, 1))
-    assert p == tmp_path / "dlc_kinematics" / "figures_qc" / "tongue_comparison" / "PS46" / "20250501"
+    def test_day_binned_pre_bin_label(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        p = resolver.tongue_pertrial_licking_dynamics_day_binned_parquet(
+            "PS46", "-1..0"
+        )
+        assert p.name == "-1..0.parquet"
 
-def test_tongue_pertrial_licking_dynamics_day_binned_parquet_path(tmp_path):
-    resolver = PathResolver(output_root=tmp_path)
-    p = resolver.tongue_pertrial_licking_dynamics_day_binned_parquet("PS54", "post_d0_d6")
-    assert p == tmp_path / "dlc_kinematics" / "licking_dynamics" / "day_binned" / "PS54" / "post_d0_d6.parquet"
+    def test_tongue_visual_qc_dir_path(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        p = resolver.tongue_visual_qc_dir(
+            "PS50", datetime.date(2025, 3, 19),
+        )
+        assert p == tmp_path / "dlc_kinematics" / "figures_qc" / "tongue" \
+            / "PS50" / "20250319"
+        assert not p.exists()  # no eager mkdir
+
+    def test_tongue_visual_comparison_dir_path(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        p = resolver.tongue_visual_comparison_dir(
+            "PS46", datetime.date(2025, 3, 7),
+        )
+        assert p == tmp_path / "dlc_kinematics" / "figures_qc" \
+            / "tongue_comparison" / "PS46" / "20250307"
+        assert not p.exists()  # no eager mkdir
 ```
 
 #### 2e. Run + commit
@@ -1016,9 +1129,24 @@ merges from GitHub UI, then tags on the merge commit herself.
 ## Constraints (across all 7 tasks)
 
 - **Phase 7a.4 scope is Cell 50 visual gate + Cell 42 day-binned ONLY.**
-  No new bodypart work. No Phase 7a.3-jaw (separate phase). No
-  algorithm changes to 7a.3 V3 modules (`tongue_pertrial.py`,
-  `_detector.py`, `_angle.py`, `_writers.py`) — all 4 stay locked.
+  No new bodypart work. No Phase 7a.3-jaw (separate phase).
+- **No ALGORITHM changes to 7a.3 V3 modules** (`tongue_pertrial.py`,
+  `_detector.py`, `_angle.py`, `_writers.py`). The cell-extractor
+  logic, detector knobs, bout-mode dispatcher, atomic writers, and
+  emit-set schemas all stay LOCKED. Bit-identical compute is preserved
+  for any session run through `build_tongue_pertrial`.
+- **Additive public helpers ARE allowed** on 7a.3 V3 modules
+  (specifically `tongue_pertrial.py`) IF they expose existing in-memory
+  intermediates without changing the algorithm. Task 3.5 adds
+  `build_tongue_visual_bundle` + `TongueVisualBundle` dataclass:
+  same compute path as `build_tongue_pertrial`, returns the
+  intermediate per-trial / per-bout / per-phase DataFrames that the
+  driver builds in memory but currently discards after writing the
+  JSON. The new function is purely additive; existing callers of
+  `build_tongue_pertrial` are unaffected. This relaxation was added
+  2026-04-29 after Task 1.5 audit found that the 5 Cell 50 plot
+  families need per-trial array snippets that the on-disk emit set
+  doesn't carry.
 - **Seven commits on top of `main` post-7a.3 merge.** Kickoff +
   Task 1.5 + 5 task commits + PR. Each task = one commit.
 - **Stop-and-report between Tasks 1.5 / 2 / 3 / 4 / 5.** Tasks 6 and

@@ -554,6 +554,115 @@ dlc_kinematics:
     feature_extraction_version: "v7a.3"
     interpolation_version: "v5p3"
 
+    # =========================================================
+    # Day-binned cross-session aggregation (Phase 7a.4)
+    # =========================================================
+    # Aggregates the per-session × side licking-dynamics traces parquet
+    # (the 7a.3 V3 emit) across sessions in each (side, rel_day_bin)
+    # group, where rel_day_bin width is the per-animal `bin_days` value
+    # in configs/animals.yaml. Algorithm anchors on rel_day=0 (last
+    # pre-stroke session); last pre-bin is [-(B-1), 0]; post bins start
+    # at [1, B]; labels are f"{lo}..{hi}" matching legacy convention.
+    #
+    # Legacy Cell 42 has no per-aggregator filter (no min_sessions_per_bin):
+    # any (side, rel_day_bin) with >= 1 contributing session is emitted.
+    # The session-level `min_trials_per_bin: 3` filter (above) is applied
+    # at session-traces construction and is already baked into the input
+    # `ili_within_bout_rate_per_t` column — re-applying it here would
+    # double-filter.
+    day_binned:
+      # Across-session aggregation function. Legacy uses np.nanmean +
+      # nanstd/sqrt(n_sess) for SEM. Only "mean" is honoured today;
+      # placeholder for future "median" support.
+      aggregation_function: "mean"
+      # Emit SEM column alongside the mean (legacy emits both).
+      emit_sem: true
+      # Emit a per-timebin n_support_sessions column (count of sessions
+      # contributing finite values at each bin) — legacy emits this.
+      emit_n_support_sessions: true
+
+  # =========================================================
+  # Tongue visual gate rendering (Phase 7a.4)
+  # =========================================================
+  # Cell 50 plot families (port at Phase 7a.4): renders 6 PNGs per
+  # session (Family 1 emits per-side, families 2-5 emit one PNG each).
+  # Consumes an in-memory TongueVisualBundle from build_tongue_visual_bundle
+  # (additive helper on tongue_pertrial.py — see Phase 7a.4 Task 3.5).
+  # Detector / bout / angle constants are sourced from the
+  # `tongue_pertrial:` block above (single source of truth); this block
+  # carries only knobs unique to the visual gate.
+  tongue_visual:
+    # Snippet windows for the in-memory bundle helper. These differ from
+    # the 7a.3 metric-detection windows (which start at 70 ms post-reward
+    # to skip the reward-delivery transient) — Cell 50 plots include the
+    # pre-detection window (0-70 ms) for visual context.
+    bundle:
+      plot_win_ms: [0.0, 8000.0]
+      detect_win_ms: [70.0, 3000.0]
+      first_peak_align_win_ms: [-180.0, 1000.0]
+
+    # Render-time mode selectors (legacy default = "first_multi" for all 3).
+    # time: "all_bouts" | "first_bout" | "first_multi"
+    # phase / xy: "all_multi" | "first_multi"
+    modes:
+      time_summary: "first_multi"
+      phase_summary: "first_multi"
+      xy_summary: "first_multi"
+
+    # Render-time aggregation filters (NOT used by the bundle helper).
+    # Family 4 (phase-aligned) drops phase bins with fewer than
+    # min_phase_points_per_bin_single contributing samples; phase curve
+    # is then optionally smoothed with a 1-bin circular Gaussian.
+    render:
+      min_phase_points_per_bin_single: 5
+      do_smooth_phase_curve: true
+      phase_curve_sigma_bins: 1.0
+
+    # Figure layout. 200 dpi matches legacy FIG_DPI; figsize is per-family
+    # in Cell 50 (varies). Defaults here are the most common values; each
+    # plot family overrides as needed.
+    figure:
+      width_inches: 12.0
+      height_inches: 8.0
+      dpi: 200
+
+    # Plot-family enable/disable + family-specific tweaks. Only
+    # qc_trials and xy_by_phase carry non-trivial extra knobs; the other
+    # 3 families take all their knobs from the bundle / modes / figure
+    # blocks above.
+    plot_families:
+      qc_trials:
+        enabled: true
+        view_n_trials_per_side: 10   # legacy VIEW_N_TRIALS_PER_SIDE
+        detect_alpha: 0.035          # legacy QC_DETECT_ALPHA
+        bout_alpha: 0.012            # legacy QC_BOUT_ALPHA
+        peak_size: 18                # legacy QC_PEAK_SIZE
+      first_peak_aligned:
+        enabled: true
+      reward_aligned:
+        enabled: true
+      phase_aligned_angle:
+        enabled: true
+      xy_by_phase:
+        enabled: true
+        cmap: "twilight"
+        scatter_size: 8              # legacy s=8
+        scatter_alpha: 0.65
+
+    # Per-side colours for L/R overlays. Legacy SIDE_COLORS dict.
+    side_colors:
+      L: "dodgerblue"
+      R: "mediumvioletred"
+
+    # Side-by-side legacy-vs-consolidated comparison grid (rendered by
+    # tongue_visual.render_comparison_grid for the visual-gate parity
+    # runner). cols=2 for legacy | consolidated; include_diff inserts a
+    # per-pixel difference inset zoom if useful (off by default —
+    # numerical drift is expected and is for human review).
+    comparison_grid:
+      cols: 2
+      include_diff: false
+
 # ---- Wavesurfer ----
 
 wavesurfer:

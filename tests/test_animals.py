@@ -33,6 +33,7 @@ def animals_yaml(tmp_path: Path) -> Path:
               date_of_birth: 2024-12-03
               genotype: "C57BL/6J"
               stroke_laser_power_mW: 2.2
+              bin_days: 2
               analysis_params:
                 break_thr_trialmax: 12000.0
                 break_thr_alllicks: 9000.0
@@ -688,3 +689,73 @@ class TestKinematicsBaselines:
         # Sanity: configured bodyparts return cleanly.
         assert info.get_kinematics_baseline("tongue") == {"x0": 0.0, "y0": -110.0}
         assert info.get_kinematics_baseline("jaw") == {"x0": 0.0, "y0": 310.0}
+
+
+class TestBinDays:
+    """Phase 7a.4 (added 2026-04-30): per-animal day-bin width consumed by
+    the Cell 42 day-binned cross-session aggregator. Legacy values:
+    PS46-PS50 use 2 days; PS51/PS54/PS55 use 7 days. Default 1 is
+    fail-conservative for any future animal joining the cohort."""
+
+    def test_explicit_two_loads(self, animals_yaml):
+        """PS46 fixture carries `bin_days: 2` — round-trips as int 2."""
+        animals = load_animals(animals_yaml)
+        assert animals["PS46"].bin_days == 2
+        assert isinstance(animals["PS46"].bin_days, int)
+
+    def test_default_one_when_key_absent(self, animals_yaml):
+        """PS54 fixture has no `bin_days` key — defaults to 1."""
+        animals = load_animals(animals_yaml)
+        assert animals["PS54"].bin_days == 1
+
+    def test_real_yaml_cohort_values(self):
+        """Real configs/animals.yaml: PS46-PS50 → 2; PS51/PS54/PS55 → 7."""
+        animals = load_animals()
+        expected = {
+            "PS46": 2, "PS47": 2, "PS48": 2, "PS49": 2, "PS50": 2,
+            "PS51": 7, "PS54": 7, "PS55": 7,
+        }
+        for animal_id, expected_bd in expected.items():
+            assert animals[animal_id].bin_days == expected_bd, (
+                f"{animal_id} bin_days drift: "
+                f"{animals[animal_id].bin_days} != {expected_bd}"
+            )
+
+    def test_invalid_bool_raises(self, tmp_path):
+        """`bin_days: true` would silently coerce to int 1 (Python's
+        bool-is-int) — loader rejects to catch the typo."""
+        cfg = tmp_path / "invalid_bool.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  bin_days: true
+                  kinematics_baselines:
+                    tongue: {x0: 0.0, y0: -110.0}
+                    jaw:    {x0: 0.0, y0: 290.0}
+            """)
+        )
+        with pytest.raises(ValueError, match="PS99.*bin_days"):
+            load_animals(cfg)
+
+    def test_invalid_zero_raises(self, tmp_path):
+        """`bin_days: 0` is meaningless (zero-width bins) — rejected."""
+        cfg = tmp_path / "invalid_zero.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  bin_days: 0
+                  kinematics_baselines:
+                    tongue: {x0: 0.0, y0: -110.0}
+                    jaw:    {x0: 0.0, y0: 290.0}
+            """)
+        )
+        with pytest.raises(ValueError, match="PS99.*bin_days"):
+            load_animals(cfg)
