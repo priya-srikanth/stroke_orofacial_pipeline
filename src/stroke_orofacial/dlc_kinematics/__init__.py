@@ -22,6 +22,10 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
     build_tongue_visual_bundle,
     build_tongue_visual_bundle_by_animal_date,
 )
+from stroke_orofacial.dlc_kinematics.tongue_visual import (
+    render_comparison_grid,
+    render_tongue_qc_figures,
+)
 
 __all__ = [
     "DAY_BINNED_VERSION",
@@ -40,4 +44,6 @@ __all__ = [
     "build_tongue_pertrial_by_animal_date",
     "build_tongue_visual_bundle",
     "build_tongue_visual_bundle_by_animal_date",
+    "render_comparison_grid",
+    "render_tongue_qc_figures",
 ]
