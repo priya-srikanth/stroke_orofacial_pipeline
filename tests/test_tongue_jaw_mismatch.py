@@ -1286,6 +1286,170 @@ class TestPlotFamilyVisualFidelity:
         )
         plt.close(fig)
 
+    @staticmethod
+    def _setup_overlay_outlier_session(
+        tmp_path: Path, monkeypatch,
+    ):
+        """Shared fixture for the C6.3 with/without overlay-clipping tests.
+
+        Builds a session with 10 candidate trials (5 L, 5 R) where one R
+        trial carries a 500-frame plateau at +200 px. The plateau is a
+        1.45% slice of trial-level data (large enough to survive a 99.9th-
+        percentile cap → with-overlays axis upper ≈ 200) but only 1/5 of
+        the R-side mean-trace (mean+sem upper ≈ 70-100 px → without-
+        overlays axis upper << 200).
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        animal = "PS46"
+        date = datetime.date(2025, 3, 7)
+        n = 25_000
+        fps = _SYNTH_FPS
+        rng = np.random.default_rng(0)
+        jaw_y = rng.normal(0.0, 0.3, n)
+        tongue_y = rng.normal(0.0, 0.3, n)
+        # 10 reward frames at 2 s spacing.
+        reward_frames = tuple(1500 + 1000 * k for k in range(10))
+        for fr in reward_frames:
+            _add_jaw_deflection(jaw_y, fps, fr, amplitude_px=20.0, dur_ms=1500.0)
+        # Plateau on trial 5 (the first R-side trial with k=5).
+        # Place plateau at t=300 ms post-reward; 500-frame width = 2 s.
+        outlier_fr = reward_frames[5]
+        plateau_start = outlier_fr + int(0.3 * fps)
+        plateau_end = plateau_start + 500
+        jaw_y[plateau_start:plateau_end] = 200.0
+        _make_synthetic_bodypart_parquet(
+            resolver.interpolated_trace(bodypart="jaw", animal=animal, date=date),
+            n, fps=fps, y_final=jaw_y,
+            center_mode="centered_eye_midpoint",
+        )
+        _make_synthetic_bodypart_parquet(
+            resolver.interpolated_trace(bodypart="tongue", animal=animal, date=date),
+            n, fps=fps, y_final=tongue_y,
+            center_mode="centered_spout_midpoint",
+        )
+        manifest = _make_minimal_manifest(animal=animal, date=date)
+        trial_events = [
+            TrialEvent(trial_index=k, reward_frame_idx=int(fr),
+                       side=("L" if k < 5 else "R"))
+            for k, fr in enumerate(reward_frames)
+        ]
+        return resolver, manifest, trial_events, animal, date
+
+    def test_mean_sem_ylim_includes_trial_overlays_when_shown(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """C6.3: with overlays shown, axis ylim spans trial-level extremes
+        (within percentile cap), so the rendered overlays aren't clipped.
+        """
+        resolver, manifest, trial_events, animal, date = (
+            self._setup_overlay_outlier_session(tmp_path, monkeypatch)
+        )
+        cfg = base_params["dlc_kinematics"]["tongue_jaw_mismatch"]["plotter"]
+        cfg["session_overlay_grid"]["mean_sem_axis"]["show_trial_overlays"] = True
+        classify_tongue_jaw_mismatch(
+            manifest=manifest, resolver=resolver, trial_events=trial_events,
+            params=base_params, overwrite="force",
+        )
+        from stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch import (
+            _load_bodypart_y_final,
+            _plot_session_overlay_grid_4x2,
+        )
+        df = pd.read_parquet(
+            resolver.tongue_jaw_mismatch_candidate_trials_parquet(animal, date),
+        )
+        jaw_y_arr, fps_jaw, _ = _load_bodypart_y_final(
+            resolver, animal, date, bodypart="jaw",
+        )
+        tongue_y_arr, _, _ = _load_bodypart_y_final(
+            resolver, animal, date, bodypart="tongue",
+        )
+        fig = _plot_session_overlay_grid_4x2(
+            df, jaw_y_arr, tongue_y_arr, fps_jaw,
+            plotter_cfg=cfg, animal=animal, date=date,
+        )
+        # Find the row 2 (mean±SEM-candidate) primary axis (any side).
+        primary_by_rc: dict[tuple[int, int], object] = {}
+        for ax in fig.axes:
+            ss = ax.get_subplotspec()
+            if ss is None:
+                continue
+            rc = (ss.rowspan.start, ss.colspan.start)
+            if rc not in primary_by_rc:
+                primary_by_rc[rc] = ax
+        # Find which row actually shows the candidate trials by walking
+        # both candidate-mean-sem (row 2) and noncand-mean-sem (row 3) and
+        # picking the one with non-empty data.
+        candidate_jaw_lim = primary_by_rc[(2, 0)].get_ylim()
+        # The plateau at 200 px (with baseline_subtracted - average baseline
+        # ~ 0) should land inside or near the upper ylim. Allow some slack
+        # because the per-trial baseline subtraction will offset all
+        # plateau values by ~baseline_mean of trial 3's window. The
+        # baseline window is (-500, 0) ms before reward, where jaw_y is
+        # ~ 0 (random noise), so baseline_mean ~ 0 and the plotted
+        # jaw_y_bs at the plateau is still ~ 200.
+        # Test: the upper ylim is well above the mean-only extremes
+        # (which would cap at ~mean of 20 px deflection ~ 25 px).
+        assert candidate_jaw_lim[1] > 50.0, (
+            f"With overlays shown, ylim upper={candidate_jaw_lim[1]:.1f} "
+            f"should include trial-level extremes (>50 px), not just mean (~25 px)"
+        )
+        plt.close(fig)
+
+    def test_mean_sem_ylim_excludes_trial_overlays_when_hidden(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """C6.3: with overlays hidden, axis ylim is driven by mean trace
+        only — the trial-level outlier at 200 px is NOT included.
+        """
+        resolver, manifest, trial_events, animal, date = (
+            self._setup_overlay_outlier_session(tmp_path, monkeypatch)
+        )
+        cfg = base_params["dlc_kinematics"]["tongue_jaw_mismatch"]["plotter"]
+        cfg["session_overlay_grid"]["mean_sem_axis"]["show_trial_overlays"] = False
+        classify_tongue_jaw_mismatch(
+            manifest=manifest, resolver=resolver, trial_events=trial_events,
+            params=base_params, overwrite="force",
+        )
+        from stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch import (
+            _load_bodypart_y_final,
+            _plot_session_overlay_grid_4x2,
+        )
+        df = pd.read_parquet(
+            resolver.tongue_jaw_mismatch_candidate_trials_parquet(animal, date),
+        )
+        jaw_y_arr, fps_jaw, _ = _load_bodypart_y_final(
+            resolver, animal, date, bodypart="jaw",
+        )
+        tongue_y_arr, _, _ = _load_bodypart_y_final(
+            resolver, animal, date, bodypart="tongue",
+        )
+        fig = _plot_session_overlay_grid_4x2(
+            df, jaw_y_arr, tongue_y_arr, fps_jaw,
+            plotter_cfg=cfg, animal=animal, date=date,
+        )
+        primary_by_rc: dict[tuple[int, int], object] = {}
+        for ax in fig.axes:
+            ss = ax.get_subplotspec()
+            if ss is None:
+                continue
+            rc = (ss.rowspan.start, ss.colspan.start)
+            if rc not in primary_by_rc:
+                primary_by_rc[rc] = ax
+        candidate_jaw_lim = primary_by_rc[(2, 0)].get_ylim()
+        # With overlays hidden, the mean trace is the average of 4 trials.
+        # 3 trials have jaw_y_bs ~ 0 over the plateau region; trial 3 has
+        # jaw_y_bs ~ 200 there. Mean across 4 trials at the plateau ~ 50.
+        # So mu_max ~ 50, plus mu+sem ~ 50 + sd/2 ~ 50-90. The auto-scaled
+        # ylim upper should be well below 150 (cleanly excluding the
+        # trial-only outlier at 200).
+        assert candidate_jaw_lim[1] < 150.0, (
+            f"With overlays hidden, ylim upper={candidate_jaw_lim[1]:.1f} "
+            f"should reflect mean-only extremes (<150 px), not trial outlier "
+            f"at 200 px"
+        )
+        plt.close(fig)
+
     def test_individual_trials_dpi_propagates_to_savefig(
         self, monkeypatch, tmp_path, base_params,
     ):

@@ -865,6 +865,8 @@ def _collect_overlay_arrays(
 
 def _collect_mean_sem_arrays(
     rows_for_row: list[dict[str, Any]],
+    *,
+    include_trials: bool = False,
 ) -> tuple[list[np.ndarray], list[np.ndarray]]:
     """Gather (mu ± sem) extremes per side group for the mean±SEM Y-range compute.
 
@@ -873,6 +875,21 @@ def _collect_mean_sem_arrays(
     offset between jaw and tongue traces emerges from the data
     distributions (per-bodypart auto-scale), not from any explicit
     hardcoded values.
+
+    Phase 7a.5 C6.3 (Priya 2026-05-01): when ``include_trials=True``,
+    individual trial trace values are concatenated alongside the
+    (mu ± sem) extremes BEFORE the downstream percentile cap is applied.
+    This matches legacy ``_limits_from_rows`` (vendored at
+    ``docs/legacy_snippets/tongue_jaw_mismatch.py:946-961``), which always
+    concatenates per-trial data across all rows. The default
+    ``include_trials=False`` is a deliberate modern deviation: when
+    ``show_trial_overlays`` is False, no trial lines are drawn so we
+    compute bounds from mean-trace data only (avoids over-pessimistic
+    axes caused by trials nobody is going to see). When
+    ``show_trial_overlays`` is True, callers pass ``include_trials=True``
+    so the rendered trial overlays are NOT clipped by the auto-scaled
+    axis. The percentile-cap (``pmax=99.9``) downstream still keeps
+    isolated outlier samples from blowing up the range.
     """
     jaw_collect: list[np.ndarray] = []
     tong_collect: list[np.ndarray] = []
@@ -886,6 +903,10 @@ def _collect_mean_sem_arrays(
         mu_t, sem_t = _mean_sem(tongM)
         jaw_collect.extend([mu_j - sem_j, mu_j + sem_j, mu_j])
         tong_collect.extend([mu_t - sem_t, mu_t + sem_t, mu_t])
+        if include_trials:
+            for s in sub:
+                jaw_collect.append(np.asarray(s["jaw_y"], float))
+                tong_collect.append(np.asarray(s["tongue_y"], float))
     return jaw_collect, tong_collect
 
 
@@ -1075,9 +1096,14 @@ def _plot_session_overlay_grid_4x2(
 
         # Per-row shared-Y compute via percentile-cap. Each bodypart
         # auto-scales independently; the row range is the union of L+R.
+        # C6.3: when faint trial overlays are drawn under the mean±SEM
+        # band, include their values in the percentile-cap input so the
+        # rendered trial lines aren't clipped by the auto-scaled axis.
         if shared_y:
             if mean_sem:
-                jaw_arrs, tong_arrs = _collect_mean_sem_arrays(rows_for_row)
+                jaw_arrs, tong_arrs = _collect_mean_sem_arrays(
+                    rows_for_row, include_trials=show_overlays,
+                )
             else:
                 jaw_arrs, tong_arrs = _collect_overlay_arrays(rows_for_row)
             row_jaw_lim = _percentile_cap_range(
