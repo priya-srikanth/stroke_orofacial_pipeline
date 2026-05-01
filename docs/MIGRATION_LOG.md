@@ -4284,3 +4284,100 @@ b48e313  chore: ignore .scratch_*/ working-area directories
   (carryover follow-up).
 - **NaN-walking captured-fixture regression test** (7a.3 V3 test gap
   dropped in C5.1; 7a.4 didn't naturally surface a fixture candidate).
+
+
+## Phase 7a.3-jaw — audit confirms no per-trial features in jaw notebook (Outcome A)
+
+**Date:** 2026-05-01
+**PR:** #<FILL after gh pr create>
+**Tag on merge:** `v7a.3-jaw-audit-no-pertrial-features`
+**Branch:** `phase/7a.3-jaw`
+
+**Scope.** Audit-only formal investigation of whether the canonical
+jaw notebook contains per-trial features analogous to the tongue
+per-trial work that 7a.3 V3 ported. The 2026-04-25 V2 audit (during
+7a.3 V3 scoping) reported incidentally that the jaw notebook has no
+such features. This phase confirms that finding rigorously via a
+comprehensive cell-level audit. **Outcome A — confirmed empty.**
+
+**What landed.**
+
+1. Comprehensive cell-level classification of all 25 code cells in the
+   canonical jaw notebook
+   (`\\research...\code\20260416_DLC_analysis_ws_aligned_parquet_input_jaw.ipynb`,
+   SHA256 `7be0eee06777eaa4d1a954076cc39793ebb422e5a700b47a8615873e949e95df`,
+   434 MB, 7,293 code lines).
+2. [`docs/DECISIONS.md`](DECISIONS.md) Phase 7a.3-jaw entry (10
+   numbered decisions) codifying audit findings, V2 finding
+   confirmation, Cell 41/42 disposition, Cell 43 PSD note, Outcome A
+   acceptance, forward follow-ups.
+3. This MIGRATION_LOG entry.
+
+No code changes. No new tests. No new configs. No parity harness.
+The audit alone is the deliverable.
+
+**Per-cell classification summary.**
+
+| Class | Count | Cells |
+|---|---:|---|
+| infrastructure (load / merge / one-off fixup) | 9 | 1, 3, 5, 7, 13, 14, 15, 16, 18 |
+| exploratory (in-memory plots, no save) | 6 | 9, 11, 20, 24, 26, 28 |
+| production (already ported in 7a.2) | 1 | 22 (jaw v5p3 interpolation) |
+| production-viz (PNG figures) | 6 | 30, 32, 34, 37, 39, 43 |
+| broken (V2 finding confirmed) | 2 | 41, 42 |
+| empty | 1 | 44 |
+
+**Behavior differences vs legacy.** None — no code shipped. The phase
+formalizes the V2 incidental audit's finding that the jaw notebook
+has no per-trial features in the form 7a.3 V3 ported for tongue.
+
+**Cells 41/42 disposition.** Confirmed broken (V2 finding airtight
+per 3 pieces of evidence: path mismatch — `_mouse_base()` returns
+`{mouse}_jaw_kinematics/{CENTER_MODE}/` while real on-disk path is
+`{mouse}_tongue_kinematics/kinematics_figures/{CENTER_MODE}/lick_metrics/...`;
+filename version mismatch — `_dydt_v5.csv` lookup target vs real
+`_v5p3.csv` files; missing files — `find` confirms zero `*pertrial*`
+files anywhere under `PS46_jaw_kinematics/`). Not portable as-written;
+would need to be REWRITTEN from tongue's per-trial pipeline (which is
+already shipped) — that's a green-field design phase, not a port.
+
+**Cell 43 PSD.** Deferred to future face-rhythmicity QC /
+`docs/phase-7/interpolation-strategy.md` §7 face-velocity / PSD phase.
+Out of 7a.3-jaw scope per the audit-first charter.
+
+**Test counts.** Full pytest unchanged from 7a.4 baseline:
+**623 passed / 35 skipped / 0 failed**. No new tests; no existing
+tests touched.
+
+**Commit chain (3 commits since main).**
+
+```
+<Task 2.A SHA>  docs(phase-7a.3-jaw): DECISIONS + MIGRATION_LOG entries (audit-only close, Outcome A)
+9ff597d         docs(phase-7a.3-jaw): kickoff + state-doc refresh post-7a.4 merge
+```
+
+(Task 0 = the kickoff commit Priya made; Task 2.A = this commit;
+Task 3.A = PR open with no additional commit.)
+
+**Ground-rule compliance (CLAUDE.md).**
+
+- **Rule 1** (no source data modified): verified. Jaw notebook stays
+  read-only on MICROSCOPE; audit reads only.
+- **Rule 2** (no legacy-repo edits): verified.
+- **Rule 6** (new outputs in fresh paths): N/A — no new outputs
+  emitted by this phase.
+- **Rule 8** (git discipline): verified. 2 feature-branch commits,
+  no force-push.
+
+**Forward follow-ups (post-7a.3-jaw PR merge).**
+
+- **Phase 7a.x-jaw-pertrial-design** (green-field) — only if jaw
+  per-trial features become a research need. Distinct from porting
+  legacy work (which 7a.3-jaw confirmed is absent for jaw). Would
+  require: scientific design (what jaw motions matter biologically),
+  detector tuning (slope detector tuned for jaw kinematics ≠ tongue
+  protrusion), synthetic-only validation (no legacy reference).
+- **Cell 43 PSD port** to a future face-rhythmicity QC / strategy
+  §7 face-velocity / PSD phase if downstream demands it.
+- **Cohort-wide 7a.2/7a.3 upstream re-emit** (carries forward from
+  7a.4 deferred follow-ups, unaffected by this phase).
