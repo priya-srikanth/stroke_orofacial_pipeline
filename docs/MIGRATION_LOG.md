@@ -4381,3 +4381,252 @@ Task 3.A = PR open with no additional commit.)
   §7 face-velocity / PSD phase if downstream demands it.
 - **Cohort-wide 7a.2/7a.3 upstream re-emit** (carries forward from
   7a.4 deferred follow-ups, unaffected by this phase).
+
+
+## Phase 7a.5-mismatch — tongue-jaw mismatch trial classifier + jaw per-trial features (Outcome B hybrid B1.5)
+
+**Date:** 2026-05-01
+**PR:** #<FILL after gh pr create>
+**Tag on merge:** `v7a.5-tongue-jaw-mismatch`
+**Branch:** `phase/7a.5-mismatch`
+
+**Scope.** Tongue-jaw mismatch trial classifier + 4 plot families
+(within-session individual + 4×2 overlay grid; cross-session overlay +
+day-binned) + jaw per-trial scalars (8 fields, extracted from Cell 53
+inline-detection logic). Audit-first phase that became a substantial
+port (Outcome B) with hybrid B1.5 sub-variant (two modules, single
+phase, single PR + tag).
+
+**What landed.**
+
+1. [`docs/legacy_snippets/tongue_jaw_mismatch.py`](legacy_snippets/tongue_jaw_mismatch.py)
+   — vendored byte-identical canonical tongue notebook cells 51-55
+   (1903 source lines: 3 markdown headers + 2 code cells; cell 53
+   classifier 605 lines, cell 55 plotter 1295 lines). Per-cell SHA256s
+   recorded in the header per the 7a.0 / 7a.3 vendor pattern. Raw
+   docstring (`r"""..."""`) supersedes legacy `tongue_pertrial_features.py`
+   plain-string convention — fixes the `\\research...\` UNC path
+   `\N`-escape ruff error in this new file (unrelated cleanup of an
+   inherited issue).
+2. [`configs/defaults.yaml`](../configs/defaults.yaml)
+   `dlc_kinematics.jaw_pertrial:` (8 keys) +
+   `dlc_kinematics.tongue_jaw_mismatch:` (~45 keys after C6.2 layout
+   spec landed). Knob-set captures: jaw baseline / detect window;
+   threshold sd-multiplier + px floor + sustained-density rule;
+   tongue-detector knobs LOCAL to mismatch (no MIN_FINITE filter,
+   smoothing off, accept-no-fall — Cells-36/39/42-style permissive,
+   per Decision 9 in DECISIONS.md); 4 plot families with
+   legacy-verbatim figsize / DPI / hspace / wspace / colorbar rect /
+   tight_layout rect / mean±SEM percentile-cap / faint trial overlay
+   alpha+linewidth / per-row shared-Y / sort-by-side knobs.
+3. [`src/stroke_orofacial/dlc_kinematics/jaw_pertrial.py`](../src/stroke_orofacial/dlc_kinematics/jaw_pertrial.py)
+   — 556 lines. Public reusable building block mirroring
+   `tongue_pertrial.py` at smaller scale. 8 per-trial scalars +
+   metadata. `JawPertrialResult` frozen dataclass. Public API:
+   `build_jaw_pertrial(manifest, resolver, trial_events, ...)` +
+   `build_jaw_pertrial_by_animal_date(...)` convenience wrapper.
+   Trial-events auto-derive via 7a.3 V3's
+   `_derive_trial_events_from_spout_behavior` (private cross-module
+   import — matches 7a.4 `_day_binned.py` precedent). Atomic JSON
+   write via shared `_writers._write_endpoints_json_atomic`.
+4. [`src/stroke_orofacial/dlc_kinematics/tongue_jaw_mismatch.py`](../src/stroke_orofacial/dlc_kinematics/tongue_jaw_mismatch.py)
+   — 1078 lines. Classifier `classify_tongue_jaw_mismatch(...)` +
+   convenience wrapper `_by_animal_date(...)` emits per-session
+   candidate-trials parquet (~21 cols + 28 file-level metadata keys;
+   schema deviation from legacy 37-col CSV per DECISIONS Decision 8).
+   Auto-builds upstream `jaw_pertrial` JSON via `overwrite="skip"` if
+   missing. Tongue lick-count via Cell 33 `_slope_detect_lick_peaks`
+   primitive with mismatch-LOCAL knobs (`_build_tongue_detector_params`).
+   4 plot family helpers: `_plot_individual_trials_2col` (legacy
+   verbatim layout 18 × max(12, 1.8 × n_rows) at DPI=200),
+   `_plot_session_overlay_grid_4x2` (4 rows × 2 cols, mean±SEM rows
+   with faint trial overlays per legacy `FAINT_TRIAL_*` constants),
+   `_plot_cross_session_overlay`, `_plot_cross_session_binned`
+   (per-mouse, day-binned via `animal_info.bin_days` from
+   `configs/animals.yaml` per the 7a.4 day-binned precedent). Atomic
+   savers vendored locally to keep `_writers.py` untouched.
+   `matplotlib.use("Agg")` forced at module load (headless cohort
+   runs).
+5. [`src/stroke_orofacial/paths.py`](../src/stroke_orofacial/paths.py)
+   — 4 new resolvers:
+   `jaw_pertrial_endpoints_json(animal, date)` (eager parent mkdir),
+   `tongue_jaw_mismatch_candidate_trials_parquet(animal, date)`
+   (eager parent mkdir),
+   `tongue_jaw_mismatch_qc_dir(animal, date)` (no eager mkdir —
+   directory resolver, 7a.4 convention),
+   `tongue_jaw_mismatch_cross_session_dir(animal)` (no eager mkdir;
+   per-mouse only, no date dimension).
+6. [`src/stroke_orofacial/dlc_kinematics/__init__.py`](../src/stroke_orofacial/dlc_kinematics/__init__.py)
+   — 6 new public exports: `JAW_PERTRIAL_VERSION`,
+   `TONGUE_JAW_MISMATCH_VERSION`, `JawPertrialResult`,
+   `TongueJawMismatchResult`, `build_jaw_pertrial`,
+   `build_jaw_pertrial_by_animal_date`, `classify_tongue_jaw_mismatch`,
+   `classify_tongue_jaw_mismatch_by_animal_date`,
+   `render_within_session_figures`, `render_cross_session_figures`.
+7. **40 net new unit tests:**
+   [`tests/test_jaw_pertrial.py`](../tests/test_jaw_pertrial.py)
+   (12 — helpers × 7 covering baseline / deflections / threshold-pick /
+   sustained-density; driver × 3 covering JSON schema + overwrite +
+   degenerate-baseline; edge cases × 2);
+   [`tests/test_tongue_jaw_mismatch.py`](../tests/test_tongue_jaw_mismatch.py)
+   (28 — predicate truth-table × 3, schema/edges × 4, plot-family
+   smoke × 4, visual-fidelity pins × 14 covering C6.1-C6.2-C6.3 fixes,
+   module edges × 3); plus
+   [`tests/test_paths.py`](../tests/test_paths.py)
+   `TestPhase7a5Paths` (4 tests for the 4 new resolvers including
+   round-trip mkdir checks for directory resolvers).
+8. [`tests/scripts/parity_phase7a5_mismatch.py`](../tests/scripts/parity_phase7a5_mismatch.py)
+   — 687-line numerical parity harness. CLI `--mode {default,
+   legacy_approximate} --sessions {auto, cohort} --atol 1e-6
+   --emit-root <path> --animals <list>`. Reuses 7a.3 V3's
+   `PARITY_SESSIONS_14` scope + `MICROSCOPE_ROOT` constant.
+   Per-mouse aggregation of per-session parquets to compare against
+   legacy per-mouse CSV. Column-rename map handled via per-pair `kind`
+   field (atol / exact_int / exact_bool / exact_str / skip).
+   Trial-indexing convention auto-detect (`_compare_trial_indexing_convention`)
+   robust to α / β. Cohort sanity check
+   `legacy.jaw_thresh_abs == 4 × legacy.jaw_baseline_sd` per animal.
+9. [`tests/scripts/parity_phase7a5_visual_gate.py`](../tests/scripts/parity_phase7a5_visual_gate.py)
+   — 361-line visual-gate runner. Renders consolidated within-session
+   PNGs + cross-session PNGs + comparison grids legacy | consolidated
+   per family. Aspect-aware compare-grid figsize + LANCZOS resampling
+   (C6.2 fix to the squished-tall-image issue traced to compare-grid
+   PIL resample, not the consolidated render itself).
+10. [`docs/DECISIONS.md`](DECISIONS.md) Phase 7a.5-mismatch entry above
+    the 7a.3-jaw entry — codifies the 18 decisions + scope + scientific
+    rationale + visual fix highlights + forward follow-ups.
+11. This MIGRATION_LOG entry.
+
+**Behavior differences vs legacy notebooks.**
+
+- **Schema deviations** per DECISIONS Decision 8: 21 per-row + 28
+  metadata vs legacy 37 per-row; `n_licks_in_window` →
+  `n_licks_in_quiet_win`; `jaw_thresh_abs` semantics swap +
+  categorical `jaw_thresh_px_used`; reward-frame consolidation;
+  NPZ provenance dropped.
+- **β / α trial-indexing reconciled** at parity-time on
+  `(date, side, reward_frame_idx)` join key (DECISIONS Decision 11).
+- **Per-session emit cadence** (modern parquet) vs legacy per-mouse
+  aggregated CSV. Per-mouse aggregation reconstructed at parity time.
+- **Mean±SEM auto-scale percentile bounds skip trial concatenation
+  when `show_trial_overlays=False`** (DECISIONS Decision 15) — the
+  one bounded modern deviation from legacy
+  `_limits_from_rows`-includes-trial-data-unconditionally semantics.
+  Both branches pinned by regression tests.
+- **`accept_peaks_without_fall_run=True`** in mismatch tongue detector
+  matches Cell 53's actual permissive behavior, NOT the legacy
+  `STRICT_NO_FALLBACK` constant which the detector function does not
+  enforce (DECISIONS Decision 9).
+- **`jaw_direction_mode` hardcoded to `"above_or_below"`** (cohort
+  default; per-mouse override infrastructure dropped per DECISIONS
+  Decision 6e — YAGNI).
+
+**Parity result (legacy_approximate, 14-session, atol=1e-6).**
+
+- 8 animals: **3 pass + 1 fail + 4 skip_no_legacy**.
+- Cohort `max|Δ|` per atol column: **1.42e-14** worst case (round-off
+  only, well below atol=1e-6). 1259/1260 atol cells bit-clean.
+- 1 fail = PS46/2025-03-07 single-row `n_licks_in_quiet_win`
+  off-by-one (1/289 PS46 in-scope rows = 0.35%; 1/1260 cohort rows =
+  0.08%). Does NOT propagate to `quiet_tongue_pass`, `jaw_pass_qc`,
+  or `candidate_no_lick_with_jaw_move`. Boundary-case integer
+  residual; not a bug. (DECISIONS Decision 10.)
+- 4 skip_no_legacy = PS47/48/49/50 — out of 14-session scope (full-
+  cohort parity awaits the deferred upstream re-emit listed in the
+  Forward follow-ups).
+- All booleans bit-identical including the load-bearing
+  `candidate_no_lick_with_jaw_move`.
+- `legacy.jaw_thresh_abs == 4 × legacy.jaw_baseline_sd` cohort sanity:
+  100.00% match across 1260 in-scope rows.
+
+**Visual gate verdict: PASS** (Priya 2026-04-30 → 2026-05-01).
+
+- 5 sessions × within-session families + 2 mice × cross-session
+  families; all `legacy match 2/2` per session/per-mouse.
+- Visual fidelity iterated through 3 rounds (C6.1 → C6.2 → C6.3,
+  10 fixes total). Final approval after C6.3 mean+SEM trial-overlay
+  inclusion fix.
+- Scientific finding: candidate-rate progression PS46 baseline
+  **0.0%** → PS55 d+2 **61.9%** → PS55 d+38 **52.5%** — the
+  dissociation phenotype manifests in the data, not just a port
+  artifact (DECISIONS Decision 5).
+
+**Cohort emit (under `<outputs>/dlc_kinematics/tongue_jaw_mismatch/`
+on MICROSCOPE).**
+
+- 13 candidate-trials parquets (14 in-scope sessions − 1 PS54/2025-05-12
+  `skip_missing` known data gap).
+- 26 within-session figures (13 sessions × 2 plot families:
+  individualTrials2col + sessionOverlayGrid4x2).
+- 8 cross-session figures (4 mice × 2 plot families:
+  crossSessionOverlay2x2 + crossSessionBinned2x2_bins{N}).
+- 14 comparison grids (5 sessions × 2 within-session + 2 mice × 2
+  cross-session). Aspect-aware figsize + LANCZOS resampling per C6.2.
+
+**Test counts.**
+
+- Full pytest before 7a.5: 658 collected, 623 passed, 35 skipped, 0
+  failed (post-7a.4 baseline).
+- Full pytest after 7a.5 (post-C6.3): **702 collected, 667 passed, 35
+  skipped, 0 failed**. Net +44 / +44 / 0.
+- New tests by file: `test_jaw_pertrial.py` 12;
+  `test_tongue_jaw_mismatch.py` 28; `test_paths.py` +4
+  (`TestPhase7a5Paths`). Total +44 passed.
+
+**Commit chain (10 commits since main, post-7a.3-jaw merge).**
+
+```
+<this>     docs(phase-7a.5-mismatch): DECISIONS + MIGRATION_LOG entries
+f316d31    fix(tongue_jaw_mismatch): mean+SEM auto-scale includes trial overlays when shown (7a.5 C6.3)
+763778b    fix(tongue_jaw_mismatch): visual rendering round 2 — axis labels, mean+SEM per-row + trial overlays + subtitles, individual-trials spacing (7a.5 C6.2)
+9f2aa37    fix(tongue_jaw_mismatch): visual rendering — Y-axis offset + sort-by-side + shared-Y + colorbar (7a.5 C6.1)
+2431200    feat(parity): Phase 7a.5 mismatch parity harness + visual gate runner (7a.5)
+134d458    feat(dlc_kinematics): tongue_jaw_mismatch — classifier + 4 plot families (7a.5)
+95c6b64    feat(dlc_kinematics): jaw_pertrial module — per-trial jaw scalars from Cell 53 inline logic (7a.5)
+e78e989    feat(config+paths): jaw_pertrial + tongue_jaw_mismatch schemas + 4 resolvers (7a.5)
+4d34a8f    docs(legacy_snippets): vendor tongue-jaw mismatch cells 51-55 (7a.5)
+32dcc85    docs(phase-7a.5-mismatch): kickoff extension — Tasks 2-8 specs (Outcome B hybrid B1.5)
+f46e78c    docs(phase-7a.5-mismatch): kickoff + state-doc refresh post-7a.3-jaw merge
+```
+
+(Task 0 = `f46e78c` kickoff committed by Priya; Task 1 = audit only,
+no commit; Task 0' = `32dcc85` kickoff extension after Task 1
+STOP-and-report locked Outcome B + Tasks 2-8; Tasks 2-8 = remaining
+commits in order.)
+
+**Ground-rule compliance (CLAUDE.md).**
+
+- **Rule 1** (no source data modified): verified. Tongue notebook
+  stays read-only on MICROSCOPE; legacy CSVs + PNGs read-only.
+- **Rule 2** (no legacy-repo edits): verified. All work in this repo.
+- **Rule 6** (new outputs in fresh paths): verified. New trees:
+  `dlc_kinematics/jaw_pertrial/endpoints/`,
+  `dlc_kinematics/tongue_jaw_mismatch/{candidate_trials, figures_qc,
+  cross_session, comparison_grids}/`. None overlap existing
+  pipeline_outputs subtrees.
+- **Rule 8** (git discipline): verified. 10 feature-branch commits,
+  no force-push. C6.1 + C6.2 + C6.3 visual-iteration commits all
+  preserved as paper trail in branch history (rather than
+  rebased away).
+
+**Forward follow-ups (post-7a.5-mismatch PR merge).**
+
+- **Phase 7a.6** — tongue + jaw mean/SEM visual gate (Priya picked
+  as next).
+- **Phase 7a.7** — DLC heatmaps (3 independent legacy sources).
+- **Phase 7a.8** — new reward-aligned heatmaps visual QC.
+- **Phase 8a.10** — spout behavior visual gate.
+- **Phase 9 stats plots** forward-pointer (deferred to statistics
+  phase).
+- **Phase 7a.x-jaw-pertrial-greenfield** — green-field jaw per-trial
+  design, only if research demands beyond the 8 scalars Cell 53
+  inline-extracted (DECISIONS Decision 3).
+- **Cell 43 PSD port** (deferred from 7a.3-jaw — fold into 7a.6 or
+  own follow-up depending on scope).
+- **Cohort-wide 7a.2/7a.3 upstream re-emit** + full-cohort parity on
+  PS47-50 (deferred from 7a.4; carries forward; structural blocker
+  for the 4 `skip_no_legacy` animals).
+- **Stale `figures_qc/comparison_grids/...` PNGs** from the C6.1
+  path-bug remain on MICROSCOPE; can be pruned by Priya at her
+  discretion (harmless leftovers; correct C6.2+ grids land at
+  `comparison_grids/{animal}/{date}/...`).
