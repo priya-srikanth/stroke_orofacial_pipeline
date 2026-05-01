@@ -1,38 +1,45 @@
 # Cowork Session State
 
-**Latest local refresh:** 2026-04-29 — Phase 7a.3 V3 merged as PR #85
-on merge commit `5063b5e`, tagged `v7a.3-tongue-pertrial-features`,
-pushed to origin. 14 files changed, +12,960 lines. Final cohort parity
-result on the 14-session legacy_approximate run: Cells 33 + 36
-bit-identical cohort-wide (max|Δ| ≤ 1.8e-12); Cell 39 9/13 pass + 4/13
-fail at max|Δ|=1.0 (CSV-stale family — saved legacy CSV is from older
-code revision than vendored snippet, ~2% of cohort trials affected,
-documented + accepted); Cell 42 1/13 pass + 12/13 fail across two
-bands: 4 sessions in 0.876–3.001 (CSV-stale propagation) + 8 sessions
-in 0.018–0.033 Hz (numerical-precision noise on per-bin trace
-aggregation, accepted as 0.2% relative on 10 Hz signal range);
-PS54/2025-05-12 skip_missing (known data gap, inherits 7a.1/7a.2
-pattern); Cell 50 visual gate deferred to Phase 7a.4. Module: 4-file
-split (`tongue_pertrial.py` 1376 + `_detector.py` 316 + `_angle.py`
-258 + `_writers.py` 97). Tests: 51 unit tests in
-`test_tongue_pertrial.py` + 1031-line parity harness; full pytest
-575 passed / 34 skipped / 0 failed. Path resolvers: 4 new
-(`tongue_pertrial_angle_parquet`, `tongue_pertrial_licking_dynamics_traces_parquet`,
-`tongue_pertrial_endpoints_json`, `dlc_centered_spout_midpoint_parquet`).
-Per-cell knob mechanism (`detector_per_cell:` + `bout_per_cell:`)
-allows the unified detector to model legacy's per-cell knob divergence
-in legacy_approximate mode while shipping V3-uniform default mode.
-Auto-derive trial_events helper reuses 7a.2's `load_reward_events` +
-`ws_samples_to_frame_indices` + `load_alignment_template` — zero new
-alignment code. C5.1-C5.6 implementation chain (3 detector port-bug
-fixes + per-cell overrides + parity harness + per-cell smoothing
+**Latest local refresh:** 2026-04-30 — Phase 7a.4 merged as PR #86,
+tagged `v7a.4-tongue-visual-and-day-binned`, pushed to origin. 21
+files changed, +6,703 / −81 lines, 10 commits since `main`. Both
+7a.3 carve-outs closed: Cell 50 visual gate (5 plot families × per-
+side variants, 6 PNGs per session, 24 comparison grids vs legacy at
+PS50/2025-03-19 + PS46/2025-03-07/-10/-13, all 6/6 legacy-PNG
+matches, Priya verdict PASS) + Cell 42 day-binned cross-session
+aggregator (`_day_binned.py`, ddof=1 unbiased SEM, per-metric
+n_support tracking, metric rename `ili_within_bout_rate_per_t` →
+`bout_rate_mean_hz`). Day-binned cohort parity hit a structural
+blocker: consolidated 7a.2/7a.3 emit covers 15 sessions, legacy
+aggregates over ~120 (`max|Δ|_n_support_sessions = 6` cohort-wide).
+Acceptance via algorithmic-correctness path (Option 2): 18 unit
+tests on synthetic input + chain composition with locked 7a.3 V3
+input. Cohort-wide upstream re-emit deferred as a publication-grade
+follow-up. Module additions: `tongue_visual.py` (947 lines, 5 plot
+families ported from legacy Cell 50 vendor lines 4474–4753) +
+`_day_binned.py` (544 lines) + additive `build_tongue_visual_bundle`
+helper on `tongue_pertrial.py` (~+550 lines, bit-identical compute
+verified via parity-harness re-run matching V3 cohort by_status
+exactly). 3 new path resolvers (visual QC dir, comparison-grid dir,
+day-binned parquet); `bin_days` per-animal in `animals.yaml` (PS46–
+50: 2; PS51/54/55: 7). Phase YAML schemas: `day_binned:` (3 keys),
+`tongue_visual:` (7 sub-blocks), `detector_per_cell:` /
+`bout_per_cell:` mechanism extended. Full pytest 623 passed / 35
+skipped / 0 failed (was 575/34 baseline; net +48). C5.1–C5.6
+implementation chain: 3 detector port-bug fixes + per-cell smoothing
 override + accept-peaks-without-fall-run knob + spout-frame
-likelihood filter) all preserved on origin's feature branch as paper
-trail. V1 + V2 kickoff commits also preserved per non-destructive
-rename pattern. Tags landed on `main`: `v7a.3-tongue-pertrial-features`.
-No active Cowork branch in flight — next phase is **Phase 7a.4**
-(Cell 50 visual gate + Cell 42 day-binned cross-session traces, both
-deferred from 7a.3, single PR). Kickoff draft pending.
+likelihood filter + phase-shift-and-dot-offset bundle bug fix +
+`_detector` docstring clarification — all preserved on origin's
+feature branch + tagged `v7a.4-tongue-visual-and-day-binned` on the
+merge commit. Two post-merge docs PRs landed in addition: 7a.4
+kickoff post-merge edits (parity-strategy revision + visual-gate
+result + constraint relaxation) + 7a.3 kickoff V3 retrospective
+rewrite (~1,794-line historical-narrative pass capturing V1→V2→V3
+evolution with commit SHAs). Tags on `main`:
+`v7a.4-tongue-visual-and-day-binned`. No active Cowork branch in
+flight — next-phase candidate decision pending Priya's pick from
+the queue (Phase 7a.3-jaw, Phase 7a.x whisker/face-velocity/PSD,
+Phase 5.5 polish #16 ungated, PS48 multi-half port ungated).
 
 This file is the single warm-start document for a new Cowork session. See the "Best warm-start prompt" section at the end of this file for the exact paste-in to use in a fresh Cowork chat.
 
@@ -63,31 +70,31 @@ A new Cowork session works through this in order before answering any substantiv
 
 **Repo phase:** Phases 1–6 + 4.5-lite + 6.7 + 6.8 + 6.8a + 6.8a.1 + 6.8a.2 + 6.8a.3 + 7.0b + 13 + 8a.1–8a.7.5 + 8a.8 + 8a.9 + 7-pre + 7a.0 + 7a.1 + 7a.2 delivered on `main`; Phase 7a design brief locked (`docs/phase-7/interpolation-strategy.md`, tag `v7a-design-brief`). Phase 7a implementation is underway and on track — 7a.1 (kinematics_baselines seed + parity-harness scaffold + scipy stress pilot) and 7a.2 (v5p3 7-stage interpolation port + cohort-wide bit-identical parity) both closed against the 2026-04-22 parity-gate principle (zero drift on the 14-session parity set, twice). Task #17 closed the last cross-cutting convention decision blocking Phase 7 (DLC kinematics): NPZ / JSON / parquet side-keys now emit in mouse frame with version+flag stamps. Phase 6.8a threaded the convention through the reward-aligned writer and opened first-time Phase 6 NPZ emits for programmatic drift measurement. Phase 6.8a.1 refactored `build_reward_aligned_analysis` prerequisite-miss paths from silent `return None` to distinct `FileNotFoundError` so the cohort's 14,202-failure triage is diagnosable. Phase 6.8a.2 added unattended-runner scripts (`run_notebook_10_phase_4_centering.py`, `run_notebook_12_first_emit.py`) + runbook §8 / §9 for cohort-scale headless emits; validated end-to-end by the 2026-04-21 first emit (13,821 NPZs, 99.93% bundle pass). Phase 6.8a.3 closed out the diagnostic-gap carve-out from that first emit: notebook 12 + runner save-loop split the conflated `n_err` bucket into `n_skip_no_rewards` + `n_skip_no_frames` with distinct log lines, `scripts/task_runner_wrapper.sh` committed with `set -o pipefail` to defeat the `| tail -80` exit-code masking bug, runbook §8.4 refreshed to the current 6-bucket layout. Latest tags: `v6.7-session-manifest-refactor`, `v6.8-wavesurfer-side-convention`, `v6.8a-phase-5-6-trial-group-translation`, `v6.8a.1-distinct-prereq-errors`, `v6.8a.2-unattended-runners`, `v6.8a.3-notebook-12-skip-diagnostic`, `v7.0b-cell-classification`, `v8a.7-spout-endpoints-json-writer`, `v8a.7.5-criteria-hierarchy-port`, `v8a.8-spout-recovery-trajectories`, `v7a-design-brief`, `v7-pre-exclusions-schema`, `v7a.1-kinematics-baselines-parity-scaffold`, `v7a.2-interpolation-impl` (per the 2026-04-21 tag-convention-Path-A decision — every phase-close merge gets a tag, including letter-suffix atomic fixes and docs-only design-brief merges).
 
-**Current branch:** `main` at PR-#85 merge commit `5063b5e`,
-tagged `v7a.3-tongue-pertrial-features`. No active feature branch in
+**Current branch:** `main` at PR-#86 merge commit, tagged
+`v7a.4-tongue-visual-and-day-binned`. No active feature branch in
 flight. Phase 7a.0 merged as PR #79 (intentionally untagged). Phase
 7a.1 merged as PR #81 merge-commit `98e6ccd`, tagged
 `v7a.1-kinematics-baselines-parity-scaffold`. Phase 7a.2 merged
 2026-04-24 as PR #83, tagged `v7a.2-interpolation-impl`. Phase 7a.3 V3
 merged 2026-04-29 as PR #85 merge-commit `5063b5e`, tagged
-`v7a.3-tongue-pertrial-features`. Branch rename history during 7a.3:
-`phase/7a.3-kinematic-features-tongue-jaw` →
-`phase/7a.3-tongue-pertrial-features` (renamed 2026-04-25 post-V1
-audit; V1 commit `41304c6` + V2 commit `1f3f7ff` + Task 1 vendor
-`0b78128` all preserved on the renamed branch + on origin — no
-force-push).
+`v7a.3-tongue-pertrial-features`. Phase 7a.4 merged 2026-04-30 as PR
+#86, tagged `v7a.4-tongue-visual-and-day-binned`. Two post-merge
+docs PRs landed 2026-04-30 alongside 7a.4: `docs(phase-7a.4)`
+kickoff post-merge edits + `docs(phase-7a.3)` kickoff V3
+retrospective rewrite (~1,794-line historical-narrative pass).
 
 **In flight:**
 
-*(None. Phase 7a.3 V3 closed 2026-04-29 with cohort-wide bit-identical
-parity on Cells 33 + 36, documented residuals on Cells 39 + 42
-(CSV-stale + numerical-precision noise, both accepted with rationale
-in DECISIONS), Cell 50 visual gate deferred to Phase 7a.4. Next
-phase: **Phase 7a.4** — bundle Cell 50 visual gate + Cell 42 day-binned
-cross-session traces, both deferred from 7a.3. Single PR + tag
-(`v7a.4-tongue-visual-and-day-binned`). Kickoff draft pending. Once
-the kickoff lands, target branch `phase/7a.4-tongue-visual-and-day-binned`
-will be cut from `main`.)*
+*(None. Phase 7a.4 closed 2026-04-30 with Cell 50 visual gate
+verdict PASS on 4 sessions × 6 plot families (24/24 legacy-PNG
+match), Cell 42 day-binned aggregator algorithmic correctness
+established via 18 unit tests + chain composition with locked 7a.3
+V3 input (cohort-wide direct parity vs legacy CSV deferred per
+structural session-set blocker). All carryovers resolved (7a.4
+kickoff post-merge edits + 7a.3 kickoff V3 retrospective both
+shipped as small docs PRs; state-doc carryover dropped). No active
+feature branch. Next-phase candidate decision pending Priya's pick
+from the queue.)*
 
 **Deferred / carry-forward housekeeping:** Remaining safe parallel docket:
 Phase 5.5 polish docs, cohort-wide Phase 5 rerun planning, Phase 6
@@ -100,13 +107,13 @@ handling (only if explicitly coordinated with Phase 7 I/O work).
 - Windows pytest (last full-suite measurement in the 8a.7.5 session): 361 pass / 28 skip / 0 fail. Phase 8a.7.5 merge added +20 criteria tests + 6 writer-schema tests. Not yet re-measured post-merge or post-clamp-fix; worth a non-blocking re-run at quiet moment to confirm the clamp-fix PR didn't introduce Windows-specific drift (not expected — the fix is pure numpy arithmetic).
 - Pre-existing ruff warnings: 8 unused-import errors carried forward from before 8a (noted in prior Claude Code session summaries). Backlog item; not blocking.
 
-**Next-phase candidates** (in rough priority order, post-2026-04-29 7a.3 merge):
+**Next-phase candidates** (in rough priority order, post-2026-04-30 7a.4 merge):
 
-1. **Phase 7a.4 — Cell 50 visual gate + Cell 42 day-binned cross-session traces (top, kickoff draft pending).** Bundle two carve-outs from 7a.3 V3 into one PR. Cell 50 visual gate: render the 5 plot families (per-trial angle traces, session-wide first-peak-aligned, session-wide reward-aligned, phase-aligned, XY-by-phase) from consolidated angle outputs + side-by-side compare against legacy figures at `\\research.files...\centered_spout_midpoint\angle_phase_exploratory\`. Cell 42 day-binned: cross-session aggregation of per-session traces parquet by `(rel_day_bin, side, timebin)` using per-animal `bin_days` (PS46–50: 2; PS51/54/55: 7); `bin_days` lands in `animals.yaml`; legacy_approximate parity at atol=1e-6 against `*_dayBinnedTraces_*.csv` legacy outputs. Total scope ~600–700 lines + tests + parity harness extension. MICROSCOPE access required for legacy figure paths + day-binned CSV parity. Target branch `phase/7a.4-tongue-visual-and-day-binned`; target tag `v7a.4-tongue-visual-and-day-binned`.
-2. **Phase 7a.3-jaw — jaw per-trial features (next priority after 7a.4).** Audit must establish what jaw per-trial features even exist (V2 audit found the jaw notebook has none — Cell 41 was a copy-paste of tongue code against files the jaw notebook never produces). This phase needs its own design discussion before any code. May be smaller-than-7a.3 in scope OR may surface a richer jaw-specific feature set; depends on the audit. MICROSCOPE access required.
-3. **Phase 7a.x — whisker / face-velocity / PSD branches** of strategy §7. Per-bodypart interpolation + per-trial features. Each branch is its own phase.
-4. **#16 — Phase 5.5 polish** (SSH helper, recovery docs, ControlMaster, auto-rename, unified SVG save, DTW per-edge-shift QC plot). **Ungated** — does not require MICROSCOPE and has no upstream dependencies. Best parallel candidate if 7a.4 isn't ready.
-5. **PS48 2025-03-14 multi-half acquisition port** (task #18-adjacent, in the Pending queue below). Ungated except for code-write effort.
+1. **Phase 7a.3-jaw — jaw per-trial features (top, audit-first).** Audit must establish what jaw per-trial features even exist (V2 audit found the jaw notebook has none — Cell 41 was a copy-paste of tongue code against files the jaw notebook never produces). This phase needs its own design discussion before any code is written. May be smaller-than-7a.3 in scope OR may surface a richer jaw-specific feature set; depends on the audit. The 7a.4 visual-gate machinery (`tongue_visual.py`) extends to jaw if jaw produces analog plot families. MICROSCOPE access required for audit + parity.
+2. **Phase 7a.x — whisker / face-velocity / PSD branches** of strategy §7. Per-bodypart interpolation + per-trial features. Each branch is its own phase. Lower priority than 7a.3-jaw (mouse-feeding-behavior phenotype is the primary focus).
+3. **#16 — Phase 5.5 polish** (SSH helper, recovery docs, ControlMaster, auto-rename, unified SVG save, DTW per-edge-shift QC plot). **Ungated** — does not require MICROSCOPE and has no upstream dependencies. Best parallel candidate if 7a.3-jaw audit isn't ready or MICROSCOPE is unavailable.
+4. **PS48 2025-03-14 multi-half acquisition port** (task #18-adjacent, in the Pending queue below). Ungated except for code-write effort.
+5. **Cohort-wide 7a.2/7a.3 upstream re-emit** (deferred from 7a.4 day-binned acceptance path) — needed for publication-grade day-binned cohort parity vs legacy CSVs. Could be its own mini-phase if/when downstream demands.
 2. **#16 — Phase 5.5 polish** (SSH helper, recovery docs, ControlMaster, auto-rename, unified SVG save, DTW per-edge-shift QC plot). **Ungated** — does not require MICROSCOPE and has no upstream dependencies. Best parallel candidate if 7a.3 scope isn't ready.
 3. **PS48 2025-03-14 multi-half acquisition port** (task #18-adjacent, in the Pending queue below). Ungated except for code-write effort; can be scoped into Phase 7a.3 kickoff or cut as its own mini-phase.
 
@@ -115,6 +122,141 @@ handling (only if explicitly coordinated with Phase 7 I/O work).
 - **Cohort-wide Phase 5 re-run** (after the Phase 4.5-lite eye-midpoint centering landed — affects eye-centered outputs). Not yet scheduled; ask Priya whether to batch with 8a.8.
 - **Phase 6 reward-aligned live-data re-test** with the new 4.5-lite-aware pipeline. Same category.
 - **Windows housekeeping** (from Phase 13): stale admin-owned `C:\Users\sabatini\AppData\Local\Temp\pytest-of-sabatini\` + `.pytest_cache\` directories — only if a future pytest run actually hits `WinError 5` again.
+
+**Recent session log — 2026-04-30 (Phase 7a.4 merged; visual gate PASS + day-binned algorithmic-correctness acceptance):**
+
+- **PR #86 merged** on branch `phase/7a.4-tongue-visual-and-day-binned`,
+  tagged `v7a.4-tongue-visual-and-day-binned` on the merge commit and
+  pushed to origin. 21 files changed, +6,703 / −81 lines, 10 commits
+  since `main`. Full chain: `4d49322` kickoff + state-doc refresh,
+  `b48e313` `.scratch_*/` gitignore, `a30564e` config + paths +
+  schemas + 3 resolvers, `ab4e6ae` `_day_binned.py` aggregator,
+  `a6c09e2` `build_tongue_visual_bundle` additive helper, `3d3207b`
+  `tongue_visual.py` rendering module, `b8023d2` parity harness +
+  visual-gate runner, `857cf6f` C5.5 phase-shift + dot-offset bundle
+  fixes, `8a30c20` C5.6 `_detector` docstring clarification,
+  `74c0f1d` Task 6 DECISIONS + MIGRATION_LOG entries.
+- **Cell 50 visual gate verdict: PASS.** 24 consolidated PNGs + 24
+  comparison grids across 4 sessions (PS50/2025-03-19 +
+  PS46/2025-03-07/-10/-13). All 6/6 expected legacy-PNG matches per
+  session (24/24 cohort-wide). Priya's eyeball verdict: pass with
+  documented minor lick-count delta in phase-aligned plot
+  annotations (downstream visual reflection of CSV-stale + Cell 42
+  numerical-precision residuals from 7a.3 V3, NOT a new finding).
+  Visual-gate machinery validated end-to-end: filename pattern
+  recognition matches legacy across all 5 plot families × per-side
+  variants; legacy-PNG access from MICROSCOPE works; comparison-grid
+  layout correct; per-side family-1 emit (2 PNGs per session for
+  qc_trials_side_L + qc_trials_side_R) matches legacy convention.
+- **Cell 42 day-binned aggregator: algorithmic-correctness
+  acceptance** (Option 2 from Task 5d STOP-and-report). Cohort vs
+  legacy CSV parity hit a structural blocker: consolidated 7a.2/7a.3
+  emit covers 15 sessions (3+0+0+0+2+1+4+5 across 8 cohort animals);
+  legacy aggregates over ~120 sessions per animal. `max|Δ|_n_support_sessions
+  = 6` cohort-wide is the smoking gun. Cell-by-cell mean parity is
+  arithmetically not achievable at the current upstream emit scope,
+  regardless of algorithm correctness. Acceptance via:
+  (a) 18 unit tests in `tests/test_day_binned.py` covering NaN
+  handling, per-metric n_support, no-re-smoothing of pre-smoothed
+  `lick_rate_per_t`, ddof=1 SEM formula, schema guards;
+  (b) chain composition with locked 7a.3 V3 input (per-session
+  traces parquet bit-identical or within documented residual band).
+  Cohort-wide upstream 7a.2/7a.3 re-emit deferred as
+  publication-grade follow-up; not a 7a.4 acceptance gate.
+- **Three implementation surprises**, all surfaced + resolved
+  during 7a.4 work:
+  - **Task 1.5 audit (Claude Code, 2026-04-29):** kickoff input
+    assumption was wrong — the 5 Cell 50 plot families need per-trial
+    array snippets (`y_snip`, `angle_snip`, `t_ms`, `df_phase`,
+    `df_bouts`) that 7a.3 V3 builds in memory but does NOT persist
+    in the JSON/parquet emit set. The on-disk emit set carries
+    scalars + summary arrays only. Resolved 2026-04-29 by adding
+    `build_tongue_visual_bundle` + `TongueVisualBundle` dataclass as
+    an additive public helper on `tongue_pertrial.py` (Task 3.5,
+    commit `a6c09e2`). Bit-identical compute verified via parity-
+    harness re-run matching V3 cohort `by_status` exactly. Constraint
+    relaxation 2026-04-29: additive public helpers on 7a.3 V3 modules
+    are allowed if they expose existing in-memory products (no
+    algorithm change).
+  - **C5.5 (commit `857cf6f`):** visual-gate eyeball pass surfaced
+    two visible bugs — phase shift (peaks landing at boundaries
+    instead of phase=0.5) + QC trials angle-subplot dot offset
+    (peak markers floating off the angle line by ~70 ms). Single
+    root cause: `_slope_detect_lick_peaks` returns `peak_indices`
+    that are yseg-local (relative to the detect-window subset),
+    but the dataclass docstring claimed they index into the trial
+    slice. 7a.3 V3 emit-set consumers use `peak_times_ms` and
+    `peak_y` (already pre-offset via `tseg`/`yseg` indexing) so they
+    never tripped this. The 7a.4 bundle helper was the first
+    consumer to use `peak_indices` directly. Fix: 2-line
+    `detect_lo_offset = i_lo` correction at the bundle call site.
+    7a.3 V3 detector contract unchanged; 52 existing
+    `test_tongue_pertrial.py` + 13 existing `test_tongue_visual.py`
+    tests pass without modification. Demonstrates the value of the
+    visual-gate tier in the test pyramid (unit tests + parity
+    harness + visual gate caught different bug classes).
+  - **C5.6 (commit `8a30c20`):** docstring clarification on
+    `_LickPeaks` in `_detector.py:26-46` — explicitly documents that
+    `peak_indices` (and sister `rise_starts` / `turnover`) are
+    yseg-local, explains how to convert (`add detect_lo_offset =
+    i_lo`), notes `peak_times_ms` and `peak_y` are pre-offset and
+    safe to use directly, references C5.5 in `tongue_pertrial.py`
+    as the conversion-pattern precedent. Pure docstring change; no
+    code, no tests affected.
+- **Day-binned structural blocker on cohort parity** (Task 5d
+  finding): the `*_dayBinnedTraces_*.csv` files at
+  `{MICROSCOPE}/Priya/DeepLabCut/O2_analysis/{animal}/{animal}_tongue_kinematics/kinematics_figures/centered_spout_midpoint/lick_metrics/lick_rate/{animal}_cam2_ILIwithinBout_dayBinnedTraces_bin{B}d_minTrialsPerBin3_{DATE_START}-{DATE_END}_v5p3.csv`
+  aggregate over the FULL per-animal session set; consolidated
+  emit covers only the 14-session parity cohort. Per-cell mean
+  parity is structurally not testable at this data scope.
+  Per-metric residuals reflect aggregation arithmetic over different
+  sets, not algorithmic divergence (`bout_rate_mean_hz = 0.000e+00`
+  is fortuitous numerical convergence on NaN-masked low-support
+  cells, not real validation). Documented in DECISIONS Phase 7a.4
+  entry (Decision #3) + flagged as deferred follow-up.
+- **Per-cell knob mechanism extended:** 7a.3 V3's
+  `detector_per_cell:` + `bout_per_cell:` YAML sub-blocks carry
+  forward in 7a.4 (no schema changes); legacy_approximate harness
+  in 7a.4 reuses 7a.3's override patterns where applicable.
+- **SEM convention split:** `_day_binned.py` aggregator emits
+  ddof=1 (unbiased estimator, correct convention for downstream
+  analytical consumers). `_plot_phase_aligned_angle` in
+  `tongue_visual.py` uses ddof=0 (matches legacy Cell 50 visual
+  convention; ensures visual fidelity vs legacy figures). Different
+  conventions for different contexts; both correct. Day-binned
+  parity harness applies the inverse transform
+  `SEM(ddof=0) = SEM(ddof=1) * sqrt((n-1)/n)` for legacy CSV
+  comparison. Documented in DECISIONS Decision #7.
+- **Two post-merge docs PRs landed 2026-04-30** alongside 7a.4:
+  (a) `docs(phase-7a.4): kickoff post-merge edits` —
+  parity-strategy revision (structural-blocker rewrite), visual-gate
+  result addendum (24 PNGs + 24 grids + Priya verdict PASS),
+  constraint relaxation for additive public helpers on 7a.3 V3
+  modules. (b) `docs(phase-7a.3): kickoff V3 retrospective rewrite
+  post-merge` — ~1,794-line historical-narrative pass capturing the
+  V1 → V2 → V2-vendor → V3 design evolution with commit SHAs
+  (41304c6 V1 scoped wrong, 1f3f7ff V2 rewrite against actual
+  legacy, 0b78128 V2 vendor with 7 design-mismatch findings, V3 final
+  shape). Durable historical artifact for future readers tracing 7a.3
+  design intent. Both docs PRs no-tag (post-phase-close cleanup, not
+  phase closes themselves).
+- **Forward follow-ups queued post-7a.4:** **Phase 7a.3-jaw** (top
+  priority, audit-first; visual-gate machinery extends to jaw if jaw
+  produces analog plot families); **cohort-wide 7a.2/7a.3 upstream
+  re-emit** (publication-grade day-binned cohort parity follow-up —
+  deferred from 7a.4 acceptance path); **future per-trial phases**
+  (whisker, face-velocity, PSD, mismatch classifier — all consume
+  7a.3 V3 + 7a.4 outputs); **test gap from 7a.3** (NaN-walking unit
+  test dropped in C5.1 as synthetic-fragile; replace with
+  captured-fixture regression test); **path resolver cleanup from
+  7a.3** (factor `licks_npz(animal, date)` into `PathResolver` to
+  stop literal-path duplication between 7a.2 and 7a.3); **vendored
+  atomic writer in `_day_binned.py`** (small duplication; dedupe if
+  a third consumer surfaces post-7a.4); **cross-session overlay
+  plot families** (out of 7a.4 scope; available for future
+  visual-extension phase if downstream demands).
+
+---
 
 **Recent session log — 2026-04-29 (Phase 7a.3 V3 merged; cohort parity result + acceptance):**
 
@@ -1015,35 +1157,39 @@ Whatever the server-side feature flag or staged-rollout gate was doing on 2026-0
 
 ## Best warm-start prompt (paste into a new Cowork chat)
 
-End of 2026-04-29 session: Phase 7a.3 V3 merged as PR #85, tagged
-`v7a.3-tongue-pertrial-features` on merge commit `5063b5e`. Cohort
-parity result: Cells 33 + 36 bit-identical cohort-wide (max|Δ| ≤ 1.8e-12);
-Cell 39 4/13 fail at max|Δ|=1.0 (CSV-stale family, ~2% trials, accepted);
-Cell 42 12/13 fail across two bands (4 sessions CSV-stale propagation
-0.876–3.001; 8 sessions numerical-precision noise 0.018–0.033 Hz on
-10 Hz signal, accepted); Cell 50 visual gate deferred to Phase 7a.4.
-14 files +12,960 lines. Module 4-file split. 51 new unit tests + 1031-
-line parity harness. Auto-derive trial_events helper reuses 7a.2's
-existing alignment infrastructure (zero new alignment code).
-Per-cell knob mechanism added (`detector_per_cell:` + `bout_per_cell:`)
-for legacy_approximate parity correctness. C5.1-C5.6 implementation
-chain preserved on origin's feature branch as paper trail. V1 + V2
-kickoff commits also preserved per non-destructive rename pattern.
-Full pytest 575 passed / 34 skipped / 0 failed. Next phase
-candidate: Phase 7a.4 — Cell 50 visual gate + Cell 42 day-binned
-cross-session traces, single PR + tag. Kickoff draft pending. Ungated
-parallel-track candidates: Phase 5.5 polish (#16), PS48 2025-03-14
-multi-half port. Phase 7a.3-jaw waits on jaw audit before scoping.
+End of 2026-04-30 session: Phase 7a.4 merged as PR #86, tagged
+`v7a.4-tongue-visual-and-day-binned`. Both 7a.3 V3 carve-outs closed:
+Cell 50 visual gate verdict PASS on 4 sessions × 6 plot families
+(24/24 legacy-PNG match) + Cell 42 day-binned aggregator algorithmic-
+correctness acceptance (18 unit tests + chain composition with locked
+7a.3 V3 input; cohort vs legacy CSV parity deferred per structural
+session-set blocker — `max|Δ|_n_support_sessions = 6`, consolidated
+covers 15 sessions vs legacy ~120, deferred as publication-grade
+follow-up). 21 files +6,703/−81. Module additions: `tongue_visual.py`
+(947 lines, 5 plot families ported from legacy Cell 50 vendor) +
+`_day_binned.py` (544 lines, ddof=1 unbiased SEM, per-metric
+n_support tracking) + additive `build_tongue_visual_bundle` helper on
+`tongue_pertrial.py` (bit-identical compute verified via parity-
+harness re-run). 3 new path resolvers, `bin_days` per-animal in
+`animals.yaml`, day_binned + tongue_visual YAML schemas. C5.1–C5.6
+chain preserved on origin's feature branch. Two post-merge docs PRs
+landed alongside 7a.4: kickoff post-merge edits + 7a.3 V3
+retrospective rewrite (~1,794 lines, durable historical artifact).
+Full pytest 623 passed / 35 skipped / 0 failed (was 575/34 baseline;
+net +48). Next-phase queue: Phase 7a.3-jaw (top, audit-first), Phase
+7a.x whisker/face-velocity/PSD branches, Phase 5.5 polish (#16,
+ungated), PS48 multi-half port (ungated), cohort-wide 7a.2/7a.3
+upstream re-emit (publication follow-up).
 
 **Open Cowork prompt for a fresh session (Windows same-machine with CC-in-VSCode):**
 
-> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Phase 7a.3 V3 merged 2026-04-29 as PR #85 merge-commit `5063b5e`, tagged `v7a.3-tongue-pertrial-features`. Cohort parity passed per the documented acceptance criteria (Cells 33+36 bit-identical; Cells 39+42 documented residuals — CSV-stale + numerical-precision-noise — accepted with rationale in DECISIONS). Cell 50 visual gate deferred to Phase 7a.4. No active feature branch; `main` at `5063b5e`. Next phase: Phase 7a.4 (Cell 50 visual gate + Cell 42 day-binned cross-session traces, single PR — kickoff draft pending). Verify `gh pr view 85` returns `state: MERGED` + `git tag --list | grep v7a.3` shows the tag locally + on origin. Ask me whether the next move is (a) draft Phase 7a.4 kickoff (top priority), (b) Phase 5.5 polish (task #16, ungated parallel candidate), (c) PS48 2025-03-14 multi-half port, or (d) something else. MICROSCOPE mount required for Phase 7a.4 (legacy figure paths + day-binned CSV parity).
+> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Phase 7a.4 merged 2026-04-30 as PR #86, tagged `v7a.4-tongue-visual-and-day-binned`. Both 7a.3 V3 carve-outs closed (Cell 50 visual gate PASS on 4 sessions × 6 plot families; Cell 42 day-binned algorithmic-correctness acceptance via 18 unit tests + chain composition; cohort vs legacy CSV parity deferred per structural session-set blocker). No active feature branch; `main` at the PR #86 merge commit. Verify `gh pr view 86` returns `state: MERGED` + `git tag --list | grep v7a.4` shows the tag locally + on origin. Ask me whether the next move is (a) Phase 7a.3-jaw kickoff prep (top — needs jaw audit first to determine scope; MICROSCOPE access required), (b) Phase 5.5 polish (task #16, ungated parallel candidate), (c) PS48 2025-03-14 multi-half port (ungated), (d) cohort-wide 7a.2/7a.3 upstream re-emit (publication-grade day-binned cohort parity follow-up), or (e) something else.
 
-**One-line CC-in-VSCode paste-in for Phase 7a.4:**
+**One-line CC-in-VSCode paste-in for next phase:**
 
-> *(Pending kickoff draft. Once `docs/prompts/phase-7a.4-kickoff.md` is written and committed, paste-in becomes: `Read docs/prompts/phase-7a.4-kickoff.md and follow the instructions in full.`)*
+> *(Pending phase pick + kickoff draft. Once `docs/prompts/phase-<NNN>-kickoff.md` is written and committed, paste-in becomes: `Read docs/prompts/phase-<NNN>-kickoff.md and follow the instructions in full.`)*
 
-*(The 7a.3 V3 paste-in was retired when PR #85 landed. The 7a.2 paste-in was retired when PR #83 landed. The 7a.1 paste-in was retired when PR #81 landed. The 2026-04-22 three-phase-close prompt was retired when PR #79 (Phase 7a.0) landed. The v6.8a.3 prompt was retired when PR #68 landed. The pre-V3 7a.3 kickoff drafts (V1 commit `41304c6`, V2 commit `1f3f7ff`) are preserved on the feature branch as a paper trail of the V1→V2→V3 design evolution.)*
+*(The 7a.4 paste-in was retired when PR #86 landed. The 7a.3 V3 paste-in was retired when PR #85 landed. The 7a.2 paste-in was retired when PR #83 landed. The 7a.1 paste-in was retired when PR #81 landed. The 2026-04-22 three-phase-close prompt was retired when PR #79 (Phase 7a.0) landed. The v6.8a.3 prompt was retired when PR #68 landed. The pre-V3 7a.3 kickoff drafts (V1 commit `41304c6`, V2 commit `1f3f7ff`) are preserved on the feature branch as a paper trail of the V1→V2→V3 design evolution; the V3 retrospective rewrite landed as a small docs PR 2026-04-30 capturing the post-mortem narrative.)*
 
 ---
 
@@ -1070,6 +1216,8 @@ multi-half port. Phase 7a.3-jaw waits on jaw audit before scoping.
 - **2026-04-22 very-end-of-day (Phase 7a.0 merged + Phase 7a.1 kickoff drafted)** — Same-day follow-on: CC-in-VSCode on Windows executed the Phase 7a.0 two-stage paste-in (legacy-cell disambiguation + vendoring + NPZ baseline probe; scipy pilot) and merged PR #79 (Phase 7a.0, intentionally untagged per paste-in constraint). Cowork drafted the combined-scope Phase 7a.1 kickoff (A: `kinematics_baselines:` seed + `AnimalInfo` extension + tests; B: 14-session parity-harness scaffold + PS51/20250430 scipy stress pilot) at `docs/prompts/phase-7a.1-kickoff.md`. Two new 2026-04-22 DECISIONS entries grouped: parity-scope principle (scope-filter against `animals.yaml sessions.{start,end}` window) and scipy Option A (`atol=1e-6` on consolidated-env scipy 1.17.1, no pin, stress-pilot confirmation deferred to 7a.1). `docs/phase-7/baseline-seed-table.md` + `docs/phase-7/scipy-pilot-results.md` + `tests/scripts/scipy_version_pilot.py` landed. No source data modified.
 - **2026-04-24 (Phase 7a.2 merged — v5p3 interpolation port, cohort-wide bit-identical parity)** — CC-in-VSCode executed the Phase 7a.2 kickoff in full on branch `phase/7a.2-interpolation-impl`; PR #83 merged, tagged `v7a.2-interpolation-impl`. 7 commits, +3,605 / −18 lines across 12 files. New `src/stroke_orofacial/dlc_kinematics/interpolation.py` (+931) implements the 7-stage v5p3 algorithm as a faithful port of the manual baseline-editing protocol (strategy §3.1); canonical pure-bodypart parquet (Knob 5 Option A) with 7 columns + 9 file-level metadata keys + optional `.qc.npz` sidecar (Knob 1 split-emit) carrying diagnostic scalars `X0_data` / `Y0_data` / `fill_method` + per-stage masks/counts. `PathResolver.interpolated_trace(bodypart, animal, date, *, variant)` resolver added with `parquet` and `qc_npz` variants; `configs/defaults.yaml` gained `dlc_kinematics.<bodypart>:` block per strategy §7. Parity harness rewired to real consolidated parquet reader (`tests/scripts/parity_phase7a_interpolation.py` +29/−18); scratch pre-emit helper promoted to `scripts/phase_7a/emit_parity_sessions.py` (+120, new) as durable parity-re-verification tool. Full-cohort parity run: 26/26 reachable sessions at `max|Δ|x = max|Δ|y = 0.000e+00` (cohort-wide bit-identical, not merely within `atol=1e-6`); 2/28 graceful `skip_missing` at PS54/20250512 tongue+jaw matching 7a.1 pattern. Pytest 493 → 517 passed (+24 runs; `tests/test_dlc_interpolation.py` new +818 lines with 14 strategy §8 verbatim tests + review-adjustment extras); ruff clean on all touched files. DECISIONS entry (+125) codifies Knobs 1-4 + §5 Option A + §3.1 + simplified data-driven baseline; strategy §2c amendment (+12) extends sidecar spec with `X0_data` / `Y0_data`; MIGRATION_LOG Phase 7a.2 entry (+202) captures delivery + PS50 smoke-swap rationale. PS50/20250306 kickoff-spec smoke session swapped to PS50/20250319 because 20250306 predates PS50's `sessions.start`; swap preserves the "not in the 14-session parity set" property and is documented in MIGRATION_LOG. Second Phase 7a parity gate closed with zero drift — validates Option A scipy policy (no pin, `atol=1e-6` on scipy 1.17.1) end-to-end under the full interpolation pipeline. Five review items resolved pre-merge (simplified baseline, `_center_mode_short` strip-prefix, reward-center union for pool-mask, 9-keys parquet metadata count authoritative over state-doc "10", `fill_method` stays in canonical parquet per §2c spec). Phase 7a arc through 7a.2 now fully closed on `main` with 7a.1 + 7a.2 both tagged. No Phase 7a.3 kickoff drafted — next 7a sub-phase scope is open for Priya at session start.
 - **2026-04-23 (Phase 7a.1 merged + Phase 7a.2 kickoff drafted)** — CC-in-VSCode executed the Phase 7a.1 kickoff in full; PR #81 merged as merge-commit `98e6ccd` and tagged `v7a.1-kinematics-baselines-parity-scaffold`. Deliverables: (A) `configs/animals.yaml` seeded with `kinematics_baselines:` for all 8 PS46–PS55 animals × tongue+jaw from the Phase 7a.0 scope-filtered 16 STABLE seed table (tongue uniform x0=0.0/y0=-110.0; jaw varies per seed table); `AnimalInfo.kinematics_baselines: dict[str, dict[str, float]]` field + `get_kinematics_baseline(bodypart)` accessor + 6 new unit tests in `tests/test_animals.py`. (B) 14-session parity-harness scaffold at `tests/scripts/parity_phase7a_interpolation.py` — scope-filter + legacy-NPZ loader + stubbed `_load_consolidated_trace` (raises `NotImplementedError("deferred to 7a.2")`) + exit codes 0-4. (C) PS51/20250430 scipy stress pilot via the existing `scipy_version_pilot.py` — reproduced pilot #1 bit-identical result on 906,310 common non-NaN frames (`max|Δ|=0.0`, 99.88% NaN-in stress condition); DECISIONS 2026-04-22 Option A caveat 1 stamped as resolved, `docs/phase-7/scipy-pilot-results.md` gained a "Second-session stress pilot" appendix. MIGRATION_LOG 7a.1 entry landed (earlier placeholder `#<FILL>` stamped with PR #81 + merge-commit SHA on 2026-04-23 after the Cowork summary-continuation session-state pass). Cowork drafted the Phase 7a.2 implementation kickoff at `docs/prompts/phase-7a.2-kickoff.md` covering the full 7-stage v5p3 port into `src/stroke_orofacial/dlc_kinematics/interpolation.py` (6 tasks with STOP-report gates, mirrors the 7a.1 kickoff structure). Target branch `phase/7a.2-interpolation-impl`; target tag `v7a.2-interpolation-impl`. 7a.2 is MICROSCOPE-gated on Task 4 (per-stage parity against legacy NPZs on the 14-session set at `atol=1e-6`). No code or configs touched in this state-doc-refresh pass beyond the MIGRATION_LOG PR-number stamp + this file + the new kickoff prompt. Next fresh Cowork session: warm-start from this doc, confirm MICROSCOPE mount status, hand off `Read docs/prompts/phase-7a.2-kickoff.md and follow the instructions in full.` to CC-in-VSCode if MICROSCOPE is mounted; otherwise pick Phase 5.5 polish (task #16).
+- **2026-04-30 (Phase 7a.4 merged + tagged; visual gate PASS + day-binned algorithmic-correctness acceptance + 2 post-merge docs PRs)** — PR #86 merged, tagged `v7a.4-tongue-visual-and-day-binned` on the merge commit + pushed to origin. 21 files +6,703/−81 lines, 10 commits since main. Both 7a.3 V3 carve-outs closed: Cell 50 visual gate verdict PASS (4 sessions × 6 plot families, 24/24 legacy-PNG match cohort-wide) + Cell 42 day-binned aggregator algorithmic-correctness acceptance (Option 2 via 18 unit tests + chain composition with locked 7a.3 V3 input; cohort vs legacy CSV parity deferred per structural session-set blocker — consolidated covers 15 sessions, legacy aggregates ~120, `max|Δ|_n_support_sessions = 6` cohort-wide). Module additions: `tongue_visual.py` (947 lines, 5 plot families ported from vendored Cell 50 lines 4474–4753) + `_day_binned.py` (544 lines, ddof=1 unbiased SEM, per-metric n_support tracking, metric rename `ili_within_bout_rate_per_t` → `bout_rate_mean_hz`) + additive `build_tongue_visual_bundle` helper on `tongue_pertrial.py` (~+550 lines, bit-identical compute verified via parity-harness re-run matching V3 cohort by_status exactly; required because the kickoff-assumed "expose existing intermediates" framing didn't apply — 7a.3 V3 calls the array-producing primitives but discards outputs). 3 new path resolvers + `bin_days` per-animal in `animals.yaml` + `day_binned:`/`tongue_visual:` YAML schemas. Three implementation surprises during 7a.4 work, all surfaced + resolved: (1) Task 1.5 audit found kickoff input assumption was wrong about visual-gate data flow → resolved with `build_tongue_visual_bundle` additive helper + constraint relaxation for additive helpers on 7a.3 V3 modules; (2) C5.5 visual-gate eyeball pass surfaced phase-shift + dot-offset bundle bugs traced to single docstring inaccuracy in `_LickPeaks.peak_indices` (yseg-local vs trial-slice claim) — fixed at bundle call site, 7a.3 V3 detector contract unchanged; (3) C5.6 followed up with `_detector` docstring clarification to prevent future consumers from falling into the same trap. Day-binned cohort parity hit a structural blocker (session-set mismatch) — `bout_rate_mean_hz = 0.000e+00` is fortuitous numerical convergence on NaN-masked low-support cells, not real validation. Documented in DECISIONS Phase 7a.4 entry (12 decisions) + flagged as deferred follow-up. SEM convention split locked: ddof=1 unbiased in day-binned aggregator (correct convention for analytical consumers); ddof=0 in visual rendering (matches legacy Cell 50 visual fidelity). Two post-merge docs PRs landed alongside 7a.4: `docs(phase-7a.4): kickoff post-merge edits` (parity-strategy revision + visual-gate result + constraint relaxation) + `docs(phase-7a.3): kickoff V3 retrospective rewrite post-merge` (~1,794-line historical-narrative pass capturing V1 → V2 → V2-vendor → V3 design evolution with commit SHAs; durable artifact for future readers tracing 7a.3 design intent). Full pytest 623 passed / 35 skipped / 0 failed (was 575/34 baseline post-7a.3; net +48). Forward follow-ups queued: Phase 7a.3-jaw (top priority, audit-first; visual-gate machinery extends to jaw if jaw produces analog plot families); cohort-wide 7a.2/7a.3 upstream re-emit (publication-grade day-binned cohort parity follow-up); future per-trial phases (whisker, face-velocity, PSD, mismatch classifier — all consume 7a.3 V3 + 7a.4 outputs); test gap from 7a.3 (NaN-walking unit test dropped in C5.1 as synthetic-fragile; replace with captured-fixture regression test); path resolver cleanup from 7a.3 (factor `licks_npz(animal, date)` into `PathResolver`); vendored atomic writer in `_day_binned.py` (small duplication; dedupe if a third consumer surfaces); cross-session overlay plot families (out of 7a.4 scope; available for future visual-extension phase if downstream demands).
+
 - **2026-04-29 (Phase 7a.3 V3 merged + tagged; cohort parity + acceptance documented)** — PR #85 merged on GitHub UI as merge commit `5063b5e`, tagged `v7a.3-tongue-pertrial-features` on the merge commit and pushed to origin. 14 files changed, +12,960 lines. Final commit chain on the feature branch (15 commits since main, including V1+V2+vendor paper-trail commits): 41304c6 (V1 kickoff preserved), 1f3f7ff (V2 kickoff preserved), 0b78128 (Task 1 vendor), 4c83795 (Task 2 config+paths), 2987c3d (Task 3 module 4-file split), 2dd5128 (Task 3.5 realignment), dd60262 (Task 4 unit tests), 1286116 (Task 5.0 auto-derive), 10e9da1 (C5.1 detector port-bug fixes), f696857 (C5.2 per-cell knob overrides), d2f8db9 (C5.3 parity harness), 03e3acf (C5.4 smoothing override), 7a8c616 (C5.5 accept-peaks-without-fall-run), 0dc2afa (C5.6 likelihood filter), 7ebba5f (Task 6 DECISIONS+MIGRATION_LOG). Cohort parity result on 14-session legacy_approximate run (atol=1e-6): Cells 33+36 bit-identical cohort-wide (max|Δ| ≤ 1.8e-12); Cell 39 9/13 pass + 4/13 fail at max|Δ|=1.0 (CSV-stale family — saved legacy CSV emitted by older code revision than vendored snippet, ~2% of cohort trials affected, accepted); Cell 42 1/13 pass + 12/13 fail across two bands (4 sessions in 0.876–3.001 = CSV-stale propagation; 8 sessions in 0.018–0.033 Hz = numerical-precision noise on per-bin trace aggregation, 0.2% relative on 10 Hz signal range, accepted); PS54/2025-05-12 skip_missing (known data gap, inherits 7a.1/7a.2 pattern); Cell 50 visual gate DEFERRED to Phase 7a.4 per kickoff §5b.7. Three implementation surprises during smoke parity, all resolved before cohort run: C5.1 (3 detector port bugs in `_slope_detect_lick_peaks`: NaN-walking turnover semantic, next-lick start index off-by-one, ignored STRICT_NO_FALLBACK flag — combined effect: phantom early peaks shifted Cell 36 velocity arrays; fix took max|Δ| from 196 + 6,390 to sub-1e-12); C5.4 (per-cell `do_smooth_y_for_detection` divergence kickoff §4 missed); C5.5 (per-cell `accept_peaks_without_fall_run` knob — Cell 33 strict-rejected; Cells 36/39/42 always appended). CSV-stale finding diagnosed via `.scratch_7a3/debug_legacy_vendored.py`: extracted vendored Cell 39 detector function and ran on failing trials with legacy knobs; both vendored detector AND consolidated module find 17 peaks while saved CSVs report 18 — proves the CSV is from older code revision, not a port bug. Cell 42 small-drift band (8 sessions in 0.018–0.033 Hz on per-bin trace columns) is a NEW finding cohort-wide that wasn't visible in smoke (PS46/2025-03-07 had the larger 2.626 Hz residual masking it). Documented in DECISIONS V3 entry as numerical-precision noise; not pursued further as it's well below biological significance. Forward follow-ups queued: **Phase 7a.4** (Cell 50 visual gate + Cell 42 day-binned cross-session traces, top priority — kickoff draft now in flight); Phase 7a.3-jaw (jaw per-trial features, separate design discussion, audit must establish what jaw features even exist); test gap (NaN-walking unit test dropped in C5.1 as synthetic-fragile, should be replaced with captured-fixture regression test); path resolver cleanup (factor `licks_npz(animal, date)` into PathResolver to stop literal-path duplication between 7a.2 and 7a.3). Cell 50 visual gate work pushed to 7a.4 because rendering pipelines weren't built yet; the visual comparison is rendering work (~200–400 lines of plotting + side-by-side comparison logic) that doesn't add algorithmic confidence beyond what the 9 unit tests in `TestCell50Angle` already provide (zero-on-reference, perpendicularity, sign-flip, NaN smoothing, smooth-after-flip order, np.interp sampling, signed-max-within-window, own-bout-scalars-within-apply, inclusion threshold semantics). Phase 7a.4 will bundle visual gate with day-binned aggregation since both are 7a.3 carve-outs, both small, both touch consolidated 7a.3 outputs without modifying core modules.
 
 - **2026-04-25 → 2026-04-28 (Phase 7a.3 V1 → V2 → V3 kickoff arc; design lock pre-implementation)** — Three-pass kickoff refinement on branch `phase/7a.3-tongue-pertrial-features` (renamed from V1 branch `phase/7a.3-kinematic-features-tongue-jaw` 2026-04-25 post-V1 audit; non-destructive rename, V1 commit `41304c6` preserved on the renamed branch). V1 kickoff (commit `41304c6`, 2026-04-24) promised per-frame velocity as a stored product + per-trial scalars (`amplitude_max`, `velocity_peak`, `angle_peak`) over wide/tight reward-aligned windows that the legacy notebooks do NOT compute. Audit on 2026-04-25 (Cells 33/36/39/42/50 of the canonical tongue notebook + the jaw notebook) caught the V1 mismatch with legacy reality before any code shipped. V2 kickoff (commit `1f3f7ff`, 2026-04-25) rewrote against actual legacy with tongue-only scope (jaw deferred to future Phase 7a.3-jaw because audit confirmed the jaw notebook has no per-trial features). V2 vendor (Task 1, commit `0b78128`, 2026-04-28) shipped `docs/legacy_snippets/tongue_pertrial_features.py` (5,428 lines / 207,862 B, byte-identical, per-cell SHA256s captured for Cells 33/36/39/42/50 along with the canonical-notebook SHA256 `ED12C54CD4CF348470CBD0FC05EE2FE20548195A52BE9832C1164737DABDB643`). V2 vendor STOP-and-report (2026-04-28) surfaced 7 design-mismatch findings: (1) Cell 36 detector lacked `MIN_PEAK_Y_ABS`; (2) Cell 33 detector lacked `MIN_FINITE_SAMPLES_PER_LICK`; (3) Cell 39 has a richer metric set than V2 doc (direction tally, lick_ge10, time-binned counts); (4) Cell 42 emits per-session × side time-binned traces (NOT per-trial scalars as V2 promised); (5) Cell 50 eye-midpoint resolution path uses a legacy notebook cache outside the consolidated tree; (6) Cell 50 per-trial angle scalars are NEW feature definitions composed from legacy outputs (not direct ports); (7) `tongue_angle_pass: bool[n_trials]` has no legacy precedent. Long Cowork ↔ Priya iteration on 2026-04-28 resolved every finding into a V3 design lock with 24+ explicit decisions: three output products (per-frame angle parquet + per-session × side licking-dynamics traces parquet + per-trial endpoints JSON), unified slope detector with V3-NEW knobs added where legacy lacked them (`MIN_PEAK_Y_ABS=20` to Cells 36/39/42; `MIN_FINITE_SAMPLES_PER_LICK=5` to Cells 33/39/42), per-cell windows (Cells 33/36 narrow `[70, 3000]`; Cells 39/42/50 wider `[70, 8000]` detect / `[70, 5000]` apply; Cell 39 binning at `[70, 5070]` for clean 1-s bins), `bout_max_ili_ms=300` unified, three bout modes (`all` / `first_bout` / `first_multi_bout`) per metric, eye_midpoint = session-wide median from consolidated centered_spout_midpoint parquet (Task 1.5 verifies schema before module write), Cell 50 promoted to production with new per-trial angle scalars (synthetic + visual gates only), `tongue_angle_pass` dropped → session-level inclusion 4-bool block, parity strategy = legacy_approximate wrapper-mode at `atol=1e-6` against legacy CSV/NPZ on Cells 33/36/39/42 + default-mode emit-confirmation only + Cell 50 visual gate against saved legacy figures, smoke target PS50/2025-03-19, jaw deferred. V3 kickoff doc rewritten in place at `docs/prompts/phase-7a.3-kickoff.md` (~1500 lines) with full per-metric window table, ~30-knob YAML schema for `dlc_kinematics.tongue_pertrial:`, three-output schema definitions (parquet metadata keys + JSON top-level structure), unified detector + bout-mode dispatcher module structure, ~25 unit-test list, two-mode parity harness, Cell 50 visual gate definition, Task 1.5 eye-resolver schema-verification sub-task, legacy_approximate parity gate definition. Tasks structure for V3 phase work (8 commits total on top of `0b78128`): Task 0 (V3 kickoff doc rewrite — this 2026-04-28 work, pending commit), Task 1 (vendor — already complete in `0b78128`, do not re-execute), Task 1.5 (verify centered_spout_midpoint parquet schema — Branch A unblocks Task 2; Branch B/C STOPS for Priya's pick of alternative resolver path), Tasks 2-7 chain through with stop-and-report gates. MIGRATION_LOG and DECISIONS entries deferred to Task 6 of the actual phase work (per CLAUDE.md workflow — those entries describe what shipped on `main`, not what was planned). MICROSCOPE access required for Task 1.5 (read consolidated parquet schema) + Task 5 (parity harness against legacy CSV/NPZ); ungated for Tasks 0/2/3/4. V3 kickoff doc not yet committed at session end; Priya's next action is `git commit + push` of the V3 rewrite, then paste the one-line CC-in-VSCode handoff `Read docs/prompts/phase-7a.3-kickoff.md and follow the instructions in full.` Target tag at PR-merge: `v7a.3-tongue-pertrial-features`. No source data modified; no legacy-repo edits; no force-push; V1/V2/vendor commits all preserved in branch history.

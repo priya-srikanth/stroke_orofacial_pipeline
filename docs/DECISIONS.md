@@ -15,6 +15,149 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-01 — Phase 7a.3-jaw audit confirms no per-trial features in jaw notebook (Outcome A — confirmed empty)
+
+**Context.** Phase 7a.3 V3 merged 2026-04-29 with the per-trial-features
+work scoped to the tongue bodypart only. The 2026-04-25 V2 audit
+(during 7a.3 V3 scoping) reported incidentally that the canonical jaw
+notebook contains no per-trial features in the form 7a.3 V3 ported for
+tongue — specifically, Cell 41 was flagged as a copy-paste of tongue
+code against jaw-non-existent files. That finding was incidental
+to scoping 7a.3 V3, not a formal audit. Phase 7a.3-jaw is the formal
+audit that confirms or refutes it.
+
+**Decisions enacted.**
+
+1. **Phase 7a.3-jaw scope.** Audit-first formal investigation of
+   whether the canonical jaw notebook contains per-trial features
+   worth porting (parallel to 7a.3 V3's tongue per-trial work).
+   Locked Task 1 (audit) only at kickoff time; Tasks 2-N depended on
+   audit outcome. Outcome resolved at Task 1 STOP-and-report.
+
+2. **Audit provenance.** Canonical:
+   `\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\DeepLabCut\code\20260416_DLC_analysis_ws_aligned_parquet_input_jaw.ipynb`.
+   SHA256 `7be0eee06777eaa4d1a954076cc39793ebb422e5a700b47a8615873e949e95df`,
+   434 MB (mostly embedded plot outputs from per-session figures × the
+   8-animal cohort), 45 cells (25 code at 7,293 lines + 20 markdown).
+   3-tier disambiguation: latest-dated within jaw family;
+   `20260323_DLC_build-parquet_reward-aligned_tongue_jaw.ipynb` is a
+   sibling-different-scope (parquet build, not pertrial);
+   `20251117_DLC_analysis_jaw.ipynb` is an older variant superseded by
+   the date-priority rule. The canonical SHA matches the SHA cited in
+   the 7a.3 V3 MIGRATION_LOG ("jaw notebook (SHA256
+   `7BE0EEE0...49E95DF`)") — confirms same source the V2 incidental
+   audit looked at, no drift.
+
+3. **Per-cell classification.** 9 infrastructure (load / merge /
+   one-off fixup) — Cells 1, 3, 5, 7, 13, 14, 15, 16, 18; 6 exploratory
+   (in-memory plots, no save) — Cells 9, 11, 20, 24, 26, 28; 1
+   production-already-ported (Cell 22 = 7a.2 jaw v5p3 interpolation);
+   6 production-viz (PNG figures saved to disk) — Cells 30, 32, 34,
+   37, 39, 43; 2 broken (Cells 41, 42 — see Decision 5); 1 empty
+   (Cell 44).
+
+4. **Per-trial feature inventory: EMPTY.** Zero matches across 7,293
+   code lines for tongue-side extraction signatures
+   (`_first_run_from`, `rise_mask`, `slope_thr`, `np.gradient`,
+   `MIN_PEAK_Y_ABS`, `MIN_FINITE_SAMPLES`, `RISE_MIN`/`FALL_MIN`,
+   `bout_max_ili`, `MIN_LICKS_IN_BOUT`, `n_phase_bins`,
+   `phase_peak_to_peak_shifted`, `arctan2`/`angle_signed`,
+   `find_peaks`, `argmax`+`lick`, `lick1_y_peak`,
+   `tongue_angle_pass`). No per-trial scalar emit anywhere in the
+   notebook — no NPZ, CSV, or parquet writers carrying per-trial
+   shapes. The only data-emit sinks are: alignment-fixup NPZs
+   (Cells 15-18, infrastructure), Cell 22's interpolation outputs
+   (already in 7a.2), and PNG figures from Cells 30/32/34/37/39/43
+   (visualization only).
+
+5. **Cell 41/42 V2 incidental finding fully confirmed.** Three
+   independent pieces of evidence:
+   (a) `_mouse_base()` returns
+       `{mouse}_jaw_kinematics/{CENTER_MODE}/` directly while the real
+       on-disk path is
+       `{mouse}_tongue_kinematics/kinematics_figures/{CENTER_MODE}/lick_metrics/...`
+       — path structure mismatch.
+   (b) Filename pattern is `_dydt_v5.csv` while real tongue files are
+       `_v5p3.csv`; no `_v5` files exist anywhere on jaw or tongue
+       side (verified via `find` over PS46's
+       `O2_analysis/PS46/`).
+   (c) `find` confirmed zero `*pertrial*` files anywhere under
+       `PS46_jaw_kinematics/`. Tongue side has many.
+   The METRICS list (`t_peak_ms`, `y_peak`, `x_at_ypeak`,
+   `vy_trialmax`, `vxy_trialmax`) matches tongue Cell 33 + Cell 36
+   outputs exactly — proves these are tongue metric names with the
+   `tongue→jaw` token swap pointing at non-existent files. Cells 41/42
+   are not portable as-written.
+
+6. **Tongue analog comparison.** Cells 33/36/39/42/50 (the 5 tongue
+   per-trial cells 7a.3 V3 ported) have **NO jaw analog**: 5/5 absent.
+   The jaw notebook's analytical scope stops at per-frame interpolation
+   (Cell 22 → 7a.2) + per-session plotting (Cells 30/32/34/37/39/43).
+   The interpolation-trace parquet schemas are bit-identical between
+   bodyparts (7-column shape: `frame_idx`, `x_final`, `y_final`,
+   `likelihood_raw`, `is_interp_fill`, `is_baseline_fill`,
+   `fill_method`); only `Y0` (jaw `310.0` vs tongue `-110.0`) and
+   `center_mode` (jaw `centered_eye_midpoint` vs tongue
+   `centered_spout_midpoint`) differ — 7a.2 lock holds.
+
+7. **Cell 43 PSD note (out of 7a.3-jaw scope).** Cell 43 is the only
+   jaw-unique production output: `scipy.signal.welch` PSD on the first
+   10 minutes of `jaw_x` and `jaw_y` per session, plotted with broken
+   Y-axis (75/25 vertical split), saved as PNG. Per-session
+   frequency-domain QC, not per-trial behavior. Deferred to a future
+   face-rhythmicity QC phase or `docs/phase-7/interpolation-strategy.md`
+   §7 face-velocity / PSD phase if downstream demands it. Out of
+   7a.3-jaw scope per the audit-first charter.
+
+8. **Outcome A acceptance.** Phase closes as a small docs PR (~3
+   commits total: kickoff + DECISIONS + MIGRATION_LOG + PR-prep). No
+   code changes. No new tests. No new configs. No parity harness.
+   The audit alone is the deliverable. Confirms the V2 incidental
+   finding rigorously enough to close the open question durably.
+
+9. **Forward implication — jaw per-trial features as future work.**
+   The canonical jaw notebook carries per-trial-stats stubs (Cells
+   41/42) but lacks the per-trial-EXTRACTION cells that would feed
+   them. If the experimental intent is "we want jaw per-trial
+   behavior features analogous to tongue," that's a separate
+   green-field design phase: scientific question (what jaw motions
+   matter biologically — chewing dynamics? jaw protrusion-velocity
+   for non-licking behaviors? jaw-tongue coordination?), detector
+   design (slope detector tuned for jaw kinematics ≠ tongue
+   protrusion kinematics), parity (synthetic-only since no legacy
+   reference exists). Tracked here as a forward-pointer; not a
+   7a.3-jaw concern.
+
+10. **Tag.** `v7a.3-jaw-audit-no-pertrial-features` — descriptive of
+    both the deliverable (audit) and the finding (no per-trial
+    features). Priya's call to apply post-merge per CLAUDE.md ground
+    rule 8.
+
+**Enforced at.**
+
+- [`docs/prompts/phase-7a.3-jaw-kickoff.md`](prompts/phase-7a.3-jaw-kickoff.md)
+  — phase plan codifying the audit-first scope + Outcome A/B/C
+  branches.
+- This DECISIONS entry — codifies the audit findings durably.
+- [`docs/MIGRATION_LOG.md`](MIGRATION_LOG.md) Phase 7a.3-jaw entry —
+  what landed (audit only).
+- No code, no config, no test changes. The audit is the deliverable;
+  there is no enforcement surface to point at beyond the docs.
+
+**Forward follow-ups (post-7a.3-jaw PR merge).**
+
+- **Phase 7a.x-jaw-pertrial-design** (green-field) — only if jaw
+  per-trial features become a research need. Separate scientific +
+  engineering design discussion. Distinct from "port the existing
+  legacy jaw work" (which is what 7a.3-jaw was chartered for and
+  found nothing to port).
+- **Cell 43 PSD port** to a future face-rhythmicity QC / strategy
+  §7 face-velocity / PSD phase if downstream demands it.
+- **Cohort-wide 7a.2/7a.3 upstream re-emit** (carries forward from
+  7a.4 deferred follow-ups, unaffected by this phase).
+
+---
+
 ## 2026-04-30 — Phase 7a.4 Cell 50 visual gate + Cell 42 day-binned cross-session traces (closes 7a.3 V3 carve-outs)
 
 **Context.** Phase 7a.3 V3 merged 2026-04-29 with two carve-outs deferred:
