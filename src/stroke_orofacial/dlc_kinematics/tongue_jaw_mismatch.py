@@ -392,12 +392,15 @@ def render_cross_session_figures(
     cross_dir.mkdir(parents=True, exist_ok=True)
 
     if plotter_cfg["cross_session_overlay"]["enabled"]:
-        fig = _plot_cross_session_overlay(sessions, animal=animal)
+        fig = _plot_cross_session_overlay(
+            sessions, animal=animal, plotter_cfg=plotter_cfg,
+        )
         _save_and_close(fig, overlay_path, dpi=plotter_cfg["individual_trials"]["dpi"])
 
     if plotter_cfg["cross_session_binned"]["enabled"]:
         fig = _plot_cross_session_binned(
             sessions, animal=animal, bin_days=animal_info.bin_days,
+            plotter_cfg=plotter_cfg,
         )
         _save_and_close(fig, binned_path, dpi=plotter_cfg["individual_trials"]["dpi"])
 
@@ -774,20 +777,126 @@ def _build_plot_snippets(
     return rows
 
 
+# ---------- Shared-Y / range helpers (Phase 7a.5 C6.1) -----------------
+
+
+def _finite_range(values: list[np.ndarray]) -> tuple[float, float] | None:
+    """Min/max over the concatenation of finite entries from ``values``.
+
+    Returns ``None`` if no finite entries exist.
+    """
+    finite_chunks = [
+        v[np.isfinite(v)] for v in values if np.any(np.isfinite(v))
+    ]
+    if not finite_chunks:
+        return None
+    cat = np.concatenate(finite_chunks)
+    return float(np.min(cat)), float(np.max(cat))
+
+
+def _pad_range(rng: tuple[float, float] | None, frac: float = 0.05) -> tuple[float, float] | None:
+    """Symmetric padding around a range. Returns ``None`` for ``None`` input."""
+    if rng is None:
+        return None
+    lo, hi = rng
+    if lo == hi:
+        return lo - 1.0, hi + 1.0
+    pad = (hi - lo) * float(frac)
+    return lo - pad, hi + pad
+
+
+def _compute_overlay_shared_y(
+    rows_for_row: list[dict[str, Any]], *, mean_sem: bool,
+) -> tuple[tuple[float, float] | None, tuple[float, float] | None]:
+    """Compute shared (jaw_ylim, tongue_ylim) for one plot-type-row across L+R.
+
+    For overlay rows: range over individual trial jaw_y / tongue_y values.
+    For mean±SEM rows: range over (mu ± sem) extremes per side group.
+    """
+    jaw_collect: list[np.ndarray] = []
+    tong_collect: list[np.ndarray] = []
+    if mean_sem:
+        for side in ("L", "R"):
+            sub = [r for r in rows_for_row if r["side"] == side]
+            if not sub:
+                continue
+            jawM = np.vstack([s["jaw_y"] for s in sub])
+            tongM = np.vstack([s["tongue_y"] for s in sub])
+            mu_j, sem_j = _mean_sem(jawM)
+            mu_t, sem_t = _mean_sem(tongM)
+            jaw_collect.extend([mu_j - sem_j, mu_j + sem_j, mu_j])
+            tong_collect.extend([mu_t - sem_t, mu_t + sem_t, mu_t])
+    else:
+        for s in rows_for_row:
+            jaw_collect.append(s["jaw_y"])
+            tong_collect.append(s["tongue_y"])
+    return (
+        _pad_range(_finite_range(jaw_collect)),
+        _pad_range(_finite_range(tong_collect)),
+    )
+
+
+def _compute_cross_session_shared_y(
+    panel_items: list[dict[str, Any]],
+) -> tuple[tuple[float, float] | None, tuple[float, float] | None]:
+    """Shared Y for cross-session panels: range over (mu ± sem) for each item."""
+    jaw_collect: list[np.ndarray] = []
+    tong_collect: list[np.ndarray] = []
+    for it in panel_items:
+        jaw_collect.extend([
+            it["jaw_mu"] - it["jaw_sem"],
+            it["jaw_mu"] + it["jaw_sem"],
+            it["jaw_mu"],
+        ])
+        tong_collect.extend([
+            it["tong_mu"] - it["tong_sem"],
+            it["tong_mu"] + it["tong_sem"],
+            it["tong_mu"],
+        ])
+    return (
+        _pad_range(_finite_range(jaw_collect)),
+        _pad_range(_finite_range(tong_collect)),
+    )
+
+
 def _plot_individual_trials_2col(
     df: pd.DataFrame, jaw_y: np.ndarray, tongue_y: np.ndarray, fps: float,
     *, plotter_cfg: dict[str, Any], animal: str, date: datetime.date,
 ) -> Figure:
-    """Two-column individual-trial figure: candidates left, non-candidates right."""
+    """Two-column individual-trial figure: candidates left, non-candidates right.
+
+    Phase 7a.5 C6.1 (Priya 2026-05-01) updates:
+    - Dynamic figure height = ``base + per_trial * max(n_cand, n_noncand)``
+      so 60+ trials don't pile up illegibly at a fixed 12 in canvas.
+    - DPI lifted to 300 (from 100) for clean zoom on the comparison grid.
+    - Optional ``sort_by_side``: L trials at upper rows, R below (legacy
+      Cell 55 row-order convention).
+    """
     n_frames = int(len(jaw_y))
     rows = _build_plot_snippets(df, jaw_y, tongue_y, fps, n_frames)
     rows_cand = [r for r in rows if r["candidate"]]
     rows_non = [r for r in rows if not r["candidate"]]
-    n_rows = max(len(rows_cand), len(rows_non), 1)
 
     cfg = plotter_cfg["individual_trials"]
+    if bool(cfg.get("sort_by_side", False)):
+        def _side_then_trial(r: dict[str, Any]) -> tuple[int, int]:
+            return (0 if r["side"] == "L" else 1, int(r["trial_index"]))
+        rows_cand = sorted(rows_cand, key=_side_then_trial)
+        rows_non = sorted(rows_non, key=_side_then_trial)
+
+    n_rows = max(len(rows_cand), len(rows_non), 1)
+
+    # Figure-height policy: prefer the new dynamic-base + per-trial scaling
+    # if those keys are configured (Phase 7a.5 C6.1); otherwise fall back to
+    # the legacy static ``figure_height_inches`` for backwards-compat with
+    # callers that haven't updated their YAML.
     fig_w = float(cfg["figure_width_inches"])
-    fig_h = max(float(cfg["figure_height_inches"]), 1.5 * n_rows)
+    if "figure_height_inches_base" in cfg or "figure_height_inches_per_trial" in cfg:
+        base = float(cfg.get("figure_height_inches_base", 4.0))
+        per_trial = float(cfg.get("figure_height_inches_per_trial", 0.4))
+        fig_h = base + per_trial * n_rows
+    else:
+        fig_h = max(float(cfg.get("figure_height_inches", 12.0)), 1.5 * n_rows)
     fig, axes = plt.subplots(
         nrows=n_rows, ncols=2, figsize=(fig_w, fig_h), sharex=True, squeeze=False,
     )
@@ -845,11 +954,35 @@ def _plot_session_overlay_grid_4x2(
     *, plotter_cfg: dict[str, Any], animal: str, date: datetime.date,
 ) -> Figure:
     """4-row × 2-col grid: overlay-cand / overlay-noncand / mean±SEM-cand /
-    mean±SEM-noncand × L / R sides."""
+    mean±SEM-noncand × L / R sides.
+
+    Phase 7a.5 C6.1 (Priya 2026-05-01) updates:
+    - **Fix 1** (mean±SEM Y-axis offset): if ``mean_sem_axis.{jaw,tongue}_y_range``
+      are present in YAML, the bottom 2 rows use those explicit ranges (legacy
+      convention places jaw and tongue traces with offset Y to keep the lines
+      visually separated within a single plot panel). Defaults
+      ``[-75, 125]`` jaw and ``[-25, 225]`` tongue.
+    - **Fix 3** (shared Y per plot-type-row): with
+      ``shared_y_axis_per_plot_type_row=True``, top 2 rows compute a shared
+      (jaw, tongue) ylim from the union of L+R data; bottom 2 rows use the
+      explicit mean_sem_axis ranges. Rows are independent of each other —
+      candidate-row range may differ from non-candidate-row range.
+    """
     n_frames = int(len(jaw_y))
     rows = _build_plot_snippets(df, jaw_y, tongue_y, fps, n_frames)
 
     cfg = plotter_cfg["session_overlay_grid"]
+    shared_y = bool(cfg.get("shared_y_axis_per_plot_type_row", False))
+    mean_sem_axis = cfg.get("mean_sem_axis") or {}
+    explicit_jaw_range = mean_sem_axis.get("jaw_y_range")
+    explicit_tongue_range = mean_sem_axis.get("tongue_y_range")
+    explicit_jaw_range = (
+        tuple(explicit_jaw_range) if explicit_jaw_range is not None else None
+    )
+    explicit_tongue_range = (
+        tuple(explicit_tongue_range) if explicit_tongue_range is not None else None
+    )
+
     fig, axes = plt.subplots(
         nrows=4, ncols=2,
         figsize=(float(cfg["figure_width_inches"]), float(cfg["figure_height_inches"])),
@@ -863,13 +996,24 @@ def _plot_session_overlay_grid_4x2(
         ("mean±SEM non-candidate", False, True),
     ]
     for rix, (label, cand_flag, mean_sem) in enumerate(row_specs):
+        # Pre-compute shared ylim per row (across L+R) when configured.
+        rows_for_row = [r for r in rows if r["candidate"] == cand_flag]
+        if mean_sem and (
+            explicit_jaw_range is not None or explicit_tongue_range is not None
+        ):
+            row_jaw_lim = explicit_jaw_range
+            row_tong_lim = explicit_tongue_range
+        elif shared_y:
+            row_jaw_lim, row_tong_lim = _compute_overlay_shared_y(
+                rows_for_row, mean_sem=mean_sem,
+            )
+        else:
+            row_jaw_lim, row_tong_lim = None, None
+
         for cix, side in enumerate(["L", "R"]):
             ax = axes[rix, cix]
             ax2 = ax.twinx()
-            sub = [
-                r for r in rows
-                if r["side"] == side and r["candidate"] == cand_flag
-            ]
+            sub = [r for r in rows_for_row if r["side"] == side]
             color = _SIDE_COLORS[side]
             ax.set_title(f"{label} | side={side}\nn={len(sub)}", fontsize=9)
             if not sub:
@@ -906,6 +1050,10 @@ def _plot_session_overlay_grid_4x2(
             ax.set_ylabel("Jaw - base (px)", fontsize=8)
             ax2.set_ylabel("Tongue Y (px)", fontsize=8)
             ax.grid(True, alpha=0.15)
+            if row_jaw_lim is not None:
+                ax.set_ylim(*row_jaw_lim)
+            if row_tong_lim is not None:
+                ax2.set_ylim(*row_tong_lim)
             if rix == 3:
                 ax.set_xlabel("Time relative to reward (ms)")
     fig.suptitle(
@@ -949,24 +1097,67 @@ def _aggregate_session_means(
     return items
 
 
-def _color_for_rel_day(rel_day: int, max_post: int) -> tuple[float, float, float, float]:
-    """Pre-stroke = grey 0.65; post-stroke = plasma cmap by rel_day."""
+def _color_for_rel_day(
+    rel_day: int, max_post: int, *, cmap_name: str = "plasma",
+) -> tuple[float, float, float, float]:
+    """Pre-stroke = grey 0.65; post-stroke = ``cmap_name`` colormap by rel_day."""
     if rel_day <= 0 or max_post <= 0:
         return (0.65, 0.65, 0.65, 1.0)
-    cmap = plt.get_cmap("plasma")
+    cmap = plt.get_cmap(cmap_name)
     norm = max(1, max_post)
     return cmap(min(1.0, rel_day / norm))
 
 
+def _add_cross_session_colorbar(
+    fig: Figure, *, cmap_name: str, max_post: int, label: str = "Post-stroke day",
+) -> None:
+    """Right-side colorbar mapping post-stroke day → color.
+
+    Mirrors legacy Cell 55's :func:`_add_cross_session_colorbar` (vendored at
+    ``docs/legacy_snippets/tongue_jaw_mismatch.py:1317-1322``):
+    cax position ``[0.90, 0.22, 0.015, 0.56]``, label ``"Post-stroke day"``,
+    normalization ``vmin=1, vmax=max_post``.
+    """
+    if max_post <= 0:
+        return
+    from matplotlib import cm as _cm
+    from matplotlib.colors import Normalize
+
+    norm = Normalize(vmin=1, vmax=int(max_post))
+    cmap = plt.get_cmap(cmap_name)
+    sm = _cm.ScalarMappable(norm=norm, cmap=cmap)
+    sm.set_array([])
+    cax = fig.add_axes([0.90, 0.22, 0.015, 0.56])
+    cb = fig.colorbar(sm, cax=cax)
+    cb.set_label(label)
+
+
 def _plot_cross_session_2x2(
     items: list[dict[str, Any]], *, animal: str, title_suffix: str,
+    shared_y: bool = False, include_colorbar: bool = False,
+    cmap_name: str = "plasma",
 ) -> Figure:
-    """Shared 2×2 cross-session plotter: rows=cand/noncand, cols=L/R."""
+    """Shared 2×2 cross-session plotter: rows=cand/noncand, cols=L/R.
+
+    Phase 7a.5 C6.1 (Priya 2026-05-01) updates:
+    - **shared_y** (Fix 4): when True, L+R panels within the same plot-type-
+      row share a (jaw, tongue) ylim computed from the union of (mu±sem)
+      extremes across both side panels. Rows are independent.
+    - **include_colorbar** (Fix 4): when True, add a right-side colorbar
+      mapping post-stroke day → color (matches legacy Cell 55's right-side
+      vertical bar with label "Post-stroke day").
+    """
     fig, axes = plt.subplots(2, 2, figsize=(13.0, 8.5), sharex=True)
-    fig.subplots_adjust(hspace=0.35, wspace=0.25)
+    fig.subplots_adjust(hspace=0.35, wspace=0.25, right=0.88)
     post_days = sorted({it["rel_day"] for it in items if it["rel_day"] > 0})
     max_post = max(post_days) if post_days else 0
     for rix, cand_flag in enumerate([True, False]):
+        # Shared-Y across L+R within this row, computed from data.
+        if shared_y:
+            row_items = [it for it in items if it["candidate"] == cand_flag]
+            row_jaw_lim, row_tong_lim = _compute_cross_session_shared_y(row_items)
+        else:
+            row_jaw_lim, row_tong_lim = None, None
         for cix, side in enumerate(["L", "R"]):
             ax = axes[rix, cix]
             ax2 = ax.twinx()
@@ -988,7 +1179,7 @@ def _plot_cross_session_2x2(
                 ax2.set_yticks([])
                 continue
             for it in panel:
-                color = _color_for_rel_day(it["rel_day"], max_post)
+                color = _color_for_rel_day(it["rel_day"], max_post, cmap_name=cmap_name)
                 ax.plot(it["t_ms"], it["jaw_mu"], color=color, lw=0.9, alpha=0.85)
                 ok = np.isfinite(it["jaw_mu"]) & np.isfinite(it["jaw_sem"])
                 if np.any(ok):
@@ -1005,24 +1196,35 @@ def _plot_cross_session_2x2(
             ax.set_ylabel("Jaw - base (px)", fontsize=8)
             ax2.set_ylabel("Tongue Y (px)", fontsize=8)
             ax.grid(True, alpha=0.15)
+            if row_jaw_lim is not None:
+                ax.set_ylim(*row_jaw_lim)
+            if row_tong_lim is not None:
+                ax2.set_ylim(*row_tong_lim)
             if rix == 1:
                 ax.set_xlabel("Time relative to reward (ms)")
     fig.suptitle(
-        f"{animal} | {title_suffix} | pre-stroke=grey, post-stroke=plasma "
+        f"{animal} | {title_suffix} | pre-stroke=grey, post-stroke={cmap_name} "
         f"(day 0 treated as pre)",
         y=0.995,
     )
+    if include_colorbar:
+        _add_cross_session_colorbar(fig, cmap_name=cmap_name, max_post=max_post)
     return fig
 
 
 def _plot_cross_session_overlay(
     sessions: list[dict[str, Any]], *, animal: str,
+    plotter_cfg: dict[str, Any] | None = None,
 ) -> Figure:
     """Cross-session per-session-mean overlays (no day-binning)."""
     items = _aggregate_session_means(sessions)
+    overlay_cfg = (plotter_cfg or {}).get("cross_session_overlay", {})
     return _plot_cross_session_2x2(
         items, animal=animal,
         title_suffix="cross-session session overlays (mean ± SEM per session)",
+        shared_y=bool(overlay_cfg.get("shared_y_axis_per_plot_type_row", False)),
+        include_colorbar=bool(overlay_cfg.get("include_colorbar", False)),
+        cmap_name=str(overlay_cfg.get("colormap", "plasma")),
     )
 
 
@@ -1049,6 +1251,7 @@ def _bin_index(rel_day: int, bin_days: int) -> tuple[int, int, int]:
 
 def _plot_cross_session_binned(
     sessions: list[dict[str, Any]], *, animal: str, bin_days: int,
+    plotter_cfg: dict[str, Any] | None = None,
 ) -> Figure:
     """Cross-session day-binned overlays. Bin width = ``animal_info.bin_days``."""
     session_items = _aggregate_session_means(sessions)
@@ -1072,7 +1275,11 @@ def _plot_cross_session_binned(
             tong_mu=tong_mu, tong_sem=tong_sem,
             label=_bin_label(bin_start, bin_end),
         ))
+    binned_cfg = (plotter_cfg or {}).get("cross_session_binned", {})
     return _plot_cross_session_2x2(
         binned, animal=animal,
         title_suffix=f"cross-session binned overlays (bin size = {bin_days} days)",
+        shared_y=bool(binned_cfg.get("shared_y_axis_per_plot_type_row", False)),
+        include_colorbar=bool(binned_cfg.get("include_colorbar", False)),
+        cmap_name=str(binned_cfg.get("colormap", "plasma")),
     )

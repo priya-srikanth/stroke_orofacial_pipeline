@@ -19,11 +19,15 @@ import datetime
 import platform
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
-import pytest
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import pyarrow as pa  # noqa: E402
+import pyarrow.parquet as pq  # noqa: E402
+import pytest  # noqa: E402
 
 from stroke_orofacial.config_loader import load_defaults
 from stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch import (
@@ -512,6 +516,329 @@ class TestPlotFamilySmoke:
 # ===========================================================================
 # 11-12 — module-level + helper coverage
 # ===========================================================================
+
+
+class TestPlotFamilyVisualFidelity:
+    """Phase 7a.5 C6.1 visual rendering fixes (Priya 2026-05-01).
+
+    Behavior-pin tests for the new YAML knobs (sort_by_side,
+    shared_y_axis_per_plot_type_row, mean_sem_axis explicit ranges,
+    cross-session colorbar, individual_trials DPI). Visual fidelity is
+    parity harness territory — these are pin tests, not exhaustive.
+    """
+
+    def test_individual_trials_sort_by_side_puts_L_above_R(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """``sort_by_side=True`` → L trials in lower row indices than R within a column.
+
+        Construct a 4-trial session whose sides interleave (L, R, L, R) and
+        whose trial_indices are 0..3. After sort, the candidate column
+        should render L trials (rows 0-1) above R trials (rows 2-3).
+        """
+        # Force the knob ON (default-True; this is also a regression check
+        # that the YAML default carries through the params dict).
+        base_params["dlc_kinematics"]["tongue_jaw_mismatch"]["plotter"][
+            "individual_trials"]["sort_by_side"] = True
+
+        resolver, manifest, trial_events = _setup_session(
+            tmp_path, monkeypatch,
+            reward_frames=(1500, 3000, 4500, 6000),
+            sides=("R", "L", "R", "L"),
+            jaw_amps=((30.0, 1), (30.0, 1), (30.0, 1), (30.0, 1)),
+            tongue_lick_times=((), (), (), ()),
+        )
+        ct_path = classify_tongue_jaw_mismatch(
+            manifest=manifest, resolver=resolver, trial_events=trial_events,
+            params=base_params, overwrite="force",
+        )
+        df = pd.read_parquet(ct_path)
+        assert df["candidate_no_lick_with_jaw_move"].sum() == 4
+
+        # Direct call to the plot helper for axis-level introspection.
+        from stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch import (
+            _plot_individual_trials_2col,
+        )
+        from stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch import (
+            _load_bodypart_y_final,
+        )
+        jaw_y, fps_jaw, _ = _load_bodypart_y_final(
+            resolver, "PS46", datetime.date(2025, 3, 7), bodypart="jaw",
+        )
+        tongue_y, _, _ = _load_bodypart_y_final(
+            resolver, "PS46", datetime.date(2025, 3, 7), bodypart="tongue",
+        )
+        plotter_cfg = base_params["dlc_kinematics"]["tongue_jaw_mismatch"]["plotter"]
+        fig = _plot_individual_trials_2col(
+            df, jaw_y, tongue_y, fps_jaw,
+            plotter_cfg=plotter_cfg, animal="PS46",
+            date=datetime.date(2025, 3, 7),
+        )
+        # Candidate column is index 0; rows 0..1 should have L titles, rows
+        # 2..3 should have R. Read the title text on each axis.
+        axes = fig.axes
+        # axes layout: pyplot returns flattened nrows*ncols + their twin
+        # axes (each ax.twinx() creates a sibling). Filter to the primary
+        # left-column axes (ax.get_subplotspec() will give us coords).
+        title_at_row = {}
+        for ax in axes:
+            ss = ax.get_subplotspec()
+            if ss is None:
+                continue
+            row = ss.rowspan.start
+            col = ss.colspan.start
+            ttl = ax.get_title(loc="left")
+            if col == 0 and ttl:
+                title_at_row[row] = ttl
+        # The candidate column should show L on rows 0-1 then R on rows 2-3.
+        assert "L trial" in title_at_row.get(0, ""), title_at_row
+        assert "L trial" in title_at_row.get(1, ""), title_at_row
+        assert "R trial" in title_at_row.get(2, ""), title_at_row
+        assert "R trial" in title_at_row.get(3, ""), title_at_row
+        plt.close(fig)
+
+    def test_session_overlay_grid_shared_y_per_plot_type_row(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """L and R panels in the same plot-type-row share ylim; rows independent.
+
+        Force the explicit mean_sem_axis ranges to ``None`` so the bottom-2-row
+        path also computes shared-Y from data; assert L+R within each row
+        match, and assert candidate-row range differs from non-candidate-row
+        range when the underlying data magnitudes differ.
+        """
+        cfg = base_params["dlc_kinematics"]["tongue_jaw_mismatch"]["plotter"]
+        cfg["session_overlay_grid"]["shared_y_axis_per_plot_type_row"] = True
+        cfg["session_overlay_grid"]["mean_sem_axis"] = {
+            "jaw_y_range": None, "tongue_y_range": None,
+        }
+        resolver, manifest, trial_events = _setup_session(
+            tmp_path, monkeypatch,
+            reward_frames=(1500, 3000, 4500, 6000),
+            sides=("L", "R", "L", "R"),
+            # Asymmetric: candidates have huge jaw amplitude, non-candidates
+            # have a small tongue licking pattern (no jaw motion → fail QC).
+            jaw_amps=((30.0, 1), (30.0, 1), (0.0, 1), (0.0, 1)),
+            tongue_lick_times=((), (), (200.0, 500.0), (200.0, 500.0)),
+        )
+        ct_path = classify_tongue_jaw_mismatch(
+            manifest=manifest, resolver=resolver, trial_events=trial_events,
+            params=base_params, overwrite="force",
+        )
+        df = pd.read_parquet(ct_path)
+        from stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch import (
+            _load_bodypart_y_final,
+            _plot_session_overlay_grid_4x2,
+        )
+        jaw_y, fps_jaw, _ = _load_bodypart_y_final(
+            resolver, "PS46", datetime.date(2025, 3, 7), bodypart="jaw",
+        )
+        tongue_y, _, _ = _load_bodypart_y_final(
+            resolver, "PS46", datetime.date(2025, 3, 7), bodypart="tongue",
+        )
+        fig = _plot_session_overlay_grid_4x2(
+            df, jaw_y, tongue_y, fps_jaw,
+            plotter_cfg=cfg, animal="PS46", date=datetime.date(2025, 3, 7),
+        )
+        # Index primary axes (not twin) by (row, col).
+        primary_by_rc: dict[tuple[int, int], object] = {}
+        for ax in fig.axes:
+            ss = ax.get_subplotspec()
+            if ss is None:
+                # Twin axes carry a None subplotspec; skip.
+                continue
+            rc = (ss.rowspan.start, ss.colspan.start)
+            # First-encounter wins (the primary axis is created first).
+            if rc not in primary_by_rc:
+                primary_by_rc[rc] = ax
+        # Within each row, L (col=0) and R (col=1) primary-axis ylims match.
+        for rix in range(4):
+            ax_L = primary_by_rc[(rix, 0)]
+            ax_R = primary_by_rc[(rix, 1)]
+            ylim_L = ax_L.get_ylim()
+            ylim_R = ax_R.get_ylim()
+            # Tolerate sub-pixel matplotlib float jitter; require equality
+            # to better than 1e-6 (the explicit set_ylim path is exact).
+            assert abs(ylim_L[0] - ylim_R[0]) < 1e-6, (
+                f"row {rix} ylim mismatch L={ylim_L} R={ylim_R}",
+            )
+            assert abs(ylim_L[1] - ylim_R[1]) < 1e-6
+        # Rows independent: the candidate-overlay row (rix=0) should have
+        # a different ylim than the non-candidate-overlay row (rix=1)
+        # because the underlying jaw amplitudes differ asymmetrically.
+        ylim_row0 = primary_by_rc[(0, 0)].get_ylim()
+        ylim_row1 = primary_by_rc[(1, 0)].get_ylim()
+        assert ylim_row0 != ylim_row1, (
+            f"rows should have independent ylim; both are {ylim_row0}",
+        )
+        plt.close(fig)
+
+    def test_session_overlay_mean_sem_uses_explicit_y_ranges(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """``mean_sem_axis`` explicit ranges drive ylim on bottom 2 rows.
+
+        Patch params with sentinel ranges and assert the rendered ylims match.
+        """
+        cfg = base_params["dlc_kinematics"]["tongue_jaw_mismatch"]["plotter"]
+        cfg["session_overlay_grid"]["mean_sem_axis"] = {
+            "jaw_y_range": [-50, 50],
+            "tongue_y_range": [-200, 200],
+        }
+        resolver, manifest, trial_events = _setup_session(
+            tmp_path, monkeypatch,
+            reward_frames=(1500, 3000), sides=("L", "R"),
+            jaw_amps=((30.0, 1), (30.0, 1)), tongue_lick_times=((), ()),
+        )
+        ct_path = classify_tongue_jaw_mismatch(
+            manifest=manifest, resolver=resolver, trial_events=trial_events,
+            params=base_params, overwrite="force",
+        )
+        df = pd.read_parquet(ct_path)
+        from stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch import (
+            _load_bodypart_y_final,
+            _plot_session_overlay_grid_4x2,
+        )
+        jaw_y, fps_jaw, _ = _load_bodypart_y_final(
+            resolver, "PS46", datetime.date(2025, 3, 7), bodypart="jaw",
+        )
+        tongue_y, _, _ = _load_bodypart_y_final(
+            resolver, "PS46", datetime.date(2025, 3, 7), bodypart="tongue",
+        )
+        fig = _plot_session_overlay_grid_4x2(
+            df, jaw_y, tongue_y, fps_jaw,
+            plotter_cfg=cfg, animal="PS46", date=datetime.date(2025, 3, 7),
+        )
+        # Identify primary vs twin axes by Y-label text. The plot helper
+        # sets jaw axes to "Jaw - base (px)" and twin tongue axes to
+        # "Tongue Y (px)". This is more robust than subplotspec inspection
+        # (twin axes inherit their parent's subplotspec in modern
+        # matplotlib).
+        jaw_axes: list[object] = []
+        tongue_axes: list[object] = []
+        for ax in fig.axes:
+            ylabel = ax.get_ylabel()
+            if ylabel == "Jaw - base (px)":
+                jaw_axes.append(ax)
+            elif ylabel == "Tongue Y (px)":
+                tongue_axes.append(ax)
+        # Synthetic setup: all 4 trials are candidates → row 0 (overlay-cand)
+        # + row 2 (mean±SEM-cand) render in both cols (4 panels); rows 1, 3
+        # (non-cand) show "no trials" placeholders (no y-labels). So we have
+        # 4 labeled jaw + 4 labeled tongue axes total. Of those, the 2
+        # mean±SEM-candidate panels (row 2, cols L+R) carry the explicit
+        # ranges; the 2 overlay-candidate panels carry data-driven shared-Y.
+        n_jaw_match = sum(
+            1 for ax in jaw_axes if ax.get_ylim() == pytest.approx((-50, 50))
+        )
+        n_tong_match = sum(
+            1 for ax in tongue_axes if ax.get_ylim() == pytest.approx((-200, 200))
+        )
+        assert n_jaw_match == 2, (
+            f"expected 2 jaw axes at (-50, 50); got {n_jaw_match} of {len(jaw_axes)}",
+        )
+        assert n_tong_match == 2, (
+            f"expected 2 tongue axes at (-200, 200); got {n_tong_match} of {len(tongue_axes)}",
+        )
+        plt.close(fig)
+
+    def test_cross_session_includes_colorbar_when_enabled(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """``include_colorbar=True`` adds a colorbar (matplotlib Colorbar object)."""
+        # Build a 2-session cohort with at least one post-stroke session
+        # (rel_day > 0) so max_post > 0 and the colorbar actually renders.
+        resolver, m1, te1 = _setup_session(
+            tmp_path, monkeypatch,
+            reward_frames=(1500, 3000), sides=("L", "R"),
+            jaw_amps=((30.0, 1), (30.0, 1)), tongue_lick_times=((), ()),
+            animal="PS46", date=datetime.date(2025, 3, 7),  # rel_day=-6
+        )
+        classify_tongue_jaw_mismatch(
+            manifest=m1, resolver=resolver, trial_events=te1,
+            params=base_params, overwrite="force",
+        )
+        # Post-stroke synthetic session at d+5 (PS46 d0=2025-03-13).
+        m2 = _make_minimal_manifest("PS46", datetime.date(2025, 3, 18))
+        n_frames = 7500
+        fps = _SYNTH_FPS
+        rng = np.random.default_rng(0)
+        jaw_y_2 = 100.0 + rng.normal(0.0, 0.5, n_frames)
+        tongue_y_2 = rng.normal(0.0, 0.5, n_frames)
+        for fr in (1500, 3000):
+            _add_jaw_deflection(jaw_y_2, fps, fr, amplitude_px=30.0)
+        _make_synthetic_bodypart_parquet(
+            resolver.interpolated_trace(
+                bodypart="jaw", animal="PS46", date=datetime.date(2025, 3, 18),
+            ),
+            n_frames, fps=fps, y_final=jaw_y_2,
+        )
+        _make_synthetic_bodypart_parquet(
+            resolver.interpolated_trace(
+                bodypart="tongue", animal="PS46", date=datetime.date(2025, 3, 18),
+            ),
+            n_frames, fps=fps, y_final=tongue_y_2,
+        )
+        te2 = [
+            TrialEvent(trial_index=0, reward_frame_idx=1500, side="L"),
+            TrialEvent(trial_index=1, reward_frame_idx=3000, side="R"),
+        ]
+        classify_tongue_jaw_mismatch(
+            manifest=m2, resolver=resolver, trial_events=te2,
+            params=base_params, overwrite="force",
+        )
+        from stroke_orofacial.animals import get_animal
+        from stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch import (
+            _gather_sessions_for_animal,
+            _plot_cross_session_overlay,
+        )
+        cfg = base_params["dlc_kinematics"]["tongue_jaw_mismatch"]["plotter"]
+        cfg["cross_session_overlay"]["include_colorbar"] = True
+        animal_info = get_animal("PS46")
+        sessions = _gather_sessions_for_animal("PS46", resolver, animal_info)
+        fig = _plot_cross_session_overlay(
+            sessions, animal="PS46", plotter_cfg=cfg,
+        )
+        # Colorbar shows up as an extra Axes object beyond the 2x2 grid + twins.
+        # Detect by walking fig.axes for one whose label property matches.
+        n_total_axes = len(fig.axes)
+        # 2x2 grid = 4 primary + 4 twin = 8. Colorbar adds 1 more.
+        assert n_total_axes >= 9, (
+            f"expected colorbar to add an extra axes; got {n_total_axes}",
+        )
+        plt.close(fig)
+
+    def test_individual_trials_dpi_propagates_to_savefig(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """``dpi`` knob propagates to the saved PNG.
+
+        Patch params with a sentinel ``dpi=42``; render; re-load the saved
+        PNG via PIL and assert the file metadata reflects ~42 dpi.
+        """
+        cfg = base_params["dlc_kinematics"]["tongue_jaw_mismatch"]["plotter"]
+        cfg["individual_trials"]["dpi"] = 42  # sentinel
+        resolver, manifest, trial_events = _setup_session(
+            tmp_path, monkeypatch,
+            reward_frames=(1500,), sides=("L",),
+            jaw_amps=((30.0, 1),), tongue_lick_times=((),),
+        )
+        ct_path = classify_tongue_jaw_mismatch(
+            manifest=manifest, resolver=resolver, trial_events=trial_events,
+            params=base_params, overwrite="force",
+        )
+        df = pd.read_parquet(ct_path)
+        out = render_within_session_figures(
+            "PS46", datetime.date(2025, 3, 7), resolver,
+            params=base_params, candidate_trials_df=df, overwrite="force",
+        )
+        png_path = out["individual_trials"][0]
+        from PIL import Image
+        with Image.open(png_path) as img:
+            dpi = img.info.get("dpi", (None, None))
+        # PIL's dpi tuple comes from the PNG pHYs chunk; matplotlib writes
+        # this from the savefig dpi=42 we forced.
+        assert dpi[0] == pytest.approx(42, abs=0.5), f"PNG dpi metadata: {dpi}"
 
 
 class TestModuleEdges:

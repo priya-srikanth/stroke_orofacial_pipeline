@@ -719,18 +719,40 @@ dlc_kinematics:
         enabled: true
         n_cols: 2                          # legacy individualTrials2col
         figure_width_inches: 10.0
-        figure_height_inches: 12.0
-        dpi: 100
+        # Dynamic height (Phase 7a.5 C6.1, Priya 2026-05-01): legacy at
+        # static 12 in × 100 dpi pixelated badly with 60+ trials per
+        # column. Replace with base + per-trial scaling at higher DPI:
+        #   total_height = base + per_trial * max(n_candidate, n_noncandidate)
+        figure_height_inches_base: 4.0     # axes/legend overhead
+        figure_height_inches_per_trial: 0.4  # added per row in the longer column
+        dpi: 300                           # was 100; 300 reads cleanly on zoom
+        sort_by_side: true                 # L trials above R trials within each column
+        shared_y_axis_per_plot_type_row: true  # NB: individual_trials columns are candidate/non-candidate, not L/R — knob has no effect today; reserved for layout variants that introduce L/R columns
       session_overlay_grid:
         enabled: true
         n_rows: 4
         n_cols: 2                          # legacy sessionOverlayGrid4x2
         figure_width_inches: 12.0
         figure_height_inches: 14.0
+        # Phase 7a.5 C6.1: L + R within the same plot-type-row share the
+        # Y axis; rows independent. Top 2 rows (overlay): computed from
+        # data. Bottom 2 rows (mean±SEM): explicit ranges below for
+        # legacy parity (jaw and tongue use offset ranges so the tongue
+        # line visually sits below the jaw line).
+        shared_y_axis_per_plot_type_row: true
+        mean_sem_axis:
+          jaw_y_range: [-75, 125]
+          tongue_y_range: [-25, 225]
       cross_session_overlay:
         enabled: true                      # per-mouse, all sessions
+        shared_y_axis_per_plot_type_row: true  # L candidate ↔ R candidate share Y; same for noncandidate; rows independent
+        include_colorbar: true             # right-side rel_day → color legend
+        colormap: "plasma"                 # legacy POSTSTROKE_CMAP_NAME (verified vs vendored Cell 55)
       cross_session_binned:
         enabled: true                      # per-mouse, day-binned (uses bin_days from animals.yaml)
+        shared_y_axis_per_plot_type_row: true
+        include_colorbar: true
+        colormap: "plasma"                 # match cross_session_overlay; legacy uses one colormap across both
     feature_extraction_version: "v7a.5"
     interpolation_version: "v5p3"
 
