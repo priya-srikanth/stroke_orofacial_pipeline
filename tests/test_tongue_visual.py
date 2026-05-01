@@ -433,6 +433,31 @@ class TestPlotFamilies:
         assert any_collections
         plt.close(fig)
 
+    def test_qc_traces_angle_subplot_renders_peak_scatter(
+        self, synthetic_bundle,
+    ):
+        """C5.5 (2026-04-30) — smoke check that the angle subplot has
+        at least one peak-marker scatter layer. The data-fidelity check
+        (``peak_angle_deg`` actually matches ``angle_snip`` at peak
+        frame) is the integration-level
+        ``test_visual_bundle_peak_angle_matches_angle_snip`` in
+        :file:`test_tongue_pertrial.py` — this synthetic fixture
+        constructs peak_angle_deg by hand and so can't catch the
+        underlying bundle-helper bug.
+        """
+        params = load_defaults()
+        fig = _plot_per_trial_qc_traces(synthetic_bundle, "L", params=params)
+        assert isinstance(fig, plt.Figure)
+        assert len(fig.axes) >= 2
+        ax_a = fig.axes[1]
+        scatters = [
+            c for c in ax_a.collections if hasattr(c, "get_offsets")
+        ]
+        assert any(len(s.get_offsets()) > 0 for s in scatters), (
+            "angle subplot has no peak-marker scatter"
+        )
+        plt.close(fig)
+
 
 # ============================================================================
 # Comparison-grid tests

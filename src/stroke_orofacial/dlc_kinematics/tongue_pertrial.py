@@ -1327,6 +1327,34 @@ def _build_visual_bundle_per_trial(
     )
     n_peaks = len(peaks)
 
+    # C5.5 (2026-04-30) — peak_indices coordinate fix. The 7a.3 V3
+    # ``_slope_detect_lick_peaks`` returns ``peak_indices`` that are LOCAL
+    # to its internal ``yseg = y_snip[i_lo:i_hi+1]`` (the detect-window
+    # subset of the trial slice). Translating to trial-slice frame
+    # indices requires adding the i_lo offset (= the frame in t_ms where
+    # detect_win_ms[0] starts). 7a.3 V3 emit-set consumers don't trip
+    # this because they use peak_times_ms / peak_y (which the detector
+    # already pre-offset via ``tseg`` / ``yseg`` indexing). The bundle
+    # consumer DOES use peak_indices directly to:
+    #   (a) lookup angle_snip at the peak (peak_angle_deg field of
+    #       df_bouts), and
+    #   (b) seed the phase-assignment frame range
+    #       (`_assign_phase_peak_to_peak_shifted`).
+    # Without this offset, peak markers in the QC plot offset off the
+    # angle line, AND multi-bout phase assignment shifts (peaks no
+    # longer land at phase=0.5).
+    if t_ms.size > 0:
+        in_win = (t_ms >= detect_win_ms[0]) & (t_ms <= detect_win_ms[1])
+        detect_lo_offset = (
+            int(np.argmax(in_win)) if np.any(in_win) else 0
+        )
+    else:
+        detect_lo_offset = 0
+    # Trial-slice-local peak frame indices (consumed below by phase
+    # assignment + per-peak angle lookups). Original peaks.peak_indices
+    # remains unchanged so 7a.3 V3 consumers see no behavior change.
+    peaks_in_snip = peaks.peak_indices + detect_lo_offset
+
     # Build bouts.
     bouts_idx_lists = _build_bouts(peaks.peak_times_ms, float(max_ili_ms))
     n_bouts = len(bouts_idx_lists)
@@ -1352,7 +1380,9 @@ def _build_visual_bundle_per_trial(
         peak_times = peaks.peak_times_ms[idxs]
         peak_xs = peaks.peak_x[idxs]
         peak_ys = peaks.peak_y[idxs]
-        peak_local_idxs = peaks.peak_indices[idxs]
+        # peak_local_idxs are in TRIAL-SLICE coordinates (post-C5.5 fix
+        # 2026-04-30). They index into angle_snip / phase array directly.
+        peak_local_idxs = peaks_in_snip[idxs]
 
         t0_ms, t1_ms = _bout_time_bounds_ms(peak_times, single_bout_win_ms)
         # Convert (t0_ms, t1_ms) → indices into the trial slice.
@@ -1463,10 +1493,15 @@ def _build_visual_bundle_per_trial(
     post_f = max(0, int(np.ceil(first_peak_align_win_ms[1] / 1000.0 * fps)))
     expected_len = pre_f + post_f + 1
     if n_peaks > 0:
-        # Convert the local peak index (within the plot-window slice) to
-        # the session-frame index by adding the slice's session-frame start.
-        plot_lo_frame = int(reward_frame_idx + np.floor(plot_win_ms[0] / 1000.0 * fps))
-        first_peak_session_frame = plot_lo_frame + int(peaks.peak_indices[0])
+        # C5.5 (2026-04-30): convert via peak_times_ms (which the
+        # detector already pre-offsets via tseg = t_ms[i_lo:i_hi+1])
+        # rather than via peak_indices (yseg-local; would miss the
+        # detect_lo_offset and produce a snippet centered on the wrong
+        # frame).
+        first_peak_t_ms_val = float(peaks.peak_times_ms[0])
+        first_peak_session_frame = int(round(
+            reward_frame_idx + first_peak_t_ms_val / 1000.0 * fps
+        ))
         angle_firstpeak_snip, t_firstpeak_align_ms = _extract_trial_slice(
             angle_per_frame, first_peak_session_frame,
             (-float(pre_f) / fps * 1000.0, float(post_f) / fps * 1000.0), fps,
