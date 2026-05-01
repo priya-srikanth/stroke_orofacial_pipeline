@@ -12,6 +12,12 @@ from stroke_orofacial.dlc_kinematics.interpolation import (
     build_interpolated_trace,
     build_interpolated_trace_by_animal_date,
 )
+from stroke_orofacial.dlc_kinematics.jaw_pertrial import (
+    JAW_PERTRIAL_VERSION,
+    JawPertrialResult,
+    build_jaw_pertrial,
+    build_jaw_pertrial_by_animal_date,
+)
 from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
     FEATURE_EXTRACTION_VERSION,
     TonguePertrialResult,
@@ -33,6 +39,8 @@ __all__ = [
     "FEATURE_EXTRACTION_VERSION",
     "INTERPOLATION_VERSION",
     "InterpolationResult",
+    "JAW_PERTRIAL_VERSION",
+    "JawPertrialResult",
     "TonguePertrialResult",
     "TongueVisualBundle",
     "TrialEvent",
@@ -40,6 +48,8 @@ __all__ = [
     "aggregate_licking_dynamics_day_binned_by_animal",
     "build_interpolated_trace",
     "build_interpolated_trace_by_animal_date",
+    "build_jaw_pertrial",
+    "build_jaw_pertrial_by_animal_date",
     "build_tongue_pertrial",
     "build_tongue_pertrial_by_animal_date",
     "build_tongue_visual_bundle",
