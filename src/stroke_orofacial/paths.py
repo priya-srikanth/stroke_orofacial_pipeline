@@ -385,6 +385,97 @@ class PathResolver:
             / date_str
         )
 
+    def jaw_pertrial_endpoints_json(
+        self, animal: str, date: datetime.date,
+    ) -> Path:
+        """Return the Phase 7a.5 per-trial jaw scalars JSON path.
+
+        E.g. ``<outputs>/dlc_kinematics/jaw_pertrial/endpoints/PS46/20250307.json``.
+
+        Hosts the per-trial jaw baseline / deflection / QC scalars produced
+        by :func:`stroke_orofacial.dlc_kinematics.jaw_pertrial.build_jaw_pertrial`
+        (extracted from canonical tongue notebook Cell 53 inline-detection
+        logic). Filename uses ``%Y%m%d`` to match the
+        :meth:`interpolated_trace` / :meth:`tongue_pertrial_endpoints_json`
+        conventions. Parent directory is created eagerly.
+        """
+        date_str = date.strftime("%Y%m%d")
+        out = (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "jaw_pertrial"
+            / "endpoints"
+            / animal
+            / f"{date_str}.json"
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def tongue_jaw_mismatch_candidate_trials_parquet(
+        self, animal: str, date: datetime.date,
+    ) -> Path:
+        """Return the Phase 7a.5 per-session tongue-jaw mismatch candidate-trials parquet.
+
+        E.g. ``<outputs>/dlc_kinematics/tongue_jaw_mismatch/candidate_trials/PS46/20250307.parquet``.
+
+        Hosts the per-trial classifier output (legacy 37-col schema; per-
+        session cadence rather than the legacy per-mouse aggregated CSV)
+        emitted by
+        :func:`stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch.classify_tongue_jaw_mismatch`.
+        Filename uses ``%Y%m%d``. Parent directory is created eagerly.
+        """
+        date_str = date.strftime("%Y%m%d")
+        out = (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "tongue_jaw_mismatch"
+            / "candidate_trials"
+            / animal
+            / f"{date_str}.parquet"
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def tongue_jaw_mismatch_qc_dir(
+        self, animal: str, date: datetime.date,
+    ) -> Path:
+        """Return the Phase 7a.5 mismatch within-session figure output directory.
+
+        E.g. ``<outputs>/dlc_kinematics/tongue_jaw_mismatch/figures_qc/PS46/20250307/``.
+
+        Hosts the within-session PNGs (Cell 55 individualTrials2col +
+        sessionOverlayGrid4x2 families) emitted per session by
+        :func:`stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch.render_within_session_figures`.
+        The renderer creates the directory; this resolver returns the path
+        only — no eager mkdir (matches the 7a.4
+        :meth:`tongue_visual_qc_dir` directory-resolver convention).
+        """
+        date_str = date.strftime("%Y%m%d")
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "tongue_jaw_mismatch"
+            / "figures_qc"
+            / animal
+            / date_str
+        )
+
+    def tongue_jaw_mismatch_cross_session_dir(self, animal: str) -> Path:
+        """Return the Phase 7a.5 mismatch cross-session figure output directory.
+
+        E.g. ``<outputs>/dlc_kinematics/tongue_jaw_mismatch/cross_session/PS46/``.
+
+        Hosts the cross-session PNGs (Cell 55 crossSessionOverlay2x2 +
+        crossSessionBinned2x2 families) emitted per mouse by
+        :func:`stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch.render_cross_session_figures`.
+        Per-mouse (no date dimension) — matches the legacy
+        ``{mouse}_crossSession*.png`` cadence. The renderer creates the
+        directory; this resolver returns the path only — no eager mkdir.
+        """
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "tongue_jaw_mismatch"
+            / "cross_session"
+            / animal
+        )
+
     def dlc_centered_spout_midpoint_parquet(
         self, animal: str, date: datetime.date,
     ) -> Path:

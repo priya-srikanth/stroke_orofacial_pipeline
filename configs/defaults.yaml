@@ -663,6 +663,77 @@ dlc_kinematics:
       cols: 2
       include_diff: false
 
+  # =========================================================
+  # Jaw per-trial features (Phase 7a.5 — extracted from Cell 53
+  # inline-detection logic). Mirrors tongue_pertrial.py architecture
+  # at smaller scale. Reusable building block for any future jaw-
+  # related work (the 7a.3-jaw audit at PR #87 confirmed the JAW
+  # NOTEBOOK has no per-trial features; the per-trial logic actually
+  # lives inside the tongue notebook's mismatch classifier and is
+  # extracted here as its own module).
+  # =========================================================
+  jaw_pertrial:
+    detect_win_ms: [0, 5000]              # post-reward window for jaw deflection detection
+    baseline_win_ms: [-500, 0]            # pre-reward baseline window for mean+sd
+    deflection_threshold_sd_multiplier: 4.0   # |jaw_y - baseline| > 4 * baseline_sd
+    deflection_threshold_min_px: 4.0          # OR > 4 px (whichever is larger)
+    sustained_density_threshold: 0.625    # >= 5/8 frames over threshold (5/8 = 0.625)
+    sustained_window_n_frames: 8          # rolling 8-frame window for the density check
+    feature_extraction_version: "v7a.5"
+    interpolation_version: "v5p3"
+
+  # =========================================================
+  # Tongue-jaw mismatch trial classifier + plotter (Phase 7a.5 —
+  # Cell 53 classifier + Cell 55 plotter ports).
+  #
+  # Scientific rationale (Priya, 2026-04-30): post-stroke (bilateral)
+  # lack of licking is NOT due to perceptual or motivational deficits.
+  # Demonstrated by trials where the mouse shows post-cue jaw movement
+  # WITHOUT licking — jaw motor system spared while tongue motor system
+  # impaired. Mismatch trials are the primary positive evidence for
+  # this dissociation, not just a QC gate.
+  #
+  # Per-trial decision: candidate_no_lick_with_jaw_move
+  #   = quiet_tongue_pass AND jaw_pass_qc
+  # See docs/legacy_snippets/tongue_jaw_mismatch.py (commit 4d34a8f)
+  # for the verbatim Cell 53 source.
+  # =========================================================
+  tongue_jaw_mismatch:
+    classifier:
+      quiet_tongue_win_ms: [70, 5000]      # window for "zero detected tongue licks"
+      # Tongue-side detector knobs MIRROR Cell 33 verbatim — no smoothing,
+      # no MIN_FINITE filter (matches legacy mismatch classifier). These
+      # are LOCAL to mismatch; do NOT pull from tongue_pertrial.detector
+      # (which is a different shape per V3 — adds smooth_y / min_finite_
+      # samples_per_lick / strict_no_fallback that the mismatch detector
+      # never used).
+      tongue_detector:
+        slope_thr_px_per_s: 250.0
+        rise_min_ms: 16.0
+        fall_min_ms: 16.0
+        min_peak_y_abs: 20.0
+        peak_pad_ms: 52.0
+        do_smooth_y_for_detection: false
+    plotter:
+      individual_trials:
+        enabled: true
+        n_cols: 2                          # legacy individualTrials2col
+        figure_width_inches: 10.0
+        figure_height_inches: 12.0
+        dpi: 100
+      session_overlay_grid:
+        enabled: true
+        n_rows: 4
+        n_cols: 2                          # legacy sessionOverlayGrid4x2
+        figure_width_inches: 12.0
+        figure_height_inches: 14.0
+      cross_session_overlay:
+        enabled: true                      # per-mouse, all sessions
+      cross_session_binned:
+        enabled: true                      # per-mouse, day-binned (uses bin_days from animals.yaml)
+    feature_extraction_version: "v7a.5"
+    interpolation_version: "v5p3"
+
 # ---- Wavesurfer ----
 
 wavesurfer:

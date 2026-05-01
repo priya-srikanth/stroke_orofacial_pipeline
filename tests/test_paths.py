@@ -614,6 +614,110 @@ class TestPhase7a4Paths:
         assert not path.exists()
 
 
+class TestPhase7a5Paths:
+    """Phase 7a.5 resolver helpers (tongue-jaw mismatch + jaw per-trial).
+
+    Four new resolvers added for the mismatch classifier + plotter port and
+    the standalone jaw per-trial features module (hybrid B1.5 sub-variant —
+    two modules, single phase):
+
+    - ``jaw_pertrial_endpoints_json`` — file resolver, eager parent mkdir
+      matching the 7a.3 V3 ``tongue_pertrial_endpoints_json`` convention.
+    - ``tongue_jaw_mismatch_candidate_trials_parquet`` — file resolver,
+      eager parent mkdir.
+    - ``tongue_jaw_mismatch_qc_dir`` — directory resolver, no eager mkdir
+      (renderer creates).
+    - ``tongue_jaw_mismatch_cross_session_dir`` — directory resolver, no
+      eager mkdir (renderer creates). Per-mouse only (no date dimension).
+    """
+
+    def test_jaw_pertrial_endpoints_json_path(self, monkeypatch, tmp_path):
+        """Per-trial jaw scalars JSON: %Y%m%d filename + eager parent mkdir."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.jaw_pertrial_endpoints_json(
+            "PS46", datetime.date(2025, 3, 7)
+        )
+        expected = (
+            tmp_path
+            / "dlc_kinematics"
+            / "jaw_pertrial"
+            / "endpoints"
+            / "PS46"
+            / "20250307.json"
+        )
+        assert path == expected
+        assert path.parent.exists() and path.parent.is_dir()
+        assert not path.exists()  # only parent is created, not the file itself
+
+    def test_tongue_jaw_mismatch_candidate_trials_parquet_path(
+        self, monkeypatch, tmp_path,
+    ):
+        """Candidate-trials parquet: per-session %Y%m%d + eager parent mkdir."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tongue_jaw_mismatch_candidate_trials_parquet(
+            "PS50", datetime.date(2025, 3, 19)
+        )
+        expected = (
+            tmp_path
+            / "dlc_kinematics"
+            / "tongue_jaw_mismatch"
+            / "candidate_trials"
+            / "PS50"
+            / "20250319.parquet"
+        )
+        assert path == expected
+        assert path.parent.exists() and path.parent.is_dir()
+        assert not path.exists()
+
+    def test_tongue_jaw_mismatch_qc_dir_path(self, monkeypatch, tmp_path):
+        """Within-session figures directory: no eager mkdir (renderer creates)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tongue_jaw_mismatch_qc_dir(
+            "PS54", datetime.date(2025, 6, 7)
+        )
+        expected = (
+            tmp_path
+            / "dlc_kinematics"
+            / "tongue_jaw_mismatch"
+            / "figures_qc"
+            / "PS54"
+            / "20250607"
+        )
+        assert path == expected
+        assert not path.exists()
+        # Ancestor up to <outputs>/dlc_kinematics must also remain uncreated
+        # (no implicit mkdir at any level for directory resolvers).
+        assert not (
+            tmp_path / "dlc_kinematics" / "tongue_jaw_mismatch"
+        ).exists()
+
+    def test_tongue_jaw_mismatch_cross_session_dir_path(
+        self, monkeypatch, tmp_path,
+    ):
+        """Cross-session figures directory: per-mouse only (no date), no eager mkdir."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tongue_jaw_mismatch_cross_session_dir("PS55")
+        expected = (
+            tmp_path
+            / "dlc_kinematics"
+            / "tongue_jaw_mismatch"
+            / "cross_session"
+            / "PS55"
+        )
+        assert path == expected
+        # Round-trip: callers must retain control over directory creation.
+        # Resolver returns the path only; nothing on disk should exist yet.
+        assert not path.exists()
+        assert not path.parent.exists()
+        # Caller-driven mkdir succeeds (sanity-check the round-trip).
+        path.mkdir(parents=True)
+        assert path.exists() and path.is_dir()
+
+
 # ---- Integration test (requires real mount) ----
 
 _MOUNT = Path("/Volumes/Neurobio/MICROSCOPE/Priya")
