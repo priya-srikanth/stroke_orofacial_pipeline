@@ -147,6 +147,18 @@ class AnimalInfo:
         come from ``docs/phase-7/baseline-seed-table.md`` §"Scope-
         filtered re-analysis" (2026-04-22 Phase 7a.0 probe). Access
         via :meth:`get_kinematics_baseline`.
+    bin_days : int
+        Per-animal day-bin width consumed by the Phase 7a.4 day-binned
+        cross-session aggregator
+        (``src/stroke_orofacial/dlc_kinematics/_day_binned.py``).
+        Values transcribed from the legacy MOUSE_SPECS dict
+        (20260203 tongue notebook Cell 42): PS46–PS50 use ``2``
+        (denser sessions, 4-week stroke follow-up); PS51/PS54/PS55
+        use ``7`` (sparser sessions, 12-week follow-up). Default
+        ``1`` is fail-conservative for any future animal that joins
+        the cohort without an explicit declaration; consumers should
+        verify the default is appropriate before producing any
+        day-binned product. Loader rejects bools and non-int values.
     """
 
     animal_id: str
@@ -170,6 +182,10 @@ class AnimalInfo:
     # Required at load time — default_factory is a safety net for direct
     # AnimalInfo(...) instantiation in tests, not a YAML-loader fallback.
     kinematics_baselines: dict[str, dict[str, float]] = field(default_factory=dict)
+    # Per-animal day-bin width (Phase 7a.4, added 2026-04-30). PS46-50
+    # use 2; PS51/54/55 use 7. Default 1 is fail-conservative for future
+    # animals joining the cohort.
+    bin_days: int = 1
 
     def day_relative_to_stroke(self, session_date: datetime.date) -> int:
         """Return the difference in days from stroke_date.
@@ -442,6 +458,23 @@ def load_animals(config_path: Path | str | None = None) -> dict[str, AnimalInfo]
                 f"{type(ws_match_raw).__name__}={ws_match_raw!r}"
             )
 
+        # Day-bin width for the Phase 7a.4 cross-session aggregator
+        # (added 2026-04-30). Absent key defaults to 1 (per-day bins).
+        # bool is rejected because Python treats it as an int subclass —
+        # `bin_days: true` would silently coerce to 1 and mask a typo.
+        bin_days_raw = spec.get("bin_days", 1)
+        if isinstance(bin_days_raw, bool) or not isinstance(bin_days_raw, int):
+            raise ValueError(
+                f"Animal {animal_id!r}: bin_days must be a positive int "
+                f"(typically 2 for PS46-50 or 7 for PS51/54/55); got "
+                f"{type(bin_days_raw).__name__}={bin_days_raw!r}"
+            )
+        if bin_days_raw < 1:
+            raise ValueError(
+                f"Animal {animal_id!r}: bin_days must be >= 1; got "
+                f"{bin_days_raw!r}"
+            )
+
         animals[animal_id] = AnimalInfo(
             animal_id=animal_id,
             stroke_date=_parse_date(spec["stroke_date"]),
@@ -458,6 +491,7 @@ def load_animals(config_path: Path | str | None = None) -> dict[str, AnimalInfo]
             kinematics_baselines=_parse_kinematics_baselines(
                 spec.get("kinematics_baselines"), animal_id
             ),
+            bin_days=bin_days_raw,
         )
     return animals
 

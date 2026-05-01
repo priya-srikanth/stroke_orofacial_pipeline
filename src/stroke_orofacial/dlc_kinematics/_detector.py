@@ -25,20 +25,40 @@ import numpy as np
 
 @dataclass
 class _LickPeaks:
-    """Detected lick peaks within one trial slice.
+    """Output of :func:`_slope_detect_lick_peaks`.
 
-    Per-lick window indices (``rise_starts``, ``turnover``, ``peak_indices``)
-    index into the trial slice (NOT session indices). Cell 36 uses them to
-    pick the velocity window; Cell 50 uses them via the lick t_peak times
-    to sample the per-frame angle trace.
+    Coordinate convention (C5.6 clarification, 2026-04-30):
+
+    - ``peak_indices`` (and the sister ``rise_starts`` / ``turnover``) index
+      into the **detect-window subset** ``yseg = y_t[i_lo:i_hi+1]``, where
+      ``i_lo`` is the first frame in ``t_ms`` within ``detect_win_ms``.
+      To convert to trial-slice frames, add
+      ``detect_lo_offset = i_lo``. Most consumers should use
+      ``peak_times_ms`` and ``peak_y`` (already pre-offset via the
+      detector's ``tseg = t_ms[i_lo:i_hi+1]`` / ``yseg`` indexing — safe
+      to use directly). Use ``peak_indices`` directly only when you need
+      a frame-resolved position; in that case ALWAYS apply
+      ``detect_lo_offset``.
+    - ``peak_times_ms`` is in trial-relative ms (post-reward) — already
+      pre-offset.
+    - ``peak_y`` / ``peak_x`` are values sampled from ``yseg`` / ``xseg``
+      at ``peak_indices`` — consistent with the yseg-local convention.
+
+    Cell 36 uses ``peak_indices`` for velocity windowing inside ``yseg``
+    (consistent yseg-local space); Cell 50 (V3) and the per-trial scalar
+    extractors use ``peak_times_ms`` to sample the per-frame angle trace.
+    Phase 7a.4's :func:`_build_visual_bundle_per_trial` is the first
+    consumer that crosses the boundary — it converts ``peak_indices`` to
+    trial-slice space via the ``detect_lo_offset`` adjustment described
+    above (C5.5 fix, 2026-04-30).
     """
 
     peak_times_ms: np.ndarray  # float, ms post-reward
-    peak_y: np.ndarray         # float, y at peak
-    peak_x: np.ndarray         # float, x at peak
-    rise_starts: np.ndarray    # int, i_rise per lick
-    turnover: np.ndarray       # int, i_turn per lick (sample where dy crosses 0)
-    peak_indices: np.ndarray   # int, i_peak per lick (argmax in [r0, k+pad])
+    peak_y: np.ndarray         # float, y at peak (yseg[peak_indices])
+    peak_x: np.ndarray         # float, x at peak (xseg[peak_indices])
+    rise_starts: np.ndarray    # int, yseg-local i_rise per lick
+    turnover: np.ndarray       # int, yseg-local i_turn (where dy crosses 0)
+    peak_indices: np.ndarray   # int, yseg-local i_peak (argmax in [r0, k+pad])
 
     @classmethod
     def empty(cls) -> "_LickPeaks":

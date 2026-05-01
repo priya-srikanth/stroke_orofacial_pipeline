@@ -529,6 +529,91 @@ class TestTonguePertrialPaths:
             )
 
 
+class TestPhase7a4Paths:
+    """Phase 7a.4 resolver helpers.
+
+    Three new resolvers added for the tongue visual gate + day-binned
+    cross-session aggregator:
+
+    - ``tongue_pertrial_licking_dynamics_day_binned_parquet`` — file
+      resolver, eager parent mkdir matching the 7a.3 V3 file-resolver
+      convention. Filename uses the legacy ``f"{lo}..{hi}"`` rel_day_bin
+      label literal (NTFS-legal; preserved for traceability).
+    - ``tongue_visual_qc_dir`` — directory resolver, no eager mkdir
+      (renderer creates).
+    - ``tongue_visual_comparison_dir`` — directory resolver, no eager
+      mkdir (renderer creates).
+    """
+
+    def test_tongue_pertrial_licking_dynamics_day_binned_parquet_path(
+        self, monkeypatch, tmp_path,
+    ):
+        """Day-binned parquet: legacy `..` label literal preserved."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tongue_pertrial_licking_dynamics_day_binned_parquet(
+            "PS54", "1..7"
+        )
+        expected = (
+            tmp_path
+            / "dlc_kinematics"
+            / "licking_dynamics"
+            / "day_binned"
+            / "PS54"
+            / "1..7.parquet"
+        )
+        assert path == expected
+        assert path.parent.exists() and path.parent.is_dir()
+
+    def test_tongue_pertrial_licking_dynamics_day_binned_parquet_pre_bin(
+        self, monkeypatch, tmp_path,
+    ):
+        """Pre-stroke bin label `-1..0` survives the resolver round-trip."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tongue_pertrial_licking_dynamics_day_binned_parquet(
+            "PS46", "-1..0"
+        )
+        assert path.name == "-1..0.parquet"
+        assert path.parent.name == "PS46"
+
+    def test_tongue_visual_qc_dir_path(self, monkeypatch, tmp_path):
+        """QC PNG directory: no eager mkdir (renderer creates)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tongue_visual_qc_dir(
+            "PS50", datetime.date(2025, 3, 19)
+        )
+        expected = (
+            tmp_path
+            / "dlc_kinematics"
+            / "figures_qc"
+            / "tongue"
+            / "PS50"
+            / "20250319"
+        )
+        assert path == expected
+        assert not path.exists()
+
+    def test_tongue_visual_comparison_dir_path(self, monkeypatch, tmp_path):
+        """Comparison-grid directory: no eager mkdir (renderer creates)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tongue_visual_comparison_dir(
+            "PS46", datetime.date(2025, 3, 7)
+        )
+        expected = (
+            tmp_path
+            / "dlc_kinematics"
+            / "figures_qc"
+            / "tongue_comparison"
+            / "PS46"
+            / "20250307"
+        )
+        assert path == expected
+        assert not path.exists()
+
+
 # ---- Integration test (requires real mount) ----
 
 _MOUNT = Path("/Volumes/Neurobio/MICROSCOPE/Priya")

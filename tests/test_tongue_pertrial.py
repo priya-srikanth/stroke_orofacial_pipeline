@@ -1626,3 +1626,359 @@ class TestTrialEventsAutoDerive:
             _tp_mod._derive_trial_events_from_spout_behavior(
                 animal=animal, date=date, resolver=resolver, manifest=manifest,
             )
+
+
+# ===========================================================================
+# Phase 7a.4 Task 3.5: visual bundle additive helper
+# ===========================================================================
+
+
+class TestVisualBundle:
+    """Phase 7a.4 Task 3.5 — :func:`build_tongue_visual_bundle` exposes the
+    in-memory per-trial DataFrames that the Cell 50 plot families
+    (tongue_visual.py, Task 4) consume. Bit-identical compute path to
+    :func:`build_tongue_pertrial` for shared fields (angle_per_frame +
+    metadata scalars); the bundle adds NEW intermediate DataFrames
+    (df_trials, df_bouts, df_phase) computed in the same trial loop."""
+
+    def test_returns_correct_dataclass_shape(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver, manifest, trial_events = (
+            TestDriverAndSchema._setup_session_outputs(tmp_path)
+        )
+        from stroke_orofacial.dlc_kinematics import (
+            TongueVisualBundle,
+            build_tongue_visual_bundle,
+        )
+        bundle = build_tongue_visual_bundle(
+            manifest=manifest, resolver=resolver,
+            trial_events=trial_events, params=base_params,
+        )
+        assert isinstance(bundle, TongueVisualBundle)
+        assert isinstance(bundle.df_trials, pd.DataFrame)
+        assert isinstance(bundle.df_bouts, pd.DataFrame)
+        assert isinstance(bundle.df_phase, pd.DataFrame)
+        assert isinstance(bundle.angle_per_frame, pd.DataFrame)
+        assert isinstance(bundle.metadata, dict)
+        # df_trials has one row per trial — synthetic fixture has 2 trials.
+        assert len(bundle.df_trials) == 2
+        # df_trials carries the per-trial array columns (object-dtype).
+        for col in (
+            "t_ms", "y_snip", "angle_snip",
+            "angle_allbouts_snip", "angle_firstbout_snip",
+            "angle_firstmulti_snip",
+            "t_firstpeak_align_ms", "angle_firstpeak_snip",
+        ):
+            assert col in bundle.df_trials.columns, col
+        # angle_per_frame schema lock: 2 cols, n_frames rows.
+        assert set(bundle.angle_per_frame.columns) == {
+            "frame_idx", "angle_deg_smoothed",
+        }
+        # metadata has the expected keys.
+        for key in (
+            "animal", "date", "fps", "n_frames",
+            "eye_in_spout_frame_x", "eye_in_spout_frame_y",
+            "angle_sign_flip", "smoothing_gaussian_sigma_ms",
+            "feature_extraction_version", "interpolation_version",
+            "plot_win_ms", "detect_win_ms", "first_peak_align_win_ms",
+            "n_phase_bins", "max_licks_per_trial",
+        ):
+            assert key in bundle.metadata, key
+
+    def test_bit_identical_metadata_and_angle_to_emit_set(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """Bit-identical-compute lock: shared fields between bundle and
+        emit set (angle_per_frame DataFrame + metadata scalars) must
+        match exactly. Run build_tongue_pertrial first (which writes the
+        emit set), then build_tongue_visual_bundle on the same inputs,
+        and compare angle_per_frame element-wise + metadata key-by-key."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver, manifest, trial_events = (
+            TestDriverAndSchema._setup_session_outputs(tmp_path)
+        )
+        from stroke_orofacial.dlc_kinematics import build_tongue_visual_bundle
+
+        # Emit set (writes 3 files).
+        out = build_tongue_pertrial(
+            manifest=manifest, resolver=resolver,
+            trial_events=trial_events, params=base_params,
+            overwrite="force",
+        )
+        with open(out["endpoints_json"]) as f:
+            payload = json.load(f)
+        emitted_meta = payload["metadata"]
+        emitted_angle = pq.read_table(str(out["angle_parquet"])).to_pandas()
+
+        # Bundle (same inputs, same params).
+        bundle = build_tongue_visual_bundle(
+            manifest=manifest, resolver=resolver,
+            trial_events=trial_events, params=base_params,
+        )
+
+        # angle_per_frame DataFrames must be element-wise identical.
+        pd.testing.assert_frame_equal(
+            bundle.angle_per_frame,
+            emitted_angle,
+            check_exact=True,
+            check_like=True,
+        )
+        # Shared metadata scalars must match exactly.
+        for key in (
+            "fps", "n_frames",
+            "eye_in_spout_frame_x", "eye_in_spout_frame_y",
+            "angle_sign_flip", "smoothing_gaussian_sigma_ms",
+            "feature_extraction_version", "interpolation_version",
+        ):
+            assert bundle.metadata[key] == emitted_meta[key], key
+
+    def test_does_not_write_files(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """Bundle helper is pure compute — no on-disk artifacts
+        produced. Verified by snapshotting the output tree before and
+        after the call (the inputs were already written by
+        _setup_session_outputs; the bundle helper must not add anything
+        under <output_root>/dlc_kinematics/)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver, manifest, trial_events = (
+            TestDriverAndSchema._setup_session_outputs(tmp_path)
+        )
+        from stroke_orofacial.dlc_kinematics import build_tongue_visual_bundle
+
+        kinematics_root = tmp_path / "dlc_kinematics"
+        before = (
+            sorted(kinematics_root.rglob("*"))
+            if kinematics_root.exists() else []
+        )
+        bundle = build_tongue_visual_bundle(
+            manifest=manifest, resolver=resolver,
+            trial_events=trial_events, params=base_params,
+        )
+        after = (
+            sorted(kinematics_root.rglob("*"))
+            if kinematics_root.exists() else []
+        )
+        assert before == after, (
+            f"build_tongue_visual_bundle wrote unexpected files: "
+            f"{set(after) - set(before)}"
+        )
+        # And the bundle is non-empty (sanity).
+        assert len(bundle.df_trials) > 0
+
+    def test_default_params_uses_defaults_yaml(
+        self, monkeypatch, tmp_path,
+    ):
+        """Passing ``params=None`` resolves to the loaded defaults.yaml
+        block (mirror of build_tongue_pertrial's behavior)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver, manifest, trial_events = (
+            TestDriverAndSchema._setup_session_outputs(tmp_path)
+        )
+        from stroke_orofacial.dlc_kinematics import build_tongue_visual_bundle
+
+        bundle = build_tongue_visual_bundle(
+            manifest=manifest, resolver=resolver,
+            trial_events=trial_events, params=None,
+        )
+        # Bundle metadata reflects the on-disk defaults.yaml values.
+        defaults = load_defaults()
+        expected_n_phase_bins = int(
+            defaults["dlc_kinematics"]["tongue_pertrial"]["phase"]["n_phase_bins"]
+        )
+        expected_plot_win = list(
+            defaults["dlc_kinematics"]["tongue_visual"]["bundle"]["plot_win_ms"]
+        )
+        assert bundle.metadata["n_phase_bins"] == expected_n_phase_bins
+        assert bundle.metadata["plot_win_ms"] == expected_plot_win
+
+    def test_phase_assignment_places_peaks_at_0_5_not_at_boundary(self):
+        """C5.5 (2026-04-30) regression: legacy convention places peaks
+        at phase=0.5 (peak protrusion), midway between consecutive peaks
+        at phase=0.0 (retracted state). A peak frame should map to
+        phase ∈ [0.45, 0.55], NOT 0 or 1.
+
+        Direct unit test of ``_assign_phase_peak_to_peak_shifted`` —
+        passing pre-known peak frame indices into a phase array sized to
+        cover the peaks. The pre-fix bug caused peaks to land at
+        phase ≈ 0 or 1 because peak_indices were yseg-local but the
+        phase array was trial-slice-local (off by ``i_lo`` =
+        detect_win_ms[0] in frames).
+        """
+        from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
+            _assign_phase_peak_to_peak_shifted,
+        )
+        # Synthetic: 3 peaks at frames 100, 200, 300; phase array length 400.
+        peak_indices = np.array([100, 200, 300], dtype=np.int64)
+        phase = _assign_phase_peak_to_peak_shifted(400, peak_indices)
+        # At each peak frame, phase must be ≈ 0.5.
+        for peak_frame in peak_indices:
+            assert 0.45 <= phase[peak_frame] <= 0.55, (
+                f"phase[{peak_frame}] = {phase[peak_frame]:.3f} "
+                f"(expected ≈ 0.5)"
+            )
+        # At midpoints between consecutive peaks (frames 150, 250),
+        # phase must be ≈ 0.0 (legacy "retracted" position).
+        for midpoint in (150, 250):
+            assert (
+                0.0 <= phase[midpoint] <= 0.05
+                or 0.95 <= phase[midpoint] <= 1.0
+            ), (
+                f"phase[{midpoint}] = {phase[midpoint]:.3f} "
+                f"(expected ≈ 0.0 — midpoint between peaks)"
+            )
+        # Outside multi-bout interval (before peak_0, after peak_2),
+        # phase is NaN.
+        assert np.isnan(phase[50]), "frame before first peak must be NaN"
+        assert np.isnan(phase[350]), "frame after last peak must be NaN"
+
+    def test_visual_bundle_peaks_in_df_phase_land_at_0_5(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """C5.5 (2026-04-30) integration regression: build a real bundle
+        from synthetic upstream parquets and verify that for each
+        detected peak in ``df_bouts`` (per-peak rows), the corresponding
+        phase value at that peak's frame in ``df_phase`` is ≈ 0.5.
+
+        Catches the off-by-i_lo coordinate bug end-to-end (would not
+        trip the unit test above, since that test only exercises the
+        phase-assignment helper directly).
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver, manifest, trial_events = (
+            TestDriverAndSchema._setup_session_outputs(tmp_path)
+        )
+        from stroke_orofacial.dlc_kinematics import build_tongue_visual_bundle
+
+        bundle = build_tongue_visual_bundle(
+            manifest=manifest, resolver=resolver,
+            trial_events=trial_events, params=base_params,
+        )
+        if bundle.df_phase.empty or bundle.df_bouts.empty:
+            pytest.skip("synthetic fixture has no multi-lick bouts to test")
+        # Each per-peak row in df_bouts has peak_t_ms set. Match the
+        # closest df_phase row (by t_ms) and verify its phase ≈ 0.5.
+        peak_rows = bundle.df_bouts[bundle.df_bouts["peak_t_ms"].notna()]
+        if peak_rows.empty:
+            pytest.skip("no per-peak rows in df_bouts")
+        n_checked = 0
+        for _, peak in peak_rows.iterrows():
+            side = peak["side"]
+            trial_index = int(peak["trial_index"])
+            peak_t_ms = float(peak["peak_t_ms"])
+            phase_for_trial = bundle.df_phase[
+                (bundle.df_phase["side"] == side)
+                & (bundle.df_phase["trial_index"] == trial_index)
+            ]
+            if phase_for_trial.empty:
+                continue
+            # Closest phase-row to peak_t_ms.
+            closest_idx = (phase_for_trial["t_ms"] - peak_t_ms).abs().idxmin()
+            closest = phase_for_trial.loc[closest_idx]
+            t_diff = abs(float(closest["t_ms"]) - peak_t_ms)
+            if t_diff > 4.0 / _SYNTH_FPS * 1000.0:  # > 1 frame off
+                continue
+            ph = float(closest["phase"])
+            assert 0.4 <= ph <= 0.6, (
+                f"peak at trial={trial_index} side={side} t={peak_t_ms:.1f}ms: "
+                f"phase = {ph:.3f} (expected ≈ 0.5)"
+            )
+            n_checked += 1
+        assert n_checked > 0, "no peaks could be cross-referenced to df_phase"
+
+    def test_visual_bundle_peak_angle_matches_angle_snip(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """C5.5 (2026-04-30) regression: each per-peak row in
+        ``df_bouts`` must carry ``peak_angle_deg`` equal to
+        ``angle_snip`` of the SAME trial at ``t_ms == peak_t_ms``.
+
+        Pre-fix bug: ``peak_angle_deg`` was looked up via
+        ``angle_snip[peak_local_idx]`` where ``peak_local_idx`` was
+        yseg-local instead of trial-slice-local. The QC plot's peak
+        markers (drawn at ``(peak_t_ms, peak_angle_deg)``) consequently
+        floated off the angle line by a fixed frame-offset.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver, manifest, trial_events = (
+            TestDriverAndSchema._setup_session_outputs(tmp_path)
+        )
+        from stroke_orofacial.dlc_kinematics import build_tongue_visual_bundle
+
+        bundle = build_tongue_visual_bundle(
+            manifest=manifest, resolver=resolver,
+            trial_events=trial_events, params=base_params,
+        )
+        peak_rows = bundle.df_bouts[bundle.df_bouts["peak_t_ms"].notna()]
+        if peak_rows.empty:
+            pytest.skip("synthetic fixture has no per-peak rows")
+        n_checked = 0
+        max_dev = 0.0
+        for _, peak in peak_rows.iterrows():
+            trial_index = int(peak["trial_index"])
+            side = peak["side"]
+            peak_t_ms = float(peak["peak_t_ms"])
+            recorded_angle = float(peak["peak_angle_deg"])
+            trow = bundle.df_trials[
+                (bundle.df_trials["side"] == side)
+                & (bundle.df_trials["trial_index"] == trial_index)
+            ]
+            if trow.empty:
+                continue
+            t_arr = np.asarray(trow.iloc[0]["t_ms"], dtype=np.float64)
+            angle_arr = np.asarray(
+                trow.iloc[0]["angle_snip"], dtype=np.float64,
+            )
+            # Find the closest frame to peak_t_ms (one frame ≈ 1000/fps ms).
+            closest_idx = int(np.argmin(np.abs(t_arr - peak_t_ms)))
+            t_diff = abs(float(t_arr[closest_idx]) - peak_t_ms)
+            if t_diff > 1000.0 / float(bundle.metadata["fps"]):
+                continue
+            angle_at_closest = float(angle_arr[closest_idx])
+            if (not np.isfinite(angle_at_closest)
+                    or not np.isfinite(recorded_angle)):
+                continue
+            dev = abs(angle_at_closest - recorded_angle)
+            max_dev = max(max_dev, dev)
+            n_checked += 1
+        if n_checked == 0:
+            pytest.skip("no peaks cross-referenceable to angle_snip")
+        # Pre-fix bug: tens-of-degrees deviation (frame offset by i_lo).
+        # Post-fix: < 1° (single-frame jitter).
+        assert max_dev < 1.0, (
+            f"peak_angle_deg deviates from angle_snip[peak_frame] by "
+            f"max {max_dev:.2f}° (expected < 1°)"
+        )
+
+    def test_pertrial_core_result_is_frozen(self):
+        """Defensive: _PertrialCoreResult and TongueVisualBundle are
+        frozen so callers cannot accidentally mutate the shared core
+        return after construction."""
+        from dataclasses import FrozenInstanceError
+
+        from stroke_orofacial.dlc_kinematics import (
+            TonguePertrialResult,
+            TongueVisualBundle,
+        )
+        from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
+            _PertrialCoreResult,
+        )
+        empty_df = pd.DataFrame()
+        tp = TonguePertrialResult(
+            angle_per_frame=empty_df,
+            licking_dynamics_traces=empty_df,
+            endpoints={},
+            angle_metadata={},
+            licking_dynamics_metadata={},
+        )
+        vb = TongueVisualBundle(
+            df_trials=empty_df, df_bouts=empty_df, df_phase=empty_df,
+            angle_per_frame=empty_df, metadata={},
+        )
+        core = _PertrialCoreResult(tongue_pertrial=tp, visual_bundle=vb)
+        with pytest.raises(FrozenInstanceError):
+            core.tongue_pertrial = tp  # type: ignore[misc]
+        with pytest.raises(FrozenInstanceError):
+            vb.df_trials = empty_df  # type: ignore[misc]

@@ -318,6 +318,73 @@ class PathResolver:
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 
+    def tongue_pertrial_licking_dynamics_day_binned_parquet(
+        self, animal: str, rel_day_bin_label: str,
+    ) -> Path:
+        """Return the Phase 7a.4 day-binned cross-session traces parquet path.
+
+        E.g. ``<outputs>/dlc_kinematics/licking_dynamics/day_binned/PS54/1..7.parquet``.
+
+        ``rel_day_bin_label`` follows the legacy convention ``f"{lo}..{hi}"``
+        (e.g. ``"-1..0"``, ``"1..2"``, ``"-6..0"``, ``"1..7"``) emitted by
+        the day-binner — bit-identical to legacy CSV labels for traceability.
+        Literal ``..`` is NTFS-legal and preserved deliberately. Parent
+        directory is created eagerly.
+        """
+        out = (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "licking_dynamics"
+            / "day_binned"
+            / animal
+            / f"{rel_day_bin_label}.parquet"
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def tongue_visual_qc_dir(
+        self, animal: str, date: datetime.date,
+    ) -> Path:
+        """Return the Phase 7a.4 tongue visual-gate QC PNG output directory.
+
+        E.g. ``<outputs>/dlc_kinematics/figures_qc/tongue/PS50/20250319/``.
+
+        Hosts the 6 PNGs emitted per session by
+        :func:`stroke_orofacial.dlc_kinematics.tongue_visual.render_tongue_qc_figures`
+        (Family 1 = 2 PNGs per side; Families 2-5 = 1 PNG each). The
+        renderer creates the directory; this resolver returns the path
+        only — no eager mkdir.
+        """
+        date_str = date.strftime("%Y%m%d")
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "figures_qc"
+            / "tongue"
+            / animal
+            / date_str
+        )
+
+    def tongue_visual_comparison_dir(
+        self, animal: str, date: datetime.date,
+    ) -> Path:
+        """Return the Phase 7a.4 tongue visual-gate comparison-grid output directory.
+
+        E.g. ``<outputs>/dlc_kinematics/figures_qc/tongue_comparison/PS46/20250307/``.
+
+        Hosts the legacy-vs-consolidated side-by-side PNGs emitted per
+        session by
+        :func:`stroke_orofacial.dlc_kinematics.tongue_visual.render_comparison_grid`
+        for the visual-gate parity runner. The renderer creates the
+        directory; this resolver returns the path only — no eager mkdir.
+        """
+        date_str = date.strftime("%Y%m%d")
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "figures_qc"
+            / "tongue_comparison"
+            / animal
+            / date_str
+        )
+
     def dlc_centered_spout_midpoint_parquet(
         self, animal: str, date: datetime.date,
     ) -> Path:

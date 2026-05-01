@@ -108,11 +108,13 @@ class TrialEvent:
 
 @dataclass
 class TonguePertrialResult:
-    """In-memory container for the three outputs (pre-write).
+    """In-memory container for the three on-disk emit pieces (pre-write).
 
-    Returned by :func:`_build_tongue_pertrial_core`. The driver writes all
-    three artifacts atomically; callers that want the pure computation
-    without I/O can call the core directly.
+    Carried by :class:`_PertrialCoreResult` (alongside
+    :class:`TongueVisualBundle`). The driver writes all three artifacts
+    atomically; callers that want the pure computation without I/O can
+    call :func:`_build_tongue_pertrial_core` directly and ignore the
+    bundle field.
     """
 
     angle_per_frame: pd.DataFrame
@@ -120,6 +122,72 @@ class TonguePertrialResult:
     endpoints: dict[str, Any]
     angle_metadata: dict[str, str]
     licking_dynamics_metadata: dict[str, str]
+
+
+@dataclass(frozen=True)
+class TongueVisualBundle:
+    """Phase 7a.4 — in-memory per-trial array DataFrames for the visual gate.
+
+    Returned by :func:`build_tongue_visual_bundle`. NOT emitted to disk —
+    the 7a.3 V3 emit set (angle parquet + licking-dynamics traces parquet
+    + endpoints JSON) is unchanged. The visual bundle exposes intermediate
+    per-trial array snippets and per-frame phase rows that the Cell 50
+    plot families consume but the on-disk emit set doesn't carry. See
+    Phase 7a.4 Task 1.5b audit for the rationale.
+
+    Attributes
+    ----------
+    df_trials : DataFrame
+        One row per trial. Columns: identifier (``trial_index``, ``side``)
+        + per-trial array snippets (``t_ms``, ``y_snip``, ``angle_snip``,
+        ``angle_allbouts_snip``, ``angle_firstbout_snip``,
+        ``angle_firstmulti_snip``, ``t_firstpeak_align_ms``,
+        ``angle_firstpeak_snip``) + scalars (``n_peaks``, ``n_bouts``,
+        ``n_multi_lick_bouts``, ``first_peak_t_ms``).
+    df_bouts : DataFrame
+        Mixed-row schema (legacy Cell 50 convention): one summary row per
+        bout (carries bout-level fields, peak-level fields NaN) plus one
+        row per peak in the bout (carries peak-level fields, bout-level
+        fields NaN). Rendered by :func:`_plot_qc_trials` for bout-window
+        shading + peak markers.
+    df_phase : DataFrame
+        One row per (trial, frame-in-multi-bout). Columns: ``side``,
+        ``trial_index``, ``bout_idx``, ``bout_rank``, ``multi_bout_rank``,
+        ``t_ms``, ``phase`` (0..1), ``phase_bin`` (int), ``phase_bin_center``
+        (float), ``angle_deg``, ``x_geom``, ``y_geom``. Empty if the trial
+        has no multi-lick bouts.
+    angle_per_frame : DataFrame
+        Session-length per-frame smoothed signed tongue angle. Same
+        DataFrame as :attr:`TonguePertrialResult.angle_per_frame` (shared
+        compute via :func:`_extract_per_frame_angle_smoothed`).
+    metadata : dict
+        Session-level scalars: ``animal``, ``date``, ``fps``,
+        ``n_frames``, ``eye_in_spout_frame_x``, ``eye_in_spout_frame_y``,
+        ``angle_sign_flip``, ``smoothing_gaussian_sigma_ms``, plus the
+        bundle-window knobs (``plot_win_ms``, ``detect_win_ms``,
+        ``first_peak_align_win_ms``, ``n_phase_bins``) that drove the
+        per-trial compute.
+    """
+
+    df_trials: pd.DataFrame
+    df_bouts: pd.DataFrame
+    df_phase: pd.DataFrame
+    angle_per_frame: pd.DataFrame
+    metadata: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class _PertrialCoreResult:
+    """Return shape of :func:`_build_tongue_pertrial_core`.
+
+    PRIVATE — both public entry points (:func:`build_tongue_pertrial` and
+    :func:`build_tongue_visual_bundle`) consume this same core return.
+    Keeps the compute path single-sourced; the two public functions just
+    project different views of the same intermediates.
+    """
+
+    tongue_pertrial: TonguePertrialResult
+    visual_bundle: TongueVisualBundle
 
 
 # ===========================================================================
@@ -215,25 +283,96 @@ def build_tongue_pertrial(
     if overwrite == "skip" and all(p.exists() for p in out_paths.values()):
         return out_paths
 
-    result = _build_tongue_pertrial_core(
+    core = _build_tongue_pertrial_core(
         manifest=manifest,
         resolver=resolver,
         trial_events=trial_events,
         params=params,
         animal_info=animal_info,
     )
+    tp_result = core.tongue_pertrial
 
     _write_angle_parquet_atomic(
-        out_paths["angle_parquet"], result.angle_per_frame, result.angle_metadata,
+        out_paths["angle_parquet"],
+        tp_result.angle_per_frame,
+        tp_result.angle_metadata,
     )
     _write_traces_parquet_atomic(
         out_paths["licking_dynamics_traces_parquet"],
-        result.licking_dynamics_traces,
-        result.licking_dynamics_metadata,
+        tp_result.licking_dynamics_traces,
+        tp_result.licking_dynamics_metadata,
     )
-    _write_endpoints_json_atomic(out_paths["endpoints_json"], result.endpoints)
+    _write_endpoints_json_atomic(out_paths["endpoints_json"], tp_result.endpoints)
 
     return out_paths
+
+
+def build_tongue_visual_bundle(
+    manifest: SessionManifest,
+    resolver: PathResolver,
+    trial_events: Sequence[TrialEvent],
+    params: dict[str, Any] | None = None,
+    *,
+    animal_info: AnimalInfo | None = None,
+) -> TongueVisualBundle:
+    """Phase 7a.4 — return the in-memory per-trial array DataFrames for the
+    Cell 50 visual gate.
+
+    Same compute path as :func:`build_tongue_pertrial` — calls the same
+    :func:`_build_tongue_pertrial_core`, then projects the
+    :attr:`_PertrialCoreResult.visual_bundle` field. No on-disk artifacts
+    are written; the 7a.3 V3 emit set is unaffected.
+
+    Parameters mirror :func:`build_tongue_pertrial` (manifest, resolver,
+    trial_events, params, animal_info), minus ``overwrite`` (no I/O to
+    skip).
+
+    Returns
+    -------
+    TongueVisualBundle
+        See :class:`TongueVisualBundle` for field documentation.
+    """
+    if animal_info is None:
+        animal_info = get_animal(manifest.animal)
+    if params is None:
+        params = load_defaults()
+    core = _build_tongue_pertrial_core(
+        manifest=manifest,
+        resolver=resolver,
+        trial_events=trial_events,
+        params=params,
+        animal_info=animal_info,
+    )
+    return core.visual_bundle
+
+
+def build_tongue_visual_bundle_by_animal_date(
+    animal: str,
+    date: datetime.date,
+    resolver: PathResolver,
+    *,
+    trial_events: Sequence[TrialEvent] | None = None,
+    **kwargs: Any,
+) -> TongueVisualBundle:
+    """Convenience wrapper analogous to
+    :func:`build_tongue_pertrial_by_animal_date`. Auto-derives
+    ``trial_events`` from upstream spout_behavior products if not passed."""
+    animal_info = get_animal(animal)
+    manifest = build_manifest(
+        animal, date, resolver, animal_info,
+        analysis_context="dlc.kinematics.tongue_pertrial",
+    )
+    if trial_events is None:
+        trial_events = _derive_trial_events_from_spout_behavior(
+            animal=animal, date=date, resolver=resolver, manifest=manifest,
+        )
+    kwargs.setdefault("animal_info", animal_info)
+    return build_tongue_visual_bundle(
+        manifest=manifest,
+        resolver=resolver,
+        trial_events=trial_events,
+        **kwargs,
+    )
 
 
 def build_tongue_pertrial_by_animal_date(
@@ -1078,6 +1217,338 @@ def _moving_avg_window(arr: np.ndarray, win_n: int) -> np.ndarray:
 
 
 # ===========================================================================
+# Phase 7a.4 visual-bundle helpers (Task 3.5)
+# ===========================================================================
+# These helpers materialise the per-trial array snippets + per-bout/per-peak
+# rows + per-frame phase rows that the Cell 50 plot families (Phase 7a.4)
+# consume. They run inside the same trial loop as the emit-set scalar
+# extractors but produce intermediate in-memory DataFrames that the on-disk
+# emit set deliberately does not carry. See Phase 7a.4 Task 1.5b audit
+# (.scratch_7a4/cell50_plot_families_audit.md) for the rationale.
+
+
+def _bout_time_bounds_ms(
+    peak_times_ms: np.ndarray, single_bout_win_ms: tuple[float, float],
+) -> tuple[float, float]:
+    """Time bounds for a bout (legacy Cell 50 ``_bout_time_bounds_ms``).
+
+    For multi-lick bouts, extends pre/post by half the first/last ILI.
+    For single-lick bouts, applies a fixed ``single_bout_win_ms`` window
+    (defaults to ``[-120, 200]`` ms — see ``defaults.yaml`` block
+    ``dlc_kinematics.tongue_pertrial.bout.single_bout_win_ms``).
+    """
+    n = len(peak_times_ms)
+    if n >= 2:
+        lead = 0.5 * (peak_times_ms[1] - peak_times_ms[0])
+        tail = 0.5 * (peak_times_ms[-1] - peak_times_ms[-2])
+        t0 = float(peak_times_ms[0] - lead)
+        t1 = float(peak_times_ms[-1] + tail)
+    else:
+        t0 = float(peak_times_ms[0]) + float(single_bout_win_ms[0])
+        t1 = float(peak_times_ms[0]) + float(single_bout_win_ms[1])
+    return t0, t1
+
+
+def _assign_phase_peak_to_peak_shifted(
+    n_samples: int, peak_indices: np.ndarray,
+) -> np.ndarray:
+    """Per-frame phase ∈ [0, 1) for a multi-lick bout (legacy Cell 50).
+
+    For each adjacent pair ``(peak_i, peak_{i+1})`` in ``peak_indices``,
+    assigns ``u = (frame - peak_i) / (peak_{i+1} - peak_i)``, then
+    ``phase = (u - 0.5) mod 1.0``. Phase 0 = midpoint between peaks;
+    phase 0.5 = peak protrusion. NaN outside multi-bout intervals.
+
+    ``peak_indices`` are integer indices into the trial slice
+    (length ``n_samples``).
+    """
+    phase = np.full(n_samples, np.nan, dtype=np.float64)
+    if len(peak_indices) < 2:
+        return phase
+    for i0, i1 in zip(peak_indices[:-1], peak_indices[1:]):
+        i0 = int(i0)
+        i1 = int(i1)
+        if i1 <= i0:
+            continue
+        u = (np.arange(i0, i1 + 1) - i0) / float(i1 - i0)
+        phase[i0:i1 + 1] = np.mod(u - 0.5, 1.0)
+    return phase
+
+
+def _build_visual_bundle_per_trial(
+    trial_index: int,
+    side: str,
+    *,
+    x_final: np.ndarray,
+    y_final: np.ndarray,
+    angle_per_frame: np.ndarray,
+    reward_frame_idx: int,
+    fps: float,
+    plot_win_ms: tuple[float, float],
+    detect_win_ms: tuple[float, float],
+    first_peak_align_win_ms: tuple[float, float],
+    detector_params: dict[str, Any],
+    max_ili_ms: float,
+    single_bout_win_ms: tuple[float, float],
+    max_licks_per_trial: int,
+    phase_bin_edges: np.ndarray,
+    phase_bin_centers: np.ndarray,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Compute one trial's contribution to df_trials, df_bouts, df_phase.
+
+    Returns
+    -------
+    trial_row : dict
+        Single row for ``df_trials`` with the array snippets + scalars.
+    bout_rows : list[dict]
+        Mixed bout-summary + per-peak rows for ``df_bouts`` (legacy
+        Cell 50 schema). Empty if the trial has zero detected peaks.
+    phase_rows : list[dict]
+        One row per frame in any multi-lick bout for ``df_phase``. Empty
+        if the trial has no multi-lick bouts.
+    """
+    # Slice all three session-length arrays at the bundle's plot window.
+    y_snip, t_ms = _extract_trial_slice(
+        y_final, reward_frame_idx, plot_win_ms, fps,
+    )
+    x_snip, _ = _extract_trial_slice(
+        x_final, reward_frame_idx, plot_win_ms, fps,
+    )
+    angle_snip, _ = _extract_trial_slice(
+        angle_per_frame, reward_frame_idx, plot_win_ms, fps,
+    )
+
+    # Per-trial peak detection within detect_win_ms (Cell 50 = [70, 3000]).
+    peaks = _slope_detect_lick_peaks(
+        y_snip, x_snip, t_ms, fps,
+        detect_win_ms=detect_win_ms,
+        detector_params=detector_params,
+        n_max=int(max_licks_per_trial),
+    )
+    n_peaks = len(peaks)
+
+    # C5.5 (2026-04-30) — peak_indices coordinate fix. The 7a.3 V3
+    # ``_slope_detect_lick_peaks`` returns ``peak_indices`` that are LOCAL
+    # to its internal ``yseg = y_snip[i_lo:i_hi+1]`` (the detect-window
+    # subset of the trial slice). Translating to trial-slice frame
+    # indices requires adding the i_lo offset (= the frame in t_ms where
+    # detect_win_ms[0] starts). 7a.3 V3 emit-set consumers don't trip
+    # this because they use peak_times_ms / peak_y (which the detector
+    # already pre-offset via ``tseg`` / ``yseg`` indexing). The bundle
+    # consumer DOES use peak_indices directly to:
+    #   (a) lookup angle_snip at the peak (peak_angle_deg field of
+    #       df_bouts), and
+    #   (b) seed the phase-assignment frame range
+    #       (`_assign_phase_peak_to_peak_shifted`).
+    # Without this offset, peak markers in the QC plot offset off the
+    # angle line, AND multi-bout phase assignment shifts (peaks no
+    # longer land at phase=0.5).
+    if t_ms.size > 0:
+        in_win = (t_ms >= detect_win_ms[0]) & (t_ms <= detect_win_ms[1])
+        detect_lo_offset = (
+            int(np.argmax(in_win)) if np.any(in_win) else 0
+        )
+    else:
+        detect_lo_offset = 0
+    # Trial-slice-local peak frame indices (consumed below by phase
+    # assignment + per-peak angle lookups). Original peaks.peak_indices
+    # remains unchanged so 7a.3 V3 consumers see no behavior change.
+    peaks_in_snip = peaks.peak_indices + detect_lo_offset
+
+    # Build bouts.
+    bouts_idx_lists = _build_bouts(peaks.peak_times_ms, float(max_ili_ms))
+    n_bouts = len(bouts_idx_lists)
+    n_multi = sum(1 for b in bouts_idx_lists if len(b) >= 2)
+
+    # Per-bout angle masks (shape = trial-slice length).
+    angle_allbouts_snip = np.full_like(angle_snip, np.nan, dtype=np.float64)
+    angle_firstbout_snip = np.full_like(angle_snip, np.nan, dtype=np.float64)
+    angle_firstmulti_snip = np.full_like(angle_snip, np.nan, dtype=np.float64)
+
+    bout_rows: list[dict[str, Any]] = []
+    phase_rows: list[dict[str, Any]] = []
+    first_bout_done = False
+    first_multi_done = False
+    multi_seen = 0
+
+    for bout_rank, idxs in enumerate(bouts_idx_lists):
+        is_multi = len(idxs) >= 2
+        multi_rank = float(multi_seen) if is_multi else float("nan")
+        if is_multi:
+            multi_seen += 1
+
+        peak_times = peaks.peak_times_ms[idxs]
+        peak_xs = peaks.peak_x[idxs]
+        peak_ys = peaks.peak_y[idxs]
+        # peak_local_idxs are in TRIAL-SLICE coordinates (post-C5.5 fix
+        # 2026-04-30). They index into angle_snip / phase array directly.
+        peak_local_idxs = peaks_in_snip[idxs]
+
+        t0_ms, t1_ms = _bout_time_bounds_ms(peak_times, single_bout_win_ms)
+        # Convert (t0_ms, t1_ms) → indices into the trial slice.
+        i_lo = int(max(0, np.searchsorted(t_ms, t0_ms, side="left")))
+        i_hi_excl = int(min(len(t_ms), np.searchsorted(t_ms, t1_ms, side="right")))
+
+        angle_allbouts_snip[i_lo:i_hi_excl] = angle_snip[i_lo:i_hi_excl]
+        if not first_bout_done:
+            angle_firstbout_snip[i_lo:i_hi_excl] = angle_snip[i_lo:i_hi_excl]
+            first_bout_done = True
+        if is_multi and not first_multi_done:
+            angle_firstmulti_snip[i_lo:i_hi_excl] = angle_snip[i_lo:i_hi_excl]
+            first_multi_done = True
+
+        # Bout-summary row (peak0/peak1 fields populated, peak fields NaN).
+        def _peak_angle_at(j: int) -> float:
+            if j >= len(peak_local_idxs):
+                return float("nan")
+            li = int(peak_local_idxs[j])
+            if li < 0 or li >= len(angle_snip):
+                return float("nan")
+            v = angle_snip[li]
+            return float(v) if np.isfinite(v) else float("nan")
+
+        bout_rows.append({
+            "side": side,
+            "trial_index": int(trial_index),
+            "bout_idx": int(bout_rank),
+            "bout_rank": int(bout_rank),
+            "multi_bout_rank": multi_rank,
+            "n_peaks": int(len(idxs)),
+            "bout_t0_ms": float(t0_ms),
+            "bout_t1_ms": float(t1_ms),
+            "peak_t0_ms": float(peak_times[0]) if len(peak_times) >= 1 else float("nan"),
+            "peak_t1_ms": float(peak_times[1]) if len(peak_times) >= 2 else float("nan"),
+            "peak_y0": float(peak_ys[0]) if len(peak_times) >= 1 else float("nan"),
+            "peak_angle0": _peak_angle_at(0),
+            "peak_y1": float(peak_ys[1]) if len(peak_times) >= 2 else float("nan"),
+            "peak_angle1": _peak_angle_at(1),
+            "peak_t_ms": float("nan"),
+            "peak_y": float("nan"),
+            "peak_x": float("nan"),
+            "peak_angle_deg": float("nan"),
+        })
+        # Per-peak rows (one per peak; bout-summary fields NaN).
+        for j in range(len(peak_times)):
+            li = int(peak_local_idxs[j])
+            peak_angle = float("nan")
+            if 0 <= li < len(angle_snip) and np.isfinite(angle_snip[li]):
+                peak_angle = float(angle_snip[li])
+            bout_rows.append({
+                "side": side,
+                "trial_index": int(trial_index),
+                "bout_idx": int(bout_rank),
+                "bout_rank": int(bout_rank),
+                "multi_bout_rank": multi_rank,
+                "n_peaks": int(len(idxs)),
+                "bout_t0_ms": float(t0_ms),
+                "bout_t1_ms": float(t1_ms),
+                "peak_t0_ms": float("nan"),
+                "peak_t1_ms": float("nan"),
+                "peak_y0": float("nan"),
+                "peak_angle0": float("nan"),
+                "peak_y1": float("nan"),
+                "peak_angle1": float("nan"),
+                "peak_t_ms": float(peak_times[j]),
+                "peak_y": float(peak_ys[j]),
+                "peak_x": float(peak_xs[j]),
+                "peak_angle_deg": peak_angle,
+            })
+
+        # Phase rows for multi-lick bouts only.
+        if is_multi:
+            phase = _assign_phase_peak_to_peak_shifted(
+                len(t_ms), peak_local_idxs,
+            )
+            mask = (
+                np.isfinite(phase)
+                & np.isfinite(angle_snip)
+                & np.isfinite(x_snip)
+                & np.isfinite(y_snip)
+            )
+            for ii in np.where(mask)[0]:
+                ph = float(phase[ii])
+                bin_idx = int(np.clip(
+                    np.searchsorted(phase_bin_edges, ph, side="right") - 1,
+                    0, len(phase_bin_centers) - 1,
+                ))
+                phase_rows.append({
+                    "side": side,
+                    "trial_index": int(trial_index),
+                    "bout_idx": int(bout_rank),
+                    "bout_rank": int(bout_rank),
+                    "multi_bout_rank": int(multi_rank) if is_multi else -1,
+                    "t_ms": float(t_ms[ii]),
+                    "phase": ph,
+                    "phase_bin": bin_idx,
+                    "phase_bin_center": float(phase_bin_centers[bin_idx]),
+                    "angle_deg": float(angle_snip[ii]),
+                    "x_geom": float(x_snip[ii]),
+                    "y_geom": float(y_snip[ii]),
+                })
+
+    # First-peak-aligned snippet (centered on the first detected peak's
+    # session-frame index, span = first_peak_align_win_ms). NaN-filled if
+    # no peak was detected in this trial.
+    pre_f = max(0, int(np.floor(-first_peak_align_win_ms[0] / 1000.0 * fps)))
+    post_f = max(0, int(np.ceil(first_peak_align_win_ms[1] / 1000.0 * fps)))
+    expected_len = pre_f + post_f + 1
+    if n_peaks > 0:
+        # C5.5 (2026-04-30): convert via peak_times_ms (which the
+        # detector already pre-offsets via tseg = t_ms[i_lo:i_hi+1])
+        # rather than via peak_indices (yseg-local; would miss the
+        # detect_lo_offset and produce a snippet centered on the wrong
+        # frame).
+        first_peak_t_ms_val = float(peaks.peak_times_ms[0])
+        first_peak_session_frame = int(round(
+            reward_frame_idx + first_peak_t_ms_val / 1000.0 * fps
+        ))
+        angle_firstpeak_snip, t_firstpeak_align_ms = _extract_trial_slice(
+            angle_per_frame, first_peak_session_frame,
+            (-float(pre_f) / fps * 1000.0, float(post_f) / fps * 1000.0), fps,
+        )
+        # Pad to expected length if the slice clipped at session edges.
+        if len(angle_firstpeak_snip) != expected_len:
+            padded = np.full(expected_len, np.nan, dtype=np.float64)
+            t_padded = (
+                np.arange(-pre_f, post_f + 1, dtype=np.float64) / fps * 1000.0
+            )
+            # Best-effort centering; if the slice landed near a session edge
+            # we just keep what we got + NaN-pad. The bundle is for visual
+            # use, not a parity comparator.
+            n_have = len(angle_firstpeak_snip)
+            padded[:n_have] = angle_firstpeak_snip
+            angle_firstpeak_snip = padded
+            t_firstpeak_align_ms = t_padded
+    else:
+        t_firstpeak_align_ms = (
+            np.arange(-pre_f, post_f + 1, dtype=np.float64) / fps * 1000.0
+        )
+        angle_firstpeak_snip = np.full(expected_len, np.nan, dtype=np.float64)
+
+    first_peak_t_ms = (
+        float(peaks.peak_times_ms[0]) if n_peaks > 0 else float("nan")
+    )
+
+    trial_row = {
+        "side": side,
+        "trial_index": int(trial_index),
+        "n_peaks": int(n_peaks),
+        "n_bouts": int(n_bouts),
+        "n_multi_lick_bouts": int(n_multi),
+        "first_peak_t_ms": first_peak_t_ms,
+        "t_ms": t_ms.copy(),
+        "y_snip": y_snip.copy(),
+        "angle_snip": angle_snip.copy(),
+        "angle_allbouts_snip": angle_allbouts_snip,
+        "angle_firstbout_snip": angle_firstbout_snip,
+        "angle_firstmulti_snip": angle_firstmulti_snip,
+        "t_firstpeak_align_ms": t_firstpeak_align_ms,
+        "angle_firstpeak_snip": angle_firstpeak_snip,
+    }
+    return trial_row, bout_rows, phase_rows
+
+
+# ===========================================================================
 # Driver core
 # ===========================================================================
 
@@ -1088,7 +1559,7 @@ def _build_tongue_pertrial_core(
     trial_events: Sequence[TrialEvent],
     params: dict[str, Any],
     animal_info: AnimalInfo | None = None,
-) -> TonguePertrialResult:
+) -> _PertrialCoreResult:
     """Pure-function driver: reads inputs, computes everything, returns result.
 
     Sequence (kickoff §3a):
@@ -1098,14 +1569,44 @@ def _build_tongue_pertrial_core(
     3. Resolve ``eye_in_spout_frame`` (median + spout-frame sanity check).
     4. Compute per-frame smoothed signed angle for the whole session.
     5. For each trial: extract Cells 33/36/39/42 reductions + Cell 50
-       per-trial scalars + Cell 50 own-bout scalars.
+       per-trial scalars + Cell 50 own-bout scalars + (Phase 7a.4) the
+       per-trial array snippets / per-bout rows / per-frame phase rows
+       that the visual-bundle consumer needs.
     6. Cell 42 traces: aggregate per-trial peak lists per side.
     7. Cell 50 session-inclusion: 4 booleans (Q9 binding 2026-04-28:
        ``n_phase_licks = sum(n_licks_in_first_multi_bout)`` across trials).
-    8. Pack endpoints JSON, angle parquet, traces parquet.
+    8. Pack endpoints JSON, angle parquet, traces parquet, visual bundle.
+
+    Returns
+    -------
+    _PertrialCoreResult
+        Wraps both the legacy :class:`TonguePertrialResult` (emit-set
+        artifacts) and the Phase 7a.4 :class:`TongueVisualBundle`
+        (in-memory per-trial DataFrames). Both public entry points
+        consume this single core return and project the field they need.
     """
     tp = params["dlc_kinematics"]["tongue_pertrial"]
     detector = tp["detector"]
+    # Phase 7a.4 visual-bundle knobs (see configs/defaults.yaml
+    # dlc_kinematics.tongue_visual.bundle and .render). Read once outside
+    # the trial loop so the per-trial helper sees a stable view.
+    visual_block = params["dlc_kinematics"].get("tongue_visual", {})
+    bundle_cfg = visual_block.get("bundle", {})
+    bundle_plot_win = tuple(bundle_cfg.get("plot_win_ms", [0.0, 8000.0]))
+    bundle_detect_win = tuple(
+        bundle_cfg.get("detect_win_ms", [70.0, 3000.0])
+    )
+    bundle_first_peak_win = tuple(
+        bundle_cfg.get("first_peak_align_win_ms", [-180.0, 1000.0])
+    )
+    n_phase_bins = int(tp["phase"]["n_phase_bins"])
+    phase_bin_edges = np.linspace(0.0, 1.0, n_phase_bins + 1, dtype=np.float64)
+    phase_bin_centers = 0.5 * (phase_bin_edges[:-1] + phase_bin_edges[1:])
+    bundle_detector = _per_cell_detector(params, "cell50")
+    bundle_bout = _per_cell_bout(params, "cell50")
+    bundle_max_ili = float(bundle_bout["max_ili_ms"])
+    bundle_single_bout_win = tuple(bundle_bout["single_bout_win_ms"])
+    bundle_max_licks = int(tp["max_licks_per_trial"])
 
     # Step 1: tongue parquet.
     tongue_df, tongue_meta = _load_tongue_centered_trace(manifest, resolver)
@@ -1144,6 +1645,10 @@ def _build_tongue_pertrial_core(
     angle_at_vpeak: list[np.ndarray] = []
     angle_max_signed: list[np.ndarray] = []
     apply_peaks_per_side: dict[str, list[np.ndarray]] = {"L": [], "R": []}
+    # Phase 7a.4 visual-bundle accumulators.
+    visual_trial_rows: list[dict[str, Any]] = []
+    visual_bout_rows: list[dict[str, Any]] = []
+    visual_phase_rows: list[dict[str, Any]] = []
 
     for ev in trial_events:
         x_slice, t_ms = _extract_trial_slice(
@@ -1217,6 +1722,30 @@ def _build_tongue_pertrial_core(
         apply_peaks = peaks_for_traces.peak_times_ms[in_apply]
         if ev.side in apply_peaks_per_side:
             apply_peaks_per_side[ev.side].append(apply_peaks)
+
+        # Phase 7a.4 visual-bundle compute (additive; emit-set untouched).
+        # Uses Cell 50's own windows from the tongue_visual.bundle block.
+        v_trial, v_bouts, v_phase = _build_visual_bundle_per_trial(
+            trial_index=int(ev.trial_index),
+            side=ev.side,
+            x_final=x_final,
+            y_final=y_final,
+            angle_per_frame=angle_per_frame,
+            reward_frame_idx=int(ev.reward_frame_idx),
+            fps=fps,
+            plot_win_ms=bundle_plot_win,
+            detect_win_ms=bundle_detect_win,
+            first_peak_align_win_ms=bundle_first_peak_win,
+            detector_params=bundle_detector,
+            max_ili_ms=bundle_max_ili,
+            single_bout_win_ms=bundle_single_bout_win,
+            max_licks_per_trial=bundle_max_licks,
+            phase_bin_edges=phase_bin_edges,
+            phase_bin_centers=phase_bin_centers,
+        )
+        visual_trial_rows.append(v_trial)
+        visual_bout_rows.extend(v_bouts)
+        visual_phase_rows.extend(v_phase)
 
     # Step 6: traces.
     traces_df = _extract_licking_dynamics_traces(
@@ -1367,10 +1896,68 @@ def _build_tongue_pertrial_core(
         },
     }
 
-    return TonguePertrialResult(
+    tp_result = TonguePertrialResult(
         angle_per_frame=angle_df,
         licking_dynamics_traces=traces_df,
         endpoints=endpoints_payload,
         angle_metadata=angle_meta,
         licking_dynamics_metadata=traces_meta,
+    )
+
+    # Phase 7a.4 visual bundle. df_trials carries per-trial array columns
+    # (object-typed in pandas because each cell holds a numpy array of
+    # n_timebins floats). df_bouts uses the legacy mixed-rows schema; an
+    # empty bout list yields an empty DataFrame with all expected columns.
+    _BOUT_COLUMNS = [
+        "side", "trial_index", "bout_idx", "bout_rank", "multi_bout_rank",
+        "n_peaks", "bout_t0_ms", "bout_t1_ms",
+        "peak_t0_ms", "peak_t1_ms", "peak_y0", "peak_angle0",
+        "peak_y1", "peak_angle1",
+        "peak_t_ms", "peak_y", "peak_x", "peak_angle_deg",
+    ]
+    _PHASE_COLUMNS = [
+        "side", "trial_index", "bout_idx", "bout_rank", "multi_bout_rank",
+        "t_ms", "phase", "phase_bin", "phase_bin_center",
+        "angle_deg", "x_geom", "y_geom",
+    ]
+    df_trials = pd.DataFrame(visual_trial_rows)
+    df_bouts = (
+        pd.DataFrame(visual_bout_rows)
+        if visual_bout_rows
+        else pd.DataFrame(columns=_BOUT_COLUMNS)
+    )
+    df_phase = (
+        pd.DataFrame(visual_phase_rows)
+        if visual_phase_rows
+        else pd.DataFrame(columns=_PHASE_COLUMNS)
+    )
+    bundle_metadata = {
+        "animal": manifest.animal,
+        "date": manifest.date.isoformat(),
+        "fps": float(fps),
+        "n_frames": int(n_frames_session),
+        "eye_in_spout_frame_x": float(eye_x),
+        "eye_in_spout_frame_y": float(eye_y),
+        "angle_sign_flip": float(tp["angle"]["sign_flip"]),
+        "smoothing_gaussian_sigma_ms":
+            float(tp["angle"]["smoothing_gaussian_sigma_ms"]),
+        "feature_extraction_version": FEATURE_EXTRACTION_VERSION,
+        "interpolation_version": INTERPOLATION_VERSION,
+        "plot_win_ms": list(bundle_plot_win),
+        "detect_win_ms": list(bundle_detect_win),
+        "first_peak_align_win_ms": list(bundle_first_peak_win),
+        "n_phase_bins": int(n_phase_bins),
+        "max_licks_per_trial": int(bundle_max_licks),
+    }
+    visual_bundle = TongueVisualBundle(
+        df_trials=df_trials,
+        df_bouts=df_bouts,
+        df_phase=df_phase,
+        angle_per_frame=angle_df,
+        metadata=bundle_metadata,
+    )
+
+    return _PertrialCoreResult(
+        tongue_pertrial=tp_result,
+        visual_bundle=visual_bundle,
     )

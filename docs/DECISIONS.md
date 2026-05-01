@@ -15,6 +15,188 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-04-30 — Phase 7a.4 Cell 50 visual gate + Cell 42 day-binned cross-session traces (closes 7a.3 V3 carve-outs)
+
+**Context.** Phase 7a.3 V3 merged 2026-04-29 with two carve-outs deferred:
+(1) the Cell 50 visual gate (legacy `angle_phase_exploratory/` figure
+comparison was scoped out — 7a.3 V3 acceptance was unit-test correctness
++ schema lock); (2) the Cell 42 `*_dayBinnedTraces_*.csv` cross-session
+aggregator (per-session traces shipped in 7a.3 V3 but day-binning over
+per-animal `bin_days` was deferred). Phase 7a.4 closed both. Two new
+plotting / aggregator paths consume 7a.3 V3's locked outputs without
+modifying its core modules.
+
+**Decisions enacted.**
+
+1. **Phase 7a.4 scope.** Bundle the two 7a.3 V3 carve-outs into a single
+   PR for review economy. No new bodypart work, no Phase 7a.3-jaw, no
+   algorithm changes to 7a.3 V3 modules. Both carve-outs consume locked
+   inputs; visual gate is rendering only, day-binner is a post-emit
+   aggregator.
+
+2. **Cell 50 visual gate ACCEPTED.** Per-frame angle parquet + per-trial
+   endpoints JSON + Task 4 unit tests on synthetic geometry stand as
+   algorithmic acceptance for 7a.3 V3 Cell 50. Visual fidelity verified
+   in 7a.4 via 24 comparison grids across 4 sessions
+   (PS50/2025-03-19 + PS46/{2025-03-07, 2025-03-10, 2025-03-13}). All
+   6/6 legacy-PNG matches per session. Priya's eyeball verdict: PASS,
+   with documented minor lick-count delta in the phase-aligned plot
+   annotations — downstream visual reflection of CSV-stale (Cell 39)
+   and Cell 42 numerical-precision residuals already accepted in 7a.3 V3
+   cohort parity, NOT a new finding.
+
+3. **Day-binned acceptance via algorithmic correctness path
+   (Option 2 from Task 5d STOP-and-report).** Cohort-vs-legacy CSV
+   parity has a structural blocker: consolidated 7a.2/7a.3 emit covers
+   15 sessions across 8 animals (the 14-session parity cohort);
+   legacy aggregates over ~120 sessions (all per-animal NPZs).
+   `max|Δ|_n_support_sessions = 6` cohort-wide is the smoking gun.
+   Cell-by-cell mean parity is arithmetically not achievable at the
+   current upstream emit scope (`bout_rate_mean_hz` happens to be
+   bit-identical because legacy + consolidated NaN-mask the same
+   support-zero bins; the other 3 metrics drift by aggregation
+   arithmetic over different session sets). Algorithmic correctness
+   instead established via:
+   (a) 18 unit tests on synthetic input
+       ([`tests/test_day_binned.py`](../tests/test_day_binned.py));
+   (b) chain composition with locked 7a.3 V3 input — the 7a.3 V3 cohort
+       parity already validated the per-session traces parquet
+       bit-identical in `legacy_approximate` mode; the day-binner is
+       a deterministic `np.nanmean` aggregation on top.
+   Cohort-wide upstream re-emit deferred as a publication-grade
+   follow-up (forward note below).
+
+4. **Bundle helper additive pattern.** `TongueVisualBundle` +
+   `build_tongue_visual_bundle` added to
+   [`src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py`](../src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py).
+   Bit-identical compute path to `build_tongue_pertrial`; verified via
+   14-session parity-harness re-run matching the V3 cohort by_status
+   exactly (Cells 33+36 max\|Δ\| ≤ 5.7e-14 / 1.8e-12; Cells 39+42 same
+   residual bands; same `{pass:1, fail:12, skip_missing:1}`). Net-new
+   compute (~400 lines for `_bout_time_bounds_ms`,
+   `_assign_phase_peak_to_peak_shifted`, `_build_visual_bundle_per_trial`)
+   reuses 7a.3 primitives — same algorithm, just keeps array outputs
+   (`y_snip`, `angle_snip`, per-bout/per-peak rows, per-frame phase rows)
+   that 7a.3 V3's emit path discards. **Constraint relaxation
+   2026-04-29**: additive public helpers on 7a.3 V3 modules are allowed
+   if they expose existing in-memory products without algorithm changes.
+   Codified in the 7a.4 kickoff Constraints section.
+
+5. **Phase convention.** `phase=0` at tongue emergence (start of
+   protrusion), `phase=0.5` at maximal tongue protrusion (the detected
+   peak), `phase=1` at tongue return (end of protrusion). Implemented
+   in `_assign_phase_peak_to_peak_shifted` — peak frames map to
+   `phase ≈ 0.5`. Verified by regression test
+   `test_phase_assignment_places_peaks_at_0_5_not_at_boundary` in
+   [`tests/test_tongue_pertrial.py`](../tests/test_tongue_pertrial.py)
+   `TestVisualBundle`.
+
+6. **C5.5 port-bug fixes (phase shift + QC angle-subplot dot offset).**
+   Both bugs surfaced by Priya's eyeball verdict on the visual gate.
+   Both traced to a single docstring inaccuracy in the 7a.3 V3
+   `_LickPeaks` dataclass: `peak_indices` is yseg-local (relative to the
+   detect-window subset `yseg = y_t[i_lo:i_hi+1]`) but the docstring
+   claimed it indexes into the trial slice. The 7a.3 V3 emit-set never
+   tripped this because Cells 33/36/39/42 only consume `peak_times_ms`
+   and `peak_y` (which are pre-offset via `tseg = t_ms[i_lo:i_hi+1]` /
+   `yseg` indexing). The 7a.4 bundle helper was the first consumer to
+   use `peak_indices` directly, so the off-by-`i_lo` propagated into
+   the phase array and the per-peak `peak_angle_deg` lookup.
+   Fixed at the call site in C5.5 by adding
+   `detect_lo_offset = i_lo` to `peak_indices` before consumption;
+   docstring corrected in C5.6 to prevent future consumers from
+   falling into the same trap. Demonstrates the value of the visual-
+   gate tier in the test pyramid — unit tests + parity harness +
+   visual gate caught different bug classes (the visual gate caught
+   both port bugs that the unit tests + parity harness missed).
+
+7. **SEM convention split.**
+   [`_day_binned.py`](../src/stroke_orofacial/dlc_kinematics/_day_binned.py)
+   aggregator emits `ddof=1` (unbiased estimator, divided by
+   `sqrt(n_support)` per cell) — correct convention for downstream
+   analytical consumers. `_plot_phase_aligned_angle` in
+   [`tongue_visual.py`](../src/stroke_orofacial/dlc_kinematics/tongue_visual.py)
+   uses `ddof=0` (legacy Cell 50 convention; ensures visual fidelity
+   vs the saved legacy figures). Different conventions for different
+   contexts; both correct. The day-binned parity harness applies the
+   inverse transform `SEM_legacy(ddof=0) = SEM_cons(ddof=1) *
+   sqrt((n_support - 1) / n_total)` for legacy comparison.
+
+8. **Vendored atomic writer in `_day_binned.py`.** 4-line helper
+   duplicating the pattern from
+   [`_writers.py`](../src/stroke_orofacial/dlc_kinematics/_writers.py).
+   Deliberate trade-off — keeps 7a.3 V3's `_writers.py` untouched per
+   the algorithm-lock constraint. Post-7a.4 cleanup opportunity:
+   factor into a shared `_io_helpers.py` if a third consumer surfaces.
+
+9. **Per-metric `*_n_support_sessions`.** Each of the 4 day-binned
+   output metrics (`lick_rate_per_t`, `bout_rate_mean_hz`,
+   `p_lick_per_t`, `p_within_bout_per_t`) tracks its own
+   NaN-pattern-aware support count — legacy precedent
+   (`ili_within_bout_rate_per_t` is NaN-masked at session level where
+   the `MIN_TRIALS_PER_BIN<3` filter triggers, while the other 3
+   metrics have full support across most timebins).
+
+10. **Metric rename in day-binned schema.**
+    `ili_within_bout_rate_per_t` (7a.3 V3 per-session traces parquet
+    column) → `bout_rate_mean_hz` (day-binned output base name). More
+    descriptive in the day-binned context where the per-session
+    `_per_t` suffix becomes ambiguous after cross-session aggregation.
+    Other 3 metrics keep their 7a.3 V3 names for traceability.
+
+11. **`bin_days` per-animal placement.**
+    [`configs/animals.yaml`](../configs/animals.yaml) (NOT
+    `configs/defaults.yaml`) since it's per-animal data. PS46-50 → 2;
+    PS51/PS54/PS55 → 7. PS47/PS48/PS49 inherit the cohort default;
+    PS52/PS53 don't exist in the cohort (vendored `MOUSE_SPECS`
+    confirmed 8 animals only). `AnimalInfo.bin_days: int = 1` default
+    is fail-conservative for any future animal joining the cohort
+    without an explicit declaration.
+
+12. **Cross-session overlay families deferred.** Legacy emits
+    additional plot families beyond the 5 ported (`_plot_overlay_grid_all_sessions`
+    + `_plot_overlay_grid_binned` in vendor lines 4826-5096). Per-mouse,
+    not per-session. Out of 7a.4 scope per kickoff §"Phase 7a.4 scope".
+    Available for a follow-up visual-extension phase if downstream
+    demands.
+
+**Enforced at.**
+
+- [`docs/prompts/phase-7a.4-kickoff.md`](prompts/phase-7a.4-kickoff.md)
+  — phase plan + constraint codification.
+- [`configs/animals.yaml`](../configs/animals.yaml) `bin_days:` field +
+  loader validation in
+  [`src/stroke_orofacial/animals.py`](../src/stroke_orofacial/animals.py).
+- [`configs/defaults.yaml`](../configs/defaults.yaml)
+  `dlc_kinematics.tongue_pertrial.day_binned:` + sibling
+  `dlc_kinematics.tongue_visual:` blocks.
+- [`src/stroke_orofacial/dlc_kinematics/_day_binned.py`](../src/stroke_orofacial/dlc_kinematics/_day_binned.py)
+  + [`tongue_visual.py`](../src/stroke_orofacial/dlc_kinematics/tongue_visual.py)
+  + additive helpers in
+  [`tongue_pertrial.py`](../src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py).
+- 36+ new tests across
+  [`tests/test_day_binned.py`](../tests/test_day_binned.py) (18),
+  [`tests/test_tongue_visual.py`](../tests/test_tongue_visual.py) (13),
+  + 5 new TestVisualBundle tests in
+  [`tests/test_tongue_pertrial.py`](../tests/test_tongue_pertrial.py).
+
+**Forward follow-ups (post-7a.4 PR merge).**
+
+- **Cohort-wide 7a.2/7a.3 upstream re-emit** + day-binned cohort
+  parity re-run vs legacy CSV (~120 sessions across 8 animals;
+  expected residual band 0.018-0.05 Hz matching 7a.3 V3 Cell 42).
+- **Cross-session overlay plot families** — the 2 deferred legacy
+  plot families that aggregate per-mouse not per-session.
+- **Phase 7a.3-jaw visual gate** — extends the same machinery once
+  jaw per-trial features land.
+- **`licks_npz(animal, date)` PathResolver factor-out** from 7a.3
+  (carryover follow-up).
+- **NaN-walking captured-fixture regression test** (the 7a.3 V3 test
+  gap dropped in C5.1; 7a.4 didn't naturally surface a fixture
+  candidate).
+
+---
+
 ## 2026-04-29 — Phase 7a.3 V3 tongue per-trial features (post-vendor design lock + cohort parity)
 
 **Context.** Phase 7a.3 V1 (kickoff `41304c6`, 2026-04-24) was scoped wrong;
