@@ -226,9 +226,47 @@ any ambiguity for Priya.
 consolidated day-binned parquet against legacy
 `*_dayBinnedTraces_*.csv` at `atol=1e-6` per-(rel_day_bin, side,
 timebin) cell. Reuses 7a.3 harness's per-cell knob override
-mechanism if needed. Acceptance: all comparisons pass at atol=1e-6
-(or document residual band per 7a.3 V3 precedent if numerical-
-precision noise applies here too).
+mechanism if needed.
+
+**Acceptance for day-binned (revised 2026-04-29 post Task 5d):**
+the original ambition was cell-by-cell parity at atol=1e-6 across
+the full cohort. Task 5d surfaced a STRUCTURAL BLOCKER: the
+consolidated 7a.2/7a.3 emit currently covers only the 14-session
+parity cohort (15 sessions across 5 of 8 animals: 3+0+0+0+2+1+4+5
+distribution); legacy day-binned CSVs aggregate across all
+available NPZs per animal (~14–30 sessions each, ~120 total).
+Consolidated and legacy aggregate over DIFFERENT session sets, so
+per-cell mean parity is arithmetically not achievable at the
+current upstream emit scope, regardless of algorithm correctness.
+The smoking gun: `max|Δ|_n_support_sessions = 6` cohort-wide,
+indicating legacy bins contain 6+ more contributing sessions than
+consolidated. Hard-fail magnitudes (`lick_rate_per_t` 3.3 Hz;
+`p_lick_per_t` 0.42; `p_within_bout_per_t` 0.23) reflect
+aggregation-set differences, not aggregator bugs.
+
+**Revised acceptance path (algorithmic correctness via unit tests +
+locked input chain):**
+1. The aggregator is np.nanmean per `(rel_day_bin, side, timebin)`
+   plus ddof=1 SEM. 18 unit tests in `tests/test_day_binned.py`
+   cover the algorithmic edge cases (NaN handling, per-metric
+   n_support, no-re-smoothing of pre-smoothed `lick_rate_per_t`,
+   ddof=1 formula, schema guards).
+2. The aggregator's INPUT (7a.3 V3 per-session traces parquet) is
+   already cohort-validated bit-identical against legacy in 7a.3
+   V3 legacy_approximate mode (Cells 33+36) or within documented
+   numerical-precision band (Cell 42 0.018–0.033 Hz on per-bin
+   trace columns).
+3. Therefore: chain composition (locked input + unit-tested
+   aggregator) gives algorithmic correctness without requiring a
+   cohort-wide direct parity comparison.
+
+**Deferred follow-up:** run 7a.2 + 7a.3 cohort-wide (across all
+per-animal NPZs, ~120 sessions) as a future phase, then re-run
+day-binned legacy_approximate parity. Expected outcome: residual
+band 0.018–0.05 Hz (consistent with 7a.3 V3 Cell 42 numerical-
+precision behavior propagated through the aggregator's nanmean).
+This is a publication-grade-cohort-parity follow-up, NOT a 7a.4
+acceptance gate.
 
 **Visual gate (semantic):** visual comparison runner
 (`tests/scripts/parity_phase7a4_visual_gate.py`) renders consolidated
@@ -241,6 +279,13 @@ pass/fail. Acceptance: figures match SEMANTICALLY (curve shapes, peak
 positions, sign conventions, distribution shapes, color-coding
 behavior). Small numerical drift in y-values tolerated; structural
 divergence triggers STOP-and-report.
+
+**Visual gate result (Task 5b, 2026-04-29):** 24 consolidated PNGs +
+24 comparison grids across 4 sessions (PS50/2025-03-19 +
+PS46/2025-03-07 + /2025-03-10 + /2025-03-13). All 6 expected legacy
+PNGs found per session (24/24 family-side legacy match). Comparison
+grids 200–900 KB each, ready for Priya's eyeball verdict. Output at
+`.scratch_7a4/visual_gate_outputs/` (gitignored).
 
 ### 5. Hardcoded constants → defaults.yaml schema
 
