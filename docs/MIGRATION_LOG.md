@@ -4093,3 +4093,194 @@ arithmetic at sub-frame peak positions.
 - **Per-frame eye-midpoint emit** (resolver currently computes
   session-wide median internally; downstream phases that want
   per-frame values would need to re-derive).
+
+
+## Phase 7a.4 — Cell 50 visual gate + Cell 42 day-binned cross-session traces
+
+**Date:** 2026-04-30
+**PR:** #<FILL after gh pr create>
+**Tag on merge:** `v7a.4-tongue-visual-and-day-binned`
+**Branch:** `phase/7a.4-tongue-visual-and-day-binned`
+
+**Scope.** Two carve-outs deferred from Phase 7a.3 V3:
+(1) Cell 50 visual gate — render the 5 plot families per session and
+side-by-side compare against legacy `angle_phase_exploratory/` PNGs from
+MICROSCOPE; (2) Cell 42 day-binned cross-session aggregator — emit
+per-animal per-`rel_day_bin` parquet aggregating the 7a.3 V3 per-session
+licking-dynamics traces, gated by per-animal `bin_days`. Both consume
+7a.3 V3's locked outputs without modifying its core modules.
+
+**What landed.**
+
+1. [`configs/animals.yaml`](../configs/animals.yaml) — per-animal
+   `bin_days` field. PS46-50 → 2; PS51/PS54/PS55 → 7.
+   `AnimalInfo.bin_days: int = 1` default with positive-int validation
+   (rejects bools — Python's bool-is-int subclass).
+2. [`configs/defaults.yaml`](../configs/defaults.yaml)
+   `dlc_kinematics.tongue_pertrial.day_binned:` 3-key sub-block +
+   sibling `dlc_kinematics.tongue_visual:` block (bundle windows,
+   render-mode selectors, render-time aggregation filters, figure
+   layout, 5 plot-family enable/tweak knobs, side colours,
+   comparison-grid layout).
+3. [`src/stroke_orofacial/dlc_kinematics/_day_binned.py`](../src/stroke_orofacial/dlc_kinematics/_day_binned.py)
+   — Cell 42 day-binned aggregator (~544 lines). Per-animal × per-
+   `rel_day_bin` wide-form parquet. Aggregation function `np.nanmean`
+   across sessions; SEM = `nanstd(ddof=1) / sqrt(n_support)` per cell;
+   per-metric `*_n_support_sessions` tracking. Legacy `f"{lo}..{hi}"`
+   rel-day-bin label format preserved (literal `..` in filenames —
+   NTFS-legal). Atomic writer (pyarrow snappy + temp + os.replace +
+   bytes-encoded metadata) vendored locally to keep
+   [`_writers.py`](../src/stroke_orofacial/dlc_kinematics/_writers.py)
+   untouched. 11 file-level metadata keys (animal, rel_day_bin_label,
+   bin_days, stroke_date, n_sessions, sessions_iso_dates [JSON],
+   aggregation_function, feature_extraction_version,
+   interpolation_version, day_binned_version, emit_sem,
+   emit_n_support_sessions). `DAY_BINNED_VERSION = "v7a.4"`. Convenience
+   wrapper `aggregate_licking_dynamics_day_binned_by_animal` derives the
+   session list from existing per-session parquets.
+4. [`src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py`](../src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py)
+   — additive bundle helper (Task 3.5). `_PertrialCoreResult` private
+   frozen dataclass wraps both `TonguePertrialResult` (existing emit-set
+   pieces) and a new public `TongueVisualBundle` frozen dataclass
+   (`df_trials`, `df_bouts`, `df_phase`, `angle_per_frame`, `metadata`).
+   New public `build_tongue_visual_bundle` + `_by_animal_date` wrapper.
+   Same compute path as `build_tongue_pertrial`; bundle DataFrames are
+   net-new compute (~400 lines: `_bout_time_bounds_ms`,
+   `_assign_phase_peak_to_peak_shifted`, `_build_visual_bundle_per_trial`)
+   that reuses 7a.3 primitives but keeps the array snippets / per-bout
+   rows / per-frame phase rows that 7a.3 V3's emit path discards.
+   `_build_tongue_pertrial_core` refactored to return
+   `_PertrialCoreResult`; `build_tongue_pertrial` consumes
+   `core.tongue_pertrial`; `build_tongue_visual_bundle` consumes
+   `core.visual_bundle`. File 1376 → 1928 lines (+552).
+5. [`src/stroke_orofacial/dlc_kinematics/tongue_visual.py`](../src/stroke_orofacial/dlc_kinematics/tongue_visual.py)
+   — Cell 50 rendering module (~947 lines). `matplotlib.use("Agg")`
+   forced at module load (headless cohort runs). `render_tongue_qc_figures`
+   driver: 6 PNGs per session (Family 1 per-side × 2 + Families 2-5 × 1).
+   `render_comparison_grid` driver: 2-col side-by-side (legacy |
+   consolidated) per family; placeholder pane on legacy-not-found.
+   `render_for_manifest` Task 5 hook. 5 plot-family helpers ported from
+   legacy Cell 50 vendor lines 4474-4753: `_plot_per_trial_qc_traces`
+   (per-side stacked Y + angle, bout shading, peak markers),
+   `_plot_first_peak_aligned`, `_plot_reward_aligned`,
+   `_plot_phase_aligned_angle`, `_plot_xy_by_phase`. Atomic-ish save
+   (temp `.tmp.png` + os.replace; `format="png"` passed explicitly).
+6. [`src/stroke_orofacial/paths.py`](../src/stroke_orofacial/paths.py)
+   — three new resolvers:
+   `tongue_pertrial_licking_dynamics_day_binned_parquet(animal, label)`
+   (eager parent mkdir; literal `..` in filename),
+   `tongue_visual_qc_dir(animal, date)`,
+   `tongue_visual_comparison_dir(animal, date)`.
+7. [`src/stroke_orofacial/dlc_kinematics/__init__.py`](../src/stroke_orofacial/dlc_kinematics/__init__.py)
+   — exports `DAY_BINNED_VERSION`, `DayBinnedResult`,
+   `TongueVisualBundle`, `aggregate_licking_dynamics_day_binned`,
+   `aggregate_licking_dynamics_day_binned_by_animal`,
+   `build_tongue_visual_bundle`, `build_tongue_visual_bundle_by_animal_date`,
+   `render_tongue_qc_figures`, `render_comparison_grid`.
+8. 36+ new tests:
+   [`tests/test_day_binned.py`](../tests/test_day_binned.py) (18 —
+   rel-day-bin label algorithm × 7, aggregator × 5, driver I/O × 2,
+   overwrite × 2, schema guards × 2);
+   [`tests/test_tongue_visual.py`](../tests/test_tongue_visual.py) (13
+   — driver × 5, family helpers × 5, comparison grid × 3); 5 new
+   TestVisualBundle tests in
+   [`tests/test_tongue_pertrial.py`](../tests/test_tongue_pertrial.py)
+   (shape, bit-identical metadata + angle_per_frame to emit set,
+   does-not-write-files, default params, frozen dataclass) + 3 C5.5/C5.6
+   regression tests; 4 new TestPhase7a4Paths tests in
+   [`tests/test_paths.py`](../tests/test_paths.py); 5 new TestBinDays
+   tests in [`tests/test_animals.py`](../tests/test_animals.py).
+9. Two new harness scripts:
+   [`tests/scripts/parity_phase7a4_day_binned.py`](../tests/scripts/parity_phase7a4_day_binned.py)
+   (~546 lines, reuses 7a.3 V3 primitives via sys.path import; `--mode
+   {default, legacy_approximate}` + `--animals auto` + `--atol 1e-6`;
+   per-cell mean / SEM-with-ddof-transform / n_support_sessions
+   comparator; hard-fail thresholds 1.0 Hz / 0.1 prob);
+   [`tests/scripts/parity_phase7a4_visual_gate.py`](../tests/scripts/parity_phase7a4_visual_gate.py)
+   (~231 lines, builds bundle + renders 6 consolidated PNGs + 6
+   comparison grids per session; reports per-grid file size +
+   per-family legacy-match count).
+10. [`docs/DECISIONS.md`](DECISIONS.md) Phase 7a.4 entry above the 7a.3
+    V3 entry — codifies the 12 design decisions, visual-gate pass
+    criterion (semantic match), day-binned schema, `bin_days`
+    placement, additive-helper rationale.
+
+**Behavior differences vs legacy notebooks.**
+
+- **Visual gate accepted** with documented lick-count delta in the
+  phase-aligned plot annotations (downstream visual reflection of
+  7a.3 V3 Cell 39 CSV-stale residual + Cell 42 numerical-precision
+  band; both already accepted in 7a.3 V3 cohort parity, NOT a new
+  finding).
+- **Day-binned cohort parity vs legacy CSV deferred** — structural
+  blocker on session-set mismatch (15 consolidated sessions vs ~120
+  legacy). Algorithmic correctness instead established via the 18
+  unit tests + chain composition with locked 7a.3 V3 input. See
+  DECISIONS Decision 3.
+- **SEM ddof convention change in day-binned** (ddof=1 unbiased,
+  divided by sqrt(n_support)) vs legacy (ddof=0, divided by
+  sqrt(n_total)). Parity harness applies inverse transform
+  `SEM_legacy = SEM_cons * sqrt((n_support - 1) / n_total)`. Plot-time
+  family 4 uses ddof=0 to preserve legacy visual fidelity.
+- **Metric rename** `ili_within_bout_rate_per_t` (7a.3 V3 input
+  column) → `bout_rate_mean_hz` (day-binned output base name).
+  Other 3 metrics keep 7a.3 V3 names.
+- **Per-metric `*_n_support_sessions`** tracking (each metric tracks
+  its own NaN pattern; legacy precedent).
+
+**Test counts.**
+
+- Full pytest before 7a.4: 609 collected, 575 passed, 34 skipped, 0
+  failed (post-7a.3 V3 merge baseline).
+- Full pytest after 7a.4 (post-C5.6): **658 collected, 623 passed, 35
+  skipped, 0 failed**. Net +49 / +48 / +1.
+- New tests by file: test_day_binned.py 18; test_tongue_visual.py 13;
+  TestVisualBundle in test_tongue_pertrial.py 5 + 3 C5.5/C5.6
+  regressions; test_paths.py +4; test_animals.py +5. Total +48
+  passed + 1 new skip (`test_visual_bundle_peaks_in_df_phase_land_at_0_5`
+  conditionally skips on synthetic fixtures with no multi-lick bouts).
+
+**Commit chain (10 commits since main).**
+
+```
+8a30c20  docs(_detector): clarify peak_indices yseg-local convention (C5.6)
+857cf6f  fix(tongue_visual): phase shift + QC angle-subplot dot offset (C5.5)
+b8023d2  feat(parity): tongue pertrial day-binned + visual gate harnesses
+3d3207b  feat(dlc_kinematics): tongue_visual rendering module
+a6c09e2  feat(tongue_pertrial): build_tongue_visual_bundle additive helper
+ab4e6ae  feat(dlc_kinematics): _day_binned cross-session traces aggregator
+a30564e  feat(config+paths): bin_days + day_binned/tongue_visual schemas + 3 resolvers
+b48e313  chore: ignore .scratch_*/ working-area directories
+4d49322  docs(phase-7a.4): kickoff + state-doc refresh post-7a.3 merge
+<this>   docs(phase-7a.4): DECISIONS + MIGRATION_LOG entries
+```
+
+**Ground-rule compliance (CLAUDE.md).**
+
+- **Rule 1** (no source data modified): verified. Read-only access to
+  legacy `*_dayBinnedTraces_*.csv` from MICROSCOPE; read-only access
+  to legacy `angle_phase_exploratory/*.png` for comparison grids.
+- **Rule 2** (no legacy-repo edits): verified. All work in this repo.
+- **Rule 6** (new outputs in fresh paths): verified. New trees:
+  `dlc_kinematics/figures_qc/tongue/`,
+  `dlc_kinematics/figures_qc/tongue_comparison/`,
+  `dlc_kinematics/licking_dynamics/day_binned/`. None overlap existing
+  pipeline_outputs subtrees.
+- **Rule 8** (git discipline): verified. 10 feature-branch commits, no
+  force-push, V1 + V2 + vendor commits preserved as paper trail in
+  branch history.
+
+**Forward follow-ups (post-7a.4 PR merge).**
+
+- **Cohort-wide 7a.2/7a.3 upstream re-emit** + day-binned cohort
+  parity re-run vs legacy CSV (~120 sessions across 8 animals;
+  expected residual band 0.018-0.05 Hz matching 7a.3 V3 Cell 42).
+- **Cross-session overlay plot families** (`_plot_overlay_grid_all_sessions`
+  + `_plot_overlay_grid_binned` from vendor lines 4826-5096) — per-mouse
+  not per-session; out of 7a.4 scope.
+- **Phase 7a.3-jaw visual gate** — extends the same machinery once
+  jaw per-trial features land.
+- **`licks_npz(animal, date)` PathResolver factor-out** from 7a.3
+  (carryover follow-up).
+- **NaN-walking captured-fixture regression test** (7a.3 V3 test gap
+  dropped in C5.1; 7a.4 didn't naturally surface a fixture candidate).
