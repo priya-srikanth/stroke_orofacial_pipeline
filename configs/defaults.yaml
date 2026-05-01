@@ -715,44 +715,75 @@ dlc_kinematics:
         peak_pad_ms: 52.0
         do_smooth_y_for_detection: false
     plotter:
+      # Phase 7a.5 C6.2 (Priya 2026-05-01) port-fidelity round: every
+      # numeric default below is the legacy Cell 55 value, sourced from
+      # the vendored snippet at docs/legacy_snippets/tongue_jaw_mismatch.py.
       individual_trials:
         enabled: true
         n_cols: 2                          # legacy individualTrials2col
-        figure_width_inches: 10.0
-        # Dynamic height (Phase 7a.5 C6.1, Priya 2026-05-01): legacy at
-        # static 12 in × 100 dpi pixelated badly with 60+ trials per
-        # column. Replace with base + per-trial scaling at higher DPI:
-        #   total_height = base + per_trial * max(n_candidate, n_noncandidate)
-        figure_height_inches_base: 4.0     # axes/legend overhead
-        figure_height_inches_per_trial: 0.4  # added per row in the longer column
-        dpi: 300                           # was 100; 300 reads cleanly on zoom
-        sort_by_side: true                 # L trials above R trials within each column
-        shared_y_axis_per_plot_type_row: true  # NB: individual_trials columns are candidate/non-candidate, not L/R — knob has no effect today; reserved for layout variants that introduce L/R columns
+        figure_width_inches: 18.0          # legacy INDIVIDUAL_FIGSIZE[0]
+        figure_height_inches: 12.0         # legacy INDIVIDUAL_FIGSIZE[1] — min height
+        row_height_inches: 1.8             # legacy ROW_HEIGHT — height = max(figure_height_inches, row_height_inches * n_rows)
+        dpi: 200                           # legacy FIG_DPI
+        sort_by_side: true                 # Priya C6.1: L trials above R trials within each column
+        shared_y_axis_per_plot_type_row: true   # NB: individual_trials columns are candidate/non-candidate, not L/R — knob has no effect today; reserved for layout variants that introduce L/R columns
       session_overlay_grid:
         enabled: true
         n_rows: 4
         n_cols: 2                          # legacy sessionOverlayGrid4x2
-        figure_width_inches: 12.0
-        figure_height_inches: 14.0
-        # Phase 7a.5 C6.1: L + R within the same plot-type-row share the
-        # Y axis; rows independent. Top 2 rows (overlay): computed from
-        # data. Bottom 2 rows (mean±SEM): explicit ranges below for
-        # legacy parity (jaw and tongue use offset ranges so the tongue
-        # line visually sits below the jaw line).
+        figure_width_inches: 14.0          # legacy SESSION_GRID_FIGSIZE[0]
+        figure_height_inches: 18.0         # legacy SESSION_GRID_FIGSIZE[1]
+        hspace: 0.38                       # legacy fig.subplots_adjust(hspace=...)
+        wspace: 0.22                       # legacy fig.subplots_adjust(wspace=...)
+        # Phase 7a.5 C6.2 revised Fix 3: drop hardcoded jaw/tongue ranges.
+        # Y-offset between jaw and tongue traces emerges naturally from
+        # per-bodypart twin-axis auto-scaling. Per-row independence: row 3
+        # (mean±SEM candidate) and row 4 (mean±SEM noncandidate) auto-
+        # scale separately. Per-row shared-Y: L and R within the same
+        # row use the union-padded range over both panels' data.
         shared_y_axis_per_plot_type_row: true
         mean_sem_axis:
-          jaw_y_range: [-75, 125]
-          tongue_y_range: [-25, 225]
+          # Range computation matches legacy `_limits_from_rows` mode
+          # "percentile_cap": clip data extremes by percentile + symmetric
+          # pad. Both bodyparts use the same (max_pct, min_pct) pair on
+          # twin axes, but each bodypart's auto-scaled range is computed
+          # from its OWN data — so the natural offset is preserved.
+          pad_fraction: 0.05               # legacy YLIM_PAD_FRAC
+          percentile_cap_max: 99.9         # legacy JAW_YMAX_PERCENTILE
+          percentile_cap_min: null         # legacy JAW_YMIN_PERCENTILE (None ⇒ raw min)
+          # Faint individual-trial overlays under the mean±SEM band
+          # (legacy SHOW_FAINT_TRIALS_IN_MEAN_SEM_OVERLAY=True). Z-order:
+          # trial overlays plotted first, then mean line, then SEM fill.
+          show_trial_overlays: true
+          trial_overlay_jaw_alpha: 0.08    # legacy FAINT_TRIAL_JAW_ALPHA
+          trial_overlay_tongue_alpha: 0.04 # legacy FAINT_TRIAL_TONGUE_ALPHA
+          trial_overlay_jaw_linewidth: 0.8 # legacy FAINT_TRIAL_JAW_LW
+          trial_overlay_tongue_linewidth: 0.7  # legacy FAINT_TRIAL_TONGUE_LW
       cross_session_overlay:
         enabled: true                      # per-mouse, all sessions
+        figure_width_inches: 13.0          # legacy CROSS_SESSION_GRID_FIGSIZE[0]
+        figure_height_inches: 8.5          # legacy CROSS_SESSION_GRID_FIGSIZE[1]
+        hspace: 0.34                       # legacy
+        wspace: 0.24                       # legacy
+        # Legacy reserves the right 12% of the figure for the colorbar
+        # via tight_layout(rect=[0, 0, 0.88, 0.98]) THEN adds the colorbar
+        # at [0.90, 0.22, 0.015, 0.56]. Reproduce both calls.
+        tight_layout_rect: [0.0, 0.0, 0.88, 0.98]
         shared_y_axis_per_plot_type_row: true  # L candidate ↔ R candidate share Y; same for noncandidate; rows independent
         include_colorbar: true             # right-side rel_day → color legend
-        colormap: "plasma"                 # legacy POSTSTROKE_CMAP_NAME (verified vs vendored Cell 55)
+        colorbar_rect: [0.90, 0.22, 0.015, 0.56]  # legacy _add_cross_session_colorbar
+        colormap: "plasma"                 # legacy POSTSTROKE_CMAP_NAME
       cross_session_binned:
         enabled: true                      # per-mouse, day-binned (uses bin_days from animals.yaml)
+        figure_width_inches: 13.0
+        figure_height_inches: 8.5
+        hspace: 0.34
+        wspace: 0.24
+        tight_layout_rect: [0.0, 0.0, 0.88, 0.98]
         shared_y_axis_per_plot_type_row: true
         include_colorbar: true
-        colormap: "plasma"                 # match cross_session_overlay; legacy uses one colormap across both
+        colorbar_rect: [0.90, 0.22, 0.015, 0.56]
+        colormap: "plasma"                 # match cross_session_overlay
     feature_extraction_version: "v7a.5"
     interpolation_version: "v5p3"
 

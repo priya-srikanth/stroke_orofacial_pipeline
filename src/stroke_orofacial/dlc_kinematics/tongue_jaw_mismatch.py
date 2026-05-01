@@ -747,6 +747,43 @@ _SIDE_COLORS: dict[str, str] = {"L": "dodgerblue", "R": "mediumvioletred"}
 _REWARD_COLOR: str = "red"
 _TONGUE_LS: str = ":"
 
+# Phase 7a.5 C6.2 legacy axis-label parity (Priya 2026-05-01). Match
+# Cell 55 ``_jaw_ylabel(mode="baseline_subtracted")`` → "Jaw Y - baseline (px)"
+# verbatim. The C6.1 string "Jaw - base (px)" was a paraphrase; the new
+# value matches legacy byte-for-byte.
+_LEGACY_JAW_YLABEL: str = "Jaw Y - baseline (px)"
+_LEGACY_TONGUE_YLABEL: str = "Tongue Y (px)"
+_LEGACY_XLABEL: str = "Time relative to reward (ms)"
+
+
+def _format_candidate_count_text(
+    side: str, df_total: pd.DataFrame, df_candidates: pd.DataFrame,
+) -> str:
+    """Per-panel candidate sub-title text. Mirrors legacy Cell 55
+    ``_format_candidate_count_text`` byte-for-byte (vendored at
+    ``docs/legacy_snippets/tongue_jaw_mismatch.py:1074-1078``)."""
+    n_total = int(np.sum(df_total["side"].astype(str) == side))
+    n_cand = int(np.sum(df_candidates["side"].astype(str) == side))
+    if n_total == 0:
+        return ""
+    return f"{side} candidate trials: {n_cand}/{n_total}"
+
+
+def _format_noncandidate_count_text(
+    side: str, df_total: pd.DataFrame, df_candidates: pd.DataFrame,
+) -> str:
+    """Per-panel non-candidate sub-title text. Legacy Cell 55
+    ``_format_noncandidate_count_text``."""
+    n_total = int(np.sum(df_total["side"].astype(str) == side))
+    n_cand = int(np.sum(df_candidates["side"].astype(str) == side))
+    n_non = n_total - n_cand
+    if n_total == 0:
+        return ""
+    return (
+        f"{side} non-candidate trials: {n_non}/{n_total} "
+        f"(candidates: {n_cand}/{n_total})"
+    )
+
 
 def _build_plot_snippets(
     df: pd.DataFrame, jaw_y: np.ndarray, tongue_y: np.ndarray, fps: float,
@@ -777,13 +814,23 @@ def _build_plot_snippets(
     return rows
 
 
-# ---------- Shared-Y / range helpers (Phase 7a.5 C6.1) -----------------
+# ---------- Range helpers (Phase 7a.5 C6.2 — legacy parity) ------------
 
 
-def _finite_range(values: list[np.ndarray]) -> tuple[float, float] | None:
-    """Min/max over the concatenation of finite entries from ``values``.
+def _percentile_cap_range(
+    values: list[np.ndarray], *,
+    pmax: float = 99.9, pmin: float | None = None, pad_frac: float = 0.05,
+) -> tuple[float, float] | None:
+    """Compute a padded data range with optional percentile capping.
 
-    Returns ``None`` if no finite entries exist.
+    Mirrors legacy Cell 55's ``_limits_from_values`` mode="percentile_cap":
+    cap the upper extreme at the ``pmax`` percentile (default 99.9), use
+    the raw min if ``pmin`` is None (legacy default), then expand
+    symmetrically by ``pad_frac`` of the range. Each input array
+    contributes only its finite entries; arrays where everything is NaN
+    are dropped.
+
+    Returns ``None`` if no finite values exist across all inputs.
     """
     finite_chunks = [
         v[np.isfinite(v)] for v in values if np.any(np.isfinite(v))
@@ -791,55 +838,61 @@ def _finite_range(values: list[np.ndarray]) -> tuple[float, float] | None:
     if not finite_chunks:
         return None
     cat = np.concatenate(finite_chunks)
-    return float(np.min(cat)), float(np.max(cat))
-
-
-def _pad_range(rng: tuple[float, float] | None, frac: float = 0.05) -> tuple[float, float] | None:
-    """Symmetric padding around a range. Returns ``None`` for ``None`` input."""
-    if rng is None:
+    if cat.size == 0:
         return None
-    lo, hi = rng
+    if pmin is None:
+        lo = float(np.nanmin(cat))
+    else:
+        lo = float(np.nanpercentile(cat, float(pmin)))
+    hi = float(np.nanpercentile(cat, float(pmax)))
     if lo == hi:
         return lo - 1.0, hi + 1.0
-    pad = (hi - lo) * float(frac)
+    pad = (hi - lo) * float(pad_frac)
     return lo - pad, hi + pad
 
 
-def _compute_overlay_shared_y(
-    rows_for_row: list[dict[str, Any]], *, mean_sem: bool,
-) -> tuple[tuple[float, float] | None, tuple[float, float] | None]:
-    """Compute shared (jaw_ylim, tongue_ylim) for one plot-type-row across L+R.
+def _collect_overlay_arrays(
+    rows_for_row: list[dict[str, Any]],
+) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    """Gather jaw + tongue per-trial arrays for the overlay-row Y-range compute."""
+    jaw_collect: list[np.ndarray] = []
+    tong_collect: list[np.ndarray] = []
+    for s in rows_for_row:
+        jaw_collect.append(s["jaw_y"])
+        tong_collect.append(s["tongue_y"])
+    return jaw_collect, tong_collect
 
-    For overlay rows: range over individual trial jaw_y / tongue_y values.
-    For mean±SEM rows: range over (mu ± sem) extremes per side group.
+
+def _collect_mean_sem_arrays(
+    rows_for_row: list[dict[str, Any]],
+) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    """Gather (mu ± sem) extremes per side group for the mean±SEM Y-range compute.
+
+    Per-bodypart, twin-axis-independent: jaw range comes from jaw_mu±sem
+    only; tongue range comes from tongue_mu±sem only. The natural visual
+    offset between jaw and tongue traces emerges from the data
+    distributions (per-bodypart auto-scale), not from any explicit
+    hardcoded values.
     """
     jaw_collect: list[np.ndarray] = []
     tong_collect: list[np.ndarray] = []
-    if mean_sem:
-        for side in ("L", "R"):
-            sub = [r for r in rows_for_row if r["side"] == side]
-            if not sub:
-                continue
-            jawM = np.vstack([s["jaw_y"] for s in sub])
-            tongM = np.vstack([s["tongue_y"] for s in sub])
-            mu_j, sem_j = _mean_sem(jawM)
-            mu_t, sem_t = _mean_sem(tongM)
-            jaw_collect.extend([mu_j - sem_j, mu_j + sem_j, mu_j])
-            tong_collect.extend([mu_t - sem_t, mu_t + sem_t, mu_t])
-    else:
-        for s in rows_for_row:
-            jaw_collect.append(s["jaw_y"])
-            tong_collect.append(s["tongue_y"])
-    return (
-        _pad_range(_finite_range(jaw_collect)),
-        _pad_range(_finite_range(tong_collect)),
-    )
+    for side in ("L", "R"):
+        sub = [r for r in rows_for_row if r["side"] == side]
+        if not sub:
+            continue
+        jawM = np.vstack([s["jaw_y"] for s in sub])
+        tongM = np.vstack([s["tongue_y"] for s in sub])
+        mu_j, sem_j = _mean_sem(jawM)
+        mu_t, sem_t = _mean_sem(tongM)
+        jaw_collect.extend([mu_j - sem_j, mu_j + sem_j, mu_j])
+        tong_collect.extend([mu_t - sem_t, mu_t + sem_t, mu_t])
+    return jaw_collect, tong_collect
 
 
-def _compute_cross_session_shared_y(
+def _collect_cross_session_arrays(
     panel_items: list[dict[str, Any]],
-) -> tuple[tuple[float, float] | None, tuple[float, float] | None]:
-    """Shared Y for cross-session panels: range over (mu ± sem) for each item."""
+) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    """Gather (mu ± sem) extremes from cross-session panel items."""
     jaw_collect: list[np.ndarray] = []
     tong_collect: list[np.ndarray] = []
     for it in panel_items:
@@ -853,10 +906,7 @@ def _compute_cross_session_shared_y(
             it["tong_mu"] + it["tong_sem"],
             it["tong_mu"],
         ])
-    return (
-        _pad_range(_finite_range(jaw_collect)),
-        _pad_range(_finite_range(tong_collect)),
-    )
+    return jaw_collect, tong_collect
 
 
 def _plot_individual_trials_2col(
@@ -865,12 +915,22 @@ def _plot_individual_trials_2col(
 ) -> Figure:
     """Two-column individual-trial figure: candidates left, non-candidates right.
 
-    Phase 7a.5 C6.1 (Priya 2026-05-01) updates:
-    - Dynamic figure height = ``base + per_trial * max(n_cand, n_noncand)``
-      so 60+ trials don't pile up illegibly at a fixed 12 in canvas.
-    - DPI lifted to 300 (from 100) for clean zoom on the comparison grid.
-    - Optional ``sort_by_side``: L trials at upper rows, R below (legacy
-      Cell 55 row-order convention).
+    Phase 7a.5 C6.2 (Priya 2026-05-01) port-fidelity round: replicate
+    legacy Cell 55 ``_plot_individual_two_col`` layout exactly.
+
+    Layout (from vendored Cell 55):
+    - figsize = ``(18, max(12, 1.8 * n_rows))`` — width 18 in, height
+      grows with n_rows × ``ROW_HEIGHT=1.8``.
+    - DPI = 200 (legacy ``FIG_DPI``).
+    - ``tight_layout()`` (no rect arg).
+    - Per-subplot title: ``fontsize=9, loc="left"``.
+    - Column header: ``fontsize=12, fontweight="bold"``.
+    - Y-axis labels use ``_LEGACY_JAW_YLABEL`` / ``_LEGACY_TONGUE_YLABEL``
+      (no explicit fontsize → matplotlib default).
+
+    Priya C6.1 ``sort_by_side`` is preserved as a per-column sort
+    deviation from legacy (legacy sorts by ``jaw_abs`` desc; the modern
+    convention sorts by ``(side, trial_index)``).
     """
     n_frames = int(len(jaw_y))
     rows = _build_plot_snippets(df, jaw_y, tongue_y, fps, n_frames)
@@ -886,22 +946,15 @@ def _plot_individual_trials_2col(
 
     n_rows = max(len(rows_cand), len(rows_non), 1)
 
-    # Figure-height policy: prefer the new dynamic-base + per-trial scaling
-    # if those keys are configured (Phase 7a.5 C6.1); otherwise fall back to
-    # the legacy static ``figure_height_inches`` for backwards-compat with
-    # callers that haven't updated their YAML.
     fig_w = float(cfg["figure_width_inches"])
-    if "figure_height_inches_base" in cfg or "figure_height_inches_per_trial" in cfg:
-        base = float(cfg.get("figure_height_inches_base", 4.0))
-        per_trial = float(cfg.get("figure_height_inches_per_trial", 0.4))
-        fig_h = base + per_trial * n_rows
-    else:
-        fig_h = max(float(cfg.get("figure_height_inches", 12.0)), 1.5 * n_rows)
+    fig_h_min = float(cfg.get("figure_height_inches", 12.0))
+    row_h = float(cfg.get("row_height_inches", 1.8))
+    fig_h = max(fig_h_min, row_h * n_rows)
     fig, axes = plt.subplots(
         nrows=n_rows, ncols=2, figsize=(fig_w, fig_h), sharex=True, squeeze=False,
     )
-    axes[0, 0].set_title("Candidate trials", fontsize=11, fontweight="bold")
-    axes[0, 1].set_title("Non-candidate trials", fontsize=11, fontweight="bold")
+    axes[0, 0].set_title("Candidate trials", fontsize=12, fontweight="bold")
+    axes[0, 1].set_title("Non-candidate trials", fontsize=12, fontweight="bold")
     for cix, group in enumerate([rows_cand, rows_non]):
         for rix in range(n_rows):
             ax = axes[rix, cix]
@@ -916,19 +969,18 @@ def _plot_individual_trials_2col(
             ax2 = ax.twinx()
             ax2.plot(row["t_ms"], row["tongue_y"], color=color, lw=1.0,
                      linestyle=_TONGUE_LS, alpha=0.95)
-            ax.set_ylabel("Jaw - base (px)", color=color, fontsize=8)
-            ax2.set_ylabel("Tongue Y (px)", color=color, fontsize=8)
-            ax.tick_params(axis="y", labelcolor=color, labelsize=7)
-            ax2.tick_params(axis="y", labelcolor=color, labelsize=7)
-            ax.tick_params(axis="x", labelsize=7)
+            ax.set_ylabel(_LEGACY_JAW_YLABEL, color=color)
+            ax2.set_ylabel(_LEGACY_TONGUE_YLABEL, color=color)
+            ax.tick_params(axis="y", labelcolor=color)
+            ax2.tick_params(axis="y", labelcolor=color)
             ax.grid(True, alpha=0.2)
             grp = "candidate" if row["candidate"] else "non-candidate"
             ax.set_title(
                 f"{grp} | {row['side']} trial {row['trial_index']}",
-                fontsize=8, loc="left",
+                fontsize=9, loc="left",
             )
     for cix in range(2):
-        axes[-1, cix].set_xlabel("Time relative to reward (ms)")
+        axes[-1, cix].set_xlabel(_LEGACY_XLABEL)
     fig.suptitle(
         f"{animal} {date.strftime('%Y%m%d')} | individual trials | "
         f"col1=candidate, col2=non-candidate",
@@ -956,39 +1008,62 @@ def _plot_session_overlay_grid_4x2(
     """4-row × 2-col grid: overlay-cand / overlay-noncand / mean±SEM-cand /
     mean±SEM-noncand × L / R sides.
 
-    Phase 7a.5 C6.1 (Priya 2026-05-01) updates:
-    - **Fix 1** (mean±SEM Y-axis offset): if ``mean_sem_axis.{jaw,tongue}_y_range``
-      are present in YAML, the bottom 2 rows use those explicit ranges (legacy
-      convention places jaw and tongue traces with offset Y to keep the lines
-      visually separated within a single plot panel). Defaults
-      ``[-75, 125]`` jaw and ``[-25, 225]`` tongue.
-    - **Fix 3** (shared Y per plot-type-row): with
-      ``shared_y_axis_per_plot_type_row=True``, top 2 rows compute a shared
-      (jaw, tongue) ylim from the union of L+R data; bottom 2 rows use the
-      explicit mean_sem_axis ranges. Rows are independent of each other —
-      candidate-row range may differ from non-candidate-row range.
+    Phase 7a.5 C6.2 (Priya 2026-05-01) port-fidelity round: replicate
+    legacy Cell 55 ``_plot_session_grid`` layout + Y-axis behavior.
+
+    - **Fix 3 revised** (per-bodypart twin-axis auto-scale): each panel
+      uses twin Y axes (jaw left, tongue right). Each axis auto-scales
+      to its own bodypart's data using the same percentile-cap pipeline
+      legacy uses (``_limits_from_rows`` mode "percentile_cap" with
+      ``pmax=99.9``, ``pmin=None``, ``pad_frac=0.05``). Per-row shared-Y
+      across L+R: row jaw range = padded percentile-cap union of (L jaw
+      data, R jaw data). Per-bodypart independence is preserved by
+      computing jaw and tongue ranges separately. The visual offset
+      between jaw and tongue traces emerges naturally from the data
+      distributions — NO hardcoded ranges.
+
+    - **Fix 4** (faint trial overlays): when
+      ``mean_sem_axis.show_trial_overlays`` is True, individual-trial
+      lines are drawn underneath the mean±SEM band on the bottom two
+      rows. Z-order: trial overlays first, then mean line, then SEM
+      fill (matches legacy code order — note that visually the SEM fill
+      ends up on top of the mean line because matplotlib renders later
+      calls last; this is bit-equivalent to legacy's drawing order).
+
+    - **Fix 5** (legacy sub-titles): per-panel title format matches
+      legacy ``_format_candidate_count_text`` /
+      ``_format_noncandidate_count_text`` — e.g.
+      "overlay candidate | side=L\\nL candidate trials: 38/96".
     """
     n_frames = int(len(jaw_y))
     rows = _build_plot_snippets(df, jaw_y, tongue_y, fps, n_frames)
 
     cfg = plotter_cfg["session_overlay_grid"]
     shared_y = bool(cfg.get("shared_y_axis_per_plot_type_row", False))
-    mean_sem_axis = cfg.get("mean_sem_axis") or {}
-    explicit_jaw_range = mean_sem_axis.get("jaw_y_range")
-    explicit_tongue_range = mean_sem_axis.get("tongue_y_range")
-    explicit_jaw_range = (
-        tuple(explicit_jaw_range) if explicit_jaw_range is not None else None
-    )
-    explicit_tongue_range = (
-        tuple(explicit_tongue_range) if explicit_tongue_range is not None else None
-    )
+    mean_sem_cfg = cfg.get("mean_sem_axis") or {}
+    pad_frac = float(mean_sem_cfg.get("pad_fraction", 0.05))
+    pmax = float(mean_sem_cfg.get("percentile_cap_max", 99.9))
+    pmin_raw = mean_sem_cfg.get("percentile_cap_min", None)
+    pmin = float(pmin_raw) if pmin_raw is not None else None
+    show_overlays = bool(mean_sem_cfg.get("show_trial_overlays", True))
+    overlay_jaw_alpha = float(mean_sem_cfg.get("trial_overlay_jaw_alpha", 0.08))
+    overlay_tongue_alpha = float(mean_sem_cfg.get("trial_overlay_tongue_alpha", 0.04))
+    overlay_jaw_lw = float(mean_sem_cfg.get("trial_overlay_jaw_linewidth", 0.8))
+    overlay_tongue_lw = float(mean_sem_cfg.get("trial_overlay_tongue_linewidth", 0.7))
+
+    # Legacy total/candidate dataframes for the sub-title helpers.
+    df_total = df.copy()
+    df_candidates = df[df["candidate_no_lick_with_jaw_move"]].copy()
 
     fig, axes = plt.subplots(
         nrows=4, ncols=2,
         figsize=(float(cfg["figure_width_inches"]), float(cfg["figure_height_inches"])),
         sharex=True,
     )
-    fig.subplots_adjust(hspace=0.45, wspace=0.30)
+    fig.subplots_adjust(
+        hspace=float(cfg.get("hspace", 0.38)),
+        wspace=float(cfg.get("wspace", 0.22)),
+    )
     row_specs = [
         ("overlay candidate",     True,  False),
         ("overlay non-candidate", False, False),
@@ -996,16 +1071,20 @@ def _plot_session_overlay_grid_4x2(
         ("mean±SEM non-candidate", False, True),
     ]
     for rix, (label, cand_flag, mean_sem) in enumerate(row_specs):
-        # Pre-compute shared ylim per row (across L+R) when configured.
         rows_for_row = [r for r in rows if r["candidate"] == cand_flag]
-        if mean_sem and (
-            explicit_jaw_range is not None or explicit_tongue_range is not None
-        ):
-            row_jaw_lim = explicit_jaw_range
-            row_tong_lim = explicit_tongue_range
-        elif shared_y:
-            row_jaw_lim, row_tong_lim = _compute_overlay_shared_y(
-                rows_for_row, mean_sem=mean_sem,
+
+        # Per-row shared-Y compute via percentile-cap. Each bodypart
+        # auto-scales independently; the row range is the union of L+R.
+        if shared_y:
+            if mean_sem:
+                jaw_arrs, tong_arrs = _collect_mean_sem_arrays(rows_for_row)
+            else:
+                jaw_arrs, tong_arrs = _collect_overlay_arrays(rows_for_row)
+            row_jaw_lim = _percentile_cap_range(
+                jaw_arrs, pmax=pmax, pmin=pmin, pad_frac=pad_frac,
+            )
+            row_tong_lim = _percentile_cap_range(
+                tong_arrs, pmax=pmax, pmin=pmin, pad_frac=pad_frac,
             )
         else:
             row_jaw_lim, row_tong_lim = None, None
@@ -1015,51 +1094,89 @@ def _plot_session_overlay_grid_4x2(
             ax2 = ax.twinx()
             sub = [r for r in rows_for_row if r["side"] == side]
             color = _SIDE_COLORS[side]
-            ax.set_title(f"{label} | side={side}\nn={len(sub)}", fontsize=9)
+
+            # Legacy sub-title (Fix 5): "{row_label} | side={side}\n{count_text}".
+            if cand_flag:
+                count_text = _format_candidate_count_text(
+                    side, df_total, df_candidates,
+                )
+            else:
+                count_text = _format_noncandidate_count_text(
+                    side, df_total, df_candidates,
+                )
+            panel_title = f"{label} | side={side}"
+            if count_text:
+                panel_title += f"\n{count_text}"
+            ax.set_title(panel_title, fontsize=10)
+
             if not sub:
                 ax.text(0.5, 0.5, "no trials", ha="center", va="center",
-                        transform=ax.transAxes, fontsize=10, color="0.5")
+                        transform=ax.transAxes, fontsize=11, color="0.5")
                 ax.set_xticks([])
                 ax.set_yticks([])
                 ax2.set_yticks([])
                 continue
             t_ms = sub[0]["t_ms"]
             if mean_sem:
+                # Z-order matches legacy code order: faint trials → mean line → SEM fill.
+                if show_overlays:
+                    for s in sub:
+                        ax.plot(
+                            s["t_ms"], s["jaw_y"],
+                            color=color, lw=overlay_jaw_lw,
+                            alpha=overlay_jaw_alpha, linestyle="-",
+                        )
+                        ax2.plot(
+                            s["t_ms"], s["tongue_y"],
+                            color=color, lw=overlay_tongue_lw,
+                            alpha=overlay_tongue_alpha, linestyle=_TONGUE_LS,
+                        )
                 jawM = np.vstack([s["jaw_y"] for s in sub])
                 tongM = np.vstack([s["tongue_y"] for s in sub])
                 jaw_mu, jaw_sem = _mean_sem(jawM)
                 tong_mu, tong_sem = _mean_sem(tongM)
-                ax.plot(t_ms, jaw_mu, color=color, lw=2.0)
+                ax.plot(t_ms, jaw_mu, color=color, lw=2.0, alpha=0.95)
+                ax2.plot(
+                    t_ms, tong_mu, color=color, lw=1.5,
+                    linestyle=_TONGUE_LS, alpha=0.95,
+                )
                 ok = np.isfinite(jaw_mu) & np.isfinite(jaw_sem)
                 if np.any(ok):
-                    ax.fill_between(t_ms[ok], (jaw_mu - jaw_sem)[ok],
-                                    (jaw_mu + jaw_sem)[ok], color=color, alpha=0.12)
-                ax2.plot(t_ms, tong_mu, color=color, lw=1.5, linestyle=_TONGUE_LS)
+                    ax.fill_between(
+                        t_ms[ok], (jaw_mu - jaw_sem)[ok],
+                        (jaw_mu + jaw_sem)[ok],
+                        color=color, alpha=0.10, lw=0,
+                    )
                 okt = np.isfinite(tong_mu) & np.isfinite(tong_sem)
                 if np.any(okt):
-                    ax2.fill_between(t_ms[okt], (tong_mu - tong_sem)[okt],
-                                     (tong_mu + tong_sem)[okt],
-                                     color=color, alpha=0.08)
+                    ax2.fill_between(
+                        t_ms[okt], (tong_mu - tong_sem)[okt],
+                        (tong_mu + tong_sem)[okt],
+                        color=color, alpha=0.06, lw=0,
+                    )
             else:
                 for s in sub:
                     ax.plot(s["t_ms"], s["jaw_y"], color=color, lw=1.0, alpha=0.20)
-                    ax2.plot(s["t_ms"], s["tongue_y"], color=color, lw=0.9,
-                             alpha=0.10, linestyle=_TONGUE_LS)
+                    ax2.plot(
+                        s["t_ms"], s["tongue_y"], color=color, lw=0.9,
+                        alpha=0.10, linestyle=_TONGUE_LS,
+                    )
             ax.axvline(0, color=_REWARD_COLOR, linestyle=":", lw=1.0, alpha=0.8)
             ax.axhline(0, color="0.5", linestyle="--", lw=0.8, alpha=0.6)
-            ax.set_ylabel("Jaw - base (px)", fontsize=8)
-            ax2.set_ylabel("Tongue Y (px)", fontsize=8)
+            ax.set_ylabel(_LEGACY_JAW_YLABEL, color="k")
+            ax2.set_ylabel(_LEGACY_TONGUE_YLABEL, color="k")
             ax.grid(True, alpha=0.15)
             if row_jaw_lim is not None:
                 ax.set_ylim(*row_jaw_lim)
             if row_tong_lim is not None:
                 ax2.set_ylim(*row_tong_lim)
             if rix == 3:
-                ax.set_xlabel("Time relative to reward (ms)")
+                ax.set_xlabel(_LEGACY_XLABEL)
     fig.suptitle(
         f"{animal} {date.strftime('%Y%m%d')} | within-session overlay grid",
         y=0.995,
     )
+    fig.tight_layout()
     return fig
 
 
@@ -1109,12 +1226,14 @@ def _color_for_rel_day(
 
 
 def _add_cross_session_colorbar(
-    fig: Figure, *, cmap_name: str, max_post: int, label: str = "Post-stroke day",
+    fig: Figure, *, cmap_name: str, max_post: int,
+    rect: tuple[float, float, float, float] = (0.90, 0.22, 0.015, 0.56),
+    label: str = "Post-stroke day",
 ) -> None:
     """Right-side colorbar mapping post-stroke day → color.
 
     Mirrors legacy Cell 55's :func:`_add_cross_session_colorbar` (vendored at
-    ``docs/legacy_snippets/tongue_jaw_mismatch.py:1317-1322``):
+    ``docs/legacy_snippets/tongue_jaw_mismatch.py:1317-1322``): default
     cax position ``[0.90, 0.22, 0.015, 0.56]``, label ``"Post-stroke day"``,
     normalization ``vmin=1, vmax=max_post``.
     """
@@ -1127,35 +1246,66 @@ def _add_cross_session_colorbar(
     cmap = plt.get_cmap(cmap_name)
     sm = _cm.ScalarMappable(norm=norm, cmap=cmap)
     sm.set_array([])
-    cax = fig.add_axes([0.90, 0.22, 0.015, 0.56])
+    cax = fig.add_axes(list(rect))
     cb = fig.colorbar(sm, cax=cax)
     cb.set_label(label)
 
 
 def _plot_cross_session_2x2(
     items: list[dict[str, Any]], *, animal: str, title_suffix: str,
-    shared_y: bool = False, include_colorbar: bool = False,
-    cmap_name: str = "plasma",
+    cfg: dict[str, Any] | None = None,
 ) -> Figure:
     """Shared 2×2 cross-session plotter: rows=cand/noncand, cols=L/R.
 
-    Phase 7a.5 C6.1 (Priya 2026-05-01) updates:
-    - **shared_y** (Fix 4): when True, L+R panels within the same plot-type-
-      row share a (jaw, tongue) ylim computed from the union of (mu±sem)
-      extremes across both side panels. Rows are independent.
-    - **include_colorbar** (Fix 4): when True, add a right-side colorbar
-      mapping post-stroke day → color (matches legacy Cell 55's right-side
-      vertical bar with label "Post-stroke day").
+    Phase 7a.5 C6.2 (Priya 2026-05-01) port-fidelity round: replicate
+    legacy Cell 55 ``_plot_cross_session_grid`` layout exactly.
+
+    - figsize, hspace, wspace from the per-family YAML block.
+    - ``tight_layout(rect=[0.0, 0.0, 0.88, 0.98])`` reserves the right
+      12% for the colorbar (legacy idiom — different from C6.1's
+      ``subplots_adjust(right=0.88)`` which composed badly with axis-label
+      growth).
+    - Colorbar at ``cfg["colorbar_rect"]`` (legacy default
+      ``[0.90, 0.22, 0.015, 0.56]``) with label "Post-stroke day".
+    - Axis labels use ``_LEGACY_JAW_YLABEL`` / ``_LEGACY_TONGUE_YLABEL``
+      (no explicit fontsize → matplotlib default ~10, larger than the
+      C6.1 ``fontsize=8``).
+    - Per-bodypart twin-axis percentile-cap auto-scale per row (Fix 3
+      revised — same pipeline as session_overlay_grid mean±SEM rows).
     """
-    fig, axes = plt.subplots(2, 2, figsize=(13.0, 8.5), sharex=True)
-    fig.subplots_adjust(hspace=0.35, wspace=0.25, right=0.88)
+    cfg = cfg or {}
+    fig_w = float(cfg.get("figure_width_inches", 13.0))
+    fig_h = float(cfg.get("figure_height_inches", 8.5))
+    hspace = float(cfg.get("hspace", 0.34))
+    wspace = float(cfg.get("wspace", 0.24))
+    tlrect = list(cfg.get("tight_layout_rect", [0.0, 0.0, 0.88, 0.98]))
+    cbar_rect = tuple(cfg.get("colorbar_rect", [0.90, 0.22, 0.015, 0.56]))
+    shared_y = bool(cfg.get("shared_y_axis_per_plot_type_row", False))
+    include_colorbar = bool(cfg.get("include_colorbar", False))
+    cmap_name = str(cfg.get("colormap", "plasma"))
+
+    # Percentile-cap knobs default to legacy values; per-cross-session
+    # overrides not exposed yet (would only be added on a Priya request).
+    pad_frac = float(cfg.get("pad_fraction", 0.05))
+    pmax = float(cfg.get("percentile_cap_max", 99.9))
+    pmin_raw = cfg.get("percentile_cap_min", None)
+    pmin = float(pmin_raw) if pmin_raw is not None else None
+
+    fig, axes = plt.subplots(2, 2, figsize=(fig_w, fig_h), sharex=True)
+    fig.subplots_adjust(hspace=hspace, wspace=wspace)
     post_days = sorted({it["rel_day"] for it in items if it["rel_day"] > 0})
     max_post = max(post_days) if post_days else 0
     for rix, cand_flag in enumerate([True, False]):
-        # Shared-Y across L+R within this row, computed from data.
+        # Per-row shared-Y across L+R, percentile-cap auto-scaled per bodypart.
         if shared_y:
             row_items = [it for it in items if it["candidate"] == cand_flag]
-            row_jaw_lim, row_tong_lim = _compute_cross_session_shared_y(row_items)
+            jaw_arrs, tong_arrs = _collect_cross_session_arrays(row_items)
+            row_jaw_lim = _percentile_cap_range(
+                jaw_arrs, pmax=pmax, pmin=pmin, pad_frac=pad_frac,
+            )
+            row_tong_lim = _percentile_cap_range(
+                tong_arrs, pmax=pmax, pmin=pmin, pad_frac=pad_frac,
+            )
         else:
             row_jaw_lim, row_tong_lim = None, None
         for cix, side in enumerate(["L", "R"]):
@@ -1167,19 +1317,24 @@ def _plot_cross_session_2x2(
             ]
             label = "candidate" if cand_flag else "non-candidate"
             n_trials_total = sum(it["n_trials"] for it in panel)
+            n_groups = len(panel)
             ax.set_title(
-                f"{label} | side={side}\nn_trials={n_trials_total} | n_groups={len(panel)}",
-                fontsize=9,
+                f"{label} | side={side}\nn_trials={n_trials_total} | n_groups={n_groups}",
+                fontsize=10,
             )
             if not panel:
-                ax.text(0.5, 0.5, "no sessions", ha="center", va="center",
-                        transform=ax.transAxes, fontsize=10, color="0.5")
+                ax.text(
+                    0.5, 0.5, "no sessions", ha="center", va="center",
+                    transform=ax.transAxes, fontsize=11, color="0.5",
+                )
                 ax.set_xticks([])
                 ax.set_yticks([])
                 ax2.set_yticks([])
                 continue
             for it in panel:
-                color = _color_for_rel_day(it["rel_day"], max_post, cmap_name=cmap_name)
+                color = _color_for_rel_day(
+                    it["rel_day"], max_post, cmap_name=cmap_name,
+                )
                 ax.plot(it["t_ms"], it["jaw_mu"], color=color, lw=0.9, alpha=0.85)
                 ok = np.isfinite(it["jaw_mu"]) & np.isfinite(it["jaw_sem"])
                 if np.any(ok):
@@ -1189,26 +1344,34 @@ def _plot_cross_session_2x2(
                         (it["jaw_mu"] + it["jaw_sem"])[ok],
                         color=color, alpha=0.07,
                     )
-                ax2.plot(it["t_ms"], it["tong_mu"], color=color, lw=0.9,
-                         alpha=0.85, linestyle=_TONGUE_LS)
+                ax2.plot(
+                    it["t_ms"], it["tong_mu"], color=color, lw=0.9,
+                    alpha=0.85, linestyle=_TONGUE_LS,
+                )
             ax.axvline(0, color=_REWARD_COLOR, linestyle=":", lw=1.0, alpha=0.8)
             ax.axhline(0, color="0.5", linestyle="--", lw=0.8, alpha=0.6)
-            ax.set_ylabel("Jaw - base (px)", fontsize=8)
-            ax2.set_ylabel("Tongue Y (px)", fontsize=8)
+            ax.set_ylabel(_LEGACY_JAW_YLABEL, color="k")
+            ax2.set_ylabel(_LEGACY_TONGUE_YLABEL, color="k")
             ax.grid(True, alpha=0.15)
             if row_jaw_lim is not None:
                 ax.set_ylim(*row_jaw_lim)
             if row_tong_lim is not None:
                 ax2.set_ylim(*row_tong_lim)
             if rix == 1:
-                ax.set_xlabel("Time relative to reward (ms)")
+                ax.set_xlabel(_LEGACY_XLABEL)
     fig.suptitle(
         f"{animal} | {title_suffix} | pre-stroke=grey, post-stroke={cmap_name} "
         f"(day 0 treated as pre)",
         y=0.995,
     )
+    # Legacy reserves the right 12% via tight_layout(rect=...) — see
+    # vendored Cell 55 line 1777. Compose with the colorbar add_axes call
+    # below.
+    fig.tight_layout(rect=tlrect)
     if include_colorbar:
-        _add_cross_session_colorbar(fig, cmap_name=cmap_name, max_post=max_post)
+        _add_cross_session_colorbar(
+            fig, cmap_name=cmap_name, max_post=max_post, rect=cbar_rect,
+        )
     return fig
 
 
@@ -1222,9 +1385,7 @@ def _plot_cross_session_overlay(
     return _plot_cross_session_2x2(
         items, animal=animal,
         title_suffix="cross-session session overlays (mean ± SEM per session)",
-        shared_y=bool(overlay_cfg.get("shared_y_axis_per_plot_type_row", False)),
-        include_colorbar=bool(overlay_cfg.get("include_colorbar", False)),
-        cmap_name=str(overlay_cfg.get("colormap", "plasma")),
+        cfg=overlay_cfg,
     )
 
 
@@ -1279,7 +1440,5 @@ def _plot_cross_session_binned(
     return _plot_cross_session_2x2(
         binned, animal=animal,
         title_suffix=f"cross-session binned overlays (bin size = {bin_days} days)",
-        shared_y=bool(binned_cfg.get("shared_y_axis_per_plot_type_row", False)),
-        include_colorbar=bool(binned_cfg.get("include_colorbar", False)),
-        cmap_name=str(binned_cfg.get("colormap", "plasma")),
+        cfg=binned_cfg,
     )

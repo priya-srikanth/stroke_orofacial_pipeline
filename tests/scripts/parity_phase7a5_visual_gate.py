@@ -49,6 +49,8 @@ matplotlib.use("Agg")
 
 import matplotlib.image as mpimg  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+from PIL import Image  # noqa: E402
 
 from stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch import (  # noqa: E402
     classify_tongue_jaw_mismatch_by_animal_date,
@@ -109,16 +111,42 @@ def _render_comparison_grid(
 ) -> None:
     """2-col side-by-side comparison: legacy | consolidated.
 
-    Mirrors :func:`stroke_orofacial.dlc_kinematics.tongue_visual._save_comparison_grid`
-    (vendored locally to keep cross-module import surface minimal).
+    Phase 7a.5 C6.2 (Priya 2026-05-01) update: compute fig height from the
+    consolidated PNG's aspect ratio so tall figures (e.g. PS46 96-trial
+    individualTrials2col at 18 × 172 in) render with vertical detail
+    preserved instead of squished into a 20 × 10 grid; pass
+    ``interpolation="lanczos"`` to ``imshow`` so matplotlib uses a
+    high-quality resampling kernel (default "antialiased" was crushing
+    fine line detail on the 67× downsample).
     """
-    fig, axes = plt.subplots(1, 2, figsize=(20, 10))
+    panel_w_in = 10.0
+    fig_h_min = 10.0
+    fig_h_max = 100.0  # matplotlib hard limit ~100 in / DPI = ~12000 px
+
+    aspect = 1.0  # iw/ih; default to square if neither file readable
+    for p in (consolidated_path, legacy_path):
+        if p is not None and p.exists():
+            try:
+                with Image.open(p) as _img:
+                    iw, ih = _img.size
+                if ih > 0:
+                    aspect = float(iw) / float(ih)
+                break
+            except Exception:  # noqa: BLE001
+                continue
+
+    # Each panel's figure-aspect = panel_w / panel_h ≈ image aspect.
+    panel_h_natural = panel_w_in / max(aspect, 1e-3)
+    fig_h = float(np.clip(panel_h_natural, fig_h_min, fig_h_max))
+    fig_w = 2.0 * panel_w_in
+
+    fig, axes = plt.subplots(1, 2, figsize=(fig_w, fig_h))
     panes = [(legacy_path, "legacy"), (consolidated_path, "consolidated")]
     for ax, (pane_path, label) in zip(axes, panes):
         if pane_path is not None and pane_path.exists():
             try:
                 img = mpimg.imread(pane_path)
-                ax.imshow(img)
+                ax.imshow(img, interpolation="lanczos")
                 ax.set_title(f"{label}\n{pane_path.name}", fontsize=9)
             except Exception as exc:  # noqa: BLE001
                 ax.text(
