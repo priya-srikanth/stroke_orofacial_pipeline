@@ -923,6 +923,19 @@ dlc_kinematics:
       y_lim_mode: robust            # "robust" or "minmax"
       y_robust_pct: [1.0, 99.9]
       y_pad_frac: 0.1
+      # Legend layout (C7.1 Issue 2 fix 2026-05-02). Adopt jaw cell 32's
+      # newer right-margin legend convention rather than tongue cell
+      # 45's older centered-overlap one.
+      #   legend_right_fraction: subplots_adjust(right=...) reserves
+      #     this fraction of the figure width for the axes; the rest is
+      #     legend space. Jaw cell 32: LEGEND_RIGHT=0.80.
+      #   legend_anchor_x/y: bbox_to_anchor for fig.legend, in figure
+      #     coords. Jaw cell 32: (0.75, 0.50).
+      #   panel_wspace: subplots_adjust(wspace=...). Jaw cell 32: 0.10.
+      legend_right_fraction: 0.80
+      legend_anchor_x: 0.75
+      legend_anchor_y: 0.50
+      panel_wspace: 0.10
 
     # ---- Mean-video sub-block (cells 47+48/34, Phase 7a.6 C4.3) ----
     # Cohort binned-mean session XY trajectory ANIMATIONS — Q5 lock

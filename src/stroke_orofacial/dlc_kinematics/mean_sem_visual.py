@@ -1067,9 +1067,16 @@ def _plot_session_2x2(
     cohort: CohortAggregates,
     params_block: dict[str, Any],
     out_path: Path,
+    *,
+    y_lim_override: tuple[float, float] | None = None,
+    x_lim_override: tuple[float, float] | None = None,
 ) -> None:
     """Per-session 4-panel mean+SEM (Y/X × L/R). Direct port of legacy
     ``plot_session_2x2`` (lines 370-408 of vendored cell 31).
+
+    ``y_lim_override`` / ``x_lim_override`` (C7.1 Issue 3): when set,
+    use these bounds instead of ``cohort.y_lim`` / ``cohort.x_lim``.
+    Defaults to the cohort bounds (current behavior preserved).
     """
     side_colors = params_block.get(
         "side_colors", {"L": "dodgerblue", "R": "mediumvioletred"},
@@ -1078,6 +1085,9 @@ def _plot_session_2x2(
     sem_alpha = float(params_block.get("sem_alpha", 0.18))
     plot_sem = bool(params_block.get("plot_sem", True))
     dpi = int(params_block.get("dpi", 200))
+
+    y_lim = y_lim_override if y_lim_override is not None else cohort.y_lim
+    x_lim = x_lim_override if x_lim_override is not None else cohort.x_lim
 
     label_token = _AXIS_LABEL[bodypart]
     fig, axs = plt.subplots(2, 2, figsize=(12, 7), sharex=True)
@@ -1098,22 +1108,22 @@ def _plot_session_2x2(
     one(
         axs[0, 0], sess.myl, sess.syl, "L",
         f"Mouse LEFT rewards | Y | n={sess.n_L} ({sess.interp_version})",
-        f"{label_token} Y (px)", cohort.y_lim,
+        f"{label_token} Y (px)", y_lim,
     )
     one(
         axs[0, 1], sess.myr, sess.syr, "R",
         f"Mouse RIGHT rewards | Y | n={sess.n_R} ({sess.interp_version})",
-        f"{label_token} Y (px)", cohort.y_lim,
+        f"{label_token} Y (px)", y_lim,
     )
     one(
         axs[1, 0], sess.mxl, sess.sxl, "L",
         f"Mouse LEFT rewards | X | n={sess.n_L} ({sess.interp_version})",
-        f"{label_token} X (px)", cohort.x_lim,
+        f"{label_token} X (px)", x_lim,
     )
     one(
         axs[1, 1], sess.mxr, sess.sxr, "R",
         f"Mouse RIGHT rewards | X | n={sess.n_R} ({sess.interp_version})",
-        f"{label_token} X (px)", cohort.x_lim,
+        f"{label_token} X (px)", x_lim,
     )
 
     for ax in axs[1, :]:
@@ -1136,9 +1146,16 @@ def _plot_trial_overlays_2x2(
     cohort: CohortAggregates,
     params_block: dict[str, Any],
     out_path: Path,
+    *,
+    y_lim_override: tuple[float, float] | None = None,
+    x_lim_override: tuple[float, float] | None = None,
 ) -> None:
     """Per-session 4-panel mean+SEM with all individual trials underlayed.
     Direct port of legacy ``plot_trial_overlays_2x2`` (lines 410-451).
+
+    ``y_lim_override`` / ``x_lim_override`` (C7.1 Issue 3): when set,
+    use these bounds instead of ``cohort.trial_y_lim`` /
+    ``cohort.trial_x_lim``.
     """
     side_colors = params_block.get(
         "side_colors", {"L": "dodgerblue", "R": "mediumvioletred"},
@@ -1149,6 +1166,13 @@ def _plot_trial_overlays_2x2(
     trial_lw = float(params_block.get("trial_linewidth", 0.6))
     plot_sem = bool(params_block.get("plot_sem", True))
     dpi = int(params_block.get("dpi", 200))
+
+    y_lim = (
+        y_lim_override if y_lim_override is not None else cohort.trial_y_lim
+    )
+    x_lim = (
+        x_lim_override if x_lim_override is not None else cohort.trial_x_lim
+    )
 
     label_token = _AXIS_LABEL[bodypart]
     fig, axs = plt.subplots(2, 2, figsize=(12, 7), sharex=True)
@@ -1174,22 +1198,22 @@ def _plot_trial_overlays_2x2(
     one(
         axs[0, 0], sess.Ayl, sess.myl, sess.syl, "L",
         f"Mouse LEFT rewards | Y | n={sess.n_L} ({sess.interp_version})",
-        f"{label_token} Y (px)", cohort.trial_y_lim,
+        f"{label_token} Y (px)", y_lim,
     )
     one(
         axs[0, 1], sess.Ayr, sess.myr, sess.syr, "R",
         f"Mouse RIGHT rewards | Y | n={sess.n_R} ({sess.interp_version})",
-        f"{label_token} Y (px)", cohort.trial_y_lim,
+        f"{label_token} Y (px)", y_lim,
     )
     one(
         axs[1, 0], sess.Axl, sess.mxl, sess.sxl, "L",
         f"Mouse LEFT rewards | X | n={sess.n_L} ({sess.interp_version})",
-        f"{label_token} X (px)", cohort.trial_x_lim,
+        f"{label_token} X (px)", x_lim,
     )
     one(
         axs[1, 1], sess.Axr, sess.mxr, sess.sxr, "R",
         f"Mouse RIGHT rewards | X | n={sess.n_R} ({sess.interp_version})",
-        f"{label_token} X (px)", cohort.trial_x_lim,
+        f"{label_token} X (px)", x_lim,
     )
 
     for ax in axs[1, :]:
@@ -1438,15 +1462,18 @@ def build_individual_sessions(
     reward_post_ms: int,
     params: dict[str, Any] | None = None,
     cohort: CohortAggregates | None = None,
+    animal_y_bounds: tuple[float, float] | None = None,
+    animal_x_bounds: tuple[float, float] | None = None,
     overwrite: Literal["skip", "force"] = "skip",
 ) -> Path | None:
     """Render the per-session 2x2 mean+SEM figure for one (animal, date, window).
 
-    Per-session axis limits are taken from the cohort (so all per-session
-    plots in the same animal × window share a uniform axis). When
-    ``cohort`` is ``None``, the cohort is loaded internally — repeated
-    calls in a tight loop should pass an explicit pre-built cohort to
-    avoid re-loading.
+    Per-session axis limits are taken from the cohort by default (so all
+    per-session plots in the same animal × window share a uniform axis).
+    When ``cohort`` is ``None``, the cohort is loaded internally —
+    repeated calls in a tight loop should pass an explicit pre-built
+    cohort (or use :func:`build_individual_sessions_animal`) to avoid
+    re-loading.
 
     Parameters
     ----------
@@ -1462,6 +1489,14 @@ def build_individual_sessions(
     cohort
         Optional pre-built CohortAggregates. Pass to avoid re-loading
         when iterating over multiple dates for the same window.
+    animal_y_bounds, animal_x_bounds : tuple[float, float] | None
+        C7.1 Issue 3 (added 2026-05-02). When provided, override the
+        cohort's auto-scaled ``y_lim`` / ``x_lim`` so per-session figures
+        share a uniform axis across an animal-wide span (e.g., across
+        windows). ``None`` (default) preserves the original cohort-scoped
+        auto-scale behavior. The two-pass driver
+        :func:`build_individual_sessions_animal` uses this kwarg to
+        emit per-session PNGs with animal-wide bounds in one call.
     overwrite
         ``"skip"`` returns the existing path if the PNG is already on
         disk. ``"force"`` always rewrites.
@@ -1471,6 +1506,16 @@ def build_individual_sessions(
     Path or None
         The emitted PNG path. ``None`` if ``params_block.plot_individual_sessions``
         is False or the cohort is empty.
+
+    Examples
+    --------
+    Override a single knob via the params dict:
+
+        defaults = load_defaults()
+        params = {**defaults, "dlc_kinematics": {**defaults["dlc_kinematics"], ...}}
+        # ... or, cleaner, mutate a deep copy of defaults["dlc_kinematics"][
+        # "mean_sem_visual"] directly before calling.
+        build_individual_sessions("tongue", animal, date, resolver, params=...)
     """
     if overwrite not in ("skip", "force"):
         raise ValueError(
@@ -1518,6 +1563,8 @@ def build_individual_sessions(
 
     _plot_session_2x2(
         bodypart, cohort.cam, sess, cohort, params_block, out_path,
+        y_lim_override=animal_y_bounds,
+        x_lim_override=animal_x_bounds,
     )
     return out_path
 
@@ -1532,12 +1579,27 @@ def build_trial_overlays(
     reward_post_ms: int,
     params: dict[str, Any] | None = None,
     cohort: CohortAggregates | None = None,
+    animal_y_bounds: tuple[float, float] | None = None,
+    animal_x_bounds: tuple[float, float] | None = None,
     overwrite: Literal["skip", "force"] = "skip",
 ) -> Path | None:
     """Render the per-session 2x2 trial-overlay figure (mean+SEM with all
     individual trials underlayed). Same shape as
     :func:`build_individual_sessions` but uses the cohort's percentile-
     based ``trial_y_lim`` / ``trial_x_lim`` for axis limits.
+
+    ``animal_y_bounds`` / ``animal_x_bounds`` (C7.1 Issue 3): same
+    semantics as :func:`build_individual_sessions` — when provided,
+    override the cohort's percentile-based trial axis limits with
+    explicit animal-wide bounds.
+
+    Examples
+    --------
+    Override the trial-overlay alpha:
+
+        params = load_defaults()
+        params["dlc_kinematics"]["mean_sem_visual"]["trial_alpha"] = 0.05
+        build_trial_overlays("tongue", animal, date, resolver, params=params)
     """
     if overwrite not in ("skip", "force"):
         raise ValueError(
@@ -1584,8 +1646,126 @@ def build_trial_overlays(
 
     _plot_trial_overlays_2x2(
         bodypart, cohort.cam, sess, cohort, params_block, out_path,
+        y_lim_override=animal_y_bounds,
+        x_lim_override=animal_x_bounds,
     )
     return out_path
+
+
+def build_individual_sessions_animal(
+    bodypart: str,
+    animal: str,
+    dates: Sequence[datetime.date],
+    resolver: PathResolver,
+    *,
+    reward_pre_ms: int,
+    reward_post_ms: int,
+    params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["skip", "force"] = "skip",
+) -> list[Path]:
+    """C7.1 Issue 3 — two-pass driver that renders ``individual_sessions``
+    PNGs for many dates with **animal-wide** Y/X bounds.
+
+    Pass 1: build the cohort once for the (animal, bodypart, window).
+    Cohort-wide ``y_lim`` / ``x_lim`` are union of mean+SEM extents
+    across every eligible session for this animal — this IS the animal-
+    wide auto-scale, so the existing default-mode behavior is already
+    animal-wide for the standard call shape (cohort= passed in).
+
+    Pass 2: emit one PNG per ``date``, calling
+    :func:`build_individual_sessions` with ``animal_y_bounds`` /
+    ``animal_x_bounds`` set to the cohort bounds explicitly. This makes
+    the two-pass intent visible in the public API and guarantees
+    uniform bounds even when callers might otherwise pass mismatched
+    cohorts.
+
+    Returns the list of emitted PNG paths (any ``None`` returns from the
+    inner call are filtered out).
+
+    Examples
+    --------
+    Render uniform-bound PNGs for all in-scope sessions of one animal:
+
+        from datetime import date
+        dates = [date(2025, 3, 7), date(2025, 3, 10), date(2025, 3, 13)]
+        build_individual_sessions_animal(
+            "tongue", "PS46", dates, resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+        )
+    """
+    if overwrite not in ("skip", "force"):
+        raise ValueError(
+            f"overwrite must be 'skip' or 'force'; got {overwrite!r}.",
+        )
+
+    cohort = build_cohort_aggregates(
+        bodypart, animal, resolver,
+        reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+        params=params, animal_info=animal_info,
+    )
+    if cohort is None:
+        return []
+
+    out: list[Path] = []
+    for date in dates:
+        path = build_individual_sessions(
+            bodypart, animal, date, resolver,
+            reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+            params=params, cohort=cohort,
+            animal_y_bounds=cohort.y_lim,
+            animal_x_bounds=cohort.x_lim,
+            overwrite=overwrite,
+        )
+        if path is not None:
+            out.append(path)
+    return out
+
+
+def build_trial_overlays_animal(
+    bodypart: str,
+    animal: str,
+    dates: Sequence[datetime.date],
+    resolver: PathResolver,
+    *,
+    reward_pre_ms: int,
+    reward_post_ms: int,
+    params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["skip", "force"] = "skip",
+) -> list[Path]:
+    """C7.1 Issue 3 — two-pass driver for ``trial_overlays``.
+
+    Same shape as :func:`build_individual_sessions_animal` but emits
+    the trial-overlay variant with animal-wide ``trial_y_lim`` /
+    ``trial_x_lim`` (percentile-based by default).
+    """
+    if overwrite not in ("skip", "force"):
+        raise ValueError(
+            f"overwrite must be 'skip' or 'force'; got {overwrite!r}.",
+        )
+
+    cohort = build_cohort_aggregates(
+        bodypart, animal, resolver,
+        reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+        params=params, animal_info=animal_info,
+    )
+    if cohort is None:
+        return []
+
+    out: list[Path] = []
+    for date in dates:
+        path = build_trial_overlays(
+            bodypart, animal, date, resolver,
+            reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+            params=params, cohort=cohort,
+            animal_y_bounds=cohort.trial_y_lim,
+            animal_x_bounds=cohort.trial_x_lim,
+            overwrite=overwrite,
+        )
+        if path is not None:
+            out.append(path)
+    return out
 
 
 # ===========================================================================
@@ -2806,16 +2986,35 @@ def _plot_mean_trace_overlays(
     )
     dpi = int(msv_block.get("dpi", 200))
 
+    # C7.1 Issue 2 (legend layout). Adopt jaw cell 32's newer right-margin
+    # legend placement (LEGEND_RIGHT=0.80, anchor at (0.75, 0.50)) instead
+    # of tongue cell 45's older center-overlap placement (right=0.98 +
+    # wspace=0.04 + bbox_to_anchor=(0.51, 0.52) which squeezed the legend
+    # into the gap between subplots).
+    legend_right = float(mt_block.get("legend_right_fraction", 0.80))
+    legend_anchor_x = float(mt_block.get("legend_anchor_x", 0.75))
+    legend_anchor_y = float(mt_block.get("legend_anchor_y", 0.50))
+    panel_wspace = float(mt_block.get("panel_wspace", 0.10))
+
     rel_days = np.array(
         [r.rel_day for r in cohort.rows], float,
     )
     post_days = rel_days[np.isfinite(rel_days) & (rel_days >= 1)]
     post_max = float(np.max(post_days)) if post_days.size else 1.0
 
-    fig, axes = plt.subplots(1, 2, figsize=(fig_w, fig_h), sharey=True)
-    fig.subplots_adjust(right=0.98, wspace=0.04)
-    ax_left, ax_right = axes[0], axes[1]
-    side_to_ax = {"R": ax_left, "L": ax_right}
+    # C7.1 Issue 1 (shared L/R axes + L-LEFT R-RIGHT order). Legacy jaw
+    # cell 32 (newer, 20260416) uses ``sharex=False, sharey=True`` with
+    # ``ax_L=axes[0], ax_R=axes[1]`` (L LEFT, R RIGHT). Tongue cell 45
+    # (older, 20260203) uses the same sharex/sharey but with R-LEFT,
+    # L-RIGHT panel order. Per the C4.x consolidate-on-newer pattern
+    # (Q4 multi-bin, Q5 with_frame_timestamps), adopt jaw's L-LEFT
+    # convention here too.
+    fig, axes = plt.subplots(
+        1, 2, figsize=(fig_w, fig_h), sharex=False, sharey=True,
+    )
+    fig.subplots_adjust(right=legend_right, wspace=panel_wspace)
+    ax_L, ax_R = axes[0], axes[1]
+    side_to_ax = {"L": ax_L, "R": ax_R}
 
     y_top = 0.0
     y_bottom = max(1e-6, cohort.y_max)
@@ -2828,15 +3027,22 @@ def _plot_mean_trace_overlays(
     for r in cohort.rows:
         rows_by_side[r.side].append(r)
 
-    for side in ("R", "L"):
+    # Set per-axis styling first (titles, labels, aspect) — matches jaw
+    # cell 32's order. set_ylim is called separately below so sharey=True
+    # propagation is the dominant constraint.
+    for side in ("L", "R"):
         ax = side_to_ax[side]
         ax.set_title(f"{side} trials | session mean XY overlays")
         ax.set_xlabel("x (px, baseline-subtracted)")
         ax.set_ylabel("y (px, baseline-subtracted)")
-        ax.set_ylim(y_bottom, y_top)
         ax.set_aspect("equal", adjustable="box")
         ax.grid(True, alpha=0.2)
+    for ax in (ax_L, ax_R):
+        ax.set_ylim(y_bottom, y_top)
 
+    # Data plotting per side (uses side_to_ax + per-side rows + binned).
+    for side in ("L", "R"):
+        ax = side_to_ax[side]
         if cohort.binned:
             if plot_individual_when_binned:
                 for r in rows_by_side[side]:
@@ -2870,7 +3076,11 @@ def _plot_mean_trace_overlays(
                     show_tube=show_tube, tube_alpha=tube_alpha,
                 )
 
-    # Legend (binned mode only): one shared legend for rel_day bins.
+    # Legend (binned mode only): one shared legend for rel_day bins. C7.1
+    # Issue 2 fix — anchor to the right of the right subplot via "center
+    # left" + bbox_to_anchor at (legend_anchor_x, legend_anchor_y) over
+    # the figure-width-fraction reserved by ``subplots_adjust(right=
+    # legend_right)``. Matches jaw cell 32's newer convention.
     if cohort.binned:
         from matplotlib.lines import Line2D
         uniq = sorted(
@@ -2892,8 +3102,8 @@ def _plot_mean_trace_overlays(
         fig.legend(
             handles, labels,
             title="rel_day bins",
-            loc="center",
-            bbox_to_anchor=(0.51, 0.52),
+            loc="center left",
+            bbox_to_anchor=(legend_anchor_x, legend_anchor_y),
             frameon=False,
             ncol=1,
             handlelength=2.2,
@@ -2909,7 +3119,11 @@ def _plot_mean_trace_overlays(
     if cohort.binned:
         title += f" | rel_day bin={cohort.bin_size_days}d"
     fig.suptitle(title, y=0.995)
-    fig.tight_layout()
+    # Skip tight_layout — it would override our subplots_adjust right
+    # margin reservation and squeeze the legend back into the plot area
+    # (regression of the very Issue 2 fix this commit makes). Save with
+    # bbox_inches="tight" still trims excess whitespace at the figure
+    # boundary.
     fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
 
@@ -3232,6 +3446,7 @@ __all__ = [
     "build_binned_overlays",
     "build_cohort_aggregates",
     "build_individual_sessions",
+    "build_individual_sessions_animal",
     "build_mean_sem_by_animal_date",
     "build_mean_sem_cohort",
     "build_mean_trace",
@@ -3239,4 +3454,5 @@ __all__ = [
     "build_mean_video",
     "build_session_overlays",
     "build_trial_overlays",
+    "build_trial_overlays_animal",
 ]

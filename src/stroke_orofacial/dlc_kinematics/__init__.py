@@ -28,6 +28,7 @@ from stroke_orofacial.dlc_kinematics.mean_sem_visual import (
     build_binned_overlays,
     build_cohort_aggregates,
     build_individual_sessions,
+    build_individual_sessions_animal,
     build_mean_sem_by_animal_date,
     build_mean_sem_cohort,
     build_mean_trace,
@@ -35,6 +36,7 @@ from stroke_orofacial.dlc_kinematics.mean_sem_visual import (
     build_mean_video,
     build_session_overlays,
     build_trial_overlays,
+    build_trial_overlays_animal,
 )
 from stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch import (
     TONGUE_JAW_MISMATCH_VERSION,
@@ -83,6 +85,7 @@ __all__ = [
     "build_binned_overlays",
     "build_cohort_aggregates",
     "build_individual_sessions",
+    "build_individual_sessions_animal",
     "build_interpolated_trace",
     "build_interpolated_trace_by_animal_date",
     "build_jaw_pertrial",
@@ -98,6 +101,7 @@ __all__ = [
     "build_tongue_visual_bundle",
     "build_tongue_visual_bundle_by_animal_date",
     "build_trial_overlays",
+    "build_trial_overlays_animal",
     "classify_tongue_jaw_mismatch",
     "classify_tongue_jaw_mismatch_by_animal_date",
     "render_comparison_grid",
