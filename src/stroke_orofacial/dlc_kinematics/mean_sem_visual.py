@@ -2269,6 +2269,498 @@ def build_mean_trace_cohort(
     )
 
 
+# ===========================================================================
+# Phase 7a.6 C4.3 — Mean video (cells 47+48 / 34, Q5 consolidated)
+# ===========================================================================
+#
+# Cohort binned-mean session XY trajectory ANIMATIONS. Q5 lock 2026-05-01:
+# tongue's split (Cell 47 basic + Cell 48 with-frame-timestamps) is
+# consolidated into one entry point with ``with_frame_timestamps: bool``
+# kwarg defaulting to True (matches jaw Cell 34 + tongue Cell 48 behavior).
+#
+# Output filename pattern (matches legacy):
+#   {animal}_{cam}_sessionMeanXY_BINNED_VIDEO_interp-{ver}_
+#   win{-pre}to{post}ms_relDayBin{N}d_timeSmooth{T}ms_xlim-{lo}to{hi}_
+#   mode-{cumulative|dot}_fps{F}_speed{S}[_tail{T}ms].{mp4|gif}
+#
+# Writer fallback (deviation from legacy verbatim, since the consolidated
+# env may not have ffmpeg):
+#   - ``video_format="mp4"`` and ffmpeg present → :class:`FFMpegWriter`.
+#   - ``video_format="mp4"`` and ffmpeg missing → fall back to GIF via
+#     :class:`PillowWriter` (always available), log the deviation, and
+#     change the output filename suffix to ``.gif``. Caller can detect via
+#     return ``Path.suffix``.
+#   - ``video_format="gif"`` → :class:`PillowWriter`.
+# Legacy cell 34 swallows the ffmpeg ImportError and prints a warning;
+# the consolidated module is more explicit about the fallback so the
+# parity harness can detect it.
+
+
+def _resolve_animation_writer(
+    video_format: str, anim_fps: int,
+) -> tuple[Any, str, bool]:
+    """Pick a matplotlib animation writer + final filename extension.
+
+    Returns ``(writer, ext, fell_back_from_mp4_to_gif)``. The boolean is
+    True when the caller asked for MP4 but ffmpeg wasn't available, so
+    the harness can audit the deviation at parity-comparison time.
+    """
+    import matplotlib.animation as mpl_anim
+
+    fmt = str(video_format).lower()
+    if fmt == "mp4":
+        if mpl_anim.FFMpegWriter.isAvailable():
+            return (mpl_anim.FFMpegWriter(fps=anim_fps, bitrate=12000), "mp4", False)
+        # Fall back to GIF (PillowWriter is always available).
+        return (mpl_anim.PillowWriter(fps=anim_fps), "gif", True)
+    if fmt == "gif":
+        return (mpl_anim.PillowWriter(fps=anim_fps), "gif", False)
+    raise ValueError(
+        f"video_format must be 'mp4' or 'gif'; got {video_format!r}",
+    )
+
+
+def _build_mean_video_animation(
+    bodypart: str,
+    cohort: MeanTraceCohort,
+    msv_block: dict[str, Any],
+    *,
+    anim_mode: str,
+    with_frame_timestamps: bool,
+) -> tuple[Any, Any]:
+    """Build a 2-panel (R-left, L-right) animation over the binned mean
+    trajectories. Returns ``(fig, ani)`` matching the legacy
+    :func:`make_animation` shape (jaw cell 34 lines 2081-2216).
+    """
+    import matplotlib.animation as mpl_anim
+
+    if not cohort.binned:
+        raise ValueError(
+            f"{cohort.animal}: mean_video requires binned aggregates; "
+            f"cohort has none (no stroke_date or no eligible bins).",
+        )
+
+    mt_block = msv_block.get("mean_trace", {})
+    mv_block = msv_block.get("mean_video", {})
+    bp_mt_block = (msv_block.get(bodypart, {}) or {}).get("mean_trace", {})
+
+    pre_color = str(mt_block.get("pre_color", "0.6"))
+    post_cmap = str(mt_block.get("post_cmap", "plasma"))
+    bin_lw = 2.8           # legacy BIN_LW
+    bin_alpha = 0.60       # legacy BIN_ALPHA
+    show_tube = bool(mv_block.get("show_sem_tube", False))
+    tube_alpha = float(mv_block.get("tube_alpha", 0.14))
+    fig_w = float(
+        bp_mt_block.get(
+            "figure_width_inches", mt_block.get("figure_width_inches", 13.0),
+        ),
+    )
+    fig_h = float(mt_block.get("figure_height_inches", 6.2))
+    anim_fps = int(mv_block.get("anim_fps", 60))
+    anim_speed = float(mv_block.get("anim_speed", 0.125))
+    tail_ms = float(mv_block.get("tail_ms", 100.0))
+
+    if anim_mode not in ("cumulative", "dot"):
+        raise ValueError(
+            f"anim_mode must be 'cumulative' or 'dot'; got {anim_mode!r}",
+        )
+
+    # Compute post_max for color mapping (mirrors legacy).
+    post_centers = np.array(
+        [b.rel_day_bin_center for b in cohort.binned if b.rel_day_bin_center >= 1],
+        float,
+    )
+    post_max = float(np.nanmax(post_centers)) if post_centers.size else 1.0
+
+    fig, axes = plt.subplots(1, 2, figsize=(fig_w, fig_h), sharey=True)
+    fig.subplots_adjust(right=0.78, wspace=0.06)
+    ax_left, ax_right = axes[0], axes[1]
+    side_to_ax = {"R": ax_left, "L": ax_right}
+
+    # Axis limits from finite x/y across all binned traces.
+    all_x = []
+    all_y = []
+    for b in cohort.binned:
+        if np.any(np.isfinite(b.mx)):
+            all_x.append(b.mx[np.isfinite(b.mx)])
+        if np.any(np.isfinite(b.my)):
+            all_y.append(b.my[np.isfinite(b.my)])
+    if not all_x or not all_y:
+        raise ValueError(
+            f"{cohort.animal}: no finite XY data in binned traces; cannot "
+            f"compute animation axis limits.",
+        )
+    x_min = float(np.min(np.concatenate(all_x)))
+    x_max = float(np.max(np.concatenate(all_x)))
+    y_min = float(np.min(np.concatenate(all_y)))
+    y_max_data = float(np.max(np.concatenate(all_y)))
+    x_pad = 0.05 * max(1e-6, (x_max - x_min))
+    y_pad = 0.05 * max(1e-6, (y_max_data - y_min))
+    x_lims = (x_min - x_pad, x_max + x_pad)
+    # Y inverted (0 at top, matches legacy).
+    y_top = y_min
+    y_bottom = y_max_data + y_pad
+
+    label_token = _AXIS_LABEL[bodypart]
+    for side in ("R", "L"):
+        ax = side_to_ax[side]
+        ax.set_title(f"{label_token} XY location, {side} trials")
+        ax.set_xlabel("x (px)")
+        ax.set_ylabel("y (px)")
+        ax.set_aspect("equal", adjustable="box")
+        ax.grid(True, alpha=0.2)
+        ax.set_ylim(y_bottom, y_top)
+        ax.set_xlim(*x_lims)
+
+    # Optional frame-time text labels (Q5 consolidate).
+    time_text: dict[str, Any] = {}
+    if with_frame_timestamps:
+        for side in ("R", "L"):
+            ax = side_to_ax[side]
+            time_text[side] = ax.text(
+                0.02, 0.98, "",
+                transform=ax.transAxes,
+                ha="left", va="top",
+                fontsize=11,
+                alpha=0.9,
+            )
+
+    # Legend (one shared rel_day-bin legend on the right).
+    from matplotlib.lines import Line2D
+    uniq_bins = sorted(
+        {(b.rel_day_bin_label, b.rel_day_bin_center) for b in cohort.binned},
+        key=lambda kv: kv[1],
+    )
+    handles, labels = [], []
+    for lab, cen in uniq_bins:
+        n_sessions = sum(
+            b.n_sessions for b in cohort.binned
+            if b.rel_day_bin_label == lab
+        )
+        col = _color_for_rel_day_continuous(
+            cen, post_max, cmap_name=post_cmap, pre_color=pre_color,
+        )
+        handles.append(Line2D([0], [0], color=col, lw=3.0))
+        labels.append(f"{lab} (n={n_sessions})")
+    fig.legend(
+        handles, labels,
+        title="rel_day bins",
+        loc="center left",
+        bbox_to_anchor=(0.80, 0.52),
+        frameon=False,
+        ncol=1,
+        handlelength=2.2,
+        handletextpad=0.6,
+        labelspacing=0.4,
+    )
+
+    title = (
+        f"{cohort.animal} {cohort.cam} | interp={cohort.interp_version} | "
+        f"window=-{int(cohort.pre_ms)}..{int(cohort.post_ms)} ms"
+    )
+    fig.suptitle(title, y=0.995)
+
+    # Crop traces to a common length T.
+    T = int(min(len(b.mx) for b in cohort.binned))
+    if T < 2:
+        plt.close(fig)
+        raise ValueError(
+            f"{cohort.animal}: not enough points in binned trajectories "
+            f"to animate (T={T}).",
+        )
+
+    # Per-trace metadata (color, side, color-mapped to rel_day_bin_center).
+    trace_data = []
+    for b in cohort.binned:
+        col = _color_for_rel_day_continuous(
+            b.rel_day_bin_center, post_max,
+            cmap_name=post_cmap, pre_color=pre_color,
+        )
+        trace_data.append({
+            "side": b.side,
+            "color": col,
+            "lw": bin_lw,
+            "alpha": bin_alpha,
+            "x": np.asarray(b.mx[:T], float),
+            "y": np.asarray(b.my[:T], float),
+            "sx": np.asarray(b.sx[:T], float),
+            "sy": np.asarray(b.sy[:T], float),
+            "t_ms": np.asarray(cohort.binned[0].t_ms[:T], float),
+        })
+
+    tms0 = np.asarray(cohort.binned[0].t_ms[:T], float)
+    if len(tms0) >= 2:
+        dt_ms = float(np.nanmedian(np.diff(tms0)))
+    else:
+        dt_ms = 1000.0 / max(1.0, cohort.fps)
+    tail_frames = max(1, int(np.round(tail_ms / max(1e-6, dt_ms))))
+
+    # Set up artists per trace + anim_mode.
+    artists: list[tuple[str, Any, dict[str, Any]]] = []
+    for tr in trace_data:
+        ax = side_to_ax.get(tr["side"], None)
+        if ax is None:
+            continue
+        if anim_mode == "cumulative":
+            (ln,) = ax.plot(
+                [], [], color=tr["color"], lw=tr["lw"], alpha=tr["alpha"],
+            )
+            artists.append(("line", ln, tr))
+        else:  # "dot"
+            (tail_ln,) = ax.plot(
+                [], [], color=tr["color"], lw=tr["lw"], alpha=tr["alpha"],
+            )
+            (dot_artist,) = ax.plot(
+                [], [], marker="o", markersize=4.0, linestyle="None",
+                color=tr["color"], alpha=min(1.0, tr["alpha"] + 0.25),
+            )
+            artists.append(("tail", tail_ln, tr))
+            artists.append(("dot", dot_artist, tr))
+
+    # Optional static SEM tubes (off by default per legacy mean_video block).
+    if show_tube:
+        for tr in trace_data:
+            ax = side_to_ax.get(tr["side"], None)
+            if ax is None:
+                continue
+            _plot_xy_mean(
+                ax, tr["x"], tr["y"], tr["sx"], tr["sy"],
+                color=tr["color"], lw=0.8, alpha=0.0,
+                show_tube=True, tube_alpha=tube_alpha,
+            )
+
+    def _init() -> list[Any]:
+        for _kind, artist, _tr in artists:
+            artist.set_data([], [])
+        if with_frame_timestamps:
+            for side in ("R", "L"):
+                if side in time_text:
+                    time_text[side].set_text("")
+        all_artists: list[Any] = [a[1] for a in artists]
+        if with_frame_timestamps:
+            all_artists.extend(time_text[s] for s in time_text)
+        return all_artists
+
+    def _update(frame_idx: int) -> list[Any]:
+        k = int(np.clip(np.round(frame_idx * anim_speed), 0, T - 1))
+        if with_frame_timestamps:
+            t_here_ms = float(tms0[k]) if k < len(tms0) else (k * dt_ms)
+            for side in time_text:
+                time_text[side].set_text(f"t = {t_here_ms:,.0f} ms")
+        for kind, artist, tr in artists:
+            x = tr["x"]
+            y = tr["y"]
+            if anim_mode == "cumulative":
+                if kind == "line":
+                    artist.set_data(x[: k + 1], y[: k + 1])
+            else:  # "dot"
+                if kind == "tail":
+                    lo = max(0, k - tail_frames)
+                    artist.set_data(x[lo : k + 1], y[lo : k + 1])
+                elif kind == "dot":
+                    artist.set_data([x[k]], [y[k]])
+        all_artists: list[Any] = [a[1] for a in artists]
+        if with_frame_timestamps:
+            all_artists.extend(time_text[s] for s in time_text)
+        return all_artists
+
+    n_frames = int(np.ceil((T - 1) / max(1e-6, anim_speed))) + 1
+    ani = mpl_anim.FuncAnimation(
+        fig,
+        _update,
+        frames=n_frames,
+        init_func=_init,
+        blit=False,
+        interval=1000.0 / float(anim_fps),
+    )
+    return fig, ani
+
+
+def _mean_video_filename(
+    cohort: MeanTraceCohort,
+    msv_block: dict[str, Any],
+    bodypart: str,
+    *,
+    anim_mode: str,
+    ext: str,
+    animal_info: AnimalInfo | None,
+) -> str:
+    """Match legacy filename pattern (jaw cell 34 ``_build_outname``)."""
+    mt_block = msv_block.get("mean_trace", {})
+    mv_block = msv_block.get("mean_video", {})
+    bp_mt = (msv_block.get(bodypart, {}) or {}).get("mean_trace", {})
+    do_x_range_filter = bool(mt_block.get("do_x_range_filter", True))
+    do_time_smooth = bool(mt_block.get("do_time_smooth", True))
+    smooth_ms = float(mt_block.get("time_smooth_movavg_ms", 40.0))
+    xlim_pm_px = int(
+        bp_mt.get("xlim_pm_px", mt_block.get("xlim_pm_px", 150)),
+    )
+    anim_fps = int(mv_block.get("anim_fps", 60))
+    anim_speed = float(mv_block.get("anim_speed", 0.125))
+    tail_ms = float(mv_block.get("tail_ms", 100.0))
+
+    parts = [
+        cohort.animal,
+        cohort.cam,
+        "sessionMeanXY_BINNED_VIDEO",
+        f"interp-{cohort.interp_version}",
+        f"win-{int(cohort.pre_ms)}to{int(cohort.post_ms)}ms",
+    ]
+    if cohort.binned:
+        parts.append(f"relDayBin{cohort.bin_size_days}d")
+    if do_time_smooth:
+        parts.append(f"timeSmooth{int(smooth_ms)}ms")
+    if do_x_range_filter:
+        parts.append(f"xlim-{xlim_pm_px}to{xlim_pm_px}")
+    if animal_info is not None and animal_info.stroke_date is not None:
+        prepost_mode = str(msv_block.get("prepost_mode", "both"))
+        parts.append(
+            f"d0_{animal_info.stroke_date.strftime('%Y%m%d')}_{prepost_mode}",
+        )
+    parts.append(f"mode-{anim_mode}")
+    parts.append(f"fps{anim_fps}")
+    parts.append(f"speed{anim_speed}")
+    if anim_mode == "dot":
+        parts.append(f"tail{int(tail_ms)}ms")
+    return "_".join(parts) + f".{ext}"
+
+
+def build_mean_video(
+    bodypart: str,
+    animal: str,
+    resolver: PathResolver,
+    *,
+    reward_pre_ms: int,
+    reward_post_ms: int,
+    bin_sizes_days: int | Sequence[int] | None = None,
+    modes: Sequence[str] | None = None,
+    video_format: str | None = None,
+    with_frame_timestamps: bool | None = None,
+    params: dict[str, Any] | None = None,
+    overwrite: Literal["skip", "force"] = "skip",
+    animal_info: AnimalInfo | None = None,
+) -> list[Path]:
+    """Render the mean-video cohort animations.
+
+    Q5 lock 2026-05-01: tongue cells 47 (basic) + 48 (with frame
+    timestamps) consolidate to this single entry point with the
+    ``with_frame_timestamps`` knob (defaulting to True from the
+    ``mean_video`` config block — matches jaw cell 34 + tongue cell 48).
+
+    For each ``(bin_size, mode)`` combination, emits one video file. The
+    writer is chosen by :func:`_resolve_animation_writer`: MP4 via
+    ffmpeg if available, GIF via PillowWriter as a fallback.
+
+    Parameters
+    ----------
+    bodypart : {"tongue", "jaw"}
+    animal, resolver
+        Standard 7a.x signature.
+    reward_pre_ms, reward_post_ms
+        Reward-aligned window endpoints in milliseconds.
+    bin_sizes_days : int | Sequence[int] | None
+        Same semantics as :func:`build_mean_trace`. Default uses
+        ``animal_info.bin_days``.
+    modes : Sequence["cumulative" | "dot"] | None
+        Animation modes to render. ``None`` reads ``save_both_modes``
+        from the config block (default: both).
+    video_format : "mp4" | "gif" | None
+        Default reads from config (``mp4``). When ffmpeg is unavailable,
+        MP4 silently falls back to GIF; the returned ``Path.suffix``
+        reflects the actual output extension.
+    with_frame_timestamps : bool | None
+        Q5 toggle. ``None`` reads config default (``True``, matches jaw
+        cell 34 + tongue cell 48).
+
+    Returns
+    -------
+    list[Path]
+        Paths of the emitted video files. Empty list when the cohort has
+        no binned aggregates (e.g., no ``stroke_date`` configured).
+    """
+    if overwrite not in ("skip", "force"):
+        raise ValueError(
+            f"overwrite must be 'skip' or 'force'; got {overwrite!r}.",
+        )
+
+    if params is None:
+        params = load_defaults()
+    msv_block = (
+        params.get("dlc_kinematics", {}).get("mean_sem_visual", {})
+    )
+    mv_block = msv_block.get("mean_video", {})
+
+    if animal_info is None:
+        try:
+            animal_info = get_animal(animal)
+        except (KeyError, FileNotFoundError):
+            animal_info = None
+
+    if video_format is None:
+        video_format = str(mv_block.get("video_format", "mp4"))
+    if with_frame_timestamps is None:
+        with_frame_timestamps = bool(
+            mv_block.get("with_frame_timestamps", True),
+        )
+    if modes is None:
+        modes = (
+            ("cumulative", "dot") if bool(mv_block.get("save_both_modes", True))
+            else (str(mv_block.get("animation_mode", "dot")),)
+        )
+
+    sizes = _normalize_bin_sizes(bin_sizes_days, animal_info)
+    if not sizes:
+        return []
+
+    center_mode = _resolve_center_mode(bodypart, params)
+    out_dir = resolver.mean_sem_visual_dir(
+        bodypart,
+        center_mode=center_mode,
+        reward_pre_ms=reward_pre_ms,
+        reward_post_ms=reward_post_ms,
+        plot_family="mean_xy_overlays",
+        animal=animal,
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
+    anim_fps = int(mv_block.get("anim_fps", 60))
+    video_dpi = int(mv_block.get("video_dpi", 200))
+
+    paths: list[Path] = []
+    for size in sizes:
+        cohort = build_mean_trace_cohort(
+            bodypart, animal, resolver,
+            reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+            bin_size_days=size,
+            params=params, animal_info=animal_info,
+        )
+        if cohort is None or not cohort.binned:
+            continue
+        for mode in modes:
+            writer, ext, _fell_back = _resolve_animation_writer(
+                video_format, anim_fps,
+            )
+            fname = _mean_video_filename(
+                cohort, msv_block, bodypart,
+                anim_mode=mode, ext=ext,
+                animal_info=animal_info,
+            )
+            out_path = out_dir / fname
+            if overwrite == "skip" and out_path.exists():
+                paths.append(out_path)
+                continue
+            fig, ani = _build_mean_video_animation(
+                bodypart, cohort, msv_block,
+                anim_mode=mode,
+                with_frame_timestamps=with_frame_timestamps,
+            )
+            try:
+                ani.save(str(out_path), writer=writer, dpi=video_dpi)
+            finally:
+                plt.close(fig)
+            paths.append(out_path)
+    return paths
+
+
 def _plot_mean_trace_overlays(
     bodypart: str,
     cohort: MeanTraceCohort,
@@ -2624,19 +3116,24 @@ def build_mean_sem_cohort(
     *,
     time_windows_ms: Sequence[tuple[int, int]] | None = None,
     bin_sizes_days: int | Sequence[int] | None = None,
+    include_mean_video: bool = True,
     params: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
     overwrite: Literal["skip", "force"] = "skip",
 ) -> dict[str, list[Path]]:
     """Per-animal composite — runs every cohort family across every time
-    window (and every ``bin_sizes_days`` for ``mean_trace``).
+    window (and every ``bin_sizes_days`` for ``mean_trace`` /
+    ``mean_video``).
 
-    Returns a mapping keyed by family name with the list of all emitted
-    PNG paths. Families covered:
+    Families covered:
       - ``session_overlays``: 4 PNGs per (animal, window).
       - ``binned_overlays``: 4 PNGs per (animal, window).
       - ``mean_trace``: 1 PNG per (animal, window, bin_size_days).
-    ``mean_video`` ships in C4.3.
+      - ``mean_video``: 1 video per (animal, window, bin_size_days, mode).
+
+    ``include_mean_video`` defaults to ``True``. Set to ``False`` to skip
+    the (potentially-slow) animation rendering — useful for fast cohort
+    sweeps where only the static plot families are needed.
     """
     if params is None:
         params = load_defaults()
@@ -2660,6 +3157,7 @@ def build_mean_sem_cohort(
         "session_overlays": [],
         "binned_overlays": [],
         "mean_trace": [],
+        "mean_video": [],
     }
     for pre_ms, post_ms in time_windows_ms:
         key = (int(pre_ms), int(post_ms))
@@ -2692,6 +3190,16 @@ def build_mean_sem_cohort(
                 overwrite=overwrite,
             ),
         )
+        if include_mean_video:
+            out["mean_video"].extend(
+                build_mean_video(
+                    bodypart, animal, resolver,
+                    reward_pre_ms=key[0], reward_post_ms=key[1],
+                    bin_sizes_days=bin_sizes_days,
+                    params=params, animal_info=animal_info,
+                    overwrite=overwrite,
+                ),
+            )
     return out
 
 
@@ -2713,6 +3221,7 @@ __all__ = [
     "build_mean_sem_cohort",
     "build_mean_trace",
     "build_mean_trace_cohort",
+    "build_mean_video",
     "build_session_overlays",
     "build_trial_overlays",
 ]

@@ -846,3 +846,251 @@ class TestNormalizeBinSizesParametric:
             bin_days=2,
         )
         assert msv._normalize_bin_sizes(input_value, info) == expected
+
+
+# ---------------------------------------------------------------------------
+# C4.3 — mean_video (Q5 consolidated; ffmpeg/Pillow fallback)
+# ---------------------------------------------------------------------------
+
+
+class TestResolveAnimationWriter:
+    """Writer-fallback logic for mean_video.
+
+    The smoke test env runs without ffmpeg, so MP4 falls back to GIF
+    (PillowWriter is always available with matplotlib). Production env
+    with ffmpeg installed → MP4 returned directly.
+    """
+
+    def test_gif_returns_pillow(self):
+        import matplotlib.animation as mpl_anim
+        writer, ext, fell_back = msv._resolve_animation_writer("gif", 60)
+        assert isinstance(writer, mpl_anim.PillowWriter)
+        assert ext == "gif"
+        assert fell_back is False
+
+    def test_mp4_falls_back_to_gif_when_no_ffmpeg(self):
+        # Env confirmation: ffmpeg is not installed in the test env. If
+        # this assertion ever fires, ffmpeg HAS been installed and the
+        # fallback path is no longer exercised — flip this test to assert
+        # FFMpegWriter when that happens.
+        import matplotlib.animation as mpl_anim
+        if mpl_anim.FFMpegWriter.isAvailable():
+            pytest.skip("ffmpeg installed; fallback path not exercised")
+        writer, ext, fell_back = msv._resolve_animation_writer("mp4", 60)
+        assert isinstance(writer, mpl_anim.PillowWriter)
+        assert ext == "gif"
+        assert fell_back is True
+
+    def test_unknown_format_raises(self):
+        with pytest.raises(ValueError, match="must be 'mp4' or 'gif'"):
+            msv._resolve_animation_writer("avi", 60)
+
+
+class TestBuildMeanVideoAnimation:
+    """End-to-end: build the animation + save as GIF.
+
+    Uses the synthetic MeanTraceCohort helper from C4.2. PillowWriter
+    handles GIF output without external deps so this test runs anywhere.
+    """
+
+    def test_animation_emits_gif_dot_mode(self, tmp_path):
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="tongue", bin_size_days=2,
+            n_pre=2, n_post=2,  # smaller cohort for fast test
+        )
+        msv_block = {
+            "mean_trace": {
+                "pre_color": "0.6", "post_cmap": "plasma",
+                "show_sem_tube": False,
+                "figure_height_inches": 4.0,
+                "figure_width_inches": 8.0,
+            },
+            "tongue": {"mean_trace": {"figure_width_inches": 8.0}},
+            "mean_video": {
+                "anim_fps": 10,
+                "anim_speed": 1.0,    # fast playback for quick smoke
+                "tail_ms": 100.0,
+                "show_sem_tube": False,
+                "tube_alpha": 0.14,
+            },
+        }
+        fig, ani = msv._build_mean_video_animation(
+            "tongue", cohort, msv_block,
+            anim_mode="dot",
+            with_frame_timestamps=True,
+        )
+        out_path = tmp_path / "test_video.gif"
+        import matplotlib.animation as mpl_anim
+        writer = mpl_anim.PillowWriter(fps=10)
+        ani.save(str(out_path), writer=writer, dpi=72)
+        import matplotlib.pyplot as plt_local
+        plt_local.close(fig)
+        assert out_path.exists()
+        assert out_path.stat().st_size > 0
+
+    def test_animation_emits_gif_cumulative_mode(self, tmp_path):
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="jaw", bin_size_days=2,
+            n_pre=2, n_post=2,
+        )
+        msv_block = {
+            "mean_trace": {
+                "pre_color": "0.6", "post_cmap": "plasma",
+                "show_sem_tube": False,
+                "figure_height_inches": 4.0,
+                "figure_width_inches": 8.0,
+            },
+            "jaw": {"mean_trace": {"figure_width_inches": 8.0}},
+            "mean_video": {
+                "anim_fps": 10, "anim_speed": 1.0,
+                "tail_ms": 100.0, "show_sem_tube": False,
+            },
+        }
+        fig, ani = msv._build_mean_video_animation(
+            "jaw", cohort, msv_block,
+            anim_mode="cumulative",
+            with_frame_timestamps=False,
+        )
+        out_path = tmp_path / "test_video_cum.gif"
+        import matplotlib.animation as mpl_anim
+        writer = mpl_anim.PillowWriter(fps=10)
+        ani.save(str(out_path), writer=writer, dpi=72)
+        import matplotlib.pyplot as plt_local
+        plt_local.close(fig)
+        assert out_path.exists()
+        assert out_path.stat().st_size > 0
+
+    def test_animation_unknown_mode_raises(self):
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="tongue", bin_size_days=2,
+            n_pre=2, n_post=2,
+        )
+        msv_block = {
+            "mean_trace": {"figure_width_inches": 8.0},
+            "tongue": {"mean_trace": {"figure_width_inches": 8.0}},
+            "mean_video": {"anim_fps": 10, "anim_speed": 1.0},
+        }
+        with pytest.raises(ValueError, match="anim_mode must be"):
+            msv._build_mean_video_animation(
+                "tongue", cohort, msv_block,
+                anim_mode="bogus",
+                with_frame_timestamps=True,
+            )
+
+    def test_animation_no_binned_raises(self):
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="tongue", bin_size_days=2,
+        )
+        cohort_no_bins = msv.MeanTraceCohort(
+            bodypart=cohort.bodypart, animal=cohort.animal,
+            pre_ms=cohort.pre_ms, post_ms=cohort.post_ms,
+            bin_size_days=cohort.bin_size_days,
+            fps=cohort.fps, cam=cohort.cam,
+            interp_version=cohort.interp_version,
+            rows=cohort.rows, binned=[],
+            y_max=cohort.y_max, suffix=cohort.suffix,
+        )
+        msv_block = {
+            "mean_trace": {"figure_width_inches": 8.0},
+            "tongue": {"mean_trace": {"figure_width_inches": 8.0}},
+            "mean_video": {"anim_fps": 10, "anim_speed": 1.0},
+        }
+        with pytest.raises(ValueError, match="requires binned aggregates"):
+            msv._build_mean_video_animation(
+                "tongue", cohort_no_bins, msv_block,
+                anim_mode="dot",
+                with_frame_timestamps=True,
+            )
+
+
+class TestMeanVideoFilename:
+    """Filename pattern matches legacy ``_build_outname``."""
+
+    def test_filename_includes_window_bin_mode_fps_speed_tail(self):
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="tongue", bin_size_days=2,
+            pre_ms=0.0, post_ms=1500.0,
+        )
+        msv_block = {
+            "mean_trace": {
+                "do_x_range_filter": True,
+                "do_time_smooth": True,
+                "time_smooth_movavg_ms": 40.0,
+                "xlim_pm_px": 150,
+            },
+            "tongue": {"mean_trace": {"xlim_pm_px": 150}},
+            "mean_video": {
+                "anim_fps": 60, "anim_speed": 0.125, "tail_ms": 100.0,
+            },
+        }
+        fname = msv._mean_video_filename(
+            cohort, msv_block, "tongue",
+            anim_mode="dot", ext="gif",
+            animal_info=None,
+        )
+        # Spot-check legacy tokens.
+        assert "PS46" in fname
+        assert "sessionMeanXY_BINNED_VIDEO" in fname
+        assert "win-0to1500ms" in fname
+        assert "relDayBin2d" in fname
+        assert "timeSmooth40ms" in fname
+        assert "xlim-150to150" in fname
+        assert "mode-dot" in fname
+        assert "fps60" in fname
+        assert "speed0.125" in fname
+        assert "tail100ms" in fname     # tail only present in dot mode
+        assert fname.endswith(".gif")
+
+    def test_filename_cumulative_mode_omits_tail(self):
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="jaw", bin_size_days=2,
+            pre_ms=0.0, post_ms=1500.0,
+        )
+        msv_block = {
+            "mean_trace": {
+                "do_x_range_filter": True, "do_time_smooth": True,
+                "time_smooth_movavg_ms": 40.0, "xlim_pm_px": 75,
+            },
+            "jaw": {"mean_trace": {"xlim_pm_px": 75}},
+            "mean_video": {
+                "anim_fps": 60, "anim_speed": 0.125, "tail_ms": 100.0,
+            },
+        }
+        fname = msv._mean_video_filename(
+            cohort, msv_block, "jaw",
+            anim_mode="cumulative", ext="mp4",
+            animal_info=None,
+        )
+        assert "mode-cumulative" in fname
+        assert "tail" not in fname  # cumulative mode → no tail in filename
+        assert fname.endswith(".mp4")
+
+    def test_filename_with_animal_info_includes_d0(self):
+        from stroke_orofacial.animals import AnimalInfo
+        info = AnimalInfo(
+            animal_id="PS46",
+            stroke_date=datetime.date(2025, 3, 13),
+            session_start=datetime.date(2025, 3, 7),
+            session_end=datetime.date(2025, 4, 6),
+            bin_days=2,
+        )
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="tongue", bin_size_days=2,
+        )
+        msv_block = {
+            "mean_trace": {
+                "do_x_range_filter": True, "do_time_smooth": True,
+                "time_smooth_movavg_ms": 40.0, "xlim_pm_px": 150,
+            },
+            "tongue": {"mean_trace": {"xlim_pm_px": 150}},
+            "mean_video": {
+                "anim_fps": 60, "anim_speed": 0.125, "tail_ms": 100.0,
+            },
+            "prepost_mode": "both",
+        }
+        fname = msv._mean_video_filename(
+            cohort, msv_block, "tongue",
+            anim_mode="dot", ext="gif",
+            animal_info=info,
+        )
+        assert "d0_20250313_both" in fname

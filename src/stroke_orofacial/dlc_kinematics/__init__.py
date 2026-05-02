@@ -32,6 +32,7 @@ from stroke_orofacial.dlc_kinematics.mean_sem_visual import (
     build_mean_sem_cohort,
     build_mean_trace,
     build_mean_trace_cohort,
+    build_mean_video,
     build_session_overlays,
     build_trial_overlays,
 )
@@ -90,6 +91,7 @@ __all__ = [
     "build_mean_sem_cohort",
     "build_mean_trace",
     "build_mean_trace_cohort",
+    "build_mean_video",
     "build_session_overlays",
     "build_tongue_pertrial",
     "build_tongue_pertrial_by_animal_date",
