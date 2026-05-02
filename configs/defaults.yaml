@@ -787,6 +787,102 @@ dlc_kinematics:
     feature_extraction_version: "v7a.5"
     interpolation_version: "v5p3"
 
+  # =========================================================
+  # Phase 7a.6 — Mean/SEM visual gate (bodypart-parametric).
+  # Vendored cells: docs/legacy_snippets/{tongue,jaw}_mean_sem_section.py.
+  # Master cells (tongue 31 / jaw 30) audit (.scratch_7a6/AUDIT_REPORT.md
+  # 2026-05-01): 33 of 34 KNOBS shared verbatim, only CENTER_MODE diverges.
+  # Per-bodypart blocks below carry only the divergent value (+ jaw's
+  # multi-bin extension that 7a.6 ports back to tongue per Q4).
+  # Cells covered:
+  #   - tongue 31 + jaw 30: master 4-plot-family per-session + cohort
+  #     mean/SEM (individual_sessions / trial_overlays / session_overlays
+  #     / binned_overlays).
+  #   - tongue 45 / jaw 32: cross-session mean XY trajectory overlays
+  #     (mean_xy_overlays plot family).
+  #   - tongue 47+48 / jaw 34: cross-session mean XY video (consolidated
+  #     into one with_frame_timestamps knob per Q5).
+  # Task 4 (module port) extends this block with mean_trace + mean_video
+  # sub-blocks once those cells are translated.
+  # =========================================================
+  mean_sem_visual:
+    # ---- Plot-family enable/disable (master cells 31/30 PLOT_*) ----
+    plot_individual_sessions: true
+    plot_trial_overlays: true
+    plot_session_overlays: true
+    plot_binned_overlays: true
+
+    # ---- PNG save toggles (master cells 31/30 SAVE_*_PNGS) ----
+    save_pngs: true
+    save_individual_pngs: true
+    save_trial_overlay_pngs: true
+    save_overlay_pngs: true
+    save_binned_pngs: true
+
+    # ---- Reward-aligned time windows (master cells 31/30 TIME_WINDOWS_MS).
+    # Each (pre_ms, post_ms) entry produces its own
+    # `rewardAligned_{pre}pre-{post}post/` subdir of saved figures (Q7
+    # uniform layout for both bodyparts). Units: milliseconds, matching
+    # legacy filename convention (e.g., `rewardAligned_100pre-1000post/`).
+    time_windows_ms:
+      - [100, 1000]   # short window
+      - [500, 5000]   # long window
+
+    # ---- Stroke alignment + rel_day filtering (master cells 31/30
+    # USE_STROKE_ALIGNMENT, PREPOST_MODE, REL_DAY_RANGE, INCLUDE_*_BINS).
+    use_stroke_alignment: true
+    prepost_mode: both        # "pre" | "post" | "both" | "all"
+    rel_day_range: null       # null = no filter; OR [min_day, max_day]
+    include_pre_bins: true
+    include_post_bins: true
+
+    # ---- Aesthetic / rendering knobs (master cells 31/30) ----
+    plot_sem: true
+    linewidth: 1
+    sem_alpha: 0.18
+    cmap_name: plasma
+    line_alpha: 0.5
+    pre_color: "0.3"
+    side_colors:
+      L: dodgerblue
+      R: mediumvioletred
+
+    # ---- Trial overlay knobs (master cells 31/30 TRIAL_*) ----
+    trial_alpha: 0.08
+    trial_linewidth: 0.6
+    use_separate_trial_overlay_limits: true
+    trial_overlay_percentiles: [1.0, 99.0]
+    trial_overlay_pad_frac: 0.05
+
+    # ---- Cohort defaults (master cells 31/30) ----
+    default_bin_size_days: 2
+    interp_version: v5p3
+    cam: cam2
+    dpi: 200
+
+    # ---- Cross-cell extensions (Task 1 audit-confirmed) ----
+    # Q4: jaw cell 32 added per-mouse multi-bin support (multiple
+    # bin_sizes_days per mouse). Tongue cell 45 lacks this. Consolidated
+    # module ports multi-bin to tongue too (default true; opt out via
+    # per-bodypart override below).
+    multi_bin_mean_trace: true
+
+    # Q5: tongue legacy split mean video into Cell 47 (basic) + Cell 48
+    # (with frame timestamps). Jaw cell 34 unifies. Consolidated module
+    # follows jaw's shape with `with_frame_timestamps` kwarg defaulting
+    # to true (matches the more-informative `# WITH FRAME TIMESTAMPS`
+    # variant of tongue Cell 48 + the jaw Cell 34 default).
+    with_frame_timestamps: true
+
+    # ---- Per-bodypart override blocks ----
+    # Audit found only CENTER_MODE diverges between master cells. Add
+    # additional per-bodypart overrides here if/when Task 4 surfaces
+    # additional divergence in the mean_trace + mean_video cells.
+    tongue:
+      center_mode: centered_spout_midpoint
+    jaw:
+      center_mode: centered_eye_midpoint
+
 # ---- Wavesurfer ----
 
 wavesurfer:
