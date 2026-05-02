@@ -875,13 +875,71 @@ dlc_kinematics:
     with_frame_timestamps: true
 
     # ---- Per-bodypart override blocks ----
-    # Audit found only CENTER_MODE diverges between master cells. Add
-    # additional per-bodypart overrides here if/when Task 4 surfaces
-    # additional divergence in the mean_trace + mean_video cells.
+    # Audit found only CENTER_MODE diverges between master cells (Cell
+    # 31/30). Mean-trace (Cell 45/32) adds two more divergent knobs:
+    # ``xlim_pm_px`` (tongue=150, jaw=75 — different DLC pixel range
+    # because the eye-centered jaw is much closer to spout) and
+    # ``figure_width_inches`` (tongue=13.0, jaw=10.0 — newer jaw layout).
     tongue:
       center_mode: centered_spout_midpoint
+      mean_trace:
+        xlim_pm_px: 150
+        figure_width_inches: 13.0
     jaw:
       center_mode: centered_eye_midpoint
+      mean_trace:
+        xlim_pm_px: 75
+        figure_width_inches: 10.0
+
+    # ---- Mean-trace sub-block (cells 45/32, Phase 7a.6 C4.2) ----
+    # Cohort cross-session mean XY trajectory overlays (one PNG per
+    # (animal, window, bin_size_days)). Per-side panels in the same
+    # figure: R on the LEFT subplot, L on the RIGHT (legacy convention).
+    # Y-axis inverted (0 at top) so the lick trajectory points downward
+    # into the spout. Knobs sourced from jaw cell 32 (newer, 20260416)
+    # since it added multi-bin + data-driven y-limits + per-window
+    # subdir layout that tongue cell 45 lacks. Q4 lock: tongue gets the
+    # multi-bin upgrade; ``bin_sizes_days`` defaults to a singleton list
+    # of ``animal_info.bin_days`` if not overridden.
+    mean_trace:
+      do_x_range_filter: true       # legacy DO_X_RANGE_FILTER
+      do_time_smooth: true          # legacy DO_TIME_SMOOTH
+      time_smooth_movavg_ms: 40.0   # legacy TIME_SMOOTH_MOVAVG_MS
+      stride: 1                     # legacy STRIDE; downsample factor
+      do_rel_day_bin: true          # legacy DO_REL_DAY_BIN
+      plot_individual_sessions_when_binned: true
+      # Side colors: legacy uses pre=grey/post=plasma at the rel_day
+      # level (not L/R). PRE_COLOR is a slightly lighter grey than the
+      # master cell (0.6 here vs 0.3 there) — legacy quirk preserved.
+      pre_color: "0.6"
+      post_cmap: plasma
+      line_alpha: 0.2
+      line_lw: 0.8
+      show_sem_tube: true
+      tube_alpha: 0.15
+      figure_height_inches: 6.2     # shared; figure_width_inches diverges per-bodypart
+      # Data-driven y-limit (jaw cell 32 newer-only knob; ported back
+      # to tongue per the consolidate-on-newer pattern).
+      y_lim_mode: robust            # "robust" or "minmax"
+      y_robust_pct: [1.0, 99.9]
+      y_pad_frac: 0.1
+
+    # ---- Mean-video sub-block (cells 47+48/34, Phase 7a.6 C4.3) ----
+    # Cohort binned-mean session XY trajectory ANIMATIONS — Q5 lock
+    # consolidates tongue's split (cell 47 basic + cell 48 with-frame-
+    # timestamps) into one entry point with ``with_frame_timestamps: bool``
+    # kwarg defaulting to true (matches jaw cell 34 + tongue cell 48
+    # behavior). Implementation lands in C4.3 (matplotlib.animation +
+    # ffmpeg dependency).
+    mean_video:
+      with_frame_timestamps: true
+      animation_mode: dot           # "dot" or "cumulative"
+      tail_ms: 100.0
+      anim_fps: 60
+      anim_speed: 0.125
+      video_dpi: 200
+      video_format: mp4             # "mp4" (needs ffmpeg) or "gif"
+      save_both_modes: true         # emit both dot and cumulative
 
 # ---- Wavesurfer ----
 

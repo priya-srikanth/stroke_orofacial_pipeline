@@ -83,19 +83,25 @@ from stroke_orofacial.paths import PathResolver  # noqa: E402
 
 MEAN_SEM_VISUAL_VERSION = "v7a.6"
 
-# Family identifiers handled by this commit (C4.1). C4.2 adds
-# ``mean_xy_overlays``.
+# Family identifiers handled across the Phase 7a.6 C4.x commits.
 PLOT_FAMILIES_C4_1: tuple[str, ...] = (
     "individual_sessions",
     "trial_overlays",
     "session_overlays",
     "binned_overlays",
 )
+PLOT_FAMILIES_C4_2: tuple[str, ...] = ("mean_trace",)
+PLOT_FAMILIES_C4_3: tuple[str, ...] = ("mean_video",)
+PLOT_FAMILIES_ALL: tuple[str, ...] = (
+    *PLOT_FAMILIES_C4_1,
+    *PLOT_FAMILIES_C4_2,
+    *PLOT_FAMILIES_C4_3,
+)
 _PER_SESSION_FAMILIES: frozenset[str] = frozenset(
     {"individual_sessions", "trial_overlays"}
 )
 _COHORT_FAMILIES: frozenset[str] = frozenset(
-    {"session_overlays", "binned_overlays"}
+    {"session_overlays", "binned_overlays", "mean_trace", "mean_video"}
 )
 
 # Per-bodypart axis-label tokens. Matches legacy ``Tongue X (px)`` /
@@ -1746,14 +1752,967 @@ def build_binned_overlays(
     return paths
 
 
+# ===========================================================================
+# Phase 7a.6 C4.2 — Mean trace (cells 45 / 32)
+# ===========================================================================
+#
+# Cohort cross-session mean XY trajectory overlays. Per-(animal, window,
+# bin_size_days), emits ONE PNG with two side-by-side panels (R left,
+# L right per legacy convention; y-axis inverted so 0 sits at the top).
+# Optionally aggregates session-mean trajectories into rel_day bins.
+#
+# Departures from cell 31/30 master-cell inputs:
+#
+# - X-range filter ON by default (legacy ``DO_X_RANGE_FILTER``): clips
+#   x-values outside ±``xlim_pm_px`` to NaN before snippet extraction.
+#   tongue uses 150 px, jaw uses 75 px (per-bodypart override block).
+# - Time-domain moving-average smoothing on the per-(date, side) mean
+#   trajectory (legacy ``TIME_SMOOTH_MOVAVG_MS = 40 ms``).
+# - Per-(date, side) mean across trials (vs the master cell's per-side
+#   mean+SEM stack).
+#
+# Q4 lock 2026-05-01: jaw cell 32's per-mouse multi-bin (``bin_sizes_days``
+# list) is ported back to tongue. The public ``build_mean_trace`` accepts
+# a ``bin_sizes_days`` int OR list[int]; one PNG is emitted per entry.
+
+
+@dataclass(frozen=True)
+class MeanTraceRow:
+    """Per-(date, side) mean XY trajectory for one session.
+
+    Returned in the ``rows`` list of :class:`MeanTraceCohort`. ``mx`` /
+    ``my`` are the column means across trials (after the optional
+    moving-average time smoothing). ``sx`` / ``sy`` are SEMs (also
+    smoothed). ``rel_day`` is NaN if no ``stroke_date`` is configured for
+    the animal.
+    """
+
+    date: datetime.date
+    side: str
+    rel_day: float
+    n_trials: int
+    fps: float
+    pre_ms: float
+    post_ms: float
+    t_ms: np.ndarray = field(repr=False)
+    mx: np.ndarray = field(repr=False)
+    my: np.ndarray = field(repr=False)
+    sx: np.ndarray = field(repr=False)
+    sy: np.ndarray = field(repr=False)
+
+
+@dataclass(frozen=True)
+class BinnedTraceRow:
+    """Cross-session aggregated mean XY trajectory within one rel_day bin.
+
+    ``mx`` / ``my`` are means across the per-session ``mx`` / ``my``
+    arrays in the bin (i.e., second-level mean: trials → session →
+    cross-session). ``sx`` / ``sy`` are cross-session SEMs.
+    """
+
+    side: str
+    rel_day_bin_label: str
+    rel_day_bin_lo: int
+    rel_day_bin_hi: int
+    rel_day_bin_center: float
+    n_sessions: int
+    t_ms: np.ndarray = field(repr=False)
+    mx: np.ndarray = field(repr=False)
+    my: np.ndarray = field(repr=False)
+    sx: np.ndarray = field(repr=False)
+    sy: np.ndarray = field(repr=False)
+
+
+@dataclass(frozen=True)
+class MeanTraceCohort:
+    """Cross-session aggregates for one ``(animal, bodypart, window, bin_size_days)``.
+
+    Returned by :func:`build_mean_trace_cohort`. Consumed by
+    :func:`build_mean_trace`. ``binned`` is empty when no ``stroke_date``
+    is available or no bins could be constructed.
+    """
+
+    bodypart: str
+    animal: str
+    pre_ms: float
+    post_ms: float
+    bin_size_days: int
+    fps: float
+    cam: str
+    interp_version: str
+    rows: list[MeanTraceRow] = field(repr=False)
+    binned: list[BinnedTraceRow] = field(repr=False)
+    y_max: float
+    suffix: str
+
+
+# ----- additional helpers ported verbatim from cells 45/32 -----
+
+
+def _moving_average_nan(y: np.ndarray, w: int) -> np.ndarray:
+    """NaN-aware moving average. Direct port of legacy
+    ``_moving_average_nan`` (lines 1002-1014 of vendored cell 45)."""
+    y = np.asarray(y, float)
+    if w <= 1:
+        return y.copy()
+    finite = np.isfinite(y)
+    y0 = np.where(finite, y, 0.0)
+    kernel = np.ones(int(w), dtype=float)
+    num = np.convolve(y0, kernel, mode="same")
+    den = np.convolve(finite.astype(float), kernel, mode="same")
+    out = np.full_like(y, np.nan, dtype=float)
+    good = den > 0
+    out[good] = num[good] / den[good]
+    return out
+
+
+def _smooth_movavg_ms(
+    arr: np.ndarray, win_ms: float, fps: float, stride: int = 1,
+) -> np.ndarray:
+    """Moving-average smoothing with the kernel width specified in ms.
+
+    Direct port of legacy ``_smooth_movavg_ms`` (lines 1016-1022). Useful
+    for time-axis smoothing of per-session mean trajectories (cells
+    45/32 ``TIME_SMOOTH_MOVAVG_MS = 40 ms`` default).
+    """
+    if (win_ms is None) or (win_ms <= 0):
+        return np.asarray(arr, float)
+    dt_ms = (1000.0 / float(fps)) * float(stride)
+    w = int(np.round(float(win_ms) / dt_ms))
+    w = max(1, w)
+    return _moving_average_nan(np.asarray(arr, float), w)
+
+
+def _color_for_rel_day_continuous(
+    rel_day: float, post_max: float | None,
+    cmap_name: str = "plasma", pre_color: str = "0.6",
+) -> Any:
+    """Continuous (per-rel-day) version of :func:`_color_for_bin`.
+
+    Cell 45's ``_color_for_rel_day``: rel_day <= 0 → pre_color (grey);
+    rel_day >= 1 → linearly mapped onto cmap from 0..1 over [1, post_max].
+    """
+    if (
+        rel_day is None
+        or (not np.isfinite(rel_day))
+        or rel_day <= 0
+    ):
+        return pre_color
+    cmap = plt.get_cmap(cmap_name)
+    if (
+        post_max is None
+        or (not np.isfinite(post_max))
+        or post_max <= 1
+    ):
+        return cmap(0.85)
+    u = (float(rel_day) - 1.0) / max(1.0, float(post_max) - 1.0)
+    u = float(np.clip(u, 0.0, 1.0))
+    return cmap(u)
+
+
+def _plot_xy_mean(
+    ax: Any, mx: np.ndarray, my: np.ndarray,
+    sx: np.ndarray | None, sy: np.ndarray | None,
+    color: Any, label: str | None = None,
+    lw: float = 1.0, alpha: float = 0.4,
+    show_tube: bool = False, tube_alpha: float = 0.16,
+) -> None:
+    """Plot a single XY trajectory + optional ±SEM tube. Direct port of
+    legacy ``_plot_xy_mean`` (lines 1086-1096 of vendored cell 45).
+    """
+    ax.plot(mx, my, color=color, lw=lw, alpha=alpha, label=label)
+    if not show_tube:
+        return
+    ok = np.isfinite(mx) & np.isfinite(my)
+    if (sx is not None) and np.any(ok) and np.any(np.isfinite(sx)):
+        ax.plot(mx + sx, my, color=color, lw=1.0, alpha=tube_alpha)
+        ax.plot(mx - sx, my, color=color, lw=1.0, alpha=tube_alpha)
+    if (sy is not None) and np.any(ok) and np.any(np.isfinite(sy)):
+        ax.plot(mx, my + sy, color=color, lw=1.0, alpha=tube_alpha)
+        ax.plot(mx, my - sy, color=color, lw=1.0, alpha=tube_alpha)
+
+
+def _normalize_bin_sizes(
+    bin_sizes_days: int | Sequence[int] | None,
+    animal_info: AnimalInfo | None,
+) -> list[int]:
+    """Resolve a ``bin_sizes_days`` argument into a list of ints.
+
+    ``None`` → singleton list of ``animal_info.bin_days`` (Q4 default).
+    int → singleton list. Sequence → list (deduped, sorted ascending).
+    Empty sequence → empty list (caller should treat as "no binning").
+    """
+    if bin_sizes_days is None:
+        if animal_info is None:
+            return [2]  # conservative fallback; 2 = audit majority
+        return [int(animal_info.bin_days)]
+    if isinstance(bin_sizes_days, int):
+        return [int(bin_sizes_days)]
+    out = sorted({int(b) for b in bin_sizes_days if int(b) > 0})
+    return out
+
+
+# ===========================================================================
+# Mean-trace cohort builder
+# ===========================================================================
+
+
+def _load_session_xy_filtered(
+    bodypart: str,
+    animal: str,
+    date: datetime.date,
+    resolver: PathResolver,
+    *,
+    do_x_range_filter: bool,
+    xlim_pm_px: float,
+) -> tuple[np.ndarray, np.ndarray, float, int, str]:
+    """Read the 7a.2 parquet's ``x_final`` / ``y_final`` arrays + metadata,
+    optionally clipping the x-range (legacy mean_trace ``DO_X_RANGE_FILTER``).
+    """
+    parquet_path = resolver.interpolated_trace(
+        bodypart=bodypart, animal=animal, date=date,
+    )
+    table = pq.read_table(parquet_path)
+    raw_meta = table.schema.metadata or {}
+    fps = float(raw_meta[b"fps"].decode())
+    n_frames = int(raw_meta[b"n_frames"].decode())
+    interp_version = raw_meta.get(
+        b"interpolation_version", b"unknown",
+    ).decode()
+    df = table.to_pandas()
+    x = df["x_final"].to_numpy(dtype=float)
+    y = df["y_final"].to_numpy(dtype=float)
+    if do_x_range_filter:
+        bad = (~np.isfinite(x)) | (np.abs(x) > float(xlim_pm_px))
+        if np.any(bad):
+            x = x.copy()
+            y = y.copy()
+            x[bad] = np.nan
+            y[bad] = np.nan
+    return x, y, fps, n_frames, interp_version
+
+
+def _per_session_mean_xy(
+    x: np.ndarray, y: np.ndarray,
+    centers: np.ndarray, pre_f: int, post_f: int,
+    *, fps: float, stride: int, do_smooth: bool, smooth_ms: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
+    """Stack per-trial XY snippets, take column mean+SEM across trials,
+    optionally apply moving-average time smoothing.
+
+    Returns ``(mx, my, sx, sy, n_trials)``. SEM uses ``ddof=0`` (matches
+    legacy ``_mean_sem_trials``).
+    """
+    if len(centers) == 0:
+        T = pre_f + post_f + 1
+        if stride > 1:
+            T = len(np.arange(-pre_f, post_f + 1)[::stride])
+        nan = np.full(T, np.nan, float)
+        return nan, nan.copy(), nan.copy(), nan.copy(), 0
+
+    xs_list = [_snippet(x, int(c), pre_f, post_f) for c in centers]
+    ys_list = [_snippet(y, int(c), pre_f, post_f) for c in centers]
+    if stride > 1:
+        xs_list = [s[::stride] for s in xs_list]
+        ys_list = [s[::stride] for s in ys_list]
+    xs = np.vstack(xs_list)
+    ys = np.vstack(ys_list)
+
+    mx = np.nanmean(xs, axis=0)
+    my = np.nanmean(ys, axis=0)
+    n_eff_x = np.sum(np.isfinite(xs), axis=0)
+    n_eff_y = np.sum(np.isfinite(ys), axis=0)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        sx = np.nanstd(xs, axis=0) / np.sqrt(np.maximum(1, n_eff_x))
+        sy = np.nanstd(ys, axis=0) / np.sqrt(np.maximum(1, n_eff_y))
+    if do_smooth and smooth_ms > 0:
+        mx = _smooth_movavg_ms(mx, smooth_ms, fps=fps, stride=stride)
+        my = _smooth_movavg_ms(my, smooth_ms, fps=fps, stride=stride)
+        sx = _smooth_movavg_ms(sx, smooth_ms, fps=fps, stride=stride)
+        sy = _smooth_movavg_ms(sy, smooth_ms, fps=fps, stride=stride)
+    return mx, my, sx, sy, len(centers)
+
+
+def build_mean_trace_cohort(
+    bodypart: str,
+    animal: str,
+    resolver: PathResolver,
+    *,
+    reward_pre_ms: int,
+    reward_post_ms: int,
+    bin_size_days: int | None = None,
+    params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+) -> MeanTraceCohort | None:
+    """Load + aggregate cross-session mean XY trajectories.
+
+    For one ``(animal, bodypart, window, bin_size_days)`` combination,
+    emits a :class:`MeanTraceCohort` with one :class:`MeanTraceRow` per
+    eligible (date, side) and (when binning is requested + ``stroke_date``
+    is set) one :class:`BinnedTraceRow` per (rel_day_bin, side). Returns
+    ``None`` when no eligible sessions remain.
+
+    ``bin_size_days`` defaults to ``animal_info.bin_days`` (Q4 lock).
+    Pass an explicit int to override (e.g. iterating multiple sizes).
+    """
+    if bodypart not in _KNOWN_BODYPARTS:
+        raise ValueError(
+            f"bodypart must be one of {_KNOWN_BODYPARTS}; got {bodypart!r}",
+        )
+
+    if params is None:
+        params = load_defaults()
+    msv_block = (
+        params.get("dlc_kinematics", {}).get("mean_sem_visual", {})
+    )
+    mt_block = msv_block.get("mean_trace", {})
+    bp_block = msv_block.get(bodypart, {})
+    bp_mt_block = bp_block.get("mean_trace", {})
+
+    if animal_info is None:
+        try:
+            animal_info = get_animal(animal)
+        except (KeyError, FileNotFoundError):
+            animal_info = None
+
+    bin_size_days_resolved = (
+        int(bin_size_days) if bin_size_days is not None
+        else (
+            int(animal_info.bin_days) if animal_info is not None
+            else int(msv_block.get("default_bin_size_days", 2))
+        )
+    )
+
+    # Knobs (with per-bodypart override merge).
+    do_x_range_filter = bool(mt_block.get("do_x_range_filter", True))
+    xlim_pm_px = float(
+        bp_mt_block.get("xlim_pm_px", mt_block.get("xlim_pm_px", 150.0)),
+    )
+    do_time_smooth = bool(mt_block.get("do_time_smooth", True))
+    smooth_ms = float(mt_block.get("time_smooth_movavg_ms", 40.0))
+    stride = int(mt_block.get("stride", 1))
+    do_rel_day_bin = bool(mt_block.get("do_rel_day_bin", True))
+    cam = str(msv_block.get("cam", "cam2"))
+    prepost_mode = str(msv_block.get("prepost_mode", "both"))
+    rel_day_range_cfg = msv_block.get("rel_day_range", None)
+    rel_day_range: tuple[int, int] | None = None
+    if rel_day_range_cfg is not None:
+        rel_day_range = (
+            int(rel_day_range_cfg[0]), int(rel_day_range_cfg[1]),
+        )
+
+    dates = _eligible_dates(
+        animal, bodypart, resolver,
+        animal_info=animal_info,
+        prepost_mode=prepost_mode,
+        rel_day_range=rel_day_range,
+    )
+    if not dates:
+        return None
+
+    rows: list[MeanTraceRow] = []
+    fps0: float | None = None
+    interp_version: str = "unknown"
+    for d in dates:
+        try:
+            x, y, fps, _n_frames, iv = _load_session_xy_filtered(
+                bodypart, animal, d, resolver,
+                do_x_range_filter=do_x_range_filter,
+                xlim_pm_px=xlim_pm_px,
+            )
+        except FileNotFoundError:
+            continue
+
+        if fps0 is None:
+            fps0 = fps
+            interp_version = iv
+        elif abs(fps - fps0) > 1e-6:
+            raise ValueError(
+                f"{animal}: fps mismatch across sessions: "
+                f"{d.isoformat()} has {fps}, expected {fps0}",
+            )
+
+        manifest = build_manifest(
+            animal, d, resolver, animal_info,
+            analysis_context=f"dlc.kinematics.{bodypart}.mean_trace",
+        )
+        try:
+            centers_L, centers_R, _ = _derive_reward_events_for_bodypart(
+                bodypart, animal, d, resolver, manifest,
+            )
+        except FileNotFoundError:
+            continue
+
+        pre_f = max(0, int(round((float(reward_pre_ms) / 1000.0) * fps)))
+        post_f = max(0, int(round((float(reward_post_ms) / 1000.0) * fps)))
+        t_ms_full = np.arange(-pre_f, post_f + 1) * (1000.0 / fps)
+        t_ms = t_ms_full[::stride] if stride > 1 else t_ms_full
+
+        rel_day = (
+            float(animal_info.day_relative_to_stroke(d))
+            if (animal_info is not None and animal_info.stroke_date is not None)
+            else float("nan")
+        )
+
+        for side, centers in (("L", centers_L), ("R", centers_R)):
+            if len(centers) == 0:
+                continue
+            mx, my, sx, sy, n_trials = _per_session_mean_xy(
+                x, y, centers, pre_f, post_f,
+                fps=fps, stride=stride,
+                do_smooth=do_time_smooth, smooth_ms=smooth_ms,
+            )
+            rows.append(MeanTraceRow(
+                date=d, side=side, rel_day=rel_day,
+                n_trials=n_trials, fps=fps,
+                pre_ms=float(reward_pre_ms),
+                post_ms=float(reward_post_ms),
+                t_ms=t_ms, mx=mx, my=my, sx=sx, sy=sy,
+            ))
+
+    if not rows or fps0 is None:
+        return None
+
+    binned: list[BinnedTraceRow] = []
+    if (
+        do_rel_day_bin
+        and animal_info is not None
+        and animal_info.stroke_date is not None
+    ):
+        rel_days = np.array(
+            [r.rel_day for r in rows if np.isfinite(r.rel_day)], float,
+        )
+        bin_edges = _make_rel_day_bins(rel_days, bin_size=bin_size_days_resolved)
+        if bin_edges:
+            # Aggregate per (side, bin).
+            t_ms_ref = rows[0].t_ms
+            for side in ("L", "R"):
+                for lo, hi in bin_edges:
+                    grp = [
+                        r for r in rows
+                        if (
+                            r.side == side
+                            and np.isfinite(r.rel_day)
+                            and lo <= int(r.rel_day) <= hi
+                        )
+                    ]
+                    if not grp:
+                        continue
+                    mxM = np.vstack([r.mx for r in grp])
+                    myM = np.vstack([r.my for r in grp])
+                    mx = np.nanmean(mxM, axis=0)
+                    my = np.nanmean(myM, axis=0)
+                    n = max(1, mxM.shape[0])
+                    sx = np.nanstd(mxM, axis=0) / np.sqrt(n)
+                    sy = np.nanstd(myM, axis=0) / np.sqrt(n)
+                    binned.append(BinnedTraceRow(
+                        side=side,
+                        rel_day_bin_label=_bin_label(int(lo), int(hi)),
+                        rel_day_bin_lo=int(lo),
+                        rel_day_bin_hi=int(hi),
+                        rel_day_bin_center=float(_bin_center(int(lo), int(hi))),
+                        n_sessions=len(grp),
+                        t_ms=t_ms_ref, mx=mx, my=my, sx=sx, sy=sy,
+                    ))
+
+    # y_max: data-driven from binned aggregates if present, else per-session.
+    y_lim_mode = str(mt_block.get("y_lim_mode", "robust"))
+    y_robust_pct = tuple(mt_block.get("y_robust_pct", (1.0, 99.9)))
+    y_pad_frac = float(mt_block.get("y_pad_frac", 0.1))
+    arrs_for_y: list[np.ndarray] = []
+    if binned:
+        arrs_for_y = [b.my for b in binned]
+    else:
+        arrs_for_y = [r.my for r in rows]
+    if y_lim_mode == "robust":
+        _, y_hi_raw = _finite_percentile_range(
+            arrs_for_y,
+            pct_lo=float(y_robust_pct[0]),
+            pct_hi=float(y_robust_pct[1]),
+        )
+    else:  # "minmax"
+        _, y_hi_raw = _finite_minmax(arrs_for_y)
+    if not np.isfinite(y_hi_raw) or y_hi_raw <= 0:
+        y_hi_raw = 1.0
+    y_max = float(y_hi_raw * (1.0 + y_pad_frac))
+
+    # Suffix per legacy: encodes window + bin + smoothing + xlim + stroke.
+    win_tag = f"{int(reward_pre_ms)}pre-{int(reward_post_ms)}post"
+    suffix_parts = [win_tag]
+    if do_rel_day_bin:
+        suffix_parts.append(f"relDayBin{bin_size_days_resolved}d")
+    if do_time_smooth:
+        suffix_parts.append(f"timeSmooth{int(smooth_ms)}ms")
+    if do_x_range_filter:
+        suffix_parts.append(
+            f"xlim-{int(xlim_pm_px)}to{int(xlim_pm_px)}",
+        )
+    if animal_info is not None and animal_info.stroke_date is not None:
+        suffix_parts.append(
+            f"d0_{animal_info.stroke_date.strftime('%Y%m%d')}_{prepost_mode}",
+        )
+    suffix = "_".join(suffix_parts)
+
+    return MeanTraceCohort(
+        bodypart=bodypart,
+        animal=animal,
+        pre_ms=float(reward_pre_ms),
+        post_ms=float(reward_post_ms),
+        bin_size_days=bin_size_days_resolved,
+        fps=fps0,
+        cam=cam,
+        interp_version=interp_version,
+        rows=rows,
+        binned=binned,
+        y_max=y_max,
+        suffix=suffix,
+    )
+
+
+def _plot_mean_trace_overlays(
+    bodypart: str,
+    cohort: MeanTraceCohort,
+    msv_block: dict[str, Any],
+    out_path: Path,
+) -> None:
+    """Two-panel mean XY trajectory figure (R left, L right; y-axis
+    inverted so 0 sits at the top). Direct port of legacy
+    ``plot overlays`` block in cell 45 (lines 1330-1450).
+    """
+    mt_block = msv_block.get("mean_trace", {})
+    bp_mt_block = (msv_block.get(bodypart, {}) or {}).get("mean_trace", {})
+
+    pre_color = str(mt_block.get("pre_color", "0.6"))
+    post_cmap = str(mt_block.get("post_cmap", "plasma"))
+    line_alpha = float(mt_block.get("line_alpha", 0.2))
+    line_lw = float(mt_block.get("line_lw", 0.8))
+    show_tube = bool(mt_block.get("show_sem_tube", True))
+    tube_alpha = float(mt_block.get("tube_alpha", 0.15))
+    plot_individual_when_binned = bool(
+        mt_block.get("plot_individual_sessions_when_binned", True),
+    )
+    fig_h = float(mt_block.get("figure_height_inches", 6.2))
+    fig_w = float(
+        bp_mt_block.get(
+            "figure_width_inches", mt_block.get("figure_width_inches", 13.0),
+        ),
+    )
+    dpi = int(msv_block.get("dpi", 200))
+
+    rel_days = np.array(
+        [r.rel_day for r in cohort.rows], float,
+    )
+    post_days = rel_days[np.isfinite(rel_days) & (rel_days >= 1)]
+    post_max = float(np.max(post_days)) if post_days.size else 1.0
+
+    fig, axes = plt.subplots(1, 2, figsize=(fig_w, fig_h), sharey=True)
+    fig.subplots_adjust(right=0.98, wspace=0.04)
+    ax_left, ax_right = axes[0], axes[1]
+    side_to_ax = {"R": ax_left, "L": ax_right}
+
+    y_top = 0.0
+    y_bottom = max(1e-6, cohort.y_max)
+
+    binned_by_side = {"L": [], "R": []}
+    for b in cohort.binned:
+        binned_by_side[b.side].append(b)
+
+    rows_by_side = {"L": [], "R": []}
+    for r in cohort.rows:
+        rows_by_side[r.side].append(r)
+
+    for side in ("R", "L"):
+        ax = side_to_ax[side]
+        ax.set_title(f"{side} trials | session mean XY overlays")
+        ax.set_xlabel("x (px, baseline-subtracted)")
+        ax.set_ylabel("y (px, baseline-subtracted)")
+        ax.set_ylim(y_bottom, y_top)
+        ax.set_aspect("equal", adjustable="box")
+        ax.grid(True, alpha=0.2)
+
+        if cohort.binned:
+            if plot_individual_when_binned:
+                for r in rows_by_side[side]:
+                    col = _color_for_rel_day_continuous(
+                        r.rel_day, post_max,
+                        cmap_name=post_cmap, pre_color=pre_color,
+                    )
+                    _plot_xy_mean(
+                        ax, r.mx, r.my, None, None,
+                        color=col, lw=1, alpha=0.1, show_tube=False,
+                    )
+            for b in binned_by_side[side]:
+                col = _color_for_rel_day_continuous(
+                    b.rel_day_bin_center, post_max,
+                    cmap_name=post_cmap, pre_color=pre_color,
+                )
+                _plot_xy_mean(
+                    ax, b.mx, b.my, b.sx, b.sy,
+                    color=col, lw=2.5, alpha=0.6,
+                    show_tube=show_tube, tube_alpha=tube_alpha,
+                )
+        else:
+            for r in rows_by_side[side]:
+                col = _color_for_rel_day_continuous(
+                    r.rel_day, post_max,
+                    cmap_name=post_cmap, pre_color=pre_color,
+                )
+                _plot_xy_mean(
+                    ax, r.mx, r.my, r.sx, r.sy,
+                    color=col, lw=line_lw, alpha=line_alpha,
+                    show_tube=show_tube, tube_alpha=tube_alpha,
+                )
+
+    # Legend (binned mode only): one shared legend for rel_day bins.
+    if cohort.binned:
+        from matplotlib.lines import Line2D
+        uniq = sorted(
+            {(b.rel_day_bin_label, b.rel_day_bin_center) for b in cohort.binned},
+            key=lambda kv: kv[1],
+        )
+        handles, labels = [], []
+        for lab, cen in uniq:
+            n_sessions = sum(
+                b.n_sessions for b in cohort.binned
+                if b.rel_day_bin_label == lab
+            )
+            col = _color_for_rel_day_continuous(
+                cen, post_max,
+                cmap_name=post_cmap, pre_color=pre_color,
+            )
+            handles.append(Line2D([0], [0], color=col, lw=3.0))
+            labels.append(f"{lab} (n={n_sessions})")
+        fig.legend(
+            handles, labels,
+            title="rel_day bins",
+            loc="center",
+            bbox_to_anchor=(0.51, 0.52),
+            frameon=False,
+            ncol=1,
+            handlelength=2.2,
+            handletextpad=0.6,
+            labelspacing=0.4,
+        )
+
+    title = (
+        f"{cohort.animal} {cohort.cam} | mean XY lick trajectory overlays "
+        f"| interp={cohort.interp_version} | "
+        f"window=-{int(cohort.pre_ms)}..{int(cohort.post_ms)} ms"
+    )
+    if cohort.binned:
+        title += f" | rel_day bin={cohort.bin_size_days}d"
+    fig.suptitle(title, y=0.995)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+
+
+def build_mean_trace(
+    bodypart: str,
+    animal: str,
+    resolver: PathResolver,
+    *,
+    reward_pre_ms: int,
+    reward_post_ms: int,
+    bin_sizes_days: int | Sequence[int] | None = None,
+    params: dict[str, Any] | None = None,
+    overwrite: Literal["skip", "force"] = "skip",
+    animal_info: AnimalInfo | None = None,
+) -> list[Path]:
+    """Render the mean-trace cohort overlay (Q5: 1 PNG per ``bin_size_days``).
+
+    For each entry in ``bin_sizes_days``, emits one PNG with R on the
+    left subplot and L on the right (legacy convention; y-axis inverted
+    so 0 sits at the top of the plot).
+
+    ``bin_sizes_days``:
+      - ``None`` → uses ``animal_info.bin_days`` (Q4 default).
+      - ``int`` → singleton list.
+      - ``Sequence[int]`` → one PNG per entry; useful for multi-bin
+        comparison plots (jaw cell 32 newer-only feature, ported back to
+        tongue per the consolidated module).
+
+    Filename matches legacy:
+    ``{mouse}_{cam}_sessionMeanXY_interp-{ver}_yLim-robust-{lo}to{hi}_
+    win-{pre}to{post}ms_relDayBin{N}d_timeSmooth{T}ms_xlim-{lo}to{hi}_
+    d0_{stroke}_{prepost}.png``.
+    """
+    if overwrite not in ("skip", "force"):
+        raise ValueError(
+            f"overwrite must be 'skip' or 'force'; got {overwrite!r}.",
+        )
+
+    if params is None:
+        params = load_defaults()
+    msv_block = (
+        params.get("dlc_kinematics", {}).get("mean_sem_visual", {})
+    )
+
+    if animal_info is None:
+        try:
+            animal_info = get_animal(animal)
+        except (KeyError, FileNotFoundError):
+            animal_info = None
+
+    sizes = _normalize_bin_sizes(bin_sizes_days, animal_info)
+    if not sizes:
+        return []
+
+    center_mode = _resolve_center_mode(bodypart, params)
+    out_dir = resolver.mean_sem_visual_dir(
+        bodypart,
+        center_mode=center_mode,
+        reward_pre_ms=reward_pre_ms,
+        reward_post_ms=reward_post_ms,
+        plot_family="mean_xy_overlays",
+        animal=animal,
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    paths: list[Path] = []
+    for size in sizes:
+        cohort = build_mean_trace_cohort(
+            bodypart, animal, resolver,
+            reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+            bin_size_days=size,
+            params=params, animal_info=animal_info,
+        )
+        if cohort is None:
+            continue
+        # Legacy filename builder. ``-{pre}to{post}ms`` mirrors cell 45
+        # line 1434 (``win{-int(PRE_MS)}to{int(POST_MS)}ms``).
+        mt_block = msv_block.get("mean_trace", {})
+        do_x_range_filter = bool(mt_block.get("do_x_range_filter", True))
+        do_time_smooth = bool(mt_block.get("do_time_smooth", True))
+        smooth_ms = float(mt_block.get("time_smooth_movavg_ms", 40.0))
+        bp_mt = (msv_block.get(bodypart, {}) or {}).get("mean_trace", {})
+        xlim_pm_px = int(
+            bp_mt.get("xlim_pm_px", mt_block.get("xlim_pm_px", 150)),
+        )
+        y_lim_mode = str(mt_block.get("y_lim_mode", "robust"))
+        y_robust_pct = mt_block.get("y_robust_pct", (1.0, 99.9))
+
+        parts = [
+            cohort.animal,
+            cohort.cam,
+            "sessionMeanXY",
+            f"interp-{cohort.interp_version}",
+        ]
+        if y_lim_mode == "robust":
+            parts.append(
+                f"yLim-robust-{y_robust_pct[0]}to{y_robust_pct[1]}",
+            )
+        parts.append(
+            f"win-{int(cohort.pre_ms)}to{int(cohort.post_ms)}ms",
+        )
+        if cohort.binned:
+            parts.append(f"relDayBin{cohort.bin_size_days}d")
+        if do_time_smooth:
+            parts.append(f"timeSmooth{int(smooth_ms)}ms")
+        if do_x_range_filter:
+            parts.append(f"xlim-{xlim_pm_px}to{xlim_pm_px}")
+        if (
+            animal_info is not None
+            and animal_info.stroke_date is not None
+        ):
+            prepost_mode = str(msv_block.get("prepost_mode", "both"))
+            parts.append(
+                f"d0_{animal_info.stroke_date.strftime('%Y%m%d')}_"
+                f"{prepost_mode}",
+            )
+        fname = "_".join(parts) + ".png"
+        out_path = out_dir / fname
+        if overwrite == "skip" and out_path.exists():
+            paths.append(out_path)
+            continue
+        _plot_mean_trace_overlays(
+            bodypart, cohort, msv_block, out_path,
+        )
+        paths.append(out_path)
+    return paths
+
+
+# ===========================================================================
+# Composite wrappers (orchestration notebooks call these)
+# ===========================================================================
+
+
+def build_mean_sem_by_animal_date(
+    bodypart: str,
+    animal: str,
+    date: datetime.date,
+    resolver: PathResolver,
+    *,
+    time_windows_ms: Sequence[tuple[int, int]] | None = None,
+    params: dict[str, Any] | None = None,
+    cohort_cache: dict[tuple[int, int], CohortAggregates] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["skip", "force"] = "skip",
+) -> dict[str, list[Path]]:
+    """Per-(animal, date) composite — runs every per-session family across
+    every time window.
+
+    Iterates over ``time_windows_ms`` (``None`` → ``msv.time_windows_ms``
+    from defaults) and calls :func:`build_individual_sessions` +
+    :func:`build_trial_overlays` for each. Cohort aggregates are
+    cached per window so the inner loop loads each cohort once even
+    when the orchestration notebook calls this helper for many dates in
+    sequence (caller may pre-seed ``cohort_cache``).
+
+    Returns a mapping keyed by family name with the list of emitted
+    PNG paths (one per window per family, ordered as the windows
+    iterable).
+    """
+    if params is None:
+        params = load_defaults()
+    msv_block = (
+        params.get("dlc_kinematics", {}).get("mean_sem_visual", {})
+    )
+    if time_windows_ms is None:
+        time_windows_ms = [
+            tuple(w) for w in msv_block.get(
+                "time_windows_ms", [(100, 1000), (500, 5000)],
+            )
+        ]
+    if cohort_cache is None:
+        cohort_cache = {}
+
+    if animal_info is None:
+        try:
+            animal_info = get_animal(animal)
+        except (KeyError, FileNotFoundError):
+            animal_info = None
+
+    out: dict[str, list[Path]] = {
+        "individual_sessions": [],
+        "trial_overlays": [],
+    }
+    for pre_ms, post_ms in time_windows_ms:
+        key = (int(pre_ms), int(post_ms))
+        cohort = cohort_cache.get(key)
+        if cohort is None:
+            cohort = build_cohort_aggregates(
+                bodypart, animal, resolver,
+                reward_pre_ms=key[0], reward_post_ms=key[1],
+                params=params, animal_info=animal_info,
+            )
+            if cohort is not None:
+                cohort_cache[key] = cohort
+        if cohort is None:
+            continue
+        ind_path = build_individual_sessions(
+            bodypart, animal, date, resolver,
+            reward_pre_ms=key[0], reward_post_ms=key[1],
+            params=params, cohort=cohort, overwrite=overwrite,
+        )
+        if ind_path is not None:
+            out["individual_sessions"].append(ind_path)
+        trial_path = build_trial_overlays(
+            bodypart, animal, date, resolver,
+            reward_pre_ms=key[0], reward_post_ms=key[1],
+            params=params, cohort=cohort, overwrite=overwrite,
+        )
+        if trial_path is not None:
+            out["trial_overlays"].append(trial_path)
+    return out
+
+
+def build_mean_sem_cohort(
+    bodypart: str,
+    animal: str,
+    resolver: PathResolver,
+    *,
+    time_windows_ms: Sequence[tuple[int, int]] | None = None,
+    bin_sizes_days: int | Sequence[int] | None = None,
+    params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["skip", "force"] = "skip",
+) -> dict[str, list[Path]]:
+    """Per-animal composite — runs every cohort family across every time
+    window (and every ``bin_sizes_days`` for ``mean_trace``).
+
+    Returns a mapping keyed by family name with the list of all emitted
+    PNG paths. Families covered:
+      - ``session_overlays``: 4 PNGs per (animal, window).
+      - ``binned_overlays``: 4 PNGs per (animal, window).
+      - ``mean_trace``: 1 PNG per (animal, window, bin_size_days).
+    ``mean_video`` ships in C4.3.
+    """
+    if params is None:
+        params = load_defaults()
+    msv_block = (
+        params.get("dlc_kinematics", {}).get("mean_sem_visual", {})
+    )
+    if time_windows_ms is None:
+        time_windows_ms = [
+            tuple(w) for w in msv_block.get(
+                "time_windows_ms", [(100, 1000), (500, 5000)],
+            )
+        ]
+
+    if animal_info is None:
+        try:
+            animal_info = get_animal(animal)
+        except (KeyError, FileNotFoundError):
+            animal_info = None
+
+    out: dict[str, list[Path]] = {
+        "session_overlays": [],
+        "binned_overlays": [],
+        "mean_trace": [],
+    }
+    for pre_ms, post_ms in time_windows_ms:
+        key = (int(pre_ms), int(post_ms))
+        cohort = build_cohort_aggregates(
+            bodypart, animal, resolver,
+            reward_pre_ms=key[0], reward_post_ms=key[1],
+            params=params, animal_info=animal_info,
+        )
+        if cohort is not None:
+            out["session_overlays"].extend(
+                build_session_overlays(
+                    bodypart, animal, resolver,
+                    reward_pre_ms=key[0], reward_post_ms=key[1],
+                    params=params, cohort=cohort, overwrite=overwrite,
+                ),
+            )
+            out["binned_overlays"].extend(
+                build_binned_overlays(
+                    bodypart, animal, resolver,
+                    reward_pre_ms=key[0], reward_post_ms=key[1],
+                    params=params, cohort=cohort, overwrite=overwrite,
+                ),
+            )
+        out["mean_trace"].extend(
+            build_mean_trace(
+                bodypart, animal, resolver,
+                reward_pre_ms=key[0], reward_post_ms=key[1],
+                bin_sizes_days=bin_sizes_days,
+                params=params, animal_info=animal_info,
+                overwrite=overwrite,
+            ),
+        )
+    return out
+
+
 __all__ = [
     "MEAN_SEM_VISUAL_VERSION",
+    "PLOT_FAMILIES_ALL",
     "PLOT_FAMILIES_C4_1",
+    "PLOT_FAMILIES_C4_2",
+    "PLOT_FAMILIES_C4_3",
+    "BinnedTraceRow",
     "CohortAggregates",
+    "MeanTraceCohort",
+    "MeanTraceRow",
     "SessionAggregates",
     "build_binned_overlays",
     "build_cohort_aggregates",
     "build_individual_sessions",
+    "build_mean_sem_by_animal_date",
+    "build_mean_sem_cohort",
+    "build_mean_trace",
+    "build_mean_trace_cohort",
     "build_session_overlays",
     "build_trial_overlays",
 ]

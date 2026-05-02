@@ -524,3 +524,325 @@ class TestBodypartParametric:
                 "fake_bodypart", "PS46", resolver,
                 reward_pre_ms=100, reward_post_ms=1000,
             )
+
+
+# ---------------------------------------------------------------------------
+# C4.2 — mean_trace + composite wrappers
+# ---------------------------------------------------------------------------
+
+
+def _make_synthetic_mean_trace_row(
+    animal: str,
+    date: datetime.date,
+    side: str,
+    rel_day: float,
+    n_trials: int = 8,
+    fps: float = 250.0,
+    pre_ms: float = 0.0,
+    post_ms: float = 500.0,
+    seed: int = 0,
+) -> msv.MeanTraceRow:
+    """Generate a synthetic per-(date, side) mean XY trajectory."""
+    rng = np.random.default_rng(seed)
+    pre_f = int(round(pre_ms / 1000.0 * fps))
+    post_f = int(round(post_ms / 1000.0 * fps))
+    T = pre_f + post_f + 1
+    t_ms = np.arange(-pre_f, post_f + 1) * (1000.0 / fps)
+    # Simulate an arc-shaped XY trajectory + noise.
+    base_x = 20.0 * np.sin(np.linspace(0, np.pi, T))
+    base_y = 35.0 * np.sin(np.linspace(0, np.pi, T))
+    mx = base_x + rng.normal(0.0, 0.5, T)
+    my = base_y + rng.normal(0.0, 0.5, T)
+    sx = np.full(T, 0.5)
+    sy = np.full(T, 0.5)
+    return msv.MeanTraceRow(
+        date=date, side=side, rel_day=rel_day,
+        n_trials=n_trials, fps=fps,
+        pre_ms=pre_ms, post_ms=post_ms,
+        t_ms=t_ms, mx=mx, my=my, sx=sx, sy=sy,
+    )
+
+
+def _make_synthetic_mean_trace_cohort(
+    animal: str = "PS46",
+    bodypart: str = "tongue",
+    n_pre: int = 3,
+    n_post: int = 3,
+    bin_size_days: int = 2,
+    pre_ms: float = 0.0,
+    post_ms: float = 500.0,
+    fps: float = 250.0,
+) -> msv.MeanTraceCohort:
+    """Build a MeanTraceCohort with synthetic per-session + binned rows."""
+    rows: list[msv.MeanTraceRow] = []
+    base_date = datetime.date(2025, 3, 7)
+    for k in range(-n_pre, n_post + 1):
+        if k == 0:
+            continue
+        d = base_date + datetime.timedelta(days=(k + n_pre + 1))
+        for side in ("L", "R"):
+            rows.append(_make_synthetic_mean_trace_row(
+                animal=animal, date=d, side=side, rel_day=float(k),
+                pre_ms=pre_ms, post_ms=post_ms, fps=fps,
+                seed=hash((animal, k, side)) % 10000,
+            ))
+
+    rel_days = np.array([r.rel_day for r in rows], float)
+    bins = msv._make_rel_day_bins(rel_days, bin_size=bin_size_days)
+    binned: list[msv.BinnedTraceRow] = []
+    if bins:
+        t_ms_ref = rows[0].t_ms
+        for side in ("L", "R"):
+            for lo, hi in bins:
+                grp = [
+                    r for r in rows
+                    if (r.side == side and lo <= int(r.rel_day) <= hi)
+                ]
+                if not grp:
+                    continue
+                mxM = np.vstack([r.mx for r in grp])
+                myM = np.vstack([r.my for r in grp])
+                mx = np.nanmean(mxM, axis=0)
+                my = np.nanmean(myM, axis=0)
+                n = max(1, mxM.shape[0])
+                sx = np.nanstd(mxM, axis=0) / np.sqrt(n)
+                sy = np.nanstd(myM, axis=0) / np.sqrt(n)
+                binned.append(msv.BinnedTraceRow(
+                    side=side,
+                    rel_day_bin_label=msv._bin_label(int(lo), int(hi)),
+                    rel_day_bin_lo=int(lo), rel_day_bin_hi=int(hi),
+                    rel_day_bin_center=float(msv._bin_center(int(lo), int(hi))),
+                    n_sessions=len(grp),
+                    t_ms=t_ms_ref, mx=mx, my=my, sx=sx, sy=sy,
+                ))
+
+    y_max = float(
+        max(np.nanmax(r.my) for r in rows) * 1.1
+    )
+    return msv.MeanTraceCohort(
+        bodypart=bodypart,
+        animal=animal,
+        pre_ms=pre_ms,
+        post_ms=post_ms,
+        bin_size_days=bin_size_days,
+        fps=fps,
+        cam="cam2",
+        interp_version="v5p3",
+        rows=rows,
+        binned=binned,
+        y_max=y_max,
+        suffix=(
+            f"{int(pre_ms)}pre-{int(post_ms)}post_relDayBin{bin_size_days}d"
+        ),
+    )
+
+
+class TestMeanTraceHelpers:
+    """C4.2 helpers: smoothing, color mapping, bin-size normalization."""
+
+    def test_moving_average_nan_basic(self):
+        # All-finite input, w=3 → boxcar smoothing.
+        y = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        smoothed = msv._moving_average_nan(y, w=3)
+        # Center bins: average of (1,2,3)=2, (2,3,4)=3, (3,4,5)=4.
+        np.testing.assert_allclose(smoothed[1:-1], [2.0, 3.0, 4.0])
+
+    def test_moving_average_nan_handles_nans(self):
+        y = np.array([1.0, np.nan, 3.0, 4.0, 5.0])
+        smoothed = msv._moving_average_nan(y, w=3)
+        # Bin centered at idx=1: (1, NaN, 3)/2 finite = 2.0. Last NaN-free.
+        assert np.isfinite(smoothed[1])
+        assert np.allclose(smoothed[1], 2.0)
+
+    def test_moving_average_nan_passthrough_w1(self):
+        y = np.array([1.0, 2.0, 3.0])
+        smoothed = msv._moving_average_nan(y, w=1)
+        np.testing.assert_array_equal(smoothed, y)
+
+    def test_smooth_movavg_ms_translates_window(self):
+        # 40 ms window @ 250 Hz fps → kernel width = 10 frames.
+        arr = np.arange(50, dtype=float)
+        smoothed = msv._smooth_movavg_ms(arr, win_ms=40.0, fps=250.0)
+        # Smoothing should not change the linear ramp shape (modulo edges).
+        # Center value should equal the unsmoothed center.
+        assert np.allclose(smoothed[25], arr[25], atol=1.0)
+
+    def test_smooth_movavg_ms_zero_window_passthrough(self):
+        arr = np.arange(20, dtype=float)
+        smoothed = msv._smooth_movavg_ms(arr, win_ms=0.0, fps=250.0)
+        np.testing.assert_array_equal(smoothed, arr)
+
+    def test_color_for_rel_day_continuous_pre(self):
+        # Pre-stroke days (rel_day <= 0) → pre_color string.
+        col = msv._color_for_rel_day_continuous(
+            rel_day=-3, post_max=10, pre_color="0.6",
+        )
+        assert col == "0.6"
+
+    def test_color_for_rel_day_continuous_post(self):
+        # Post-stroke days → cmap-sampled color (not the pre_color).
+        col = msv._color_for_rel_day_continuous(
+            rel_day=5, post_max=10, pre_color="0.6",
+        )
+        assert col != "0.6"
+
+    def test_normalize_bin_sizes_none_uses_animal_info(self):
+        from stroke_orofacial.animals import AnimalInfo
+        info = AnimalInfo(
+            animal_id="PS_test",
+            stroke_date=datetime.date(2025, 3, 13),
+            session_start=datetime.date(2025, 3, 7),
+            session_end=datetime.date(2025, 4, 6),
+            bin_days=4,
+        )
+        assert msv._normalize_bin_sizes(None, info) == [4]
+
+    def test_normalize_bin_sizes_int(self):
+        assert msv._normalize_bin_sizes(2, animal_info=None) == [2]
+
+    def test_normalize_bin_sizes_list_dedup_sort(self):
+        assert msv._normalize_bin_sizes([7, 2, 7, 14], animal_info=None) == [
+            2, 7, 14,
+        ]
+
+    def test_normalize_bin_sizes_empty_list(self):
+        assert msv._normalize_bin_sizes([], animal_info=None) == []
+
+
+class TestMeanTracePlot:
+    """End-to-end PNG emission via the mean_trace plot helper."""
+
+    def test_plot_mean_trace_with_binned(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="tongue", bin_size_days=2,
+        )
+        out_path = tmp_path / "mean_trace_test.png"
+        msv_block = {
+            "mean_trace": {
+                "pre_color": "0.6", "post_cmap": "plasma",
+                "line_alpha": 0.2, "line_lw": 0.8,
+                "show_sem_tube": True, "tube_alpha": 0.15,
+                "plot_individual_sessions_when_binned": True,
+                "figure_height_inches": 6.2,
+                "figure_width_inches": 13.0,
+            },
+            "tongue": {"mean_trace": {"figure_width_inches": 13.0}},
+            "dpi": 100,
+        }
+        msv._plot_mean_trace_overlays(
+            "tongue", cohort, msv_block, out_path,
+        )
+        assert out_path.exists()
+
+    def test_plot_mean_trace_unbinned(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="jaw", bin_size_days=1,
+        )
+        # Strip binned to test the unbinned path.
+        cohort_no_bins = msv.MeanTraceCohort(
+            bodypart=cohort.bodypart, animal=cohort.animal,
+            pre_ms=cohort.pre_ms, post_ms=cohort.post_ms,
+            bin_size_days=cohort.bin_size_days,
+            fps=cohort.fps, cam=cohort.cam,
+            interp_version=cohort.interp_version,
+            rows=cohort.rows, binned=[],
+            y_max=cohort.y_max, suffix=cohort.suffix,
+        )
+        out_path = tmp_path / "mean_trace_unbinned.png"
+        msv_block = {
+            "mean_trace": {
+                "pre_color": "0.6", "post_cmap": "plasma",
+                "line_alpha": 0.2, "line_lw": 0.8,
+                "show_sem_tube": True, "tube_alpha": 0.15,
+                "plot_individual_sessions_when_binned": True,
+                "figure_height_inches": 6.2,
+                "figure_width_inches": 10.0,
+            },
+            "jaw": {"mean_trace": {"figure_width_inches": 10.0}},
+            "dpi": 100,
+        }
+        msv._plot_mean_trace_overlays(
+            "jaw", cohort_no_bins, msv_block, out_path,
+        )
+        assert out_path.exists()
+
+
+class TestCompositeWrappers:
+    """Composite wrappers stitch the per-family functions together."""
+
+    def test_build_mean_sem_by_animal_date_caches_cohort(
+        self, monkeypatch, tmp_path,
+    ):
+        """Pre-seed the cohort cache so the wrapper doesn't try to load
+        the parquet from disk. Verify per-session families dispatch."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
+        target_date = cohort.sessions[0].date
+
+        cohort_cache = {(100, 1000): cohort}
+        out = msv.build_mean_sem_by_animal_date(
+            "tongue", "PS46", target_date, resolver,
+            time_windows_ms=[(100, 1000)],
+            cohort_cache=cohort_cache,
+            overwrite="force",
+        )
+        assert "individual_sessions" in out
+        assert "trial_overlays" in out
+        assert len(out["individual_sessions"]) == 1
+        assert len(out["trial_overlays"]) == 1
+        assert out["individual_sessions"][0].exists()
+        assert out["trial_overlays"][0].exists()
+
+    def test_build_mean_sem_by_animal_date_iterates_windows(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort_a = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
+        cohort_b = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
+        target_date = cohort_a.sessions[0].date
+        cache = {(100, 1000): cohort_a, (500, 5000): cohort_b}
+        out = msv.build_mean_sem_by_animal_date(
+            "tongue", "PS46", target_date, resolver,
+            time_windows_ms=[(100, 1000), (500, 5000)],
+            cohort_cache=cache,
+            overwrite="force",
+        )
+        assert len(out["individual_sessions"]) == 2
+        # Each window should produce a uniquely-named PNG.
+        names = [p.name for p in out["individual_sessions"]]
+        assert names[0] != names[1]
+        assert "100pre-1000post" in names[0]
+        assert "500pre-5000post" in names[1]
+
+
+class TestNormalizeBinSizesParametric:
+    """Q4 lock: bin_sizes_days resolution is bodypart-symmetric."""
+
+    @pytest.mark.parametrize(
+        "input_value, expected",
+        [
+            (None, [2]),       # animal_info.bin_days fallback
+            (3, [3]),
+            ([2, 7], [2, 7]),
+            ([7, 2, 7], [2, 7]),     # dedup + sort
+            ((2, 7, 14), [2, 7, 14]),  # tuple input
+        ],
+    )
+    def test_normalize_bin_sizes(self, input_value, expected):
+        from stroke_orofacial.animals import AnimalInfo
+        info = AnimalInfo(
+            animal_id="PS_test",
+            stroke_date=datetime.date(2025, 3, 13),
+            session_start=datetime.date(2025, 3, 7),
+            session_end=datetime.date(2025, 4, 6),
+            bin_days=2,
+        )
+        assert msv._normalize_bin_sizes(input_value, info) == expected
