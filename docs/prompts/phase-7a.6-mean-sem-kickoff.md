@@ -151,8 +151,10 @@ modules vs bodypart-parametric).
 
 ### 3. Sub-phase breakdown
 
-Locks at Task 1 STOP. Sketches in the kickoff §"Audit-first scope"
-above.
+LOCKED 2026-05-01 (Task 1 outcome): 8 sub-phase tasks (Task 2 through
+Task 9) under Outcome B + bodypart-parametric architecture. Detailed
+specs in §"Task 1 outcome — LOCKED 2026-05-01" and Tasks 2-9 below.
+Estimated 10-12 commits.
 
 ### 4. Parity strategy
 
@@ -423,46 +425,493 @@ Report to Priya:
 git status   # should be clean modulo gitignored scratch
 ```
 
-### Task 1.5+ — TBD pending Task 1 outcome
+### Task 1 outcome — LOCKED 2026-05-01
 
-DO NOT proceed past Task 1's STOP without Priya's outcome decision +
-architecture pick + Cell 43 fold-in decision.
+Priya picked all 7 of Cowork's recommendations. Outcomes A and C are
+no longer in play; Outcomes A/C blocks below have been removed.
 
-#### Outcome A path (~4-6 commits)
+| # | Question | Decision |
+|---|---|---|
+| 1 | Outcome | **B** (substantial port; ~10-12 commits given 5,287L net-new) |
+| 2 | Architecture | **Bodypart-parametric** `mean_sem_visual.py` (single module taking `bodypart: Literal["tongue", "jaw"]`) |
+| 3 | Cell 43 PSD | **Defer** to a future Phase 7a.x-PSD (tongue 60-86 + jaw 43 + face PSD together) |
+| 4 | Tongue trial viewers (cells 34/37/40/43) | **Skip** — exploratory `plt.show()`-only, no saved outputs (~1,414L excluded) |
+| 5 | Tongue mean video (cells 47+48) | **Consolidate** into single function with `with_frame_timestamps: bool = True` kwarg, matching jaw Cell 34 shape |
+| 6 | Tongue path casing | **Lowercase `_tongue_kinematics/`** — fix legacy Cell 31 bug; consolidated tree already uses lowercase from 7a.3 V3 / 7a.4 |
+| 7 | Output layout | **Adopt jaw's per-window subdirs** (`rewardAligned_{pre}-{post}/...`) uniformly — fixes latent tongue-overwrite bug |
 
-- Task 2.A — vendor relevant cells to `docs/legacy_snippets/{tongue, jaw}_mean_sem.py`.
-- Task 3.A — small extensions to existing `tongue_visual.py` (or new `mean_sem_visual.py`) + 1-2 new path resolvers + tests.
-- Task 4.A — visual gate runner extension + cohort runs.
-- Task 5.A — populate `notebooks/13_dlc_kinematics_tongue.ipynb` and
-  `notebooks/14_dlc_kinematics_jaw.ipynb` end-to-end. Pattern from
-  notebooks 10/11/12 (USER INPUTS → resolver/animals/manifests →
-  per-(animal, date) loop calling 7a.2 → 7a.3/7a.5 per-trial → 7a.4
-  visual → 7a.5 mismatch [tongue only] → 7a.6 mean/SEM →
-  Cell-43-PSD-if-folded). Notebooks orchestrate; no analytical code.
-  If any module lacks a public `build_*_by_animal_date(...)`-shaped
-  wrapper that the notebook needs, add an additive helper to the
-  existing module (no algorithm changes). Smoke-test by executing
-  each notebook against 1 (animal, date) sample.
-- Task 6.A — DECISIONS + MIGRATION_LOG + PR.
+All seven decisions are documented in `.scratch_7a6/AUDIT_REPORT.md` §1g
+and re-stated in DECISIONS at Task 9.
 
-#### Outcome B path (~8-11 commits)
+### Net-new scope after locks
 
-Cowork rewrites this kickoff once Task 1 findings lock the
-deliverables. Likely shape:
-- Task 2.B — vendor cells per bodypart.
-- Task 3.B — config + paths + tests.
-- Task 4.B — module(s) (sibling per-bodypart OR bodypart-parametric per architecture pick).
-- Task 5.B — unit tests.
-- Task 6.B — parity harness + cohort run + visual gate runner.
-- Task 7.B — populate notebooks 13 + 14 (same shape as Task 5.A).
-- Task 8.B — DECISIONS + MIGRATION_LOG.
-- Task 9.B — PR + tag.
+7 production cells, ~3,873L (5,287L — 1,414L exploratory skipped):
 
-#### Outcome C path (~6-8 commits)
+- **Tongue net-new**: cells 31 (master mean/SEM, ~722L), 45 (mean trace),
+  47+48 (mean video → consolidate into one).
+- **Jaw net-new**: cells 30 (master mean/SEM, ~722L), 32 (mean trace,
+  multi-bin), 34 (mean video).
+- **Plot families** (from master cells 31/30, byte-near-identical):
+  `individual_sessions`, `trial_overlays`, `session_overlays`,
+  `binned_overlays`. Plus `mean_trace` (with multi-bin support
+  ported to tongue from jaw) and `mean_video` (consolidated).
 
-Mid-sized. Cowork rewrites kickoff to lock specifics. Notebook
-authoring is the second-to-last task before DECISIONS+PR
-(analogous to Task 5.A / Task 7.B).
+### Task 2 — Vendor production cells
+
+Goal: byte-identical capture of the 7 production cells under
+`docs/legacy_snippets/`, mirroring the 7a.0/7a.3/7a.5 pattern.
+
+Files to write (4 vendored snippet files, NOT the exploratory cells):
+
+- `docs/legacy_snippets/tongue_mean_sem_section.py` — concatenates
+  cells 31 + 45 + 47 + 48 from
+  `20260203_DLC_analysis_ws_aligned_parquet_input_tongue.ipynb` byte-
+  identically, with cell-boundary delimiter comments
+  (`# === Cell 31 ===`, etc.) so each cell is greppable.
+- `docs/legacy_snippets/jaw_mean_sem_section.py` — concatenates cells
+  30 + 32 + 34 from
+  `20260416_DLC_analysis_ws_aligned_parquet_input_jaw.ipynb` byte-
+  identically, with cell-boundary delimiters.
+
+Verify byte-identicality:
+
+```python
+# After vendor: re-extract source from notebook JSON, compare against
+# the vendored .py minus the delimiter comments. Diff must be empty.
+```
+
+Report cell-source line counts in commit message. Single commit:
+
+```bash
+git add docs/legacy_snippets/tongue_mean_sem_section.py
+git add docs/legacy_snippets/jaw_mean_sem_section.py
+git commit -m "Phase 7a.6 Task 2: vendor mean/SEM section cells (byte-identical)
+
+Tongue: cells 31, 45, 47, 48 from 20260203 ws_aligned notebook.
+Jaw: cells 30, 32, 34 from 20260416 ws_aligned notebook.
+Exploratory tongue cells 34/37/40/43 deliberately excluded per Task 1
+outcome decision (plt.show()-only, no saved outputs)."
+git push
+```
+
+### Task 3 — Config + paths + tests scaffolding
+
+Add to `configs/defaults.yaml` under `dlc_kinematics:`:
+
+```yaml
+dlc_kinematics:
+  # ... (existing 7a.2/7a.3/7a.4/7a.5 blocks unchanged) ...
+  mean_sem_visual:
+    # Top-level knobs from master cells 31/30 (byte-near-identical).
+    # Keep all knob names verbatim from legacy KNOBS section.
+    plot_individual_sessions: true
+    trial_overlays: true
+    session_overlays: true
+    binned_overlays: true
+    # Reward window (used in subdir naming + data extraction):
+    reward_pre_s: 2.0
+    reward_post_s: 5.0
+    # Per-bodypart knobs that diverge between tongue and jaw.
+    # Audit-confirmed divergent values; identical values stay at top
+    # level above.
+    tongue:
+      # ... bodypart-specific overrides ...
+    jaw:
+      # ... bodypart-specific overrides ...
+      multi_bin_mean_trace: true   # jaw-only feature, ported to tongue too
+```
+
+Audit task: enumerate every KNOB defined in master cells 31/30,
+classify as "shared" (identical between bodyparts) or "divergent"
+(different value per bodypart), structure config block accordingly.
+
+Path resolvers in `src/stroke_orofacial/paths.py`:
+
+```python
+def mean_sem_visual_dir(
+    self, bodypart: Literal["tongue", "jaw"],
+    center_mode: str, reward_pre_s: float, reward_post_s: float,
+    plot_family: str, animal: str,
+) -> Path:
+    """Per-window subdir layout (Q7 decision):
+    {outputs}/dlc_kinematics/mean_sem/{bodypart}/{center_mode}/
+    rewardAligned_{pre}-{post}/{plot_family}/{animal}/
+    """
+    pre = _format_window_int(reward_pre_s)
+    post = _format_window_int(reward_post_s)
+    window_dir = f"rewardAligned_{pre}-{post}"
+    return (
+        self.pipeline_outputs("dlc_kinematics") / "mean_sem"
+        / bodypart / center_mode / window_dir / plot_family / animal
+    )
+```
+
+Tests for the path resolver under
+`tests/test_paths_mean_sem_visual.py`:
+- Parametric over both bodyparts.
+- Window formatting: `(2.0, 5.0)` → `rewardAligned_2-5`.
+- Asserts lowercase `_tongue_kinematics/`-equivalent subdir naming
+  (no capital-T anywhere in consolidated tree).
+
+Single commit:
+
+```bash
+git add configs/defaults.yaml
+git add src/stroke_orofacial/paths.py
+git add tests/test_paths_mean_sem_visual.py
+git commit -m "Phase 7a.6 Task 3: mean_sem_visual config block + path resolver
+
+Bodypart-parametric config with shared knobs at top level + per-
+bodypart override blocks. Path resolver implements Q7 per-window
+subdir layout (rewardAligned_{pre}-{post}/...) and Q6 lowercase
+tongue convention.
+
+7a.x family schemas (interpolation, per-trial features, visual,
+day-binned, mismatch) unchanged."
+git push
+```
+
+### Task 4 — Bodypart-parametric `mean_sem_visual.py` module
+
+Create `src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py`. Public
+API:
+
+```python
+def build_individual_sessions(
+    bodypart: Literal["tongue", "jaw"],
+    animal: str, date: datetime.date,
+    resolver: PathResolver, params: dict,
+    overwrite: Literal["skip", "force", "prompt"] = "skip",
+) -> Path | None: ...
+
+def build_trial_overlays(...) -> Path | None: ...
+def build_session_overlays(...) -> Path | None: ...   # cohort
+def build_binned_overlays(...) -> Path | None: ...     # cohort
+def build_mean_trace(
+    bodypart: Literal["tongue", "jaw"],
+    animal: str, date: datetime.date,
+    resolver: PathResolver, params: dict,
+    multi_bin: bool = True,   # default-true; tongue gets the upgrade
+    overwrite: Literal["skip", "force", "prompt"] = "skip",
+) -> Path | None: ...
+
+def build_mean_video(
+    bodypart: Literal["tongue", "jaw"],
+    animal: str, date: datetime.date,
+    resolver: PathResolver, params: dict,
+    with_frame_timestamps: bool = True,   # Q5 consolidate
+    overwrite: Literal["skip", "force", "prompt"] = "skip",
+) -> Path | None: ...
+
+# Composite wrappers (called by orchestration notebooks):
+def build_mean_sem_by_animal_date(
+    bodypart: Literal["tongue", "jaw"],
+    animal: str, date: datetime.date,
+    resolver: PathResolver, params: dict,
+    overwrite: Literal["skip", "force", "prompt"] = "skip",
+) -> dict[str, Path | None]:
+    """Calls all per-session families. Returns {family_name: output_path | None}."""
+    ...
+
+def build_mean_sem_cohort(
+    bodypart: Literal["tongue", "jaw"],
+    animals: list[str], date_range: tuple[date, date],
+    resolver: PathResolver, params: dict,
+    overwrite: Literal["skip", "force", "prompt"] = "skip",
+) -> dict[str, Path | None]:
+    """Calls all cross-session families."""
+    ...
+```
+
+Bodypart-parametric implementation rules:
+
+- Where master cells 31/30 are byte-identical, write one
+  implementation that takes `bodypart` as a string token (e.g., for
+  filename composition: `f"{bodypart}_kinematics"`, where the
+  parametrically-passed value is `"tongue"` or `"jaw"`).
+- Where they diverge (tongue 47/48 split → consolidate, jaw 32 multi-
+  bin → port to tongue too), write `if bodypart == "tongue": ...
+  elif bodypart == "jaw": ...` branches with explanatory `# why`
+  comments.
+- Do NOT introduce new bodypart strings. The two locked values are
+  `"tongue"` and `"jaw"`.
+
+Pure-rendering work allowed without parity break (per 7a.5
+precedent): figure size, DPI, axis label font, colorbar position,
+faint-trial overlay alpha/linewidth — match legacy values verbatim
+from the master cells. Numerical outputs (CSVs / NPZs) must be bit-
+stable.
+
+Likely 1-2 commits given ~700L of port:
+
+```bash
+# Commit C4.1: skeleton + per-session families (individual_sessions,
+# mean_trace, mean_video). Smoke-test against 1 (animal, date).
+git add src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py
+git commit -m "Phase 7a.6 Task 4 (C4.1): mean_sem_visual.py per-session families
+
+Parametric over bodypart. individual_sessions / mean_trace /
+mean_video. Tongue mean_video consolidates legacy cells 47+48 via
+with_frame_timestamps kwarg (Q5). Tongue mean_trace gains multi-bin
+support from jaw (Q5/Task 1 finding)."
+
+# Commit C4.2: cohort families (trial_overlays, session_overlays,
+# binned_overlays) + composite wrappers.
+git commit -am "Phase 7a.6 Task 4 (C4.2): cohort families + composite wrappers
+
+trial_overlays, session_overlays, binned_overlays. Composite
+build_mean_sem_by_animal_date + build_mean_sem_cohort wrappers
+matching the by_animal_date pattern from 7a.2/7a.3/7a.5."
+git push
+```
+
+### Task 5 — Unit tests
+
+Tests under `tests/test_mean_sem_visual.py`:
+
+- Parametric: every public function exercised with `bodypart="tongue"`
+  AND `bodypart="jaw"`.
+- Synthetic data fixtures small enough to run in <30s total.
+- `tmp_path`-based output roots per the project's tests-don't-write-
+  to-real-outputs rule (CLAUDE.md §"Tests must not write to the real
+  stroke_orofacial_pipeline_outputs/ tree").
+- Smoke-tests that verify the public API contracts (return shapes,
+  file existence, basic header schemas of emitted CSVs/NPZs).
+- Multi-bin handling in mean_trace: explicit test with `multi_bin=False`
+  AND `multi_bin=True`.
+- `with_frame_timestamps` handling in mean_video: both branches.
+- Per-window subdir formatting verified (Q7).
+- Lowercase tongue path verified (Q6).
+
+```bash
+pytest tests/test_mean_sem_visual.py -v
+git add tests/test_mean_sem_visual.py
+git commit -m "Phase 7a.6 Task 5: unit tests for mean_sem_visual
+
+Parametric over both bodyparts. Synthetic-data fixtures, tmp_path
+output roots. Q5 (with_frame_timestamps, multi_bin) and Q6/Q7 path
+conventions covered."
+git push
+```
+
+### Task 6 — Parity harness + cohort run
+
+Parity script under
+`tests/scripts/parity_phase7a6_mean_sem.py`. Two modes (matching
+7a.2/7a.3/7a.5 precedent):
+
+- `default` mode: bit-stable comparison against in-repo reference
+  (consolidated re-emit). Fast.
+- `legacy_approximate` mode: comparison against legacy MICROSCOPE
+  outputs at `atol=1e-6` over the 14-session scope (matching prior
+  7a.x phases — same animals, same dates).
+
+Numerical-parity targets per plot family (where data files exist
+on legacy side):
+
+| Family | Legacy artifact | Atol |
+|---|---|---|
+| individual_sessions | per-session CSV (X/Y traces, mean, SEM) | 1e-6 |
+| mean_trace | per-session NPZ (binned trace arrays) | 1e-6 |
+| trial_overlays | per-cohort CSV (per-trial means) | 1e-6 |
+| session_overlays | per-cohort CSV (per-session means) | 1e-6 |
+| binned_overlays | per-cohort CSV (binned-by-day means) | 1e-6 |
+| mean_video | not parity-comparable (video frames); visual-gate only | n/a |
+
+If the audit's output-inventory found that some plot families don't
+have legacy data artifacts (just PNGs), document the gap and flag
+those families as visual-gate-only (no numerical parity). Per the
+7a.4 precedent that's acceptable when the plotting code is the only
+producer.
+
+Cohort run: emit consolidated outputs over the 14-session set, both
+bodyparts. Capture into `.scratch_7a6/cohort_run/` (gitignored).
+
+```bash
+git add tests/scripts/parity_phase7a6_mean_sem.py
+git commit -m "Phase 7a.6 Task 6: parity harness + 14-session cohort run
+
+default mode: bit-stable. legacy_approximate mode: atol=1e-6 over
+14-session legacy parity scope. Per-family parity targets documented.
+mean_video is visual-gate-only (no numerical artifact)."
+git push
+```
+
+If parity holds at atol=1e-6 across all comparable families, proceed
+to Task 7. If residual band shows up (matching prior 7a.x precedents
+e.g. scipy drift), document the residual + atol bump in DECISIONS and
+proceed.
+
+### Task 7 — Visual gate iteration (C7.x)
+
+Visual-gate runner under `tests/scripts/parity_phase7a6_visual_gate.py`,
+matching 7a.4/7a.5 machinery:
+
+- Aspect-aware `fig_h = panel_w / consolidated_aspect` for crisp
+  consolidated PNG rendering.
+- LANCZOS resampling in PIL for compare-grid downsampling.
+- Comparison grid per (bodypart, plot_family, sample-session-set):
+  consolidated PNG | legacy PNG side-by-side.
+- Renders to `.scratch_7a6/visual_gate/` (gitignored).
+- For each comparison grid, runner writes a verdict prompt that
+  Priya fills in directly in the kickoff feedback loop.
+
+Iteration pattern (C7.1 / C7.2 / C7.3 commits as needed) — same
+disposition as 7a.5-mismatch's C6.1/C6.2/C6.3:
+
+- C7.1: first-pass renders. Priya eyeballs all comparison grids.
+- C7.2: pure-rendering fixes (figsize, axis labels, colorbar
+  position, faint-trial overlay alpha/linewidth, sort order). No
+  algorithm changes; numerical parity from Task 6 must remain bit-
+  stable across these commits.
+- C7.3: any final tweaks to land all grids at PASS verdict.
+
+Each iteration commit:
+
+```bash
+git commit -am "Phase 7a.6 Task 7 (C7.N): visual gate fix — <description>"
+git push
+```
+
+Each commit must include a `pytest -q tests/scripts/parity_phase7a6_mean_sem.py`
+re-run that confirms numerical parity unchanged (matching the C6.x
+discipline from 7a.5).
+
+### Task 8 — Populate notebooks 13 + 14
+
+Pattern from `notebooks/10_dlc_build_parquets.ipynb`,
+`notebooks/11_dlc_spatial_whole_session.ipynb`,
+`notebooks/12_dlc_spatial_reward_aligned.ipynb`.
+
+`notebooks/13_dlc_kinematics_tongue.ipynb` — full pipeline:
+
+```
+Cell 0  (markdown)  Title
+Cell 1  (code)      USER INPUTS — ANIMALS, DATES, OVERWRITE, knobs
+Cell 2  (code)      Imports + resolver + animals_config + defaults
+Cell 3  (code)      Build manifests per (animal, date)
+Cell 4  (code)      Per-(animal, date) loop — interpolation (7a.2)
+Cell 5  (code)      Per-(animal, date) loop — per-trial scalars (7a.3 V3)
+Cell 6  (code)      Per-(animal, date) loop — angle/phase visual (7a.4)
+Cell 7  (code)      Per-(animal, date) loop — mismatch classifier (7a.5)
+Cell 8  (code)      Per-(animal, date) loop — mean/SEM per-session (7a.6)
+Cell 9  (code)      Cohort — mean/SEM cross-session families (7a.6)
+Cell 10 (code)      Summary print
+```
+
+`notebooks/14_dlc_kinematics_jaw.ipynb` — full jaw pipeline:
+
+```
+Cell 0  (markdown)  Title
+Cell 1  (code)      USER INPUTS — ANIMALS, DATES, OVERWRITE, knobs
+Cell 2  (code)      Imports + resolver + animals_config + defaults
+Cell 3  (code)      Build manifests per (animal, date)
+Cell 4  (code)      Per-(animal, date) loop — interpolation (7a.2)
+Cell 5  (code)      Per-(animal, date) loop — per-trial scalars (7a.5 jaw_pertrial)
+Cell 6  (code)      Per-(animal, date) loop — mean/SEM per-session (7a.6)
+Cell 7  (code)      Cohort — mean/SEM cross-session families (7a.6)
+Cell 8  (code)      Summary print
+```
+
+Notebook contract reminders:
+
+- Notebooks orchestrate; no analytical code. Every cell after USER
+  INPUTS imports from `stroke_orofacial` and calls public functions.
+- Every cell handles per-session errors gracefully (try/except, log,
+  continue) — matching the patterns in notebooks 10/11/12.
+- Smoke-test by executing each notebook against 1 (animal, date)
+  sample. Add the smoke-test command to the kickoff retrospective
+  notes in DECISIONS.
+
+If any module from prior phases lacks a public
+`build_*_by_animal_date(...)`-shaped wrapper that these notebooks
+need (per the Task 1 audit's notebook-inventory step), add an
+additive helper to the relevant prior-phase module — additive only
+(no algorithm changes, no signature changes to existing exports).
+Document each additive helper in DECISIONS.
+
+```bash
+# Smoke-test:
+jupyter nbconvert --to notebook --execute \
+    notebooks/13_dlc_kinematics_tongue.ipynb \
+    --output /tmp/13_smoke.ipynb 2>&1 | tail -20
+jupyter nbconvert --to notebook --execute \
+    notebooks/14_dlc_kinematics_jaw.ipynb \
+    --output /tmp/14_smoke.ipynb 2>&1 | tail -20
+
+git add notebooks/13_dlc_kinematics_tongue.ipynb
+git add notebooks/14_dlc_kinematics_jaw.ipynb
+# Plus any additive helpers + their tests if needed:
+git add src/stroke_orofacial/dlc_kinematics/<module>.py tests/<corresponding test>
+git commit -m "Phase 7a.6 Task 8: populate notebooks 13 + 14 end-to-end
+
+13: full tongue pipeline (7a.2 → 7a.3 → 7a.4 → 7a.5 → 7a.6).
+14: full jaw pipeline (7a.2 → 7a.5 jaw_pertrial → 7a.6).
+Pattern from notebooks 10/11/12. Smoke-tested against 1 (animal,
+date) sample per notebook. Closes the 7a.x notebook-population debt
+flagged 2026-05-01."
+git push
+```
+
+### Task 9 — DECISIONS + MIGRATION_LOG + PR + tag
+
+Append to `docs/DECISIONS.md` a `## Phase 7a.6 — Mean/SEM visual gate`
+section. Cover all 7 Task 1 decisions verbatim from the table above,
+plus implementation-time decisions discovered during Tasks 2-8 (any
+additive wrappers added, any residual atol bumps, any visual-gate
+deviations from legacy that survived to PASS).
+
+Append to `docs/MIGRATION_LOG.md` a Phase 7a.6 entry summarizing:
+
+- Net-new modules: `src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py`.
+- Net-new path resolver: `mean_sem_visual_dir(...)`.
+- Notebooks populated: `notebooks/13_dlc_kinematics_tongue.ipynb`,
+  `notebooks/14_dlc_kinematics_jaw.ipynb`.
+- Behavior diffs vs. legacy: tongue path lowercased (Q6), per-window
+  subdirs uniform (Q7), tongue mean video consolidated (Q5), tongue
+  mean_trace gained multi-bin (audit finding).
+- Skipped: tongue exploratory cells 34/37/40/43, Cell 43 PSD
+  (deferred).
+- Parity scope: 14-session legacy_approximate at atol=1e-6. Visual
+  gate verdict: PASS (Priya, dated).
+
+```bash
+git add docs/DECISIONS.md docs/MIGRATION_LOG.md
+git commit -m "Phase 7a.6 Task 9: DECISIONS + MIGRATION_LOG"
+git push
+
+gh pr create --base main --head phase/7a.6-mean-sem \
+    --title "Phase 7a.6: Mean/SEM visual gate (tongue + jaw, parametric)" \
+    --body "$(cat <<'EOF'
+## Summary
+
+Closes Phase 7a.6 — bodypart-parametric mean/SEM visual gate for
+tongue + jaw. ~3,873L net-new (after exploratory skip). 7 production
+cells ported across both ws_aligned notebooks. New
+`mean_sem_visual.py` module, parity at atol=1e-6 over 14-session
+scope, visual gate PASS, notebooks 13 + 14 populated.
+
+See `docs/DECISIONS.md` Phase 7a.6 section for the 7 Task 1 decisions
++ implementation deviations.
+
+## Test plan
+
+- [x] `pytest tests/test_mean_sem_visual.py` passes
+- [x] `pytest tests/scripts/parity_phase7a6_mean_sem.py` (default mode) bit-stable
+- [x] `parity_phase7a6_mean_sem.py --mode legacy_approximate` atol=1e-6 PASS
+- [x] Visual gate PASS verdict from Priya
+- [x] Notebooks 13 + 14 smoke-tested against 1 (animal, date) sample
+
+## Closes the 7a.x notebooks debt
+
+Notebooks 13 + 14 were 2-cell skeletons since Phase 6 created them.
+This PR populates both end-to-end with the full 7a.x chain.
+EOF
+)"
+```
+
+After Priya merges + tags `v7a.6-mean-sem`, branch can be left in
+place per CLAUDE.md ground rule 8.
 
 ---
 
