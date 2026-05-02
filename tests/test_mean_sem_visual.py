@@ -1,17 +1,31 @@
-"""Phase 7a.6 Task 4 (C4.1) — smoke tests for ``mean_sem_visual``.
+"""Phase 7a.6 Task 5 — unit tests for ``mean_sem_visual``.
 
-Lightweight tests covering:
+Originally scaffolded as ``tests/test_mean_sem_visual_smoke.py`` during
+the C4.x module-port commits and grown organically; renamed to the
+kickoff-spec'd path 2026-05-02 once Task 4 closed. Coverage in this file
+is the formal acceptance sweep for the four phase-locked decisions:
 
-- Pure-function helpers (``_mean_sem``, ``_snippet``, ``_stack_snippets``,
-  day-bin layout, ``_compute_binned``).
-- End-to-end plot emission via the public ``build_*`` entry points by
-  constructing synthetic ``SessionAggregates`` + ``CohortAggregates`` and
-  passing them through the ``cohort=`` kwarg (skips the upstream parquet
-  + spout_behavior loader).
+- Q2 (bodypart-parametric architecture): every public ``build_*``
+  exercised with ``bodypart="tongue"`` AND ``bodypart="jaw"``.
+- Q4 (multi-bin mean_trace): ``bin_sizes_days`` accepts ``None`` /
+  ``int`` / ``Sequence[int]``; one PNG per entry.
+- Q5 (with_frame_timestamps consolidate): mean_video both branches at
+  the public + private API levels.
+- Q6 (lowercase tongue): no capital-T leak in any path component.
+- Q7 (per-window subdir): ``rewardAligned_{pre}pre-{post}post/`` for
+  both bodyparts.
 
-Full parametric coverage (window formatting, Q6 / Q7 enforcement,
-multi-bin handling, ``with_frame_timestamps``, etc.) lands in Task 5
-under ``tests/test_mean_sem_visual.py``.
+Plus pure-function helper tests (``_mean_sem``, ``_snippet``,
+``_stack_snippets``, day-bin layout, ``_compute_binned``,
+``_moving_average_nan``, ``_smooth_movavg_ms``,
+``_color_for_rel_day_continuous``, ``_normalize_bin_sizes``) and
+end-to-end PNG/GIF emission via synthetic ``SessionAggregates`` +
+``CohortAggregates`` + ``MeanTraceCohort`` passed through ``cohort=``
+kwargs (bypassing the upstream parquet + spout_behavior loader, which is
+exercised by the parity harness in Task 6).
+
+Test budget: <30 s total (kickoff requirement). Animation-emitting tests
+use small frame counts + low DPI to stay fast.
 """
 
 from __future__ import annotations
@@ -1094,3 +1108,398 @@ class TestMeanVideoFilename:
             animal_info=info,
         )
         assert "d0_20250313_both" in fname
+
+
+# ===========================================================================
+# Task 5 — Q-lock acceptance sweep
+# ===========================================================================
+#
+# These tests assert the four phase-locked decisions from Phase 7a.6 Task 1
+# (kickoff 2026-05-01) at the public-API level. Each Q is exercised by at
+# least one parametrized test that fails loudly if the contract drifts.
+
+
+class TestQ2BodypartParametricPublicAPI:
+    """Q2: every public ``build_*`` exercises both ``tongue`` and ``jaw``.
+
+    Confirms the architecture decision to ship a single bodypart-
+    parametric module rather than sibling per-bodypart modules.
+    """
+
+    @pytest.mark.parametrize("bodypart", ["tongue", "jaw"])
+    def test_build_individual_sessions(self, monkeypatch, tmp_path, bodypart):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", bodypart, bin_days=1)
+        out = msv.build_individual_sessions(
+            bodypart, "PS46", cohort.sessions[0].date, resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        assert out is not None and out.exists()
+
+    @pytest.mark.parametrize("bodypart", ["tongue", "jaw"])
+    def test_build_trial_overlays(self, monkeypatch, tmp_path, bodypart):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", bodypart, bin_days=1)
+        out = msv.build_trial_overlays(
+            bodypart, "PS46", cohort.sessions[0].date, resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        assert out is not None and out.exists()
+
+    @pytest.mark.parametrize("bodypart", ["tongue", "jaw"])
+    def test_build_session_overlays(self, monkeypatch, tmp_path, bodypart):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", bodypart, bin_days=1)
+        paths = msv.build_session_overlays(
+            bodypart, "PS46", resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        assert len(paths) == 4
+        for p in paths:
+            assert p.exists()
+
+    @pytest.mark.parametrize("bodypart", ["tongue", "jaw"])
+    def test_build_binned_overlays(self, monkeypatch, tmp_path, bodypart):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", bodypart, bin_days=2)
+        paths = msv.build_binned_overlays(
+            bodypart, "PS46", resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        assert len(paths) == 4
+        for p in paths:
+            assert p.exists()
+
+
+class TestQ4MultiBinPublic:
+    """Q4: build_mean_trace accepts None / int / Sequence[int] for
+    ``bin_sizes_days``; emits one PNG per entry. Implementation-side
+    parametricity is already covered by ``TestNormalizeBinSizesParametric``
+    above; this class checks the dispatch shape at the public API level
+    by mocking the cohort builder.
+    """
+
+    def test_int_bin_size_emits_one_png(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="tongue", bin_size_days=2,
+            n_pre=2, n_post=2,
+        )
+        # Stub build_mean_trace_cohort to return our synthetic cohort
+        # regardless of arguments.
+        monkeypatch.setattr(msv, "build_mean_trace_cohort", lambda *a, **k: cohort)
+        paths = msv.build_mean_trace(
+            "tongue", "PS46", resolver,
+            reward_pre_ms=0, reward_post_ms=500,
+            bin_sizes_days=2,
+            overwrite="force",
+        )
+        assert len(paths) == 1
+        assert paths[0].exists()
+
+    def test_list_bin_sizes_emits_one_png_per_size(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort_2 = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="tongue", bin_size_days=2,
+            n_pre=2, n_post=2,
+        )
+        cohort_7 = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="tongue", bin_size_days=7,
+            n_pre=2, n_post=2,
+        )
+
+        # Return cohort with bin_size_days matching the requested bin.
+        def stub_builder(bodypart, animal, resolver_, *, bin_size_days, **kwargs):
+            if bin_size_days == 2:
+                return cohort_2
+            if bin_size_days == 7:
+                return cohort_7
+            return None
+
+        monkeypatch.setattr(msv, "build_mean_trace_cohort", stub_builder)
+        paths = msv.build_mean_trace(
+            "tongue", "PS46", resolver,
+            reward_pre_ms=0, reward_post_ms=500,
+            bin_sizes_days=[2, 7],
+            overwrite="force",
+        )
+        assert len(paths) == 2
+        names = {p.name for p in paths}
+        assert any("relDayBin2d" in n for n in names)
+        assert any("relDayBin7d" in n for n in names)
+
+    def test_no_bin_sizes_returns_empty(self, monkeypatch, tmp_path):
+        """Empty ``bin_sizes_days`` list → no-op."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        paths = msv.build_mean_trace(
+            "tongue", "PS46", resolver,
+            reward_pre_ms=0, reward_post_ms=500,
+            bin_sizes_days=[],
+            overwrite="force",
+        )
+        assert paths == []
+
+
+class TestQ5WithFrameTimestampsPublic:
+    """Q5: build_mean_video both branches at the public API level.
+
+    Both must succeed with a valid synthetic cohort. The frame-text
+    artist's presence/absence at the figure level is verified in
+    ``TestBuildMeanVideoAnimation`` above; here we exercise the public
+    dispatch shape end-to-end.
+    """
+
+    @pytest.mark.parametrize("with_ts", [True, False])
+    def test_build_mean_video_with_and_without_timestamps(
+        self, monkeypatch, tmp_path, with_ts,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="tongue", bin_size_days=2,
+            n_pre=2, n_post=2,
+        )
+        monkeypatch.setattr(msv, "build_mean_trace_cohort", lambda *a, **k: cohort)
+        # Override config with fast settings.
+        params = {
+            "dlc_kinematics": {
+                "mean_sem_visual": {
+                    "mean_trace": {
+                        "do_x_range_filter": True, "do_time_smooth": True,
+                        "time_smooth_movavg_ms": 40.0,
+                        "show_sem_tube": False,
+                        "figure_height_inches": 4.0,
+                        "figure_width_inches": 8.0,
+                        "xlim_pm_px": 150,
+                    },
+                    "tongue": {
+                        "center_mode": "centered_spout_midpoint",
+                        "mean_trace": {"figure_width_inches": 8.0, "xlim_pm_px": 150},
+                    },
+                    "mean_video": {
+                        "anim_fps": 10, "anim_speed": 1.0,
+                        "tail_ms": 100.0, "video_format": "gif",
+                        "save_both_modes": False, "animation_mode": "dot",
+                        "video_dpi": 50,
+                    },
+                    "cam": "cam2",
+                    "dpi": 100,
+                },
+            },
+        }
+        paths = msv.build_mean_video(
+            "tongue", "PS46", resolver,
+            reward_pre_ms=0, reward_post_ms=500,
+            bin_sizes_days=2, modes=["dot"],
+            video_format="gif",
+            with_frame_timestamps=with_ts,
+            params=params,
+            overwrite="force",
+        )
+        assert len(paths) == 1
+        assert paths[0].exists()
+        assert paths[0].suffix == ".gif"
+
+
+class TestQ6LowercaseTonguePublic:
+    """Q6: no capital-T leak in any path emitted by the public API."""
+
+    def test_no_capital_t_in_individual_sessions_path(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
+        out = msv.build_individual_sessions(
+            "tongue", "PS46", cohort.sessions[0].date, resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        assert out is not None
+        for part in out.parts:
+            assert "Tongue" not in part, (
+                f"capital-T leak in path component {part!r} (Q6 violation)"
+            )
+
+    def test_no_capital_t_in_session_overlays_paths(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
+        paths = msv.build_session_overlays(
+            "tongue", "PS46", resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        for p in paths:
+            for part in p.parts:
+                assert "Tongue" not in part
+
+
+class TestQ7PerWindowSubdirPublic:
+    """Q7: ``rewardAligned_{pre}pre-{post}post/`` for both bodyparts."""
+
+    @pytest.mark.parametrize("bodypart", ["tongue", "jaw"])
+    @pytest.mark.parametrize(
+        "pre, post, slug",
+        [
+            (100, 1000, "rewardAligned_100pre-1000post"),
+            (500, 5000, "rewardAligned_500pre-5000post"),
+            (0, 1500, "rewardAligned_0pre-1500post"),
+        ],
+    )
+    def test_individual_sessions_subdir(
+        self, monkeypatch, tmp_path, bodypart, pre, post, slug,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort(
+            "PS46", bodypart, bin_days=1,
+            pre_ms=float(pre), post_ms=float(post),
+        )
+        out = msv.build_individual_sessions(
+            bodypart, "PS46", cohort.sessions[0].date, resolver,
+            reward_pre_ms=pre, reward_post_ms=post,
+            cohort=cohort, overwrite="force",
+        )
+        assert out is not None
+        assert slug in str(out)
+
+
+class TestPublicAPIReturnShapes:
+    """Each public ``build_*`` function returns the contract-spec'd type.
+
+    Per-session families: ``Path | None``.
+    Cohort families: ``list[Path]``.
+    Composite wrappers: ``dict[str, list[Path]]``.
+    """
+
+    def test_per_session_returns_path_or_none(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
+        # Hit case: returns Path.
+        hit = msv.build_individual_sessions(
+            "tongue", "PS46", cohort.sessions[0].date, resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        assert isinstance(hit, Path)
+        # Miss case (date not in cohort): returns None.
+        miss = msv.build_individual_sessions(
+            "tongue", "PS46", datetime.date(1999, 1, 1), resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        assert miss is None
+
+    def test_cohort_returns_list_of_paths(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
+        paths = msv.build_session_overlays(
+            "tongue", "PS46", resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        assert isinstance(paths, list)
+        assert all(isinstance(p, Path) for p in paths)
+
+    def test_composite_wrapper_returns_dict_keyed_by_family(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
+        out = msv.build_mean_sem_by_animal_date(
+            "tongue", "PS46", cohort.sessions[0].date, resolver,
+            time_windows_ms=[(100, 1000)],
+            cohort_cache={(100, 1000): cohort},
+            overwrite="force",
+        )
+        assert isinstance(out, dict)
+        assert "individual_sessions" in out
+        assert "trial_overlays" in out
+        assert all(isinstance(v, list) for v in out.values())
+
+
+class TestSkipForceOverwriteSemantics:
+    """``overwrite="skip"`` reuses existing PNGs; ``"force"`` rewrites."""
+
+    def test_skip_reuses_existing(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
+        target_date = cohort.sessions[0].date
+        first = msv.build_individual_sessions(
+            "tongue", "PS46", target_date, resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        first_mtime = first.stat().st_mtime_ns
+        second = msv.build_individual_sessions(
+            "tongue", "PS46", target_date, resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="skip",
+        )
+        # Same path returned + mtime unchanged.
+        assert second == first
+        assert second.stat().st_mtime_ns == first_mtime
+
+    def test_force_rewrites(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
+        target_date = cohort.sessions[0].date
+        first = msv.build_individual_sessions(
+            "tongue", "PS46", target_date, resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        # Stale-marker the file to detect a rewrite.
+        old_mtime = (first.stat().st_mtime_ns - int(1e9))
+        # Stamp via os.utime to a known past time.
+        import os
+        os.utime(first, ns=(old_mtime, old_mtime))
+        recorded = first.stat().st_mtime_ns
+        second = msv.build_individual_sessions(
+            "tongue", "PS46", target_date, resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        assert second == first
+        # mtime must have advanced past the stale value (the renderer
+        # rewrote it).
+        assert second.stat().st_mtime_ns > recorded
+
+    @pytest.mark.parametrize("overwrite", ["bogus", "yes", ""])
+    def test_invalid_overwrite_raises(
+        self, monkeypatch, tmp_path, overwrite,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
+        with pytest.raises(ValueError, match="overwrite must be"):
+            msv.build_individual_sessions(
+                "tongue", "PS46", cohort.sessions[0].date, resolver,
+                reward_pre_ms=100, reward_post_ms=1000,
+                cohort=cohort, overwrite=overwrite,
+            )
