@@ -68,6 +68,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import datetime  # noqa: E402  (ordering after backend setup is intentional)
+import logging  # noqa: E402
 from dataclasses import dataclass, field  # noqa: E402
 from pathlib import Path  # noqa: E402
 from typing import Any, Literal, Sequence  # noqa: E402
@@ -80,6 +81,8 @@ from stroke_orofacial.animals import AnimalInfo, get_animal  # noqa: E402
 from stroke_orofacial.config_loader import load_defaults  # noqa: E402
 from stroke_orofacial.manifest import SessionManifest, build_manifest  # noqa: E402
 from stroke_orofacial.paths import PathResolver  # noqa: E402
+
+_logger = logging.getLogger(__name__)
 
 MEAN_SEM_VISUAL_VERSION = "v7a.6"
 
@@ -2304,6 +2307,13 @@ def _resolve_animation_writer(
     Returns ``(writer, ext, fell_back_from_mp4_to_gif)``. The boolean is
     True when the caller asked for MP4 but ffmpeg wasn't available, so
     the harness can audit the deviation at parity-comparison time.
+
+    When the MP4→GIF fallback fires, a ``logging.WARNING`` is emitted via
+    the module logger (one per call). Cohort runs that produce N
+    animations will therefore see N warnings; this is intentional —
+    silent fallbacks risk leaving GIFs sitting in cohort outputs unnoticed
+    when the prod env was supposed to emit MP4. To suppress, install
+    ffmpeg in the env, OR pass ``video_format="gif"`` explicitly.
     """
     import matplotlib.animation as mpl_anim
 
@@ -2312,6 +2322,11 @@ def _resolve_animation_writer(
         if mpl_anim.FFMpegWriter.isAvailable():
             return (mpl_anim.FFMpegWriter(fps=anim_fps, bitrate=12000), "mp4", False)
         # Fall back to GIF (PillowWriter is always available).
+        _logger.warning(
+            "ffmpeg not found; falling back to GIF via PillowWriter "
+            "(requested video_format='mp4'). Output will have a .gif "
+            "extension. Install ffmpeg in the env to emit MP4.",
+        )
         return (mpl_anim.PillowWriter(fps=anim_fps), "gif", True)
     if fmt == "gif":
         return (mpl_anim.PillowWriter(fps=anim_fps), "gif", False)

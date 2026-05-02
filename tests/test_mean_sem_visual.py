@@ -899,6 +899,49 @@ class TestResolveAnimationWriter:
         with pytest.raises(ValueError, match="must be 'mp4' or 'gif'"):
             msv._resolve_animation_writer("avi", 60)
 
+    def test_mp4_fallback_emits_warning(self, caplog):
+        """Silent fallbacks are bad UX (Priya 2026-05-02): when MP4 was
+        requested but ffmpeg is missing, ``logging.WARNING`` must fire so
+        users notice GIFs are landing in cohort outputs unintentionally.
+        """
+        import logging
+        import matplotlib.animation as mpl_anim
+
+        if mpl_anim.FFMpegWriter.isAvailable():
+            pytest.skip("ffmpeg installed; fallback path not exercised")
+        with caplog.at_level(
+            logging.WARNING,
+            logger="stroke_orofacial.dlc_kinematics.mean_sem_visual",
+        ):
+            msv._resolve_animation_writer("mp4", 60)
+        # Exactly one WARNING from this module.
+        msgs = [
+            r for r in caplog.records
+            if r.name == "stroke_orofacial.dlc_kinematics.mean_sem_visual"
+            and r.levelname == "WARNING"
+        ]
+        assert len(msgs) == 1
+        # Message content includes the fallback signal so users can grep
+        # cohort run logs for it.
+        text = msgs[0].getMessage().lower()
+        assert "ffmpeg" in text
+        assert "gif" in text or "pillow" in text
+
+    def test_gif_request_does_not_warn(self, caplog):
+        """Explicitly requested GIF should NOT log a fallback warning."""
+        import logging
+        with caplog.at_level(
+            logging.WARNING,
+            logger="stroke_orofacial.dlc_kinematics.mean_sem_visual",
+        ):
+            msv._resolve_animation_writer("gif", 60)
+        msgs = [
+            r for r in caplog.records
+            if r.name == "stroke_orofacial.dlc_kinematics.mean_sem_visual"
+            and r.levelname == "WARNING"
+        ]
+        assert len(msgs) == 0
+
 
 class TestBuildMeanVideoAnimation:
     """End-to-end: build the animation + save as GIF.
