@@ -4630,3 +4630,185 @@ commits in order.)
   path-bug remain on MICROSCOPE; can be pruned by Priya at her
   discretion (harmless leftovers; correct C6.2+ grids land at
   `comparison_grids/{animal}/{date}/...`).
+
+---
+
+## Phase 7a.6 — Mean/SEM visual gate (tongue + jaw, bodypart-parametric)
+
+**Date:** 2026-05-03
+**PR:** #<FILL after gh pr create>
+**Tag on merge:** `v7a.6-mean-sem`
+**Branch:** `phase/7a.6-mean-sem`
+
+**Scope.** Port the `## Per session and combined mean/SEM plots`
+section from both legacy notebooks (canonical tongue cells 31, 45,
+47, 48; canonical jaw cells 30, 32, 34) into a single bodypart-
+parametric module. 7 production cells × ~3,873 source lines collapse
+to ~3,400 LOC of consolidated module. Closes the last 7a.x kinematics
+port outstanding on the Q2 2026 roadmap.
+
+**What landed.**
+
+1. [`src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py`](../src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py)
+   — net-new ~3,400L module. Single bodypart-parametric implementation
+   of all 6 plot families (`individual_sessions`, `trial_overlays`,
+   `session_overlays`, `binned_overlays`, `mean_trace`, `mean_video`)
+   plus 2 composite wrappers (`build_mean_sem_by_animal_date` for
+   per-(animal, date) emit and `build_mean_sem_cohort` for per-animal
+   emit). `MEAN_SEM_VISUAL_VERSION = "v7a.6"`.
+
+2. [`docs/legacy_snippets/tongue_mean_sem_section.py`](legacy_snippets/tongue_mean_sem_section.py)
+   and [`docs/legacy_snippets/jaw_mean_sem_section.py`](legacy_snippets/jaw_mean_sem_section.py)
+   — vendored byte-identical canonical-cell sources per the 7a.0 / 7a.3
+   / 7a.5 vendor pattern. Tongue cells 31 + 45 + 47 + 48; jaw cells
+   30 + 32 + 34. Cell-boundary delimiter comments make each cell
+   greppable. Per-cell SHA256s in the file headers.
+
+3. [`configs/defaults.yaml`](../configs/defaults.yaml)
+   — new `dlc_kinematics.mean_sem_visual:` block. Top-level shared
+   knobs (figure width / height, mean+SEM percentile cap, faint trial
+   overlay alpha+linewidth, time smoothing window) + per-bodypart
+   override sub-blocks (`tongue:` and `jaw:` for divergent values
+   like figure width and centering mode). Mean-trace sub-block under
+   that for the multi-bin layout (`legend_right_fraction`,
+   `legend_anchor_x`, `legend_anchor_y`, `panel_wspace`,
+   `symmetric_pad_frac`). Mean-video sub-block (`video_format: mp4`,
+   `anim_fps: 60`, `anim_speed: 0.125`, `tail_ms`, `video_dpi`,
+   `save_both_modes: true`, `with_frame_timestamps: true` per Q5,
+   `mean_video_windows_subset: [[100, 1000]]` per C7.7).
+
+4. [`src/stroke_orofacial/paths.py`](../src/stroke_orofacial/paths.py)
+   — net-new resolver `mean_sem_visual_dir(bodypart, *, center_mode,
+   reward_pre_ms, reward_post_ms, plot_family, animal)` returning
+   `<outputs>/dlc_kinematics/mean_sem/{bodypart}/{center_mode}/
+   rewardAligned_{pre}pre-{post}post/{plot_family}/{animal}/`. No
+   eager mkdir (directory resolver, 7a.4 convention). Lowercase
+   `tongue` / `jaw` per Q6; per-window subdirs per Q7.
+
+5. [`tests/test_mean_sem_visual.py`](../tests/test_mean_sem_visual.py)
+   — 118 unit tests covering: 6 plot family smoke tests at the
+   public-API level (Q2 bodypart-parametric coverage); multi-bin
+   `bin_sizes_days` resolution (Q4); `with_frame_timestamps` both
+   branches (Q5); lowercase tongue path policy (Q6); per-window subdir
+   layout (Q7); `_resolve_animation_writer` raise-vs-fallback truth
+   table (C7.5); `_should_render_mean_video_for_window` predicate +
+   `_resolve_mean_video_windows` precedence (C7.7);
+   `TestC7{1,2,3,4}*` visual-fidelity pins for the 8 visual-gate
+   atomic-fix commits.
+
+6. [`tests/scripts/parity_phase7a6_mean_sem.py`](../tests/scripts/parity_phase7a6_mean_sem.py)
+   — Phase-7a.6 parity harness, doubles as a cohort-emit runner. CLI
+   flags: `--mode {default, legacy_approximate}`, `--bodyparts`,
+   `--windows`, `--animals`, `--sessions`, `--emit-root`,
+   `--report-path`, `--skip-mean-video`, `--skip-cohort-emit`,
+   `--atol`, `--allow-gif-fallback` (C7.5), `--mean-video-windows`
+   (C7.7). Emits a markdown parity report with per-(animal, bodypart,
+   window) family file counts + ffmpeg fallback counts + deterministic-
+   re-run results + per-(animal, date, bodypart) legacy NPZ comparison.
+
+7. [`notebooks/13_dlc_kinematics_tongue.ipynb`](../notebooks/13_dlc_kinematics_tongue.ipynb)
+   — 11 cells, full tongue pipeline (Phase 7a.2 → 7a.3 V3 → 7a.4 →
+   7a.5 → 7a.6 per-session → 7a.6 cohort → summary). USER INPUTS
+   surfaces 5 Phase 7a.6 knobs: `WINDOWS_MS`, `MEAN_VIDEO_WINDOWS_SUBSET`,
+   `ALLOW_GIF_FALLBACK`, `INCLUDE_MEAN_VIDEO`, `BIN_SIZES_DAYS`.
+   Smoke-tested on PS46 + 2025-03-07: PASS in 17.4 s.
+
+8. [`notebooks/14_dlc_kinematics_jaw.ipynb`](../notebooks/14_dlc_kinematics_jaw.ipynb)
+   — 9 cells, full jaw pipeline (7a.2 → 7a.5 jaw_pertrial → 7a.6
+   per-session → 7a.6 cohort → summary). Same USER INPUTS knob set
+   as nb13. No 7a.3 V3 / 7a.4 / mismatch cells (tongue-only).
+   Smoke-tested on PS46 + 2025-03-07: PASS in 7.8 s.
+
+9. [`environment.yml`](../environment.yml)
+   — added `ffmpeg` to Core runtime deps (2026-05-02, C7.6 commit).
+   Removed from the "Deliberately NOT included" excluded block at the
+   end of the file. Conda-forge ffmpeg 8.1 backs matplotlib's
+   `FFMpegWriter` for `mean_video` MP4 emission. **This phase makes
+   ffmpeg a hard runtime requirement** for the mean_video family;
+   `conda env update -n stroke_orofacial -f environment.yml` brings
+   existing envs in line.
+
+**Behavior diffs vs. legacy.**
+
+- **Lowercase `tongue` directory** (Q6). Legacy cell 31 wrote to
+  `mouse_Tongue_kinematics/` with capital T alongside `mouse_tongue_kinematics/`
+  with lowercase t — the consolidated tree uses lowercase only,
+  matching the 7a.3 V3 / 7a.4 convention.
+- **Per-window subdirs** (Q7). Legacy tongue cell 31 wrote to a single
+  flat `_tongue_kinematics/` directory regardless of window, allowing
+  silent overwrite when both 100-1000ms and 500-5000ms ran for the
+  same animal. Consolidated tree adopts jaw's
+  `rewardAligned_{pre}pre-{post}post/...` per-window subdir layout
+  uniformly.
+- **mean_video consolidation** (Q5). Legacy tongue had two cells
+  (cell 47 basic, cell 48 with frame timestamps); consolidated module
+  has one entry point with `with_frame_timestamps: bool = True`
+  default kwarg matching the jaw cell 34 + tongue cell 48 behavior.
+- **Multi-bin tongue mean_trace** (Q4 + jaw cell 32 promotion).
+  `bin_sizes_days: int | Sequence[int] | None` accepted on both
+  bodyparts; tongue legacy cell 45 was single-bin only.
+- **Cam-view L/R subplot ordering** (C7.2). All 4 two-panel L/R XY
+  plots use cam-view (R-trials on figure left, L-trials on figure
+  right) — matches tongue cell 45 + all 3 mean_video cells; jaw cell
+  32 mean_trace's opposite order is overridden as a deliberate
+  inconsistency-correction.
+- **mean_video MP4 fallback semantics** (C7.5). Legacy emitted MP4
+  via FFMpegWriter unconditionally and crashed if ffmpeg was missing.
+  Consolidated module raises `RuntimeError` on missing ffmpeg by
+  default (`allow_gif_fallback=False`); opt-in `True` activates the
+  PillowWriter-based GIF degrade for dev/CI environments.
+
+**Skipped legacy code (Q4 deliberate exclusions).**
+
+- Tongue exploratory cells 34, 37, 40, 43 — `plt.show()`-only viewers
+  with no saved outputs (~1,414L). Confirmed by Task 1 audit walk
+  through every cell. Not ported.
+- Tongue cell 43 PSD analysis — deferred to a future Phase 7a.x-PSD
+  that bundles tongue 60-86 + jaw 43 + face PSD together (Q3).
+
+**Parity scope + verdict.**
+
+- Standing 14-session envelope from 7a.2 / 7a.3 / 7a.4 / 7a.5
+  (PS46 × 3, PS51 × 1, PS54 × 4, PS55 × 5, plus PS47/48/49/50 with
+  no eligible sessions in the canonical scope per `PARITY_SESSIONS_14`).
+  PS54 / 2025-05-12 carries `skip_missing` (known data gap inheriting
+  the 7a.1 / 7a.2 pattern).
+- **Numerical parity (default mode):** 26/26 NPZ comparisons at Δ=0
+  on `x_final` / `y_final` + reward indices, across all 14 sessions
+  × both bodyparts. Bit-stable across all 8 C7.x atomic-fix commits.
+- **Approximate parity (legacy_approximate mode):** atol=1e-6 PASS
+  on per-frame x/y comparison across the same scope.
+- **Determinism:** 16/16 (animal × bodypart × window) cohorts return
+  `det=PASS` (max|Δ|=0 on re-run) on every parity run from C7.5
+  onward.
+
+**Visual gate verdict.** PASS Priya 2026-05-02 / 2026-05-03 across all
+8 atomic-fix iterations (C7.1 through C7.8). Worst-case session
+(PS51 2025-04-29 + 2025-04-30 — large bin count + tracks extending
+into the L-subplot left margin) verified clean on the static PNG
+mean_xy_overlays family and on the mean_video frame layout
+(cumulative + dot modes, 100-1000ms window). PS46 / 2025-03-13 cohort
+spot-check verified clean on tongue + jaw at the 100-1000ms window
+across all 6 plot families.
+
+**Sub-phase commits on the branch.** 11 commits total:
+- `f316d31` (kickoff doc) `88d9df1` (state-doc refresh) — pre-Tasks-2-9.
+- Tasks 2 (vendor), 3 (config + paths + tests scaffold), 4 (module
+  ports C4.1 master + C4.2 mean_trace + C4.3 mean_video), 5 (test
+  expansion), 6 (parity harness + cohort run), 7.1-7.8 (visual-gate
+  iterations), 8 (notebooks 13 + 14).
+
+**Notes for downstream phases.**
+
+- `build_mean_sem_cohort` is the public composite the cohort-aggregation
+  phase (Phase 7b) should call when it needs the per-animal cohort
+  family outputs without re-implementing the per-window iteration.
+- The C7.7 `mean_video_windows_subset` config knob ships with
+  `[[100, 1000]]` as the project default; long-window mean_videos
+  are NOT emitted by the production cohort run. Override at the CLI
+  with `--mean-video-windows 100,1000:500,5000` if a future analysis
+  needs both, or set the empty list / unset the key in defaults.yaml
+  for "no gating" behavior.
+- ffmpeg is now a hard runtime dep — fresh laptops setting up the
+  env should run `conda env update -n stroke_orofacial -f environment.yml`
+  before running notebooks 13/14.

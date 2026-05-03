@@ -15,6 +15,208 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-03 — Phase 7a.6 — Mean/SEM visual gate (tongue + jaw, bodypart-parametric)
+
+**Context.** Phase 7a.5-mismatch (PR #90) merged 2026-05-01 closed the
+tongue-jaw mismatch classifier + jaw per-trial features. Phase 7a.6
+ports the **mean/SEM visual section** from both legacy notebooks —
+`## Per session and combined mean/SEM plots` — that produces the
+per-session, per-trial, cross-session, day-binned, mean-trace, and
+mean-video figures consumed by every downstream cohort summary. This
+was the last 7a.x piece outstanding; closing it ends the kinematics
+ports for Q2 2026 and unblocks Phase 7b (cross-animal stats).
+
+**Decisions enacted.**
+
+1. **Task 1 outcome (LOCKED 2026-05-01) — 7 questions, all 7 of
+   Cowork's recommendations adopted by Priya.** Verbatim from the
+   kickoff §"Task 1 outcome" table:
+
+   | # | Question | Decision |
+   |---|---|---|
+   | Q1 | Outcome | **B** (substantial port; ~10-12 commits given 5,287L net-new) |
+   | Q2 | Architecture | **Bodypart-parametric** `mean_sem_visual.py` (single module taking `bodypart: Literal["tongue", "jaw"]`) |
+   | Q3 | Cell 43 PSD | **Defer** to a future Phase 7a.x-PSD (tongue 60-86 + jaw 43 + face PSD together) |
+   | Q4 | Tongue trial viewers (cells 34/37/40/43) | **Skip** — exploratory `plt.show()`-only, no saved outputs (~1,414L excluded) |
+   | Q5 | Tongue mean video (cells 47+48) | **Consolidate** into single function with `with_frame_timestamps: bool = True` kwarg, matching jaw cell 34 shape |
+   | Q6 | Tongue path casing | **Lowercase `_tongue_kinematics/`** — fix legacy Cell 31 bug; consolidated tree already uses lowercase from 7a.3 V3 / 7a.4 |
+   | Q7 | Output layout | **Adopt jaw's per-window subdirs** (`rewardAligned_{pre}pre-{post}post/...`) uniformly — fixes latent tongue-overwrite bug from cell 31 writing to a single flat `_tongue_kinematics/` directory regardless of window |
+
+   All 7 documented in `.scratch_7a6/AUDIT_REPORT.md` §1g and re-stated
+   here as the load-bearing record once Task 9 closes.
+
+2. **Three implementation deviations from the kickoff sketch
+   (discovered during Tasks 4–5).**
+
+   - **Reward window units: `reward_pre_ms: int` (milliseconds)
+     overrode the kickoff's `reward_pre_s: float` sketch.** The legacy
+     `rewardAligned_100pre-1000post/` subdir convention is millisecond-
+     based, and the master cell's `TIME_WINDOWS_MS` constant is also
+     milliseconds. Floating-point seconds would have required
+     bidirectional conversion at every emit point (filename,
+     PathResolver.mean_sem_visual_dir, parity harness), each round-
+     tripping a potential float→int truncation footgun. Locked at
+     C4.1 with no behavior change vs. legacy.
+
+   - **Multi-bin: `bin_sizes_days: int | Sequence[int] | None` over
+     `multi_bin: bool`.** The kickoff's boolean toggle would only
+     express "use animal_info.bin_days" vs "use a single hardcoded
+     fallback"; the legacy jaw cell 32 already supports a list of bin
+     sizes (e.g., `[2, 7]` to emit both 2-day and 7-day binned plots).
+     The richer signature ports cleanly to tongue (Q4 in disguise: the
+     multi-bin feature was jaw-only legacy and now lives on both
+     bodyparts via the parametric module). Locked at C4.2.
+
+   - **mean_video MP4→GIF fallback semantics: silent-degrade →
+     fail-loud.** The kickoff sketch's silent fallback to GIF (via
+     PillowWriter) was a robustness measure for environments lacking
+     ffmpeg. C4.3 implemented it that way; C7.5 reversed the decision
+     after discovering 2 leaked GIFs in PS46's outputs that nobody
+     noticed. Production behavior is now `RuntimeError` on missing
+     ffmpeg unless the caller passes `allow_gif_fallback=True`
+     explicitly. The dev/CI escape hatch survives but is opt-in.
+
+3. **C7.x visual-gate iteration learnings (Tasks 7.1–7.8).** Eight
+   atomic-fix commits between 2026-05-02 and 2026-05-03 closed every
+   layout / convention bug surfaced during the visual gate review.
+   Numerical parity remained bit-stable across all 8 commits (det=PASS
+   for all 16 (animal, bodypart, window) cohorts in the 14-session
+   scope on each commit's parity run).
+
+   - **C7.1** — legacy-layout port bugs + animal-scoped Y bounds.
+     Added `build_individual_sessions_animal` two-pass driver +
+     `animal_y_bounds` kwarg so the per-session 2×2 PNGs share Y
+     limits across an animal's session range (matches legacy cell 31
+     mean+SEM scaling, lost in the first port pass).
+
+   - **C7.2** — symmetric union X limits + cam-view L/R subplot
+     ordering. R-trials on figure left, L-trials on figure right —
+     the camera mirrors the mouse so mouse-left appears on cam-right
+     and vice-versa. Tongue cell 45 (older) used cam-view; jaw cell 32
+     (newer) used the opposite order; the consolidated module locks
+     cam-view across all 4 two-panel L/R XY plots as a deliberate
+     deviation from jaw's newer convention (Priya 2026-05-02).
+
+   - **C7.3** — restored legacy Y axis convention (actual data range,
+     NOT symmetric about 0). C7.2's first-pass symmetric-union Y
+     accidentally dropped the legacy Y inversion that uses the
+     reversed-args `set_ylim(y_max, y_min)` idiom (jaw cell 32 / 34
+     newer convention; tongue cell 45 master cell newer convention).
+     C7.3 split the helper into `_union_symmetric_x_max` (X-only) and
+     `_union_y_range_for_inversion` (Y range with the reversed-args
+     `set_ylim`). Preserved on mean_trace + mean_video XY; master
+     cell + cohort overlays stay on natural-order Y.
+
+   - **C7.4** — mean_XY_overlay legend layout. PS51 2025-04-29 cohort
+     was the worst-case driver (large bin count → tall legend that
+     overlapped the right subplot's data). Switched
+     `fig.legend(...)` → `ax_right.legend(...)` with axis-coord bbox
+     `(1.02, 1.0)` + `loc="upper left"`; reduced legend right-fraction
+     from 0.80 → 0.78 to give one extra column of subplot width. Pure
+     rendering fix; bit-stable across 26/26 NPZ comparisons.
+
+   - **C7.5** — fail-loud `_resolve_animation_writer`. Returns
+     `(writer, ext)` 2-tuple instead of the prior `(writer, ext,
+     fell_back_from_mp4_to_gif)` 3-tuple; raises `RuntimeError` when
+     `video_format='mp4'` is requested but ffmpeg is unavailable
+     unless `allow_gif_fallback=True` is passed. Plumbed through
+     `build_mean_video` (Phase 7a.6 public API) and the parity harness
+     CLI as `--allow-gif-fallback`. Production cohort runs default
+     fail-loud; opt-in to GIF degrade only on dev/CI environments
+     where ffmpeg cannot be installed (recovery path:
+     `conda install -c conda-forge ffmpeg`).
+
+   - **C7.6** — `panel_wspace` 0.10 → 0.35 for mean_xy_overlays static
+     PNG layout. At 0.10 the L subplot's Y-axis tick labels overlapped
+     the R subplot's data on the worst-case PS51 2025-04-30 session.
+     0.35 clears with room to spare. Same commit bundled the
+     `environment.yml` ffmpeg dependency addition into Core runtime
+     deps (see Decision 4 below).
+
+   - **C7.7** — `mean_video_windows_subset` config knob. mean_video
+     MP4 render time scales with window duration; the long window
+     (-500/5000ms) takes much longer than the short window
+     (-100/1000ms) without proportional analytical value
+     (Priya 2026-05-02). Knob in
+     `dlc_kinematics.mean_sem_visual.mean_video.mean_video_windows_subset`
+     defaults to `[[100, 1000]]`; CLI flag `--mean-video-windows`
+     overrides at the harness level; predicate
+     `_should_render_mean_video_for_window` exposed for unit testing.
+     Other plot families (individual_sessions, trial_overlays,
+     session_overlays, binned_overlays, mean_trace) ignore this
+     allow-list and emit for every configured window.
+
+   - **C7.8** — `wspace=0.35` applied to mean_video frame layout (the
+     `_build_mean_video_animation` `subplots_adjust` call). Distinct
+     code path from C7.6's static PNG fix — same overlap bug
+     manifested on mean_video frames. Hardcoded rather than wired
+     through a config knob (no other tunable spacing knobs on the
+     animation layout, single-use knob would be excess machinery).
+
+4. **environment.yml addition: ffmpeg (2026-05-02, C7.6 commit).**
+   Conda-forge `ffmpeg` (8.1) moved from the "Deliberately NOT
+   included" excluded block (where it was assumed to be needed only by
+   the deeplabcut env's video-decoding path) into the main analysis-
+   env dependency block. Phase 7a.6 added matplotlib FFMpegWriter
+   usage in this env via `mean_video`'s consolidated entry; without
+   ffmpeg, that path either silently degraded to GIF (the C4.3
+   behavior, retired in C7.5) or now raises `RuntimeError`. Bundling
+   ensures fresh env installs land on the happy path and
+   `conda env update -n stroke_orofacial -f environment.yml` is the
+   recovery for users hitting the C7.5 raise.
+
+5. **Additive helpers added in Task 8 (no signature changes to
+   pre-existing exports).**
+
+   - **`build_mean_sem_cohort` gained `mean_video_windows` and
+     `allow_gif_fallback` kwargs.** Surfaces the C7.5 + C7.7 knobs to
+     notebook callers without forcing them to drop down to the
+     per-family `build_mean_video` API. Both default to values that
+     preserve the prior call signature's behavior
+     (`mean_video_windows=None` = no gating; `allow_gif_fallback=False`
+     = fail-loud). 3 new tests in `TestCompositeWrappers` cover gating,
+     no-gating, and forwarding.
+   - **No prior-phase 7a.x modules** (interpolation, tongue_pertrial,
+     tongue_visual, jaw_pertrial, tongue_jaw_mismatch) needed any new
+     `build_*_by_animal_date` wrappers — the Task 1 audit
+     (`.scratch_7a6/notebook_inventory.md`) confirmed every wrapper
+     notebooks 13/14 consume already shipped in its respective phase.
+
+6. **Notebook 13 + 14 cell maps (Task 8).** Both notebooks orchestrate;
+   no analytical code lives in either. Five Phase 7a.6 USER INPUTS
+   knobs surface to the user: `WINDOWS_MS`, `MEAN_VIDEO_WINDOWS_SUBSET`,
+   `ALLOW_GIF_FALLBACK`, `INCLUDE_MEAN_VIDEO`, `BIN_SIZES_DAYS`. Defaults
+   ship with `ANIMALS=["PS46"]` (matches notebook 12's pattern) and
+   `OVERWRITE="skip"` so cached reruns are near-instant. Smoke-tested
+   on PS46 + 2025-03-07 (first session): notebook 13 PASS in 17.4 s,
+   notebook 14 PASS in 7.8 s. All per-phase loops returned
+   `ok=1 skip=0 err=0`; cohort emit returned the expected family
+   shape (`session_overlays=8 binned_overlays=8 mean_trace=2
+   mean_video=2`, mean_video gated to short window).
+
+**Rationale.** The 7-decision Task 1 lock + 8 C7.x atomic fixes
+together represent the visual-gate iteration cost for a
+"~3,400 LOC mostly-byte-identical port from a single-bodypart
+notebook to a parametric module covering both bodyparts". The
+pre-existing fail-silent fallback + the wspace-overlap bug were both
+load-bearing for this phase's visual review, not algorithmic — but
+each one would have leaked into the next phase's outputs unnoticed
+(as the 2 PS46 GIF orphans actually did). C7.5's fail-loud default
+is the most important subsystem-level correction in this phase: it
+turns "ffmpeg missing" from a silent footgun into a loud crash at the
+exact rendering boundary where the user can fix it.
+
+**Enforced at.**
+- [`src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py`](../src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py) (~3,400L)
+- [`configs/defaults.yaml`](../configs/defaults.yaml) — `dlc_kinematics.mean_sem_visual` block
+- [`src/stroke_orofacial/paths.py`](../src/stroke_orofacial/paths.py) — `PathResolver.mean_sem_visual_dir(...)`
+- [`environment.yml`](../environment.yml) — `ffmpeg` in Core runtime deps
+- [`tests/test_mean_sem_visual.py`](../tests/test_mean_sem_visual.py) (118 tests)
+- [`tests/scripts/parity_phase7a6_mean_sem.py`](../tests/scripts/parity_phase7a6_mean_sem.py) (cohort + parity harness; `--allow-gif-fallback` + `--mean-video-windows` CLI flags)
+- [`notebooks/13_dlc_kinematics_tongue.ipynb`](../notebooks/13_dlc_kinematics_tongue.ipynb), [`notebooks/14_dlc_kinematics_jaw.ipynb`](../notebooks/14_dlc_kinematics_jaw.ipynb) — orchestration
+
+---
+
 ## 2026-05-01 — Phase 7a.5-mismatch tongue-jaw mismatch trial classifier + jaw per-trial features (Outcome B — hybrid B1.5: two modules, single phase)
 
 **Context.** Phase 7a.3 V3 (tongue per-trial features) merged 2026-04-29
