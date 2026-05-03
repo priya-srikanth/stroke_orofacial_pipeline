@@ -836,6 +836,118 @@ class TestCompositeWrappers:
         assert "100pre-1000post" in names[0]
         assert "500pre-5000post" in names[1]
 
+    def test_build_mean_sem_cohort_mean_video_windows_gates(
+        self, monkeypatch, tmp_path,
+    ):
+        """Task 8 / C7.7-tieback: the composite cohort wrapper plumbs
+        ``mean_video_windows`` through to ``build_mean_video`` so the
+        notebook's USER INPUTS knob can gate animation rendering to a
+        subset of the configured windows. Other families (session_overlays,
+        binned_overlays, mean_trace) still iterate over every window.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+
+        # Stub every emit function so the test stays in-process and
+        # records which windows each was called with.
+        called_with: dict[str, list[tuple[int, int]]] = {
+            "session_overlays": [],
+            "binned_overlays": [],
+            "mean_trace": [],
+            "mean_video": [],
+        }
+
+        def fake_cohort_aggregates(*a, **kw):
+            return _make_synthetic_cohort("PS46", "tongue", bin_days=1)
+
+        def make_recorder(name):
+            def _fn(*a, reward_pre_ms, reward_post_ms, **kw):
+                called_with[name].append((reward_pre_ms, reward_post_ms))
+                return []
+            return _fn
+
+        monkeypatch.setattr(msv, "build_cohort_aggregates", fake_cohort_aggregates)
+        monkeypatch.setattr(msv, "build_session_overlays", make_recorder("session_overlays"))
+        monkeypatch.setattr(msv, "build_binned_overlays", make_recorder("binned_overlays"))
+        monkeypatch.setattr(msv, "build_mean_trace", make_recorder("mean_trace"))
+        monkeypatch.setattr(msv, "build_mean_video", make_recorder("mean_video"))
+
+        msv.build_mean_sem_cohort(
+            "tongue", "PS46", resolver,
+            time_windows_ms=[(100, 1000), (500, 5000)],
+            mean_video_windows=[(100, 1000)],
+            overwrite="force",
+        )
+
+        # Other families: emitted for both windows.
+        assert called_with["session_overlays"] == [(100, 1000), (500, 5000)]
+        assert called_with["binned_overlays"] == [(100, 1000), (500, 5000)]
+        assert called_with["mean_trace"] == [(100, 1000), (500, 5000)]
+        # mean_video: gated to the short window only.
+        assert called_with["mean_video"] == [(100, 1000)]
+
+    def test_build_mean_sem_cohort_mean_video_windows_none_no_gating(
+        self, monkeypatch, tmp_path,
+    ):
+        """``mean_video_windows=None`` (default) → no gating."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+
+        mv_calls: list[tuple[int, int]] = []
+        monkeypatch.setattr(
+            msv, "build_cohort_aggregates",
+            lambda *a, **kw: _make_synthetic_cohort("PS46", "tongue", bin_days=1),
+        )
+        for name in (
+            "build_session_overlays", "build_binned_overlays", "build_mean_trace",
+        ):
+            monkeypatch.setattr(msv, name, lambda *a, **kw: [])
+
+        def _fake_mean_video(*a, reward_pre_ms, reward_post_ms, **kw):
+            mv_calls.append((reward_pre_ms, reward_post_ms))
+            return []
+        monkeypatch.setattr(msv, "build_mean_video", _fake_mean_video)
+
+        msv.build_mean_sem_cohort(
+            "tongue", "PS46", resolver,
+            time_windows_ms=[(100, 1000), (500, 5000)],
+            mean_video_windows=None,
+            overwrite="force",
+        )
+        assert mv_calls == [(100, 1000), (500, 5000)]
+
+    def test_build_mean_sem_cohort_allow_gif_fallback_plumbed(
+        self, monkeypatch, tmp_path,
+    ):
+        """``allow_gif_fallback`` is forwarded verbatim to the inner
+        ``build_mean_video`` call."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+
+        captured_kwargs: list[dict] = []
+        monkeypatch.setattr(
+            msv, "build_cohort_aggregates",
+            lambda *a, **kw: _make_synthetic_cohort("PS46", "tongue", bin_days=1),
+        )
+        for name in (
+            "build_session_overlays", "build_binned_overlays", "build_mean_trace",
+        ):
+            monkeypatch.setattr(msv, name, lambda *a, **kw: [])
+
+        def _fake_mean_video(*a, **kw):
+            captured_kwargs.append(kw)
+            return []
+        monkeypatch.setattr(msv, "build_mean_video", _fake_mean_video)
+
+        msv.build_mean_sem_cohort(
+            "tongue", "PS46", resolver,
+            time_windows_ms=[(100, 1000)],
+            allow_gif_fallback=True,
+            overwrite="force",
+        )
+        assert len(captured_kwargs) == 1
+        assert captured_kwargs[0]["allow_gif_fallback"] is True
+
 
 class TestNormalizeBinSizesParametric:
     """Q4 lock: bin_sizes_days resolution is bodypart-symmetric."""

@@ -3547,6 +3547,8 @@ def build_mean_sem_cohort(
     time_windows_ms: Sequence[tuple[int, int]] | None = None,
     bin_sizes_days: int | Sequence[int] | None = None,
     include_mean_video: bool = True,
+    mean_video_windows: Sequence[tuple[int, int]] | None = None,
+    allow_gif_fallback: bool = False,
     params: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
     overwrite: Literal["skip", "force"] = "skip",
@@ -3564,6 +3566,14 @@ def build_mean_sem_cohort(
     ``include_mean_video`` defaults to ``True``. Set to ``False`` to skip
     the (potentially-slow) animation rendering — useful for fast cohort
     sweeps where only the static plot families are needed.
+
+    ``mean_video_windows`` (C7.7) — when not ``None``, gates mean_video
+    per-window emit to only the listed ``(pre_ms, post_ms)`` pairs.
+    Other families ignore this allow-list. ``None`` (default) means no
+    gating; mean_video emits for every entry in ``time_windows_ms``.
+
+    ``allow_gif_fallback`` (C7.5) forwarded to :func:`build_mean_video`;
+    defaults to ``False`` (fail-loud on missing ffmpeg).
     """
     if params is None:
         params = load_defaults()
@@ -3621,15 +3631,23 @@ def build_mean_sem_cohort(
             ),
         )
         if include_mean_video:
-            out["mean_video"].extend(
-                build_mean_video(
-                    bodypart, animal, resolver,
-                    reward_pre_ms=key[0], reward_post_ms=key[1],
-                    bin_sizes_days=bin_sizes_days,
-                    params=params, animal_info=animal_info,
-                    overwrite=overwrite,
-                ),
+            mv_allow = (
+                mean_video_windows is None
+                or (key[0], key[1]) in [
+                    (int(a), int(b)) for a, b in mean_video_windows
+                ]
             )
+            if mv_allow:
+                out["mean_video"].extend(
+                    build_mean_video(
+                        bodypart, animal, resolver,
+                        reward_pre_ms=key[0], reward_post_ms=key[1],
+                        bin_sizes_days=bin_sizes_days,
+                        params=params, animal_info=animal_info,
+                        overwrite=overwrite,
+                        allow_gif_fallback=allow_gif_fallback,
+                    ),
+                )
     return out
 
 
