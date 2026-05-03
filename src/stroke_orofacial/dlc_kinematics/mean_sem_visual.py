@@ -2116,35 +2116,73 @@ def _abs_max_finite(arrays: Sequence[np.ndarray]) -> float:
     return float(max(vals)) if vals else 1.0
 
 
-def _union_symmetric_xy_bounds(
+def _union_symmetric_x_max(
     *,
     mx_per_side: dict[str, list[np.ndarray]],
-    my_per_side: dict[str, list[np.ndarray]],
     pad_frac: float = 0.05,
-) -> tuple[float, float]:
-    """C7.2 Issue A — compute union-symmetric (x_abs_max, y_abs_max) for
-    a 2-panel L/R XY overlay plot.
+) -> float:
+    """C7.2 Issue A — compute union-symmetric ``x_abs_max`` for a 2-panel
+    L/R XY overlay plot.
 
-    The union is taken across BOTH the L subplot and the R subplot data;
-    the result is the max abs value across all points on either subplot.
-    Used by callers to apply identical ``set_xlim(-x, +x)`` /
-    ``set_ylim(-y, +y)`` bounds to both subplots, eliminating the per-
-    subplot autoscale asymmetry where each panel picks its own axis range.
+    Takes max abs value across BOTH the L and R subplot data; the result
+    is suitable for ``set_xlim(-x_abs_max, +x_abs_max)`` applied to both
+    subplots so the X axis is centered on 0 (spout) and shared L+R.
 
-    Padding mirrors legacy's 5% (Y_PAD_FRAC = 0.05 in tongue cell 45,
-    0.10 in jaw cell 32 — we adopt the smaller value as the more
-    informative tight-but-not-clipped default; users can override via
-    config knob ``mean_trace.symmetric_pad_frac``).
+    X-only (renamed from C7.2's ``_union_symmetric_xy_bounds``). Y axis
+    has different semantics (legacy inverts via reversed set_ylim arg
+    order); see :func:`_union_y_range_for_inversion`.
     """
     all_x: list[np.ndarray] = []
     for arrs in mx_per_side.values():
         all_x.extend(arrs)
+    return _abs_max_finite(all_x) * (1.0 + pad_frac)
+
+
+def _union_y_range_for_inversion(
+    *,
+    my_per_side: dict[str, list[np.ndarray]],
+    pad_frac: float = 0.05,
+    clip_y_lo_at_zero: bool = False,
+) -> tuple[float, float]:
+    """C7.3 — Y-range computation for legacy's inverted-Y convention.
+
+    Returns ``(y_lo_padded, y_hi_padded)`` where the caller applies
+    ``ax.set_ylim(y_hi_padded, y_lo_padded)`` (reversed args to invert
+    the axis — legacy idiom; matches jaw cell 32 + jaw cell 34 + tongue
+    cells 45/47/48). Pad fraction matches legacy: 5% on tongue cell 45 +
+    mean_video; 10% on jaw cell 32 (latter wins per the
+    consolidate-on-newer pattern, but we expose ``pad_frac`` so callers
+    can override).
+
+    ``clip_y_lo_at_zero`` (default False, matches jaw 32/34 newer
+    convention): set True to reproduce tongue cell 45/47/48 older
+    behavior of forcing ``y_lo = 0`` regardless of actual min. Default
+    False allows the data range to extend below 0 (e.g., jaw can have
+    occasional negative excursion below baseline).
+    """
     all_y: list[np.ndarray] = []
     for arrs in my_per_side.values():
         all_y.extend(arrs)
-    x_abs_max = _abs_max_finite(all_x) * (1.0 + pad_frac)
-    y_abs_max = _abs_max_finite(all_y) * (1.0 + pad_frac)
-    return x_abs_max, y_abs_max
+
+    finite_vals: list[float] = []
+    for a in all_y:
+        if a is None:
+            continue
+        v = np.asarray(a, float).ravel()
+        v = v[np.isfinite(v)]
+        if v.size:
+            finite_vals.append(float(np.nanmin(v)))
+            finite_vals.append(float(np.nanmax(v)))
+    if not finite_vals:
+        return -1.0, 1.0
+    y_lo = min(finite_vals)
+    y_hi = max(finite_vals)
+    if clip_y_lo_at_zero:
+        y_lo = min(y_lo, 0.0)  # never push y_lo above 0 in clip mode
+        y_lo = 0.0  # tongue cell 45 forces y_top = 0.0 explicitly
+    rng = max(1e-6, y_hi - y_lo)
+    pad = pad_frac * rng
+    return y_lo - pad, y_hi + pad
 
 
 def _plot_xy_mean(
@@ -2650,9 +2688,14 @@ def _build_mean_video_animation(
             f"{cohort.animal}: no finite XY data in binned traces; cannot "
             f"compute animation axis limits.",
         )
-    # 5% padding mirrors legacy (mean_video cell 34 used 5% on both axes).
-    x_abs_max, y_abs_max = _union_symmetric_xy_bounds(
+    # C7.2 (X symmetric) + C7.3 (Y inverted, legacy idiom). Padding
+    # 5% mirrors mean_video cell 34. See _plot_mean_trace_overlays for
+    # full rationale on the X-symmetric / Y-inverted split.
+    x_abs_max = _union_symmetric_x_max(
         mx_per_side=mx_per_side,
+        pad_frac=0.05,
+    )
+    y_lo_padded, y_hi_padded = _union_y_range_for_inversion(
         my_per_side=my_per_side,
         pad_frac=0.05,
     )
@@ -2666,9 +2709,9 @@ def _build_mean_video_animation(
         ax.set_ylabel("y (px)")
         ax.set_aspect("equal", adjustable="box")
         ax.grid(True, alpha=0.2)
-        # Apply identical symmetric bounds to both subplots.
         ax.set_xlim(-x_abs_max, +x_abs_max)
-        ax.set_ylim(-y_abs_max, +y_abs_max)
+        # Y inverted via reversed set_ylim arg order — legacy idiom.
+        ax.set_ylim(y_hi_padded, y_lo_padded)
 
     # Optional frame-time text labels (Q5 consolidate).
     time_text: dict[str, Any] = {}
@@ -3095,10 +3138,24 @@ def _plot_mean_trace_overlays(
     for r in cohort.rows:
         rows_by_side[r.side].append(r)
 
-    # C7.2 Issue A — union-symmetric (-x, +x), (-y, +y) bounds across
-    # BOTH L and R subplot data. Take max abs value across binned aggregates
-    # if present (they're tighter than per-session rows; users see them
-    # rendered on top), else fall back to per-session rows.
+    # C7.2 Issue A (X) + C7.3 (Y) — shared L+R bounds, with legacy's
+    # mixed convention preserved:
+    #   - X axis: union-symmetric (-x_abs_max, +x_abs_max). Spout sits
+    #     at x=0 in baseline-subtracted coords; centering on 0 makes
+    #     L vs R cohort comparisons read directly off the figure.
+    #   - Y axis: union-of-actual-range with INVERTED set_ylim (legacy
+    #     convention). Mouse licks DOWN in cam coords (y INCREASES
+    #     downward); legacy renders this with y=0 at the TOP of the
+    #     plot and y=y_max at the BOTTOM via reversed ``set_ylim`` arg
+    #     order. C7.2's symmetric ``(-y_abs_max, +y_abs_max)``
+    #     accidentally dropped this inversion — Priya 2026-05-03 flagged
+    #     the regression. This commit restores legacy idiom (jaw cell
+    #     32 newer convention: y_lo allowed to go below 0 if the data
+    #     warrants; pad_frac configurable; default 5%).
+    #
+    # Take bounds from binned aggregates if present (they're the
+    # rendered-on-top layer the user sees); fall back to per-session
+    # rows otherwise.
     if cohort.binned:
         mx_per_side = {
             side: [b.mx for b in binned_by_side[side]]
@@ -3117,8 +3174,11 @@ def _plot_mean_trace_overlays(
             side: [r.my for r in rows_by_side[side]]
             for side in ("L", "R")
         }
-    x_abs_max, y_abs_max = _union_symmetric_xy_bounds(
+    x_abs_max = _union_symmetric_x_max(
         mx_per_side=mx_per_side,
+        pad_frac=symmetric_pad_frac,
+    )
+    y_lo_padded, y_hi_padded = _union_y_range_for_inversion(
         my_per_side=my_per_side,
         pad_frac=symmetric_pad_frac,
     )
@@ -3131,10 +3191,11 @@ def _plot_mean_trace_overlays(
         ax.grid(True, alpha=0.2)
     ax_left.set_title("R trials | session mean XY overlays")
     ax_right.set_title("L trials | session mean XY overlays")
-    # Apply identical symmetric bounds to both subplots.
+    # Apply identical bounds to both subplots. Y is inverted via
+    # reversed ``set_ylim`` arg order (legacy idiom).
     for ax in (ax_left, ax_right):
         ax.set_xlim(-x_abs_max, +x_abs_max)
-        ax.set_ylim(-y_abs_max, +y_abs_max)
+        ax.set_ylim(y_hi_padded, y_lo_padded)
 
     # Data plotting per side (uses side_to_ax + per-side rows + binned).
     for side in ("L", "R"):

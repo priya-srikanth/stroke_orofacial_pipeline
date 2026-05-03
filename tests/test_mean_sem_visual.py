@@ -1889,38 +1889,74 @@ class TestC72IssueAUnionSymmetricBounds:
         assert msv._abs_max_finite([]) == 1.0
         assert msv._abs_max_finite([None, None]) == 1.0
 
-    def test_union_symmetric_xy_bounds_takes_max_across_sides(self):
+    def test_union_symmetric_x_max_takes_max_across_sides(self):
         L_x = [np.array([-3.0, 5.0])]
         R_x = [np.array([-10.0, 4.0])]
-        L_y = [np.array([0.0, 7.0])]
-        R_y = [np.array([0.0, 11.0])]
-        x_abs, y_abs = msv._union_symmetric_xy_bounds(
+        x_abs = msv._union_symmetric_x_max(
             mx_per_side={"L": L_x, "R": R_x},
-            my_per_side={"L": L_y, "R": R_y},
             pad_frac=0.0,
         )
-        # Union is across BOTH sides.
-        assert x_abs == 10.0  # max(|-3|, |5|, |-10|, |4|)
-        assert y_abs == 11.0
+        # Union is across BOTH sides: max(|-3|, |5|, |-10|, |4|) = 10.
+        assert x_abs == 10.0
 
-    def test_union_symmetric_xy_bounds_padding_5pct(self):
-        x_abs, _ = msv._union_symmetric_xy_bounds(
+    def test_union_symmetric_x_max_padding_5pct(self):
+        x_abs = msv._union_symmetric_x_max(
             mx_per_side={"L": [np.array([10.0])], "R": [np.array([0.0])]},
-            my_per_side={"L": [np.array([1.0])], "R": [np.array([0.0])]},
             pad_frac=0.05,
         )
         assert x_abs == pytest.approx(10.0 * 1.05)
 
-    def test_mean_trace_subplots_share_identical_bounds(
+    def test_union_y_range_for_inversion_jaw_idiom(self):
+        """Default mode (clip_y_lo_at_zero=False) — jaw cell 32 newer
+        idiom: Y range allows actual min, including negative values."""
+        L_y = [np.array([-2.0, 7.0])]
+        R_y = [np.array([-1.5, 11.0])]
+        y_lo, y_hi = msv._union_y_range_for_inversion(
+            my_per_side={"L": L_y, "R": R_y},
+            pad_frac=0.0,
+        )
+        # Without padding: actual min = -2.0, actual max = 11.0.
+        assert y_lo == pytest.approx(-2.0)
+        assert y_hi == pytest.approx(11.0)
+
+    def test_union_y_range_for_inversion_clip_zero_idiom(self):
+        """clip_y_lo_at_zero=True reproduces tongue cell 45 older idiom
+        where ``y_top = 0`` regardless of actual min (assumes y is
+        non-negative for licking-down kinematics)."""
+        L_y = [np.array([-2.0, 7.0])]
+        R_y = [np.array([-1.5, 11.0])]
+        y_lo, y_hi = msv._union_y_range_for_inversion(
+            my_per_side={"L": L_y, "R": R_y},
+            pad_frac=0.0,
+            clip_y_lo_at_zero=True,
+        )
+        # With clip: y_lo forced to 0; y_hi = actual max.
+        assert y_lo == 0.0
+        assert y_hi == pytest.approx(11.0)
+
+    def test_union_y_range_padding(self):
+        """Padding applied as fraction of (y_hi - y_lo) range."""
+        L_y = [np.array([0.0, 10.0])]
+        R_y = [np.array([0.0, 10.0])]
+        y_lo, y_hi = msv._union_y_range_for_inversion(
+            my_per_side={"L": L_y, "R": R_y},
+            pad_frac=0.05,
+        )
+        # Range = 10; pad = 0.5; bounds = (-0.5, 10.5).
+        assert y_lo == pytest.approx(-0.5)
+        assert y_hi == pytest.approx(10.5)
+
+    def test_mean_trace_subplots_x_symmetric_y_inverted(
         self, monkeypatch, tmp_path,
     ):
-        """Both L and R subplots must end up with identical (xlim, ylim)
-        after C7.2. Catches regression of the Cowork-flagged asymmetry.
+        """C7.3 — both L and R subplots share identical bounds; X is
+        symmetric around 0; Y uses legacy's inverted ``set_ylim`` arg
+        order (high-to-low) so 0 lands at the TOP of the plot.
         """
         cohort = _make_synthetic_mean_trace_cohort(
             animal="PS46", bodypart="tongue", bin_size_days=2,
         )
-        out_path = tmp_path / "mean_trace_symmetric.png"
+        out_path = tmp_path / "mean_trace_c73.png"
         msv_block = {
             "mean_trace": {
                 "pre_color": "0.6", "post_cmap": "plasma",
@@ -1936,7 +1972,6 @@ class TestC72IssueAUnionSymmetricBounds:
             "tongue": {"mean_trace": {"figure_width_inches": 8.0}},
             "dpi": 100,
         }
-        # Capture the figure's axes before the helper closes the figure.
         import matplotlib.pyplot as plt
         captured = {}
         orig_subplots = plt.subplots
@@ -1948,10 +1983,6 @@ class TestC72IssueAUnionSymmetricBounds:
             return fig, axes
 
         monkeypatch.setattr(plt, "subplots", capture_subplots)
-        # The helper closes the figure on save, so we need a sentinel
-        # that captures axis bounds BEFORE close. Easiest: snapshot the
-        # fig's axes' xlim/ylim before plt.close fires inside the helper.
-        # Patch plt.close to record bounds first.
         orig_close = plt.close
 
         def capture_close(fig=None, *args, **kwargs):
@@ -1968,17 +1999,23 @@ class TestC72IssueAUnionSymmetricBounds:
             "tongue", cohort, msv_block, out_path,
         )
         assert "xlim_left" in captured
-        # L and R subplots must have IDENTICAL xlim and ylim.
+        # L and R subplots have IDENTICAL xlim and ylim.
         assert captured["xlim_left"] == pytest.approx(captured["xlim_right"])
         assert captured["ylim_left"] == pytest.approx(captured["ylim_right"])
-        # Bounds must be symmetric around 0.
+        # X axis: symmetric around 0.
         xl_lo, xl_hi = captured["xlim_left"]
-        yl_lo, yl_hi = captured["ylim_left"]
         assert xl_hi == pytest.approx(-xl_lo)
-        assert yl_hi == pytest.approx(-yl_lo)
-        # Bounds must be > 0 (data exists).
         assert xl_hi > 0.0
-        assert yl_hi > 0.0
+        # Y axis: INVERTED (legacy convention). Reading the limit tuple:
+        # ax.get_ylim() returns (lo, hi) BUT the visual orientation
+        # depends on which arg matplotlib took as bottom vs top. After
+        # ``set_ylim(y_hi, y_lo)``, get_ylim() returns (y_hi, y_lo) —
+        # i.e., ylim[0] > ylim[1] indicates an inverted axis.
+        yl_first, yl_second = captured["ylim_left"]
+        assert yl_first > yl_second, (
+            f"Y axis must be inverted (legacy idiom): expected "
+            f"ylim[0] > ylim[1], got ({yl_first}, {yl_second})"
+        )
 
 
 class TestC72IssueBCamViewOrdering:
@@ -2117,3 +2154,150 @@ class TestC72IssueBCamViewOrdering:
         )
         assert "RIGHT rewards" in captured["title_00"]
         assert "LEFT rewards" in captured["title_01"]
+
+
+class TestC73YAxisLegacyConvention:
+    """C7.3 — restore legacy Y-axis convention in XY-trajectory plots
+    after the C7.2 symmetric-around-0 regression. Reverse-arg-order
+    ``set_ylim(y_hi, y_lo)`` mirrors jaw cell 32 + jaw cell 34 + tongue
+    cells 45/47/48 idiom.
+    """
+
+    def test_mean_video_y_axis_inverted_legacy_idiom(
+        self, monkeypatch, tmp_path,
+    ):
+        """Mean_video XY animation: Y axis is inverted via reversed
+        ``set_ylim`` args, same as mean_trace XY."""
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="tongue", bin_size_days=2,
+            n_pre=2, n_post=2,
+        )
+        msv_block = {
+            "mean_trace": {
+                "pre_color": "0.6", "post_cmap": "plasma",
+                "show_sem_tube": False,
+                "figure_height_inches": 4.0,
+                "figure_width_inches": 8.0,
+            },
+            "tongue": {"mean_trace": {"figure_width_inches": 8.0}},
+            "mean_video": {
+                "anim_fps": 10, "anim_speed": 1.0,
+                "tail_ms": 100.0, "show_sem_tube": False,
+            },
+        }
+        fig, ani = msv._build_mean_video_animation(
+            "tongue", cohort, msv_block,
+            anim_mode="dot",
+            with_frame_timestamps=True,
+        )
+        try:
+            ax_left = fig.axes[0]
+            ax_right = fig.axes[1]
+            # Both axes share the same bounds.
+            assert ax_left.get_xlim() == pytest.approx(ax_right.get_xlim())
+            assert ax_left.get_ylim() == pytest.approx(ax_right.get_ylim())
+            # X is symmetric around 0.
+            xl_lo, xl_hi = ax_left.get_xlim()
+            assert xl_hi == pytest.approx(-xl_lo)
+            # Y is INVERTED — get_ylim returns (high, low) when set_ylim
+            # was called with reversed args.
+            yl_first, yl_second = ax_left.get_ylim()
+            assert yl_first > yl_second, (
+                f"mean_video Y must be inverted; got ylim=({yl_first}, "
+                f"{yl_second})"
+            )
+        finally:
+            import matplotlib.pyplot as plt_local
+            plt_local.close(fig)
+
+
+class TestC73Step4MasterCellNotInverted:
+    """Step 4 lockdown — master cell + cohort single-axis time-series
+    plots use legacy's NATURAL ``set_ylim(y_lo, y_hi)`` order. They
+    must NOT be inverted (legacy doesn't invert these). Guards against
+    accidental cross-contamination from the mean_trace/mean_video Y fix.
+    """
+
+    def test_individual_sessions_y_axis_natural_order(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
+        target_date = cohort.sessions[0].date
+
+        import matplotlib.pyplot as plt
+        captured: dict = {}
+        orig_subplots = plt.subplots
+
+        def capture_subplots(*args, **kwargs):
+            fig, axes = orig_subplots(*args, **kwargs)
+            captured["axes"] = axes
+            captured["fig"] = fig
+            return fig, axes
+
+        monkeypatch.setattr(plt, "subplots", capture_subplots)
+        orig_close = plt.close
+
+        def capture_close(fig=None, *args, **kwargs):
+            if fig is captured.get("fig") and "axes" in captured:
+                axs = captured["axes"]
+                # axs[0, 0] is a Y(t) panel — should be natural order.
+                captured["ylim_00"] = axs[0, 0].get_ylim()
+            return orig_close(fig, *args, **kwargs) if fig is not None else orig_close()
+
+        monkeypatch.setattr(plt, "close", capture_close)
+        msv.build_individual_sessions(
+            "tongue", "PS46", target_date, resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        assert "ylim_00" in captured
+        ylo, yhi = captured["ylim_00"]
+        # Natural order: ylo < yhi. NOT inverted.
+        assert ylo < yhi, (
+            f"master cell Y(t) panel must NOT be inverted; got "
+            f"ylim=({ylo}, {yhi})"
+        )
+
+    def test_session_overlays_y_axis_natural_order(
+        self, monkeypatch, tmp_path,
+    ):
+        """Cohort single-axis Y(t) overlay also uses natural order."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
+
+        import matplotlib.pyplot as plt
+        captured: list[tuple[float, float]] = []
+        orig_subplots = plt.subplots
+
+        def capture_subplots(*args, **kwargs):
+            fig, ax = orig_subplots(*args, **kwargs)
+            captured.append(fig)
+            return fig, ax
+
+        # session_overlays creates 4 figures (Y/X × L/R). Snapshot ylim
+        # on each before close.
+        ylim_snapshots: list[tuple[float, float]] = []
+        orig_close = plt.close
+
+        def capture_close(fig=None, *args, **kwargs):
+            if fig is not None and fig.axes:
+                ylim_snapshots.append(fig.axes[0].get_ylim())
+            return orig_close(fig, *args, **kwargs) if fig is not None else orig_close()
+
+        monkeypatch.setattr(plt, "subplots", capture_subplots)
+        monkeypatch.setattr(plt, "close", capture_close)
+        msv.build_session_overlays(
+            "tongue", "PS46", resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        # All 4 PNGs should have natural-order Y limits.
+        assert len(ylim_snapshots) == 4
+        for ylo, yhi in ylim_snapshots:
+            assert ylo < yhi, (
+                f"session_overlays Y(t) must NOT be inverted; got "
+                f"ylim=({ylo}, {yhi})"
+            )
