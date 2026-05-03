@@ -45,6 +45,19 @@ dependencies:
   - pyarrow         # parquet I/O in dlc_io/parquet.py
   - scipy           # scipy.interpolate in alignment/frame_sync.py
   - matplotlib      # dlc_spatial/{heatmaps,difference_maps}.py + notebooks
+  - ffmpeg          # Phase 7a.6 mean_video: matplotlib's FFMpegWriter emits
+                    # MP4 cohort-mean animations (tongue cells 47/48 +
+                    # jaw cell 34, consolidated per Q5 lock 2026-05-01).
+                    # Without ffmpeg, mean_video falls back to GIF via
+                    # PillowWriter — much larger files, posterized colors,
+                    # no QuickTime playback on Mac. ffmpeg was previously
+                    # excluded (see comment block at end of file) on the
+                    # assumption it was only needed by the deeplabcut env's
+                    # video-decoding path; 7a.6 added matplotlib animation
+                    # output to the analysis env. Conda-forge ffmpeg is
+                    # preferred over the imageio-ffmpeg pip workaround. See
+                    # docs/DECISIONS.md Phase 7a.6 entry "ffmpeg dependency
+                    # added 2026-05-02".
   - pyyaml          # configs/paths loader, animals.yaml, defaults.yaml
   # HDF5 stack — the three packages below MUST agree on HDF5 major version.
   # Conda-forge ships pytables 3.11+ linked against HDF5 2.x AND a separate
@@ -139,7 +152,7 @@ dependencies:
 #                                same bnpm[core] source build. No longer needed.
 #
 # Deliberately NOT included (belongs in `deeplabcut` env, not in analysis env):
-#   - deeplabcut, pytorch, torchvision, cudatoolkit, tensorflow, ffmpeg,
+#   - deeplabcut, pytorch, torchvision, cudatoolkit, tensorflow,
 #     dlclibrary, keras, cv2, paramiko, scp, ...
 # These are imported ONLY by src/stroke_orofacial/dlc_inference_o2/runner.py
 # (which runs on the O2 HPC cluster inside the `deeplabcut` conda env) and by
@@ -147,6 +160,12 @@ dependencies:
 # functionality has already been consolidated into dlc_inference_o2/. The
 # laptop-side submission helpers (batch.py / o2_job.py / transfer.py) use only
 # pyyaml + stdlib and are fully covered by this env.
+#
+# (ffmpeg WAS on this excluded list pre-Phase-7a.6 because it was thought to
+# be needed only by the deeplabcut env's video-decoding path. Phase 7a.6's
+# mean_video deliverable added matplotlib FFMpegWriter usage in the analysis
+# env, so ffmpeg moved into the main dependencies block above. See Phase 7a.6
+# DECISIONS entry 2026-05-02.)
 #
 # Deliberately NOT included (out-of-scope for v1 — separate analysis thread):
 #   - jax, jax_moseq, keypoint_moseq

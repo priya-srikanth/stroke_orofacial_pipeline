@@ -476,6 +476,83 @@ class PathResolver:
             / animal
         )
 
+    def mean_sem_visual_dir(
+        self,
+        bodypart: str,
+        *,
+        center_mode: str,
+        reward_pre_ms: int,
+        reward_post_ms: int,
+        plot_family: str,
+        animal: str,
+    ) -> Path:
+        """Return the Phase 7a.6 mean/SEM visual gate output directory.
+
+        E.g. ``<outputs>/dlc_kinematics/mean_sem/tongue/centered_spout_midpoint/
+        rewardAligned_100pre-1000post/individual_sessions/PS46/``.
+
+        Parameters
+        ----------
+        bodypart : {"tongue", "jaw"}
+            Bodypart token. Used as a literal subdir name; lowercase per
+            Phase 7a.6 Q6 (the consolidated tree does not replicate the
+            legacy capital-T bug seen in ``mouse_Tongue_kinematics`` paths
+            that tongue Cell 31 wrote to alongside the lowercase
+            ``mouse_tongue_kinematics``).
+        center_mode : str
+            Legacy center-mode token (e.g. ``"centered_spout_midpoint"``
+            for tongue, ``"centered_eye_midpoint"`` for jaw). Sourced
+            from ``mean_sem_visual.{bodypart}.center_mode`` in
+            ``configs/defaults.yaml``.
+        reward_pre_ms, reward_post_ms : int
+            Reward-aligned window endpoints in **milliseconds**. The
+            subdir name is composed as
+            ``f"rewardAligned_{reward_pre_ms}pre-{reward_post_ms}post"``,
+            matching the legacy jaw subdir convention. Q7 (locked
+            2026-05-01): this per-window subdir layout is adopted
+            uniformly for both bodyparts. Tongue's legacy flat-layout
+            outputs (no per-window scoping) are NOT replicated.
+        plot_family : str
+            One of ``"individual_sessions"``, ``"trial_overlays"``,
+            ``"session_overlays"``, ``"binned_overlays"`` (master cell
+            families) or ``"mean_xy_overlays"`` (mean-trace + mean-video
+            shared subdir). Passed verbatim as a directory name; the
+            resolver does not validate the value.
+        animal : str
+            Animal identifier (e.g. ``"PS46"``).
+
+        Returns
+        -------
+        Path
+            Directory path. No eager mkdir — matches the
+            :meth:`tongue_visual_qc_dir` /
+            :meth:`tongue_jaw_mismatch_qc_dir` directory-resolver
+            convention; the renderer creates the directory.
+
+        Notes
+        -----
+        Deviation from the Phase 7a.6 kickoff template, which sketched
+        ``reward_pre_s: float`` (seconds, with example ``(2.0, 5.0) →
+        rewardAligned_2-5``). The legacy filename and directory
+        convention is millisecond-based (``rewardAligned_100pre-1000post/``),
+        and the master cell's ``TIME_WINDOWS_MS`` is also milliseconds
+        — using milliseconds here keeps the consolidated subdir names
+        bit-comparable with legacy outputs in the visual gate. Documented
+        in the Phase 7a.6 commit message.
+        """
+        window_dir = (
+            f"rewardAligned_{reward_pre_ms}pre-{reward_post_ms}post"
+        )
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "mean_sem"
+            / bodypart
+            / center_mode
+            / window_dir
+            / plot_family
+            / animal
+        )
+
     def dlc_centered_spout_midpoint_parquet(
         self, animal: str, date: datetime.date,
     ) -> Path:

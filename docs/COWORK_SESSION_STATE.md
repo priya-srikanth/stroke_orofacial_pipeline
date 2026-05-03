@@ -1,7 +1,42 @@
 # Cowork Session State
 
-**Latest local refresh:** 2026-04-30 — Phase 7a.4 + Phase 7a.3-jaw
-both closed same-day. PR #87 merged, tagged
+**Latest local refresh:** 2026-04-30 — Phase 7a.5-mismatch merged
+as PR #88, tagged `v7a.5-tongue-jaw-mismatch`. Tongue-jaw mismatch
+trial classifier + 4 plot families + jaw per-trial scalars (extracted
+from Cell 53 inline logic). Audit-first phase that became substantial
+port (Outcome B hybrid B1.5: two modules, single phase). 10 commits
+since main: vendor (Cells 51-55) + config/paths + jaw_pertrial.py
+(556 lines, 8 per-trial scalars) + tongue_jaw_mismatch.py (1078
+lines, classifier + 4 plot families) + parity harness + visual gate
+runner + 3 rounds of visual fixes (C6.1/C6.2/C6.3) + DECISIONS +
+MIGRATION_LOG. Cohort parity (legacy_approximate, 14-session,
+atol=1e-6): 3 pass + 1 fail (PS46 1/289 single-row off-by-one
+boundary case, no predicate propagation) + 4 skip_no_legacy
+(PS47/48/49/50 out of 14-session scope). Cohort `max|Δ| = 1.42e-14`
+on atol columns; all booleans bit-identical including
+`candidate_no_lick_with_jaw_move`. Visual gate verdict PASS (24
+comparison grids across 4 sessions, all 6/6 legacy-PNG matches per
+session). Scientific finding: candidate-rate progression PS46
+baseline 0.0% → PS55 d+2 61.9% → PS55 d+38 52.5% — primary positive
+evidence for the dissociation phenotype Priya designed the analysis
+to detect (post-stroke licking deficit isolated to tongue motor
+control specifically, NOT perceptual/motivational, NOT generalized
+motor weakness — jaw motor system spared). Schema deviations from
+legacy locked in DECISIONS: 21 per-row + 28 file-level metadata vs
+legacy 37 per-row; `n_licks_in_window` → `n_licks_in_quiet_win`
+rename; `jaw_thresh_abs` semantics swap + new categorical
+`jaw_thresh_px_used`; `"none"` for degenerate trials; β/α
+trial-indexing reconciled via `(date, side, reward_frame_idx)`
+re-keying; show_trial_overlays=False auto-scale deviation. Full
+pytest 667 passed / 35 skipped / 0 failed (was 623 baseline; net
++44). Tags on `main`: `v7a.5-tongue-jaw-mismatch`. Earlier 2026-04-30
+wrap covered Phase 7a.4 + Phase 7a.3-jaw closures (both same day);
+see narrative below. **Next phase queued: Phase 7a.6** (tongue + jaw
+"Per session and combined mean/SEM plots" visual gate, audit-first,
+bodypart-symmetric port). Priya picked 2026-04-30. Kickoff drafting
+pending.
+
+**Earlier 2026-04-30 wrap (Phase 7a.4 + Phase 7a.3-jaw same-day closures):** PR #87 merged, tagged
 `v7a.3-jaw-audit-no-pertrial-features` — audit-only Outcome A: jaw
 notebook (SHA256 `7be0eee0...`, 45 cells, 7,293 code lines) contains
 no per-trial features beyond what 7a.2 already ports (Cell 22 = jaw
@@ -104,9 +139,8 @@ A new Cowork session works through this in order before answering any substantiv
 
 **Repo phase:** Phases 1–6 + 4.5-lite + 6.7 + 6.8 + 6.8a + 6.8a.1 + 6.8a.2 + 6.8a.3 + 7.0b + 13 + 8a.1–8a.7.5 + 8a.8 + 8a.9 + 7-pre + 7a.0 + 7a.1 + 7a.2 delivered on `main`; Phase 7a design brief locked (`docs/phase-7/interpolation-strategy.md`, tag `v7a-design-brief`). Phase 7a implementation is underway and on track — 7a.1 (kinematics_baselines seed + parity-harness scaffold + scipy stress pilot) and 7a.2 (v5p3 7-stage interpolation port + cohort-wide bit-identical parity) both closed against the 2026-04-22 parity-gate principle (zero drift on the 14-session parity set, twice). Task #17 closed the last cross-cutting convention decision blocking Phase 7 (DLC kinematics): NPZ / JSON / parquet side-keys now emit in mouse frame with version+flag stamps. Phase 6.8a threaded the convention through the reward-aligned writer and opened first-time Phase 6 NPZ emits for programmatic drift measurement. Phase 6.8a.1 refactored `build_reward_aligned_analysis` prerequisite-miss paths from silent `return None` to distinct `FileNotFoundError` so the cohort's 14,202-failure triage is diagnosable. Phase 6.8a.2 added unattended-runner scripts (`run_notebook_10_phase_4_centering.py`, `run_notebook_12_first_emit.py`) + runbook §8 / §9 for cohort-scale headless emits; validated end-to-end by the 2026-04-21 first emit (13,821 NPZs, 99.93% bundle pass). Phase 6.8a.3 closed out the diagnostic-gap carve-out from that first emit: notebook 12 + runner save-loop split the conflated `n_err` bucket into `n_skip_no_rewards` + `n_skip_no_frames` with distinct log lines, `scripts/task_runner_wrapper.sh` committed with `set -o pipefail` to defeat the `| tail -80` exit-code masking bug, runbook §8.4 refreshed to the current 6-bucket layout. Latest tags: `v6.7-session-manifest-refactor`, `v6.8-wavesurfer-side-convention`, `v6.8a-phase-5-6-trial-group-translation`, `v6.8a.1-distinct-prereq-errors`, `v6.8a.2-unattended-runners`, `v6.8a.3-notebook-12-skip-diagnostic`, `v7.0b-cell-classification`, `v8a.7-spout-endpoints-json-writer`, `v8a.7.5-criteria-hierarchy-port`, `v8a.8-spout-recovery-trajectories`, `v7a-design-brief`, `v7-pre-exclusions-schema`, `v7a.1-kinematics-baselines-parity-scaffold`, `v7a.2-interpolation-impl` (per the 2026-04-21 tag-convention-Path-A decision — every phase-close merge gets a tag, including letter-suffix atomic fixes and docs-only design-brief merges).
 
-**Current branch:** `main` at PR-#87 merge commit, tagged
-`v7a.3-jaw-audit-no-pertrial-features`. No active feature branch in
-flight. Phase 7a.0 merged as PR #79 (intentionally untagged). Phase
+**Current branch:** `main` at PR-#88 merge commit, tagged
+`v7a.5-tongue-jaw-mismatch`. No active feature branch in flight. Phase 7a.0 merged as PR #79 (intentionally untagged). Phase
 7a.1 merged as PR #81 merge-commit `98e6ccd`, tagged
 `v7a.1-kinematics-baselines-parity-scaffold`. Phase 7a.2 merged
 2026-04-24 as PR #83, tagged `v7a.2-interpolation-impl`. Phase 7a.3 V3
@@ -121,16 +155,15 @@ rewrite (~1,794-line historical-narrative pass).
 
 **In flight:**
 
-*(None on `main`. Phase 7a.5-mismatch kickoff drafted 2026-04-30 at
-`docs/prompts/phase-7a.5-mismatch-kickoff.md` (~700 lines, audit-
-first scope mirroring 7a.3-jaw pattern); pending Priya's commit +
-push + handoff to CC. Audit will walk the `## Tongue-jaw mismatch
-trials` markdown section of the canonical tongue notebook (post-
-Cell-50). Side-finding to anticipate: inline jaw-per-trial detection
-logic that the 7a.3-jaw audit didn't have scope to surface. Three
-outcome branches (A minimal / B substantial / C partial) lock at
-Task 1 STOP. Once kickoff lands on a feature branch, target branch
-`phase/7a.5-mismatch` will be cut from `main`.)*
+*(None on `main`. Phase 7a.5-mismatch closed 2026-04-30 with cohort
+parity bit-stable + visual gate verdict PASS. Phase 7a.6 (tongue +
+jaw mean/SEM plots visual gate) is the next-phase pick — kickoff
+drafting in flight at `docs/prompts/phase-7a.6-mean-sem-kickoff.md`
+(audit-first, bodypart-symmetric port mirroring 7a.3-jaw + 7a.5
+patterns). Sources: tongue 20260203 + jaw 20260416 ws_aligned
+notebooks, both `## Per session and combined mean/SEM plots`
+sections. Once kickoff lands on a feature branch, target branch
+`phase/7a.6-mean-sem` will be cut from `main`.)*
 
 **Deferred / carry-forward housekeeping:** Remaining safe parallel docket:
 Phase 5.5 polish docs, cohort-wide Phase 5 rerun planning, Phase 6
@@ -143,23 +176,124 @@ handling (only if explicitly coordinated with Phase 7 I/O work).
 - Windows pytest (last full-suite measurement in the 8a.7.5 session): 361 pass / 28 skip / 0 fail. Phase 8a.7.5 merge added +20 criteria tests + 6 writer-schema tests. Not yet re-measured post-merge or post-clamp-fix; worth a non-blocking re-run at quiet moment to confirm the clamp-fix PR didn't introduce Windows-specific drift (not expected — the fix is pure numpy arithmetic).
 - Pre-existing ruff warnings: 8 unused-import errors carried forward from before 8a (noted in prior Claude Code session summaries). Backlog item; not blocking.
 
-**Next-phase candidates** (in rough priority order, post-2026-04-30 7a.3-jaw + 7a.4 merges):
+**Next-phase candidates** (in rough priority order, post-2026-04-30 7a.5-mismatch merge):
 
-1. **Phase 7a.5-mismatch — tongue-jaw mismatch trial classifier + visualization (top, audit-first kickoff drafted).** Priya flagged 2026-04-30 that mismatch logic lives in the canonical tongue notebook under `## Tongue-jaw mismatch trials` markdown header (post-Cell-50). Audit-first kickoff at `docs/prompts/phase-7a.5-mismatch-kickoff.md` (~700 lines). Side-finding to anticipate: inline jaw-per-trial detection logic the 7a.3-jaw audit didn't have scope to surface. Three outcome branches at Task 1 STOP. MICROSCOPE access required for audit + saved-output discovery. Pending Priya's commit + push + handoff to CC.
-2. **Phase 7a.x-jaw-pertrial-greenfield** (forward-pointer from 7a.3-jaw + may be triggered by 7a.5-mismatch findings). If 7a.5-mismatch audit surfaces inline jaw per-trial logic, this phase could spawn naturally as a sibling. If experimental intent is "we want jaw per-trial behavior features analogous to tongue" independent of mismatch, that's a separate green-field design phase (scientific design + detector tuning + synthetic-only validation since no legacy reference exists).
-3. **Phase 7a.x — whisker / face-velocity / PSD branches** of strategy §7. Per-bodypart interpolation + per-trial features. Each branch is its own phase. Lower priority than 7a.5-mismatch + jaw-pertrial-greenfield (mouse-feeding-behavior phenotype is the primary focus).
-4. **Cell 43 PSD port** (deferred from 7a.3-jaw) — per-session jaw frequency-domain QC. Could fold into the strategy §7 face-velocity / PSD branch above.
-5. **#16 — Phase 5.5 polish** (SSH helper, recovery docs, ControlMaster, auto-rename, unified SVG save, DTW per-edge-shift QC plot). **Ungated** — does not require MICROSCOPE and has no upstream dependencies. Best parallel candidate if 7a.5-mismatch audit isn't ready or MICROSCOPE is unavailable.
-6. **PS48 2025-03-14 multi-half acquisition port** (task #18-adjacent, in the Pending queue below). Ungated except for code-write effort.
-7. **Cohort-wide 7a.2/7a.3 upstream re-emit** (deferred from 7a.4 day-binned acceptance path) — needed for publication-grade day-binned cohort parity vs legacy CSVs. Could be its own mini-phase if/when downstream demands.
-2. **#16 — Phase 5.5 polish** (SSH helper, recovery docs, ControlMaster, auto-rename, unified SVG save, DTW per-edge-shift QC plot). **Ungated** — does not require MICROSCOPE and has no upstream dependencies. Best parallel candidate if 7a.3 scope isn't ready.
-3. **PS48 2025-03-14 multi-half acquisition port** (task #18-adjacent, in the Pending queue below). Ungated except for code-write effort; can be scoped into Phase 7a.3 kickoff or cut as its own mini-phase.
+1. **Phase 7a.6 — tongue + jaw "Per session and combined mean/SEM plots" visual gate (TOP — Priya's pick 2026-04-30).** Audit-first phase, bodypart-symmetric port pattern. Sources: tongue notebook 20260203 `## Per session and combined mean/SEM plots` section → up to mismatch (covered by 7a.5); jaw notebook 20260416 same section → up to `OLD - Jaw-Tongue session comparisons`. The jaw notebook's 6 production-viz cells (30/32/34/37/39/43) classified in 7a.3-jaw audit likely include this section's plots. Cell 43 PSD (deferred from 7a.3-jaw) folds in here naturally OR stays small follow-up. Audit determines Outcome A / B / C. MICROSCOPE access required for legacy figure paths.
+2. **Phase 7a.7 — DLC heatmaps visual gate (3 INDEPENDENT legacy sources).** Per Priya 2026-04-30 the kinematic vs heatmap split is parallel-workflow, not supersession. Sources: `20260111_DLC_analysis_build-parquet_tongue.ipynb` (tongue heatmaps + may build upstream parquet); `20251117_DLC_analysis_jaw.ipynb` (jaw heatmaps); `20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb` (cross-bodypart pixelbin heatmaps; stats sub-cells deferred to Phase 9). Each notebook is its own production source.
+3. **Phase 7a.8 — new reward-aligned DLC heatmaps visual QC.** Builds on 7a.7's heatmap-rendering machinery. No legacy comparison (these are new outputs). Render heatmaps from consolidated reward-aligned NPZs (Phase 6.8a cohort emit, 13,821 NPZs); generate examples for diverse sessions; iterate plot parameters with Priya's eyeball verdict. Acceptance: publication-grade rendering verdict.
+4. **Phase 8a.10 — spout behavior visual gate.** Single source: `\\research...\Github\facerhythm_stroke_biomarker_exp_Priya\analysis\behavior_report\batch_process_behavior_report_20260116PS.ipynb`. Output dir for legacy comparison: `basic_behavior_analysis3`. Renders comparison grids for spout endpoints (8a.7) + criteria visualizations (8a.7.5) + recovery trajectories (8a.8). Independent of 7a.x; could run in parallel.
+5. **Phase 7a.x-jaw-pertrial-greenfield** (forward-pointer from 7a.3-jaw + 7a.5-mismatch's side-finding). The mismatch port surfaced inline jaw per-trial logic that became `jaw_pertrial.py` (8 scalars). If experimental intent is "richer jaw per-trial features beyond what mismatch needs," that's a green-field design phase (scientific design + detector tuning + synthetic-only validation).
+6. **Phase 7a.x — whisker / face-velocity / PSD branches** of strategy §7. Per-bodypart interpolation + per-trial features. Each branch its own phase.
+7. **Cell 43 PSD port** (deferred from 7a.3-jaw) — per-session jaw frequency-domain QC. May fold into 7a.6 (mean/SEM phase, same notebook section) OR strategy §7 face-velocity/PSD branch above.
+8. **Phase 9 stats forward-pointer**: stats plots in `20251202_..._stats_pixelbin.ipynb` deferred to Phase 9 statistics work per Priya 2026-04-30. Same notebook also contains heatmaps (covered by 7a.7); Phase 9 work likely overlaps.
+9. **#16 — Phase 5.5 polish** (SSH helper, recovery docs, ControlMaster, auto-rename, unified SVG save, DTW per-edge-shift QC plot). **Ungated** — does not require MICROSCOPE.
+10. **PS48 2025-03-14 multi-half acquisition port** (task #18-adjacent). Ungated except for code-write effort.
+11. **Cohort-wide 7a.2/7a.3 upstream re-emit** (deferred from 7a.4 + 7a.5 day-binned + mismatch acceptance paths) — needed for publication-grade cohort parity vs legacy CSVs. Could be its own mini-phase if/when downstream demands.
 
 **Deferred follow-ups still pending (from earlier sessions):**
 
 - **Cohort-wide Phase 5 re-run** (after the Phase 4.5-lite eye-midpoint centering landed — affects eye-centered outputs). Not yet scheduled; ask Priya whether to batch with 8a.8.
 - **Phase 6 reward-aligned live-data re-test** with the new 4.5-lite-aware pipeline. Same category.
 - **Windows housekeeping** (from Phase 13): stale admin-owned `C:\Users\sabatini\AppData\Local\Temp\pytest-of-sabatini\` + `.pytest_cache\` directories — only if a future pytest run actually hits `WinError 5` again.
+
+**Recent session log — 2026-04-30 (Phase 7a.5-mismatch closed; substantial port + visual gate PASS + scientific dissociation evidence):**
+
+- **PR #88 merged** on branch `phase/7a.5-mismatch`, tagged
+  `v7a.5-tongue-jaw-mismatch` on the merge commit + pushed to origin.
+  10 commits since main: kickoff + extension + vendor (`4d34a8f`) +
+  config/paths (`e78e989`) + jaw_pertrial.py (`95c6b64`) +
+  tongue_jaw_mismatch.py (`134d458`) + parity harness (`2431200`) +
+  C6.1 visual fixes (`9f2aa37`) + C6.2 visual fixes (`763778b`) +
+  C6.3 trial-overlay auto-scale (`f316d31`) + Task 7 docs.
+- **Audit-first → Outcome B hybrid B1.5** locked at Task 1 (5 cells in
+  the canonical tongue notebook, 1903 lines all production; SHA256
+  cross-ref against the parent notebook unchanged from 7a.3 V3 / 7a.4
+  audits; classification rule extracted verbatim; all saved outputs
+  found on MICROSCOPE).
+- **Side-finding the kickoff anticipated CONFIRMED**: Cell 53 contains
+  inline jaw per-trial scalars (`jaw_baseline_mean`, `jaw_baseline_sd`,
+  `jaw_peak_*`, `jaw_thresh_*`, `jaw_n_frames_over_thresh`,
+  `jaw_pass_qc`). Extracted to standalone public `jaw_pertrial.py`
+  (556 lines, mirrors `tongue_pertrial.py` at smaller scale) — not
+  buried inside mismatch module. Reusable for future jaw work.
+- **Two-module architecture**: `jaw_pertrial.py` (per-trial scalars) +
+  `tongue_jaw_mismatch.py` (1078 lines: classifier + 4 plot families
+  individual_trials_2col / session_overlay_grid_4x2 /
+  cross_session_overlay / cross_session_binned). Reuses 7a.3 V3's
+  `_slope_detect_lick_peaks` + `_derive_trial_events_from_spout_behavior`
+  via private cross-module imports (matches 7a.4 `_day_binned.py`
+  precedent).
+- **Cohort parity result** (legacy_approximate, 14-session, atol=1e-6):
+  3 pass + 1 fail (PS46 single-row off-by-one boundary case, 1/289
+  PS46 rows = 0.35%, 1/1260 cohort rows = 0.08%, NO predicate
+  propagation) + 4 skip_no_legacy (PS47/48/49/50 out of 14-session
+  scope — same structural blocker as 7a.4 day-binned). Cohort
+  `max|Δ| = 1.42e-14` worst case on atol columns (round-off only,
+  ~14 significant digits, well below atol=1e-6). All booleans
+  bit-identical including the load-bearing
+  `candidate_no_lick_with_jaw_move`. β/α trial-indexing reconciled
+  via `(date, side, reward_frame_idx)` re-keying.
+  `legacy.jaw_thresh_abs == 4 × legacy.jaw_baseline_sd` 100% match
+  (validates Task 4 schema-deviation lock). Cell 53 detector
+  permissive-vs-strict verified by 99.92% bit-identical lick counts
+  (`accept_peaks_without_fall_run=True` is correct).
+- **Visual gate verdict: PASS** (Priya 2026-04-30, after 3 rounds of
+  visual-fix iteration C6.1 → C6.2 → C6.3). 24 comparison grids
+  across 4 sessions (PS50/2025-03-19 + PS46/2025-03-07 +
+  PS55/2025-05-02 + PS55/2025-06-07). All 6/6 expected legacy-PNG
+  matches per session. Visual fix rounds:
+  - **C6.1**: Y-offset axis convention, sort-by-side for individual
+    trials, shared-Y per plot-type-row, cross-session colorbar
+    inclusion. Numerical parity unchanged.
+  - **C6.2**: 6 fixes — axis labels match legacy strings ("Jaw Y -
+    baseline (px)") with default fontsize bigger than C6.1; cross-
+    session colorbar at legacy `[0.90, 0.22, 0.015, 0.56]` with
+    `tight_layout(rect=[0, 0, 0.88, 0.98])` accommodating the
+    larger labels; mean+SEM rows AUTO-SCALE per-bodypart (data-driven,
+    NOT hardcoded — Priya's correction); faint trial overlays at
+    verbatim legacy alpha (0.08 jaw / 0.04 tongue) + linewidth (0.8
+    jaw / 0.7 tongue); subtitles match legacy regex; individual-
+    trials layout at legacy verbatim figsize `(18, max(12, 1.8 ×
+    n_rows))` × DPI=200; compare-grid aspect-aware figsize +
+    LANCZOS resampling. Numerical parity unchanged.
+  - **C6.3**: mean+SEM auto-scale percentile bounds include trial
+    overlay data when `show_trial_overlays=True` (legacy pure port);
+    skip trial concatenation when overlays off (deliberate modern
+    deviation to avoid pessimistic axis widening). Numerical parity
+    unchanged.
+- **Scientific dissociation evidence** (the load-bearing finding the
+  analysis was designed to surface): candidate-rate progression
+  PS46/2025-03-07 (rel_day=-6, baseline) **0.0%** → PS55/2025-05-02
+  (post-stroke d+2) **61.9%** → PS55/2025-06-07 (late recovery d+38)
+  **52.5%**. Demonstrates the dissociation phenotype Priya designed
+  the analysis to detect: post-stroke licking deficit isolated to
+  tongue motor control specifically, NOT perceptual or motivational
+  deficits, NOT generalized motor weakness — jaw motor system spared
+  (mouse moves jaw on cue) while tongue motor system impaired (no
+  licking). Mismatch trials are PRIMARY POSITIVE EVIDENCE for this
+  interpretation, not just a QC gate. Codified in DECISIONS Phase
+  7a.5 entry as Decision #5.
+- **Schema deviations from legacy** (deliberate, locked at Tasks
+  4-5; documented in DECISIONS Decision #8): 21 per-row + 28
+  file-level metadata vs legacy 37 per-row (invariants moved to
+  metadata, same pattern as 7a.3 V3 / 7a.4); `n_licks_in_window` →
+  `n_licks_in_quiet_win`; `jaw_thresh_abs` semantics swap (legacy:
+  pre-floor SD term; modern: applied threshold) + new categorical
+  `jaw_thresh_px_used` ∈ `{"sd_scaled", "px_floor", "none"}`;
+  `jaw_peak_selected_deflection` signed-at-argmax(|.|) confirmed via
+  Cell 53; `"none"` for degenerate trials replaces legacy NaN;
+  `reward_center_fr_{tongue,jaw}` collapsed to `reward_frame_idx`;
+  `tongue_npz` / `jaw_npz` provenance dropped.
+- **Forward implications**: Phase 7a.6 (tongue + jaw mean/SEM
+  visual gate, Priya's next pick); Phase 7a.7 (DLC heatmaps from 3
+  independent legacy notebooks, parallel-workflow per Priya's
+  kinematic-vs-heatmap clarification); Phase 7a.8 (new reward-
+  aligned heatmaps); Phase 8a.10 (spout behavior visual gate);
+  Phase 9 stats forward-pointer; Phase 7a.x-jaw-pertrial-greenfield
+  if research demands (jaw_pertrial scalars from 7a.5 are an
+  available building block); Cell 43 PSD port (may fold into 7a.6).
+
+---
 
 **Recent session log — 2026-04-30 (Phase 7a.3-jaw closed; audit-only Outcome A + Phase 7a.5-mismatch kickoff drafted):**
 
@@ -1266,8 +1400,25 @@ Whatever the server-side feature flag or staged-rollout gate was doing on 2026-0
 
 ## Best warm-start prompt (paste into a new Cowork chat)
 
-End of 2026-04-30 session: Phase 7a.4 + Phase 7a.3-jaw both closed
-same-day. PR #87 (Phase 7a.3-jaw) merged + tagged
+End of 2026-04-30 session: Phase 7a.5-mismatch closed as PR #88,
+tagged `v7a.5-tongue-jaw-mismatch`. Tongue-jaw mismatch trial
+classifier + 4 plot families + jaw per-trial scalars. Cohort parity
+bit-stable (3 pass + 1 single-row off-by-one + 4 skip_no_legacy);
+all booleans bit-identical including `candidate_no_lick_with_jaw_move`.
+Visual gate verdict PASS (24 grids × 4 sessions × 6/6 legacy match).
+Scientific finding: dissociation phenotype manifests in candidate-
+rate progression (PS46 baseline 0.0% → PS55 d+2 61.9% → PS55 d+38
+52.5%) — primary positive evidence that post-stroke licking deficit
+is isolated to tongue motor control, not perceptual/motivational/
+generalized motor weakness. Earlier same-day: Phase 7a.4 (Cell 50
+visual gate + day-binned aggregator) + Phase 7a.3-jaw (audit-only
+no-features close) both also closed; see narratives below. Next
+phase: **Phase 7a.6 — tongue + jaw mean/SEM plots visual gate**
+(audit-first, bodypart-symmetric, Priya's pick); kickoff drafting
+in flight.
+
+End of earlier 2026-04-30 wrap (Phase 7a.4 + Phase 7a.3-jaw both closed
+same-day). PR #87 (Phase 7a.3-jaw) merged + tagged
 `v7a.3-jaw-audit-no-pertrial-features` — audit-only Outcome A: jaw
 notebook contains no per-trial features beyond what 7a.2 already
 ports (Cell 22 = jaw v5p3 interpolation). Per-trial feature inventory
@@ -1314,11 +1465,11 @@ upstream re-emit (publication follow-up).
 
 **Open Cowork prompt for a fresh session (Windows same-machine with CC-in-VSCode):**
 
-> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Phase 7a.4 + Phase 7a.3-jaw both closed 2026-04-30 (PR #86 + PR #87, tags `v7a.4-tongue-visual-and-day-binned` + `v7a.3-jaw-audit-no-pertrial-features`). Phase 7a.5-mismatch kickoff drafted at `docs/prompts/phase-7a.5-mismatch-kickoff.md` (audit-first, ~700 lines), pending commit + push + handoff to CC. No active feature branch; `main` at the PR #87 merge commit. Verify `gh pr view 87` returns `state: MERGED` + `git tag --list | grep -E 'v7a\.(3-jaw|4)'` shows both tags locally + on origin. Ask me whether the next move is (a) commit + push the 7a.5-mismatch kickoff and hand off to CC for the audit, (b) Phase 5.5 polish (task #16, ungated parallel candidate), (c) PS48 2025-03-14 multi-half port (ungated), (d) cohort-wide 7a.2/7a.3 upstream re-emit (publication-grade day-binned cohort parity follow-up), (e) green-field jaw per-trial design phase (forward-pointer from 7a.3-jaw — only if research-design demands), or (f) something else.
+> Read `docs/COWORK_SESSION_STATE.md` in the attached folder and follow its warm-start checklist in full. Phase 7a.5-mismatch closed 2026-04-30 as PR #88 (tag `v7a.5-tongue-jaw-mismatch`); cohort parity bit-stable + visual gate PASS + scientific dissociation evidence captured. Earlier same-day: Phase 7a.4 (PR #86, tag `v7a.4-tongue-visual-and-day-binned`) + Phase 7a.3-jaw (PR #87, tag `v7a.3-jaw-audit-no-pertrial-features`) also closed. Phase 7a.6 kickoff drafting in flight at `docs/prompts/phase-7a.6-mean-sem-kickoff.md` (audit-first, bodypart-symmetric port for tongue + jaw "Per session and combined mean/SEM plots" sections). No active feature branch; `main` at the PR #88 merge commit. Verify `gh pr view 88` returns `state: MERGED` + `git tag --list | grep -E 'v7a\.(3-jaw|4|5)'` shows all three tags locally + on origin. Ask me whether the next move is (a) commit + push the 7a.6 kickoff (Priya's pick) and hand off to CC for the audit, (b) Phase 7a.7 (DLC heatmaps from 3 independent legacy sources), (c) Phase 8a.10 (spout behavior visual gate, independent — could parallelize), (d) Phase 5.5 polish (task #16, ungated parallel), (e) something else.
 
-**One-line CC-in-VSCode paste-in for Phase 7a.5-mismatch:**
+**One-line CC-in-VSCode paste-in for Phase 7a.6:**
 
-> Read `docs/prompts/phase-7a.5-mismatch-kickoff.md` and follow the instructions in full.
+> Read `docs/prompts/phase-7a.6-mean-sem-kickoff.md` and follow the instructions in full.
 
 *(The 7a.4 paste-in was retired when PR #86 landed. The 7a.3 V3 paste-in was retired when PR #85 landed. The 7a.2 paste-in was retired when PR #83 landed. The 7a.1 paste-in was retired when PR #81 landed. The 2026-04-22 three-phase-close prompt was retired when PR #79 (Phase 7a.0) landed. The v6.8a.3 prompt was retired when PR #68 landed. The pre-V3 7a.3 kickoff drafts (V1 commit `41304c6`, V2 commit `1f3f7ff`) are preserved on the feature branch as a paper trail of the V1→V2→V3 design evolution; the V3 retrospective rewrite landed as a small docs PR 2026-04-30 capturing the post-mortem narrative.)*
 
@@ -1347,6 +1498,8 @@ upstream re-emit (publication follow-up).
 - **2026-04-22 very-end-of-day (Phase 7a.0 merged + Phase 7a.1 kickoff drafted)** — Same-day follow-on: CC-in-VSCode on Windows executed the Phase 7a.0 two-stage paste-in (legacy-cell disambiguation + vendoring + NPZ baseline probe; scipy pilot) and merged PR #79 (Phase 7a.0, intentionally untagged per paste-in constraint). Cowork drafted the combined-scope Phase 7a.1 kickoff (A: `kinematics_baselines:` seed + `AnimalInfo` extension + tests; B: 14-session parity-harness scaffold + PS51/20250430 scipy stress pilot) at `docs/prompts/phase-7a.1-kickoff.md`. Two new 2026-04-22 DECISIONS entries grouped: parity-scope principle (scope-filter against `animals.yaml sessions.{start,end}` window) and scipy Option A (`atol=1e-6` on consolidated-env scipy 1.17.1, no pin, stress-pilot confirmation deferred to 7a.1). `docs/phase-7/baseline-seed-table.md` + `docs/phase-7/scipy-pilot-results.md` + `tests/scripts/scipy_version_pilot.py` landed. No source data modified.
 - **2026-04-24 (Phase 7a.2 merged — v5p3 interpolation port, cohort-wide bit-identical parity)** — CC-in-VSCode executed the Phase 7a.2 kickoff in full on branch `phase/7a.2-interpolation-impl`; PR #83 merged, tagged `v7a.2-interpolation-impl`. 7 commits, +3,605 / −18 lines across 12 files. New `src/stroke_orofacial/dlc_kinematics/interpolation.py` (+931) implements the 7-stage v5p3 algorithm as a faithful port of the manual baseline-editing protocol (strategy §3.1); canonical pure-bodypart parquet (Knob 5 Option A) with 7 columns + 9 file-level metadata keys + optional `.qc.npz` sidecar (Knob 1 split-emit) carrying diagnostic scalars `X0_data` / `Y0_data` / `fill_method` + per-stage masks/counts. `PathResolver.interpolated_trace(bodypart, animal, date, *, variant)` resolver added with `parquet` and `qc_npz` variants; `configs/defaults.yaml` gained `dlc_kinematics.<bodypart>:` block per strategy §7. Parity harness rewired to real consolidated parquet reader (`tests/scripts/parity_phase7a_interpolation.py` +29/−18); scratch pre-emit helper promoted to `scripts/phase_7a/emit_parity_sessions.py` (+120, new) as durable parity-re-verification tool. Full-cohort parity run: 26/26 reachable sessions at `max|Δ|x = max|Δ|y = 0.000e+00` (cohort-wide bit-identical, not merely within `atol=1e-6`); 2/28 graceful `skip_missing` at PS54/20250512 tongue+jaw matching 7a.1 pattern. Pytest 493 → 517 passed (+24 runs; `tests/test_dlc_interpolation.py` new +818 lines with 14 strategy §8 verbatim tests + review-adjustment extras); ruff clean on all touched files. DECISIONS entry (+125) codifies Knobs 1-4 + §5 Option A + §3.1 + simplified data-driven baseline; strategy §2c amendment (+12) extends sidecar spec with `X0_data` / `Y0_data`; MIGRATION_LOG Phase 7a.2 entry (+202) captures delivery + PS50 smoke-swap rationale. PS50/20250306 kickoff-spec smoke session swapped to PS50/20250319 because 20250306 predates PS50's `sessions.start`; swap preserves the "not in the 14-session parity set" property and is documented in MIGRATION_LOG. Second Phase 7a parity gate closed with zero drift — validates Option A scipy policy (no pin, `atol=1e-6` on scipy 1.17.1) end-to-end under the full interpolation pipeline. Five review items resolved pre-merge (simplified baseline, `_center_mode_short` strip-prefix, reward-center union for pool-mask, 9-keys parquet metadata count authoritative over state-doc "10", `fill_method` stays in canonical parquet per §2c spec). Phase 7a arc through 7a.2 now fully closed on `main` with 7a.1 + 7a.2 both tagged. No Phase 7a.3 kickoff drafted — next 7a sub-phase scope is open for Priya at session start.
 - **2026-04-23 (Phase 7a.1 merged + Phase 7a.2 kickoff drafted)** — CC-in-VSCode executed the Phase 7a.1 kickoff in full; PR #81 merged as merge-commit `98e6ccd` and tagged `v7a.1-kinematics-baselines-parity-scaffold`. Deliverables: (A) `configs/animals.yaml` seeded with `kinematics_baselines:` for all 8 PS46–PS55 animals × tongue+jaw from the Phase 7a.0 scope-filtered 16 STABLE seed table (tongue uniform x0=0.0/y0=-110.0; jaw varies per seed table); `AnimalInfo.kinematics_baselines: dict[str, dict[str, float]]` field + `get_kinematics_baseline(bodypart)` accessor + 6 new unit tests in `tests/test_animals.py`. (B) 14-session parity-harness scaffold at `tests/scripts/parity_phase7a_interpolation.py` — scope-filter + legacy-NPZ loader + stubbed `_load_consolidated_trace` (raises `NotImplementedError("deferred to 7a.2")`) + exit codes 0-4. (C) PS51/20250430 scipy stress pilot via the existing `scipy_version_pilot.py` — reproduced pilot #1 bit-identical result on 906,310 common non-NaN frames (`max|Δ|=0.0`, 99.88% NaN-in stress condition); DECISIONS 2026-04-22 Option A caveat 1 stamped as resolved, `docs/phase-7/scipy-pilot-results.md` gained a "Second-session stress pilot" appendix. MIGRATION_LOG 7a.1 entry landed (earlier placeholder `#<FILL>` stamped with PR #81 + merge-commit SHA on 2026-04-23 after the Cowork summary-continuation session-state pass). Cowork drafted the Phase 7a.2 implementation kickoff at `docs/prompts/phase-7a.2-kickoff.md` covering the full 7-stage v5p3 port into `src/stroke_orofacial/dlc_kinematics/interpolation.py` (6 tasks with STOP-report gates, mirrors the 7a.1 kickoff structure). Target branch `phase/7a.2-interpolation-impl`; target tag `v7a.2-interpolation-impl`. 7a.2 is MICROSCOPE-gated on Task 4 (per-stage parity against legacy NPZs on the 14-session set at `atol=1e-6`). No code or configs touched in this state-doc-refresh pass beyond the MIGRATION_LOG PR-number stamp + this file + the new kickoff prompt. Next fresh Cowork session: warm-start from this doc, confirm MICROSCOPE mount status, hand off `Read docs/prompts/phase-7a.2-kickoff.md and follow the instructions in full.` to CC-in-VSCode if MICROSCOPE is mounted; otherwise pick Phase 5.5 polish (task #16).
+- **2026-04-30 (Phase 7a.5-mismatch merged + tagged; substantial port + visual gate PASS + scientific dissociation evidence)** — PR #88 merged on `phase/7a.5-mismatch`, tagged `v7a.5-tongue-jaw-mismatch` on the merge commit + pushed to origin. 10 commits since main. Audit-first → Outcome B hybrid B1.5 (two modules, single phase): `jaw_pertrial.py` (556 lines, 8 per-trial scalars extracted from Cell 53 inline logic — confirms the side-finding the kickoff anticipated) + `tongue_jaw_mismatch.py` (1078 lines, classifier + 4 plot families). 28 unit tests in `test_tongue_jaw_mismatch.py` + 12 in `test_jaw_pertrial.py` (40 net new). Cohort parity (legacy_approximate, 14-session, atol=1e-6): 3 pass + 1 fail (PS46 1/289 single-row off-by-one boundary case, NO predicate propagation) + 4 skip_no_legacy (PS47/48/49/50 out of 14-session scope, same structural blocker as 7a.4 day-binned). Cohort `max|Δ| = 1.42e-14` worst case on atol columns. All booleans bit-identical including the load-bearing `candidate_no_lick_with_jaw_move`. β/α trial-indexing reconciled via `(date, side, reward_frame_idx)` re-keying. `legacy.jaw_thresh_abs == 4 × legacy.jaw_baseline_sd` 100% match (validates Task 4 schema-deviation lock). Cell 53 detector permissive-vs-strict verified by 99.92% bit-identical lick counts. Visual gate verdict PASS after 3 rounds of fixes (C6.1 axis-Y-shared / sort-by-side / colorbar inclusion → C6.2 axis labels / colorbar position / mean+SEM auto-scale per-bodypart / faint trial overlays / subtitles / individual-trials layout / compare-grid LANCZOS → C6.3 mean+SEM auto-scale includes trial overlays when shown). 24 comparison grids across 4 sessions, all 6/6 expected legacy-PNG matches per session. Scientific dissociation evidence: candidate-rate progression PS46 baseline 0.0% → PS55 d+2 61.9% → PS55 d+38 52.5% — primary positive evidence for the dissociation phenotype Priya designed the analysis to detect (post-stroke licking deficit isolated to tongue motor control specifically; jaw motor system spared). Schema deviations from legacy locked in DECISIONS Decision #8: 21 per-row + 28 file-level metadata vs legacy 37 per-row; renames + `jaw_thresh_abs` semantics swap + new categorical + `"none"` for degenerate trials. Forward follow-ups queued: Phase 7a.6 (mean/SEM visual gate, Priya's next pick); 7a.7 (DLC heatmaps, 3 independent legacy sources per kinematic-vs-heatmap clarification); 7a.8 (new reward-aligned heatmaps); 8a.10 (spout behavior visual gate); 7a.x-jaw-pertrial-greenfield if research demands; Cell 43 PSD port (may fold into 7a.6); cohort-wide 7a.2/7a.3 re-emit (publication-grade follow-up).
+
 - **2026-04-30 (Phase 7a.3-jaw merged + tagged; audit-only Outcome A + 7a.5-mismatch kickoff drafted)** — PR #87 merged on branch `phase/7a.3-jaw`, tagged `v7a.3-jaw-audit-no-pertrial-features` on the merge commit + pushed to origin. 2 commits since main (Task 0 kickoff + Task 2.A docs). Audit-only close: zero code changes, zero tests, zero configs. Notebook SHA256 `7be0eee06777eaa4d1a954076cc39793ebb422e5a700b47a8615873e949e95df`, 45 cells (25 code at 7,293 lines + 20 markdown), 434 MB. Per-cell classification: 9 infrastructure, 6 exploratory, 1 production-already-ported (Cell 22 = 7a.2), 6 production-viz (PNG figures), 2 broken (Cells 41/42), 1 empty. Per-trial feature inventory **EMPTY** across 13+ tongue-side extraction signature patterns. Cells 41/42 V2 incidental finding fully confirmed via 3 pieces of evidence: path mismatch (`{mouse}_jaw_kinematics/{CENTER_MODE}/` vs real `{mouse}_tongue_kinematics/kinematics_figures/...`), filename version mismatch (`_v5` vs `_v5p3`), zero `*pertrial*` files exist for jaw under `find`. METRICS list matches tongue Cells 33+36 exactly — proves tongue copy-paste with `tongue→jaw` token swap. 5/5 of tongue Cells 33/36/39/42/50 have NO jaw analog. Cell 43 PSD (per-session jaw frequency-domain QC) deferred to future face-rhythmicity / strategy §7 phase. Phase 7a.5-mismatch kickoff drafted at `docs/prompts/phase-7a.5-mismatch-kickoff.md` (~700 lines, audit-first scope mirroring 7a.3-jaw pattern); will walk the `## Tongue-jaw mismatch trials` section of the canonical tongue notebook (post-Cell-50; outside 7a.3 V3 audit scope). Side-finding to anticipate: inline jaw-per-trial detection logic the 7a.3-jaw audit didn't have scope to surface. Three outcome branches at Task 1 STOP. Forward implication tracked in DECISIONS Phase 7a.3-jaw entry: green-field jaw per-trial design as separate future phase if research-design demands.
 
 - **2026-04-30 (Phase 7a.4 merged + tagged; visual gate PASS + day-binned algorithmic-correctness acceptance + 2 post-merge docs PRs)** — PR #86 merged, tagged `v7a.4-tongue-visual-and-day-binned` on the merge commit + pushed to origin. 21 files +6,703/−81 lines, 10 commits since main. Both 7a.3 V3 carve-outs closed: Cell 50 visual gate verdict PASS (4 sessions × 6 plot families, 24/24 legacy-PNG match cohort-wide) + Cell 42 day-binned aggregator algorithmic-correctness acceptance (Option 2 via 18 unit tests + chain composition with locked 7a.3 V3 input; cohort vs legacy CSV parity deferred per structural session-set blocker — consolidated covers 15 sessions, legacy aggregates ~120, `max|Δ|_n_support_sessions = 6` cohort-wide). Module additions: `tongue_visual.py` (947 lines, 5 plot families ported from vendored Cell 50 lines 4474–4753) + `_day_binned.py` (544 lines, ddof=1 unbiased SEM, per-metric n_support tracking, metric rename `ili_within_bout_rate_per_t` → `bout_rate_mean_hz`) + additive `build_tongue_visual_bundle` helper on `tongue_pertrial.py` (~+550 lines, bit-identical compute verified via parity-harness re-run matching V3 cohort by_status exactly; required because the kickoff-assumed "expose existing intermediates" framing didn't apply — 7a.3 V3 calls the array-producing primitives but discards outputs). 3 new path resolvers + `bin_days` per-animal in `animals.yaml` + `day_binned:`/`tongue_visual:` YAML schemas. Three implementation surprises during 7a.4 work, all surfaced + resolved: (1) Task 1.5 audit found kickoff input assumption was wrong about visual-gate data flow → resolved with `build_tongue_visual_bundle` additive helper + constraint relaxation for additive helpers on 7a.3 V3 modules; (2) C5.5 visual-gate eyeball pass surfaced phase-shift + dot-offset bundle bugs traced to single docstring inaccuracy in `_LickPeaks.peak_indices` (yseg-local vs trial-slice claim) — fixed at bundle call site, 7a.3 V3 detector contract unchanged; (3) C5.6 followed up with `_detector` docstring clarification to prevent future consumers from falling into the same trap. Day-binned cohort parity hit a structural blocker (session-set mismatch) — `bout_rate_mean_hz = 0.000e+00` is fortuitous numerical convergence on NaN-masked low-support cells, not real validation. Documented in DECISIONS Phase 7a.4 entry (12 decisions) + flagged as deferred follow-up. SEM convention split locked: ddof=1 unbiased in day-binned aggregator (correct convention for analytical consumers); ddof=0 in visual rendering (matches legacy Cell 50 visual fidelity). Two post-merge docs PRs landed alongside 7a.4: `docs(phase-7a.4): kickoff post-merge edits` (parity-strategy revision + visual-gate result + constraint relaxation) + `docs(phase-7a.3): kickoff V3 retrospective rewrite post-merge` (~1,794-line historical-narrative pass capturing V1 → V2 → V2-vendor → V3 design evolution with commit SHAs; durable artifact for future readers tracing 7a.3 design intent). Full pytest 623 passed / 35 skipped / 0 failed (was 575/34 baseline post-7a.3; net +48). Forward follow-ups queued: Phase 7a.3-jaw (top priority, audit-first; visual-gate machinery extends to jaw if jaw produces analog plot families); cohort-wide 7a.2/7a.3 upstream re-emit (publication-grade day-binned cohort parity follow-up); future per-trial phases (whisker, face-velocity, PSD, mismatch classifier — all consume 7a.3 V3 + 7a.4 outputs); test gap from 7a.3 (NaN-walking unit test dropped in C5.1 as synthetic-fragile; replace with captured-fixture regression test); path resolver cleanup from 7a.3 (factor `licks_npz(animal, date)` into `PathResolver`); vendored atomic writer in `_day_binned.py` (small duplication; dedupe if a third consumer surfaces); cross-session overlay plot families (out of 7a.4 scope; available for future visual-extension phase if downstream demands).

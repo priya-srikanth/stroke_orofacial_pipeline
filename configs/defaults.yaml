@@ -787,6 +787,208 @@ dlc_kinematics:
     feature_extraction_version: "v7a.5"
     interpolation_version: "v5p3"
 
+  # =========================================================
+  # Phase 7a.6 — Mean/SEM visual gate (bodypart-parametric).
+  # Vendored cells: docs/legacy_snippets/{tongue,jaw}_mean_sem_section.py.
+  # Master cells (tongue 31 / jaw 30) audit (.scratch_7a6/AUDIT_REPORT.md
+  # 2026-05-01): 33 of 34 KNOBS shared verbatim, only CENTER_MODE diverges.
+  # Per-bodypart blocks below carry only the divergent value (+ jaw's
+  # multi-bin extension that 7a.6 ports back to tongue per Q4).
+  # Cells covered:
+  #   - tongue 31 + jaw 30: master 4-plot-family per-session + cohort
+  #     mean/SEM (individual_sessions / trial_overlays / session_overlays
+  #     / binned_overlays).
+  #   - tongue 45 / jaw 32: cross-session mean XY trajectory overlays
+  #     (mean_xy_overlays plot family).
+  #   - tongue 47+48 / jaw 34: cross-session mean XY video (consolidated
+  #     into one with_frame_timestamps knob per Q5).
+  # Task 4 (module port) extends this block with mean_trace + mean_video
+  # sub-blocks once those cells are translated.
+  # =========================================================
+  mean_sem_visual:
+    # ---- Plot-family enable/disable (master cells 31/30 PLOT_*) ----
+    plot_individual_sessions: true
+    plot_trial_overlays: true
+    plot_session_overlays: true
+    plot_binned_overlays: true
+
+    # ---- PNG save toggles (master cells 31/30 SAVE_*_PNGS) ----
+    save_pngs: true
+    save_individual_pngs: true
+    save_trial_overlay_pngs: true
+    save_overlay_pngs: true
+    save_binned_pngs: true
+
+    # ---- Reward-aligned time windows (master cells 31/30 TIME_WINDOWS_MS).
+    # Each (pre_ms, post_ms) entry produces its own
+    # `rewardAligned_{pre}pre-{post}post/` subdir of saved figures (Q7
+    # uniform layout for both bodyparts). Units: milliseconds, matching
+    # legacy filename convention (e.g., `rewardAligned_100pre-1000post/`).
+    time_windows_ms:
+      - [100, 1000]   # short window
+      - [500, 5000]   # long window
+
+    # ---- Stroke alignment + rel_day filtering (master cells 31/30
+    # USE_STROKE_ALIGNMENT, PREPOST_MODE, REL_DAY_RANGE, INCLUDE_*_BINS).
+    use_stroke_alignment: true
+    prepost_mode: both        # "pre" | "post" | "both" | "all"
+    rel_day_range: null       # null = no filter; OR [min_day, max_day]
+    include_pre_bins: true
+    include_post_bins: true
+
+    # ---- Aesthetic / rendering knobs (master cells 31/30) ----
+    plot_sem: true
+    linewidth: 1
+    sem_alpha: 0.18
+    cmap_name: plasma
+    line_alpha: 0.5
+    pre_color: "0.3"
+    side_colors:
+      L: dodgerblue
+      R: mediumvioletred
+
+    # ---- Trial overlay knobs (master cells 31/30 TRIAL_*) ----
+    trial_alpha: 0.08
+    trial_linewidth: 0.6
+    use_separate_trial_overlay_limits: true
+    trial_overlay_percentiles: [1.0, 99.0]
+    trial_overlay_pad_frac: 0.05
+
+    # ---- Cohort defaults (master cells 31/30) ----
+    default_bin_size_days: 2
+    interp_version: v5p3
+    cam: cam2
+    dpi: 200
+
+    # ---- Cross-cell extensions (Task 1 audit-confirmed) ----
+    # Q4: jaw cell 32 added per-mouse multi-bin support (multiple
+    # bin_sizes_days per mouse). Tongue cell 45 lacks this. Consolidated
+    # module ports multi-bin to tongue too (default true; opt out via
+    # per-bodypart override below).
+    multi_bin_mean_trace: true
+
+    # Q5: tongue legacy split mean video into Cell 47 (basic) + Cell 48
+    # (with frame timestamps). Jaw cell 34 unifies. Consolidated module
+    # follows jaw's shape with `with_frame_timestamps` kwarg defaulting
+    # to true (matches the more-informative `# WITH FRAME TIMESTAMPS`
+    # variant of tongue Cell 48 + the jaw Cell 34 default).
+    with_frame_timestamps: true
+
+    # ---- Per-bodypart override blocks ----
+    # Audit found only CENTER_MODE diverges between master cells (Cell
+    # 31/30). Mean-trace (Cell 45/32) adds two more divergent knobs:
+    # ``xlim_pm_px`` (tongue=150, jaw=75 — different DLC pixel range
+    # because the eye-centered jaw is much closer to spout) and
+    # ``figure_width_inches`` (tongue=13.0, jaw=10.0 — newer jaw layout).
+    tongue:
+      center_mode: centered_spout_midpoint
+      mean_trace:
+        xlim_pm_px: 150
+        figure_width_inches: 13.0
+    jaw:
+      center_mode: centered_eye_midpoint
+      mean_trace:
+        xlim_pm_px: 75
+        figure_width_inches: 10.0
+
+    # ---- Mean-trace sub-block (cells 45/32, Phase 7a.6 C4.2) ----
+    # Cohort cross-session mean XY trajectory overlays (one PNG per
+    # (animal, window, bin_size_days)). Per-side panels in the same
+    # figure: R on the LEFT subplot, L on the RIGHT (legacy convention).
+    # Y-axis inverted (0 at top) so the lick trajectory points downward
+    # into the spout. Knobs sourced from jaw cell 32 (newer, 20260416)
+    # since it added multi-bin + data-driven y-limits + per-window
+    # subdir layout that tongue cell 45 lacks. Q4 lock: tongue gets the
+    # multi-bin upgrade; ``bin_sizes_days`` defaults to a singleton list
+    # of ``animal_info.bin_days`` if not overridden.
+    mean_trace:
+      do_x_range_filter: true       # legacy DO_X_RANGE_FILTER
+      do_time_smooth: true          # legacy DO_TIME_SMOOTH
+      time_smooth_movavg_ms: 40.0   # legacy TIME_SMOOTH_MOVAVG_MS
+      stride: 1                     # legacy STRIDE; downsample factor
+      do_rel_day_bin: true          # legacy DO_REL_DAY_BIN
+      plot_individual_sessions_when_binned: true
+      # Side colors: legacy uses pre=grey/post=plasma at the rel_day
+      # level (not L/R). PRE_COLOR is a slightly lighter grey than the
+      # master cell (0.6 here vs 0.3 there) — legacy quirk preserved.
+      pre_color: "0.6"
+      post_cmap: plasma
+      line_alpha: 0.2
+      line_lw: 0.8
+      show_sem_tube: true
+      tube_alpha: 0.15
+      figure_height_inches: 6.2     # shared; figure_width_inches diverges per-bodypart
+      # Data-driven y-limit (jaw cell 32 newer-only knob; ported back
+      # to tongue per the consolidate-on-newer pattern).
+      y_lim_mode: robust            # "robust" or "minmax"
+      y_robust_pct: [1.0, 99.9]
+      y_pad_frac: 0.1
+      # Legend layout (C7.4 fix 2026-05-03 — supersedes C7.1 jaw 32
+      # idiom). Even jaw cell 32's bbox_to_anchor=(0.75, 0.50) sits
+      # INSIDE the L-trials subplot (subplots end at right=0.80, so a
+      # figure-coord anchor at 0.75 lands inside the data area —
+      # confirmed by PS51 20250429 worst-case render). C7.4 deviates
+      # from legacy mean_trace's figure-coord legend convention and
+      # adopts legacy single-axis (plot_overlay/plot_binned_overlay)
+      # axis-coord idiom: anchor legend OUTSIDE the right axis edge
+      # via ax-level legend(...) with bbox in axis coords.
+      #
+      # Knob semantics changed at C7.4 (figure-coord → axis-coord):
+      #   legend_right_fraction: subplots_adjust(right=...) reserves
+      #     this fraction of figure width for axes; rest is legend.
+      #     Tuned for worst-case legend entry count (PS54/PS55 with
+      #     bin_days=7 over Apr-Jul could yield up to ~12 bins;
+      #     0.78 gives ~22% figure width for legend, sufficient at
+      #     1-column).
+      #   legend_anchor_x/y: bbox_to_anchor for ax-level legend in
+      #     AXIS coordinates of the right subplot (ax_right).
+      #     (1.02, 1.0) = just outside top-right corner of ax_right;
+      #     legend is rendered with loc="upper left" so its
+      #     upper-left corner sits at the anchor.
+      #   panel_wspace: subplots_adjust(wspace=...). C7.6 bump from 0.10
+      #     to 0.35: at the default 0.10 the L subplot's Y-axis tick
+      #     labels overlapped the R subplot's data on PS51 2025-04-30
+      #     (the worst-case session where R-trial tracks extend close
+      #     to the L-subplot left margin). 0.35 clears the overlap with
+      #     room to spare; if 0.4 turns out to be needed for any other
+      #     animal/session, escalate.
+      legend_right_fraction: 0.78
+      legend_anchor_x: 1.02
+      legend_anchor_y: 1.0
+      panel_wspace: 0.35
+
+    # ---- Mean-video sub-block (cells 47+48/34, Phase 7a.6 C4.3) ----
+    # Cohort binned-mean session XY trajectory ANIMATIONS — Q5 lock
+    # consolidates tongue's split (cell 47 basic + cell 48 with-frame-
+    # timestamps) into one entry point with ``with_frame_timestamps: bool``
+    # kwarg defaulting to true (matches jaw cell 34 + tongue cell 48
+    # behavior). Implementation lands in C4.3 (matplotlib.animation +
+    # ffmpeg dependency).
+    mean_video:
+      with_frame_timestamps: true
+      animation_mode: dot           # "dot" or "cumulative"
+      tail_ms: 100.0
+      anim_fps: 60
+      anim_speed: 0.125
+      video_dpi: 200
+      video_format: mp4             # "mp4" (needs ffmpeg) or "gif"
+      save_both_modes: true         # emit both dot and cumulative
+      mean_video_windows_subset:
+        # Subset of windows (in ms, [pre, post] format) for which mean_video
+        # should render MP4/GIF cohort animations. Other plot families
+        # (individual_sessions, trial_overlays, session_overlays,
+        # binned_overlays, mean_trace) still emit for ALL configured
+        # windows; only mean_video honors this allow-list because MP4
+        # render time scales with window duration and the long window
+        # (-500/5000ms) takes much longer than the short window
+        # (-100/1000ms) without proportional analytical value
+        # (Priya 2026-05-02).
+        #
+        # Empty list or unset = render all configured windows (legacy /
+        # default-conservative behavior). Phase 7a.6 default ships with
+        # short window only.
+        - [100, 1000]
+
 # ---- Wavesurfer ----
 
 wavesurfer:
