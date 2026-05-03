@@ -945,11 +945,17 @@ dlc_kinematics:
       #     (1.02, 1.0) = just outside top-right corner of ax_right;
       #     legend is rendered with loc="upper left" so its
       #     upper-left corner sits at the anchor.
-      #   panel_wspace: subplots_adjust(wspace=...).
+      #   panel_wspace: subplots_adjust(wspace=...). C7.6 bump from 0.10
+      #     to 0.35: at the default 0.10 the L subplot's Y-axis tick
+      #     labels overlapped the R subplot's data on PS51 2025-04-30
+      #     (the worst-case session where R-trial tracks extend close
+      #     to the L-subplot left margin). 0.35 clears the overlap with
+      #     room to spare; if 0.4 turns out to be needed for any other
+      #     animal/session, escalate.
       legend_right_fraction: 0.78
       legend_anchor_x: 1.02
       legend_anchor_y: 1.0
-      panel_wspace: 0.10
+      panel_wspace: 0.35
 
     # ---- Mean-video sub-block (cells 47+48/34, Phase 7a.6 C4.3) ----
     # Cohort binned-mean session XY trajectory ANIMATIONS — Q5 lock
