@@ -2469,3 +2469,95 @@ class TestC73Step4MasterCellNotInverted:
                 f"session_overlays Y(t) must NOT be inverted; got "
                 f"ylim=({ylo}, {yhi})"
             )
+
+
+def _import_parity_harness():
+    """Import the Phase 7a.6 parity harness as a module for unit testing.
+
+    The harness lives at ``tests/scripts/parity_phase7a6_mean_sem.py`` —
+    it is a CLI script, not a regular package member, so import requires
+    putting ``tests/scripts/`` on ``sys.path``. Localized in this helper
+    so the rest of the test file doesn't carry the path mutation.
+    """
+    import importlib
+    import sys
+    scripts_dir = str(Path(__file__).parent / "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    return importlib.import_module("parity_phase7a6_mean_sem")
+
+
+class TestC77MeanVideoWindowsSubset:
+    """C7.7: ``mean_video_windows_subset`` knob gates mean_video rendering.
+
+    Decouples mean_video's per-window iteration from the rest of the
+    plot families: only mean_video honors this allow-list because MP4
+    render time scales with window duration, and the long window
+    (-500/5000ms) takes much longer than the short window (-100/1000ms)
+    without proportional analytical value (Priya 2026-05-02). Other
+    plot families still emit for every ``--windows`` entry.
+    """
+
+    def test_should_render_returns_true_when_no_gating(self):
+        h = _import_parity_harness()
+        # No gating (None) → render every window.
+        assert h._should_render_mean_video_for_window(100, 1000, None)
+        assert h._should_render_mean_video_for_window(500, 5000, None)
+        assert h._should_render_mean_video_for_window(0, 999, None)
+
+    def test_should_render_only_for_listed_windows(self):
+        h = _import_parity_harness()
+        subset = [(100, 1000)]
+        # Short window in subset → render.
+        assert h._should_render_mean_video_for_window(100, 1000, subset)
+        # Long window NOT in subset → skip.
+        assert not h._should_render_mean_video_for_window(500, 5000, subset)
+        # Other windows NOT in subset → skip.
+        assert not h._should_render_mean_video_for_window(0, 1000, subset)
+        assert not h._should_render_mean_video_for_window(100, 999, subset)
+
+    def test_should_render_empty_list_skips_everything(self):
+        """Edge case: explicit ``[]`` allow-list (distinct from ``None``)
+        skips every window. This shouldn't normally arise — the resolver
+        maps empty config to ``None`` — but documenting the predicate's
+        behavior in case a caller passes ``[]`` directly.
+        """
+        h = _import_parity_harness()
+        assert not h._should_render_mean_video_for_window(100, 1000, [])
+        assert not h._should_render_mean_video_for_window(500, 5000, [])
+
+    def test_resolve_cli_overrides_config(self):
+        """CLI flag wins over config when both are set."""
+        h = _import_parity_harness()
+        out = h._resolve_mean_video_windows("500,5000")
+        assert out == [(500, 5000)]
+        # Multi-window CLI value also parses via the existing
+        # ``--windows`` syntax (colon between (pre,post) pairs).
+        out = h._resolve_mean_video_windows("100,1000:500,5000")
+        assert out == [(100, 1000), (500, 5000)]
+
+    def test_resolve_falls_back_to_config_when_cli_unset(self):
+        """No CLI value → reads ``mean_video_windows_subset`` from
+        defaults.yaml. The Phase 7a.6 default ships with short window
+        only ([(100, 1000)]) per Priya 2026-05-02.
+        """
+        h = _import_parity_harness()
+        out = h._resolve_mean_video_windows(None)
+        # Default ships short-window only; assert at least the short
+        # window is gated in (the test should not over-specify the
+        # full list in case the default is later expanded).
+        assert out is not None
+        assert (100, 1000) in out
+
+    def test_resolve_cli_blank_treated_as_unset(self):
+        """``--mean-video-windows ""`` (empty string) should fall back
+        to config, same as omitting the flag entirely. Avoids a footgun
+        where a wrapper script passes an empty string when the user
+        meant "use the default".
+        """
+        h = _import_parity_harness()
+        out_none = h._resolve_mean_video_windows(None)
+        out_blank = h._resolve_mean_video_windows("")
+        assert out_blank == out_none
+        out_whitespace = h._resolve_mean_video_windows("   ")
+        assert out_whitespace == out_none

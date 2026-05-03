@@ -38,7 +38,8 @@ CLI::
         --animals PS46,PS51,PS54,PS55 \\
         --sessions auto \\
         --emit-root .scratch_7a6/cohort_run \\
-        [--skip-mean-video] [--skip-cohort-emit] [--allow-gif-fallback]
+        [--skip-mean-video] [--skip-cohort-emit] [--allow-gif-fallback] \\
+        [--mean-video-windows 100,1000]
 
 The harness DOUBLES as the Task 6 cohort runner: in either ``--mode``,
 it emits PNGs (and optionally GIFs) for every covered (animal, bodypart,
@@ -65,6 +66,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import parity_phase7a3_tongue_pertrial as h7a3  # type: ignore[import]
 
+from stroke_orofacial.config_loader import load_defaults
 from stroke_orofacial.dlc_kinematics import mean_sem_visual as msv
 from stroke_orofacial.paths import PathResolver
 
@@ -151,6 +153,7 @@ class HarnessConfig:
     skip_cohort_emit: bool
     atol: float
     allow_gif_fallback: bool = False
+    mean_video_windows: list[tuple[int, int]] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -373,6 +376,50 @@ def _parse_windows(spec: str) -> list[tuple[int, int]]:
     return out
 
 
+def _should_render_mean_video_for_window(
+    pre_ms: int, post_ms: int,
+    mean_video_windows: list[tuple[int, int]] | None,
+) -> bool:
+    """C7.7 gating predicate for mean_video per-window iteration.
+
+    Returns True iff mean_video should render for the given window.
+    ``mean_video_windows=None`` → no gating (render all). A populated
+    allow-list → render only when ``(pre_ms, post_ms)`` is in the list.
+    Other plot families ignore this predicate.
+    """
+    if mean_video_windows is None:
+        return True
+    return (pre_ms, post_ms) in mean_video_windows
+
+
+def _resolve_mean_video_windows(
+    cli_spec: str | None,
+) -> list[tuple[int, int]] | None:
+    """Resolve the effective mean_video window allow-list (C7.7).
+
+    Precedence: CLI ``--mean-video-windows`` > defaults.yaml
+    ``dlc_kinematics.mean_sem_visual.mean_video.mean_video_windows_subset``
+    > ``None`` (no gating; render all windows from ``--windows``).
+
+    The non-``None`` return value gates the per-window mean_video
+    iteration in :func:`cohort_emit_one` to only the listed
+    ``(pre_ms, post_ms)`` pairs. Other plot families ignore this
+    allow-list and emit for every ``--windows`` entry.
+    """
+    if cli_spec is not None and cli_spec.strip():
+        return _parse_windows(cli_spec)
+    cfg_subset = (
+        load_defaults()
+        .get("dlc_kinematics", {})
+        .get("mean_sem_visual", {})
+        .get("mean_video", {})
+        .get("mean_video_windows_subset", [])
+    ) or []
+    if not cfg_subset:
+        return None
+    return [(int(a), int(b)) for a, b in cfg_subset]
+
+
 def _resolve_sessions(
     args_sessions: str, animals: list[str],
 ) -> dict[str, list[dt.date]]:
@@ -523,6 +570,7 @@ def cohort_emit_one(
     skip_cohort_emit: bool,
     mode: str,
     allow_gif_fallback: bool = False,
+    mean_video_windows: list[tuple[int, int]] | None = None,
 ) -> CohortResult:
     """Emit every supported family for one (animal, bodypart, window).
 
@@ -594,7 +642,26 @@ def cohort_emit_one(
                 reward_pre_ms=pre_ms, reward_post_ms=post_ms,
                 overwrite="force",
             ))
-            if not skip_mean_video:
+            if skip_mean_video:
+                result.notes.append("mean_video skipped per --skip-mean-video")
+            elif not _should_render_mean_video_for_window(
+                pre_ms, post_ms, mean_video_windows,
+            ):
+                # C7.7 subset gating: long window (-500/5000ms) takes much
+                # longer to render than the short window (-100/1000ms)
+                # without proportional analytical value (Priya 2026-05-02).
+                # Other plot families still emit for ALL --windows entries;
+                # only mean_video honors this allow-list.
+                result.notes.append(
+                    f"mean_video skipped — ({pre_ms},{post_ms})ms not in "
+                    f"mean_video_windows={mean_video_windows}",
+                )
+                logging.info(
+                    "mean_video skipped — (pre_ms=%d, post_ms=%d) not in "
+                    "mean_video_windows_subset=%s",
+                    pre_ms, post_ms, mean_video_windows,
+                )
+            else:
                 video_paths = msv.build_mean_video(
                     bodypart, animal, resolver,
                     reward_pre_ms=pre_ms, reward_post_ms=post_ms,
@@ -602,8 +669,6 @@ def cohort_emit_one(
                     allow_gif_fallback=allow_gif_fallback,
                 )
                 result.n_mean_video = len(video_paths)
-            else:
-                result.notes.append("mean_video skipped per --skip-mean-video")
         else:
             result.notes.append(
                 "cohort emit skipped per --skip-cohort-emit (parity-only run)",
@@ -674,6 +739,11 @@ def write_report(
     lines.append(f"- Skip mean_video: ``{cfg.skip_mean_video}``")
     lines.append(f"- Skip cohort emit: ``{cfg.skip_cohort_emit}``")
     lines.append(f"- Allow GIF fallback: ``{cfg.allow_gif_fallback}``")
+    if cfg.mean_video_windows is None:
+        mv_win_str = "all (no gating)"
+    else:
+        mv_win_str = ", ".join(f"({a},{b})ms" for a, b in cfg.mean_video_windows)
+    lines.append(f"- Mean_video windows: ``{mv_win_str}``")
     lines.append(f"- Emit root: ``{cfg.emit_root}``")
     lines.append(f"- Total wall time: ``{total_wall_s:.1f} s``")
     lines.append("")
@@ -981,6 +1051,18 @@ def main(argv: list[str] | None = None) -> int:
             "cohort runs should leave this unset (C7.5)."
         ),
     )
+    parser.add_argument(
+        "--mean-video-windows",
+        type=str, default=None,
+        help=(
+            "Comma-separated [pre,post] windows for mean_video only "
+            "(e.g., '100,1000:500,5000'). Overrides "
+            "dlc_kinematics.mean_sem_visual.mean_video.mean_video_windows_subset "
+            "from defaults.yaml. Other plot families still honor --windows. "
+            "Default None = use config-level subset (or all configured windows "
+            "if subset is empty/unset). C7.7."
+        ),
+    )
     args = parser.parse_args(argv)
 
     import time
@@ -1001,6 +1083,7 @@ def main(argv: list[str] | None = None) -> int:
         skip_cohort_emit=bool(args.skip_cohort_emit),
         atol=float(args.atol),
         allow_gif_fallback=bool(args.allow_gif_fallback),
+        mean_video_windows=_resolve_mean_video_windows(args.mean_video_windows),
     )
 
     print(f"Phase 7a.6 mean/SEM parity harness — mode={cfg.mode}")
@@ -1013,6 +1096,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  report_path: {args.report_path}")
     print(f"  skip_mean_video: {cfg.skip_mean_video}")
     print(f"  skip_cohort_emit: {cfg.skip_cohort_emit}")
+    print(f"  mean_video_windows: {cfg.mean_video_windows or 'all (no gating)'}")
     print()
 
     # Preflight — fail fast before kicking off the cohort run.
@@ -1079,6 +1163,7 @@ def main(argv: list[str] | None = None) -> int:
                     skip_cohort_emit=cfg.skip_cohort_emit,
                     mode=cfg.mode,
                     allow_gif_fallback=cfg.allow_gif_fallback,
+                    mean_video_windows=cfg.mean_video_windows,
                 )
                 results.append(r)
                 if r.error:

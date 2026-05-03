@@ -973,6 +973,21 @@ dlc_kinematics:
       video_dpi: 200
       video_format: mp4             # "mp4" (needs ffmpeg) or "gif"
       save_both_modes: true         # emit both dot and cumulative
+      mean_video_windows_subset:
+        # Subset of windows (in ms, [pre, post] format) for which mean_video
+        # should render MP4/GIF cohort animations. Other plot families
+        # (individual_sessions, trial_overlays, session_overlays,
+        # binned_overlays, mean_trace) still emit for ALL configured
+        # windows; only mean_video honors this allow-list because MP4
+        # render time scales with window duration and the long window
+        # (-500/5000ms) takes much longer than the short window
+        # (-100/1000ms) without proportional analytical value
+        # (Priya 2026-05-02).
+        #
+        # Empty list or unset = render all configured windows (legacy /
+        # default-conservative behavior). Phase 7a.6 default ships with
+        # short window only.
+        - [100, 1000]
 
 # ---- Wavesurfer ----
 
