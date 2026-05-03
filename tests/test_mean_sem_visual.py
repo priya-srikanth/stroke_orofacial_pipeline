@@ -1623,7 +1623,14 @@ class TestC71Issue1LROrder:
 
 
 class TestC71Issue2LegendLayout:
-    """Issue 2 fix: right-margin legend (jaw cell 32 newer convention)."""
+    """Issue 2 fix: right-margin legend (semantics evolved C7.1 → C7.4
+    from figure-coord fig.legend to axis-coord ax_right.legend).
+
+    C7.4 (Priya 2026-05-03) updated `legend_anchor_x/y` to be in axis
+    coordinates of ax_right (defaults: (1.02, 1.0) — just outside the
+    top-right corner of the right subplot). Test verifies the helper
+    reads + applies these knobs without crashing.
+    """
 
     def test_legend_anchor_uses_config_knobs(self, tmp_path):
         """Verify the helper reads ``legend_anchor_x/y`` and
@@ -1638,11 +1645,10 @@ class TestC71Issue2LegendLayout:
                 "show_sem_tube": False,
                 "figure_height_inches": 4.0,
                 "figure_width_inches": 8.0,
-                # Override the new C7.1 layout knobs to non-default
-                # values to verify they propagate.
+                # Override the layout knobs (axis-coord post-C7.4).
                 "legend_right_fraction": 0.70,
-                "legend_anchor_x": 0.65,
-                "legend_anchor_y": 0.45,
+                "legend_anchor_x": 1.05,
+                "legend_anchor_y": 0.95,
                 "panel_wspace": 0.20,
             },
             "tongue": {"mean_trace": {"figure_width_inches": 8.0}},
@@ -2209,6 +2215,149 @@ class TestC73YAxisLegacyConvention:
         finally:
             import matplotlib.pyplot as plt_local
             plt_local.close(fig)
+
+
+class TestC74LegendOutsideRightSubplot:
+    """C7.4 — fix worst-case legend overlap on mean_xy_overlays.
+
+    Pre-C7.4: legend was a figure-level ``fig.legend`` anchored at
+    figure-coord ``(0.75, 0.50)`` which sat INSIDE the L-trials subplot
+    when subplots ended at ``right=0.80`` (confirmed visually on
+    PS51 20250429 worst-case). C7.4 switches to ax-level
+    ``ax_right.legend(...)`` with axis-coord ``(1.02, 1.0)`` so the
+    legend is anchored outside the rightmost subplot's right edge.
+    """
+
+    def test_legend_attached_to_ax_right_not_figure(
+        self, monkeypatch, tmp_path,
+    ):
+        """The mean_trace legend should be a child of ax_right (cam-view
+        L-trials subplot), NOT the figure. Catches regression to the
+        pre-C7.4 fig.legend pattern.
+        """
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="tongue", bin_size_days=2,
+        )
+        msv_block = {
+            "mean_trace": {
+                "pre_color": "0.6", "post_cmap": "plasma",
+                "show_sem_tube": False,
+                "figure_height_inches": 4.0,
+                "figure_width_inches": 8.0,
+                "legend_right_fraction": 0.78,
+                "legend_anchor_x": 1.02,
+                "legend_anchor_y": 1.0,
+                "panel_wspace": 0.10,
+                "symmetric_pad_frac": 0.05,
+            },
+            "tongue": {"mean_trace": {"figure_width_inches": 8.0}},
+            "dpi": 100,
+        }
+        import matplotlib.pyplot as plt
+        captured: dict = {}
+        orig_subplots = plt.subplots
+
+        def capture_subplots(*args, **kwargs):
+            fig, axes = orig_subplots(*args, **kwargs)
+            captured["fig"] = fig
+            captured["axes"] = axes
+            return fig, axes
+
+        monkeypatch.setattr(plt, "subplots", capture_subplots)
+        orig_close = plt.close
+
+        def capture_close(fig=None, *args, **kwargs):
+            if fig is captured.get("fig") and "axes" in captured:
+                ax_left, ax_right = captured["axes"]
+                # The legend should be on ax_right, not on the figure.
+                captured["ax_right_legend"] = ax_right.get_legend()
+                captured["ax_left_legend"] = ax_left.get_legend()
+                captured["fig_legends"] = list(fig.legends)
+            return orig_close(fig, *args, **kwargs) if fig is not None else orig_close()
+
+        monkeypatch.setattr(plt, "close", capture_close)
+        msv._plot_mean_trace_overlays(
+            "tongue", cohort, msv_block,
+            tmp_path / "mean_trace_c74.png",
+        )
+        # Legend lives on ax_right, not on the figure.
+        assert captured["ax_right_legend"] is not None
+        assert captured["ax_left_legend"] is None
+        assert captured["fig_legends"] == []
+
+    def test_legend_anchor_outside_right_axis(
+        self, monkeypatch, tmp_path,
+    ):
+        """Legend bbox_to_anchor X coord > 1.0 → outside right axis edge
+        in axis coords."""
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="tongue", bin_size_days=2,
+        )
+        msv_block = {
+            "mean_trace": {
+                "pre_color": "0.6", "post_cmap": "plasma",
+                "show_sem_tube": False,
+                "figure_height_inches": 4.0,
+                "figure_width_inches": 8.0,
+                "legend_right_fraction": 0.78,
+                "legend_anchor_x": 1.02,
+                "legend_anchor_y": 1.0,
+                "panel_wspace": 0.10,
+                "symmetric_pad_frac": 0.05,
+            },
+            "tongue": {"mean_trace": {"figure_width_inches": 8.0}},
+            "dpi": 100,
+        }
+        import matplotlib.pyplot as plt
+        captured: dict = {}
+        orig_subplots = plt.subplots
+
+        def capture_subplots(*args, **kwargs):
+            fig, axes = orig_subplots(*args, **kwargs)
+            captured["fig"] = fig
+            captured["axes"] = axes
+            return fig, axes
+
+        monkeypatch.setattr(plt, "subplots", capture_subplots)
+        orig_close = plt.close
+
+        def capture_close(fig=None, *args, **kwargs):
+            if fig is captured.get("fig") and "axes" in captured:
+                _, ax_right = captured["axes"]
+                leg = ax_right.get_legend()
+                if leg is not None:
+                    bbox = leg.get_bbox_to_anchor()
+                    # Convert to axis-coord by inverse transform via
+                    # ax_right.transAxes — a (x, y) anchor in axis-coord
+                    # has axis-coord x > 1.0 when outside the right edge.
+                    captured["legend_bbox"] = bbox
+                    # The legend kwargs use axis-coord; we read back the
+                    # raw anchor tuple from the call by checking the
+                    # BboxBase. The simplest check: legend's drawn frame
+                    # x_pos in figure-coord should be > the right axis's
+                    # right-edge x_pos.
+                    ax_bbox = ax_right.get_position()
+                    # leg bbox is in display coords; convert to fig.
+                    leg_bbox_fig = leg.get_window_extent().transformed(
+                        fig.transFigure.inverted()
+                    )
+                    captured["leg_x_in_fig"] = leg_bbox_fig.x0
+                    captured["ax_right_x1_in_fig"] = ax_bbox.x1
+            return orig_close(fig, *args, **kwargs) if fig is not None else orig_close()
+
+        monkeypatch.setattr(plt, "close", capture_close)
+        msv._plot_mean_trace_overlays(
+            "tongue", cohort, msv_block,
+            tmp_path / "mean_trace_c74_anchor.png",
+        )
+        # Legend's left edge in figure coords > right axis's right edge.
+        # Confirms legend sits outside the data area.
+        assert "leg_x_in_fig" in captured
+        assert captured["leg_x_in_fig"] >= captured["ax_right_x1_in_fig"], (
+            f"legend left edge ({captured['leg_x_in_fig']}) must be at "
+            f"or beyond right axis's right edge "
+            f"({captured['ax_right_x1_in_fig']}) — overlap regression"
+        )
 
 
 class TestC73Step4MasterCellNotInverted:

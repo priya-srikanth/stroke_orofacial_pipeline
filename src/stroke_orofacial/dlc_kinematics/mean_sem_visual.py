@@ -2726,7 +2726,10 @@ def _build_mean_video_animation(
                 alpha=0.9,
             )
 
-    # Legend (one shared rel_day-bin legend on the right).
+    # Legend (one shared rel_day-bin legend, anchored OUTSIDE the right
+    # subplot via ax-level legend with axis-coord bbox). C7.4 fix mirrors
+    # the _plot_mean_trace_overlays change — see that function's
+    # comment for full rationale.
     from matplotlib.lines import Line2D
     uniq_bins = sorted(
         {(b.rel_day_bin_label, b.rel_day_bin_center) for b in cohort.binned},
@@ -2743,11 +2746,12 @@ def _build_mean_video_animation(
         )
         handles.append(Line2D([0], [0], color=col, lw=3.0))
         labels.append(f"{lab} (n={n_sessions})")
-    fig.legend(
+    ax_right.legend(
         handles, labels,
         title="rel_day bins",
-        loc="center left",
-        bbox_to_anchor=(0.80, 0.52),
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1.0),
+        borderaxespad=0.0,
         frameon=False,
         ncol=1,
         handlelength=2.2,
@@ -3233,11 +3237,16 @@ def _plot_mean_trace_overlays(
                     show_tube=show_tube, tube_alpha=tube_alpha,
                 )
 
-    # Legend (binned mode only): one shared legend for rel_day bins. C7.1
-    # Issue 2 fix — anchor to the right of the right subplot via "center
-    # left" + bbox_to_anchor at (legend_anchor_x, legend_anchor_y) over
-    # the figure-width-fraction reserved by ``subplots_adjust(right=
-    # legend_right)``. Matches jaw cell 32's newer convention.
+    # Legend (binned mode only): rel_day bin entries anchored OUTSIDE
+    # the right subplot's right edge. C7.4 fix (Priya 2026-05-03):
+    # switch from figure-level legend to ax-level legend on ax_right,
+    # with bbox in AXIS coords so the legend sits cleanly outside the
+    # data area regardless of subplot extent. legend_anchor_x/y are now
+    # axis-coord (was figure-coord pre-C7.4); see defaults.yaml comment.
+    # Anchoring on ax_right (the L-trials subplot under cam-view) is
+    # deliberate: the legend appears just to the right of the rightmost
+    # subplot, with subplots_adjust(right=legend_right_fraction) above
+    # reserving figure width for it.
     if cohort.binned:
         from matplotlib.lines import Line2D
         uniq = sorted(
@@ -3256,11 +3265,12 @@ def _plot_mean_trace_overlays(
             )
             handles.append(Line2D([0], [0], color=col, lw=3.0))
             labels.append(f"{lab} (n={n_sessions})")
-        fig.legend(
+        ax_right.legend(
             handles, labels,
             title="rel_day bins",
-            loc="center left",
+            loc="upper left",
             bbox_to_anchor=(legend_anchor_x, legend_anchor_y),
+            borderaxespad=0.0,
             frameon=False,
             ncol=1,
             handlelength=2.2,
