@@ -2683,7 +2683,15 @@ def _build_mean_video_animation(
     # the share* + set_aspect("equal", "box") + explicit set_ylim
     # interaction which sometimes produced subtle visual asymmetries.
     fig, axes = plt.subplots(1, 2, figsize=(fig_w, fig_h))
-    fig.subplots_adjust(right=0.78, wspace=0.06)
+    # C7.8: wspace=0.35 matches the C7.6 static-PNG fix
+    # (mean_trace.panel_wspace in defaults.yaml). The mean_video
+    # animation has its own subplots_adjust call distinct from
+    # _plot_mean_trace_overlays — C7.6 missed this code path. The L
+    # subplot's Y-axis tick labels overlap the R subplot's data on the
+    # PS46 jaw mean_video at the older wspace=0.06 in the same way the
+    # static PNG did at 0.10. right=0.78 unchanged (no legend on the
+    # video frame; reserves space for the inset rel_day color bar).
+    fig.subplots_adjust(right=0.78, wspace=0.35)
     # C7.2 Issue B: R trials on figure LEFT (cam-view; matches all 3
     # legacy mean_video cells 47/48/34). Already cam-view in C7.1; kept
     # explicit here for the C7.2 commit's documentation.
