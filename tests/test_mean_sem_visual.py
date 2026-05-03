@@ -868,41 +868,61 @@ class TestNormalizeBinSizesParametric:
 
 
 class TestResolveAnimationWriter:
-    """Writer-fallback logic for mean_video.
+    """Writer-resolver logic for mean_video.
 
-    The smoke test env runs without ffmpeg, so MP4 falls back to GIF
-    (PillowWriter is always available with matplotlib). Production env
-    with ffmpeg installed → MP4 returned directly.
+    C7.5 changed the contract from silent-fallback to fail-loud:
+    ``_resolve_animation_writer("mp4", ...)`` raises ``RuntimeError`` when
+    ffmpeg is missing UNLESS the caller passes
+    ``allow_gif_fallback=True``. The opt-in flag preserves the dev/CI
+    fallback path; the default protects production cohort runs from
+    silently emitting GIFs.
     """
 
     def test_gif_returns_pillow(self):
         import matplotlib.animation as mpl_anim
-        writer, ext, fell_back = msv._resolve_animation_writer("gif", 60)
+        writer, ext = msv._resolve_animation_writer("gif", 60)
         assert isinstance(writer, mpl_anim.PillowWriter)
         assert ext == "gif"
-        assert fell_back is False
 
-    def test_mp4_falls_back_to_gif_when_no_ffmpeg(self):
-        # Env confirmation: ffmpeg is not installed in the test env. If
-        # this assertion ever fires, ffmpeg HAS been installed and the
-        # fallback path is no longer exercised — flip this test to assert
-        # FFMpegWriter when that happens.
+    def test_mp4_with_ffmpeg_returns_ffmpeg_writer(self):
+        import matplotlib.animation as mpl_anim
+        if not mpl_anim.FFMpegWriter.isAvailable():
+            pytest.skip("ffmpeg unavailable; happy-path not exercised")
+        writer, ext = msv._resolve_animation_writer("mp4", 60)
+        assert isinstance(writer, mpl_anim.FFMpegWriter)
+        assert ext == "mp4"
+
+    def test_mp4_without_ffmpeg_default_raises(self):
+        """C7.5 fail-loud: with allow_gif_fallback=False (default), a
+        missing ffmpeg → RuntimeError, NOT a silent GIF emission.
+        """
+        import matplotlib.animation as mpl_anim
+        if mpl_anim.FFMpegWriter.isAvailable():
+            pytest.skip("ffmpeg installed; raise path not exercised")
+        with pytest.raises(RuntimeError, match="ffmpeg.*not available"):
+            msv._resolve_animation_writer("mp4", 60)
+
+    def test_mp4_without_ffmpeg_with_flag_falls_back_to_gif(self):
+        """Opt-in fallback path: allow_gif_fallback=True restores the
+        legacy silent-degrade behavior for dev/CI envs.
+        """
         import matplotlib.animation as mpl_anim
         if mpl_anim.FFMpegWriter.isAvailable():
             pytest.skip("ffmpeg installed; fallback path not exercised")
-        writer, ext, fell_back = msv._resolve_animation_writer("mp4", 60)
+        writer, ext = msv._resolve_animation_writer(
+            "mp4", 60, allow_gif_fallback=True,
+        )
         assert isinstance(writer, mpl_anim.PillowWriter)
         assert ext == "gif"
-        assert fell_back is True
 
     def test_unknown_format_raises(self):
         with pytest.raises(ValueError, match="must be 'mp4' or 'gif'"):
             msv._resolve_animation_writer("avi", 60)
 
-    def test_mp4_fallback_emits_warning(self, caplog):
-        """Silent fallbacks are bad UX (Priya 2026-05-02): when MP4 was
-        requested but ffmpeg is missing, ``logging.WARNING`` must fire so
-        users notice GIFs are landing in cohort outputs unintentionally.
+    def test_mp4_fallback_with_flag_emits_warning(self, caplog):
+        """When allow_gif_fallback=True and ffmpeg is missing, a
+        ``logging.WARNING`` must fire so cohort logs preserve the
+        deviation signal even when the flag suppresses the raise.
         """
         import logging
         import matplotlib.animation as mpl_anim
@@ -913,16 +933,15 @@ class TestResolveAnimationWriter:
             logging.WARNING,
             logger="stroke_orofacial.dlc_kinematics.mean_sem_visual",
         ):
-            msv._resolve_animation_writer("mp4", 60)
-        # Exactly one WARNING from this module.
+            msv._resolve_animation_writer(
+                "mp4", 60, allow_gif_fallback=True,
+            )
         msgs = [
             r for r in caplog.records
             if r.name == "stroke_orofacial.dlc_kinematics.mean_sem_visual"
             and r.levelname == "WARNING"
         ]
         assert len(msgs) == 1
-        # Message content includes the fallback signal so users can grep
-        # cohort run logs for it.
         text = msgs[0].getMessage().lower()
         assert "ffmpeg" in text
         assert "gif" in text or "pillow" in text

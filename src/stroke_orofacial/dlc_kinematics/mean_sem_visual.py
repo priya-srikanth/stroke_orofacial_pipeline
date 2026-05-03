@@ -2573,35 +2573,54 @@ def build_mean_trace_cohort(
 
 def _resolve_animation_writer(
     video_format: str, anim_fps: int,
-) -> tuple[Any, str, bool]:
+    *, allow_gif_fallback: bool = False,
+) -> tuple[Any, str]:
     """Pick a matplotlib animation writer + final filename extension.
 
-    Returns ``(writer, ext, fell_back_from_mp4_to_gif)``. The boolean is
-    True when the caller asked for MP4 but ffmpeg wasn't available, so
-    the harness can audit the deviation at parity-comparison time.
+    Returns ``(writer, ext)``.
 
-    When the MP4→GIF fallback fires, a ``logging.WARNING`` is emitted via
-    the module logger (one per call). Cohort runs that produce N
-    animations will therefore see N warnings; this is intentional —
-    silent fallbacks risk leaving GIFs sitting in cohort outputs unnoticed
-    when the prod env was supposed to emit MP4. To suppress, install
-    ffmpeg in the env, OR pass ``video_format="gif"`` explicitly.
+    Default behavior (``allow_gif_fallback=False``, C7.5): when
+    ``video_format='mp4'`` is requested but ffmpeg is unavailable, raise
+    ``RuntimeError`` rather than silently downgrading to GIF. The
+    motivation is that GIF output (PillowWriter) produces ~10× larger
+    files with posterized colors and no QuickTime playback on Mac, and
+    we discovered (C7.5 review) that the previous silent fallback had
+    leaked GIFs into cohort outputs unnoticed. Fail-loud surfaces the
+    missing-dependency state at the production-rendering boundary.
+
+    Opt-in fallback (``allow_gif_fallback=True``): emit a logging.WARNING
+    and return PillowWriter with ``ext='gif'``. Reserved for dev/CI
+    environments where ffmpeg cannot be installed; callers must pass the
+    flag explicitly so the deviation is auditable.
+
+    When ``video_format='gif'`` is requested explicitly, PillowWriter is
+    always returned — no flag is needed.
     """
     import matplotlib.animation as mpl_anim
 
     fmt = str(video_format).lower()
     if fmt == "mp4":
         if mpl_anim.FFMpegWriter.isAvailable():
-            return (mpl_anim.FFMpegWriter(fps=anim_fps, bitrate=12000), "mp4", False)
-        # Fall back to GIF (PillowWriter is always available).
+            return (mpl_anim.FFMpegWriter(fps=anim_fps, bitrate=12000), "mp4")
+        if not allow_gif_fallback:
+            raise RuntimeError(
+                "ffmpeg is not available on PATH but video_format='mp4' "
+                "was requested. Install ffmpeg in the env (it is bundled "
+                "with environment.yml as of Phase 7a.6) or, to allow a "
+                "GIF fallback for dev/CI environments, pass "
+                "allow_gif_fallback=True (parity harness: "
+                "--allow-gif-fallback).",
+            )
+        # Opt-in fallback to GIF (PillowWriter is always available).
         _logger.warning(
             "ffmpeg not found; falling back to GIF via PillowWriter "
-            "(requested video_format='mp4'). Output will have a .gif "
-            "extension. Install ffmpeg in the env to emit MP4.",
+            "(requested video_format='mp4', allow_gif_fallback=True). "
+            "Output will have a .gif extension. Install ffmpeg in the "
+            "env to emit MP4.",
         )
-        return (mpl_anim.PillowWriter(fps=anim_fps), "gif", True)
+        return (mpl_anim.PillowWriter(fps=anim_fps), "gif")
     if fmt == "gif":
-        return (mpl_anim.PillowWriter(fps=anim_fps), "gif", False)
+        return (mpl_anim.PillowWriter(fps=anim_fps), "gif")
     raise ValueError(
         f"video_format must be 'mp4' or 'gif'; got {video_format!r}",
     )
@@ -2944,6 +2963,7 @@ def build_mean_video(
     params: dict[str, Any] | None = None,
     overwrite: Literal["skip", "force"] = "skip",
     animal_info: AnimalInfo | None = None,
+    allow_gif_fallback: bool = False,
 ) -> list[Path]:
     """Render the mean-video cohort animations.
 
@@ -2970,9 +2990,14 @@ def build_mean_video(
         Animation modes to render. ``None`` reads ``save_both_modes``
         from the config block (default: both).
     video_format : "mp4" | "gif" | None
-        Default reads from config (``mp4``). When ffmpeg is unavailable,
-        MP4 silently falls back to GIF; the returned ``Path.suffix``
-        reflects the actual output extension.
+        Default reads from config (``mp4``). When ffmpeg is unavailable
+        and ``video_format='mp4'`` is in effect, the call raises
+        ``RuntimeError`` unless ``allow_gif_fallback=True`` (C7.5).
+    allow_gif_fallback : bool
+        When True, allow MP4→GIF fallback for environments without
+        ffmpeg. Default False — fail-loud at the resolver. Reserved for
+        dev/CI use; production cohort runs should leave this False so
+        missing ffmpeg surfaces immediately.
     with_frame_timestamps : bool | None
         Q5 toggle. ``None`` reads config default (``True``, matches jaw
         cell 34 + tongue cell 48).
@@ -3041,8 +3066,9 @@ def build_mean_video(
         if cohort is None or not cohort.binned:
             continue
         for mode in modes:
-            writer, ext, _fell_back = _resolve_animation_writer(
+            writer, ext = _resolve_animation_writer(
                 video_format, anim_fps,
+                allow_gif_fallback=allow_gif_fallback,
             )
             fname = _mean_video_filename(
                 cohort, msv_block, bodypart,

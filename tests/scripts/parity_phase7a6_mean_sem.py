@@ -38,7 +38,7 @@ CLI::
         --animals PS46,PS51,PS54,PS55 \\
         --sessions auto \\
         --emit-root .scratch_7a6/cohort_run \\
-        [--skip-mean-video] [--skip-cohort-emit]
+        [--skip-mean-video] [--skip-cohort-emit] [--allow-gif-fallback]
 
 The harness DOUBLES as the Task 6 cohort runner: in either ``--mode``,
 it emits PNGs (and optionally GIFs) for every covered (animal, bodypart,
@@ -150,6 +150,7 @@ class HarnessConfig:
     skip_mean_video: bool
     skip_cohort_emit: bool
     atol: float
+    allow_gif_fallback: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +522,7 @@ def cohort_emit_one(
     skip_mean_video: bool,
     skip_cohort_emit: bool,
     mode: str,
+    allow_gif_fallback: bool = False,
 ) -> CohortResult:
     """Emit every supported family for one (animal, bodypart, window).
 
@@ -597,6 +599,7 @@ def cohort_emit_one(
                     bodypart, animal, resolver,
                     reward_pre_ms=pre_ms, reward_post_ms=post_ms,
                     overwrite="force",
+                    allow_gif_fallback=allow_gif_fallback,
                 )
                 result.n_mean_video = len(video_paths)
             else:
@@ -670,6 +673,7 @@ def write_report(
     lines.append(f"- Sessions in scope: ``{n_sess}``")
     lines.append(f"- Skip mean_video: ``{cfg.skip_mean_video}``")
     lines.append(f"- Skip cohort emit: ``{cfg.skip_cohort_emit}``")
+    lines.append(f"- Allow GIF fallback: ``{cfg.allow_gif_fallback}``")
     lines.append(f"- Emit root: ``{cfg.emit_root}``")
     lines.append(f"- Total wall time: ``{total_wall_s:.1f} s``")
     lines.append("")
@@ -968,6 +972,15 @@ def main(argv: list[str] | None = None) -> int:
             "and by the legacy_approximate per-frame x/y comparison."
         ),
     )
+    parser.add_argument(
+        "--allow-gif-fallback", action="store_true",
+        help=(
+            "Allow MP4→GIF fallback in mean_video when ffmpeg is not on "
+            "PATH. Default: fail-loud (RuntimeError). Reserved for dev/CI "
+            "environments where ffmpeg cannot be installed; production "
+            "cohort runs should leave this unset (C7.5)."
+        ),
+    )
     args = parser.parse_args(argv)
 
     import time
@@ -987,6 +1000,7 @@ def main(argv: list[str] | None = None) -> int:
         skip_mean_video=bool(args.skip_mean_video),
         skip_cohort_emit=bool(args.skip_cohort_emit),
         atol=float(args.atol),
+        allow_gif_fallback=bool(args.allow_gif_fallback),
     )
 
     print(f"Phase 7a.6 mean/SEM parity harness — mode={cfg.mode}")
@@ -1064,6 +1078,7 @@ def main(argv: list[str] | None = None) -> int:
                     skip_mean_video=cfg.skip_mean_video,
                     skip_cohort_emit=cfg.skip_cohort_emit,
                     mode=cfg.mode,
+                    allow_gif_fallback=cfg.allow_gif_fallback,
                 )
                 results.append(r)
                 if r.error:
