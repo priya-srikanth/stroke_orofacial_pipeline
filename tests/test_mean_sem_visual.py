@@ -1843,3 +1843,277 @@ class TestC71BuildTrialOverlaysAnimal:
         assert len(paths) == len(dates)
         # Every call passes cohort.trial_y_lim explicitly.
         assert all(b == cohort.trial_y_lim for b in captured)
+
+
+# ===========================================================================
+# C7.2 — symmetric union XY limits + cam-view subplot ordering
+# ===========================================================================
+#
+# Cowork's C7.2 review (2026-05-02) flagged 2 issues against C7.1:
+#
+#   Issue A — symmetric union X/Y limits across L and R subplots in
+#     mean_trace + mean_video. C7.1's sharex/sharey kwargs weren't
+#     enough; matplotlib's per-subplot autoscale plus
+#     set_aspect("equal", "box") could still produce asymmetry. C7.2
+#     drops sharex/sharey and applies explicit (-x_abs_max, +x_abs_max)
+#     and (-y_abs_max, +y_abs_max) bounds with 5% padding to both
+#     subplots from the union of L+R data.
+#
+#   Issue B — cam-view subplot ordering (R trials on figure LEFT,
+#     L trials on figure RIGHT). Camera mirror-images the mouse, so
+#     mouse-LEFT renders on the right of the cam image. Master cell
+#     legacy (Cell 31 + Cell 30) uses L-LEFT R-RIGHT — case 2 per
+#     Cowork's note → deliberate deviation. Tongue cell 45 mean_trace
+#     was already cam-view; jaw cell 32 (newer) was not. C7.1 had
+#     adopted jaw 32's order; C7.2 reverts to cam-view across all 4
+#     2-panel L/R plots (master cell, trial overlays, mean_trace,
+#     mean_video).
+
+
+class TestC72IssueAUnionSymmetricBounds:
+    """Issue A: explicit symmetric (-x, +x) / (-y, +y) bounds on both
+    subplots of mean_trace + mean_video, with 5% padding.
+    """
+
+    def test_abs_max_finite_basic(self):
+        a = np.array([-3.0, 1.0, 5.0, np.nan])
+        b = np.array([-7.0, 2.0])
+        assert msv._abs_max_finite([a, b]) == 7.0
+
+    def test_abs_max_finite_all_nan(self):
+        a = np.array([np.nan, np.nan])
+        # Defensive fallback to 1.0 when nothing is finite.
+        assert msv._abs_max_finite([a]) == 1.0
+
+    def test_abs_max_finite_empty_inputs(self):
+        assert msv._abs_max_finite([]) == 1.0
+        assert msv._abs_max_finite([None, None]) == 1.0
+
+    def test_union_symmetric_xy_bounds_takes_max_across_sides(self):
+        L_x = [np.array([-3.0, 5.0])]
+        R_x = [np.array([-10.0, 4.0])]
+        L_y = [np.array([0.0, 7.0])]
+        R_y = [np.array([0.0, 11.0])]
+        x_abs, y_abs = msv._union_symmetric_xy_bounds(
+            mx_per_side={"L": L_x, "R": R_x},
+            my_per_side={"L": L_y, "R": R_y},
+            pad_frac=0.0,
+        )
+        # Union is across BOTH sides.
+        assert x_abs == 10.0  # max(|-3|, |5|, |-10|, |4|)
+        assert y_abs == 11.0
+
+    def test_union_symmetric_xy_bounds_padding_5pct(self):
+        x_abs, _ = msv._union_symmetric_xy_bounds(
+            mx_per_side={"L": [np.array([10.0])], "R": [np.array([0.0])]},
+            my_per_side={"L": [np.array([1.0])], "R": [np.array([0.0])]},
+            pad_frac=0.05,
+        )
+        assert x_abs == pytest.approx(10.0 * 1.05)
+
+    def test_mean_trace_subplots_share_identical_bounds(
+        self, monkeypatch, tmp_path,
+    ):
+        """Both L and R subplots must end up with identical (xlim, ylim)
+        after C7.2. Catches regression of the Cowork-flagged asymmetry.
+        """
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="tongue", bin_size_days=2,
+        )
+        out_path = tmp_path / "mean_trace_symmetric.png"
+        msv_block = {
+            "mean_trace": {
+                "pre_color": "0.6", "post_cmap": "plasma",
+                "show_sem_tube": False,
+                "figure_height_inches": 4.0,
+                "figure_width_inches": 8.0,
+                "legend_right_fraction": 0.80,
+                "legend_anchor_x": 0.75,
+                "legend_anchor_y": 0.50,
+                "panel_wspace": 0.10,
+                "symmetric_pad_frac": 0.05,
+            },
+            "tongue": {"mean_trace": {"figure_width_inches": 8.0}},
+            "dpi": 100,
+        }
+        # Capture the figure's axes before the helper closes the figure.
+        import matplotlib.pyplot as plt
+        captured = {}
+        orig_subplots = plt.subplots
+
+        def capture_subplots(*args, **kwargs):
+            fig, axes = orig_subplots(*args, **kwargs)
+            captured["axes"] = axes
+            captured["fig"] = fig
+            return fig, axes
+
+        monkeypatch.setattr(plt, "subplots", capture_subplots)
+        # The helper closes the figure on save, so we need a sentinel
+        # that captures axis bounds BEFORE close. Easiest: snapshot the
+        # fig's axes' xlim/ylim before plt.close fires inside the helper.
+        # Patch plt.close to record bounds first.
+        orig_close = plt.close
+
+        def capture_close(fig=None, *args, **kwargs):
+            if fig is captured.get("fig") and "axes" in captured:
+                ax_left, ax_right = captured["axes"]
+                captured["xlim_left"] = ax_left.get_xlim()
+                captured["xlim_right"] = ax_right.get_xlim()
+                captured["ylim_left"] = ax_left.get_ylim()
+                captured["ylim_right"] = ax_right.get_ylim()
+            return orig_close(fig, *args, **kwargs) if fig is not None else orig_close()
+
+        monkeypatch.setattr(plt, "close", capture_close)
+        msv._plot_mean_trace_overlays(
+            "tongue", cohort, msv_block, out_path,
+        )
+        assert "xlim_left" in captured
+        # L and R subplots must have IDENTICAL xlim and ylim.
+        assert captured["xlim_left"] == pytest.approx(captured["xlim_right"])
+        assert captured["ylim_left"] == pytest.approx(captured["ylim_right"])
+        # Bounds must be symmetric around 0.
+        xl_lo, xl_hi = captured["xlim_left"]
+        yl_lo, yl_hi = captured["ylim_left"]
+        assert xl_hi == pytest.approx(-xl_lo)
+        assert yl_hi == pytest.approx(-yl_lo)
+        # Bounds must be > 0 (data exists).
+        assert xl_hi > 0.0
+        assert yl_hi > 0.0
+
+
+class TestC72IssueBCamViewOrdering:
+    """Issue B: R trials on figure LEFT (axes[0]); L trials on figure
+    RIGHT (axes[1]). Cam-view convention.
+    """
+
+    def test_mean_trace_titles_have_R_left_L_right(
+        self, monkeypatch, tmp_path,
+    ):
+        cohort = _make_synthetic_mean_trace_cohort(
+            animal="PS46", bodypart="tongue", bin_size_days=2,
+        )
+        msv_block = {
+            "mean_trace": {
+                "pre_color": "0.6", "post_cmap": "plasma",
+                "show_sem_tube": False,
+                "figure_height_inches": 4.0,
+                "figure_width_inches": 8.0,
+                "legend_right_fraction": 0.80,
+                "legend_anchor_x": 0.75,
+                "legend_anchor_y": 0.50,
+                "panel_wspace": 0.10,
+                "symmetric_pad_frac": 0.05,
+            },
+            "tongue": {"mean_trace": {"figure_width_inches": 8.0}},
+            "dpi": 100,
+        }
+        import matplotlib.pyplot as plt
+        captured: dict = {}
+        orig_subplots = plt.subplots
+
+        def capture_subplots(*args, **kwargs):
+            fig, axes = orig_subplots(*args, **kwargs)
+            captured["axes"] = axes
+            captured["fig"] = fig
+            return fig, axes
+
+        monkeypatch.setattr(plt, "subplots", capture_subplots)
+        orig_close = plt.close
+
+        def capture_close(fig=None, *args, **kwargs):
+            if fig is captured.get("fig") and "axes" in captured:
+                ax_left, ax_right = captured["axes"]
+                captured["title_left"] = ax_left.get_title()
+                captured["title_right"] = ax_right.get_title()
+            return orig_close(fig, *args, **kwargs) if fig is not None else orig_close()
+
+        monkeypatch.setattr(plt, "close", capture_close)
+        msv._plot_mean_trace_overlays(
+            "tongue", cohort, msv_block,
+            tmp_path / "mean_trace_camview.png",
+        )
+        assert captured["title_left"].startswith("R trials")
+        assert captured["title_right"].startswith("L trials")
+
+    def test_master_cell_subplot_titles_have_R_left_L_right(
+        self, monkeypatch, tmp_path,
+    ):
+        """Master cell (`_plot_session_2x2`): axs[0,0] should plot
+        R-trials data; axs[0,1] should plot L. Verified via subplot
+        title text containing "RIGHT rewards" on the LEFT column."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
+        target_date = cohort.sessions[0].date
+
+        import matplotlib.pyplot as plt
+        captured: dict = {}
+        orig_subplots = plt.subplots
+
+        def capture_subplots(*args, **kwargs):
+            fig, axes = orig_subplots(*args, **kwargs)
+            captured["axes"] = axes
+            captured["fig"] = fig
+            return fig, axes
+
+        monkeypatch.setattr(plt, "subplots", capture_subplots)
+        orig_close = plt.close
+
+        def capture_close(fig=None, *args, **kwargs):
+            if fig is captured.get("fig") and "axes" in captured:
+                axs = captured["axes"]
+                captured["title_00"] = axs[0, 0].get_title()
+                captured["title_01"] = axs[0, 1].get_title()
+                captured["title_10"] = axs[1, 0].get_title()
+                captured["title_11"] = axs[1, 1].get_title()
+            return orig_close(fig, *args, **kwargs) if fig is not None else orig_close()
+
+        monkeypatch.setattr(plt, "close", capture_close)
+        msv.build_individual_sessions(
+            "tongue", "PS46", target_date, resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        # axs[0, 0] is LEFT column → R trials per cam-view.
+        assert "RIGHT rewards" in captured["title_00"]
+        assert "LEFT rewards" in captured["title_01"]
+        assert "RIGHT rewards" in captured["title_10"]
+        assert "LEFT rewards" in captured["title_11"]
+
+    def test_trial_overlays_subplot_titles_cam_view(
+        self, monkeypatch, tmp_path,
+    ):
+        """Same cam-view assertion for `_plot_trial_overlays_2x2`."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        cohort = _make_synthetic_cohort("PS46", "jaw", bin_days=1)
+        target_date = cohort.sessions[0].date
+
+        import matplotlib.pyplot as plt
+        captured: dict = {}
+        orig_subplots = plt.subplots
+
+        def capture_subplots(*args, **kwargs):
+            fig, axes = orig_subplots(*args, **kwargs)
+            captured["axes"] = axes
+            captured["fig"] = fig
+            return fig, axes
+
+        monkeypatch.setattr(plt, "subplots", capture_subplots)
+        orig_close = plt.close
+
+        def capture_close(fig=None, *args, **kwargs):
+            if fig is captured.get("fig") and "axes" in captured:
+                axs = captured["axes"]
+                captured["title_00"] = axs[0, 0].get_title()
+                captured["title_01"] = axs[0, 1].get_title()
+            return orig_close(fig, *args, **kwargs) if fig is not None else orig_close()
+
+        monkeypatch.setattr(plt, "close", capture_close)
+        msv.build_trial_overlays(
+            "jaw", "PS46", target_date, resolver,
+            reward_pre_ms=100, reward_post_ms=1000,
+            cohort=cohort, overwrite="force",
+        )
+        assert "RIGHT rewards" in captured["title_00"]
+        assert "LEFT rewards" in captured["title_01"]

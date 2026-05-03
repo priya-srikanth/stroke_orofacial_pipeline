@@ -1105,24 +1105,29 @@ def _plot_session_2x2(
         if ylim is not None and np.isfinite(ylim[0]) and np.isfinite(ylim[1]):
             ax.set_ylim(*ylim)
 
+    # C7.2 Issue B: R trials on figure LEFT (axs[*, 0]), L on RIGHT
+    # (axs[*, 1]). Cam-view convention — camera mirror-images the mouse
+    # so mouse-left renders on the right of the cam image. Deliberate
+    # deviation from legacy master cell (which has L-LEFT, R-RIGHT)
+    # documented in DECISIONS at Task 9 per Priya 2026-05-02.
     one(
-        axs[0, 0], sess.myl, sess.syl, "L",
-        f"Mouse LEFT rewards | Y | n={sess.n_L} ({sess.interp_version})",
-        f"{label_token} Y (px)", y_lim,
-    )
-    one(
-        axs[0, 1], sess.myr, sess.syr, "R",
+        axs[0, 0], sess.myr, sess.syr, "R",
         f"Mouse RIGHT rewards | Y | n={sess.n_R} ({sess.interp_version})",
         f"{label_token} Y (px)", y_lim,
     )
     one(
-        axs[1, 0], sess.mxl, sess.sxl, "L",
-        f"Mouse LEFT rewards | X | n={sess.n_L} ({sess.interp_version})",
+        axs[0, 1], sess.myl, sess.syl, "L",
+        f"Mouse LEFT rewards | Y | n={sess.n_L} ({sess.interp_version})",
+        f"{label_token} Y (px)", y_lim,
+    )
+    one(
+        axs[1, 0], sess.mxr, sess.sxr, "R",
+        f"Mouse RIGHT rewards | X | n={sess.n_R} ({sess.interp_version})",
         f"{label_token} X (px)", x_lim,
     )
     one(
-        axs[1, 1], sess.mxr, sess.sxr, "R",
-        f"Mouse RIGHT rewards | X | n={sess.n_R} ({sess.interp_version})",
+        axs[1, 1], sess.mxl, sess.sxl, "L",
+        f"Mouse LEFT rewards | X | n={sess.n_L} ({sess.interp_version})",
         f"{label_token} X (px)", x_lim,
     )
 
@@ -1195,24 +1200,26 @@ def _plot_trial_overlays_2x2(
         if ylim is not None and np.isfinite(ylim[0]) and np.isfinite(ylim[1]):
             ax.set_ylim(*ylim)
 
+    # C7.2 Issue B: cam-view (R-LEFT, L-RIGHT). See _plot_session_2x2 for
+    # full rationale + DECISIONS deviation note.
     one(
-        axs[0, 0], sess.Ayl, sess.myl, sess.syl, "L",
-        f"Mouse LEFT rewards | Y | n={sess.n_L} ({sess.interp_version})",
-        f"{label_token} Y (px)", y_lim,
-    )
-    one(
-        axs[0, 1], sess.Ayr, sess.myr, sess.syr, "R",
+        axs[0, 0], sess.Ayr, sess.myr, sess.syr, "R",
         f"Mouse RIGHT rewards | Y | n={sess.n_R} ({sess.interp_version})",
         f"{label_token} Y (px)", y_lim,
     )
     one(
-        axs[1, 0], sess.Axl, sess.mxl, sess.sxl, "L",
-        f"Mouse LEFT rewards | X | n={sess.n_L} ({sess.interp_version})",
+        axs[0, 1], sess.Ayl, sess.myl, sess.syl, "L",
+        f"Mouse LEFT rewards | Y | n={sess.n_L} ({sess.interp_version})",
+        f"{label_token} Y (px)", y_lim,
+    )
+    one(
+        axs[1, 0], sess.Axr, sess.mxr, sess.sxr, "R",
+        f"Mouse RIGHT rewards | X | n={sess.n_R} ({sess.interp_version})",
         f"{label_token} X (px)", x_lim,
     )
     one(
-        axs[1, 1], sess.Axr, sess.mxr, sess.sxr, "R",
-        f"Mouse RIGHT rewards | X | n={sess.n_R} ({sess.interp_version})",
+        axs[1, 1], sess.Axl, sess.mxl, sess.sxl, "L",
+        f"Mouse LEFT rewards | X | n={sess.n_L} ({sess.interp_version})",
         f"{label_token} X (px)", x_lim,
     )
 
@@ -2093,6 +2100,53 @@ def _color_for_rel_day_continuous(
     return cmap(u)
 
 
+def _abs_max_finite(arrays: Sequence[np.ndarray]) -> float:
+    """Max absolute finite value across a sequence of arrays. Returns 1.0
+    if no array contains finite values (defensive — shouldn't happen on
+    real cohort data; protects animations against div-by-zero).
+    """
+    vals = []
+    for a in arrays:
+        if a is None:
+            continue
+        v = np.asarray(a, float).ravel()
+        v = v[np.isfinite(v)]
+        if v.size:
+            vals.append(float(np.nanmax(np.abs(v))))
+    return float(max(vals)) if vals else 1.0
+
+
+def _union_symmetric_xy_bounds(
+    *,
+    mx_per_side: dict[str, list[np.ndarray]],
+    my_per_side: dict[str, list[np.ndarray]],
+    pad_frac: float = 0.05,
+) -> tuple[float, float]:
+    """C7.2 Issue A — compute union-symmetric (x_abs_max, y_abs_max) for
+    a 2-panel L/R XY overlay plot.
+
+    The union is taken across BOTH the L subplot and the R subplot data;
+    the result is the max abs value across all points on either subplot.
+    Used by callers to apply identical ``set_xlim(-x, +x)`` /
+    ``set_ylim(-y, +y)`` bounds to both subplots, eliminating the per-
+    subplot autoscale asymmetry where each panel picks its own axis range.
+
+    Padding mirrors legacy's 5% (Y_PAD_FRAC = 0.05 in tongue cell 45,
+    0.10 in jaw cell 32 — we adopt the smaller value as the more
+    informative tight-but-not-clipped default; users can override via
+    config knob ``mean_trace.symmetric_pad_frac``).
+    """
+    all_x: list[np.ndarray] = []
+    for arrs in mx_per_side.values():
+        all_x.extend(arrs)
+    all_y: list[np.ndarray] = []
+    for arrs in my_per_side.values():
+        all_y.extend(arrs)
+    x_abs_max = _abs_max_finite(all_x) * (1.0 + pad_frac)
+    y_abs_max = _abs_max_finite(all_y) * (1.0 + pad_frac)
+    return x_abs_max, y_abs_max
+
+
 def _plot_xy_mean(
     ax: Any, mx: np.ndarray, my: np.ndarray,
     sx: np.ndarray | None, sy: np.ndarray | None,
@@ -2567,45 +2621,54 @@ def _build_mean_video_animation(
     )
     post_max = float(np.nanmax(post_centers)) if post_centers.size else 1.0
 
-    fig, axes = plt.subplots(1, 2, figsize=(fig_w, fig_h), sharey=True)
+    # C7.2 Issue A — drop sharey kwarg; explicit symmetric (-x, +x) /
+    # (-y, +y) bounds applied below supersede share* anyway. Also avoids
+    # the share* + set_aspect("equal", "box") + explicit set_ylim
+    # interaction which sometimes produced subtle visual asymmetries.
+    fig, axes = plt.subplots(1, 2, figsize=(fig_w, fig_h))
     fig.subplots_adjust(right=0.78, wspace=0.06)
+    # C7.2 Issue B: R trials on figure LEFT (cam-view; matches all 3
+    # legacy mean_video cells 47/48/34). Already cam-view in C7.1; kept
+    # explicit here for the C7.2 commit's documentation.
     ax_left, ax_right = axes[0], axes[1]
     side_to_ax = {"R": ax_left, "L": ax_right}
 
-    # Axis limits from finite x/y across all binned traces.
-    all_x = []
-    all_y = []
+    # C7.2 Issue A — union-symmetric XY bounds across L+R subplot data.
+    binned_by_side: dict[str, list[BinnedTraceRow]] = {"L": [], "R": []}
     for b in cohort.binned:
-        if np.any(np.isfinite(b.mx)):
-            all_x.append(b.mx[np.isfinite(b.mx)])
-        if np.any(np.isfinite(b.my)):
-            all_y.append(b.my[np.isfinite(b.my)])
-    if not all_x or not all_y:
+        binned_by_side[b.side].append(b)
+    mx_per_side = {
+        side: [b.mx for b in binned_by_side[side]]
+        for side in ("L", "R")
+    }
+    my_per_side = {
+        side: [b.my for b in binned_by_side[side]]
+        for side in ("L", "R")
+    }
+    if not (mx_per_side["L"] or mx_per_side["R"]):
         raise ValueError(
             f"{cohort.animal}: no finite XY data in binned traces; cannot "
             f"compute animation axis limits.",
         )
-    x_min = float(np.min(np.concatenate(all_x)))
-    x_max = float(np.max(np.concatenate(all_x)))
-    y_min = float(np.min(np.concatenate(all_y)))
-    y_max_data = float(np.max(np.concatenate(all_y)))
-    x_pad = 0.05 * max(1e-6, (x_max - x_min))
-    y_pad = 0.05 * max(1e-6, (y_max_data - y_min))
-    x_lims = (x_min - x_pad, x_max + x_pad)
-    # Y inverted (0 at top, matches legacy).
-    y_top = y_min
-    y_bottom = y_max_data + y_pad
+    # 5% padding mirrors legacy (mean_video cell 34 used 5% on both axes).
+    x_abs_max, y_abs_max = _union_symmetric_xy_bounds(
+        mx_per_side=mx_per_side,
+        my_per_side=my_per_side,
+        pad_frac=0.05,
+    )
 
     label_token = _AXIS_LABEL[bodypart]
-    for side in ("R", "L"):
-        ax = side_to_ax[side]
-        ax.set_title(f"{label_token} XY location, {side} trials")
+    # ax_left = R trials (cam-view); ax_right = L trials.
+    ax_left.set_title(f"{label_token} XY location, R trials")
+    ax_right.set_title(f"{label_token} XY location, L trials")
+    for ax in (ax_left, ax_right):
         ax.set_xlabel("x (px)")
         ax.set_ylabel("y (px)")
         ax.set_aspect("equal", adjustable="box")
         ax.grid(True, alpha=0.2)
-        ax.set_ylim(y_bottom, y_top)
-        ax.set_xlim(*x_lims)
+        # Apply identical symmetric bounds to both subplots.
+        ax.set_xlim(-x_abs_max, +x_abs_max)
+        ax.set_ylim(-y_abs_max, +y_abs_max)
 
     # Optional frame-time text labels (Q5 consolidate).
     time_text: dict[str, Any] = {}
@@ -2995,6 +3058,7 @@ def _plot_mean_trace_overlays(
     legend_anchor_x = float(mt_block.get("legend_anchor_x", 0.75))
     legend_anchor_y = float(mt_block.get("legend_anchor_y", 0.50))
     panel_wspace = float(mt_block.get("panel_wspace", 0.10))
+    symmetric_pad_frac = float(mt_block.get("symmetric_pad_frac", 0.05))
 
     rel_days = np.array(
         [r.rel_day for r in cohort.rows], float,
@@ -3002,43 +3066,75 @@ def _plot_mean_trace_overlays(
     post_days = rel_days[np.isfinite(rel_days) & (rel_days >= 1)]
     post_max = float(np.max(post_days)) if post_days.size else 1.0
 
-    # C7.1 Issue 1 (shared L/R axes + L-LEFT R-RIGHT order). Legacy jaw
-    # cell 32 (newer, 20260416) uses ``sharex=False, sharey=True`` with
-    # ``ax_L=axes[0], ax_R=axes[1]`` (L LEFT, R RIGHT). Tongue cell 45
-    # (older, 20260203) uses the same sharex/sharey but with R-LEFT,
-    # L-RIGHT panel order. Per the C4.x consolidate-on-newer pattern
-    # (Q4 multi-bin, Q5 with_frame_timestamps), adopt jaw's L-LEFT
-    # convention here too.
-    fig, axes = plt.subplots(
-        1, 2, figsize=(fig_w, fig_h), sharex=False, sharey=True,
-    )
+    # C7.2 Issue B: cam-view convention (R trials on figure LEFT,
+    # L trials on figure RIGHT). The camera mirror-images the mouse, so
+    # mouse-left appears on the right of the cam image and vice-versa.
+    #
+    # Deliberate departure from legacy: tongue cell 45 (older) already
+    # uses cam-view; jaw cell 32 (newer) uses the OPPOSITE order
+    # (L-LEFT, R-RIGHT — case 2 per the C7.2 review). C7.1 had adopted
+    # jaw's order via the newer-jaw-wins pattern; that's reverted here
+    # per Priya 2026-05-02 to match cam-view consistently across all
+    # 2-panel L/R XY plots in the consolidated module. Documented as a
+    # deliberate deviation in DECISIONS at Task 9.
+    #
+    # C7.2 Issue A: drop sharex/sharey kwargs because we set explicit
+    # symmetric (-x, +x) / (-y, +y) bounds below — sharey + explicit
+    # set_ylim + set_aspect("equal", adjustable="box") interaction was
+    # confusing and could produce subtle visual asymmetries.
+    fig, axes = plt.subplots(1, 2, figsize=(fig_w, fig_h))
     fig.subplots_adjust(right=legend_right, wspace=panel_wspace)
-    ax_L, ax_R = axes[0], axes[1]
-    side_to_ax = {"L": ax_L, "R": ax_R}
+    ax_left, ax_right = axes[0], axes[1]
+    side_to_ax = {"R": ax_left, "L": ax_right}
 
-    y_top = 0.0
-    y_bottom = max(1e-6, cohort.y_max)
-
-    binned_by_side = {"L": [], "R": []}
+    binned_by_side: dict[str, list[BinnedTraceRow]] = {"L": [], "R": []}
     for b in cohort.binned:
         binned_by_side[b.side].append(b)
 
-    rows_by_side = {"L": [], "R": []}
+    rows_by_side: dict[str, list[MeanTraceRow]] = {"L": [], "R": []}
     for r in cohort.rows:
         rows_by_side[r.side].append(r)
 
-    # Set per-axis styling first (titles, labels, aspect) — matches jaw
-    # cell 32's order. set_ylim is called separately below so sharey=True
-    # propagation is the dominant constraint.
-    for side in ("L", "R"):
-        ax = side_to_ax[side]
-        ax.set_title(f"{side} trials | session mean XY overlays")
+    # C7.2 Issue A — union-symmetric (-x, +x), (-y, +y) bounds across
+    # BOTH L and R subplot data. Take max abs value across binned aggregates
+    # if present (they're tighter than per-session rows; users see them
+    # rendered on top), else fall back to per-session rows.
+    if cohort.binned:
+        mx_per_side = {
+            side: [b.mx for b in binned_by_side[side]]
+            for side in ("L", "R")
+        }
+        my_per_side = {
+            side: [b.my for b in binned_by_side[side]]
+            for side in ("L", "R")
+        }
+    else:
+        mx_per_side = {
+            side: [r.mx for r in rows_by_side[side]]
+            for side in ("L", "R")
+        }
+        my_per_side = {
+            side: [r.my for r in rows_by_side[side]]
+            for side in ("L", "R")
+        }
+    x_abs_max, y_abs_max = _union_symmetric_xy_bounds(
+        mx_per_side=mx_per_side,
+        my_per_side=my_per_side,
+        pad_frac=symmetric_pad_frac,
+    )
+
+    # Per-axis styling. ax_left = R trials (cam-view). ax_right = L trials.
+    for ax in (ax_left, ax_right):
         ax.set_xlabel("x (px, baseline-subtracted)")
         ax.set_ylabel("y (px, baseline-subtracted)")
         ax.set_aspect("equal", adjustable="box")
         ax.grid(True, alpha=0.2)
-    for ax in (ax_L, ax_R):
-        ax.set_ylim(y_bottom, y_top)
+    ax_left.set_title("R trials | session mean XY overlays")
+    ax_right.set_title("L trials | session mean XY overlays")
+    # Apply identical symmetric bounds to both subplots.
+    for ax in (ax_left, ax_right):
+        ax.set_xlim(-x_abs_max, +x_abs_max)
+        ax.set_ylim(-y_abs_max, +y_abs_max)
 
     # Data plotting per side (uses side_to_ax + per-side rows + binned).
     for side in ("L", "R"):
