@@ -1,6 +1,65 @@
 # Cowork Session State
 
-**Latest local refresh:** 2026-05-03 — Phase 7a.6 merged as PR #91
+**Latest local refresh:** 2026-05-03 (later same day, post-7a.6) —
+Two phases ship today after 7a.6.
+
+**(1) Phase 7a.4-orientation-fix MERGED as PR #93** (merge-commit
+`c34c51d`) + tagged `v7a.4-orientation-fix-cam-view-flip`. Two
+commits: `0acf3e7` (`_plot_xy_by_phase` cam-view L/R flip via
+`side_to_ax = {"R": axes[0], "L": axes[1]}` matching 7a.6 C7.2 +
+new `test_xy_by_phase_uses_cam_view_subplot_ordering` orientation
+pin test) + `b8981f6` (DECISIONS + MIGRATION_LOG entries). Visual
+gate verdict PASS Priya 2026-05-03 on PS50/2025-03-19 against
+legacy MICROSCOPE `*_anglePhase_XYphase_*.png`. Closes
+conversation task #41.
+
+**(2) Phase 7a.4-paths-cleanup IN FLIGHT** on `phase/7a.4-paths-cleanup`
+branch (target tag `v7a.4-paths-cleanup`). Net new on top of PR #93:
+(a) three `paths.py` resolver renames retiring the `figures_qc/`
+subtree (`tongue_visual_qc_dir` → `tongue_angle_dir` at
+`dlc_kinematics/tongue_angle/{animal}/{date}/`;
+`tongue_jaw_mismatch_qc_dir` → `tongue_jaw_mismatch_within_session_dir`
+at `tongue_jaw_mismatch/within_session/{animal}/{date}/`;
+`tongue_visual_comparison_dir` DELETED); (b) deletion of the
+`render_comparison_grid` renderer + `_resolve_legacy_png_path` +
+`_save_comparison_grid` + `_LEGACY_SUFFIX` + `mpimg` import +
+public re-export + `TestComparisonGrid` test class — all 7a.4 +
+7a.5 + 7a.6 visual gates have closed PASS so the comparison
+machinery is dead code in production; (c) call-site updates in
+`tongue_jaw_mismatch.py` (`qc_dir` → `within_session_dir`) +
+docstring path examples; (d) test renames in `test_paths.py` with
+docstring history notes; (e) `tests/scripts/_deprecated/README.md`
+documenting frozen-artifact status of `parity_phase7a4_visual_gate.py`
++ `parity_phase7a5_visual_gate.py` (the actual `git mv` happens
+during the close-out CC sequence — sandbox-git boundary blocks me);
+(f) cross-session tongue-jaw mismatch wired into notebook 13 —
+new cell 8 per-mouse loop + `INCLUDE_CROSS_SESSION_MISMATCH`
+toggle + `OVERWRITE_CROSS_SESSION` per-cell overwrite override
+(None = inherit global; "force" = regenerate without re-running
+per-session loops). The `render_cross_session_figures` function
+shipped in 7a.5 / PR #88 with tests but was never invoked from any
+notebook — this phase fixes that integration oversight; (g) mover
+script `scripts/phase_7a/move_figures_qc_to_new_layout.py`
+(idempotent; dry-run default; typed-confirm DELETE for
+`tongue_comparison/`; NOT executed as part of the merge — runs
+post-merge at user's convenience); (h) forward-pointer kickoff doc
+`docs/prompts/phase-7a.4-cross-session-angle-kickoff.md` (~250
+lines) for queued follow-up phase covering net-new cross-session
+aggregations of tongue angle/phase families + per-session
+phase_aligned_angle split into 1st_lick/all_licks modes (audit-
+first; A/B/C outcomes; locks at Task 1). **No numerical change
+anywhere** — purely layout/naming/dead-code-removal. **DECISIONS
+2026-05-03 entry (separate from PR #93's orientation entry)
+codifies all 6 decisions enacted** + cites 7a.6 (mean_sem path
+layout precedent), 7a.5 (cross-session precedent), and PR #93
+(orientation flip) precedents. pytest green on touched test files
+(Priya 2026-05-03); cross-session mismatch smoke iteration on PS46
+in progress via OVERWRITE flag. **Next-phase queued:** Phase
+7a.4-cross-session-angle (kickoff committed as part of this PR;
+CC executes audit-first post-merge).
+
+**Earlier 2026-05-03 wrap (Phase 7a.6 — Mean/SEM visual gate close):**
+Phase 7a.6 merged as PR #91
 (merge-commit `bb4b505`) + tagged `v7a.6-mean-sem`. Tongue + jaw
 "Per session and combined mean/SEM plots" visual gate, audit-first
 → Outcome B + bodypart-parametric architecture. **20 commits** on

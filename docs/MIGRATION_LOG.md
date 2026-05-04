@@ -4887,3 +4887,431 @@ across all 6 plot families.
 during Phase 7a.6 close-out).
 
 **Tag:** `v7a.4-orientation-fix-cam-view-flip` on the merge commit.
+
+---
+
+## Phase 7a.4-paths-cleanup — `figures_qc/` retirement + comparison-grid renderer deletion + tongue-jaw mismatch cross-session wired into notebook 13
+
+**Date:** 2026-05-03
+
+**What was done:**
+
+1. **Three resolver renames** in `src/stroke_orofacial/paths.py`,
+   retiring the `figures_qc/` subtree:
+   - `tongue_visual_qc_dir(animal, date)` → `tongue_angle_dir(animal, date)`,
+     path `dlc_kinematics/figures_qc/tongue/...` →
+     `dlc_kinematics/tongue_angle/...`
+   - `tongue_visual_comparison_dir(animal, date)` — **DELETED**
+     entirely (no callers remain after #2).
+   - `tongue_jaw_mismatch_qc_dir(animal, date)` →
+     `tongue_jaw_mismatch_within_session_dir(animal, date)`, path
+     `tongue_jaw_mismatch/figures_qc/...` →
+     `tongue_jaw_mismatch/within_session/...` (symmetric with the
+     existing `cross_session/` sibling).
+
+   Resolvers carry docstring history notes citing the
+   2026-05-03 DECISIONS entry.
+2. **Comparison-grid renderer + helpers deleted** from
+   `tongue_visual.py`: `render_comparison_grid` function +
+   `_resolve_legacy_png_path` + `_save_comparison_grid` helpers +
+   `_LEGACY_SUFFIX` dict + `mpimg` import (no remaining users).
+   Removed `render_comparison_grid` re-export from
+   `src/stroke_orofacial/dlc_kinematics/__init__.py` (both
+   `from ... import` line and `__all__` entry). Module docstring
+   carries history note pointing at git tag
+   `v7a.4-tongue-visual-and-day-binned` for future re-derivation
+   if needed.
+3. **Tongue-jaw mismatch within-session call-site updates** in
+   `src/stroke_orofacial/dlc_kinematics/tongue_jaw_mismatch.py`:
+   `qc_dir` local var renamed → `within_session_dir`; resolver call
+   updated to `tongue_jaw_mismatch_within_session_dir`; module-
+   header docstring path example updated. The per-trial
+   `jaw_pass_qc` boolean field is unaffected (domain vocabulary,
+   not a directory name).
+4. **Test updates** in `tests/test_paths.py` (renamed two tests +
+   updated path assertions + refreshed class docstrings) and
+   `tests/test_tongue_visual.py` (deleted `TestComparisonGrid`
+   class + 3 tests; removed `render_comparison_grid` import).
+5. **Visual-gate parity scripts deprecated.** Created
+   `tests/scripts/_deprecated/README.md` documenting the rationale
+   + frozen-artifact status. The scripts themselves
+   (`parity_phase7a4_visual_gate.py`,
+   `parity_phase7a5_visual_gate.py`) are moved via `git mv` from
+   the CC terminal during the close-out sequence (sandbox-git
+   boundary blocks me from running `git mv` directly).
+6. **Tongue-jaw mismatch cross-session wired into notebook 13.**
+   Updated `notebooks/13_dlc_kinematics_tongue.ipynb`:
+   - Cell 1 USER INPUTS: added `INCLUDE_CROSS_SESSION_MISMATCH = True`
+     gate + `OVERWRITE_CROSS_SESSION = None` per-cell overwrite
+     override (None = inherit global `OVERWRITE`; "force" =
+     regenerate cross-session without re-running per-session loops).
+   - Cell 2 imports: added `render_cross_session_figures` to the
+     `tongue_jaw_mismatch` import block.
+   - New cell 8 (per-mouse cross-session loop): iterates `ANIMALS`,
+     calls `render_cross_session_figures(animal, resolver,
+     overwrite=overwrite_cs)`, prints `ok/skip/err` summary with
+     resolved overwrite mode visible. Renders 2 PNGs per mouse:
+     `{animal}_crossSessionOverlay2x2_jawBaselineSub.png` and
+     `{animal}_crossSessionBinned2x2_bins{N}_jawBaselineSub.png`
+     (where N comes from `animal_info.bin_days` in
+     `configs/animals.yaml`). Pre-stroke = grey, post-stroke =
+     plasma colormap by relative day; day-binning convention
+     matches 7a.5 cross-session + 7a.6 mean/SEM cross-session
+     precedents.
+   - Notebook now has 12 cells (was 11).
+7. **Mover script for existing on-disk PNGs** at
+   `scripts/phase_7a/move_figures_qc_to_new_layout.py`. Idempotent;
+   `--dry-run` default + `--execute` flag; refuses to clobber
+   existing destinations; prunes empty parent dirs after moves.
+   Handles three trees: (a) `figures_qc/tongue/` →
+   `tongue_angle/`, (b) `tongue_jaw_mismatch/figures_qc/` →
+   `tongue_jaw_mismatch/within_session/`, (c) typed-confirm DELETE
+   of `figures_qc/tongue_comparison/` (gateable via
+   `--keep-comparison`).
+8. **Forward-pointer kickoff doc** at
+   `docs/prompts/phase-7a.4-cross-session-angle-kickoff.md` (~250
+   lines) for a queued follow-up phase covering net-new cross-
+   session aggregations of the tongue angle/phase families plus
+   the per-session split of `phase_aligned_angle` into
+   1st_lick/all_licks modes. Audit-first pattern; three outcome
+   branches A/B/C; locks at Task 1.
+
+**Behavior differences vs. legacy:**
+
+- **Output paths for tongue angle PNGs and tongue-jaw mismatch
+  within-session PNGs have moved.** Existing emitted PNGs at the
+  old `figures_qc/...` locations remain untouched on disk
+  (pre-cleanup runs); the mover script (#7 above) handles
+  relocation. Future runs of `render_tongue_qc_figures` and
+  `render_within_session_figures` write to the new paths.
+- **`tongue_visual_comparison_dir` resolver no longer exists.**
+  Code attempting to call it will fail with `AttributeError`. The
+  comparison-grid renderer that consumed it is also deleted.
+- **No numerical change anywhere.** All algorithm code, data
+  arrays, file-level metadata, parquet schemas, and per-trial
+  scalar values are bit-identical to 7a.6. This phase is purely
+  layout / naming / dead-code-removal.
+- **Notebook 13 cross-session mismatch loop is new** but uses
+  unchanged `render_cross_session_figures` (already shipped in
+  7a.5 / PR #88). Because the renderer was previously code-
+  complete + tested but never invoked from any notebook, the new
+  cross-session PNGs at
+  `dlc_kinematics/tongue_jaw_mismatch/cross_session/{animal}/`
+  are net-new production output streams.
+
+**Exit criteria met:**
+
+- [x] `pytest tests/test_paths.py tests/test_tongue_visual.py
+  tests/test_tongue_jaw_mismatch.py -v` green (Priya 2026-05-03,
+  including the new orientation pin test from PR #93).
+- [x] Cross-session mismatch smoke run on PS46 via notebook 13
+  (Priya iterating with `OVERWRITE_CROSS_SESSION = "force"`).
+- [x] No live code references to deleted resolvers / renderers /
+  exports. Only docstring history notes remain (deliberate).
+- [x] DECISIONS 2026-05-03 entry codifies all 6 decisions enacted.
+
+**Closes:**
+- Implicit `figures_qc/` naming-debt item carried since 7a.4 → 7a.6.
+- Cross-session-mismatch-not-wired-into-notebook-13 integration
+  oversight from 7a.5.
+
+**Forward-pointer queued:** Phase 7a.4-cross-session-angle (kickoff
+doc landed in this phase at
+`docs/prompts/phase-7a.4-cross-session-angle-kickoff.md`).
+
+**Mover-script execution note.** The mover at
+`scripts/phase_7a/move_figures_qc_to_new_layout.py` has NOT been
+run as part of this phase merge. Existing `figures_qc/...` PNGs on
+MICROSCOPE remain at the old paths; future renderer runs write to
+the new paths. Run the mover (`python
+scripts/phase_7a/move_figures_qc_to_new_layout.py --execute`) at a
+convenient time post-merge to relocate historical artifacts and
+unify the tree.
+
+**Tag:** `v7a.4-paths-cleanup` on the merge commit.
+
+---
+
+## Phase 7a.4-paths-cleanup — `figures_qc/` retirement + comparison-grid renderer deletion + tongue-jaw mismatch cross-session wired into notebook 13
+
+**Date:** 2026-05-03
+
+**What was done:**
+
+1. **Three resolver renames** in `src/stroke_orofacial/paths.py`,
+   retiring the `figures_qc/` subtree:
+   - `tongue_visual_qc_dir(animal, date)` → `tongue_angle_dir(animal, date)`,
+     path `dlc_kinematics/figures_qc/tongue/...` →
+     `dlc_kinematics/tongue_angle/...`
+   - `tongue_visual_comparison_dir(animal, date)` — **DELETED**
+     entirely (no callers remain after #2).
+   - `tongue_jaw_mismatch_qc_dir(animal, date)` →
+     `tongue_jaw_mismatch_within_session_dir(animal, date)`, path
+     `tongue_jaw_mismatch/figures_qc/...` →
+     `tongue_jaw_mismatch/within_session/...` (symmetric with the
+     existing `cross_session/` sibling).
+
+   Resolvers carry docstring history notes citing the
+   2026-05-03 DECISIONS entry.
+2. **Comparison-grid renderer + helpers deleted** from
+   `tongue_visual.py`: `render_comparison_grid` function +
+   `_resolve_legacy_png_path` + `_save_comparison_grid` helpers +
+   `_LEGACY_SUFFIX` dict + `mpimg` import (no remaining users).
+   Removed `render_comparison_grid` re-export from
+   `src/stroke_orofacial/dlc_kinematics/__init__.py` (both
+   `from ... import` line and `__all__` entry). Module docstring
+   carries history note pointing at git tag
+   `v7a.4-tongue-visual-and-day-binned` for future re-derivation
+   if needed.
+3. **Tongue-jaw mismatch within-session call-site updates** in
+   `src/stroke_orofacial/dlc_kinematics/tongue_jaw_mismatch.py`:
+   `qc_dir` local var renamed → `within_session_dir`; resolver call
+   updated to `tongue_jaw_mismatch_within_session_dir`; module-
+   header docstring path example updated. The per-trial
+   `jaw_pass_qc` boolean field is unaffected (domain vocabulary,
+   not a directory name).
+4. **Test updates** in `tests/test_paths.py` (renamed two tests +
+   updated path assertions + refreshed class docstrings) and
+   `tests/test_tongue_visual.py` (deleted `TestComparisonGrid`
+   class + 3 tests; removed `render_comparison_grid` import).
+5. **Visual-gate parity scripts deprecated.** Created
+   `tests/scripts/_deprecated/README.md` documenting the rationale
+   + frozen-artifact status. The scripts themselves
+   (`parity_phase7a4_visual_gate.py`,
+   `parity_phase7a5_visual_gate.py`) are moved via `git mv` from
+   the CC terminal during the close-out sequence (sandbox-git
+   boundary blocks me from running `git mv` directly).
+6. **Tongue-jaw mismatch cross-session wired into notebook 13.**
+   Updated `notebooks/13_dlc_kinematics_tongue.ipynb`:
+   - Cell 1 USER INPUTS: added `INCLUDE_CROSS_SESSION_MISMATCH = True`
+     gate + `OVERWRITE_CROSS_SESSION = None` per-cell overwrite
+     override (None = inherit global `OVERWRITE`; "force" =
+     regenerate cross-session without re-running per-session loops).
+   - Cell 2 imports: added `render_cross_session_figures` to the
+     `tongue_jaw_mismatch` import block.
+   - New cell 8 (per-mouse cross-session loop): iterates `ANIMALS`,
+     calls `render_cross_session_figures(animal, resolver,
+     overwrite=overwrite_cs)`, prints `ok/skip/err` summary with
+     resolved overwrite mode visible. Renders 2 PNGs per mouse:
+     `{animal}_crossSessionOverlay2x2_jawBaselineSub.png` and
+     `{animal}_crossSessionBinned2x2_bins{N}_jawBaselineSub.png`
+     (where N comes from `animal_info.bin_days` in
+     `configs/animals.yaml`). Pre-stroke = grey, post-stroke =
+     plasma colormap by relative day; day-binning convention
+     matches 7a.5 cross-session + 7a.6 mean/SEM cross-session
+     precedents.
+   - Notebook now has 12 cells (was 11).
+7. **Mover script for existing on-disk PNGs** at
+   `scripts/phase_7a/move_figures_qc_to_new_layout.py`. Idempotent;
+   `--dry-run` default + `--execute` flag; refuses to clobber
+   existing destinations; prunes empty parent dirs after moves.
+   Handles three trees: (a) `figures_qc/tongue/` →
+   `tongue_angle/`, (b) `tongue_jaw_mismatch/figures_qc/` →
+   `tongue_jaw_mismatch/within_session/`, (c) typed-confirm DELETE
+   of `figures_qc/tongue_comparison/` (gateable via
+   `--keep-comparison`).
+8. **Forward-pointer kickoff doc** at
+   `docs/prompts/phase-7a.4-cross-session-angle-kickoff.md` (~250
+   lines) for a queued follow-up phase covering net-new cross-
+   session aggregations of the tongue angle/phase families plus
+   the per-session split of `phase_aligned_angle` into
+   1st_lick/all_licks modes. Audit-first pattern; three outcome
+   branches A/B/C; locks at Task 1.
+
+**Behavior differences vs. legacy:**
+
+- **Output paths for tongue angle PNGs and tongue-jaw mismatch
+  within-session PNGs have moved.** Existing emitted PNGs at the
+  old `figures_qc/...` locations remain untouched on disk
+  (pre-cleanup runs); the mover script (#7 above) handles
+  relocation. Future runs of `render_tongue_qc_figures` and
+  `render_within_session_figures` write to the new paths.
+- **`tongue_visual_comparison_dir` resolver no longer exists.**
+  Code attempting to call it will fail with `AttributeError`. The
+  comparison-grid renderer that consumed it is also deleted.
+- **No numerical change anywhere.** All algorithm code, data
+  arrays, file-level metadata, parquet schemas, and per-trial
+  scalar values are bit-identical to 7a.6. This phase is purely
+  layout / naming / dead-code-removal.
+- **Notebook 13 cross-session mismatch loop is new** but uses
+  unchanged `render_cross_session_figures` (already shipped in
+  7a.5 / PR #88). Because the renderer was previously code-
+  complete + tested but never invoked from any notebook, the new
+  cross-session PNGs at
+  `dlc_kinematics/tongue_jaw_mismatch/cross_session/{animal}/`
+  are net-new production output streams.
+
+**Exit criteria met:**
+
+- [x] `pytest tests/test_paths.py tests/test_tongue_visual.py
+  tests/test_tongue_jaw_mismatch.py -v` green (Priya 2026-05-03,
+  including the new orientation pin test from PR #93).
+- [x] Cross-session mismatch smoke run on PS46 via notebook 13
+  (Priya iterating with `OVERWRITE_CROSS_SESSION = "force"`).
+- [x] No live code references to deleted resolvers / renderers /
+  exports. Only docstring history notes remain (deliberate).
+- [x] DECISIONS 2026-05-03 entry codifies all 6 decisions enacted
+  + cites 7a.6 (mean_sem path layout), 7a.5 (cross-session
+  precedent), and PR #93 (orientation flip) precedents.
+
+**Closes:**
+- Implicit `figures_qc/` naming-debt item carried since 7a.4 → 7a.6.
+- Cross-session-mismatch-not-wired-into-notebook-13 integration
+  oversight from 7a.5.
+
+**Forward-pointer queued:** Phase 7a.4-cross-session-angle (kickoff
+doc landed in this phase at
+`docs/prompts/phase-7a.4-cross-session-angle-kickoff.md`).
+
+**Mover-script execution note.** The mover at
+`scripts/phase_7a/move_figures_qc_to_new_layout.py` has NOT been
+run as part of this phase merge. Existing `figures_qc/...` PNGs on
+MICROSCOPE remain at the old paths; future renderer runs write to
+the new paths. Run the mover (`python
+scripts/phase_7a/move_figures_qc_to_new_layout.py --execute`) at a
+convenient time post-merge to relocate historical artifacts and
+unify the tree.
+
+**Tag:** `v7a.4-paths-cleanup` on the merge commit.
+
+---
+
+## Phase 7a.4-paths-cleanup — `figures_qc/` retirement + comparison-grid renderer deletion + tongue-jaw mismatch cross-session wired into notebook 13
+
+**Date:** 2026-05-03
+
+**What was done:**
+
+1. **Three resolver renames** in `src/stroke_orofacial/paths.py`,
+   retiring the `figures_qc/` subtree:
+   - `tongue_visual_qc_dir(animal, date)` → `tongue_angle_dir(animal, date)`,
+     path `dlc_kinematics/figures_qc/tongue/...` →
+     `dlc_kinematics/tongue_angle/...`
+   - `tongue_visual_comparison_dir(animal, date)` — **DELETED**
+     entirely (no callers remain after #2).
+   - `tongue_jaw_mismatch_qc_dir(animal, date)` →
+     `tongue_jaw_mismatch_within_session_dir(animal, date)`, path
+     `tongue_jaw_mismatch/figures_qc/...` →
+     `tongue_jaw_mismatch/within_session/...` (symmetric with the
+     existing `cross_session/` sibling).
+
+   Resolvers carry docstring history notes citing the
+   2026-05-03 DECISIONS entry.
+2. **Comparison-grid renderer + helpers deleted** from
+   `tongue_visual.py`: `render_comparison_grid` function +
+   `_resolve_legacy_png_path` + `_save_comparison_grid` helpers +
+   `_LEGACY_SUFFIX` dict + `mpimg` import (no remaining users).
+   Removed `render_comparison_grid` re-export from
+   `src/stroke_orofacial/dlc_kinematics/__init__.py` (both
+   `from ... import` line and `__all__` entry). Module docstring
+   carries history note pointing at git tag
+   `v7a.4-tongue-visual-and-day-binned` for future re-derivation
+   if needed.
+3. **Tongue-jaw mismatch within-session call-site updates** in
+   `src/stroke_orofacial/dlc_kinematics/tongue_jaw_mismatch.py`:
+   `qc_dir` local var renamed → `within_session_dir`; resolver call
+   updated to `tongue_jaw_mismatch_within_session_dir`; module-
+   header docstring path example updated. The per-trial
+   `jaw_pass_qc` boolean field is unaffected (domain vocabulary,
+   not a directory name).
+4. **Test updates** in `tests/test_paths.py` (renamed two tests +
+   updated path assertions + refreshed class docstrings) and
+   `tests/test_tongue_visual.py` (deleted `TestComparisonGrid`
+   class + 3 tests; removed `render_comparison_grid` import).
+5. **Visual-gate parity scripts deprecated.** Created
+   `tests/scripts/_deprecated/README.md` documenting the rationale
+   + frozen-artifact status. The scripts themselves
+   (`parity_phase7a4_visual_gate.py`,
+   `parity_phase7a5_visual_gate.py`) are moved via `git mv` from
+   the CC terminal during the close-out sequence (sandbox-git
+   boundary blocks me from running `git mv` directly).
+6. **Tongue-jaw mismatch cross-session wired into notebook 13.**
+   Updated `notebooks/13_dlc_kinematics_tongue.ipynb`:
+   - Cell 1 USER INPUTS: added `INCLUDE_CROSS_SESSION_MISMATCH = True`
+     gate + `OVERWRITE_CROSS_SESSION = None` per-cell overwrite
+     override (None = inherit global `OVERWRITE`; "force" =
+     regenerate cross-session without re-running per-session loops).
+   - Cell 2 imports: added `render_cross_session_figures` to the
+     `tongue_jaw_mismatch` import block.
+   - New cell 8 (per-mouse cross-session loop): iterates `ANIMALS`,
+     calls `render_cross_session_figures(animal, resolver,
+     overwrite=overwrite_cs)`, prints `ok/skip/err` summary with
+     resolved overwrite mode visible. Renders 2 PNGs per mouse:
+     `{animal}_crossSessionOverlay2x2_jawBaselineSub.png` and
+     `{animal}_crossSessionBinned2x2_bins{N}_jawBaselineSub.png`
+     (where N comes from `animal_info.bin_days` in
+     `configs/animals.yaml`). Pre-stroke = grey, post-stroke =
+     plasma colormap by relative day; day-binning convention
+     matches 7a.5 cross-session + 7a.6 mean/SEM cross-session
+     precedents.
+   - Notebook now has 12 cells (was 11).
+7. **Mover script for existing on-disk PNGs** at
+   `scripts/phase_7a/move_figures_qc_to_new_layout.py`. Idempotent;
+   `--dry-run` default + `--execute` flag; refuses to clobber
+   existing destinations; prunes empty parent dirs after moves.
+   Handles three trees: (a) `figures_qc/tongue/` →
+   `tongue_angle/`, (b) `tongue_jaw_mismatch/figures_qc/` →
+   `tongue_jaw_mismatch/within_session/`, (c) typed-confirm DELETE
+   of `figures_qc/tongue_comparison/` (gateable via
+   `--keep-comparison`).
+8. **Forward-pointer kickoff doc** at
+   `docs/prompts/phase-7a.4-cross-session-angle-kickoff.md` (~250
+   lines) for a queued follow-up phase covering net-new cross-
+   session aggregations of the tongue angle/phase families plus
+   the per-session split of `phase_aligned_angle` into
+   1st_lick/all_licks modes. Audit-first pattern; three outcome
+   branches A/B/C; locks at Task 1.
+
+**Behavior differences vs. legacy:**
+
+- **Output paths for tongue angle PNGs and tongue-jaw mismatch
+  within-session PNGs have moved.** Existing emitted PNGs at the
+  old `figures_qc/...` locations remain untouched on disk
+  (pre-cleanup runs); the mover script (#7 above) handles
+  relocation. Future runs of `render_tongue_qc_figures` and
+  `render_within_session_figures` write to the new paths.
+- **`tongue_visual_comparison_dir` resolver no longer exists.**
+  Code attempting to call it will fail with `AttributeError`. The
+  comparison-grid renderer that consumed it is also deleted.
+- **No numerical change anywhere.** All algorithm code, data
+  arrays, file-level metadata, parquet schemas, and per-trial
+  scalar values are bit-identical to 7a.6. This phase is purely
+  layout / naming / dead-code-removal.
+- **Notebook 13 cross-session mismatch loop is new** but uses
+  unchanged `render_cross_session_figures` (already shipped in
+  7a.5 / PR #88). Because the renderer was previously code-
+  complete + tested but never invoked from any notebook, the new
+  cross-session PNGs at
+  `dlc_kinematics/tongue_jaw_mismatch/cross_session/{animal}/`
+  are net-new production output streams.
+
+**Exit criteria met:**
+
+- [x] `pytest tests/test_paths.py tests/test_tongue_visual.py
+  tests/test_tongue_jaw_mismatch.py -v` green (Priya 2026-05-03,
+  including the new orientation pin test from PR #93).
+- [x] Cross-session mismatch smoke run on PS46 via notebook 13
+  (Priya iterating with `OVERWRITE_CROSS_SESSION = "force"`).
+- [x] No live code references to deleted resolvers / renderers /
+  exports. Only docstring history notes remain (deliberate).
+- [x] DECISIONS 2026-05-03 entry codifies all 6 decisions enacted.
+
+**Closes:**
+- Implicit `figures_qc/` naming-debt item carried since 7a.4 → 7a.6.
+- Cross-session-mismatch-not-wired-into-notebook-13 integration
+  oversight from 7a.5.
+
+**Forward-pointer queued:** Phase 7a.4-cross-session-angle (kickoff
+doc landed in this phase at
+`docs/prompts/phase-7a.4-cross-session-angle-kickoff.md`).
+
+**Mover-script execution note.** The mover at
+`scripts/phase_7a/move_figures_qc_to_new_layout.py` has NOT been
+run as part of this phase merge. Existing `figures_qc/...` PNGs on
+MICROSCOPE remain at the old paths; future renderer runs write to
+the new paths. Run the mover (`python
+scripts/phase_7a/move_figures_qc_to_new_layout.py --execute`) at a
+convenient time post-merge to relocate historical artifacts and
+unify the tree.
+
+**Tag:** `v7a.4-paths-cleanup` on the merge commit.
