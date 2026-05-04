@@ -270,17 +270,17 @@ def synthetic_bundle() -> TongueVisualBundle:
 
 
 class TestRenderTongueQCFigures:
-    def test_emits_8_pngs_per_session(self, tmp_path, synthetic_bundle):
-        """Driver writes 5 family keys: 2 PNGs from qc_trials (per-side)
+    def test_emits_9_pngs_per_session(self, tmp_path, synthetic_bundle):
+        """Driver writes 6 family keys: 2 PNGs from qc_trials (per-side)
         + 3 PNGs from phase_aligned_angle (mode-suffixed
-        _1st_lick / _all_licks / _first_{N}_licks per Phase
-        7a.4-cross-session-angle Addendum #3 lock #3 + Addendum #11
-        Part A, 2026-05-04) + 1 PNG each from first_peak_aligned,
-        reward_aligned, xy_by_phase = 8 total.
+        _1st_lick / _all_licks / _first_{N}_licks) + 1 PNG each from
+        first_peak_aligned, reward_aligned, first_vs_second_peak_scatter,
+        xy_by_phase = 9 total.
 
-        Updated 2026-05-04 per Addendum #11 Part A: the phase-aligned-
-        angle family adds a third mode (``first_n_licks``) emitting
-        the parameterized first-N-licks centered-phase plot.
+        Updated 2026-05-04 per Addendum #11 Part B: new
+        first_vs_second_peak_scatter family (per-trial scatter of
+        peak[0] angle vs peak[1] angle) inserted between
+        phase_aligned_angle and xy_by_phase in _FAMILIES_ALL.
         """
         animal = synthetic_bundle.metadata["animal"]
         date = datetime.date.fromisoformat(synthetic_bundle.metadata["date"])
@@ -292,10 +292,11 @@ class TestRenderTongueQCFigures:
         )
         assert set(out.keys()) == {
             "qc_trials", "first_peak_aligned", "reward_aligned",
-            "phase_aligned_angle", "xy_by_phase",
+            "phase_aligned_angle", "first_vs_second_peak_scatter",
+            "xy_by_phase",
         }
         all_paths = [p for paths in out.values() for p in paths]
-        assert len(all_paths) == 8
+        assert len(all_paths) == 9
         for p in all_paths:
             assert p.exists()
             assert p.stat().st_size > 1024  # > 1 KB sanity
@@ -386,7 +387,7 @@ class TestRenderTongueQCFigures:
     def test_overwrite_skip_does_not_rewrite(
         self, tmp_path, synthetic_bundle,
     ):
-        """skip with all 8 PNGs present → return paths immediately
+        """skip with all 9 PNGs present → return paths immediately
         (sentinel-content detection: stomp one PNG with junk; verify it's
         unchanged after skip-mode rerun)."""
         animal = synthetic_bundle.metadata["animal"]
@@ -626,6 +627,65 @@ class TestPlotFamilies:
         xlim = ax.get_xlim()
         assert xlim[0] == pytest.approx(0.0)
         assert xlim[1] == pytest.approx(2.0)
+        plt.close(fig)
+
+    def test_first_vs_second_peak_scatter_uses_cam_view_subplot_ordering(
+        self, synthetic_bundle,
+    ):
+        """Phase 7a.4-cross-session-angle Addendum #11 Part B
+        (2026-05-04): the LEFT subplot must show R-trials and the
+        RIGHT subplot must show L-trials per the cam-view convention
+        (mirrors 7a.4-orientation-fix + 7a.6 C7.2 + Addendum #16
+        per-cycle convention). Pin against silent regression.
+        """
+        from stroke_orofacial.dlc_kinematics.tongue_visual import (
+            _plot_first_vs_second_peak_scatter,
+        )
+        params = load_defaults()
+        fig = _plot_first_vs_second_peak_scatter(
+            synthetic_bundle, params=params,
+        )
+        assert isinstance(fig, plt.Figure)
+        assert len(fig.axes) >= 2
+        assert "R trials" in fig.axes[0].get_title(), (
+            f"expected 'R trials' in left-panel title; got "
+            f"{fig.axes[0].get_title()!r}"
+        )
+        assert "L trials" in fig.axes[1].get_title(), (
+            f"expected 'L trials' in right-panel title; got "
+            f"{fig.axes[1].get_title()!r}"
+        )
+        plt.close(fig)
+
+    def test_first_vs_second_peak_scatter_has_diagonal_reference(
+        self, synthetic_bundle,
+    ):
+        """Phase 7a.4-cross-session-angle Addendum #11 Part B
+        (2026-05-04): each subplot includes a y=x diagonal
+        reference line spanning the full axis range. Pin via
+        the line's slope (≈1 in axis-data coordinates with
+        equal aspect)."""
+        from stroke_orofacial.dlc_kinematics.tongue_visual import (
+            _plot_first_vs_second_peak_scatter,
+        )
+        params = load_defaults()
+        fig = _plot_first_vs_second_peak_scatter(
+            synthetic_bundle, params=params,
+        )
+        for ax in fig.axes[:2]:
+            # The diagonal line goes from (-max, -max) to (+max, +max);
+            # slope = 1.
+            slopes = []
+            for line in ax.get_lines():
+                xd = np.asarray(line.get_xdata())
+                yd = np.asarray(line.get_ydata())
+                if xd.size == 2 and yd.size == 2 and xd[0] != xd[1]:
+                    slopes.append((yd[1] - yd[0]) / (xd[1] - xd[0]))
+            assert any(
+                abs(s - 1.0) < 1e-6 for s in slopes
+            ), (
+                f"expected a y=x diagonal line; got slopes {slopes!r}"
+            )
         plt.close(fig)
 
     def test_first_n_licks_renders_per_cycle_line_segments(

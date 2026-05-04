@@ -2818,3 +2818,176 @@ class TestComputePreStrokeMedianILI:
         assert cache_key in _PRE_STROKE_MEDIAN_ILI_CACHE
         # Tidy up so the cache state doesn't leak into other tests.
         _PRE_STROKE_MEDIAN_ILI_CACHE.pop(cache_key, None)
+
+
+# ===========================================================================
+# Phase 7a.4-cross-session-angle Addendum #11 Part B (2026-05-04):
+# extract_first_vs_second_peak_pairs
+# ===========================================================================
+
+
+class TestExtractFirstVsSecondPeakPairs:
+    """Phase 7a.4-cross-session-angle Addendum #11 Part B (2026-05-04):
+    helper that extracts the chronologically-first two detected peak
+    angles per (trial, side) from ``df_bouts``. Used by the
+    ``first_vs_second_peak_scatter`` plot family.
+    """
+
+    @staticmethod
+    def _make_per_peak_row(
+        *, trial_index: int, side: str, peak_t_ms: float,
+        peak_angle_deg: float,
+    ) -> dict[str, Any]:
+        return dict(
+            side=side,
+            trial_index=int(trial_index),
+            bout_idx=0,
+            bout_rank=0,
+            multi_bout_rank=0.0,
+            n_peaks=2,
+            bout_t0_ms=float(peak_t_ms - 50.0),
+            bout_t1_ms=float(peak_t_ms + 50.0),
+            peak_t0_ms=float("nan"),
+            peak_t1_ms=float("nan"),
+            peak_y0=float("nan"),
+            peak_angle0=float("nan"),
+            peak_y1=float("nan"),
+            peak_angle1=float("nan"),
+            peak_t_ms=float(peak_t_ms),
+            peak_y=0.0,
+            peak_x=0.0,
+            peak_angle_deg=float(peak_angle_deg),
+        )
+
+    def test_extracts_first_two_peaks_per_trial(self):
+        from stroke_orofacial.dlc_kinematics import (
+            extract_first_vs_second_peak_pairs,
+        )
+        # Trial 0: 3 peaks at 200/300/400 ms with angles -10/+5/+8.
+        # Pair extracted = (-10, +5).
+        df_bouts = pd.DataFrame([
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=200.0,
+                peak_angle_deg=-10.0,
+            ),
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=300.0,
+                peak_angle_deg=5.0,
+            ),
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=400.0,
+                peak_angle_deg=8.0,
+            ),
+        ])
+        out = extract_first_vs_second_peak_pairs(df_bouts)
+        assert len(out) == 1
+        row = out.iloc[0]
+        assert row["trial_index"] == 0
+        assert row["side"] == "L"
+        assert row["peak0_t_ms"] == pytest.approx(200.0)
+        assert row["peak0_angle_deg"] == pytest.approx(-10.0)
+        assert row["peak1_t_ms"] == pytest.approx(300.0)
+        assert row["peak1_angle_deg"] == pytest.approx(5.0)
+
+    def test_skips_trials_with_fewer_than_two_peaks(self):
+        from stroke_orofacial.dlc_kinematics import (
+            extract_first_vs_second_peak_pairs,
+        )
+        df_bouts = pd.DataFrame([
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=200.0,
+                peak_angle_deg=-10.0,
+            ),  # only 1 peak — skip
+            self._make_per_peak_row(
+                trial_index=1, side="R", peak_t_ms=400.0,
+                peak_angle_deg=2.0,
+            ),
+            self._make_per_peak_row(
+                trial_index=1, side="R", peak_t_ms=500.0,
+                peak_angle_deg=8.0,
+            ),  # 2 peaks — kept
+        ])
+        out = extract_first_vs_second_peak_pairs(df_bouts)
+        assert len(out) == 1
+        assert int(out.iloc[0]["trial_index"]) == 1
+        assert out.iloc[0]["side"] == "R"
+
+    def test_chronological_order_across_bouts(self):
+        """Peak ordering is chronological by ``peak_t_ms`` regardless
+        of bout structure. Trial with isolated bout (peak[0]=200ms)
+        + later multi-bout (peak[1]=600, peak[2]=700): first two
+        peaks are 200 and 600.
+        """
+        from stroke_orofacial.dlc_kinematics import (
+            extract_first_vs_second_peak_pairs,
+        )
+        df_bouts = pd.DataFrame([
+            # Isolated bout, multi_bout_rank=NaN (per-peak row).
+            dict(
+                side="L", trial_index=0,
+                bout_idx=0, bout_rank=0,
+                multi_bout_rank=float("nan"),
+                n_peaks=1,
+                bout_t0_ms=150.0, bout_t1_ms=250.0,
+                peak_t0_ms=float("nan"), peak_t1_ms=float("nan"),
+                peak_y0=float("nan"), peak_angle0=float("nan"),
+                peak_y1=float("nan"), peak_angle1=float("nan"),
+                peak_t_ms=200.0, peak_y=0.0, peak_x=0.0,
+                peak_angle_deg=-15.0,
+            ),
+            # Multi-bout peaks
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=600.0,
+                peak_angle_deg=5.0,
+            ),
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=700.0,
+                peak_angle_deg=8.0,
+            ),
+        ])
+        out = extract_first_vs_second_peak_pairs(df_bouts)
+        assert len(out) == 1
+        assert out.iloc[0]["peak0_t_ms"] == pytest.approx(200.0)
+        assert out.iloc[0]["peak0_angle_deg"] == pytest.approx(-15.0)
+        assert out.iloc[0]["peak1_t_ms"] == pytest.approx(600.0)
+        assert out.iloc[0]["peak1_angle_deg"] == pytest.approx(5.0)
+
+    def test_per_trial_per_side_isolation(self):
+        from stroke_orofacial.dlc_kinematics import (
+            extract_first_vs_second_peak_pairs,
+        )
+        df_bouts = pd.DataFrame([
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=200.0,
+                peak_angle_deg=-10.0,
+            ),
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=300.0,
+                peak_angle_deg=5.0,
+            ),
+            self._make_per_peak_row(
+                trial_index=0, side="R", peak_t_ms=600.0,
+                peak_angle_deg=12.0,
+            ),
+            self._make_per_peak_row(
+                trial_index=0, side="R", peak_t_ms=700.0,
+                peak_angle_deg=15.0,
+            ),
+        ])
+        out = extract_first_vs_second_peak_pairs(df_bouts)
+        assert len(out) == 2
+        keys = sorted(zip(out["trial_index"], out["side"]))
+        assert keys == [(0, "L"), (0, "R")]
+
+    def test_empty_df_bouts(self):
+        from stroke_orofacial.dlc_kinematics import (
+            extract_first_vs_second_peak_pairs,
+        )
+        out = extract_first_vs_second_peak_pairs(pd.DataFrame())
+        assert out.empty
+        for col in (
+            "side", "trial_index",
+            "peak0_t_ms", "peak0_angle_deg",
+            "peak1_t_ms", "peak1_angle_deg",
+        ):
+            assert col in out.columns

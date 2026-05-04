@@ -803,6 +803,103 @@ def build_all_licks_centered_phase_rows(
 
 
 # ===========================================================================
+# First-vs-second peak angle pairs (Phase 7a.4-cross-session-angle
+# Addendum #11 Part B)
+# ===========================================================================
+
+
+def extract_first_vs_second_peak_pairs(
+    df_bouts: pd.DataFrame,
+) -> pd.DataFrame:
+    """Per (trial, side), extract the angle of the first two
+    chronologically-detected lick peaks.
+
+    Phase 7a.4-cross-session-angle Addendum #11 Part B (2026-05-04).
+
+    Used by the per-session ``first_vs_second_peak_scatter`` plot
+    family (and the forthcoming cross-session aggregator) to
+    visualize the per-trial pairing of peak[0] and peak[1] angles
+    — direct view of the warming-up first-lick vs settled second-
+    lick angle phenotype.
+
+    "First two peaks" semantic:
+      Per (trial_index, side), take the two chronologically-
+      earliest per-peak rows in ``df_bouts`` (``peak_t_ms.notna()``)
+      regardless of bout structure (multi-bout vs isolated). This
+      matches the post-#15 centered-phase plot convention where
+      "first lick" means the chronologically-first detected peak.
+      Trials with fewer than 2 detected peaks total contribute
+      nothing.
+
+    Parameters
+    ----------
+    df_bouts : DataFrame
+        Mixed bout-summary + per-peak rows from
+        :class:`TongueVisualBundle.df_bouts`. Per-peak rows have
+        ``peak_t_ms.notna()``; this helper consumes only those.
+
+    Returns
+    -------
+    DataFrame
+        One row per (trial_index, side) with columns:
+          - ``side``
+          - ``trial_index``
+          - ``peak0_t_ms``      first peak time
+          - ``peak0_angle_deg`` first peak angle (degrees)
+          - ``peak1_t_ms``      second peak time
+          - ``peak1_angle_deg`` second peak angle (degrees)
+        Empty DataFrame (with these columns) if ``df_bouts`` is
+        empty or has no eligible (≥2-peak) trials.
+    """
+    cols = (
+        "side", "trial_index",
+        "peak0_t_ms", "peak0_angle_deg",
+        "peak1_t_ms", "peak1_angle_deg",
+    )
+    if df_bouts.empty:
+        return pd.DataFrame(
+            {c: pd.Series(dtype=(int if c == "trial_index" else (
+                object if c == "side" else float)
+            )) for c in cols}
+        )
+    per_peak = df_bouts[
+        df_bouts["peak_t_ms"].notna()
+    ][["trial_index", "side", "peak_t_ms", "peak_angle_deg"]].sort_values(
+        ["trial_index", "side", "peak_t_ms"],
+    )
+    if per_peak.empty:
+        return pd.DataFrame(
+            {c: pd.Series(dtype=(int if c == "trial_index" else (
+                object if c == "side" else float)
+            )) for c in cols}
+        )
+
+    rows: list[dict[str, Any]] = []
+    for (trial_idx, side), grp in per_peak.groupby(
+        ["trial_index", "side"], sort=False,
+    ):
+        if len(grp) < 2:
+            continue
+        first_two = grp.iloc[:2]
+        rows.append({
+            "side": str(side),
+            "trial_index": int(trial_idx),
+            "peak0_t_ms": float(first_two.iloc[0]["peak_t_ms"]),
+            "peak0_angle_deg": float(first_two.iloc[0]["peak_angle_deg"]),
+            "peak1_t_ms": float(first_two.iloc[1]["peak_t_ms"]),
+            "peak1_angle_deg": float(first_two.iloc[1]["peak_angle_deg"]),
+        })
+
+    if not rows:
+        return pd.DataFrame(
+            {c: pd.Series(dtype=(int if c == "trial_index" else (
+                object if c == "side" else float)
+            )) for c in cols}
+        )
+    return pd.DataFrame(rows, columns=list(cols))
+
+
+# ===========================================================================
 # Per-animal pre-stroke median ILI (Phase 7a.4-cross-session-angle Addendum #12)
 # ===========================================================================
 #

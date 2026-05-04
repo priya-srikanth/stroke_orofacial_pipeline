@@ -59,6 +59,7 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
     build_tongue_visual_bundle,
     build_tongue_visual_bundle_by_animal_date,
     compute_pre_stroke_median_ili_ms,
+    extract_first_vs_second_peak_pairs,
     get_pre_stroke_median_ili_ms,
 )
 from stroke_orofacial.dlc_kinematics.tongue_visual import (
@@ -112,6 +113,7 @@ __all__ = [
     "classify_tongue_jaw_mismatch",
     "classify_tongue_jaw_mismatch_by_animal_date",
     "compute_pre_stroke_median_ili_ms",
+    "extract_first_vs_second_peak_pairs",
     "get_pre_stroke_median_ili_ms",
     "render_cross_session_figures",
     "render_tongue_qc_figures",

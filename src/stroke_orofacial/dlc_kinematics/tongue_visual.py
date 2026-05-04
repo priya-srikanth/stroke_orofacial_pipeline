@@ -61,6 +61,7 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (  # noqa: E402
     build_first_n_licks_centered_phase_rows,
     build_tongue_visual_bundle,
     build_tongue_visual_bundle_by_animal_date,
+    extract_first_vs_second_peak_pairs,
 )
 from stroke_orofacial.manifest import SessionManifest  # noqa: E402
 from stroke_orofacial.paths import PathResolver  # noqa: E402
@@ -72,6 +73,7 @@ _FAMILIES_ALL: tuple[str, ...] = (
     "first_peak_aligned",
     "reward_aligned",
     "phase_aligned_angle",
+    "first_vs_second_peak_scatter",
     "xy_by_phase",
 )
 # Per-side family — emits 2 PNGs per session.
@@ -753,6 +755,108 @@ def _plot_phase_aligned_angle(
     return fig
 
 
+def _plot_first_vs_second_peak_scatter(
+    bundle: TongueVisualBundle,
+    *,
+    params: dict[str, Any],
+) -> Figure:
+    """Phase 7a.4-cross-session-angle Addendum #11 Part B (2026-05-04):
+    per-trial scatter of (peak[0]_angle, peak[1]_angle), one point per
+    trial, per side. Direct trial-level visualization of the warming-up
+    first-lick vs settled second-lick angle phenotype.
+
+    Layout: 1×2 subplots, cam-view L/R per the project convention
+    (axes[0] = R-trials on figure-LEFT, axes[1] = L-trials on figure-
+    RIGHT — established by 7a.4-orientation-fix PR #93 + 7a.6 C7.2).
+
+    Each subplot:
+      - Scatter where x = peak[0] angle (deg), y = peak[1] angle (deg).
+      - Diagonal y=x reference line (dashed grey) marks "no first-vs-
+        second angle difference".
+      - Symmetric square axes: ``x_lim == y_lim ==
+        (-max_abs * 1.05, +max_abs * 1.05)`` where ``max_abs`` is the
+        max absolute finite angle across both axes (both subplots
+        united so L vs R compare directly off the figure).
+      - Equal aspect so the diagonal is at 45°.
+
+    Reads peak data via :func:`extract_first_vs_second_peak_pairs`,
+    which uses the post-#15 chronological-first-two-peaks semantic
+    (any-bout-structure; matches the centered-phase plot family
+    convention).
+    """
+    visual = params["dlc_kinematics"]["tongue_visual"]
+    side_colors = visual["side_colors"]
+    df_bouts = bundle.df_bouts
+    pairs = extract_first_vs_second_peak_pairs(df_bouts)
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.0, 5.2), sharex=True, sharey=True)
+    # Cam-view convention: R on figure left, L on figure right.
+    side_to_ax = {"R": axes[0], "L": axes[1]}
+
+    if pairs.empty:
+        for ax in axes:
+            ax.text(0.5, 0.5, "No peak pairs available", ha="center",
+                    va="center", transform=ax.transAxes)
+            ax.set_axis_off()
+        animal = bundle.metadata.get("animal", "?")
+        date_str = bundle.metadata.get("date", "?")
+        fig.suptitle(
+            f"{animal} {date_str} | first vs second peak angle",
+            y=0.98,
+        )
+        plt.tight_layout()
+        return fig
+
+    # Symmetric square limits across BOTH subplots (united max abs).
+    angle_vals = np.concatenate([
+        pairs["peak0_angle_deg"].to_numpy(float),
+        pairs["peak1_angle_deg"].to_numpy(float),
+    ])
+    finite = angle_vals[np.isfinite(angle_vals)]
+    max_abs = (
+        float(np.nanmax(np.abs(finite))) * 1.05
+        if finite.size else 50.0
+    )
+    max_abs = max(1.0, max_abs)
+
+    for side in ("R", "L"):
+        ax = side_to_ax[side]
+        side_pairs = pairs[pairs["side"] == side]
+        c = side_colors.get(side, "k")
+        # y = x reference line first so the scatter renders on top.
+        ax.plot(
+            [-max_abs, max_abs], [-max_abs, max_abs],
+            color="0.5", ls="--", lw=1.0, alpha=0.7, zorder=1,
+        )
+        # Axis cross at zero for visual reference.
+        ax.axhline(0, color="0.7", lw=0.8, alpha=0.6, zorder=0)
+        ax.axvline(0, color="0.7", lw=0.8, alpha=0.6, zorder=0)
+        if not side_pairs.empty:
+            ax.scatter(
+                side_pairs["peak0_angle_deg"],
+                side_pairs["peak1_angle_deg"],
+                color=c, s=20, alpha=0.6, edgecolors="none", zorder=2,
+            )
+        n_trials = int(len(side_pairs))
+        ax.set_title(f"{side} trials  (n={n_trials})")
+        ax.set_xlim(-max_abs, +max_abs)
+        ax.set_ylim(-max_abs, +max_abs)
+        ax.set_aspect("equal", adjustable="box")
+        ax.set_xlabel("Peak[0] angle (deg)")
+        ax.grid(True, alpha=0.2)
+    axes[0].set_ylabel("Peak[1] angle (deg)")
+
+    animal = bundle.metadata.get("animal", "?")
+    date_str = bundle.metadata.get("date", "?")
+    fig.suptitle(
+        f"{animal} {date_str} | first vs second peak angle "
+        f"(per-trial scatter; diagonal = no first-vs-second difference)",
+        y=0.98,
+    )
+    plt.tight_layout()
+    return fig
+
+
 def _plot_xy_by_phase(
     bundle: TongueVisualBundle,
     *,
@@ -835,10 +939,11 @@ def _plot_xy_by_phase(
 # Family-name → helper dispatch (qc_trials handled separately because it
 # is per-side; the rest take the bundle directly).
 _PLOT_FAMILY_HELPERS = {
-    "first_peak_aligned":  _plot_first_peak_aligned,
-    "reward_aligned":      _plot_reward_aligned,
-    "phase_aligned_angle": _plot_phase_aligned_angle,
-    "xy_by_phase":         _plot_xy_by_phase,
+    "first_peak_aligned":           _plot_first_peak_aligned,
+    "reward_aligned":               _plot_reward_aligned,
+    "phase_aligned_angle":          _plot_phase_aligned_angle,
+    "first_vs_second_peak_scatter": _plot_first_vs_second_peak_scatter,
+    "xy_by_phase":                  _plot_xy_by_phase,
 }
 
 
