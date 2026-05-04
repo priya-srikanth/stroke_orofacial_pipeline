@@ -1982,3 +1982,251 @@ class TestVisualBundle:
             core.tongue_pertrial = tp  # type: ignore[misc]
         with pytest.raises(FrozenInstanceError):
             vb.df_trials = empty_df  # type: ignore[misc]
+
+
+# ===========================================================================
+# Phase 7a.4-cross-session-angle (Addendum #3 Option C):
+# select_first_lick_phase_rows
+# ===========================================================================
+
+
+class TestSelectFirstLickPhaseRows:
+    """Phase 7a.4-cross-session-angle Addendum #3 Option C — public selector
+    helper that filters ``df_phase`` to the first peak's phase cycle of
+    the first multi-bout per (trial, side). Used by the per-session
+    ``_plot_phase_aligned_angle`` ``_1st_lick`` mode (Addendum #3 lock #3
+    rename) and by the cross-session aggregator's first-lick path.
+
+    Bundle dataclass schema is unchanged — the selector is a pure pandas
+    filter on existing columns (``trial_index``, ``side``,
+    ``multi_bout_rank``, ``t_ms`` from df_phase; ``peak_t_ms``,
+    ``peak_t0_ms``, ``peak_t1_ms`` from df_bouts). Algorithm unchanged.
+    """
+
+    @staticmethod
+    def _make_phase_row(
+        *, trial_index: int, side: str, multi_bout_rank: int, t_ms: float,
+        phase: float = 0.5, phase_bin_center: float = 0.5,
+        angle_deg: float = 0.0,
+    ) -> dict[str, Any]:
+        return dict(
+            side=side,
+            trial_index=int(trial_index),
+            bout_idx=0,
+            bout_rank=0,
+            multi_bout_rank=int(multi_bout_rank),
+            t_ms=float(t_ms),
+            phase=float(phase),
+            phase_bin=int(round(phase_bin_center * 36)),
+            phase_bin_center=float(phase_bin_center),
+            angle_deg=float(angle_deg),
+            x_geom=0.0,
+            y_geom=100.0,
+        )
+
+    @staticmethod
+    def _make_summary_row(
+        *, trial_index: int, side: str, multi_bout_rank: float,
+        peak_t0_ms: float, peak_t1_ms: float, n_peaks: int = 3,
+    ) -> dict[str, Any]:
+        return dict(
+            side=side,
+            trial_index=int(trial_index),
+            bout_idx=0,
+            bout_rank=0,
+            multi_bout_rank=multi_bout_rank,
+            n_peaks=int(n_peaks),
+            bout_t0_ms=float(peak_t0_ms - 50.0),
+            bout_t1_ms=float(peak_t1_ms + 50.0),
+            peak_t0_ms=float(peak_t0_ms),
+            peak_t1_ms=float(peak_t1_ms),
+            peak_y0=100.0, peak_angle0=10.0,
+            peak_y1=100.0, peak_angle1=10.0,
+            peak_t_ms=float("nan"),
+            peak_y=float("nan"),
+            peak_x=float("nan"),
+            peak_angle_deg=float("nan"),
+        )
+
+    def test_filters_to_first_peak_pair_window(self):
+        """Trial with 3 phase rows in the first multi-bout: at t=100,
+        t=200 (= peak_t1_ms boundary), and t=350 (between peak_1 and
+        peak_2). With peak_t0_ms=100, peak_t1_ms=200, the selector
+        keeps t=100 and t=200 (both inclusive) and drops t=350.
+        """
+        from stroke_orofacial.dlc_kinematics import (
+            select_first_lick_phase_rows,
+        )
+        phase_rows = [
+            self._make_phase_row(
+                trial_index=0, side="L", multi_bout_rank=0, t_ms=100.0,
+            ),
+            self._make_phase_row(
+                trial_index=0, side="L", multi_bout_rank=0, t_ms=200.0,
+            ),
+            self._make_phase_row(
+                trial_index=0, side="L", multi_bout_rank=0, t_ms=350.0,
+            ),
+        ]
+        df_phase = pd.DataFrame(phase_rows)
+        # Bout summary + per-peak rows for trial 0, side L. peak_t1=200.
+        bouts_rows = [
+            self._make_summary_row(
+                trial_index=0, side="L", multi_bout_rank=0.0,
+                peak_t0_ms=100.0, peak_t1_ms=200.0,
+            ),
+        ]
+        df_bouts = pd.DataFrame(bouts_rows)
+        out = select_first_lick_phase_rows(df_phase, df_bouts)
+        # Two rows: t=100 and t=200; t=350 dropped (outside [100, 200]).
+        assert len(out) == 2
+        out_t = sorted(out["t_ms"].tolist())
+        assert out_t == [100.0, 200.0]
+
+    def test_per_trial_per_side_isolation(self):
+        """Selector applies (trial_index, side) merge keys: trial 0 side L's
+        first-lick window does NOT leak into trial 1's filter."""
+        from stroke_orofacial.dlc_kinematics import (
+            select_first_lick_phase_rows,
+        )
+        phase_rows = [
+            # trial 0 L: keep
+            self._make_phase_row(
+                trial_index=0, side="L", multi_bout_rank=0, t_ms=150.0,
+            ),
+            # trial 1 R: must use trial 1's own peak times, not trial 0's
+            self._make_phase_row(
+                trial_index=1, side="R", multi_bout_rank=0, t_ms=600.0,
+            ),
+            # trial 1 R: drop — outside trial 1's [500, 700] window
+            self._make_phase_row(
+                trial_index=1, side="R", multi_bout_rank=0, t_ms=900.0,
+            ),
+        ]
+        df_phase = pd.DataFrame(phase_rows)
+        bouts_rows = [
+            # trial 0 L: peak_t0=100, peak_t1=200 → keeps t=150
+            self._make_summary_row(
+                trial_index=0, side="L", multi_bout_rank=0.0,
+                peak_t0_ms=100.0, peak_t1_ms=200.0,
+            ),
+            # trial 1 R: peak_t0=500, peak_t1=700 → keeps t=600, drops t=900
+            self._make_summary_row(
+                trial_index=1, side="R", multi_bout_rank=0.0,
+                peak_t0_ms=500.0, peak_t1_ms=700.0,
+            ),
+        ]
+        df_bouts = pd.DataFrame(bouts_rows)
+        out = select_first_lick_phase_rows(df_phase, df_bouts)
+        assert len(out) == 2
+        assert set(zip(out["trial_index"], out["side"])) == {(0, "L"), (1, "R")}
+
+    def test_excludes_later_multi_bout_rank(self):
+        """Phase rows with multi_bout_rank > 0 (= second or later
+        multi-bout in the trial) are dropped by the
+        ``multi_bout_rank == 0`` predicate, regardless of ``t_ms``."""
+        from stroke_orofacial.dlc_kinematics import (
+            select_first_lick_phase_rows,
+        )
+        phase_rows = [
+            # Inside the first-lick time window BUT multi_bout_rank == 1
+            # — must be dropped (second multi-bout's phase, not first).
+            self._make_phase_row(
+                trial_index=0, side="L", multi_bout_rank=1, t_ms=150.0,
+            ),
+            # multi_bout_rank == 0 inside window — kept
+            self._make_phase_row(
+                trial_index=0, side="L", multi_bout_rank=0, t_ms=150.0,
+            ),
+        ]
+        df_phase = pd.DataFrame(phase_rows)
+        bouts_rows = [
+            self._make_summary_row(
+                trial_index=0, side="L", multi_bout_rank=0.0,
+                peak_t0_ms=100.0, peak_t1_ms=200.0,
+            ),
+        ]
+        df_bouts = pd.DataFrame(bouts_rows)
+        out = select_first_lick_phase_rows(df_phase, df_bouts)
+        assert len(out) == 1
+        assert int(out.iloc[0]["multi_bout_rank"]) == 0
+
+    def test_empty_inputs(self):
+        """Empty df_phase OR empty df_bouts OR no first-multi summary
+        rows → returns an empty DataFrame with the same columns as
+        df_phase."""
+        from stroke_orofacial.dlc_kinematics import (
+            select_first_lick_phase_rows,
+        )
+        empty_phase = pd.DataFrame(columns=[
+            "side", "trial_index", "bout_idx", "bout_rank",
+            "multi_bout_rank", "t_ms", "phase", "phase_bin",
+            "phase_bin_center", "angle_deg", "x_geom", "y_geom",
+        ])
+        empty_bouts = pd.DataFrame(columns=[
+            "side", "trial_index", "multi_bout_rank",
+            "peak_t0_ms", "peak_t1_ms", "peak_t_ms",
+        ])
+        # Both empty.
+        out = select_first_lick_phase_rows(empty_phase, empty_bouts)
+        assert out.empty
+        # df_phase populated but df_bouts empty.
+        df_phase = pd.DataFrame([
+            self._make_phase_row(
+                trial_index=0, side="L", multi_bout_rank=0, t_ms=150.0,
+            ),
+        ])
+        out = select_first_lick_phase_rows(df_phase, empty_bouts)
+        assert out.empty
+        # df_bouts has only NaN-ranked (single-lick) summary rows → no
+        # first-multi → empty.
+        single_lick_bout = pd.DataFrame([
+            self._make_summary_row(
+                trial_index=0, side="L", multi_bout_rank=float("nan"),
+                peak_t0_ms=100.0, peak_t1_ms=float("nan"),
+                n_peaks=1,
+            ),
+        ])
+        out = select_first_lick_phase_rows(df_phase, single_lick_bout)
+        assert out.empty
+
+    def test_excludes_per_peak_rows_in_df_bouts(self):
+        """The selector must read ``peak_t0_ms`` / ``peak_t1_ms`` from
+        the BOUT-SUMMARY rows in df_bouts (peak_t_ms NaN), NOT from
+        per-peak rows (peak_t_ms populated, peak_t0_ms NaN). Catches a
+        regression where the merge accidentally pulls in per-peak rows
+        and gets NaN bounds.
+        """
+        from stroke_orofacial.dlc_kinematics import (
+            select_first_lick_phase_rows,
+        )
+        phase_rows = [
+            self._make_phase_row(
+                trial_index=0, side="L", multi_bout_rank=0, t_ms=150.0,
+            ),
+        ]
+        df_phase = pd.DataFrame(phase_rows)
+        # Mix of bout-summary row (peak_t_ms NaN, peak_t0/t1 set) AND
+        # per-peak rows (peak_t_ms set, peak_t0/t1 NaN). The selector
+        # must use ONLY the summary row.
+        bouts_rows = [
+            self._make_summary_row(
+                trial_index=0, side="L", multi_bout_rank=0.0,
+                peak_t0_ms=100.0, peak_t1_ms=200.0,
+            ),
+            # per-peak row: peak_t_ms populated, peak_t0_ms / peak_t1_ms NaN
+            dict(
+                side="L", trial_index=0,
+                bout_idx=0, bout_rank=0, multi_bout_rank=0.0, n_peaks=3,
+                bout_t0_ms=50.0, bout_t1_ms=250.0,
+                peak_t0_ms=float("nan"), peak_t1_ms=float("nan"),
+                peak_y0=float("nan"), peak_angle0=float("nan"),
+                peak_y1=float("nan"), peak_angle1=float("nan"),
+                peak_t_ms=120.0, peak_y=100.0, peak_x=0.0,
+                peak_angle_deg=10.0,
+            ),
+        ]
+        df_bouts = pd.DataFrame(bouts_rows)
+        out = select_first_lick_phase_rows(df_phase, df_bouts)
+        assert len(out) == 1
+        assert float(out.iloc[0]["t_ms"]) == 150.0

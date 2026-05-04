@@ -55,6 +55,7 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
     build_tongue_pertrial_by_animal_date,
     build_tongue_visual_bundle,
     build_tongue_visual_bundle_by_animal_date,
+    select_first_lick_phase_rows,
 )
 from stroke_orofacial.dlc_kinematics.tongue_visual import (
     render_tongue_qc_figures,
@@ -106,4 +107,5 @@ __all__ = [
     "render_cross_session_figures",
     "render_tongue_qc_figures",
     "render_within_session_figures",
+    "select_first_lick_phase_rows",
 ]

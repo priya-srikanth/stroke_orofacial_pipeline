@@ -191,6 +191,90 @@ class _PertrialCoreResult:
 
 
 # ===========================================================================
+# Public selectors over TongueVisualBundle.df_phase
+# ===========================================================================
+
+
+def select_first_lick_phase_rows(
+    df_phase: pd.DataFrame, df_bouts: pd.DataFrame,
+) -> pd.DataFrame:
+    """Filter ``df_phase`` to the FIRST LICK's phase cycle per (trial, side).
+
+    Phase 7a.4-cross-session-angle (2026-05-04, Addendum #3 Option C):
+    "first lick" = first peak of the FIRST multi-lick bout per trial.
+    The phase cycle around it is the time interval
+    ``[peak_t0_ms, peak_t1_ms]`` from the bout-summary row in ``df_bouts``
+    where ``multi_bout_rank == 0`` (and ``peak_t_ms`` is NaN — the
+    summary-row marker per the legacy Cell 50 mixed-row schema).
+
+    The returned subset matches the existing
+    :func:`_select_phase_rows` shape: same df_phase columns, just fewer
+    rows. Single-lick (isolated) bouts are NOT promoted into this
+    filter — phase requires ≥2 peaks to define a cycle, and df_phase
+    only contains multi-bout rows by construction (legacy fidelity per
+    Phase 7a.4-cross-session-angle Addendum #5 Option α).
+
+    Parameters
+    ----------
+    df_phase : DataFrame
+        Per-frame phase rows from
+        :class:`TongueVisualBundle.df_phase`. Required columns:
+        ``trial_index``, ``side``, ``multi_bout_rank``, ``t_ms``.
+    df_bouts : DataFrame
+        Mixed bout-summary + per-peak rows from
+        :class:`TongueVisualBundle.df_bouts`. Bout-summary rows are
+        identified by ``peak_t_ms.isna()``; carry ``peak_t0_ms`` and
+        ``peak_t1_ms`` time bounds per legacy Cell 50 schema.
+
+    Returns
+    -------
+    DataFrame
+        Rows of ``df_phase`` whose ``multi_bout_rank == 0`` AND whose
+        ``t_ms`` falls inside the first multi-bout's
+        ``[peak_t0_ms, peak_t1_ms]`` interval (inclusive on both ends).
+        Empty DataFrame (with the same columns as ``df_phase``) if
+        either input is empty or no first-multi-bout summary rows
+        exist.
+
+    Notes
+    -----
+    Boundary semantic: the inclusive ``<=`` / ``>=`` filter on
+    ``t_ms`` ∈ ``[peak_t0_ms, peak_t1_ms]`` includes both endpoints.
+    Frames at exactly the boundary timestamps (which would be the
+    first-peak frame and the second-peak frame) are kept. No
+    off-by-one is possible because the cross-reference is on time
+    (not frame index) and the row-builder emits at most one
+    ``df_phase`` row per (trial, frame) tuple.
+    """
+    if df_phase.empty or df_bouts.empty:
+        return df_phase.iloc[0:0].copy()
+
+    summaries = df_bouts[
+        df_bouts["peak_t_ms"].isna()
+        & (df_bouts["multi_bout_rank"] == 0)
+    ][["trial_index", "side", "peak_t0_ms", "peak_t1_ms"]].drop_duplicates()
+    if summaries.empty:
+        return df_phase.iloc[0:0].copy()
+
+    first_multi = df_phase[df_phase["multi_bout_rank"] == 0]
+    if first_multi.empty:
+        return df_phase.iloc[0:0].copy()
+
+    merged = first_multi.merge(
+        summaries, on=["trial_index", "side"], how="inner",
+    )
+    in_first_pair = (
+        (merged["t_ms"] >= merged["peak_t0_ms"])
+        & (merged["t_ms"] <= merged["peak_t1_ms"])
+    )
+    return (
+        merged[in_first_pair]
+        .drop(columns=["peak_t0_ms", "peak_t1_ms"])
+        .reset_index(drop=True)
+    )
+
+
+# ===========================================================================
 # Public API
 # ===========================================================================
 
