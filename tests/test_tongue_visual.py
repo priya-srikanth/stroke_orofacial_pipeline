@@ -426,11 +426,40 @@ class TestPlotFamilies:
         params = load_defaults()
         fig = _plot_xy_by_phase(synthetic_bundle, params=params)
         assert isinstance(fig, plt.Figure)
-        # 2 panels (L, R); both should have collections (scatter
-        # PathCollection) when phase rows exist for both sides.
+        # 2 panels (cam-view: R-trials on figure left, L-trials on
+        # figure right per Phase 7a.4-orientation-fix); both should have
+        # collections (scatter PathCollection) when phase rows exist for
+        # both sides.
         assert len(fig.axes) >= 2
         any_collections = any(len(ax.collections) > 0 for ax in fig.axes)
         assert any_collections
+        plt.close(fig)
+
+    def test_xy_by_phase_uses_cam_view_subplot_ordering(
+        self, synthetic_bundle,
+    ):
+        """Phase 7a.4-orientation-fix (2026-05-03): the LEFT subplot
+        must show R-trials and the RIGHT subplot must show L-trials
+        (cam-view convention; the camera mirror-images the mouse so
+        mouse-left appears on the right of the camera frame). Locks
+        the convention against silent regression. Mirrors the 7a.6
+        C7.2 ``side_to_ax = {"R": ax_left, "L": ax_right}`` mapping
+        used by ``mean_sem_visual._plot_mean_xy_overlays``.
+        """
+        params = load_defaults()
+        fig = _plot_xy_by_phase(synthetic_bundle, params=params)
+        # First two axes are the L/R panels; any subsequent axes
+        # (e.g., colorbar) are appended after via ``fig.add_axes``.
+        # Titles set via ``ax.set_title(f"{side} trials")``.
+        assert len(fig.axes) >= 2
+        assert "R trials" in fig.axes[0].get_title(), (
+            f"expected 'R trials' in left-panel title; got "
+            f"{fig.axes[0].get_title()!r}"
+        )
+        assert "L trials" in fig.axes[1].get_title(), (
+            f"expected 'L trials' in right-panel title; got "
+            f"{fig.axes[1].get_title()!r}"
+        )
         plt.close(fig)
 
     def test_qc_traces_angle_subplot_renders_peak_scatter(
