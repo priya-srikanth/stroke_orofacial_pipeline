@@ -15,6 +15,80 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-03 — Phase 7a.4-orientation-fix — `xy_by_phase` cam-view L/R subplot flip
+
+**Context.** Phase 7a.4 (PR #86, 2026-04-30) shipped `tongue_visual.py`
+with `_plot_xy_by_phase` rendering its 1×2 L/R subplots in legacy
+ordering: L-trials on figure left, R-trials on figure right. Phase
+7a.6 (PR #91, 2026-05-02) introduced the cam-view convention for
+`mean_sem_visual.py` mean_xy overlays in C7.2 — `side_to_ax = {"R":
+ax_left, "L": ax_right}` — based on the camera mirror-imaging the
+mouse: mouse-left appears on the right of the camera frame, so to
+display panels in cam-view the R-trial panel goes on figure-left.
+Priya flagged 2026-05-02 that `tongue_visual.py` was inconsistent
+with the new convention; this small follow-up reconciles the two.
+
+**Decisions enacted.**
+
+1. **`_plot_xy_by_phase` adopts the cam-view convention** —
+   `side_to_ax = {"R": axes[0], "L": axes[1]}` mirroring the 7a.6
+   C7.2 pattern in `mean_sem_visual._plot_mean_xy_overlays`. The
+   explicit mapping (over a `sides = ("R", "L")` tuple iteration) is
+   the self-documenting form: a future reader can grep for
+   `side_to_ax` and immediately see the convention without having
+   to mentally trace `zip(axes, sides)`.
+
+2. **Scope limited to Family 5 `xy_by_phase`.** The other 4 families
+   in `tongue_visual.py` either have no L/R subplot in a single
+   figure (`first_peak_aligned`, `reward_aligned`,
+   `phase_aligned_angle` overlay both sides on a single axes) or
+   emit per-side PNGs to separate files (`qc_trials_side_L.png`,
+   `qc_trials_side_R.png` — file naming, not subplot ordering).
+   Confirmed with Priya 2026-05-03.
+
+3. **No numerical change.** Only subplot indexing flips; data arrays
+   (`x_geom`, `y_geom`, `phase`) are unchanged. Acceptance is the
+   new orientation pin test plus Priya's PASS verdict on the visual
+   diff against legacy MICROSCOPE
+   `*_anglePhase_XYphase_*.png` for PS50/2025-03-19.
+
+4. **Comparison grid (`render_comparison_grid` for `xy_by_phase`)
+   now shows a deliberate L/R divergence between consolidated and
+   legacy panes** — the consolidated pane is R-left (cam-view), the
+   legacy PNG on MICROSCOPE remains L-left (untouched). This is
+   *expected* and documented here so a future audit doesn't read
+   it as a regression. `render_comparison_grid` is unchanged: the
+   grid simply tiles the two PNGs as-is.
+
+**Rationale.** Camera mirror-imaging is a fundamental property of
+the rig (mouse-left = camera-right). Displaying R-trials on figure-
+left makes panel labels match what the experimenter sees through
+the camera, which is the operationally-correct frame for analysing
+post-stroke unilateral motor deficits — where which side of the
+mouse is impaired is the load-bearing question. Convention applied
+uniformly across all consolidated XY-style L/R subplot views
+(7a.6 mean_xy, 7a.4 xy_by_phase) so the rig-side mental model is
+consistent across every figure.
+
+**Enforced at.**
+- `src/stroke_orofacial/dlc_kinematics/tongue_visual.py`
+  `_plot_xy_by_phase` — explicit `side_to_ax` mapping + 6-line
+  comment block citing this entry.
+- `tests/test_tongue_visual.py`
+  `test_xy_by_phase_uses_cam_view_subplot_ordering` pinning the
+  convention against silent regression (asserts
+  `"R trials" in fig.axes[0].get_title()` /
+  `"L trials" in fig.axes[1].get_title()`).
+- `src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py`
+  (existing 7a.6 C7.2 precedent the convention was sourced from).
+
+**Closes:** task #41 in the Cowork conversation task list (filed
+2026-05-02 during 7a.6 close-out as a follow-up surfaced by C7.2).
+
+**Tag:** `v7a.4-orientation-fix-cam-view-flip` on the PR merge commit.
+
+---
+
 ## 2026-05-03 — Phase 7a.6 — Mean/SEM visual gate (tongue + jaw, bodypart-parametric)
 
 **Context.** Phase 7a.5-mismatch (PR #90) merged 2026-05-01 closed the
