@@ -270,8 +270,16 @@ def synthetic_bundle() -> TongueVisualBundle:
 
 
 class TestRenderTongueQCFigures:
-    def test_emits_6_pngs_per_session(self, tmp_path, synthetic_bundle):
-        """Driver writes 2 family-1 (per-side) + 4 single-PNG families = 6."""
+    def test_emits_7_pngs_per_session(self, tmp_path, synthetic_bundle):
+        """Driver writes 5 family keys: 2 PNGs from qc_trials (per-side)
+        + 2 PNGs from phase_aligned_angle (mode-suffixed
+        _1st_lick / _all_licks per Phase 7a.4-cross-session-angle
+        Addendum #3 lock #3, 2026-05-04) + 1 PNG each from
+        first_peak_aligned, reward_aligned, xy_by_phase = 7 total.
+
+        Updated 2026-05-04 per Addendum #3: the phase-aligned-angle
+        family now emits 2 PNGs (mode split) instead of 1 bare PNG.
+        """
         animal = synthetic_bundle.metadata["animal"]
         date = datetime.date.fromisoformat(synthetic_bundle.metadata["date"])
         resolver = PathResolver(output_root=tmp_path)
@@ -280,18 +288,49 @@ class TestRenderTongueQCFigures:
             bundle=synthetic_bundle,
             overwrite="force",
         )
-        # 5 family keys; family 1 has 2 paths, others 1 each. Total 6.
         assert set(out.keys()) == {
             "qc_trials", "first_peak_aligned", "reward_aligned",
             "phase_aligned_angle", "xy_by_phase",
         }
         all_paths = [p for paths in out.values() for p in paths]
-        assert len(all_paths) == 6
+        assert len(all_paths) == 7
         for p in all_paths:
             assert p.exists()
             assert p.stat().st_size > 1024  # > 1 KB sanity
             # No leftover .tmp files from atomic save.
             assert not p.with_name(p.name + ".tmp").exists()
+
+    def test_phase_aligned_angle_emits_mode_suffixed_pngs(
+        self, tmp_path, synthetic_bundle,
+    ):
+        """Phase 7a.4-cross-session-angle Addendum #3 lock #3
+        (2026-05-04): the bare ``phase_aligned_angle.png`` filename is
+        retired. The driver always emits two mode-suffixed PNGs per
+        session: ``_1st_lick.png`` (mode = ``first_lick``, new
+        Addendum #3 Option C selector) + ``_all_licks.png`` (mode =
+        ``all_multi``).
+        """
+        animal = synthetic_bundle.metadata["animal"]
+        date = datetime.date.fromisoformat(synthetic_bundle.metadata["date"])
+        resolver = PathResolver(output_root=tmp_path)
+        out = render_tongue_qc_figures(
+            animal=animal, date=date, resolver=resolver,
+            bundle=synthetic_bundle,
+            families=["phase_aligned_angle"],
+            overwrite="force",
+        )
+        paths = out["phase_aligned_angle"]
+        assert len(paths) == 2
+        names = {p.name for p in paths}
+        assert names == {
+            "phase_aligned_angle_1st_lick.png",
+            "phase_aligned_angle_all_licks.png",
+        }
+        # The bare filename must NOT be emitted.
+        bare = (
+            resolver.tongue_angle_dir(animal, date) / "phase_aligned_angle.png"
+        )
+        assert not bare.exists()
 
     def test_per_trial_qc_emits_separate_png_per_side(
         self, tmp_path, synthetic_bundle,
@@ -313,7 +352,7 @@ class TestRenderTongueQCFigures:
     def test_overwrite_skip_does_not_rewrite(
         self, tmp_path, synthetic_bundle,
     ):
-        """skip with all 6 PNGs present → return paths immediately
+        """skip with all 7 PNGs present → return paths immediately
         (sentinel-content detection: stomp one PNG with junk; verify it's
         unchanged after skip-mode rerun)."""
         animal = synthetic_bundle.metadata["animal"]
@@ -460,12 +499,61 @@ class TestPlotFamilies:
         plt.close(fig)
 
     def test_phase_aligned_angle_returns_nonempty_figure(self, synthetic_bundle):
+        """Default mode path (no ``mode`` arg → falls back to config
+        ``modes.phase_summary``)."""
         params = load_defaults()
         fig = _plot_phase_aligned_angle(synthetic_bundle, params=params)
         assert isinstance(fig, plt.Figure)
         assert len(fig.axes) >= 1
         any_lines = any(len(ax.get_lines()) > 0 for ax in fig.axes)
         assert any_lines
+        plt.close(fig)
+
+    def test_phase_aligned_angle_mode_first_lick_uses_selector(
+        self, synthetic_bundle,
+    ):
+        """Phase 7a.4-cross-session-angle Addendum #3 Option C
+        (2026-05-04): when called with ``mode="first_lick"``,
+        ``_plot_phase_aligned_angle`` dispatches to
+        :func:`select_first_lick_phase_rows` for row selection. The
+        resulting figure is non-empty (provided the synthetic bundle
+        has any frames inside the first multi-bout's first peak-pair
+        window) and the title carries the ``first_lick`` mode token.
+        """
+        params = load_defaults()
+        fig = _plot_phase_aligned_angle(
+            synthetic_bundle, params=params, mode="first_lick",
+        )
+        assert isinstance(fig, plt.Figure)
+        ax = fig.axes[0]
+        assert "first_lick" in ax.get_title()
+        plt.close(fig)
+
+    def test_phase_aligned_angle_mode_all_multi_includes_more_rows(
+        self, synthetic_bundle,
+    ):
+        """Mode ``"all_multi"`` must yield at least as many curve
+        points as ``"first_lick"`` (the latter is a strict subset)."""
+        from stroke_orofacial.dlc_kinematics import (
+            select_first_lick_phase_rows,
+        )
+        from stroke_orofacial.dlc_kinematics.tongue_visual import (
+            _select_phase_rows,
+        )
+        n_first_lick = len(select_first_lick_phase_rows(
+            synthetic_bundle.df_phase, synthetic_bundle.df_bouts,
+        ))
+        n_all_multi = len(_select_phase_rows(
+            synthetic_bundle.df_phase, "all_multi",
+        ))
+        assert n_first_lick <= n_all_multi
+        # Selectors are exercised through the renderer; figure smoke
+        # check confirms no exceptions.
+        params = load_defaults()
+        fig = _plot_phase_aligned_angle(
+            synthetic_bundle, params=params, mode="all_multi",
+        )
+        assert "all_multi" in fig.axes[0].get_title()
         plt.close(fig)
 
     def test_xy_by_phase_returns_nonempty_figure(self, synthetic_bundle):

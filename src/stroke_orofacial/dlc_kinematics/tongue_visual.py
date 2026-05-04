@@ -58,6 +58,7 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (  # noqa: E402
     TrialEvent,
     build_tongue_visual_bundle,
     build_tongue_visual_bundle_by_animal_date,
+    select_first_lick_phase_rows,
 )
 from stroke_orofacial.manifest import SessionManifest  # noqa: E402
 from stroke_orofacial.paths import PathResolver  # noqa: E402
@@ -73,6 +74,24 @@ _FAMILIES_ALL: tuple[str, ...] = (
 )
 # Per-side family — emits 2 PNGs per session.
 _PER_SIDE_FAMILIES: frozenset[str] = frozenset({"qc_trials"})
+
+# Phase 7a.4-cross-session-angle Addendum #3 (lock #3, 2026-05-04):
+# the phase-aligned-angle family is now per-mode (emits one PNG per
+# entry below) rather than a single bare PNG. The bare
+# ``phase_aligned_angle.png`` is retired; callers see the suffixed
+# filenames listed here. Order matters for output discoverability.
+# Internal mode tokens stay decoupled from user-facing suffixes:
+# ``"first_lick"`` is the new selector (Addendum #3 Option C — first
+# peak's phase cycle of the first multi-bout per trial);
+# ``"all_multi"`` is the existing all-multi-bout selector. The
+# ``"first_multi"`` mode stays in :func:`_select_phase_rows` for
+# legacy callers but is no longer wired into any phase-aligned-angle
+# filename.
+_PHASE_ALIGNED_ANGLE_VARIANTS: tuple[tuple[str, str], ...] = (
+    ("1st_lick", "first_lick"),
+    ("all_licks", "all_multi"),
+)
+_MULTI_VARIANT_FAMILIES: frozenset[str] = frozenset({"phase_aligned_angle"})
 
 
 # ============================================================================
@@ -184,6 +203,21 @@ def render_tongue_qc_figures(
             for side in sides_present:
                 fig = _plot_per_trial_qc_traces(bundle, side, params=params)
                 png_path = out_dir / f"{family}_side_{side}.png"
+                _save_and_close(fig, png_path, params=params)
+                family_paths.append(png_path)
+            out_paths[family] = family_paths
+        elif family in _MULTI_VARIANT_FAMILIES:
+            # Phase 7a.4-cross-session-angle Addendum #3 lock #3
+            # (2026-05-04): emit one PNG per (suffix, mode) variant
+            # listed in :data:`_PHASE_ALIGNED_ANGLE_VARIANTS`. The
+            # bare ``phase_aligned_angle.png`` is retired; the driver
+            # always passes ``mode`` explicitly.
+            family_paths = []
+            for suffix, mode in _PHASE_ALIGNED_ANGLE_VARIANTS:
+                fig = _plot_phase_aligned_angle(
+                    bundle, params=params, mode=mode,
+                )
+                png_path = out_dir / f"{family}_{suffix}.png"
                 _save_and_close(fig, png_path, params=params)
                 family_paths.append(png_path)
             out_paths[family] = family_paths
@@ -437,21 +471,47 @@ def _plot_phase_aligned_angle(
     bundle: TongueVisualBundle,
     *,
     params: dict[str, Any],
+    mode: str | None = None,
 ) -> Figure:
     """Family 4 — phase-aligned tongue angle. Group df_phase by
-    ``phase_bin_center``; mean ± SEM across all multi-bout frames in
-    each bin (legacy ``_plot_phase_aligned_angle``)."""
+    ``phase_bin_center``; mean ± SEM across the selected multi-bout
+    frames in each bin (legacy ``_plot_phase_aligned_angle``).
+
+    ``mode`` (Phase 7a.4-cross-session-angle Addendum #3 lock #3,
+    2026-05-04): selects which phase rows feed the per-bin aggregate.
+
+      - ``"first_lick"`` — first peak's phase cycle of the first
+        multi-bout per (trial, side), via
+        :func:`select_first_lick_phase_rows`. New per Addendum #3
+        Option C; pure pandas filter on existing df_phase + df_bouts
+        columns. The user-facing PNG name is
+        ``phase_aligned_angle_1st_lick.png``.
+      - ``"all_multi"`` — all multi-bout phase rows (no row filter).
+        Existing semantic; the user-facing PNG name is
+        ``phase_aligned_angle_all_licks.png``.
+      - ``"first_multi"`` — legacy/back-compat: first multi-bout per
+        trial only. No longer wired into a phase_aligned_angle PNG
+        filename in the production driver, but the mode token stays
+        for callers that pass it explicitly.
+
+    ``mode=None`` falls back to the config (``modes.phase_summary``).
+    The production driver ``render_tongue_qc_figures`` always passes
+    ``mode`` explicitly per :data:`_PHASE_ALIGNED_ANGLE_VARIANTS`.
+    """
     visual = params["dlc_kinematics"]["tongue_visual"]
     side_colors = visual["side_colors"]
     render = visual.get("render", {})
     min_pts = int(render.get("min_phase_points_per_bin_single", 5))
     do_smooth = bool(render.get("do_smooth_phase_curve", True))
     phase_sigma = float(render.get("phase_curve_sigma_bins", 1.0))
-    phase_mode = str(visual.get("modes", {}).get(
-        "phase_summary", "first_multi",
-    ))
-    df_phase = _select_phase_rows(bundle.df_phase, phase_mode)
+    if mode is None:
+        phase_mode = str(visual.get("modes", {}).get(
+            "phase_summary", "first_multi",
+        ))
+    else:
+        phase_mode = str(mode)
     df_bouts = bundle.df_bouts
+    df_phase = _phase_rows_for_mode(bundle.df_phase, df_bouts, phase_mode)
 
     fig, ax = plt.subplots(figsize=(8.0, 4.2))
     if df_phase.empty:
@@ -478,7 +538,9 @@ def _plot_phase_aligned_angle(
         if do_smooth and phase_sigma > 0:
             m = _circular_gaussian_smooth(m, phase_sigma)
             s = _circular_gaussian_smooth(s, phase_sigma)
-        lick_count = _selected_phase_peak_count(df_bouts, phase_mode, side=side)
+        lick_count = _selected_phase_peak_count(
+            df_bouts, phase_mode, side=side, df_phase_subset=df_phase,
+        )
         c = side_colors.get(side, "k")
         ax.plot(x, m, color=c, lw=2.0, label=f"{side} (licks: {lick_count})")
         ax.fill_between(x, m - s, m + s, color=c, alpha=0.18, lw=0)
@@ -610,6 +672,15 @@ def _resolve_consolidated_paths(
             out[family] = [
                 out_dir / f"{family}_side_{side}.png" for side in sides
             ]
+        elif family in _MULTI_VARIANT_FAMILIES:
+            # Phase 7a.4-cross-session-angle Addendum #3 lock #3 —
+            # ``phase_aligned_angle`` emits one PNG per
+            # :data:`_PHASE_ALIGNED_ANGLE_VARIANTS` entry; bare
+            # ``phase_aligned_angle.png`` is retired.
+            out[family] = [
+                out_dir / f"{family}_{suffix}.png"
+                for suffix, _mode in _PHASE_ALIGNED_ANGLE_VARIANTS
+            ]
         else:
             out[family] = [out_dir / f"{family}.png"]
     return out
@@ -702,6 +773,11 @@ def _select_phase_rows(df_phase: pd.DataFrame, mode: str) -> pd.DataFrame:
     - ``"all_multi"``: keep all multi-bout rows (no filter — all df_phase
       rows are already from multi-bouts by construction).
     - ``"first_multi"``: keep rows with ``multi_bout_rank == 0``.
+
+    The ``"first_lick"`` mode (Phase 7a.4-cross-session-angle Addendum
+    #3 Option C) is NOT handled here because it requires df_bouts as
+    well as df_phase. Use :func:`_phase_rows_for_mode` for the
+    full mode dispatch.
     """
     if df_phase.empty:
         return df_phase.copy()
@@ -712,15 +788,48 @@ def _select_phase_rows(df_phase: pd.DataFrame, mode: str) -> pd.DataFrame:
     raise ValueError(f"phase mode must be 'all_multi' or 'first_multi'; got {mode!r}")
 
 
+def _phase_rows_for_mode(
+    df_phase: pd.DataFrame, df_bouts: pd.DataFrame, mode: str,
+) -> pd.DataFrame:
+    """Phase 7a.4-cross-session-angle Addendum #3 Option C — dispatch
+    to the right phase-row selector for ``mode``.
+
+    Routes ``"first_lick"`` to
+    :func:`select_first_lick_phase_rows` (uses both df_phase + df_bouts);
+    routes ``"all_multi"`` and ``"first_multi"`` to the existing
+    :func:`_select_phase_rows` (df_phase only).
+    """
+    if mode == "first_lick":
+        return select_first_lick_phase_rows(df_phase, df_bouts)
+    return _select_phase_rows(df_phase, mode)
+
+
 def _selected_phase_peak_count(
     df_bouts: pd.DataFrame, mode: str, *, side: str | None = None,
+    df_phase_subset: pd.DataFrame | None = None,
 ) -> int:
     """Count the lick peaks contributing to the phase summary.
 
     Per-peak rows in df_bouts have ``peak_t_ms`` set; bout-summary rows
     have ``peak_t_ms`` NaN. Filter by mode + optional side, count unique
     (trial_index, bout_idx, peak_t_ms) tuples.
+
+    For ``mode="first_lick"`` (Phase 7a.4-cross-session-angle Addendum
+    #3), the count is the number of unique trials contributing
+    first-lick rows (one trial → one first lick); pass the already-
+    filtered df_phase via ``df_phase_subset`` and we count distinct
+    (trial_index,) entries directly. Fall back to a 0 count if
+    ``df_phase_subset`` is None or empty.
     """
+    if mode == "first_lick":
+        if df_phase_subset is None or df_phase_subset.empty:
+            return 0
+        d = df_phase_subset
+        if side is not None:
+            d = d[d["side"] == side]
+        if d.empty:
+            return 0
+        return int(len(d[["trial_index"]].drop_duplicates()))
     if df_bouts.empty:
         return 0
     d = df_bouts[df_bouts["peak_t_ms"].notna()].copy()
@@ -732,7 +841,8 @@ def _selected_phase_peak_count(
         d = d[d["multi_bout_rank"].notna()]
     else:
         raise ValueError(
-            f"phase mode must be 'all_multi' or 'first_multi'; got {mode!r}"
+            f"phase mode must be 'all_multi', 'first_multi', or 'first_lick'; "
+            f"got {mode!r}"
         )
     if d.empty:
         return 0
