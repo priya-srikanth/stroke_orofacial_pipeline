@@ -781,10 +781,7 @@ def _format_noncandidate_count_text(
     n_non = n_total - n_cand
     if n_total == 0:
         return ""
-    return (
-        f"{side} non-candidate trials: {n_non}/{n_total} "
-        f"(candidates: {n_cand}/{n_total})"
-    )
+    return f"{side} non-candidate trials: {n_non}/{n_total}"
 
 
 def _build_plot_snippets(

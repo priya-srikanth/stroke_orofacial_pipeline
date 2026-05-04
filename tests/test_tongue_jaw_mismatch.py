@@ -1134,9 +1134,12 @@ class TestPlotFamilyVisualFidelity:
             plotter_cfg=cfg, animal="PS46", date=datetime.date(2025, 3, 7),
         )
         cand_pattern = re.compile(r"^[LR] candidate trials: \d+/\d+$")
-        non_pattern = re.compile(
-            r"^[LR] non-candidate trials: \d+/\d+ \(candidates: \d+/\d+\)$",
-        )
+        # Updated 2026-05-04 per Phase 7a.4-cross-session-angle Addendum
+        # #7: non-candidate panel subtitle trimmed to match the candidate
+        # panel's terse convention (drop the "(candidates: X/Y)"
+        # parenthetical, which described trials NOT shown in the
+        # non-candidate panel).
+        non_pattern = re.compile(r"^[LR] non-candidate trials: \d+/\d+$")
         n_cand_match = 0
         n_non_match = 0
         for ax in fig.axes:
