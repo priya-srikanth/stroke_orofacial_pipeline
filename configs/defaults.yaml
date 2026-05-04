@@ -621,11 +621,34 @@ dlc_kinematics:
     # consume this knob.
     reward_aligned_display_window_ms: [-180.0, 1000.0]
 
-    # Render-time mode selectors (legacy default = "first_multi" for all 3).
+    # Render-time mode selectors.
     # time: "all_bouts" | "first_bout" | "first_multi"
     # phase / xy: "all_multi" | "first_multi"
+    #
+    # Phase 7a.4-cross-session-angle (2026-05-04, Addendum #6):
+    # ``time_summary`` default flipped from ``"first_multi"`` to
+    # ``"all_bouts"``. Reward-aligned plot is the right vehicle for
+    # visualizing the full post-stroke licking phenotype (every tongue
+    # movement in the [-180, 1000] ms display window), including
+    # isolated single-lick bouts (which contribute via the legacy
+    # ``single_bout_win_ms = (-120, 200)`` synthetic time window) and
+    # subsequent multi-bouts. ``"first_multi"`` truncated both. The
+    # legacy notebook's default was ``"first_multi"``; this is a
+    # deliberate consolidated-default deviation, not a parity bug — the
+    # net-new cross-session work consumes ``angle_allbouts_snip`` for
+    # the same reason.
+    #
+    # ``phase_summary`` and ``xy_summary`` defaults remain
+    # ``"first_multi"`` — phase + xy_by_phase plots stay multi-bout-only
+    # per Addendum #5 Option α (phase requires ≥2 peaks; isolated licks
+    # are absent from df_phase by construction). The per-session
+    # phase-aligned-angle PNG is split into ``_1st_lick`` (mode
+    # ``first_lick``, new selector) and ``_all_licks`` (mode
+    # ``all_multi``) by the per-session driver dispatch — neither
+    # consumes ``phase_summary`` directly, so the value is now only a
+    # fallback for pre-Addendum-#3 callers.
     modes:
-      time_summary: "first_multi"
+      time_summary: "all_bouts"
       phase_summary: "first_multi"
       xy_summary: "first_multi"
 

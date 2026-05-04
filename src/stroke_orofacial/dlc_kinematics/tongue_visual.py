@@ -386,7 +386,12 @@ def _plot_reward_aligned(
     """
     visual = params["dlc_kinematics"]["tongue_visual"]
     side_colors = visual["side_colors"]
-    time_mode = str(visual.get("modes", {}).get("time_summary", "first_multi"))
+    # Default ``"all_bouts"`` per Phase 7a.4-cross-session-angle
+    # Addendum #6 (2026-05-04). Source of truth is
+    # ``configs/defaults.yaml`` ``dlc_kinematics.tongue_visual.modes.time_summary``;
+    # this fallback is only consulted when ``params`` is missing the
+    # block entirely.
+    time_mode = str(visual.get("modes", {}).get("time_summary", "all_bouts"))
     arr_col = _pick_time_array_column(time_mode)
     display_win_ms = tuple(
         visual.get("reward_aligned_display_window_ms", [-180.0, 1000.0])

@@ -286,6 +286,17 @@ def _build_bouts(
     Returns a list of arrays of indices into ``peak_times_ms``. Each array
     is contiguous and sorted; bouts are separated by ILIs > ``max_ili_ms``.
     """
+    # NOTE (2026-05-04, Phase 7a.4-cross-session-angle Addendum #6 audit):
+    # ``configs/defaults.yaml`` carries ``allow_single_lick_bouts: true``
+    # under ``dlc_kinematics.tongue_pertrial.bout`` for documentation
+    # parity with legacy ``ALLOW_SINGLE_LICK_BOUTS`` (= True default).
+    # The consolidated implementation hard-wires the True behavior:
+    # this function always returns single-peak bouts (every detected
+    # peak ends up in some bout, regardless of whether it has neighbors
+    # within ``max_ili_ms``). The config knob currently has no consume
+    # path. To gate singletons in a future phase, add the filter here
+    # (e.g., drop single-element ``bouts[i]`` when the knob is False)
+    # and wire the config read at the caller layer.
     n = len(peak_times_ms)
     if n == 0:
         return []
