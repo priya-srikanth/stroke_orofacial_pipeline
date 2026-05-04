@@ -514,6 +514,9 @@ def _plot_phase_aligned_angle(
     params: dict[str, Any],
     mode: str | None = None,
     n_peaks: int | None = None,
+    ili_source: Literal[
+        "real_only", "hybrid", "synthetic_only",
+    ] | None = None,
 ) -> Figure:
     """Family 4 — phase-aligned tongue angle. Group selected
     centered-phase rows by ``phase_bin_center``; mean ± SEM across
@@ -575,11 +578,19 @@ def _plot_phase_aligned_angle(
         )
     else:
         synthetic_ili_ms_val = None
+    # Phase 7a.4-cross-session-angle Addendum #14 (2026-05-04):
+    # ``ili_source`` defaults to ``"hybrid"`` (preserves
+    # Addendum #12 production behaviour). Test variants pass
+    # ``"real_only"`` or ``"synthetic_only"`` explicitly via the
+    # one-shot diagnostic render driver; no production config knob
+    # yet (those would land in Addendum #15 if a winning mode emerges).
+    ili_source_val = "hybrid" if ili_source is None else str(ili_source)
     df_bouts = bundle.df_bouts
     df_phase = _phase_rows_for_mode(
         bundle, phase_mode,
         n_peaks=n_peaks_val,
         synthetic_ili_ms=synthetic_ili_ms_val,
+        ili_source=ili_source_val,
     )
 
     is_multi_cycle = phase_mode == "first_n_licks"
@@ -907,9 +918,11 @@ def _phase_rows_for_mode(
     *,
     n_peaks: int = 2,
     synthetic_ili_ms: float | None = None,
+    ili_source: Literal["real_only", "hybrid", "synthetic_only"] = "hybrid",
 ) -> pd.DataFrame:
-    """Phase 7a.4-cross-session-angle Addenda #9 / #10 / #11 / #12 —
-    dispatch to the right centered-phase builder for ``mode``.
+    """Phase 7a.4-cross-session-angle dispatcher to centered-phase
+    builders for ``mode``. Forwards ``synthetic_ili_ms`` and
+    ``ili_source`` (Addendum #14) to the helper.
 
     Routes:
       - ``"first_lick"`` → :func:`build_first_lick_centered_phase_rows`.
@@ -920,32 +933,22 @@ def _phase_rows_for_mode(
         ``_select_phase_rows`` filter on ``bundle.df_phase``. Kept
         for external/back-compat callers; not wired into any
         production phase-aligned-angle PNG filename.
-
-    ``synthetic_ili_ms`` (Addendum #12): per-animal pre-stroke
-    median ILI in ms. When finite + positive, isolated-lick (and
-    last-peak-of-multi-bout) cycles get this synthetic width;
-    "first lick" widens to any chronologically-first peak per
-    trial. ``None`` / ``NaN`` / non-positive → multi-bout-only
-    legacy behaviour.
-
-    Addenda #9 / #10 / #11 / #12: the rendering path no longer
-    reads from ``bundle.df_phase`` for any production mode.
-    ``df_phase`` is still populated in the bundle (with the legacy
-    peak-to-peak-shifted phase) for any external consumer that
-    may rely on it; convention divergence documented in DECISIONS.
     """
     if mode == "first_lick":
         return build_first_lick_centered_phase_rows(
             bundle, synthetic_ili_ms=synthetic_ili_ms,
+            ili_source=ili_source,
         )
     if mode == "all_multi":
         return build_all_licks_centered_phase_rows(
             bundle, synthetic_ili_ms=synthetic_ili_ms,
+            ili_source=ili_source,
         )
     if mode == "first_n_licks":
         return build_first_n_licks_centered_phase_rows(
             bundle, n_peaks=n_peaks,
             synthetic_ili_ms=synthetic_ili_ms,
+            ili_source=ili_source,
         )
     return _select_phase_rows(bundle.df_phase, mode)
 

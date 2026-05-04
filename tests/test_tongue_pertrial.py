@@ -2623,6 +2623,140 @@ class TestSyntheticILIInCenteredPhaseHelpers:
         assert rendered == [200.0, 300.0]
 
 
+class TestILISourceEnum:
+    """Phase 7a.4-cross-session-angle Addendum #14 (2026-05-04):
+    centered-phase helpers gain an ``ili_source`` kwarg with three
+    choices — ``real_only`` (multi-bout-only, ignores synthetic),
+    ``hybrid`` (default; synthetic as fallback), ``synthetic_only``
+    (synthetic for every cycle, real-ILI lookup bypassed).
+    """
+
+    def test_real_only_drops_isolated_lick_trials(self):
+        """real_only ignores synthetic_ili_ms even when supplied —
+        falls back to multi-bout-only behaviour."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [400.0]}],   # isolated only
+            },
+        ])
+        # synthetic_ili_ms IS supplied but ili_source="real_only"
+        # ignores it. Trial drops because no multi-bout exists.
+        out = build_first_lick_centered_phase_rows(
+            bundle, synthetic_ili_ms=100.0, ili_source="real_only",
+        )
+        assert out.empty
+
+    def test_synthetic_only_uses_synthetic_for_all_cycles(self):
+        """synthetic_only forces uniform cycle width regardless of
+        forward-neighbour existence. Multi-bout's real ILI is
+        IGNORED — every cycle's width = synthetic_ili_ms."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        # Real ILIs are 100 ms (200 → 300 → 400). Synthetic = 200 ms.
+        # Under synthetic_only, both cycles span 200 ms regardless.
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+            },
+        ])
+        out = build_first_n_licks_centered_phase_rows(
+            bundle, n_peaks=2, synthetic_ili_ms=200.0,
+            ili_source="synthetic_only",
+        )
+        # Cycle 0 window = (200 - 100, 200 + 100) = (100, 300).
+        # Cycle 1 window = (300 - 100, 300 + 100) = (200, 400).
+        # Synthetic_only frame at t=200 → x = 0 + 0.5 + 0/200 = 0.5.
+        # If REAL ILI = 100 had been used, window would be (150, 250)
+        # and t=300 wouldn't be in cycle 0; under synthetic_only,
+        # t=300 IS in cycle 0 (window 100..300, end-inclusive) AND
+        # in cycle 1 (window 200..400, start-inclusive).
+        at_p0 = out[(out["peak_t_ms"] == 200.0)]
+        at_p1 = out[(out["peak_t_ms"] == 300.0)]
+        # At t=200 in cycle 0: phase = (200 - 100) / 200 = 0.5.
+        at_p0_t200 = at_p0[at_p0["t_ms"] == 200.0]
+        assert len(at_p0_t200) == 1
+        assert at_p0_t200.iloc[0]["phase"] == pytest.approx(0.5, abs=1e-6)
+        # At t=300 in cycle 1: phase = 1 + 0.5 + 0/200 = 1.5.
+        at_p1_t300 = at_p1[at_p1["t_ms"] == 300.0]
+        assert len(at_p1_t300) == 1
+        assert at_p1_t300.iloc[0]["phase"] == pytest.approx(1.5, abs=1e-6)
+
+    def test_synthetic_only_requires_synthetic_ili(self):
+        """synthetic_only with no synthetic_ili_ms supplied →
+        ValueError (no fallback for fallback-less mode)."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+            build_first_lick_centered_phase_rows,
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+            },
+        ])
+        for fn in (
+            build_first_lick_centered_phase_rows,
+            build_all_licks_centered_phase_rows,
+        ):
+            with pytest.raises(ValueError, match="synthetic_only"):
+                fn(bundle, ili_source="synthetic_only")
+            with pytest.raises(ValueError, match="synthetic_only"):
+                fn(bundle, synthetic_ili_ms=float("nan"),
+                   ili_source="synthetic_only")
+        with pytest.raises(ValueError, match="synthetic_only"):
+            build_first_n_licks_centered_phase_rows(
+                bundle, n_peaks=2, ili_source="synthetic_only",
+            )
+
+    def test_hybrid_default_is_byte_for_byte_addendum_12(self):
+        """Default ili_source='hybrid' must match Addendum #12
+        behaviour byte-for-byte (no kwarg supplied = hybrid)."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [400.0]}],   # isolated
+            },
+        ])
+        # No ili_source kwarg + finite synthetic → hybrid path
+        # (matches pre-#14 behaviour where synthetic enabled
+        # isolated-lick contribution).
+        out_default = build_first_lick_centered_phase_rows(
+            bundle, synthetic_ili_ms=100.0,
+        )
+        out_explicit = build_first_lick_centered_phase_rows(
+            bundle, synthetic_ili_ms=100.0, ili_source="hybrid",
+        )
+        # Both contribute the isolated trial.
+        assert not out_default.empty
+        assert not out_explicit.empty
+        # Element-wise equality on relevant columns.
+        for col in ("trial_index", "peak_t_ms", "t_ms", "phase"):
+            assert (
+                out_default[col].to_numpy()
+                == out_explicit[col].to_numpy()
+            ).all()
+
+    def test_invalid_ili_source_raises(self):
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([])
+        with pytest.raises(ValueError, match="ili_source"):
+            build_first_lick_centered_phase_rows(
+                bundle, ili_source="bogus",
+            )
+
+
 class TestComputePreStrokeMedianILI:
     """Phase 7a.4-cross-session-angle Addendum #12 (2026-05-04):
     per-animal pre-stroke median multi-bout ILI helper.

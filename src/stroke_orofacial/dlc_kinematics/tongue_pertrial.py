@@ -328,30 +328,31 @@ def build_first_lick_centered_phase_rows(
     bundle: "TongueVisualBundle",
     *,
     synthetic_ili_ms: float | None = None,
+    ili_source: Literal["real_only", "hybrid", "synthetic_only"] = "hybrid",
 ) -> pd.DataFrame:
     """Build centered-on-first-peak phase rows per (trial, side).
 
-    Phase 7a.4-cross-session-angle Addendum #9 (2026-05-04;
-    supersedes the deleted Addendum #3 Option C selector); extended
-    by Addendum #12 (2026-05-04) with the ``synthetic_ili_ms`` kwarg.
+    Phase 7a.4-cross-session-angle Addenda #9 / #12 / #14 (2026-05-04).
 
-    ``synthetic_ili_ms`` semantics:
+    ``ili_source`` (Addendum #14): cycle-width source policy.
 
-      - ``None`` (legacy / multi-bout-only path): "first lick" =
-        peak[0] of the FIRST MULTI-BOUT per (trial, side). ILI =
-        peak[1] - peak[0]. Trials with no multi-bout contribute
-        nothing.
-      - finite float (Addendum #12): "first lick" =
-        chronologically-first detected peak per (trial, side),
-        regardless of bout structure. ILI = forward neighbour
-        difference if available (peak[1] - peak[0] across ALL
-        bouts), otherwise this synthetic value. Trials with at
-        least one detected peak contribute, including isolated-
-        lick-only trials.
-      - ``NaN`` (= "not available"): treated identically to
-        ``None``.
+      - ``"real_only"``: real forward ILI from same-bout adjacency
+        only. "First lick" = peak[0] of the FIRST MULTI-BOUT per
+        (trial, side); ILI = peak[1] - peak[0] in same bout.
+        Isolated-lick-only trials drop. ``synthetic_ili_ms`` is
+        IGNORED.
+      - ``"hybrid"`` (default; preserves Addendum #12 behavior):
+        "first lick" = chronologically-first detected peak per
+        (trial, side); ILI = forward neighbour across ALL bouts if
+        available, else ``synthetic_ili_ms``. Isolated-lick-only
+        trials contribute via synthetic.
+      - ``"synthetic_only"``: cycle width = ``synthetic_ili_ms``
+        for EVERY peak regardless of forward-neighbour existence.
+        "First lick" = chronologically-first detected peak.
+        Real-ILI lookup bypassed entirely. ``synthetic_ili_ms``
+        REQUIRED (raises ValueError if not finite + positive).
 
-    Phase formula in either case:
+    Phase formula (all modes):
 
       window = (peak_t - ILI / 2, peak_t + ILI / 2)
       phase  = (t - (peak_t - ILI / 2)) / ILI ∈ [0, 1]
@@ -359,59 +360,41 @@ def build_first_lick_centered_phase_rows(
     Returns a DataFrame with columns ``side, trial_index, peak_t_ms,
     t_ms, phase, phase_bin, phase_bin_center, angle_deg``.
     """
+    if ili_source not in ("real_only", "hybrid", "synthetic_only"):
+        raise ValueError(
+            f"ili_source must be 'real_only' / 'hybrid' / "
+            f"'synthetic_only'; got {ili_source!r}"
+        )
+    synth = (
+        float(synthetic_ili_ms)
+        if synthetic_ili_ms is not None
+        else float("nan")
+    )
+    synth_finite = np.isfinite(synth) and synth > 0
+    if ili_source == "synthetic_only" and not synth_finite:
+        raise ValueError(
+            f"ili_source='synthetic_only' requires a finite positive "
+            f"synthetic_ili_ms; got {synthetic_ili_ms!r}"
+        )
+    # Byte-for-byte Addendum #12 NaN-fallback semantic: hybrid mode
+    # without a finite synthetic ILI degrades to real_only (multi-
+    # bout-only). Production caller passes
+    # bundle.metadata["pre_stroke_median_ili_ms"] which can be NaN
+    # when the animal has no pre-stroke sessions on disk.
+    if ili_source == "hybrid" and not synth_finite:
+        ili_source = "real_only"
+
     df_trials = bundle.df_trials
     df_bouts = bundle.df_bouts
     if df_trials.empty or df_bouts.empty:
         return _empty_centered_phase_rows_df()
 
     phase_bin_edges, phase_bin_centers = _bundle_phase_bin_arrays(bundle)
-    use_synthetic = (
-        synthetic_ili_ms is not None
-        and np.isfinite(float(synthetic_ili_ms))
-        and float(synthetic_ili_ms) > 0
-    )
 
     rows: list[dict[str, Any]] = []
-    if use_synthetic:
-        synth = float(synthetic_ili_ms)
-        # All chronologically-ordered peaks per (trial, side); first
-        # peak across ALL bouts is the "first lick".
-        per_peak = df_bouts[
-            df_bouts["peak_t_ms"].notna()
-        ][["trial_index", "side", "peak_t_ms"]].sort_values(
-            ["trial_index", "side", "peak_t_ms"],
-        )
-        for (trial_idx, side), grp in per_peak.groupby(
-            ["trial_index", "side"], sort=False,
-        ):
-            peak_times = np.asarray(
-                grp["peak_t_ms"].to_numpy(), dtype=np.float64,
-            )
-            if peak_times.size == 0:
-                continue
-            trial_idx = int(trial_idx)
-            side = str(side)
-            arrs = _trial_arrays(df_trials, trial_idx, side)
-            if arrs is None:
-                continue
-            t_arr, angle_arr = arrs
-            p0 = float(peak_times[0])
-            ili = (
-                float(peak_times[1] - peak_times[0])
-                if peak_times.size >= 2 else synth
-            )
-            if not (np.isfinite(ili) and ili > 0):
-                ili = synth
-            rows.extend(_centered_phase_rows_from_peaks(
-                peak_times_ms=np.array([p0]),
-                ilis_ms=np.array([ili]),
-                t_arr=t_arr, angle_snip=angle_arr,
-                side=side, trial_index=trial_idx,
-                phase_bin_edges=phase_bin_edges,
-                phase_bin_centers=phase_bin_centers,
-            ))
-    else:
-        # Legacy multi-bout-only path.
+    if ili_source == "real_only":
+        # Multi-bout-only: peak[0] of first multi-bout per trial,
+        # ILI from same-bout adjacency.
         summaries = df_bouts[
             df_bouts["peak_t_ms"].isna()
             & (df_bouts["multi_bout_rank"] == 0)
@@ -437,6 +420,51 @@ def build_first_lick_centered_phase_rows(
                 phase_bin_edges=phase_bin_edges,
                 phase_bin_centers=phase_bin_centers,
             ))
+    else:
+        # "hybrid" or "synthetic_only" — both walk all chronologically-
+        # ordered peaks per (trial, side). Hybrid uses real ILI when
+        # available, synthetic as fallback. Synthetic_only forces
+        # synthetic for every peak.
+        per_peak = df_bouts[
+            df_bouts["peak_t_ms"].notna()
+        ][["trial_index", "side", "peak_t_ms"]].sort_values(
+            ["trial_index", "side", "peak_t_ms"],
+        )
+        for (trial_idx, side), grp in per_peak.groupby(
+            ["trial_index", "side"], sort=False,
+        ):
+            peak_times = np.asarray(
+                grp["peak_t_ms"].to_numpy(), dtype=np.float64,
+            )
+            if peak_times.size == 0:
+                continue
+            trial_idx = int(trial_idx)
+            side = str(side)
+            arrs = _trial_arrays(df_trials, trial_idx, side)
+            if arrs is None:
+                continue
+            t_arr, angle_arr = arrs
+            p0 = float(peak_times[0])
+            if ili_source == "synthetic_only":
+                ili = synth
+            else:  # hybrid
+                ili = (
+                    float(peak_times[1] - peak_times[0])
+                    if peak_times.size >= 2 else synth
+                )
+                if not (np.isfinite(ili) and ili > 0):
+                    ili = synth
+            if not (np.isfinite(ili) and ili > 0):
+                # Hybrid with no synthetic available → skip this trial.
+                continue
+            rows.extend(_centered_phase_rows_from_peaks(
+                peak_times_ms=np.array([p0]),
+                ilis_ms=np.array([ili]),
+                t_arr=t_arr, angle_snip=angle_arr,
+                side=side, trial_index=trial_idx,
+                phase_bin_edges=phase_bin_edges,
+                phase_bin_centers=phase_bin_centers,
+            ))
 
     if not rows:
         return _empty_centered_phase_rows_df()
@@ -448,29 +476,28 @@ def build_first_n_licks_centered_phase_rows(
     *,
     n_peaks: int = 2,
     synthetic_ili_ms: float | None = None,
+    ili_source: Literal["real_only", "hybrid", "synthetic_only"] = "hybrid",
 ) -> pd.DataFrame:
     """Build centered-phase rows for the FIRST ``n_peaks`` consecutive
-    licks per (trial, side). Phase 7a.4-cross-session-angle Addendum
-    #11 Part A (2026-05-04); extended by Addendum #12 (2026-05-04)
-    with the ``synthetic_ili_ms`` kwarg.
+    licks per (trial, side). Phase 7a.4-cross-session-angle Addenda
+    #11 Part A / #12 / #14 (2026-05-04).
 
-    ``synthetic_ili_ms`` semantics:
+    ``ili_source`` (Addendum #14) — see
+    :func:`build_first_lick_centered_phase_rows` for shared docs.
 
-      - ``None`` (legacy / multi-bout-only path): the first
-        ``n_peaks`` peaks are drawn from the FIRST MULTI-BOUT only;
-        cycle ``n_peaks - 1`` requires peak[n_peaks] in the same
-        bout to define its forward ILI. Trials with fewer than
-        ``n_peaks + 1`` peaks in the first multi-bout contribute
-        nothing.
-      - finite float (Addendum #12): the first ``n_peaks`` peaks
-        are drawn CHRONOLOGICALLY across all bouts. ILI[i] uses the
-        forward neighbour if available, else this synthetic value.
-        Trials with at least ``n_peaks`` detected peaks total
-        contribute.
-      - ``NaN`` (= "not available"): treated identically to
-        ``None``.
+      - ``"real_only"``: first ``n_peaks`` peaks of the FIRST
+        MULTI-BOUT; ILI[i] = same-bout forward neighbour. Requires
+        ``n_peaks + 1`` peaks in the first multi-bout.
+      - ``"hybrid"`` (default): first ``n_peaks`` peaks
+        chronologically across all bouts; ILI[i] = forward
+        neighbour if available, else ``synthetic_ili_ms``.
+        Requires ``n_peaks`` total peaks.
+      - ``"synthetic_only"``: first ``n_peaks`` peaks
+        chronologically across all bouts; cycle width =
+        ``synthetic_ili_ms`` for ALL cycles regardless of forward-
+        neighbour existence.
 
-    Phase formula in either case (peak[i] at x = i + 0.5):
+    Phase formula (peak[i] at x = i + 0.5):
 
       x_global = (i + 0.5) + (t - p[i]) / ILI[i]   # in [i, i + 1]
 
@@ -478,18 +505,28 @@ def build_first_n_licks_centered_phase_rows(
     ``n_phase_bins * n_peaks`` total bins. Returns a DataFrame with
     the same columns as the single-cycle builders; ``phase`` /
     ``phase_bin_center`` span ``[0, n_peaks]``.
-
-    Parameters
-    ----------
-    bundle
-        :class:`TongueVisualBundle`.
-    n_peaks
-        Number of consecutive licks to render. Must be ≥ 2.
-    synthetic_ili_ms
-        Per-Addendum-#12 cohort scalar. See semantics above.
     """
     if int(n_peaks) < 2:
         raise ValueError(f"n_peaks must be >= 2; got {n_peaks!r}")
+    if ili_source not in ("real_only", "hybrid", "synthetic_only"):
+        raise ValueError(
+            f"ili_source must be 'real_only' / 'hybrid' / "
+            f"'synthetic_only'; got {ili_source!r}"
+        )
+    synth = (
+        float(synthetic_ili_ms)
+        if synthetic_ili_ms is not None
+        else float("nan")
+    )
+    synth_finite = np.isfinite(synth) and synth > 0
+    if ili_source == "synthetic_only" and not synth_finite:
+        raise ValueError(
+            f"ili_source='synthetic_only' requires a finite positive "
+            f"synthetic_ili_ms; got {synthetic_ili_ms!r}"
+        )
+    # Addendum #12 NaN-fallback: hybrid + missing synthetic → real_only.
+    if ili_source == "hybrid" and not synth_finite:
+        ili_source = "real_only"
 
     df_trials = bundle.df_trials
     df_bouts = bundle.df_bouts
@@ -503,25 +540,19 @@ def build_first_n_licks_centered_phase_rows(
     )
     phase_bin_centers = 0.5 * (phase_bin_edges[:-1] + phase_bin_edges[1:])
 
-    use_synthetic = (
-        synthetic_ili_ms is not None
-        and np.isfinite(float(synthetic_ili_ms))
-        and float(synthetic_ili_ms) > 0
-    )
-    synth = float(synthetic_ili_ms) if use_synthetic else float("nan")
-
-    if use_synthetic:
-        # Chronologically-ordered peaks across ALL bouts.
+    if ili_source == "real_only":
+        # Multi-bout-only: first multi-bout per trial.
         per_peak = df_bouts[
             df_bouts["peak_t_ms"].notna()
+            & (df_bouts["multi_bout_rank"] == 0)
         ][["trial_index", "side", "peak_t_ms"]].sort_values(
             ["trial_index", "side", "peak_t_ms"],
         )
     else:
-        # Legacy multi-bout-only path (first multi-bout per trial).
+        # hybrid + synthetic_only: chronologically-ordered peaks
+        # across ALL bouts.
         per_peak = df_bouts[
             df_bouts["peak_t_ms"].notna()
-            & (df_bouts["multi_bout_rank"] == 0)
         ][["trial_index", "side", "peak_t_ms"]].sort_values(
             ["trial_index", "side", "peak_t_ms"],
         )
@@ -535,14 +566,13 @@ def build_first_n_licks_centered_phase_rows(
         peak_times = np.asarray(
             grp["peak_t_ms"].to_numpy(), dtype=np.float64,
         )
-        if use_synthetic:
-            # Need at least n_peaks total peaks; cycle n_peaks - 1's
-            # forward ILI may be synthetic if peak[n_peaks] is missing.
-            if peak_times.size < int(n_peaks):
+        if ili_source == "real_only":
+            # Need n_peaks + 1 peaks in the first multi-bout.
+            if peak_times.size < int(n_peaks) + 1:
                 continue
         else:
-            # Legacy: need n_peaks + 1 peaks in the first multi-bout.
-            if peak_times.size < int(n_peaks) + 1:
+            # hybrid + synthetic_only: need n_peaks total peaks.
+            if peak_times.size < int(n_peaks):
                 continue
         trial_idx = int(trial_idx)
         side = str(side)
@@ -552,18 +582,20 @@ def build_first_n_licks_centered_phase_rows(
         t_arr, angle_arr = arrs
         for i in range(int(n_peaks)):
             p_i = float(peak_times[i])
-            if i + 1 < peak_times.size:
+            if ili_source == "synthetic_only":
+                ili = synth
+            elif ili_source == "real_only":
+                # Same-bout forward neighbour required.
                 ili = float(peak_times[i + 1] - p_i)
                 if not (np.isfinite(ili) and ili > 0):
-                    if use_synthetic:
-                        ili = synth
-                    else:
-                        continue
-            else:
-                if use_synthetic:
-                    ili = synth
-                else:
                     continue
+            else:  # hybrid
+                if i + 1 < peak_times.size:
+                    ili = float(peak_times[i + 1] - p_i)
+                    if not (np.isfinite(ili) and ili > 0):
+                        ili = synth
+                else:
+                    ili = synth
             if not (np.isfinite(ili) and ili > 0):
                 continue
             win_lo = p_i - ili / 2.0
@@ -602,28 +634,27 @@ def build_all_licks_centered_phase_rows(
     bundle: "TongueVisualBundle",
     *,
     synthetic_ili_ms: float | None = None,
+    ili_source: Literal["real_only", "hybrid", "synthetic_only"] = "hybrid",
 ) -> pd.DataFrame:
     """Build centered-on-peak phase rows for ALL detected licks per
-    (trial, side). Phase 7a.4-cross-session-angle Addendum #10
-    (2026-05-04); extended by Addendum #12 (2026-05-04) with the
-    ``synthetic_ili_ms`` kwarg.
+    (trial, side). Phase 7a.4-cross-session-angle Addenda #10 / #12
+    / #14 (2026-05-04).
 
-    ``synthetic_ili_ms`` semantics:
+    ``ili_source`` (Addendum #14) — see
+    :func:`build_first_lick_centered_phase_rows` for shared docs.
 
-      - ``None`` (legacy / multi-bout-only path): every peak in
-        every multi-bout per (trial, side); pair each ``p[i]`` with
-        ``p[i+1]`` in the SAME bout to compute forward ILI; LAST
-        peak of each bout dropped.
-      - finite float (Addendum #12): every detected peak per
-        (trial, side), regardless of bout structure. Pair each peak
-        with its CHRONOLOGICALLY-NEXT neighbour (across bouts) to
-        compute forward ILI; if no forward neighbour exists (the
-        last peak in the trial OR the only peak in an isolated-
-        lick-only trial), use this synthetic value.
-      - ``NaN`` (= "not available"): treated identically to
-        ``None``.
+      - ``"real_only"``: every peak in every MULTI-bout; ILI = same-
+        bout forward neighbour; LAST peak of each bout dropped.
+        Isolated-lick bouts contribute nothing.
+      - ``"hybrid"`` (default): every peak across all bouts;
+        forward-neighbour ILI if available (across bout
+        boundaries), else ``synthetic_ili_ms``. Last-peak-of-trial
+        + isolated-lick bouts contribute via synthetic.
+      - ``"synthetic_only"``: every peak across all bouts; cycle
+        width = ``synthetic_ili_ms`` for ALL peaks regardless of
+        forward-neighbour existence.
 
-    Phase formula in either case:
+    Phase formula:
 
       window[i] = (p[i] - ILI[i] / 2, p[i] + ILI[i] / 2)
       phase     = (t - window_lo) / ILI[i] ∈ [0, 1]
@@ -631,6 +662,26 @@ def build_all_licks_centered_phase_rows(
     Returns a DataFrame with the same columns as
     :func:`build_first_lick_centered_phase_rows`.
     """
+    if ili_source not in ("real_only", "hybrid", "synthetic_only"):
+        raise ValueError(
+            f"ili_source must be 'real_only' / 'hybrid' / "
+            f"'synthetic_only'; got {ili_source!r}"
+        )
+    synth = (
+        float(synthetic_ili_ms)
+        if synthetic_ili_ms is not None
+        else float("nan")
+    )
+    synth_finite = np.isfinite(synth) and synth > 0
+    if ili_source == "synthetic_only" and not synth_finite:
+        raise ValueError(
+            f"ili_source='synthetic_only' requires a finite positive "
+            f"synthetic_ili_ms; got {synthetic_ili_ms!r}"
+        )
+    # Addendum #12 NaN-fallback: hybrid + missing synthetic → real_only.
+    if ili_source == "hybrid" and not synth_finite:
+        ili_source = "real_only"
+
     df_trials = bundle.df_trials
     df_bouts = bundle.df_bouts
     if df_trials.empty or df_bouts.empty:
@@ -638,11 +689,9 @@ def build_all_licks_centered_phase_rows(
 
     phase_bin_edges, phase_bin_centers = _bundle_phase_bin_arrays(bundle)
     use_synthetic = (
-        synthetic_ili_ms is not None
-        and np.isfinite(float(synthetic_ili_ms))
-        and float(synthetic_ili_ms) > 0
+        ili_source in ("hybrid", "synthetic_only")
+        and synth_finite
     )
-    synth = float(synthetic_ili_ms) if use_synthetic else float("nan")
 
     if use_synthetic:
         # All detected peaks per (trial, side), regardless of bout
@@ -684,12 +733,15 @@ def build_all_licks_centered_phase_rows(
             ilis_to_render: list[float] = []
             for i in range(peak_times.size):
                 p = float(peak_times[i])
-                if i + 1 < peak_times.size:
-                    ili = float(peak_times[i + 1] - peak_times[i])
-                    if not (np.isfinite(ili) and ili > 0):
-                        ili = synth
-                else:
+                if ili_source == "synthetic_only":
                     ili = synth
+                else:  # hybrid
+                    if i + 1 < peak_times.size:
+                        ili = float(peak_times[i + 1] - peak_times[i])
+                        if not (np.isfinite(ili) and ili > 0):
+                            ili = synth
+                    else:
+                        ili = synth
                 peaks_to_render.append(p)
                 ilis_to_render.append(ili)
             rows.extend(_centered_phase_rows_from_peaks(
