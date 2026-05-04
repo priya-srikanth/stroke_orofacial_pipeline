@@ -33,7 +33,7 @@ Outputs (atomic)
 - ``<outputs>/dlc_kinematics/tongue_jaw_mismatch/candidate_trials/<animal>/<YYYYMMDD>.parquet``
   (per-session candidate trials, ~21 cols + file-level metadata; locked
   decision #3 — per-session cadence, NOT legacy per-mouse aggregated).
-- ``<outputs>/dlc_kinematics/tongue_jaw_mismatch/figures_qc/<animal>/<YYYYMMDD>/``
+- ``<outputs>/dlc_kinematics/tongue_jaw_mismatch/within_session/<animal>/<YYYYMMDD>/``
   (within-session PNGs: individual_trials_2col + session_overlay_grid_4x2).
 - ``<outputs>/dlc_kinematics/tongue_jaw_mismatch/cross_session/<animal>/``
   (cross-session PNGs: cross_session_overlay + cross_session_binned).
@@ -268,12 +268,14 @@ def render_within_session_figures(
     if params is None:
         params = load_defaults()
 
-    qc_dir = resolver.tongue_jaw_mismatch_qc_dir(animal, date)
-    individual_path = qc_dir / (
+    within_session_dir = resolver.tongue_jaw_mismatch_within_session_dir(
+        animal, date,
+    )
+    individual_path = within_session_dir / (
         f"{animal}_{date.strftime('%Y%m%d')}"
         f"_individualTrials2col_candidateVsNoncandidate_jawBaselineSub.png"
     )
-    grid_path = qc_dir / (
+    grid_path = within_session_dir / (
         f"{animal}_{date.strftime('%Y%m%d')}"
         f"_sessionOverlayGrid4x2_jawBaselineSub.png"
     )
@@ -309,7 +311,7 @@ def render_within_session_figures(
 
     plotter_cfg = params["dlc_kinematics"]["tongue_jaw_mismatch"]["plotter"]
 
-    qc_dir.mkdir(parents=True, exist_ok=True)
+    within_session_dir.mkdir(parents=True, exist_ok=True)
 
     if plotter_cfg["individual_trials"]["enabled"]:
         fig = _plot_individual_trials_2col(

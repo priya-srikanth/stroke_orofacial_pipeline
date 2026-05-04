@@ -14,10 +14,6 @@ Module shape:
   :func:`build_tongue_visual_bundle_by_animal_date` and emits the 5
   plot families. Family 1 (``qc_trials``) emits 2 PNGs per session
   (one per side); families 2-5 emit 1 PNG each. Total: 6 PNGs.
-- :func:`render_comparison_grid` — public driver. Reads the
-  consolidated PNGs + legacy PNGs from MICROSCOPE and emits 2-col
-  side-by-side comparison grids (one per family). Legacy-not-found
-  → placeholder pane.
 - 5 ``_plot_*`` family helpers consuming the bundle in-memory; each
   returns a ``matplotlib.figure.Figure`` ready for save.
 - ``Agg`` non-interactive backend is forced at module-load time —
@@ -27,6 +23,13 @@ The module deliberately does NOT modify the 7a.3 V3 emit set or its
 schemas. It consumes the in-memory bundle and the on-disk
 ``angle_per_frame`` parquet (the latter only as a side effect of the
 bundle helper).
+
+**History note (Phase 7a.4-orientation-and-paths-cleanup, 2026-05-03):**
+the legacy-vs-consolidated comparison-grid renderer
+(``render_comparison_grid``, ``_resolve_legacy_png_path``,
+``_save_comparison_grid``, ``_LEGACY_SUFFIX``) was deleted once the
+visual gate locked in PASS. The historical implementation lives in
+git history at tag ``v7a.4-tongue-visual-and-day-binned``.
 """
 
 from __future__ import annotations
@@ -43,7 +46,6 @@ import warnings  # noqa: E402
 from pathlib import Path  # noqa: E402
 from typing import Any, Literal, Sequence  # noqa: E402
 
-import matplotlib.image as mpimg  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -60,8 +62,8 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (  # noqa: E402
 from stroke_orofacial.manifest import SessionManifest  # noqa: E402
 from stroke_orofacial.paths import PathResolver  # noqa: E402
 
-# Family identifiers. Order matters for the ``families=None`` default and
-# for the comparison-grid output ordering.
+# Family identifiers. Order matters for the ``families=None`` default
+# render order.
 _FAMILIES_ALL: tuple[str, ...] = (
     "qc_trials",
     "first_peak_aligned",
@@ -71,17 +73,6 @@ _FAMILIES_ALL: tuple[str, ...] = (
 )
 # Per-side family — emits 2 PNGs per session.
 _PER_SIDE_FAMILIES: frozenset[str] = frozenset({"qc_trials"})
-
-# Legacy filename suffix patterns. ``{mouse}_{date}_anglePhase_*`` is the
-# legacy naming convention preserved here for the comparison grid.
-# ``{time_summary_mode}`` etc. resolve to "first_multi" by default.
-_LEGACY_SUFFIX = {
-    "qc_trials":          "_anglePhase_QCtrials",
-    "first_peak_aligned": "_anglePhase_firstPeakAlignedAngle",
-    "reward_aligned":     "_anglePhase_rewardAlignedAngle_{time_mode}",
-    "phase_aligned_angle": "_anglePhase_phaseAlignedAngle_{phase_mode}",
-    "xy_by_phase":        "_anglePhase_XYphase_{xy_mode}",
-}
 
 
 # ============================================================================
@@ -154,9 +145,9 @@ def render_tongue_qc_figures(
 
     # Pre-resolve every expected output path (used for skip-decision and
     # for the return dict).
-    qc_dir = resolver.tongue_visual_qc_dir(animal, date)
+    out_dir = resolver.tongue_angle_dir(animal, date)
     expected_paths_per_family = _resolve_consolidated_paths(
-        qc_dir, families_to_render, sides=("L", "R"),
+        out_dir, families_to_render, sides=("L", "R"),
     )
 
     # Skip-fast: if every PNG exists and overwrite=skip, return immediately.
@@ -179,7 +170,7 @@ def render_tongue_qc_figures(
             params=params,
         )
 
-    qc_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
     out_paths: dict[str, list[Path]] = {}
     sides_present = (
         sorted(bundle.df_trials["side"].unique())
@@ -192,116 +183,15 @@ def render_tongue_qc_figures(
             family_paths: list[Path] = []
             for side in sides_present:
                 fig = _plot_per_trial_qc_traces(bundle, side, params=params)
-                png_path = qc_dir / f"{family}_side_{side}.png"
+                png_path = out_dir / f"{family}_side_{side}.png"
                 _save_and_close(fig, png_path, params=params)
                 family_paths.append(png_path)
             out_paths[family] = family_paths
         else:
             fig = _PLOT_FAMILY_HELPERS[family](bundle, params=params)
-            png_path = qc_dir / f"{family}.png"
+            png_path = out_dir / f"{family}.png"
             _save_and_close(fig, png_path, params=params)
             out_paths[family] = [png_path]
-
-    return out_paths
-
-
-def render_comparison_grid(
-    animal: str,
-    date: datetime.date,
-    resolver: PathResolver,
-    legacy_figures_root: Path,
-    *,
-    params: dict[str, Any] | None = None,
-    families: Sequence[str] | None = None,
-    sides: Sequence[str] = ("L", "R"),
-) -> dict[str, list[Path]]:
-    """Render legacy-vs-consolidated side-by-side comparison grids.
-
-    Reads consolidated PNGs from
-    :meth:`PathResolver.tongue_visual_qc_dir` and legacy PNGs from
-    ``legacy_figures_root`` (e.g.
-    ``\\\\research.files...\\angle_phase_exploratory\\``). Each output
-    PNG is a 2-column grid (legacy ┃ consolidated) for one family. If
-    the legacy PNG is missing, the legacy pane is rendered as a
-    placeholder with the annotation ``"legacy figure not found"``.
-
-    Output paths land under
-    :meth:`PathResolver.tongue_visual_comparison_dir`.
-
-    Returns
-    -------
-    dict[str, list[Path]]
-        ``{family_name: [comparison_grid_path1, ...]}``. Family 1
-        emits per-side comparison grids (up to 2); families 2-5 emit
-        1 each.
-    """
-    if params is None:
-        params = load_defaults()
-    if families is None:
-        families_to_grid = list(_FAMILIES_ALL)
-    else:
-        for f in families:
-            if f not in _FAMILIES_ALL:
-                raise ValueError(
-                    f"Unknown family {f!r}. Known: {sorted(_FAMILIES_ALL)}"
-                )
-        families_to_grid = list(families)
-
-    visual = params["dlc_kinematics"]["tongue_visual"]
-    cmp_cfg = visual.get("comparison_grid", {})
-    cmp_cols = int(cmp_cfg.get("cols", 2))
-    if cmp_cols != 2:
-        raise NotImplementedError(
-            "Only the legacy-vs-consolidated 2-column comparison grid is "
-            f"implemented; got cols={cmp_cols}."
-        )
-
-    qc_dir = resolver.tongue_visual_qc_dir(animal, date)
-    cmp_dir = resolver.tongue_visual_comparison_dir(animal, date)
-    cmp_dir.mkdir(parents=True, exist_ok=True)
-
-    modes = visual.get("modes", {})
-    time_mode = str(modes.get("time_summary", "first_multi"))
-    phase_mode = str(modes.get("phase_summary", "first_multi"))
-    xy_mode = str(modes.get("xy_summary", "first_multi"))
-
-    out_paths: dict[str, list[Path]] = {}
-    for family in families_to_grid:
-        if family in _PER_SIDE_FAMILIES:
-            grid_paths: list[Path] = []
-            for side in sides:
-                consolidated = qc_dir / f"{family}_side_{side}.png"
-                legacy = _resolve_legacy_png_path(
-                    family, animal, date, legacy_figures_root,
-                    side=side,
-                    time_mode=time_mode,
-                    phase_mode=phase_mode,
-                    xy_mode=xy_mode,
-                )
-                grid_path = cmp_dir / f"{family}_side_{side}_comparison.png"
-                _save_comparison_grid(
-                    consolidated, legacy, grid_path,
-                    title=f"{animal} {date.isoformat()} | {family} | side={side}",
-                    params=params,
-                )
-                grid_paths.append(grid_path)
-            out_paths[family] = grid_paths
-        else:
-            consolidated = qc_dir / f"{family}.png"
-            legacy = _resolve_legacy_png_path(
-                family, animal, date, legacy_figures_root,
-                side=None,
-                time_mode=time_mode,
-                phase_mode=phase_mode,
-                xy_mode=xy_mode,
-            )
-            grid_path = cmp_dir / f"{family}_comparison.png"
-            _save_comparison_grid(
-                consolidated, legacy, grid_path,
-                title=f"{animal} {date.isoformat()} | {family}",
-                params=params,
-            )
-            out_paths[family] = [grid_path]
 
     return out_paths
 
@@ -688,7 +578,7 @@ _PLOT_FAMILY_HELPERS = {
 
 
 def _resolve_consolidated_paths(
-    qc_dir: Path,
+    out_dir: Path,
     families: Sequence[str],
     *,
     sides: Sequence[str] = ("L", "R"),
@@ -698,47 +588,11 @@ def _resolve_consolidated_paths(
     for family in families:
         if family in _PER_SIDE_FAMILIES:
             out[family] = [
-                qc_dir / f"{family}_side_{side}.png" for side in sides
+                out_dir / f"{family}_side_{side}.png" for side in sides
             ]
         else:
-            out[family] = [qc_dir / f"{family}.png"]
+            out[family] = [out_dir / f"{family}.png"]
     return out
-
-
-def _resolve_legacy_png_path(
-    family: str,
-    animal: str,
-    date: datetime.date,
-    legacy_root: Path,
-    *,
-    side: str | None,
-    time_mode: str,
-    phase_mode: str,
-    xy_mode: str,
-) -> Path | None:
-    """Resolve a legacy PNG candidate path. Returns ``None`` if missing.
-
-    Legacy filename conventions (Cell 50 vendor lines 4556, 4592, 4628,
-    4687, 4747):
-
-    - qc_trials:           ``{mouse}_{YYYYMMDD}_{side}_anglePhase_QCtrials.png``
-    - first_peak_aligned:  ``{mouse}_{YYYYMMDD}_anglePhase_firstPeakAlignedAngle.png``
-    - reward_aligned:      ``{mouse}_{YYYYMMDD}_anglePhase_rewardAlignedAngle_{time_mode}.png``
-    - phase_aligned_angle: ``{mouse}_{YYYYMMDD}_anglePhase_phaseAlignedAngle_{phase_mode}.png``
-    - xy_by_phase:         ``{mouse}_{YYYYMMDD}_anglePhase_XYphase_{xy_mode}.png``
-    """
-    suffix = _LEGACY_SUFFIX[family].format(
-        time_mode=time_mode, phase_mode=phase_mode, xy_mode=xy_mode,
-    )
-    date_str = date.strftime("%Y%m%d")
-    if family == "qc_trials":
-        if side is None:
-            return None
-        name = f"{animal}_{date_str}_{side}{suffix}.png"
-    else:
-        name = f"{animal}_{date_str}{suffix}.png"
-    candidate = legacy_root / name
-    return candidate if candidate.exists() else None
 
 
 def _save_and_close(fig: Figure, path: Path, *, params: dict[str, Any]) -> None:
@@ -756,46 +610,6 @@ def _save_and_close(fig: Figure, path: Path, *, params: dict[str, Any]) -> None:
     fig.savefig(tmp, dpi=dpi, bbox_inches="tight", format="png")
     plt.close(fig)
     tmp.replace(path)
-
-
-def _save_comparison_grid(
-    consolidated: Path,
-    legacy: Path | None,
-    out_path: Path,
-    *,
-    title: str,
-    params: dict[str, Any],
-) -> None:
-    """Render a 2-column comparison grid (legacy | consolidated) to disk.
-
-    ``legacy=None`` triggers a placeholder pane with "legacy figure not
-    found" annotation. Consolidated is always loaded; if it doesn't
-    exist either, the cell renders a similar placeholder so the grid
-    is at least non-empty.
-    """
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-    titles = ("legacy", "consolidated")
-    panes: list[Path | None] = [legacy, consolidated]
-    for ax, pane_path, label in zip(axes, panes, titles):
-        if pane_path is not None and pane_path.exists():
-            try:
-                img = mpimg.imread(str(pane_path))
-                ax.imshow(img)
-            except Exception as exc:  # noqa: BLE001 — best-effort renderer
-                ax.text(0.5, 0.5, f"{label}: unreadable\n{exc}",
-                        ha="center", va="center", transform=ax.transAxes)
-        else:
-            label_str = (
-                "legacy figure not found"
-                if label == "legacy" else "consolidated PNG missing"
-            )
-            ax.text(0.5, 0.5, label_str, ha="center", va="center",
-                    transform=ax.transAxes, fontsize=14)
-        ax.set_title(label)
-        ax.set_xticks([])
-        ax.set_yticks([])
-    fig.suptitle(title, y=0.98)
-    _save_and_close(fig, out_path, params=params)
 
 
 def _empty_figure(message: str) -> Figure:

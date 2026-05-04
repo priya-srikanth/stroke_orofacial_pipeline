@@ -34,7 +34,6 @@ from stroke_orofacial.dlc_kinematics.tongue_visual import (  # noqa: E402
     _plot_phase_aligned_angle,
     _plot_reward_aligned,
     _plot_xy_by_phase,
-    render_comparison_grid,
     render_tongue_qc_figures,
 )
 from stroke_orofacial.paths import PathResolver  # noqa: E402
@@ -346,7 +345,7 @@ class TestRenderTongueQCFigures:
             overwrite="force",
         )
         sentinel_path = (
-            resolver.tongue_visual_qc_dir(animal, date) / "first_peak_aligned.png"
+            resolver.tongue_angle_dir(animal, date) / "first_peak_aligned.png"
         )
         sentinel_path.write_bytes(b"SENTINEL")
         render_tongue_qc_figures(
@@ -486,78 +485,3 @@ class TestPlotFamilies:
             "angle subplot has no peak-marker scatter"
         )
         plt.close(fig)
-
-
-# ============================================================================
-# Comparison-grid tests
-# ============================================================================
-
-
-class TestComparisonGrid:
-    def test_handles_missing_legacy_png(self, tmp_path, synthetic_bundle):
-        """Legacy PNG missing → comparison grid emits with placeholder
-        pane + annotation, does NOT crash."""
-        animal = synthetic_bundle.metadata["animal"]
-        date = datetime.date.fromisoformat(synthetic_bundle.metadata["date"])
-        resolver = PathResolver(output_root=tmp_path)
-        # Render consolidated PNGs first.
-        render_tongue_qc_figures(
-            animal=animal, date=date, resolver=resolver,
-            bundle=synthetic_bundle,
-            overwrite="force",
-        )
-        # Legacy root pointed at a non-existent dir.
-        empty_legacy_root = tmp_path / "no_legacy_pngs_here"
-        empty_legacy_root.mkdir()
-        out = render_comparison_grid(
-            animal=animal, date=date, resolver=resolver,
-            legacy_figures_root=empty_legacy_root,
-            families=["first_peak_aligned"],  # one family for speed
-        )
-        assert "first_peak_aligned" in out
-        grid_path = out["first_peak_aligned"][0]
-        assert grid_path.exists()
-        assert grid_path.stat().st_size > 1024
-
-    def test_renders_with_legacy_present(self, tmp_path, synthetic_bundle):
-        """Both legacy + consolidated present → comparison grid emits
-        with both panes loaded from disk."""
-        animal = synthetic_bundle.metadata["animal"]
-        date = datetime.date.fromisoformat(synthetic_bundle.metadata["date"])
-        resolver = PathResolver(output_root=tmp_path)
-        render_tongue_qc_figures(
-            animal=animal, date=date, resolver=resolver,
-            bundle=synthetic_bundle,
-            overwrite="force",
-        )
-        # Plant a synthetic legacy PNG matching the expected name.
-        legacy_root = tmp_path / "legacy_pngs"
-        legacy_root.mkdir()
-        date_str = date.strftime("%Y%m%d")
-        legacy_png = (
-            legacy_root
-            / f"{animal}_{date_str}_anglePhase_firstPeakAlignedAngle.png"
-        )
-        # Use matplotlib to write a tiny placeholder PNG.
-        fig, ax = plt.subplots(figsize=(2, 2))
-        ax.text(0.5, 0.5, "synthetic legacy", ha="center", va="center")
-        fig.savefig(legacy_png, dpi=72)
-        plt.close(fig)
-
-        out = render_comparison_grid(
-            animal=animal, date=date, resolver=resolver,
-            legacy_figures_root=legacy_root,
-            families=["first_peak_aligned"],
-        )
-        assert out["first_peak_aligned"][0].exists()
-        assert out["first_peak_aligned"][0].stat().st_size > 1024
-
-    def test_unknown_family_raises(self, tmp_path):
-        date = datetime.date(2025, 3, 19)
-        resolver = PathResolver(output_root=tmp_path)
-        with pytest.raises(ValueError, match="Unknown family"):
-            render_comparison_grid(
-                animal="PS50", date=date, resolver=resolver,
-                legacy_figures_root=tmp_path,
-                families=["not_a_real_family"],
-            )

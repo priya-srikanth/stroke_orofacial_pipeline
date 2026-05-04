@@ -57,7 +57,6 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
     build_tongue_visual_bundle_by_animal_date,
 )
 from stroke_orofacial.dlc_kinematics.tongue_visual import (
-    render_comparison_grid,
     render_tongue_qc_figures,
 )
 
@@ -104,7 +103,6 @@ __all__ = [
     "build_trial_overlays_animal",
     "classify_tongue_jaw_mismatch",
     "classify_tongue_jaw_mismatch_by_animal_date",
-    "render_comparison_grid",
     "render_cross_session_figures",
     "render_tongue_qc_figures",
     "render_within_session_figures",

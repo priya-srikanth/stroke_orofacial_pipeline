@@ -15,6 +15,182 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-03 — Phase 7a.4-paths-cleanup — `figures_qc/` retirement + comparison-grid renderer deletion + tongue-jaw mismatch cross-session wired into notebook 13
+
+**Context.** Phase 7a.4 (PR #86, 2026-04-30) shipped per-(animal, date)
+tongue angle/phase visual-gate output under
+`dlc_kinematics/figures_qc/tongue/...` along with a
+`render_comparison_grid` renderer that emitted legacy-vs-consolidated
+side-by-side PNGs to `figures_qc/tongue_comparison/...` for
+visual-gate parity verification. Phase 7a.5-mismatch (PR #88)
+followed the same pattern at
+`dlc_kinematics/tongue_jaw_mismatch/figures_qc/...` and added a
+`render_cross_session_figures` per-mouse aggregator that was never
+wired into notebook 13. Phase 7a.6 (PR #91) broke from the
+`figures_qc/` convention entirely (uses
+`dlc_kinematics/mean_sem/{bodypart}/...`). Phase
+7a.4-orientation-fix (PR #93, this session, tag
+`v7a.4-orientation-fix-cam-view-flip`) flipped `xy_by_phase` to the
+cam-view L/R convention.
+
+This phase consolidates four cleanup threads that surfaced while
+reviewing the post-orientation-flip state:
+
+1. Retire the `figures_qc/` directory naming (a 7a.4-era visual-
+   gate convention) now that those PNGs are canonical scientific
+   outputs, not gate artifacts.
+2. Delete the legacy-vs-consolidated comparison-grid renderer +
+   helpers + tests now that all visual gates have closed PASS
+   (7a.4, 7a.5, 7a.6) and the renderer is dead code in production.
+3. Wire `render_cross_session_figures` into notebook 13 so the
+   tongue-jaw mismatch cross-session aggregations actually run in
+   production (previously code-complete + tested, but never invoked).
+4. Land a forward-pointer kickoff doc for the next phase
+   (cross-session aggregations of tongue angle/phase families).
+
+**Decisions enacted.**
+
+1. **`figures_qc/` directory layout retired.** Three resolver
+   renames in `src/stroke_orofacial/paths.py`:
+   - `tongue_visual_qc_dir(animal, date)` → `tongue_angle_dir(animal, date)`,
+     path `dlc_kinematics/figures_qc/tongue/...` →
+     `dlc_kinematics/tongue_angle/...`
+   - `tongue_visual_comparison_dir(animal, date)` — **DELETED**
+     (no callers after decision #2).
+   - `tongue_jaw_mismatch_qc_dir(animal, date)` →
+     `tongue_jaw_mismatch_within_session_dir(animal, date)`, path
+     `tongue_jaw_mismatch/figures_qc/...` →
+     `tongue_jaw_mismatch/within_session/...` (symmetric with the
+     existing `cross_session/` sibling).
+
+   The "QC" suffix in `figures_qc/` reflected the visual-gate
+   provenance and was no longer accurate now that these PNGs are the
+   canonical scientific deliverables. The 7a.6 mean_sem path layout
+   already broke from `figures_qc/` (uses
+   `dlc_kinematics/mean_sem/{bodypart}/...`); this aligns 7a.4 and
+   7a.5 to the same naming pattern. **Scientific-vocabulary `qc`
+   stays unchanged** — the per-trial `jaw_pass_qc` boolean field on
+   the mismatch parquet is domain vocabulary, not a directory name.
+
+2. **`render_comparison_grid` + helpers deleted from
+   `tongue_visual.py`.** Removed: `render_comparison_grid` function;
+   `_resolve_legacy_png_path` helper; `_save_comparison_grid` helper;
+   `_LEGACY_SUFFIX` dict; `mpimg` import (no remaining users);
+   `render_comparison_grid` re-export from
+   `dlc_kinematics/__init__.py`; `TestComparisonGrid` class from
+   `tests/test_tongue_visual.py`. Visual gates have all closed PASS
+   (7a.4 PR #86, 7a.5 PR #88, 7a.6 PR #91, plus 7a.4-orientation-fix
+   PR #93); the comparison machinery has served its purpose. Carrying
+   forward dead code + legacy-PNG-fetching machinery is gratuitous
+   maintenance debt. Historical implementation lives in git history
+   at tag `v7a.4-tongue-visual-and-day-binned`.
+
+3. **Visual-gate parity scripts deprecated.**
+   `tests/scripts/parity_phase7a4_visual_gate.py` and
+   `tests/scripts/parity_phase7a5_visual_gate.py` are moved (via
+   `git mv`) to `tests/scripts/_deprecated/` because they imported
+   the deleted `render_comparison_grid` and would fail at import
+   time on `main`. New `tests/scripts/_deprecated/README.md`
+   documents the rationale + how to re-derive visual-gate machinery
+   from git history if a future kinematics-algorithm change needs it.
+
+4. **Tongue-jaw mismatch cross-session wired into notebook 13.**
+   `render_cross_session_figures` (`tongue_jaw_mismatch.py`, shipped
+   in 7a.5 PR #88 with tests) was never invoked from any notebook
+   — production runs of notebook 13 emitted only the within-session
+   PNGs. This phase adds a new per-mouse loop cell (after the
+   within-session cell) that calls
+   `render_cross_session_figures(animal, resolver, overwrite=...)`.
+   Two USER INPUTS knobs control behavior:
+   - `INCLUDE_CROSS_SESSION_MISMATCH = True` gates the entire cell.
+   - `OVERWRITE_CROSS_SESSION = None` is a per-cell overwrite
+     override — `None` inherits global `OVERWRITE`; `"force"`
+     regenerates without re-running the slower per-session pipelines.
+     Resolved via `overwrite_cs = OVERWRITE_CROSS_SESSION or
+     OVERWRITE`. The print line surfaces the resolved mode for
+     debuggability.
+
+5. **Mover script for existing on-disk PNGs.**
+   `scripts/phase_7a/move_figures_qc_to_new_layout.py` — `--dry-run`
+   default + `--execute` flag. Moves two trees in place:
+   - `dlc_kinematics/figures_qc/tongue/` → `dlc_kinematics/tongue_angle/`
+   - `dlc_kinematics/tongue_jaw_mismatch/figures_qc/` →
+     `dlc_kinematics/tongue_jaw_mismatch/within_session/`
+
+   And offers a typed-confirm DELETE of
+   `figures_qc/tongue_comparison/` (gateable via `--keep-comparison`).
+   Refuses to clobber existing destinations; prunes empty parent
+   dirs after success. Idempotent + safe. **Not run as part of
+   this phase merge** — execute post-merge at a convenient time.
+
+6. **Cross-session ANGLE work is OUT OF SCOPE for this phase.**
+   Forward-pointer: net-new cross-session aggregations of the
+   tongue angle/phase families (`first_peak_aligned`,
+   `phase_aligned_angle`, `reward_aligned`) plus per-session split
+   of `phase_aligned_angle` into `_1st_lick`/`_all_licks` modes
+   queued as Phase 7a.4-cross-session-angle. Kickoff drafted at
+   `docs/prompts/phase-7a.4-cross-session-angle-kickoff.md`. Audit-
+   first pattern; three outcome branches A/B/C; locks at Task 1.
+   Net-new design with no legacy reference deserves its own phase
+   plan + kickoff rather than ballooning a polish branch.
+
+**Rationale.**
+
+- **Figures_qc retirement** — naming reflected a transitional state
+  (when these PNGs were proximally consumed by the parity-gate
+  machinery, not yet treated as canonical analysis outputs); now
+  misleading. Aligning 7a.4 and 7a.5 with 7a.6's already-different
+  layout simplifies the dir tree.
+- **Comparison-grid deletion** — gates have all PASSED; renderer is
+  100% unused in production; the legacy-PNG-fetching machinery
+  reaches across to MICROSCOPE and bloats the surface area without
+  value-add now that we trust the consolidated outputs.
+- **Cross-session wire-up** — per-mouse aggregation was always
+  the intent of `render_cross_session_figures` per the 7a.5
+  module docstring; the missing notebook cell was an integration
+  oversight surfaced when reviewing the 7a.4 paths cleanup scope.
+  Sub-knob `OVERWRITE_CROSS_SESSION` was added because the
+  cross-session render is fast (~seconds per mouse) compared to
+  the per-session pipelines, so iteration on cross-session output
+  shouldn't require regenerating the slow stuff.
+
+**Enforced at.**
+- `src/stroke_orofacial/paths.py` — three renamed/deleted resolvers
+  with docstring history notes citing this DECISIONS entry.
+- `src/stroke_orofacial/dlc_kinematics/tongue_visual.py` —
+  comparison-grid renderer + helpers + dead `mpimg` import deleted;
+  `out_dir = resolver.tongue_angle_dir(...)` call-site updated;
+  module docstring carries history note documenting the removal
+  with a pointer to the `v7a.4-tongue-visual-and-day-binned` tag.
+- `src/stroke_orofacial/dlc_kinematics/tongue_jaw_mismatch.py` —
+  `qc_dir` local var → `within_session_dir`; resolver call updated;
+  module-header path example updated.
+- `src/stroke_orofacial/dlc_kinematics/__init__.py` — removed
+  `render_comparison_grid` re-export from public API.
+- `tests/test_paths.py` — three resolver tests renamed + path
+  string assertions updated; docstring history notes added.
+- `tests/test_tongue_visual.py` — `TestComparisonGrid` class
+  deleted; `render_comparison_grid` import removed.
+- `tests/scripts/_deprecated/README.md` — new; documents
+  rationale + frozen-artifact status + future re-derivation path.
+- `notebooks/13_dlc_kinematics_tongue.ipynb` — cell 1 USER INPUTS
+  gains `INCLUDE_CROSS_SESSION_MISMATCH` + `OVERWRITE_CROSS_SESSION`
+  knobs; cell 2 import gains `render_cross_session_figures`; new
+  cell 8 per-mouse cross-session loop.
+- `scripts/phase_7a/move_figures_qc_to_new_layout.py` — new mover.
+- `docs/prompts/phase-7a.4-cross-session-angle-kickoff.md` — new
+  kickoff doc for queued follow-up phase.
+
+**Closes:**
+- Implicit `figures_qc/` naming-debt item carried since the
+  7a.4 → 7a.6 evolution.
+- Cross-session-mismatch-not-wired-into-notebook-13 integration
+  oversight from 7a.5.
+
+**Tag:** `v7a.4-paths-cleanup` on the PR merge commit.
+
+---
+
 ## 2026-05-03 — Phase 7a.4-orientation-fix — `xy_by_phase` cam-view L/R subplot flip
 
 **Context.** Phase 7a.4 (PR #86, 2026-04-30) shipped `tongue_visual.py`

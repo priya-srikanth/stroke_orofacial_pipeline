@@ -532,17 +532,21 @@ class TestTonguePertrialPaths:
 class TestPhase7a4Paths:
     """Phase 7a.4 resolver helpers.
 
-    Three new resolvers added for the tongue visual gate + day-binned
-    cross-session aggregator:
+    Two resolvers covered (third resolver retired in
+    Phase 7a.4-orientation-and-paths-cleanup, 2026-05-03):
 
     - ``tongue_pertrial_licking_dynamics_day_binned_parquet`` — file
       resolver, eager parent mkdir matching the 7a.3 V3 file-resolver
       convention. Filename uses the legacy ``f"{lo}..{hi}"`` rel_day_bin
       label literal (NTFS-legal; preserved for traceability).
-    - ``tongue_visual_qc_dir`` — directory resolver, no eager mkdir
-      (renderer creates).
-    - ``tongue_visual_comparison_dir`` — directory resolver, no eager
-      mkdir (renderer creates).
+    - ``tongue_angle_dir`` — directory resolver, no eager mkdir
+      (renderer creates). Renamed from ``tongue_visual_qc_dir`` and
+      moved out of the ``figures_qc/`` subtree by 7a.4-orientation-
+      and-paths-cleanup once the visual gate locked PASS.
+
+    The previously-existing ``tongue_visual_comparison_dir`` resolver
+    was deleted by 7a.4-orientation-and-paths-cleanup along with the
+    ``render_comparison_grid`` renderer it served.
     """
 
     def test_tongue_pertrial_licking_dynamics_day_binned_parquet_path(
@@ -577,38 +581,24 @@ class TestPhase7a4Paths:
         assert path.name == "-1..0.parquet"
         assert path.parent.name == "PS46"
 
-    def test_tongue_visual_qc_dir_path(self, monkeypatch, tmp_path):
-        """QC PNG directory: no eager mkdir (renderer creates)."""
+    def test_tongue_angle_dir_path(self, monkeypatch, tmp_path):
+        """Angle/phase PNG directory: no eager mkdir (renderer creates).
+
+        Renamed from ``test_tongue_visual_qc_dir_path`` in
+        Phase 7a.4-orientation-and-paths-cleanup (2026-05-03);
+        path moved out of ``figures_qc/tongue/`` to ``tongue_angle/``.
+        """
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(output_root=tmp_path)
-        path = resolver.tongue_visual_qc_dir(
+        path = resolver.tongue_angle_dir(
             "PS50", datetime.date(2025, 3, 19)
         )
         expected = (
             tmp_path
             / "dlc_kinematics"
-            / "figures_qc"
-            / "tongue"
+            / "tongue_angle"
             / "PS50"
             / "20250319"
-        )
-        assert path == expected
-        assert not path.exists()
-
-    def test_tongue_visual_comparison_dir_path(self, monkeypatch, tmp_path):
-        """Comparison-grid directory: no eager mkdir (renderer creates)."""
-        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
-        resolver = PathResolver(output_root=tmp_path)
-        path = resolver.tongue_visual_comparison_dir(
-            "PS46", datetime.date(2025, 3, 7)
-        )
-        expected = (
-            tmp_path
-            / "dlc_kinematics"
-            / "figures_qc"
-            / "tongue_comparison"
-            / "PS46"
-            / "20250307"
         )
         assert path == expected
         assert not path.exists()
@@ -625,8 +615,11 @@ class TestPhase7a5Paths:
       matching the 7a.3 V3 ``tongue_pertrial_endpoints_json`` convention.
     - ``tongue_jaw_mismatch_candidate_trials_parquet`` — file resolver,
       eager parent mkdir.
-    - ``tongue_jaw_mismatch_qc_dir`` — directory resolver, no eager mkdir
-      (renderer creates).
+    - ``tongue_jaw_mismatch_within_session_dir`` — directory resolver, no
+      eager mkdir (renderer creates). Renamed from
+      ``tongue_jaw_mismatch_qc_dir`` in Phase 7a.4-orientation-and-paths-
+      cleanup (2026-05-03); path renamed from ``figures_qc/`` to
+      ``within_session/`` for symmetry with the ``cross_session/`` sibling.
     - ``tongue_jaw_mismatch_cross_session_dir`` — directory resolver, no
       eager mkdir (renderer creates). Per-mouse only (no date dimension).
     """
@@ -671,18 +664,25 @@ class TestPhase7a5Paths:
         assert path.parent.exists() and path.parent.is_dir()
         assert not path.exists()
 
-    def test_tongue_jaw_mismatch_qc_dir_path(self, monkeypatch, tmp_path):
-        """Within-session figures directory: no eager mkdir (renderer creates)."""
+    def test_tongue_jaw_mismatch_within_session_dir_path(
+        self, monkeypatch, tmp_path,
+    ):
+        """Within-session figures directory: no eager mkdir (renderer creates).
+
+        Renamed from ``test_tongue_jaw_mismatch_qc_dir_path`` in
+        Phase 7a.4-orientation-and-paths-cleanup (2026-05-03);
+        path renamed ``figures_qc/`` → ``within_session/``.
+        """
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(output_root=tmp_path)
-        path = resolver.tongue_jaw_mismatch_qc_dir(
+        path = resolver.tongue_jaw_mismatch_within_session_dir(
             "PS54", datetime.date(2025, 6, 7)
         )
         expected = (
             tmp_path
             / "dlc_kinematics"
             / "tongue_jaw_mismatch"
-            / "figures_qc"
+            / "within_session"
             / "PS54"
             / "20250607"
         )

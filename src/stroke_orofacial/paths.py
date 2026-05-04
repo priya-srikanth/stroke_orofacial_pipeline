@@ -341,46 +341,31 @@ class PathResolver:
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 
-    def tongue_visual_qc_dir(
+    def tongue_angle_dir(
         self, animal: str, date: datetime.date,
     ) -> Path:
-        """Return the Phase 7a.4 tongue visual-gate QC PNG output directory.
+        """Return the Phase 7a.4 tongue angle/phase analysis figure output directory.
 
-        E.g. ``<outputs>/dlc_kinematics/figures_qc/tongue/PS50/20250319/``.
+        E.g. ``<outputs>/dlc_kinematics/tongue_angle/PS50/20250319/``.
 
         Hosts the 6 PNGs emitted per session by
         :func:`stroke_orofacial.dlc_kinematics.tongue_visual.render_tongue_qc_figures`
         (Family 1 = 2 PNGs per side; Families 2-5 = 1 PNG each). The
         renderer creates the directory; this resolver returns the path
         only — no eager mkdir.
+
+        **Naming history:** Previously ``tongue_visual_qc_dir`` writing
+        to ``dlc_kinematics/figures_qc/tongue/...``; renamed in
+        Phase 7a.4-orientation-and-paths-cleanup (2026-05-03) once the
+        7a.4 visual gate verdict locked in PASS. The "QC" / "figures_qc"
+        suffix reflected the visual-gate provenance and is no longer
+        accurate now that these PNGs are the canonical scientific
+        outputs (not just gate artifacts).
         """
         date_str = date.strftime("%Y%m%d")
         return (
             self.pipeline_outputs(subdir="dlc_kinematics")
-            / "figures_qc"
-            / "tongue"
-            / animal
-            / date_str
-        )
-
-    def tongue_visual_comparison_dir(
-        self, animal: str, date: datetime.date,
-    ) -> Path:
-        """Return the Phase 7a.4 tongue visual-gate comparison-grid output directory.
-
-        E.g. ``<outputs>/dlc_kinematics/figures_qc/tongue_comparison/PS46/20250307/``.
-
-        Hosts the legacy-vs-consolidated side-by-side PNGs emitted per
-        session by
-        :func:`stroke_orofacial.dlc_kinematics.tongue_visual.render_comparison_grid`
-        for the visual-gate parity runner. The renderer creates the
-        directory; this resolver returns the path only — no eager mkdir.
-        """
-        date_str = date.strftime("%Y%m%d")
-        return (
-            self.pipeline_outputs(subdir="dlc_kinematics")
-            / "figures_qc"
-            / "tongue_comparison"
+            / "tongue_angle"
             / animal
             / date_str
         )
@@ -434,25 +419,34 @@ class PathResolver:
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 
-    def tongue_jaw_mismatch_qc_dir(
+    def tongue_jaw_mismatch_within_session_dir(
         self, animal: str, date: datetime.date,
     ) -> Path:
         """Return the Phase 7a.5 mismatch within-session figure output directory.
 
-        E.g. ``<outputs>/dlc_kinematics/tongue_jaw_mismatch/figures_qc/PS46/20250307/``.
+        E.g. ``<outputs>/dlc_kinematics/tongue_jaw_mismatch/within_session/PS46/20250307/``.
 
         Hosts the within-session PNGs (Cell 55 individualTrials2col +
         sessionOverlayGrid4x2 families) emitted per session by
         :func:`stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch.render_within_session_figures`.
         The renderer creates the directory; this resolver returns the path
         only — no eager mkdir (matches the 7a.4
-        :meth:`tongue_visual_qc_dir` directory-resolver convention).
+        :meth:`tongue_angle_dir` directory-resolver convention).
+
+        **Naming history:** Previously ``tongue_jaw_mismatch_qc_dir``
+        writing to ``tongue_jaw_mismatch/figures_qc/...``; renamed in
+        Phase 7a.4-orientation-and-paths-cleanup (2026-05-03) for
+        symmetry with the existing ``cross_session/`` sibling and to
+        drop the "qc" suffix consistently with the broader figures_qc/
+        cleanup. (Note: the per-trial scientific field
+        ``jaw_pass_qc`` is unaffected — that's domain vocabulary, not
+        a directory name.)
         """
         date_str = date.strftime("%Y%m%d")
         return (
             self.pipeline_outputs(subdir="dlc_kinematics")
             / "tongue_jaw_mismatch"
-            / "figures_qc"
+            / "within_session"
             / animal
             / date_str
         )
