@@ -56,9 +56,10 @@ from stroke_orofacial.config_loader import load_defaults  # noqa: E402
 from stroke_orofacial.dlc_kinematics.tongue_pertrial import (  # noqa: E402
     TongueVisualBundle,
     TrialEvent,
+    build_all_licks_centered_phase_rows,
+    build_first_lick_centered_phase_rows,
     build_tongue_visual_bundle,
     build_tongue_visual_bundle_by_animal_date,
-    select_first_lick_phase_rows,
 )
 from stroke_orofacial.manifest import SessionManifest  # noqa: E402
 from stroke_orofacial.paths import PathResolver  # noqa: E402
@@ -516,7 +517,7 @@ def _plot_phase_aligned_angle(
     else:
         phase_mode = str(mode)
     df_bouts = bundle.df_bouts
-    df_phase = _phase_rows_for_mode(bundle.df_phase, df_bouts, phase_mode)
+    df_phase = _phase_rows_for_mode(bundle, phase_mode)
 
     fig, ax = plt.subplots(figsize=(8.0, 4.2))
     if df_phase.empty:
@@ -794,19 +795,36 @@ def _select_phase_rows(df_phase: pd.DataFrame, mode: str) -> pd.DataFrame:
 
 
 def _phase_rows_for_mode(
-    df_phase: pd.DataFrame, df_bouts: pd.DataFrame, mode: str,
+    bundle: TongueVisualBundle, mode: str,
 ) -> pd.DataFrame:
-    """Phase 7a.4-cross-session-angle Addendum #3 Option C — dispatch
-    to the right phase-row selector for ``mode``.
+    """Phase 7a.4-cross-session-angle Addenda #9 + #10 — dispatch to
+    the right centered-phase builder for ``mode``.
 
-    Routes ``"first_lick"`` to
-    :func:`select_first_lick_phase_rows` (uses both df_phase + df_bouts);
-    routes ``"all_multi"`` and ``"first_multi"`` to the existing
-    :func:`_select_phase_rows` (df_phase only).
+    Routes:
+      - ``"first_lick"`` → :func:`build_first_lick_centered_phase_rows`
+        (peak[0]-centered, ILI = peak[1] - peak[0]). One peak per
+        trial; trials with no first multi-bout contribute nothing.
+      - ``"all_multi"`` →
+        :func:`build_all_licks_centered_phase_rows` (every peak in
+        every multi-bout, centered with forward ILI; last peak per
+        bout dropped — no synthetic-ILI fallback per Addendum #10).
+      - ``"first_multi"`` → falls back to the legacy peak-to-peak
+        ``_select_phase_rows`` filter on ``bundle.df_phase``. Kept for
+        external/back-compat callers; not wired into any production
+        phase-aligned-angle PNG filename.
+
+    Addendum #9/#10: the rendering path no longer reads from
+    ``bundle.df_phase`` for ``"first_lick"`` or ``"all_multi"``
+    modes. ``df_phase`` is still populated in the bundle (with the
+    legacy peak-to-peak-shifted phase) for any external consumer
+    that may rely on it; convention divergence documented in
+    DECISIONS.
     """
     if mode == "first_lick":
-        return select_first_lick_phase_rows(df_phase, df_bouts)
-    return _select_phase_rows(df_phase, mode)
+        return build_first_lick_centered_phase_rows(bundle)
+    if mode == "all_multi":
+        return build_all_licks_centered_phase_rows(bundle)
+    return _select_phase_rows(bundle.df_phase, mode)
 
 
 def _selected_phase_peak_count(
@@ -815,18 +833,19 @@ def _selected_phase_peak_count(
 ) -> int:
     """Count the lick peaks contributing to the phase summary.
 
-    Per-peak rows in df_bouts have ``peak_t_ms`` set; bout-summary rows
-    have ``peak_t_ms`` NaN. Filter by mode + optional side, count unique
-    (trial_index, bout_idx, peak_t_ms) tuples.
+    For the centered-phase modes (Phase 7a.4-cross-session-angle
+    Addenda #9 + #10) — ``"first_lick"`` and ``"all_multi"`` — the
+    count is read from the centered-phase DataFrame's ``peak_t_ms``
+    column: each unique ``(trial_index, peak_t_ms)`` tuple is one
+    rendered peak. Pass the already-built centered DataFrame via
+    ``df_phase_subset``. Returns 0 if missing or empty.
 
-    For ``mode="first_lick"`` (Phase 7a.4-cross-session-angle Addendum
-    #3), the count is the number of unique trials contributing
-    first-lick rows (one trial → one first lick); pass the already-
-    filtered df_phase via ``df_phase_subset`` and we count distinct
-    (trial_index,) entries directly. Fall back to a 0 count if
-    ``df_phase_subset`` is None or empty.
+    For the legacy ``"first_multi"`` mode (peak-to-peak-shifted phase,
+    not used by any production phase-aligned-angle PNG after
+    Addendum #10 but retained for back-compat callers): falls back to
+    counting per-peak rows in ``df_bouts``.
     """
-    if mode == "first_lick":
+    if mode in ("first_lick", "all_multi"):
         if df_phase_subset is None or df_phase_subset.empty:
             return 0
         d = df_phase_subset
@@ -834,6 +853,12 @@ def _selected_phase_peak_count(
             d = d[d["side"] == side]
         if d.empty:
             return 0
+        if "peak_t_ms" in d.columns:
+            return int(len(
+                d[["trial_index", "peak_t_ms"]].drop_duplicates(),
+            ))
+        # Centered DF without peak_t_ms shouldn't happen post-#10;
+        # fall through to a trial-count for back-compat.
         return int(len(d[["trial_index"]].drop_duplicates()))
     if df_bouts.empty:
         return 0
@@ -842,8 +867,6 @@ def _selected_phase_peak_count(
         d = d[d["side"] == side]
     if mode == "first_multi":
         d = d[d["multi_bout_rank"] == 0]
-    elif mode == "all_multi":
-        d = d[d["multi_bout_rank"].notna()]
     else:
         raise ValueError(
             f"phase mode must be 'all_multi', 'first_multi', or 'first_lick'; "

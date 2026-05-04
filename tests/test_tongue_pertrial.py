@@ -48,6 +48,7 @@ from stroke_orofacial.dlc_kinematics._detector import (
 from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
     FEATURE_EXTRACTION_VERSION,
     INTERPOLATION_VERSION,
+    TongueVisualBundle,
     TrialEvent,
     _derive_trial_events_from_spout_behavior,
     _extract_lick1_lick2,
@@ -1985,248 +1986,369 @@ class TestVisualBundle:
 
 
 # ===========================================================================
-# Phase 7a.4-cross-session-angle (Addendum #3 Option C):
-# select_first_lick_phase_rows
+# Phase 7a.4-cross-session-angle Addenda #9 + #10:
+# centered-on-peak phase row builders
 # ===========================================================================
 
 
-class TestSelectFirstLickPhaseRows:
-    """Phase 7a.4-cross-session-angle Addendum #3 Option C — public selector
-    helper that filters ``df_phase`` to the first peak's phase cycle of
-    the first multi-bout per (trial, side). Used by the per-session
-    ``_plot_phase_aligned_angle`` ``_1st_lick`` mode (Addendum #3 lock #3
-    rename) and by the cross-session aggregator's first-lick path.
+def _make_centered_phase_test_bundle(
+    trial_specs: "list[dict[str, Any]]",
+    *,
+    fps: float = 250.0,
+    n_phase_bins: int = 36,
+    plot_win_ms: tuple[float, float] = (-180.0, 1500.0),
+) -> "TongueVisualBundle":
+    """Build a minimal TongueVisualBundle for centered-phase helper tests.
 
-    Bundle dataclass schema is unchanged — the selector is a pure pandas
-    filter on existing columns (``trial_index``, ``side``,
-    ``multi_bout_rank``, ``t_ms`` from df_phase; ``peak_t_ms``,
-    ``peak_t0_ms``, ``peak_t1_ms`` from df_bouts). Algorithm unchanged.
+    Each ``trial_specs`` entry is a dict with keys:
+      - ``trial_index`` (int)
+      - ``side`` (str: "L" or "R")
+      - ``bouts``: list of {``peak_t_ms``: list[float]} — one entry per
+        bout. Single-element lists model isolated-lick bouts; ≥2-element
+        lists model multi-bouts.
+      - ``angle_at_peak``: optional dict mapping peak_t_ms → angle_deg
+        for the per-frame trace at peak frames; defaults to 0.0.
+
+    Builds a per-trial ``t_ms`` axis at ``fps`` covering ``plot_win_ms``,
+    and an ``angle_snip`` array that is finite (= 0.0 by default, with
+    the angle-at-peak overrides applied at the closest frames). Builds
+    df_bouts with the legacy mixed-row schema (one bout-summary row per
+    bout + one per-peak row per peak). Other df_phase / metadata fields
+    are populated minimally for the helper signature.
+    """
+    pre_f = max(0, int(np.floor(-plot_win_ms[0] / 1000.0 * fps)))
+    post_f = max(0, int(np.ceil(plot_win_ms[1] / 1000.0 * fps)))
+    snip_len = pre_f + post_f + 1
+    t_ms = (np.arange(-pre_f, post_f + 1, dtype=np.float64) / fps) * 1000.0
+
+    trial_rows: list[dict[str, Any]] = []
+    bout_rows: list[dict[str, Any]] = []
+    for spec in trial_specs:
+        side = str(spec["side"])
+        trial_idx = int(spec["trial_index"])
+        bouts = spec["bouts"]
+        angle_at_peak: dict[float, float] = spec.get("angle_at_peak", {})
+
+        angle_arr = np.zeros(snip_len, dtype=np.float64)
+        # Plant per-peak angle values at the closest frame.
+        for bt in bouts:
+            for pt in bt["peak_t_ms"]:
+                if pt in angle_at_peak:
+                    fr_idx = int(np.argmin(np.abs(t_ms - pt)))
+                    angle_arr[fr_idx] = float(angle_at_peak[pt])
+        # df_trials: minimal columns the helpers consume + a few the
+        # bundle dataclass doc names.
+        trial_rows.append({
+            "side": side,
+            "trial_index": trial_idx,
+            "n_peaks": int(sum(len(bt["peak_t_ms"]) for bt in bouts)),
+            "n_bouts": int(len(bouts)),
+            "n_multi_lick_bouts": int(sum(
+                1 for bt in bouts if len(bt["peak_t_ms"]) >= 2
+            )),
+            "first_peak_t_ms": (
+                float(bouts[0]["peak_t_ms"][0]) if bouts else float("nan")
+            ),
+            "t_ms": t_ms.copy(),
+            "y_snip": np.zeros(snip_len),
+            "angle_snip": angle_arr,
+            "angle_allbouts_snip": angle_arr.copy(),
+            "angle_firstbout_snip": angle_arr.copy(),
+            "angle_firstmulti_snip": angle_arr.copy(),
+            "t_firstpeak_align_ms": np.zeros(10),
+            "angle_firstpeak_snip": np.zeros(10),
+        })
+
+        # df_bouts: bout-summary + per-peak rows.
+        multi_rank_counter = 0
+        for bout_idx, bt in enumerate(bouts):
+            peaks = bt["peak_t_ms"]
+            is_multi = len(peaks) >= 2
+            multi_rank = (
+                float(multi_rank_counter) if is_multi else float("nan")
+            )
+            if is_multi:
+                multi_rank_counter += 1
+            bout_rows.append({
+                "side": side,
+                "trial_index": trial_idx,
+                "bout_idx": bout_idx,
+                "bout_rank": bout_idx,
+                "multi_bout_rank": multi_rank,
+                "n_peaks": int(len(peaks)),
+                "bout_t0_ms": float(peaks[0] - 50.0),
+                "bout_t1_ms": float(peaks[-1] + 50.0),
+                "peak_t0_ms": float(peaks[0]) if len(peaks) >= 1 else float("nan"),
+                "peak_t1_ms": float(peaks[1]) if len(peaks) >= 2 else float("nan"),
+                "peak_y0": 0.0, "peak_angle0": 0.0,
+                "peak_y1": 0.0, "peak_angle1": 0.0,
+                "peak_t_ms": float("nan"),
+                "peak_y": float("nan"),
+                "peak_x": float("nan"),
+                "peak_angle_deg": float("nan"),
+            })
+            for pt in peaks:
+                bout_rows.append({
+                    "side": side,
+                    "trial_index": trial_idx,
+                    "bout_idx": bout_idx,
+                    "bout_rank": bout_idx,
+                    "multi_bout_rank": multi_rank,
+                    "n_peaks": int(len(peaks)),
+                    "bout_t0_ms": float(peaks[0] - 50.0),
+                    "bout_t1_ms": float(peaks[-1] + 50.0),
+                    "peak_t0_ms": float("nan"),
+                    "peak_t1_ms": float("nan"),
+                    "peak_y0": float("nan"),
+                    "peak_angle0": float("nan"),
+                    "peak_y1": float("nan"),
+                    "peak_angle1": float("nan"),
+                    "peak_t_ms": float(pt),
+                    "peak_y": 0.0,
+                    "peak_x": 0.0,
+                    "peak_angle_deg": float(angle_at_peak.get(pt, 0.0)),
+                })
+
+    df_trials = pd.DataFrame(trial_rows)
+    df_bouts = pd.DataFrame(bout_rows)
+    df_phase = pd.DataFrame()  # not consumed by centered helpers
+
+    metadata = {
+        "animal": "PSXX",
+        "date": "2025-01-01",
+        "fps": float(fps),
+        "n_frames": 10000,
+        "eye_in_spout_frame_x": 0.0,
+        "eye_in_spout_frame_y": 0.0,
+        "angle_sign_flip": -1.0,
+        "smoothing_gaussian_sigma_ms": 8.0,
+        "feature_extraction_version": "test",
+        "interpolation_version": "test",
+        "plot_win_ms": list(plot_win_ms),
+        "detect_win_ms": [70.0, 3000.0],
+        "first_peak_align_win_ms": [-180.0, 1000.0],
+        "n_phase_bins": int(n_phase_bins),
+        "max_licks_per_trial": 40,
+    }
+    return TongueVisualBundle(
+        df_trials=df_trials,
+        df_bouts=df_bouts,
+        df_phase=df_phase,
+        angle_per_frame=pd.DataFrame(),
+        metadata=metadata,
+    )
+
+
+class TestBuildFirstLickCenteredPhaseRows:
+    """Phase 7a.4-cross-session-angle Addendum #9 (2026-05-04) — centered
+    on peak[0] of the first multi-bout per (trial, side); ILI = peak[1]
+    - peak[0]; window (peak[0] - ILI/2, peak[0] + ILI/2); peak[0] lands
+    at phase=0.5.
     """
 
-    @staticmethod
-    def _make_phase_row(
-        *, trial_index: int, side: str, multi_bout_rank: int, t_ms: float,
-        phase: float = 0.5, phase_bin_center: float = 0.5,
-        angle_deg: float = 0.0,
-    ) -> dict[str, Any]:
-        return dict(
-            side=side,
-            trial_index=int(trial_index),
-            bout_idx=0,
-            bout_rank=0,
-            multi_bout_rank=int(multi_bout_rank),
-            t_ms=float(t_ms),
-            phase=float(phase),
-            phase_bin=int(round(phase_bin_center * 36)),
-            phase_bin_center=float(phase_bin_center),
-            angle_deg=float(angle_deg),
-            x_geom=0.0,
-            y_geom=100.0,
-        )
-
-    @staticmethod
-    def _make_summary_row(
-        *, trial_index: int, side: str, multi_bout_rank: float,
-        peak_t0_ms: float, peak_t1_ms: float, n_peaks: int = 3,
-    ) -> dict[str, Any]:
-        return dict(
-            side=side,
-            trial_index=int(trial_index),
-            bout_idx=0,
-            bout_rank=0,
-            multi_bout_rank=multi_bout_rank,
-            n_peaks=int(n_peaks),
-            bout_t0_ms=float(peak_t0_ms - 50.0),
-            bout_t1_ms=float(peak_t1_ms + 50.0),
-            peak_t0_ms=float(peak_t0_ms),
-            peak_t1_ms=float(peak_t1_ms),
-            peak_y0=100.0, peak_angle0=10.0,
-            peak_y1=100.0, peak_angle1=10.0,
-            peak_t_ms=float("nan"),
-            peak_y=float("nan"),
-            peak_x=float("nan"),
-            peak_angle_deg=float("nan"),
-        )
-
-    def test_filters_to_first_peak_pair_window(self):
-        """Trial with 3 phase rows in the first multi-bout: at t=100,
-        t=200 (= peak_t1_ms boundary), and t=350 (between peak_1 and
-        peak_2). With peak_t0_ms=100, peak_t1_ms=200, the selector
-        keeps t=100 and t=200 (both inclusive) and drops t=350.
-        """
+    def test_peak_lands_at_phase_0_5(self):
+        """A frame at peak[0]'s time should map to phase ≈ 0.5 (= the
+        defining property of the centered convention)."""
         from stroke_orofacial.dlc_kinematics import (
-            select_first_lick_phase_rows,
+            build_first_lick_centered_phase_rows,
         )
-        phase_rows = [
-            self._make_phase_row(
-                trial_index=0, side="L", multi_bout_rank=0, t_ms=100.0,
-            ),
-            self._make_phase_row(
-                trial_index=0, side="L", multi_bout_rank=0, t_ms=200.0,
-            ),
-            self._make_phase_row(
-                trial_index=0, side="L", multi_bout_rank=0, t_ms=350.0,
-            ),
-        ]
-        df_phase = pd.DataFrame(phase_rows)
-        # Bout summary + per-peak rows for trial 0, side L. peak_t1=200.
-        bouts_rows = [
-            self._make_summary_row(
-                trial_index=0, side="L", multi_bout_rank=0.0,
-                peak_t0_ms=100.0, peak_t1_ms=200.0,
-            ),
-        ]
-        df_bouts = pd.DataFrame(bouts_rows)
-        out = select_first_lick_phase_rows(df_phase, df_bouts)
-        # Two rows: t=100 and t=200; t=350 dropped (outside [100, 200]).
-        assert len(out) == 2
-        out_t = sorted(out["t_ms"].tolist())
-        assert out_t == [100.0, 200.0]
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+                "angle_at_peak": {200.0: -10.0},  # warming-up first lick
+            },
+        ])
+        out = build_first_lick_centered_phase_rows(bundle)
+        # ILI = 100, window = [150, 250]; peak[0] at t=200 → phase = 0.5
+        at_peak = out[np.isclose(out["t_ms"], 200.0)]
+        assert len(at_peak) == 1
+        assert at_peak.iloc[0]["phase"] == pytest.approx(0.5, abs=1e-6)
+        # angle_deg at that frame should be the planted -10.0
+        assert at_peak.iloc[0]["angle_deg"] == pytest.approx(-10.0)
+        # peak_t_ms column carries the centered peak's time
+        assert at_peak.iloc[0]["peak_t_ms"] == pytest.approx(200.0)
+
+    def test_window_excludes_frames_outside_ILI_centered_range(self):
+        """ILI = 100 (peaks at 200, 300); window = [150, 250]. Frames at
+        t=100 and t=300 are outside; t=160 (in window) is included."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+            },
+        ])
+        out = build_first_lick_centered_phase_rows(bundle)
+        # All emitted t_ms values must be in [150, 250]
+        assert (out["t_ms"] >= 150.0 - 0.01).all()
+        assert (out["t_ms"] <= 250.0 + 0.01).all()
+
+    def test_skips_isolated_lick_only_trials(self):
+        """Trial with only single-lick bouts (no multi-bout) → no rows
+        per Addendum #5 Option α."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [400.0]}],   # isolated lick
+            },
+        ])
+        out = build_first_lick_centered_phase_rows(bundle)
+        assert out.empty
 
     def test_per_trial_per_side_isolation(self):
-        """Selector applies (trial_index, side) merge keys: trial 0 side L's
-        first-lick window does NOT leak into trial 1's filter."""
+        """Each (trial, side) gets its own peak[0] window; trial 0's
+        window doesn't leak into trial 1's filter."""
         from stroke_orofacial.dlc_kinematics import (
-            select_first_lick_phase_rows,
+            build_first_lick_centered_phase_rows,
         )
-        phase_rows = [
-            # trial 0 L: keep
-            self._make_phase_row(
-                trial_index=0, side="L", multi_bout_rank=0, t_ms=150.0,
-            ),
-            # trial 1 R: must use trial 1's own peak times, not trial 0's
-            self._make_phase_row(
-                trial_index=1, side="R", multi_bout_rank=0, t_ms=600.0,
-            ),
-            # trial 1 R: drop — outside trial 1's [500, 700] window
-            self._make_phase_row(
-                trial_index=1, side="R", multi_bout_rank=0, t_ms=900.0,
-            ),
-        ]
-        df_phase = pd.DataFrame(phase_rows)
-        bouts_rows = [
-            # trial 0 L: peak_t0=100, peak_t1=200 → keeps t=150
-            self._make_summary_row(
-                trial_index=0, side="L", multi_bout_rank=0.0,
-                peak_t0_ms=100.0, peak_t1_ms=200.0,
-            ),
-            # trial 1 R: peak_t0=500, peak_t1=700 → keeps t=600, drops t=900
-            self._make_summary_row(
-                trial_index=1, side="R", multi_bout_rank=0.0,
-                peak_t0_ms=500.0, peak_t1_ms=700.0,
-            ),
-        ]
-        df_bouts = pd.DataFrame(bouts_rows)
-        out = select_first_lick_phase_rows(df_phase, df_bouts)
-        assert len(out) == 2
-        assert set(zip(out["trial_index"], out["side"])) == {(0, "L"), (1, "R")}
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0]}],
+            },
+            {
+                "trial_index": 1, "side": "R",
+                "bouts": [{"peak_t_ms": [600.0, 700.0]}],
+            },
+        ])
+        out = build_first_lick_centered_phase_rows(bundle)
+        # Both trials contribute rows; each trial's peak_t_ms must
+        # match its own peak[0]. (Use np.isclose for the float
+        # comparison — pytest.approx isn't a vector predicate.)
+        peak_ts = sorted(out["peak_t_ms"].unique().tolist())
+        assert peak_ts == [200.0, 600.0]
+        # No row from trial 0 has peak_t_ms = 600 (cross-leak check)
+        trial0 = out[out["trial_index"] == 0]
+        assert (trial0["peak_t_ms"] == 200.0).all()
 
-    def test_excludes_later_multi_bout_rank(self):
-        """Phase rows with multi_bout_rank > 0 (= second or later
-        multi-bout in the trial) are dropped by the
-        ``multi_bout_rank == 0`` predicate, regardless of ``t_ms``."""
+    def test_empty_bundle(self):
+        """Empty df_trials and df_bouts → empty centered DataFrame with
+        the expected columns."""
         from stroke_orofacial.dlc_kinematics import (
-            select_first_lick_phase_rows,
+            build_first_lick_centered_phase_rows,
         )
-        phase_rows = [
-            # Inside the first-lick time window BUT multi_bout_rank == 1
-            # — must be dropped (second multi-bout's phase, not first).
-            self._make_phase_row(
-                trial_index=0, side="L", multi_bout_rank=1, t_ms=150.0,
-            ),
-            # multi_bout_rank == 0 inside window — kept
-            self._make_phase_row(
-                trial_index=0, side="L", multi_bout_rank=0, t_ms=150.0,
-            ),
-        ]
-        df_phase = pd.DataFrame(phase_rows)
-        bouts_rows = [
-            self._make_summary_row(
-                trial_index=0, side="L", multi_bout_rank=0.0,
-                peak_t0_ms=100.0, peak_t1_ms=200.0,
-            ),
-        ]
-        df_bouts = pd.DataFrame(bouts_rows)
-        out = select_first_lick_phase_rows(df_phase, df_bouts)
-        assert len(out) == 1
-        assert int(out.iloc[0]["multi_bout_rank"]) == 0
+        empty = TongueVisualBundle(
+            df_trials=pd.DataFrame(), df_bouts=pd.DataFrame(),
+            df_phase=pd.DataFrame(), angle_per_frame=pd.DataFrame(),
+            metadata={"n_phase_bins": 36},
+        )
+        out = build_first_lick_centered_phase_rows(empty)
+        assert out.empty
+        # Expected columns are present even on empty result
+        for col in (
+            "side", "trial_index", "peak_t_ms", "t_ms", "phase",
+            "phase_bin", "phase_bin_center", "angle_deg",
+        ):
+            assert col in out.columns
 
-    def test_empty_inputs(self):
-        """Empty df_phase OR empty df_bouts OR no first-multi summary
-        rows → returns an empty DataFrame with the same columns as
-        df_phase."""
-        from stroke_orofacial.dlc_kinematics import (
-            select_first_lick_phase_rows,
-        )
-        empty_phase = pd.DataFrame(columns=[
-            "side", "trial_index", "bout_idx", "bout_rank",
-            "multi_bout_rank", "t_ms", "phase", "phase_bin",
-            "phase_bin_center", "angle_deg", "x_geom", "y_geom",
-        ])
-        empty_bouts = pd.DataFrame(columns=[
-            "side", "trial_index", "multi_bout_rank",
-            "peak_t0_ms", "peak_t1_ms", "peak_t_ms",
-        ])
-        # Both empty.
-        out = select_first_lick_phase_rows(empty_phase, empty_bouts)
-        assert out.empty
-        # df_phase populated but df_bouts empty.
-        df_phase = pd.DataFrame([
-            self._make_phase_row(
-                trial_index=0, side="L", multi_bout_rank=0, t_ms=150.0,
-            ),
-        ])
-        out = select_first_lick_phase_rows(df_phase, empty_bouts)
-        assert out.empty
-        # df_bouts has only NaN-ranked (single-lick) summary rows → no
-        # first-multi → empty.
-        single_lick_bout = pd.DataFrame([
-            self._make_summary_row(
-                trial_index=0, side="L", multi_bout_rank=float("nan"),
-                peak_t0_ms=100.0, peak_t1_ms=float("nan"),
-                n_peaks=1,
-            ),
-        ])
-        out = select_first_lick_phase_rows(df_phase, single_lick_bout)
-        assert out.empty
 
-    def test_excludes_per_peak_rows_in_df_bouts(self):
-        """The selector must read ``peak_t0_ms`` / ``peak_t1_ms`` from
-        the BOUT-SUMMARY rows in df_bouts (peak_t_ms NaN), NOT from
-        per-peak rows (peak_t_ms populated, peak_t0_ms NaN). Catches a
-        regression where the merge accidentally pulls in per-peak rows
-        and gets NaN bounds.
-        """
+class TestBuildAllLicksCenteredPhaseRows:
+    """Phase 7a.4-cross-session-angle Addendum #10 (2026-05-04) — every
+    peak in every multi-bout per (trial, side); each peak ``p[i]``
+    centered with forward ILI = ``p[i+1] - p[i]``; LAST peak per bout
+    is dropped (no synthetic-ILI fallback).
+    """
+
+    def test_emits_one_cycle_per_peak_except_last_in_bout(self):
+        """3 peaks in one multi-bout → 2 cycles emitted (peaks 0 and 1
+        center their cycles; peak 2 is the last in bout, dropped)."""
         from stroke_orofacial.dlc_kinematics import (
-            select_first_lick_phase_rows,
+            build_all_licks_centered_phase_rows,
         )
-        phase_rows = [
-            self._make_phase_row(
-                trial_index=0, side="L", multi_bout_rank=0, t_ms=150.0,
-            ),
-        ]
-        df_phase = pd.DataFrame(phase_rows)
-        # Mix of bout-summary row (peak_t_ms NaN, peak_t0/t1 set) AND
-        # per-peak rows (peak_t_ms set, peak_t0/t1 NaN). The selector
-        # must use ONLY the summary row.
-        bouts_rows = [
-            self._make_summary_row(
-                trial_index=0, side="L", multi_bout_rank=0.0,
-                peak_t0_ms=100.0, peak_t1_ms=200.0,
-            ),
-            # per-peak row: peak_t_ms populated, peak_t0_ms / peak_t1_ms NaN
-            dict(
-                side="L", trial_index=0,
-                bout_idx=0, bout_rank=0, multi_bout_rank=0.0, n_peaks=3,
-                bout_t0_ms=50.0, bout_t1_ms=250.0,
-                peak_t0_ms=float("nan"), peak_t1_ms=float("nan"),
-                peak_y0=float("nan"), peak_angle0=float("nan"),
-                peak_y1=float("nan"), peak_angle1=float("nan"),
-                peak_t_ms=120.0, peak_y=100.0, peak_x=0.0,
-                peak_angle_deg=10.0,
-            ),
-        ]
-        df_bouts = pd.DataFrame(bouts_rows)
-        out = select_first_lick_phase_rows(df_phase, df_bouts)
-        assert len(out) == 1
-        assert float(out.iloc[0]["t_ms"]) == 150.0
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+                "angle_at_peak": {
+                    200.0: -10.0, 300.0: 5.0, 400.0: 5.0,
+                },
+            },
+        ])
+        out = build_all_licks_centered_phase_rows(bundle)
+        # peak_t_ms values rendered: 200 and 300; 400 dropped
+        peak_ts_rendered = sorted(out["peak_t_ms"].unique().tolist())
+        assert peak_ts_rendered == [200.0, 300.0]
+        # Each rendered peak lands at phase=0.5 in its own cycle
+        for pt in peak_ts_rendered:
+            at_peak = out[
+                np.isclose(out["t_ms"], pt) & (out["peak_t_ms"] == pt)
+            ]
+            assert len(at_peak) == 1
+            assert at_peak.iloc[0]["phase"] == pytest.approx(0.5, abs=1e-6)
+
+    def test_handles_multiple_multi_bouts_in_one_trial(self):
+        """Trial with two multi-bouts (3 peaks each, ILI=100) →
+        2 + 2 = 4 cycles emitted (last peak per bout dropped twice)."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [
+                    {"peak_t_ms": [200.0, 300.0, 400.0]},
+                    {"peak_t_ms": [800.0, 900.0, 1000.0]},
+                ],
+            },
+        ])
+        out = build_all_licks_centered_phase_rows(bundle)
+        peak_ts_rendered = sorted(out["peak_t_ms"].unique().tolist())
+        # 200 + 300 from bout 0; 800 + 900 from bout 1; 400 + 1000 dropped
+        assert peak_ts_rendered == [200.0, 300.0, 800.0, 900.0]
+
+    def test_excludes_isolated_lick_bouts(self):
+        """Single-peak bouts (multi_bout_rank == NaN) contribute nothing
+        — phase requires ≥2 peaks per Addendum #5 Option α."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [
+                    {"peak_t_ms": [200.0, 300.0]},   # multi-bout: 1 cycle
+                    {"peak_t_ms": [600.0]},          # isolated: skipped
+                    {"peak_t_ms": [800.0, 900.0]},   # multi-bout: 1 cycle
+                ],
+            },
+        ])
+        out = build_all_licks_centered_phase_rows(bundle)
+        # Two multi-bouts × (n_peaks - 1) cycles each = 1 + 1 = 2
+        peak_ts_rendered = sorted(out["peak_t_ms"].unique().tolist())
+        assert peak_ts_rendered == [200.0, 800.0]
+        # Confirm 600 (isolated) is absent
+        assert (out["peak_t_ms"] != 600.0).all()
+
+    def test_last_peak_per_bout_dropped(self):
+        """5-peak multi-bout → 4 cycles (peaks 0-3); peak 4 dropped."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+        )
+        peak_ts = [200.0, 300.0, 400.0, 500.0, 600.0]
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": peak_ts}],
+            },
+        ])
+        out = build_all_licks_centered_phase_rows(bundle)
+        rendered = sorted(out["peak_t_ms"].unique().tolist())
+        assert rendered == peak_ts[:-1]   # 600 dropped
+
+    def test_empty_bundle(self):
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+        )
+        empty = TongueVisualBundle(
+            df_trials=pd.DataFrame(), df_bouts=pd.DataFrame(),
+            df_phase=pd.DataFrame(), angle_per_frame=pd.DataFrame(),
+            metadata={"n_phase_bins": 36},
+        )
+        out = build_all_licks_centered_phase_rows(empty)
+        assert out.empty

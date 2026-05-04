@@ -191,87 +191,290 @@ class _PertrialCoreResult:
 
 
 # ===========================================================================
-# Public selectors over TongueVisualBundle.df_phase
+# Public selectors / builders over TongueVisualBundle (Addenda #9 + #10)
 # ===========================================================================
+#
+# The phase-aligned-angle plot family (per-session ``_1st_lick`` /
+# ``_all_licks`` PNGs and forthcoming cross-session variants) consumes
+# CENTERED-ON-PEAK phase rows built from per-frame ``angle_snip`` +
+# ``df_bouts`` peak times — NOT the bundle's existing ``df_phase``
+# (which carries legacy peak-to-peak-shifted phase per
+# :func:`_assign_phase_peak_to_peak_shifted`).
+#
+# Centered convention per peak ``p`` with forward inter-lick interval
+# ``ILI = next_peak - p``:
+#
+#   window = (p - ILI / 2, p + ILI / 2)
+#   phase  = (t - (p - ILI / 2)) / ILI ∈ [0, 1]
+#
+# ``p`` lands at ``phase == 0.5``; cycle is symmetric about the peak.
+# The rendered curve reads naturally as "approach peak → at peak →
+# leave peak" left-to-right. See Addenda #9 + #10 DECISIONS entry.
+#
+# LAST PEAK of each multi-bout (no forward ILI) is dropped — no
+# synthetic-ILI fallback. Loses ~10-20% of peaks across the dataset;
+# accepted as the cleanest-convention trade-off.
+#
+# Per Addendum #5 Option α: trials with NO multi-bouts contribute
+# nothing — phase requires ≥2 peaks to define a cycle.
 
 
-def select_first_lick_phase_rows(
-    df_phase: pd.DataFrame, df_bouts: pd.DataFrame,
-) -> pd.DataFrame:
-    """Filter ``df_phase`` to the FIRST LICK's phase cycle per (trial, side).
+_CENTERED_PHASE_ROW_COLUMNS: tuple[str, ...] = (
+    "side", "trial_index", "peak_t_ms", "t_ms", "phase",
+    "phase_bin", "phase_bin_center", "angle_deg",
+)
 
-    Phase 7a.4-cross-session-angle (2026-05-04, Addendum #3 Option C):
-    "first lick" = first peak of the FIRST multi-lick bout per trial.
-    The phase cycle around it is the time interval
-    ``[peak_t0_ms, peak_t1_ms]`` from the bout-summary row in ``df_bouts``
-    where ``multi_bout_rank == 0`` (and ``peak_t_ms`` is NaN — the
-    summary-row marker per the legacy Cell 50 mixed-row schema).
 
-    The returned subset matches the existing
-    :func:`_select_phase_rows` shape: same df_phase columns, just fewer
-    rows. Single-lick (isolated) bouts are NOT promoted into this
-    filter — phase requires ≥2 peaks to define a cycle, and df_phase
-    only contains multi-bout rows by construction (legacy fidelity per
-    Phase 7a.4-cross-session-angle Addendum #5 Option α).
+def _empty_centered_phase_rows_df() -> pd.DataFrame:
+    """Empty centered-phase DataFrame with the expected columns."""
+    cols = {
+        "side": pd.Series(dtype=object),
+        "trial_index": pd.Series(dtype=int),
+        "peak_t_ms": pd.Series(dtype=float),
+        "t_ms": pd.Series(dtype=float),
+        "phase": pd.Series(dtype=float),
+        "phase_bin": pd.Series(dtype=int),
+        "phase_bin_center": pd.Series(dtype=float),
+        "angle_deg": pd.Series(dtype=float),
+    }
+    return pd.DataFrame(cols)
 
-    Parameters
-    ----------
-    df_phase : DataFrame
-        Per-frame phase rows from
-        :class:`TongueVisualBundle.df_phase`. Required columns:
-        ``trial_index``, ``side``, ``multi_bout_rank``, ``t_ms``.
-    df_bouts : DataFrame
-        Mixed bout-summary + per-peak rows from
-        :class:`TongueVisualBundle.df_bouts`. Bout-summary rows are
-        identified by ``peak_t_ms.isna()``; carry ``peak_t0_ms`` and
-        ``peak_t1_ms`` time bounds per legacy Cell 50 schema.
 
-    Returns
-    -------
-    DataFrame
-        Rows of ``df_phase`` whose ``multi_bout_rank == 0`` AND whose
-        ``t_ms`` falls inside the first multi-bout's
-        ``[peak_t0_ms, peak_t1_ms]`` interval (inclusive on both ends).
-        Empty DataFrame (with the same columns as ``df_phase``) if
-        either input is empty or no first-multi-bout summary rows
-        exist.
+def _centered_phase_rows_from_peaks(
+    *,
+    peak_times_ms: np.ndarray,
+    ilis_ms: np.ndarray,
+    t_arr: np.ndarray,
+    angle_snip: np.ndarray,
+    side: str,
+    trial_index: int,
+    phase_bin_edges: np.ndarray,
+    phase_bin_centers: np.ndarray,
+) -> list[dict[str, Any]]:
+    """Shared building block for the centered-phase helpers
+    (Addenda #9 + #10).
 
-    Notes
-    -----
-    Boundary semantic: the inclusive ``<=`` / ``>=`` filter on
-    ``t_ms`` ∈ ``[peak_t0_ms, peak_t1_ms]`` includes both endpoints.
-    Frames at exactly the boundary timestamps (which would be the
-    first-peak frame and the second-peak frame) are kept. No
-    off-by-one is possible because the cross-reference is on time
-    (not frame index) and the row-builder emits at most one
-    ``df_phase`` row per (trial, frame) tuple.
+    For each ``(p, ili)`` pair in ``zip(peak_times_ms, ilis_ms)`` with
+    finite ``ili > 0``, identifies frames in the trial slice whose
+    ``t_arr`` falls in ``(p - ili / 2, p + ili / 2)`` and emits one
+    row per qualifying frame with phase computed as
+    ``(t - (p - ili / 2)) / ili`` (clamped to ``[0, 1]``).
+
+    Returns an unwrapped list of dicts — callers concatenate across
+    trials and sides into the final DataFrame.
     """
-    if df_phase.empty or df_bouts.empty:
-        return df_phase.iloc[0:0].copy()
+    out: list[dict[str, Any]] = []
+    n_phase_bins = len(phase_bin_centers)
+    for p, ili in zip(peak_times_ms, ilis_ms):
+        p = float(p)
+        ili = float(ili)
+        if not (np.isfinite(p) and np.isfinite(ili) and ili > 0):
+            continue
+        win_lo = p - ili / 2.0
+        win_hi = p + ili / 2.0
+        mask = (
+            (t_arr >= win_lo) & (t_arr <= win_hi)
+            & np.isfinite(angle_snip)
+        )
+        for ii in np.where(mask)[0]:
+            t = float(t_arr[ii])
+            phase = (t - win_lo) / ili
+            phase = float(np.clip(phase, 0.0, 1.0))
+            bin_idx = int(np.clip(
+                np.searchsorted(phase_bin_edges, phase, side="right") - 1,
+                0, n_phase_bins - 1,
+            ))
+            out.append({
+                "side": side,
+                "trial_index": trial_index,
+                "peak_t_ms": p,
+                "t_ms": t,
+                "phase": phase,
+                "phase_bin": bin_idx,
+                "phase_bin_center": float(phase_bin_centers[bin_idx]),
+                "angle_deg": float(angle_snip[ii]),
+            })
+    return out
+
+
+def _bundle_phase_bin_arrays(
+    bundle: "TongueVisualBundle",
+) -> tuple[np.ndarray, np.ndarray]:
+    n_phase_bins = int(bundle.metadata.get("n_phase_bins", 72))
+    phase_bin_edges = np.linspace(
+        0.0, 1.0, n_phase_bins + 1, dtype=np.float64,
+    )
+    phase_bin_centers = 0.5 * (phase_bin_edges[:-1] + phase_bin_edges[1:])
+    return phase_bin_edges, phase_bin_centers
+
+
+def _trial_arrays(
+    df_trials: pd.DataFrame, trial_index: int, side: str,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Pull ``(t_ms, angle_snip)`` for one trial; ``None`` if missing."""
+    trial_row = df_trials[
+        (df_trials["trial_index"] == trial_index)
+        & (df_trials["side"] == side)
+    ]
+    if trial_row.empty:
+        return None
+    t_arr = np.asarray(trial_row.iloc[0]["t_ms"], dtype=np.float64)
+    angle_arr = np.asarray(trial_row.iloc[0]["angle_snip"], dtype=np.float64)
+    return t_arr, angle_arr
+
+
+def build_first_lick_centered_phase_rows(
+    bundle: "TongueVisualBundle",
+) -> pd.DataFrame:
+    """Build centered-on-peak[0] phase rows for the FIRST LICK per
+    (trial, side). Phase 7a.4-cross-session-angle Addendum #9
+    (2026-05-04) — supersedes the (now-deleted) Addendum #3 Option C
+    ``select_first_lick_phase_rows`` filter helper.
+
+    Per (trial, side) with a first multi-bout (``df_bouts`` summary
+    row with ``multi_bout_rank == 0`` and both ``peak_t0_ms`` /
+    ``peak_t1_ms`` populated):
+
+      ILI    = peak_t1_ms - peak_t0_ms
+      window = (peak_t0_ms - ILI / 2, peak_t0_ms + ILI / 2)
+      phase  = (t - (peak_t0_ms - ILI / 2)) / ILI ∈ [0, 1]
+
+    Returns a DataFrame with columns
+    ``side, trial_index, peak_t_ms, t_ms, phase, phase_bin,
+    phase_bin_center, angle_deg`` (NOT df_phase-shaped — see module
+    docstring at the top of this section). Empty if the bundle has
+    no eligible first multi-bouts.
+
+    Consumers: the per-session ``_plot_phase_aligned_angle`` plot
+    (mode ``"first_lick"``) and the forthcoming cross-session
+    aggregator's first-lick variant.
+    """
+    df_trials = bundle.df_trials
+    df_bouts = bundle.df_bouts
+    if df_trials.empty or df_bouts.empty:
+        return _empty_centered_phase_rows_df()
+
+    phase_bin_edges, phase_bin_centers = _bundle_phase_bin_arrays(bundle)
 
     summaries = df_bouts[
         df_bouts["peak_t_ms"].isna()
         & (df_bouts["multi_bout_rank"] == 0)
+        & df_bouts["peak_t0_ms"].notna()
+        & df_bouts["peak_t1_ms"].notna()
     ][["trial_index", "side", "peak_t0_ms", "peak_t1_ms"]].drop_duplicates()
     if summaries.empty:
-        return df_phase.iloc[0:0].copy()
+        return _empty_centered_phase_rows_df()
 
-    first_multi = df_phase[df_phase["multi_bout_rank"] == 0]
-    if first_multi.empty:
-        return df_phase.iloc[0:0].copy()
+    rows: list[dict[str, Any]] = []
+    for _, summary in summaries.iterrows():
+        trial_idx = int(summary["trial_index"])
+        side = str(summary["side"])
+        arrs = _trial_arrays(df_trials, trial_idx, side)
+        if arrs is None:
+            continue
+        t_arr, angle_arr = arrs
+        p0 = float(summary["peak_t0_ms"])
+        p1 = float(summary["peak_t1_ms"])
+        rows.extend(_centered_phase_rows_from_peaks(
+            peak_times_ms=np.array([p0]),
+            ilis_ms=np.array([p1 - p0]),
+            t_arr=t_arr, angle_snip=angle_arr,
+            side=side, trial_index=trial_idx,
+            phase_bin_edges=phase_bin_edges,
+            phase_bin_centers=phase_bin_centers,
+        ))
 
-    merged = first_multi.merge(
-        summaries, on=["trial_index", "side"], how="inner",
+    if not rows:
+        return _empty_centered_phase_rows_df()
+    return pd.DataFrame(rows)
+
+
+def build_all_licks_centered_phase_rows(
+    bundle: "TongueVisualBundle",
+) -> pd.DataFrame:
+    """Build centered-on-peak phase rows for EVERY peak in EVERY
+    multi-bout per (trial, side). Phase 7a.4-cross-session-angle
+    Addendum #10 (2026-05-04).
+
+    Per (trial, side, multi-bout) with ``n_peaks ≥ 2`` (i.e.,
+    bout-summary row in ``df_bouts`` has non-NaN ``multi_bout_rank``):
+    extract the per-peak rows in that bout (``peak_t_ms.notna()``,
+    same ``trial_index``/``side``/``bout_idx``), sort by
+    ``peak_t_ms``, and pair each peak ``p[i]`` with its forward
+    neighbour ``p[i+1]``:
+
+      ILI[i]    = p[i+1] - p[i]
+      window[i] = (p[i] - ILI[i] / 2, p[i] + ILI[i] / 2)
+      phase     = (t - window_lo) / ILI[i]
+
+    The LAST peak of each bout has no forward neighbour and is
+    dropped (no synthetic-ILI fallback per Addendum #10 lock).
+
+    Returns a DataFrame with the same columns as
+    :func:`build_first_lick_centered_phase_rows`. Consumers: the
+    per-session ``_plot_phase_aligned_angle`` plot (mode
+    ``"all_multi"`` under the centered convention) and the
+    forthcoming cross-session aggregator's all-licks variant.
+    """
+    df_trials = bundle.df_trials
+    df_bouts = bundle.df_bouts
+    if df_trials.empty or df_bouts.empty:
+        return _empty_centered_phase_rows_df()
+
+    phase_bin_edges, phase_bin_centers = _bundle_phase_bin_arrays(bundle)
+
+    # Per-peak rows in multi-bouts: peak_t_ms is set AND
+    # multi_bout_rank is finite (NaN would mean a single-lick bout).
+    per_peak = df_bouts[
+        df_bouts["peak_t_ms"].notna()
+        & df_bouts["multi_bout_rank"].notna()
+    ][["trial_index", "side", "bout_idx", "peak_t_ms"]].sort_values(
+        ["trial_index", "side", "bout_idx", "peak_t_ms"],
     )
-    in_first_pair = (
-        (merged["t_ms"] >= merged["peak_t0_ms"])
-        & (merged["t_ms"] <= merged["peak_t1_ms"])
-    )
-    return (
-        merged[in_first_pair]
-        .drop(columns=["peak_t0_ms", "peak_t1_ms"])
-        .reset_index(drop=True)
-    )
+    if per_peak.empty:
+        return _empty_centered_phase_rows_df()
+
+    rows: list[dict[str, Any]] = []
+    for (trial_idx, side), trial_side_rows in per_peak.groupby(
+        ["trial_index", "side"], sort=False,
+    ):
+        trial_idx = int(trial_idx)
+        side = str(side)
+        arrs = _trial_arrays(df_trials, trial_idx, side)
+        if arrs is None:
+            continue
+        t_arr, angle_arr = arrs
+        # Within each bout, pair each peak with its forward neighbour;
+        # drop the last peak of every bout.
+        peaks_to_render: list[float] = []
+        ilis_to_render: list[float] = []
+        for _bout_idx, bout_rows in trial_side_rows.groupby(
+            "bout_idx", sort=False,
+        ):
+            peak_times = np.asarray(
+                bout_rows["peak_t_ms"].to_numpy(), dtype=np.float64,
+            )
+            if peak_times.size < 2:
+                continue
+            for i in range(peak_times.size - 1):
+                p = float(peak_times[i])
+                ili = float(peak_times[i + 1] - peak_times[i])
+                peaks_to_render.append(p)
+                ilis_to_render.append(ili)
+        if not peaks_to_render:
+            continue
+        rows.extend(_centered_phase_rows_from_peaks(
+            peak_times_ms=np.asarray(peaks_to_render),
+            ilis_ms=np.asarray(ilis_to_render),
+            t_arr=t_arr, angle_snip=angle_arr,
+            side=side, trial_index=trial_idx,
+            phase_bin_edges=phase_bin_edges,
+            phase_bin_centers=phase_bin_centers,
+        ))
+
+    if not rows:
+        return _empty_centered_phase_rows_df()
+    return pd.DataFrame(rows)
 
 
 # ===========================================================================

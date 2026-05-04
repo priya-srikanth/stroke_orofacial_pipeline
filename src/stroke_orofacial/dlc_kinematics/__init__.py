@@ -51,11 +51,12 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
     TonguePertrialResult,
     TongueVisualBundle,
     TrialEvent,
+    build_all_licks_centered_phase_rows,
+    build_first_lick_centered_phase_rows,
     build_tongue_pertrial,
     build_tongue_pertrial_by_animal_date,
     build_tongue_visual_bundle,
     build_tongue_visual_bundle_by_animal_date,
-    select_first_lick_phase_rows,
 )
 from stroke_orofacial.dlc_kinematics.tongue_visual import (
     render_tongue_qc_figures,
@@ -82,8 +83,10 @@ __all__ = [
     "TrialEvent",
     "aggregate_licking_dynamics_day_binned",
     "aggregate_licking_dynamics_day_binned_by_animal",
+    "build_all_licks_centered_phase_rows",
     "build_binned_overlays",
     "build_cohort_aggregates",
+    "build_first_lick_centered_phase_rows",
     "build_individual_sessions",
     "build_individual_sessions_animal",
     "build_interpolated_trace",
@@ -107,5 +110,4 @@ __all__ = [
     "render_cross_session_figures",
     "render_tongue_qc_figures",
     "render_within_session_figures",
-    "select_first_lick_phase_rows",
 ]

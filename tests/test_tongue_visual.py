@@ -509,16 +509,16 @@ class TestPlotFamilies:
         assert any_lines
         plt.close(fig)
 
-    def test_phase_aligned_angle_mode_first_lick_uses_selector(
+    def test_phase_aligned_angle_mode_first_lick_uses_centered_builder(
         self, synthetic_bundle,
     ):
-        """Phase 7a.4-cross-session-angle Addendum #3 Option C
+        """Phase 7a.4-cross-session-angle Addenda #9 + #10
         (2026-05-04): when called with ``mode="first_lick"``,
-        ``_plot_phase_aligned_angle`` dispatches to
-        :func:`select_first_lick_phase_rows` for row selection. The
-        resulting figure is non-empty (provided the synthetic bundle
-        has any frames inside the first multi-bout's first peak-pair
-        window) and the title carries the ``first_lick`` mode token.
+        ``_plot_phase_aligned_angle`` dispatches via
+        ``_phase_rows_for_mode`` to
+        :func:`build_first_lick_centered_phase_rows`. The figure is
+        non-empty and the title carries the ``first_lick`` mode
+        token.
         """
         params = load_defaults()
         fig = _plot_phase_aligned_angle(
@@ -529,26 +529,29 @@ class TestPlotFamilies:
         assert "first_lick" in ax.get_title()
         plt.close(fig)
 
-    def test_phase_aligned_angle_mode_all_multi_includes_more_rows(
+    def test_phase_aligned_angle_mode_all_multi_uses_centered_builder(
         self, synthetic_bundle,
     ):
-        """Mode ``"all_multi"`` must yield at least as many curve
-        points as ``"first_lick"`` (the latter is a strict subset)."""
+        """Phase 7a.4-cross-session-angle Addendum #10: mode
+        ``"all_multi"`` dispatches to
+        :func:`build_all_licks_centered_phase_rows` (every peak
+        in every multi-bout, centered with forward ILI; last peak
+        per bout dropped). The all-licks centered output must
+        contain at least as many rows as the first-lick-only
+        output (which is a single-peak subset).
+        """
         from stroke_orofacial.dlc_kinematics import (
-            select_first_lick_phase_rows,
+            build_all_licks_centered_phase_rows,
+            build_first_lick_centered_phase_rows,
         )
-        from stroke_orofacial.dlc_kinematics.tongue_visual import (
-            _select_phase_rows,
+        n_first_lick = len(
+            build_first_lick_centered_phase_rows(synthetic_bundle),
         )
-        n_first_lick = len(select_first_lick_phase_rows(
-            synthetic_bundle.df_phase, synthetic_bundle.df_bouts,
-        ))
-        n_all_multi = len(_select_phase_rows(
-            synthetic_bundle.df_phase, "all_multi",
-        ))
+        n_all_multi = len(
+            build_all_licks_centered_phase_rows(synthetic_bundle),
+        )
         assert n_first_lick <= n_all_multi
-        # Selectors are exercised through the renderer; figure smoke
-        # check confirms no exceptions.
+        # Renderer smoke check + title token assertion.
         params = load_defaults()
         fig = _plot_phase_aligned_angle(
             synthetic_bundle, params=params, mode="all_multi",
