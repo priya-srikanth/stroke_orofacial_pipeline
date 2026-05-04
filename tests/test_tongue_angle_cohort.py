@@ -98,29 +98,58 @@ class TestRobustMeanSEM:
 
 
 class TestDayBinning:
-    def test_pre_stroke_pools_into_one_bin(self):
-        from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
-            _make_rel_day_bins,
-        )
-        # Pre-stroke: -6, -3, -1; post-stroke: 1, 5, 12 with bin_days=2.
-        bins = _make_rel_day_bins([-6, -3, -1, 1, 5, 12], bin_days=2)
-        # Pre-stroke pools: (-6, -1).
-        assert (-6, -1) in bins
-        # Post-stroke: 1 → bin (0, 1); 5 → bin (4, 5); 12 → bin (12, 13).
-        post_bins = [b for b in bins if b[0] >= 0]
-        assert (0, 1) in post_bins
-        assert (4, 5) in post_bins
-        assert (12, 13) in post_bins
+    """Phase 7a.4-cross-session-angle Addendum #17 (2026-05-04):
+    pre-stroke is binned at ``bin_days`` width anchored to d0
+    (rel_day=0 is the LAST pre-stroke bin's right edge). Aligns
+    with the legacy
+    :func:`_day_binned._compute_rel_day_bin_label` convention.
+    """
 
-    def test_no_pre_stroke(self):
+    def test_pre_stroke_binned_anchored_to_d0(self):
+        """For bin_days=2 with sessions at rel_day=-6, -3, -1, 1, 5, 12:
+        pre-stroke bins anchor at d0 backwards as (-1, 0), (-3, -2),
+        (-5, -4), (-7, -6); post-stroke bins increment from (1, 2)."""
         from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
             _make_rel_day_bins,
         )
-        bins = _make_rel_day_bins([0, 5, 7, 38], bin_days=7)
-        # 0 → (0, 6); 5 → (0, 6); 7 → (7, 13); 38 → (35, 41).
-        assert (0, 6) in bins
-        assert (7, 13) in bins
-        assert (35, 41) in bins
+        bins = _make_rel_day_bins([-6, -3, -1, 1, 5, 12], bin_days=2)
+        # Pre-stroke: -1 → (-1, 0); -3 → (-3, -2); -6 → (-7, -6).
+        assert (-1, 0) in bins
+        assert (-3, -2) in bins
+        assert (-7, -6) in bins
+        # Post-stroke: 1 → (1, 2); 5 → (5, 6); 12 → (11, 12).
+        assert (1, 2) in bins
+        assert (5, 6) in bins
+        assert (11, 12) in bins
+
+    def test_d0_is_pre_stroke_per_addendum_17(self):
+        """d0 (rel_day=0) lands in the LAST pre-stroke bin
+        ``(-(B-1), 0)`` per Addendum #17 — recording done before
+        stroke induction earlier that day, so d0 is pre-stroke.
+        """
+        from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
+            _make_rel_day_bins, _rel_day_to_bin,
+        )
+        # bin_days=2: d0 → (-1, 0)
+        assert _rel_day_to_bin(0, bin_days=2) == (-1, 0)
+        # bin_days=7: d0 → (-6, 0)
+        assert _rel_day_to_bin(0, bin_days=7) == (-6, 0)
+        # bin_days=2: d1 → (1, 2) (first post-stroke bin)
+        assert _rel_day_to_bin(1, bin_days=2) == (1, 2)
+        # In a make_rel_day_bins call covering [d0, d1], d0 lands
+        # in (-1, 0), d1 lands in (1, 2).
+        bins = _make_rel_day_bins([0, 1], bin_days=2)
+        assert (-1, 0) in bins
+        assert (1, 2) in bins
+
+    def test_post_only(self):
+        from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
+            _make_rel_day_bins,
+        )
+        bins = _make_rel_day_bins([5, 7, 38], bin_days=7)
+        # 5 → (1, 7); 7 → (1, 7); 38 → (36, 42).
+        assert (1, 7) in bins
+        assert (36, 42) in bins
         # Sorted by lo.
         for prev, nxt in zip(bins, bins[1:]):
             assert prev[0] < nxt[0]
@@ -129,10 +158,15 @@ class TestDayBinning:
         from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
             _assign_to_bin, _make_rel_day_bins,
         )
+        # Sessions at d-3, d+1, d+8 with bin_days=7.
+        # Bins generated: (-6, 0), (1, 7), (8, 14).
         bins = _make_rel_day_bins([-3, 1, 8], bin_days=7)
-        assert _assign_to_bin(-2, bins) == (-3, -1)
-        assert _assign_to_bin(3, bins) == (0, 6)
-        assert _assign_to_bin(8, bins) == (7, 13)
+        # d-2 lands in pre-stroke (-6, 0) bin.
+        assert _assign_to_bin(-2, bins) == (-6, 0)
+        # d+3 lands in (1, 7) post-stroke bin.
+        assert _assign_to_bin(3, bins) == (1, 7)
+        # d+8 lands in (8, 14) post-stroke bin.
+        assert _assign_to_bin(8, bins) == (8, 14)
         # Out-of-range day → None.
         assert _assign_to_bin(-100, bins) is None
 
@@ -141,6 +175,15 @@ class TestDayBinning:
             _make_rel_day_bins,
         )
         assert _make_rel_day_bins([], bin_days=2) == []
+
+    def test_invalid_bin_days(self):
+        from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
+            _rel_day_to_bin,
+        )
+        with pytest.raises(ValueError):
+            _rel_day_to_bin(0, bin_days=0)
+        with pytest.raises(ValueError):
+            _rel_day_to_bin(0, bin_days=-1)
 
 
 # ============================================================================

@@ -334,7 +334,7 @@ class TestRenderTongueQCFigures:
         }
         # The bare filename must NOT be emitted.
         bare = (
-            resolver.tongue_angle_dir(animal, date) / "phase_aligned_angle.png"
+            resolver.tongue_angle_within_session_dir(animal, date) / "phase_aligned_angle.png"
         )
         assert not bare.exists()
 
@@ -419,7 +419,7 @@ class TestRenderTongueQCFigures:
             overwrite="force",
         )
         sentinel_path = (
-            resolver.tongue_angle_dir(animal, date) / "first_peak_aligned.png"
+            resolver.tongue_angle_within_session_dir(animal, date) / "first_peak_aligned.png"
         )
         sentinel_path.write_bytes(b"SENTINEL")
         render_tongue_qc_figures(

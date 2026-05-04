@@ -313,37 +313,54 @@ def build_tongue_angle_cohort_aggregates(
 # ============================================================================
 
 
+def _rel_day_to_bin(rel_day: int, bin_days: int) -> tuple[int, int]:
+    """Compute the (lo, hi) inclusive bin tuple for a single
+    ``rel_day``.
+
+    Phase 7a.4-cross-session-angle Addendum #17 (2026-05-04):
+    aligns with the established legacy
+    :func:`stroke_orofacial.dlc_kinematics._day_binned._compute_rel_day_bin_label`
+    convention. d0 (rel_day == 0) is treated as PRE-stroke (recording
+    done before stroke induction earlier that day):
+
+      - ``rel_day <= 0`` (pre): last pre-bin is
+        ``(-(B - 1), 0)``; older bins decrement by ``B``.
+      - ``rel_day >= 1`` (post): first post-bin is ``(1, B)``; later
+        bins increment by ``B``.
+
+    For B=2 (PS46-50): bins ..., (-3, -2), (-1, 0), (1, 2), (3, 4), ...
+    For B=7 (PS51/54/55): bins ..., (-13, -7), (-6, 0), (1, 7), (8, 14), ...
+    """
+    b = int(bin_days)
+    if b < 1:
+        raise ValueError(f"bin_days must be >= 1; got {bin_days}.")
+    r = int(rel_day)
+    if r >= 1:
+        lo = ((r - 1) // b) * b + 1
+        hi = lo + b - 1
+    else:
+        # Pre-stroke: anchor at d0 inclusive, extend backwards by B.
+        # Mirrors legacy Cell 50's _bin_rel_day else-branch.
+        hi = -((abs(r)) // b) * b
+        lo = hi - (b - 1)
+    return (int(lo), int(hi))
+
+
 def _make_rel_day_bins(
     rel_days: Sequence[int], *, bin_days: int,
 ) -> list[tuple[int, int]]:
-    """Build (lo, hi) inclusive day-range bins.
+    """Build the set of (lo, hi) bins covering all ``rel_days``.
 
-    Pre-stroke (rel_day < 0) sessions all pool into a single bin
-    ``(min_rel_day, -1)``. Post-stroke sessions are bucketed into
-    consecutive ``[1, bin_days]``, ``[bin_days + 1, 2 * bin_days]``,
-    etc., using the first day with rel_day ≥ 1 as the alignment
-    anchor.
-
-    Returns a list of (lo, hi) pairs ordered by ``lo``.
+    Phase 7a.4-cross-session-angle Addendum #17 (2026-05-04): each
+    rel_day maps to its own bin via :func:`_rel_day_to_bin`; bins
+    are de-duplicated and returned sorted by ``lo``. Pre-stroke is
+    binned at the same ``bin_days`` width as post-stroke (NO LONGER
+    pooled into a single bin); bins anchor to d0 (inclusive).
     """
     if not rel_days:
         return []
-    rel = sorted(set(int(r) for r in rel_days))
-    pre = [r for r in rel if r < 0]
-    post = [r for r in rel if r >= 0]
-    bins: list[tuple[int, int]] = []
-    if pre:
-        bins.append((min(pre), -1))
-    if post:
-        # bins start at 0 for post-stroke (= stroke day +). Bucket
-        # by floor((r - 0) / bin_days).
-        for r in post:
-            bin_lo = (r // int(bin_days)) * int(bin_days)
-            bin_hi = bin_lo + int(bin_days) - 1
-            pair = (int(bin_lo), int(bin_hi))
-            if pair not in bins:
-                bins.append(pair)
-    return sorted(bins, key=lambda x: x[0])
+    bins_set = {_rel_day_to_bin(int(r), bin_days) for r in rel_days}
+    return sorted(bins_set, key=lambda x: x[0])
 
 
 def _assign_to_bin(
@@ -378,6 +395,43 @@ def _post_max_rel_day(
     return max(post_days) if post_days else None
 
 
+def _add_pre_stroke_patch_and_post_colorbar(
+    fig: Figure, axes: np.ndarray, *,
+    pre_color: str, post_cmap: str, post_max: int | None,
+) -> None:
+    """Phase 7a.4-cross-session-angle Addendum #17 item 3 (2026-05-04):
+    shared right-side legend layout for the cross-session overlays.
+
+    Reserves the rightmost ~22% of the figure (``subplots_adjust``)
+    for a small grey ``Patch`` proxy labelling pre-stroke (d≤0)
+    plus a vertical post-stroke plasma colorbar showing rel_day
+    range. No legends drawn on the subplot axes.
+    """
+    from matplotlib.patches import Patch
+    from matplotlib.colors import Normalize
+
+    fig.subplots_adjust(right=0.80)
+    # Pre-stroke patch as a top-right legend on the right subplot.
+    ax_right = axes[1]
+    pre_handle = Patch(color=pre_color, label="pre-stroke (d≤0)")
+    ax_right.legend(
+        handles=[pre_handle],
+        loc="upper left",
+        bbox_to_anchor=(1.04, 1.00),
+        frameon=False, fontsize=9,
+    )
+    # Post-stroke colorbar below the patch.
+    if post_max is not None and post_max >= 1:
+        cbar_ax = fig.add_axes([0.83, 0.18, 0.015, 0.55])
+        sm = plt.cm.ScalarMappable(
+            cmap=plt.get_cmap(post_cmap),
+            norm=Normalize(vmin=1, vmax=float(post_max)),
+        )
+        sm.set_array([])
+        cbar = fig.colorbar(sm, cax=cbar_ax)
+        cbar.set_label("Post-stroke day (d)")
+
+
 def _plot_first_peak_aligned_session_overlays(
     cohort: TongueAngleCohortAggregates,
     *,
@@ -391,8 +445,8 @@ def _plot_first_peak_aligned_session_overlays(
     pre_color = str(cohort_cfg["pre_color"])
     post_cmap = str(cohort_cfg["post_cmap"])
     line_lw = float(visual["line_width"])
-    line_alpha = float(visual["line_alpha"])
-    sem_alpha = float(visual["sem_fill_alpha"])
+    alpha_mean = float(visual["alpha_mean"])
+    alpha_sem = float(visual["alpha_sem"])
 
     fig, axes = plt.subplots(1, 2, figsize=(13.0, 4.6), sharex=True, sharey=True)
     ax_left, ax_right, side_to_ax = _setup_cam_view_axes(fig, axes)
@@ -408,10 +462,10 @@ def _plot_first_peak_aligned_session_overlays(
             r.rel_day, post_max,
             cmap_name=post_cmap, pre_color=pre_color,
         )
-        ax.plot(r.t, r.mu, color=c, lw=line_lw, alpha=line_alpha)
+        ax.plot(r.t, r.mu, color=c, lw=line_lw, alpha=alpha_mean)
         ax.fill_between(
             r.t, r.mu - r.sem, r.mu + r.sem,
-            color=c, alpha=sem_alpha, lw=0,
+            color=c, alpha=alpha_sem, lw=0,
         )
 
     for ax, side in [(ax_left, "R"), (ax_right, "L")]:
@@ -425,10 +479,13 @@ def _plot_first_peak_aligned_session_overlays(
 
     fig.suptitle(
         f"{cohort.animal} | first peak-aligned tongue angle | "
-        f"session overlays (pre-stroke=grey, post-stroke=plasma)",
+        f"session overlays",
         y=0.99,
     )
-    plt.tight_layout()
+    _add_pre_stroke_patch_and_post_colorbar(
+        fig, axes, pre_color=pre_color,
+        post_cmap=post_cmap, post_max=post_max,
+    )
     return fig
 
 
@@ -440,14 +497,19 @@ def _plot_first_peak_aligned_binned_overlays(
     """Per-mouse binned-overlay plot for ``first_peak_aligned``. One
     curve per (rel-day-bin, side); per-bin mean = mean of per-
     session means; per-bin SEM = SEM across sessions in the bin.
+
+    Phase 7a.4-cross-session-angle Addendum #17 (2026-05-04): pre-
+    stroke is binned at ``bin_days`` width anchored to d0
+    (last pre-stroke bin = ``(-(B-1), 0)``). Shared figure-level
+    legend on the right margin; no per-axis legends.
     """
     cohort_cfg = params["dlc_kinematics"]["tongue_angle_cohort"]
     visual = cohort_cfg["visual"]["binned_overlays"]
     pre_color = str(cohort_cfg["pre_color"])
     post_cmap = str(cohort_cfg["post_cmap"])
     line_lw = float(visual["line_width"])
-    line_alpha = float(visual["line_alpha"])
-    sem_alpha = float(visual["sem_fill_alpha"])
+    alpha_mean = float(visual["alpha_mean"])
+    alpha_sem = float(visual["alpha_sem"])
     min_per_bin = int(cohort_cfg["min_sessions_per_bin"])
 
     fig, axes = plt.subplots(1, 2, figsize=(13.0, 4.6), sharex=True, sharey=True)
@@ -460,6 +522,13 @@ def _plot_first_peak_aligned_binned_overlays(
     bins = _make_rel_day_bins(rel_days, bin_days=cohort.bin_days)
     post_max = _post_max_rel_day(family_rows)
 
+    # Collect legend handles + labels in bin order (use the first
+    # side's render to populate the figure-level legend; bins are
+    # the same across sides).
+    legend_handles: list[Any] = []
+    legend_labels: list[str] = []
+    seen_bins: set[tuple[int, int]] = set()
+
     for side in ("L", "R"):
         ax = side_to_ax[side]
         side_rows = [r for r in family_rows if r.side == side]
@@ -471,11 +540,6 @@ def _plot_first_peak_aligned_binned_overlays(
             if len(bin_rows) < min_per_bin:
                 continue
             t = bin_rows[0].t
-            # Per-bin mean = mean of per-session means; per-bin SEM
-            # = SEM of per-session means (treat each session-mean as
-            # one sample). Pad to the same t-axis (assume identical
-            # across sessions of one family, which holds because
-            # first_peak_align_win_ms is fixed).
             M = np.vstack([r.mu for r in bin_rows]).astype(float)
             mu_bin = np.nanmean(M, axis=0)
             n_bin = np.sum(np.isfinite(M), axis=0)
@@ -485,29 +549,32 @@ def _plot_first_peak_aligned_binned_overlays(
             sem_bin[good] = sd_bin[good] / np.sqrt(
                 np.maximum(1, n_bin[good])
             )
-            # Color by bin center.
             bin_center = 0.5 * (bin_lo + bin_hi)
             c = _color_for_rel_day_continuous(
                 bin_center, post_max,
                 cmap_name=post_cmap, pre_color=pre_color,
             )
             label = (
-                f"pre (d{bin_lo}..{bin_hi}, n={len(bin_rows)})"
-                if bin_lo < 0 else
-                f"d{bin_lo}..{bin_hi} (n={len(bin_rows)})"
+                f"{bin_lo}..{bin_hi} (pre, n={len(bin_rows)})"
+                if bin_hi <= 0 else
+                f"{bin_lo}..{bin_hi} (n={len(bin_rows)})"
             )
-            ax.plot(t, mu_bin, color=c, lw=line_lw, alpha=line_alpha,
-                    label=label)
+            line, = ax.plot(
+                t, mu_bin, color=c, lw=line_lw, alpha=alpha_mean,
+            )
             ax.fill_between(
                 t, mu_bin - sem_bin, mu_bin + sem_bin,
-                color=c, alpha=sem_alpha, lw=0,
+                color=c, alpha=alpha_sem, lw=0,
             )
+            if (bin_lo, bin_hi) not in seen_bins:
+                legend_handles.append(line)
+                legend_labels.append(label)
+                seen_bins.add((bin_lo, bin_hi))
         ax.axvline(0, color="red", ls=":", lw=1.4, alpha=0.9)
         ax.axhline(0, color="0.6", lw=1.0, alpha=0.8)
         ax.set_title(f"{side} trials")
         ax.set_xlabel("Time from first detected lick peak (ms)")
         ax.grid(True, alpha=0.2)
-        ax.legend(frameon=False, fontsize=8)
     ax_left.set_ylabel("Tongue angle (deg)")
 
     fig.suptitle(
@@ -515,7 +582,16 @@ def _plot_first_peak_aligned_binned_overlays(
         f"binned overlays (bin_days={cohort.bin_days})",
         y=0.99,
     )
-    plt.tight_layout()
+
+    # Figure-level legend on the right margin (Addendum #17 item 3).
+    fig.subplots_adjust(right=0.80)
+    if legend_handles:
+        fig.legend(
+            legend_handles, legend_labels,
+            loc="upper left",
+            bbox_to_anchor=(0.82, 0.95),
+            frameon=False, fontsize=9,
+        )
     return fig
 
 
@@ -567,7 +643,7 @@ def build_first_peak_aligned_cohort(
     if animal_info is None:
         animal_info = get_animal(animal)
 
-    out_dir = resolver.tongue_angle_cohort_dir(animal)
+    out_dir = resolver.tongue_angle_cross_session_dir(animal)
     paths = {
         "session_overlays": out_dir / (
             f"{animal}_first_peak_aligned_session_overlays.png"

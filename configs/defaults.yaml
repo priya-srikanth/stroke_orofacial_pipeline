@@ -818,23 +818,22 @@ dlc_kinematics:
   # ``bundle.metadata["pre_stroke_median_ili_ms"]`` (populated by
   # :func:`build_tongue_visual_bundle_by_animal_date`).
   tongue_angle_cohort:
-    # Curve / scatter visual styling. Defaults match the per-session
-    # plot family styling for byte-aligned visual identity (line
-    # widths / alphas) where the data shape is the same.
+    # Curve / scatter visual styling. Phase 7a.4-cross-session-angle
+    # Addendum #17 items 3+4 (2026-05-04): renamed alpha knobs to
+    # ``alpha_mean`` / ``alpha_sem``; lowered defaults so overlapping
+    # curves (≥50 sessions on PS55) read cleanly without one curve
+    # dominating + SEM bands don't blur into a wall of color.
     visual:
-      # Per-session-overlay curves: low fill alpha keeps the figure
-      # readable when many sessions stack.
       session_overlays:
         line_width: 1.5
-        line_alpha: 0.85
-        sem_fill_alpha: 0.10
-      # Per-bin-overlay curves: higher fill alpha since bin count is
-      # smaller (~3-10 bins per animal vs ~20-50 sessions).
+        alpha_mean: 0.50      # was 0.85 pre-#17
+        alpha_sem: 0.05       # was 0.10 pre-#17
       binned_overlays:
         line_width: 2.5
-        line_alpha: 0.85
-        sem_fill_alpha: 0.20
-      # Scatter family styling (first_vs_second_peak_scatter).
+        alpha_mean: 0.70      # was 0.85 pre-#17
+        alpha_sem: 0.10       # was 0.20 pre-#17
+      # Scatter family styling (first_vs_second_peak_scatter, future
+      # Cross-session #5).
       scatter:
         scatter_size: 18
         scatter_alpha: 0.55

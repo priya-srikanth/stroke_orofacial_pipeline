@@ -197,7 +197,7 @@ def render_tongue_qc_figures(
 
     # Pre-resolve every expected output path (used for skip-decision and
     # for the return dict).
-    out_dir = resolver.tongue_angle_dir(animal, date)
+    out_dir = resolver.tongue_angle_within_session_dir(animal, date)
     expected_paths_per_family = _resolve_consolidated_paths(
         out_dir, families_to_render, sides=("L", "R"), params=params,
     )

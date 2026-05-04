@@ -932,7 +932,10 @@ def compute_pre_stroke_median_ili_ms(
       1. Enumerate session dates from on-disk
          ``tongue_pertrial_endpoints_json`` paths (= 7a.3 V3 emit set
          dates).
-      2. Filter to ``rel_day < 0`` (pre-stroke) per
+      2. Filter to ``rel_day <= 0`` (pre-stroke; Addendum #17:
+         ``rel_day == 0`` = day of stroke induction, recording done
+         BEFORE stroke earlier that day, so d0 is pre-stroke per
+         project-wide convention) via
          :meth:`AnimalInfo.day_relative_to_stroke`.
       3. For each pre-stroke session, build a
          :class:`TongueVisualBundle` (without recursive median ILI
@@ -974,7 +977,10 @@ def compute_pre_stroke_median_ili_ms(
             rel_day = int(animal_info.day_relative_to_stroke(d))
         except Exception:
             continue
-        if rel_day < 0:
+        # Addendum #17 (2026-05-04): d0 is pre-stroke (recording done
+        # before stroke induction earlier that day). Pre-stroke =
+        # rel_day <= 0 (was rel_day < 0 pre-#17).
+        if rel_day <= 0:
             pre_dates.append(d)
 
     if not pre_dates:

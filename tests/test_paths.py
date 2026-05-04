@@ -581,22 +581,31 @@ class TestPhase7a4Paths:
         assert path.name == "-1..0.parquet"
         assert path.parent.name == "PS46"
 
-    def test_tongue_angle_dir_path(self, monkeypatch, tmp_path):
-        """Angle/phase PNG directory: no eager mkdir (renderer creates).
+    def test_tongue_angle_within_session_dir_path(self, monkeypatch, tmp_path):
+        """Angle/phase per-session PNG directory: no eager mkdir
+        (renderer creates).
 
-        Renamed from ``test_tongue_visual_qc_dir_path`` in
-        Phase 7a.4-orientation-and-paths-cleanup (2026-05-03);
-        path moved out of ``figures_qc/tongue/`` to ``tongue_angle/``.
+        Naming history:
+          - Pre-7a.4-paths-cleanup: ``test_tongue_visual_qc_dir_path``
+            → ``figures_qc/tongue/...``
+          - 7a.4-paths-cleanup (2026-05-03):
+            ``test_tongue_angle_dir_path`` →
+            ``tongue_angle/{animal}/{date}/``.
+          - Phase 7a.4-cross-session-angle Addendum #17 (2026-05-04):
+            renamed to ``test_tongue_angle_within_session_dir_path`` →
+            ``tongue_angle/within_session/{animal}/{date}/`` for
+            symmetry with the cross-session sibling.
         """
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(output_root=tmp_path)
-        path = resolver.tongue_angle_dir(
+        path = resolver.tongue_angle_within_session_dir(
             "PS50", datetime.date(2025, 3, 19)
         )
         expected = (
             tmp_path
             / "dlc_kinematics"
             / "tongue_angle"
+            / "within_session"
             / "PS50"
             / "20250319"
         )
@@ -717,27 +726,34 @@ class TestPhase7a5Paths:
         path.mkdir(parents=True)
         assert path.exists() and path.is_dir()
 
-    def test_tongue_angle_cohort_dir_path(
+    def test_tongue_angle_cross_session_dir_path(
         self, monkeypatch, tmp_path,
     ):
-        """Phase 7a.4-cross-session-angle (2026-05-04): per-mouse
-        cohort figure output directory. Per-mouse only (no date),
-        no eager mkdir; mirrors the
-        :meth:`tongue_jaw_mismatch_cross_session_dir` shape.
+        """Phase 7a.4-cross-session-angle Addendum #17 (2026-05-04):
+        per-mouse cross-session figure output directory at
+        ``dlc_kinematics/tongue_angle/cross_session/{animal}/`` —
+        renamed from the initial ``tongue_angle_cohort/{animal}/``
+        layout for symmetry with the within_session sibling and the
+        tongue_jaw_mismatch ``within_session/`` + ``cross_session/``
+        layout.
         """
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(output_root=tmp_path)
-        path = resolver.tongue_angle_cohort_dir("PS46")
+        path = resolver.tongue_angle_cross_session_dir("PS46")
         expected = (
             tmp_path
             / "dlc_kinematics"
-            / "tongue_angle_cohort"
+            / "tongue_angle"
+            / "cross_session"
             / "PS46"
         )
         assert path == expected
         # No eager mkdir — caller (the cohort renderer) creates the dir.
         assert not path.exists()
-        assert not path.parent.exists()
+        # Note: parent ``dlc_kinematics/tongue_angle/`` may exist if a
+        # within_session/ sibling has been created by another test
+        # (legitimately co-located now). Don't assert non-existence
+        # of grandparent.
         # Caller-driven mkdir round-trips.
         path.mkdir(parents=True)
         assert path.exists() and path.is_dir()
