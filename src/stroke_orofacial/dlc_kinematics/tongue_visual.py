@@ -408,25 +408,32 @@ def _plot_reward_aligned(
     """Family 3 — session-wide reward-aligned tongue angle. Mu±SEM across
     trials per side (legacy ``_plot_reward_aligned_angle``).
 
+    Data source (Phase 7a.4-cross-session-angle, 2026-05-04, Addendum
+    #8): ``angle_snip`` — the raw per-frame tongue angle from the
+    upstream parquet, populated for EVERY frame in the bundle's
+    ``plot_win_ms`` window regardless of bout structure. Pre-reward
+    baseline (frames before t=0 where the tongue is at rest in DLC
+    view), between-bout frames, and post-bout decay all contribute.
+    The bout-mode distinction (``time_summary``:
+    ``first_multi``/``first_bout``/``all_bouts``) is NOT applied to
+    this plot family — supersedes Addendum #6's ``all_bouts`` flip,
+    which is now dead config. See :func:`_pick_time_array_column`'s
+    deprecation note. The cross-session reward-aligned aggregator
+    (Phase 7a.4-cross-session-angle Task 3) consumes the same
+    ``angle_snip`` source for byte-aligned per-session vs
+    cross-session display semantics (matches the Addendum #4 pattern
+    of sharing the display window).
+
     Display window (Phase 7a.4-cross-session-angle, 2026-05-04,
-    Addendum #4): the bundle's per-trial reward-aligned snippet spans
-    the full ``plot_win_ms`` (default ``[-180, 8000]`` ms) but the
-    rendered x-axis is clipped to
+    Addendum #4): the bundle's per-trial array spans the full
+    ``plot_win_ms`` (default ``[-180, 8000]`` ms) but the rendered
+    x-axis is clipped to
     ``dlc_kinematics.tongue_visual.reward_aligned_display_window_ms``
     (default ``[-180, 1000]`` ms) so per-session and cross-session
-    reward-aligned plots share the same x-axis byte-for-byte. The
-    cross-session aggregator reads the same knob from the same
-    config block.
+    reward-aligned plots share the same x-axis byte-for-byte.
     """
     visual = params["dlc_kinematics"]["tongue_visual"]
     side_colors = visual["side_colors"]
-    # Default ``"all_bouts"`` per Phase 7a.4-cross-session-angle
-    # Addendum #6 (2026-05-04). Source of truth is
-    # ``configs/defaults.yaml`` ``dlc_kinematics.tongue_visual.modes.time_summary``;
-    # this fallback is only consulted when ``params`` is missing the
-    # block entirely.
-    time_mode = str(visual.get("modes", {}).get("time_summary", "all_bouts"))
-    arr_col = _pick_time_array_column(time_mode)
     display_win_ms = tuple(
         visual.get("reward_aligned_display_window_ms", [-180.0, 1000.0])
     )
@@ -443,7 +450,7 @@ def _plot_reward_aligned(
         side_rows = df_trials[df_trials["side"] == side]
         if side_rows.empty:
             continue
-        T = np.vstack(side_rows[arr_col].to_list()).astype(float)
+        T = np.vstack(side_rows["angle_snip"].to_list()).astype(float)
         t = np.asarray(side_rows.iloc[0]["t_ms"], float)
         mu, sem, _ = _robust_mean_sem(T)
         n_trials = int(np.sum(np.any(np.isfinite(T), axis=1)))
@@ -456,9 +463,7 @@ def _plot_reward_aligned(
     ax.axhline(0, color="0.6", lw=1.0, alpha=0.8)
     animal = bundle.metadata.get("animal", "?")
     date_str = bundle.metadata.get("date", "?")
-    ax.set_title(
-        f"{animal} {date_str} | reward-aligned tongue angle | mode={time_mode}"
-    )
+    ax.set_title(f"{animal} {date_str} | reward-aligned tongue angle")
     ax.set_xlabel("Time from reward (ms)")
     ax.set_ylabel("Tongue angle (deg)")
     ax.grid(True, alpha=0.2)
@@ -852,7 +857,16 @@ def _selected_phase_peak_count(
 
 
 def _pick_time_array_column(mode: str) -> str:
-    """Map ``time_summary_mode`` → df_trials column name (legacy)."""
+    """Map ``time_summary_mode`` → df_trials column name (legacy).
+
+    DEPRECATION-PENDING (Phase 7a.4-cross-session-angle Addendum #8,
+    2026-05-04). The reward-aligned plot now consumes ``angle_snip``
+    directly (the raw per-frame trace), bypassing the bout-windowed
+    ``angle_*_snip`` arrays this helper returns. No active caller
+    remains in this repo. Helper retained as deprecation-pending to
+    preserve API surface for external/legacy scripts; remove in a
+    future cleanup phase if no consumers surface.
+    """
     return {
         "all_bouts":   "angle_allbouts_snip",
         "first_bout":  "angle_firstbout_snip",

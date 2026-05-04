@@ -625,18 +625,23 @@ dlc_kinematics:
     # time: "all_bouts" | "first_bout" | "first_multi"
     # phase / xy: "all_multi" | "first_multi"
     #
-    # Phase 7a.4-cross-session-angle (2026-05-04, Addendum #6):
-    # ``time_summary`` default flipped from ``"first_multi"`` to
-    # ``"all_bouts"``. Reward-aligned plot is the right vehicle for
-    # visualizing the full post-stroke licking phenotype (every tongue
-    # movement in the [-180, 1000] ms display window), including
-    # isolated single-lick bouts (which contribute via the legacy
-    # ``single_bout_win_ms = (-120, 200)`` synthetic time window) and
-    # subsequent multi-bouts. ``"first_multi"`` truncated both. The
-    # legacy notebook's default was ``"first_multi"``; this is a
-    # deliberate consolidated-default deviation, not a parity bug — the
-    # net-new cross-session work consumes ``angle_allbouts_snip`` for
-    # the same reason.
+    # ``time_summary`` is INTENTIONALLY UNUSED as of Phase
+    # 7a.4-cross-session-angle Addendum #8 (2026-05-04). The
+    # reward-aligned plot now consumes ``angle_snip`` (the raw
+    # per-frame tongue angle) directly, bypassing the bout-windowed
+    # ``angle_*_snip`` arrays this knob would dispatch over. The
+    # ``"all_bouts"`` value here is the residual default from
+    # Addendum #6 (which itself flipped ``"first_multi"`` →
+    # ``"all_bouts"`` to capture isolated licks via
+    # ``single_bout_win_ms``); Addendum #8 superseded that intent by
+    # using the unwindowed raw trace instead. Knob retained for
+    # backward compatibility — any external script that reads it
+    # gets the documented value, even though no in-repo consumer
+    # remains. To remove the knob entirely, see DECISIONS for the
+    # follow-up cleanup phase. Same documentation-only pattern as
+    # ``allow_single_lick_bouts`` flagged at the Addendum #6 First
+    # Check (no consume path; behavior hard-wired in
+    # ``_detector._build_bouts``).
     #
     # ``phase_summary`` and ``xy_summary`` defaults remain
     # ``"first_multi"`` — phase + xy_by_phase plots stay multi-bout-only
