@@ -4812,3 +4812,78 @@ across all 6 plot families.
 - ffmpeg is now a hard runtime dep — fresh laptops setting up the
   env should run `conda env update -n stroke_orofacial -f environment.yml`
   before running notebooks 13/14.
+
+---
+
+## Phase 7a.4-orientation-fix — `xy_by_phase` cam-view L/R subplot flip
+
+**Date:** 2026-05-03
+
+**What was done:**
+
+- Flipped `_plot_xy_by_phase` (Family 5) in
+  `src/stroke_orofacial/dlc_kinematics/tongue_visual.py` from legacy
+  ordering (L-trials on figure left, R-trials on figure right) to
+  cam-view ordering (R-trials on figure left, L-trials on figure
+  right) via the explicit `side_to_ax = {"R": axes[0], "L": axes[1]}`
+  mapping. Mirrors the 7a.6 C7.2 convention in
+  `mean_sem_visual._plot_mean_xy_overlays`. ~10-line surgical change
+  to one helper function; the remainder of `tongue_visual.py` is
+  untouched, and the legacy pre-flip patch (the 4 other plot
+  families, the comparison-grid renderer, the QC dir resolver) is
+  bit-identical to Phase 7a.4.
+- Added orientation pin test
+  `test_xy_by_phase_uses_cam_view_subplot_ordering` in
+  `tests/test_tongue_visual.py` — asserts
+  `"R trials" in fig.axes[0].get_title()` and
+  `"L trials" in fig.axes[1].get_title()` against the synthetic
+  bundle. Locks the convention against silent regression.
+- Refreshed comment on existing
+  `test_xy_by_phase_returns_nonempty_figure` from "2 panels (L, R)"
+  to "cam-view: R-trials on figure left, L-trials on figure right
+  per Phase 7a.4-orientation-fix" so the full file reads
+  consistently.
+- Added DECISIONS 2026-05-03 entry codifying the cam-view convention
+  + cross-reference to the 7a.6 C7.2 precedent + explicit note about
+  the deliberate L/R divergence in
+  `xy_by_phase_comparison.png` after the flip.
+
+**Behavior differences vs. legacy:**
+
+- `xy_by_phase.png` for every session emitted under
+  `<pipeline_outputs>/dlc_kinematics/figures_qc/tongue/{animal}/
+  {YYYYMMDD}/` will display R-trials on figure left and L-trials on
+  figure right. Legacy notebook output (saved on MICROSCOPE under
+  `*_anglePhase_XYphase_*.png`) remains L-trials on figure left;
+  this is a *deliberate* divergence reflecting the cam-view
+  convention adopted in 7a.6 C7.2. See DECISIONS 2026-05-03 entry
+  for rationale.
+- The consolidated-vs-legacy comparison grid
+  (`xy_by_phase_comparison.png` under
+  `figures_qc/tongue_comparison/{animal}/{YYYYMMDD}/`) will show
+  panes with opposite L/R orientation by design; the comparison
+  grid renderer (`render_comparison_grid`) is unchanged and tiles
+  the two PNGs as-is.
+- No numerical change. All data arrays (`x_geom`, `y_geom`, `phase`),
+  colorbar, axis limits, and styling knobs are identical to 7a.4.
+  Only the subplot indexing differs.
+- Notebook 14 (`14_dlc_kinematics_jaw.ipynb`) is unaffected — the
+  jaw notebook has no `_plot_xy_by_phase` analog (per the
+  7a.3-jaw audit, jaw kinematics enters the visual pipeline only at
+  the 7a.6 bodypart-parametric mean/SEM module). The flip applies
+  to notebook 13 (`13_dlc_kinematics_tongue.ipynb`) only.
+
+**Exit criteria met:**
+
+- [x] `pytest tests/test_tongue_visual.py` green including the new
+  orientation pin test.
+- [x] Visual gate verdict PASS (Priya 2026-05-03) on
+  PS50/2025-03-19 against legacy MICROSCOPE
+  `*_anglePhase_XYphase_*.png`.
+- [x] DECISIONS 2026-05-03 entry codifies the convention + cites
+  7a.6 C7.2 precedent.
+
+**Closes:** task #41 (cam-view flip follow-up surfaced 2026-05-02
+during Phase 7a.6 close-out).
+
+**Tag:** `v7a.4-orientation-fix-cam-view-flip` on the merge commit.

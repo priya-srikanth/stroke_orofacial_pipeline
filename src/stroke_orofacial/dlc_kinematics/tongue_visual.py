@@ -623,10 +623,17 @@ def _plot_xy_by_phase(
         )
         xmax = max(1.0, xmax)
 
-    sides = ("L", "R")
+    # Cam-view convention (Phase 7a.4-orientation-fix, 2026-05-03):
+    # the camera mirror-images the mouse, so mouse-left appears on the
+    # right of the camera frame. Display R-trials on figure left and
+    # L-trials on figure right to match the cam-view. Mirrors the
+    # explicit side_to_ax mapping established by 7a.6 C7.2 in
+    # mean_sem_visual.py (see _plot_mean_xy_overlays).
+    ax_left, ax_right = axes[0], axes[1]
+    side_to_ax = {"R": ax_left, "L": ax_right}
     sc = None
     any_points = False
-    for ax, side in zip(axes, sides):
+    for side, ax in side_to_ax.items():
         ax.set_title(f"{side} trials")
         ax.set_xlabel("Tongue X (spout-centered px)")
         ax.set_xlim(-xmax, xmax)
