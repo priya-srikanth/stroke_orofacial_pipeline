@@ -38,6 +38,11 @@ from stroke_orofacial.dlc_kinematics.mean_sem_visual import (
     build_trial_overlays,
     build_trial_overlays_animal,
 )
+from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
+    TongueAngleCohortAggregates,
+    build_first_peak_aligned_cohort,
+    build_tongue_angle_cohort_aggregates,
+)
 from stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch import (
     TONGUE_JAW_MISMATCH_VERSION,
     TongueJawMismatchResult,
@@ -81,6 +86,7 @@ __all__ = [
     "MeanTraceRow",
     "SessionAggregates",
     "TONGUE_JAW_MISMATCH_VERSION",
+    "TongueAngleCohortAggregates",
     "TongueJawMismatchResult",
     "TonguePertrialResult",
     "TongueVisualBundle",
@@ -92,6 +98,8 @@ __all__ = [
     "build_cohort_aggregates",
     "build_first_lick_centered_phase_rows",
     "build_first_n_licks_centered_phase_rows",
+    "build_first_peak_aligned_cohort",
+    "build_tongue_angle_cohort_aggregates",
     "build_individual_sessions",
     "build_individual_sessions_animal",
     "build_interpolated_trace",
