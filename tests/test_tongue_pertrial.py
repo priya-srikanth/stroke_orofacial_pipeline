@@ -2352,3 +2352,327 @@ class TestBuildAllLicksCenteredPhaseRows:
         )
         out = build_all_licks_centered_phase_rows(empty)
         assert out.empty
+
+
+class TestBuildFirstNLicksCenteredPhaseRows:
+    """Phase 7a.4-cross-session-angle Addendum #11 Part A (2026-05-04):
+    parameterized first-N-licks centered-phase builder. Each peak[i]
+    for i in [0, n_peaks - 1] occupies its own [i, i + 1] cycle with
+    peak[i] at x = i + 0.5; cycle width = peak[i + 1] - peak[i].
+    """
+
+    def test_each_peak_centered_in_its_own_cycle(self):
+        """3 peaks at t=200, 300, 400 (ILI=100 throughout) with N=2:
+        peak[0] at x=0.5 (cycle [0, 1]); peak[1] at x=1.5 (cycle
+        [1, 2])."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+            },
+        ])
+        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2)
+        # Peak[0] frame at t=200 → x = 0.5
+        at_p0 = out[
+            np.isclose(out["t_ms"], 200.0)
+            & (out["peak_t_ms"] == 200.0)
+        ]
+        assert len(at_p0) == 1
+        assert at_p0.iloc[0]["phase"] == pytest.approx(0.5, abs=1e-6)
+        # Peak[1] frame at t=300 → x = 1.5
+        at_p1 = out[
+            np.isclose(out["t_ms"], 300.0)
+            & (out["peak_t_ms"] == 300.0)
+        ]
+        assert len(at_p1) == 1
+        assert at_p1.iloc[0]["phase"] == pytest.approx(1.5, abs=1e-6)
+
+    def test_x_span_within_0_to_n_peaks(self):
+        """All emitted ``phase`` values must be in ``[0, n_peaks]``."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+            },
+        ])
+        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2)
+        assert (out["phase"] >= -1e-9).all()
+        assert (out["phase"] <= 2.0 + 1e-9).all()
+
+    def test_skips_trials_with_too_few_peaks(self):
+        """Trial with only 2 peaks (no peak[2] to define ILI[1]) and
+        N=2 → contributes nothing per Addendum #11 Part A lock."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0]}],   # only 2 peaks
+            },
+        ])
+        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2)
+        assert out.empty
+
+    def test_skips_isolated_lick_only_trials(self):
+        """Trial with only single-lick bouts → no rows."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [400.0]}],
+            },
+        ])
+        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2)
+        assert out.empty
+
+    def test_n_peaks_must_be_at_least_2(self):
+        """N=1 is degenerate — raises ValueError."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([])
+        with pytest.raises(ValueError):
+            build_first_n_licks_centered_phase_rows(bundle, n_peaks=1)
+
+    def test_emits_n_peaks_cycles_per_qualifying_trial(self):
+        """Trial with 4 peaks and N=3 → 3 cycles emitted (peaks 0, 1,
+        2 each centered; peak[3] supplies the final ILI's right
+        edge)."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0, 500.0]}],
+            },
+        ])
+        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=3)
+        rendered = sorted(out["peak_t_ms"].unique().tolist())
+        assert rendered == [200.0, 300.0, 400.0]   # peak[3]=500 dropped
+
+
+# ===========================================================================
+# Phase 7a.4-cross-session-angle Addendum #12 (2026-05-04):
+# synthetic ILI for isolated licks + last-peak-of-multi-bout
+# ===========================================================================
+
+
+class TestSyntheticILIInCenteredPhaseHelpers:
+    """Phase 7a.4-cross-session-angle Addendum #12 (2026-05-04):
+    centered-phase helpers gain a ``synthetic_ili_ms`` kwarg that
+    enables isolated-lick contribution + last-peak-of-multi-bout
+    fallback. ``synthetic_ili_ms=None`` (default) preserves the
+    legacy multi-bout-only behaviour.
+    """
+
+    def test_first_lick_includes_isolated_only_trial_with_synthetic_ili(self):
+        """Trial with only ONE peak (isolated lick) → with
+        ``synthetic_ili_ms=100``, contributes a centered-on-peak
+        cycle of width 100 ms. Without (None), contributes nothing."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [400.0]}],
+                "angle_at_peak": {400.0: -8.0},
+            },
+        ])
+        # Without synthetic ILI: empty (legacy behaviour).
+        out_none = build_first_lick_centered_phase_rows(bundle)
+        assert out_none.empty
+        # With synthetic ILI: trial contributes; peak at x=0.5.
+        out_synth = build_first_lick_centered_phase_rows(
+            bundle, synthetic_ili_ms=100.0,
+        )
+        assert not out_synth.empty
+        at_peak = out_synth[np.isclose(out_synth["t_ms"], 400.0)]
+        assert len(at_peak) == 1
+        assert at_peak.iloc[0]["phase"] == pytest.approx(0.5, abs=1e-6)
+        assert at_peak.iloc[0]["angle_deg"] == pytest.approx(-8.0)
+
+    def test_first_lick_uses_real_ili_when_forward_neighbour_exists(self):
+        """Trial with isolated bout AND a separate multi-bout: the
+        chronologically first peak is the isolated one. Its forward
+        neighbour (first peak of the next multi-bout) supplies the
+        REAL ILI; synthetic_ili_ms is only used if no neighbour
+        exists.
+        """
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [
+                    {"peak_t_ms": [200.0]},                # isolated
+                    {"peak_t_ms": [600.0, 700.0, 800.0]},  # multi
+                ],
+            },
+        ])
+        out = build_first_lick_centered_phase_rows(
+            bundle, synthetic_ili_ms=999.0,
+        )
+        # First peak = 200 (isolated). Forward neighbour = 600.
+        # ILI = 600 - 200 = 400 (NOT 999 synthetic).
+        # Window = [200 - 200, 200 + 200] = [0, 400]. Frame at t=200
+        # → phase = 0.5.
+        at_peak = out[np.isclose(out["t_ms"], 200.0)]
+        assert len(at_peak) == 1
+        assert at_peak.iloc[0]["phase"] == pytest.approx(0.5, abs=1e-6)
+        assert at_peak.iloc[0]["peak_t_ms"] == pytest.approx(200.0)
+
+    def test_all_licks_includes_last_peak_with_synthetic(self):
+        """3 peaks in one multi-bout, no other bouts. Without
+        synthetic: 2 cycles (peak 0 + peak 1; peak 2 dropped). With
+        synthetic: 3 cycles (peak 2 uses synthetic ILI for its
+        forward width)."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+            },
+        ])
+        n_legacy = len(
+            build_all_licks_centered_phase_rows(bundle).get(
+                "peak_t_ms", [],
+            ).unique() if not build_all_licks_centered_phase_rows(
+                bundle,
+            ).empty else []
+        )
+        n_legacy_simple = sorted(
+            build_all_licks_centered_phase_rows(bundle)["peak_t_ms"]
+            .unique().tolist()
+        )
+        n_synth = sorted(
+            build_all_licks_centered_phase_rows(
+                bundle, synthetic_ili_ms=100.0,
+            )["peak_t_ms"].unique().tolist()
+        )
+        assert n_legacy_simple == [200.0, 300.0]
+        assert n_synth == [200.0, 300.0, 400.0]
+
+    def test_all_licks_includes_isolated_bouts_with_synthetic(self):
+        """Trial with 1 multi-bout + 1 isolated bout. Without
+        synthetic: only multi-bout peaks (minus last). With
+        synthetic: all peaks across all bouts contribute."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [
+                    {"peak_t_ms": [200.0, 300.0]},     # multi (drops 300 in legacy)
+                    {"peak_t_ms": [800.0]},             # isolated
+                ],
+            },
+        ])
+        legacy = sorted(
+            build_all_licks_centered_phase_rows(bundle)["peak_t_ms"]
+            .unique().tolist()
+        )
+        # Multi-bout: pair (200, 300). 200 contributes; 300 dropped.
+        assert legacy == [200.0]
+        synth = sorted(
+            build_all_licks_centered_phase_rows(
+                bundle, synthetic_ili_ms=150.0,
+            )["peak_t_ms"].unique().tolist()
+        )
+        # Synthetic: all 3 peaks contribute. 200 → forward = 300
+        # (real); 300 → forward = 800 (real, across bouts);
+        # 800 → no forward, synthetic 150.
+        assert synth == [200.0, 300.0, 800.0]
+
+    def test_first_n_licks_uses_synthetic_for_last_cycle(self):
+        """Trial with exactly N peaks (no peak[N] forward neighbour)
+        → without synthetic: contributes nothing; with synthetic:
+        cycle N-1 uses synthetic ILI."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0]}],
+            },
+        ])
+        # Legacy: N=2 needs N+1=3 peaks → empty.
+        legacy = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2)
+        assert legacy.empty
+        # Synthetic: N=2 needs only 2 peaks (cycle 1 uses synthetic).
+        synth = build_first_n_licks_centered_phase_rows(
+            bundle, n_peaks=2, synthetic_ili_ms=100.0,
+        )
+        assert not synth.empty
+        rendered = sorted(synth["peak_t_ms"].unique().tolist())
+        assert rendered == [200.0, 300.0]
+
+
+class TestComputePreStrokeMedianILI:
+    """Phase 7a.4-cross-session-angle Addendum #12 (2026-05-04):
+    per-animal pre-stroke median multi-bout ILI helper.
+
+    Smoke-level coverage only — the function reads from on-disk
+    7a.3 V3 endpoints + builds bundles, so a meaningful unit test
+    would either need a heavy synthetic pipeline mock or a real-
+    data integration fixture. The smoke test verifies the empty-
+    case contract; the cache-test verifies idempotence.
+    """
+
+    def test_returns_nan_when_no_endpoints_dir(self, monkeypatch, tmp_path):
+        """A real animal (in animals.yaml) but no on-disk endpoints
+        for that animal → returns NaN. Tests the empty-data
+        short-circuit path."""
+        from stroke_orofacial.dlc_kinematics import (
+            compute_pre_stroke_median_ili_ms,
+        )
+        from stroke_orofacial.animals import get_animal
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        animal_info = get_animal("PS46")
+        v = compute_pre_stroke_median_ili_ms(
+            "PS46", resolver=resolver, animal_info=animal_info,
+        )
+        assert np.isnan(v)
+
+    def test_get_with_cache_is_idempotent(self, monkeypatch, tmp_path):
+        from stroke_orofacial.dlc_kinematics import (
+            get_pre_stroke_median_ili_ms,
+        )
+        from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
+            _PRE_STROKE_MEDIAN_ILI_CACHE,
+        )
+        from stroke_orofacial.animals import get_animal
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        animal_info = get_animal("PS46")
+        cache_key = "PS46"
+        # Clear cache first to avoid leakage from prior tests.
+        _PRE_STROKE_MEDIAN_ILI_CACHE.pop(cache_key, None)
+        v1 = get_pre_stroke_median_ili_ms(
+            cache_key, resolver=resolver, animal_info=animal_info,
+        )
+        v2 = get_pre_stroke_median_ili_ms(
+            cache_key, resolver=resolver, animal_info=animal_info,
+        )
+        # Both NaN (no endpoints dir at tmp_path); cache hit on
+        # second call.
+        assert np.isnan(v1) and np.isnan(v2)
+        assert cache_key in _PRE_STROKE_MEDIAN_ILI_CACHE
+        # Tidy up so the cache state doesn't leak into other tests.
+        _PRE_STROKE_MEDIAN_ILI_CACHE.pop(cache_key, None)

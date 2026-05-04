@@ -270,15 +270,17 @@ def synthetic_bundle() -> TongueVisualBundle:
 
 
 class TestRenderTongueQCFigures:
-    def test_emits_7_pngs_per_session(self, tmp_path, synthetic_bundle):
+    def test_emits_8_pngs_per_session(self, tmp_path, synthetic_bundle):
         """Driver writes 5 family keys: 2 PNGs from qc_trials (per-side)
-        + 2 PNGs from phase_aligned_angle (mode-suffixed
-        _1st_lick / _all_licks per Phase 7a.4-cross-session-angle
-        Addendum #3 lock #3, 2026-05-04) + 1 PNG each from
-        first_peak_aligned, reward_aligned, xy_by_phase = 7 total.
+        + 3 PNGs from phase_aligned_angle (mode-suffixed
+        _1st_lick / _all_licks / _first_{N}_licks per Phase
+        7a.4-cross-session-angle Addendum #3 lock #3 + Addendum #11
+        Part A, 2026-05-04) + 1 PNG each from first_peak_aligned,
+        reward_aligned, xy_by_phase = 8 total.
 
-        Updated 2026-05-04 per Addendum #3: the phase-aligned-angle
-        family now emits 2 PNGs (mode split) instead of 1 bare PNG.
+        Updated 2026-05-04 per Addendum #11 Part A: the phase-aligned-
+        angle family adds a third mode (``first_n_licks``) emitting
+        the parameterized first-N-licks centered-phase plot.
         """
         animal = synthetic_bundle.metadata["animal"]
         date = datetime.date.fromisoformat(synthetic_bundle.metadata["date"])
@@ -293,7 +295,7 @@ class TestRenderTongueQCFigures:
             "phase_aligned_angle", "xy_by_phase",
         }
         all_paths = [p for paths in out.values() for p in paths]
-        assert len(all_paths) == 7
+        assert len(all_paths) == 8
         for p in all_paths:
             assert p.exists()
             assert p.stat().st_size > 1024  # > 1 KB sanity
@@ -303,12 +305,14 @@ class TestRenderTongueQCFigures:
     def test_phase_aligned_angle_emits_mode_suffixed_pngs(
         self, tmp_path, synthetic_bundle,
     ):
-        """Phase 7a.4-cross-session-angle Addendum #3 lock #3
+        """Phase 7a.4-cross-session-angle Addenda #3 / #11 Part A
         (2026-05-04): the bare ``phase_aligned_angle.png`` filename is
-        retired. The driver always emits two mode-suffixed PNGs per
-        session: ``_1st_lick.png`` (mode = ``first_lick``, new
-        Addendum #3 Option C selector) + ``_all_licks.png`` (mode =
-        ``all_multi``).
+        retired. The driver emits three mode-suffixed PNGs per session:
+        ``_1st_lick.png`` (mode = ``first_lick``, Addendum #9),
+        ``_all_licks.png`` (mode = ``all_multi``, Addendum #10), and
+        ``_first_{N}_licks.png`` where ``N`` =
+        ``phase_aligned_first_n_peaks`` config knob (default 2,
+        Addendum #11 Part A).
         """
         animal = synthetic_bundle.metadata["animal"]
         date = datetime.date.fromisoformat(synthetic_bundle.metadata["date"])
@@ -320,17 +324,47 @@ class TestRenderTongueQCFigures:
             overwrite="force",
         )
         paths = out["phase_aligned_angle"]
-        assert len(paths) == 2
+        assert len(paths) == 3
         names = {p.name for p in paths}
         assert names == {
             "phase_aligned_angle_1st_lick.png",
             "phase_aligned_angle_all_licks.png",
+            "phase_aligned_angle_first_2_licks.png",
         }
         # The bare filename must NOT be emitted.
         bare = (
             resolver.tongue_angle_dir(animal, date) / "phase_aligned_angle.png"
         )
         assert not bare.exists()
+
+    def test_first_n_licks_filename_tracks_config_knob(
+        self, tmp_path, synthetic_bundle,
+    ):
+        """Phase 7a.4-cross-session-angle Addendum #11 Part A
+        (2026-05-04): the ``phase_aligned_angle_first_{N}_licks.png``
+        filename tracks the
+        ``dlc_kinematics.tongue_visual.phase_aligned_first_n_peaks``
+        config knob. Override the knob → the suffix changes
+        accordingly.
+        """
+        animal = synthetic_bundle.metadata["animal"]
+        date = datetime.date.fromisoformat(synthetic_bundle.metadata["date"])
+        resolver = PathResolver(output_root=tmp_path)
+        params = load_defaults()
+        params["dlc_kinematics"]["tongue_visual"][
+            "phase_aligned_first_n_peaks"
+        ] = 3
+        out = render_tongue_qc_figures(
+            animal=animal, date=date, resolver=resolver,
+            bundle=synthetic_bundle,
+            families=["phase_aligned_angle"],
+            params=params,
+            overwrite="force",
+        )
+        names = {p.name for p in out["phase_aligned_angle"]}
+        # Override → the variant suffix is now "first_3_licks"
+        assert "phase_aligned_angle_first_3_licks.png" in names
+        assert "phase_aligned_angle_first_2_licks.png" not in names
 
     def test_per_trial_qc_emits_separate_png_per_side(
         self, tmp_path, synthetic_bundle,
@@ -352,7 +386,7 @@ class TestRenderTongueQCFigures:
     def test_overwrite_skip_does_not_rewrite(
         self, tmp_path, synthetic_bundle,
     ):
-        """skip with all 7 PNGs present → return paths immediately
+        """skip with all 8 PNGs present → return paths immediately
         (sentinel-content detection: stomp one PNG with junk; verify it's
         unchanged after skip-mode rerun)."""
         animal = synthetic_bundle.metadata["animal"]
@@ -557,6 +591,28 @@ class TestPlotFamilies:
             synthetic_bundle, params=params, mode="all_multi",
         )
         assert "all_multi" in fig.axes[0].get_title()
+        plt.close(fig)
+
+    def test_phase_aligned_angle_mode_first_n_licks_dispatches(
+        self, synthetic_bundle,
+    ):
+        """Phase 7a.4-cross-session-angle Addendum #11 Part A
+        (2026-05-04): mode ``"first_n_licks"`` dispatches via
+        :func:`_phase_rows_for_mode` to
+        :func:`build_first_n_licks_centered_phase_rows` and renders
+        a multi-cycle plot with x-axis spanning ``[0, n_peaks]``.
+        Title carries ``"first {N} licks"``; xlim is ``(0, N)``.
+        """
+        params = load_defaults()
+        fig = _plot_phase_aligned_angle(
+            synthetic_bundle, params=params,
+            mode="first_n_licks", n_peaks=2,
+        )
+        ax = fig.axes[0]
+        assert "first 2 licks" in ax.get_title()
+        xlim = ax.get_xlim()
+        assert xlim[0] == pytest.approx(0.0)
+        assert xlim[1] == pytest.approx(2.0)
         plt.close(fig)
 
     def test_xy_by_phase_returns_nonempty_figure(self, synthetic_bundle):

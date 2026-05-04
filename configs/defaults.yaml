@@ -621,6 +621,36 @@ dlc_kinematics:
     # consume this knob.
     reward_aligned_display_window_ms: [-180.0, 1000.0]
 
+    # Number of consecutive licks shown in the parameterized
+    # first-N-licks phase-aligned-angle plot (Phase
+    # 7a.4-cross-session-angle Addendum #11 Part A, 2026-05-04). The
+    # plot emits ``phase_aligned_angle_first_{N}_licks.png`` per
+    # (animal, date) showing peak[0]..peak[N-1] each centered in its
+    # own [i, i+1] phase cycle (peak[i] at x=i+0.5; cycle width =
+    # peak[i+1] - peak[i]). N=2 (default) directly visualizes the
+    # warming-up first-vs-second-lick angle phenotype that motivated
+    # the centered-phase convention. Configurable to any integer
+    # ≥ 2; N=1 is degenerate — use ``_1st_lick`` plot instead.
+    phase_aligned_first_n_peaks: 2
+
+    # Phase-aligned-angle plot isolated-lick handling (Phase
+    # 7a.4-cross-session-angle Addendum #12, 2026-05-04). Choices:
+    #   "synthetic": isolated licks contribute via a per-animal
+    #       pre-stroke median ILI as the synthetic cycle width.
+    #       Last-peak-of-multi-bout ALSO contributes via the same
+    #       fallback. "First lick" includes any chronologically-
+    #       first detected peak per trial regardless of bout
+    #       structure. Falls back to "skip" if the per-animal
+    #       median ILI is unavailable (e.g., no pre-stroke
+    #       sessions on disk).
+    #   "skip": multi-bout-only behaviour (legacy, pre-#12). No
+    #       isolated-lick contribution; last-peak-of-multi-bout
+    #       dropped per Addendum #10 lock.
+    # Supersedes Addendum #5 lock A (which was tied to the legacy
+    # peak-to-peak phase convention before Addenda #9/#10 introduced
+    # the centered-on-peak convention).
+    phase_aligned_isolated_lick_handling: "synthetic"
+
     # Render-time mode selectors.
     # time: "all_bouts" | "first_bout" | "first_multi"
     # phase / xy: "all_multi" | "first_multi"
