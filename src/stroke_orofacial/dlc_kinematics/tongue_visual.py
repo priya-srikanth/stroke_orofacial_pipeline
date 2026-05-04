@@ -650,18 +650,66 @@ def _plot_phase_aligned_angle(
             df_bouts, phase_mode, side=side, df_phase_subset=df_phase,
         )
         c = side_colors.get(side, "k")
-        ax.plot(x, m, color=c, lw=2.0, label=f"{side} (licks: {lick_count})")
-        ax.fill_between(x, m - s, m + s, color=c, alpha=0.18, lw=0)
+        if is_multi_cycle:
+            # Phase 7a.4-cross-session-angle Addendum #16
+            # (2026-05-04): under Mode 3 (synthetic_only), each
+            # cycle's width is the per-animal pre-stroke median ILI
+            # — NOT the real per-trial peak-to-peak interval. At
+            # cycle boundaries (x = 1, 2, ..., N-1), the same x
+            # position represents different physical times in the
+            # trial (gap = real_ILI[i] - synthetic_ILI). A
+            # connected line at the boundary draws between two
+            # physically distinct time-points → misleading "jump"
+            # artifact. Render each cycle as an independent line
+            # segment + fill_between so the discontinuity is
+            # explicit. Bin centers fall strictly inside cycle
+            # intervals (never at the integer boundaries) so
+            # ``int(x)`` cleanly identifies each bin's owning
+            # cycle.
+            label_drawn = False
+            cycle_idx_per_bin = np.floor(x).astype(int)
+            cycle_idx_per_bin = np.clip(
+                cycle_idx_per_bin, 0, n_peaks_val - 1,
+            )
+            for cycle_i in range(n_peaks_val):
+                in_cycle = cycle_idx_per_bin == cycle_i
+                if not np.any(in_cycle):
+                    continue
+                x_seg = x[in_cycle]
+                m_seg = m[in_cycle]
+                s_seg = s[in_cycle]
+                seg_label = (
+                    f"{side} (licks: {lick_count})"
+                    if not label_drawn else None
+                )
+                ax.plot(x_seg, m_seg, color=c, lw=2.0, label=seg_label)
+                ax.fill_between(
+                    x_seg, m_seg - s_seg, m_seg + s_seg,
+                    color=c, alpha=0.18, lw=0,
+                )
+                label_drawn = True
+        else:
+            ax.plot(
+                x, m, color=c, lw=2.0,
+                label=f"{side} (licks: {lick_count})",
+            )
+            ax.fill_between(x, m - s, m + s, color=c, alpha=0.18, lw=0)
 
     ax.axhline(0, color="0.6", lw=1.0, alpha=0.8)
 
     if is_multi_cycle:
         # Mark each peak's center (x = i + 0.5 for i in [0, n_peaks - 1])
-        # and each cycle boundary (x = 1, 2, ..., n_peaks - 1).
+        # and each cycle boundary (x = 1, 2, ..., n_peaks - 1). The
+        # cycle-boundary axvlines are rendered faint (Addendum #16
+        # alpha=0.2) since the per-cycle line-segment break already
+        # makes the boundary visually obvious; the axvline is just a
+        # subtle eye-guide.
         for i in range(n_peaks_val):
             ax.axvline(i + 0.5, color="0.7", lw=1.0, ls="--")
         for i in range(1, n_peaks_val):
-            ax.axvline(float(i), color="0.5", lw=1.0, ls=":")
+            ax.axvline(
+                float(i), color="0.5", lw=1.0, ls=":", alpha=0.2,
+            )
         ax.set_xlim(0, x_max)
         ax.set_xticks(np.arange(0.0, x_max + 0.5, 0.5))
     else:

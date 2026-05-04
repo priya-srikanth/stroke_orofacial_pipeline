@@ -628,6 +628,52 @@ class TestPlotFamilies:
         assert xlim[1] == pytest.approx(2.0)
         plt.close(fig)
 
+    def test_first_n_licks_renders_per_cycle_line_segments(
+        self, synthetic_bundle,
+    ):
+        """Phase 7a.4-cross-session-angle Addendum #16 (2026-05-04):
+        multi-cycle plots render each cycle as an independent line
+        segment so the boundary discontinuity at x=1, 2, ..., N-1
+        is visible (under Mode 3, synthetic cycle width does not
+        match real per-trial peak-to-peak timing — a connected
+        line would draw between physically distinct time-points).
+
+        Pin: no mean-curve Line2D may span more than one cycle's
+        x range (= 1.0 wide). Synthetic fixture has no pre-stroke
+        median ILI in metadata; force ``ili_source="real_only"``
+        so the helper has data to render.
+        """
+        params = load_defaults()
+        fig = _plot_phase_aligned_angle(
+            synthetic_bundle, params=params,
+            mode="first_n_licks", n_peaks=2,
+            ili_source="real_only",
+        )
+        ax = fig.axes[0]
+        # Mean-curve lines have many sample points; axhline /
+        # axvline reference lines have exactly 2. Filter on length.
+        mean_lines = [
+            ln for ln in ax.get_lines()
+            if len(ln.get_xdata()) > 5
+        ]
+        assert len(mean_lines) >= 2, (
+            f"expected ≥2 mean-curve Line2D artists for multi-cycle "
+            f"plot (per-side × per-cycle); got {len(mean_lines)}"
+        )
+        # No mean-curve line should span more than one cycle's
+        # x range (cycle width = 1.0). Per-cycle segmentation
+        # confines each line to a sub-region of [i, i+1).
+        for line in mean_lines:
+            xdata = np.asarray(line.get_xdata())
+            if xdata.size == 0:
+                continue
+            x_span = float(np.nanmax(xdata) - np.nanmin(xdata))
+            assert x_span < 1.0 + 1e-6, (
+                f"line spans {x_span:.3f} of x; expected < 1.0 "
+                f"(per-cycle segmentation)"
+            )
+        plt.close(fig)
+
     def test_xy_by_phase_returns_nonempty_figure(self, synthetic_bundle):
         params = load_defaults()
         fig = _plot_xy_by_phase(synthetic_bundle, params=params)
