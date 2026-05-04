@@ -328,29 +328,37 @@ def build_first_lick_centered_phase_rows(
     bundle: "TongueVisualBundle",
     *,
     synthetic_ili_ms: float | None = None,
-    ili_source: Literal["real_only", "hybrid", "synthetic_only"] = "hybrid",
+    ili_source: Literal["real_only", "hybrid", "synthetic_only"] = "synthetic_only",
 ) -> pd.DataFrame:
     """Build centered-on-first-peak phase rows per (trial, side).
 
-    Phase 7a.4-cross-session-angle Addenda #9 / #12 / #14 (2026-05-04).
+    Phase 7a.4-cross-session-angle Addenda #9 / #12 / #14 / #15
+    (2026-05-04).
 
-    ``ili_source`` (Addendum #14): cycle-width source policy.
+    ``ili_source`` (Addendum #14; default flipped to
+    ``"synthetic_only"`` per Addendum #15 — Mode 3 won the 3-way
+    PS46/PS50/PS55 visual gate for both ``_1st_lick`` and
+    ``first_2_licks`` plot families):
 
+      - ``"synthetic_only"`` (default): cycle width =
+        ``synthetic_ili_ms`` for EVERY peak regardless of forward-
+        neighbour existence. "First lick" = chronologically-first
+        detected peak. Real-ILI lookup bypassed entirely.
+        ``synthetic_ili_ms`` REQUIRED (raises ValueError if not
+        finite + positive). Eliminates per-cycle width variance
+        from the per-bin aggregation; remaining variance is the
+        natural angle-shape variation across trials (the science
+        of interest).
+      - ``"hybrid"``: "first lick" = chronologically-first detected
+        peak per (trial, side); ILI = forward neighbour across ALL
+        bouts if available, else ``synthetic_ili_ms``. Isolated-
+        lick-only trials contribute via synthetic. Production
+        default between Addendum #12 and Addendum #15.
       - ``"real_only"``: real forward ILI from same-bout adjacency
         only. "First lick" = peak[0] of the FIRST MULTI-BOUT per
         (trial, side); ILI = peak[1] - peak[0] in same bout.
         Isolated-lick-only trials drop. ``synthetic_ili_ms`` is
         IGNORED.
-      - ``"hybrid"`` (default; preserves Addendum #12 behavior):
-        "first lick" = chronologically-first detected peak per
-        (trial, side); ILI = forward neighbour across ALL bouts if
-        available, else ``synthetic_ili_ms``. Isolated-lick-only
-        trials contribute via synthetic.
-      - ``"synthetic_only"``: cycle width = ``synthetic_ili_ms``
-        for EVERY peak regardless of forward-neighbour existence.
-        "First lick" = chronologically-first detected peak.
-        Real-ILI lookup bypassed entirely. ``synthetic_ili_ms``
-        REQUIRED (raises ValueError if not finite + positive).
 
     Phase formula (all modes):
 
@@ -476,26 +484,25 @@ def build_first_n_licks_centered_phase_rows(
     *,
     n_peaks: int = 2,
     synthetic_ili_ms: float | None = None,
-    ili_source: Literal["real_only", "hybrid", "synthetic_only"] = "hybrid",
+    ili_source: Literal["real_only", "hybrid", "synthetic_only"] = "synthetic_only",
 ) -> pd.DataFrame:
     """Build centered-phase rows for the FIRST ``n_peaks`` consecutive
     licks per (trial, side). Phase 7a.4-cross-session-angle Addenda
-    #11 Part A / #12 / #14 (2026-05-04).
+    #11 Part A / #12 / #14 / #15 (2026-05-04).
 
-    ``ili_source`` (Addendum #14) — see
-    :func:`build_first_lick_centered_phase_rows` for shared docs.
+    ``ili_source`` (Addendum #14; default flipped to
+    ``"synthetic_only"`` per Addendum #15 verdict):
 
-      - ``"real_only"``: first ``n_peaks`` peaks of the FIRST
-        MULTI-BOUT; ILI[i] = same-bout forward neighbour. Requires
-        ``n_peaks + 1`` peaks in the first multi-bout.
-      - ``"hybrid"`` (default): first ``n_peaks`` peaks
-        chronologically across all bouts; ILI[i] = forward
-        neighbour if available, else ``synthetic_ili_ms``.
-        Requires ``n_peaks`` total peaks.
-      - ``"synthetic_only"``: first ``n_peaks`` peaks
+      - ``"synthetic_only"`` (default): first ``n_peaks`` peaks
         chronologically across all bouts; cycle width =
         ``synthetic_ili_ms`` for ALL cycles regardless of forward-
         neighbour existence.
+      - ``"hybrid"``: first ``n_peaks`` peaks chronologically across
+        all bouts; ILI[i] = forward neighbour if available, else
+        ``synthetic_ili_ms``. Requires ``n_peaks`` total peaks.
+      - ``"real_only"``: first ``n_peaks`` peaks of the FIRST
+        MULTI-BOUT; ILI[i] = same-bout forward neighbour. Requires
+        ``n_peaks + 1`` peaks in the first multi-bout.
 
     Phase formula (peak[i] at x = i + 0.5):
 
@@ -634,25 +641,26 @@ def build_all_licks_centered_phase_rows(
     bundle: "TongueVisualBundle",
     *,
     synthetic_ili_ms: float | None = None,
-    ili_source: Literal["real_only", "hybrid", "synthetic_only"] = "hybrid",
+    ili_source: Literal["real_only", "hybrid", "synthetic_only"] = "synthetic_only",
 ) -> pd.DataFrame:
     """Build centered-on-peak phase rows for ALL detected licks per
     (trial, side). Phase 7a.4-cross-session-angle Addenda #10 / #12
-    / #14 (2026-05-04).
+    / #14 / #15 (2026-05-04).
 
-    ``ili_source`` (Addendum #14) — see
-    :func:`build_first_lick_centered_phase_rows` for shared docs.
+    ``ili_source`` (Addendum #14; default flipped to
+    ``"synthetic_only"`` per Addendum #15 verdict):
 
-      - ``"real_only"``: every peak in every MULTI-bout; ILI = same-
-        bout forward neighbour; LAST peak of each bout dropped.
-        Isolated-lick bouts contribute nothing.
-      - ``"hybrid"`` (default): every peak across all bouts;
-        forward-neighbour ILI if available (across bout
-        boundaries), else ``synthetic_ili_ms``. Last-peak-of-trial
-        + isolated-lick bouts contribute via synthetic.
-      - ``"synthetic_only"``: every peak across all bouts; cycle
-        width = ``synthetic_ili_ms`` for ALL peaks regardless of
-        forward-neighbour existence.
+      - ``"synthetic_only"`` (default): every peak across all bouts;
+        cycle width = ``synthetic_ili_ms`` for ALL peaks regardless
+        of forward-neighbour existence.
+      - ``"hybrid"``: every peak across all bouts; forward-neighbour
+        ILI if available (across bout boundaries), else
+        ``synthetic_ili_ms``. Last-peak-of-trial + isolated-lick
+        bouts contribute via synthetic. Production default between
+        #12 and #15.
+      - ``"real_only"``: every peak in every MULTI-bout; ILI =
+        same-bout forward neighbour; LAST peak of each bout
+        dropped. Isolated-lick bouts contribute nothing.
 
     Phase formula:
 

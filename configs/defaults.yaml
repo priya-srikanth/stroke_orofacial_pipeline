@@ -633,23 +633,35 @@ dlc_kinematics:
     # ≥ 2; N=1 is degenerate — use ``_1st_lick`` plot instead.
     phase_aligned_first_n_peaks: 2
 
-    # Phase-aligned-angle plot isolated-lick handling (Phase
-    # 7a.4-cross-session-angle Addendum #12, 2026-05-04). Choices:
-    #   "synthetic": isolated licks contribute via a per-animal
-    #       pre-stroke median ILI as the synthetic cycle width.
-    #       Last-peak-of-multi-bout ALSO contributes via the same
-    #       fallback. "First lick" includes any chronologically-
-    #       first detected peak per trial regardless of bout
-    #       structure. Falls back to "skip" if the per-animal
-    #       median ILI is unavailable (e.g., no pre-stroke
-    #       sessions on disk).
-    #   "skip": multi-bout-only behaviour (legacy, pre-#12). No
-    #       isolated-lick contribution; last-peak-of-multi-bout
-    #       dropped per Addendum #10 lock.
-    # Supersedes Addendum #5 lock A (which was tied to the legacy
-    # peak-to-peak phase convention before Addenda #9/#10 introduced
-    # the centered-on-peak convention).
-    phase_aligned_isolated_lick_handling: "synthetic"
+    # Phase-aligned-angle plot cycle-width source (Phase
+    # 7a.4-cross-session-angle Addendum #15, 2026-05-04; supersedes
+    # the Addendum #12 ``phase_aligned_isolated_lick_handling`` knob).
+    # Choices:
+    #   "synthetic_only" (default; Addendum #14b verdict winner —
+    #     Mode 3 won across all three centered-phase families on
+    #     PS46 / PS50 / PS55): every peak's cycle width =
+    #     per-animal pre-stroke median ILI (from
+    #     bundle.metadata["pre_stroke_median_ili_ms"], populated by
+    #     :func:`build_tongue_visual_bundle_by_animal_date`).
+    #     Real-ILI lookup bypassed entirely. Eliminates per-cycle
+    #     width variance from the per-bin aggregation; remaining
+    #     variance is the natural angle-shape variation across
+    #     trials (the science of interest).
+    #   "hybrid": real ILI from same-bout adjacency where available;
+    #     synthetic median as fallback for isolated peaks +
+    #     last-peak-of-multi-bout. Was the production default
+    #     between Addendum #12 and Addendum #14b verdict.
+    #   "real_only": multi-bout-only legacy behaviour. Cycle width
+    #     = same-bout forward neighbour difference; peaks without
+    #     a same-bout forward neighbour DROPPED. Equivalent to the
+    #     Addendum #12 ``"skip"`` shorthand. No isolated-lick or
+    #     last-peak-of-multi-bout contribution.
+    # NaN-fallback: when ``"synthetic_only"`` is requested but the
+    # animal's pre-stroke median is non-finite (e.g., no pre-stroke
+    # sessions on disk), the renderer silently degrades to
+    # ``"real_only"`` rather than raising. Same defensive pattern
+    # as the Addendum #12 NaN-fallback.
+    phase_aligned_ili_source: "synthetic_only"
 
     # Render-time mode selectors.
     # time: "all_bouts" | "first_bout" | "first_multi"

@@ -559,32 +559,44 @@ def _plot_phase_aligned_angle(
     else:
         n_peaks_val = int(n_peaks)
 
-    # Phase 7a.4-cross-session-angle Addendum #12 (2026-05-04):
-    # Resolve the per-animal synthetic ILI for the centered-phase
-    # builders. The value comes from
-    # ``bundle.metadata["pre_stroke_median_ili_ms"]`` (populated by
-    # :func:`build_tongue_visual_bundle_by_animal_date`); the config
-    # knob ``phase_aligned_isolated_lick_handling`` gates whether we
-    # use it. ``"synthetic"`` → pass the metadata value (NaN
-    # naturally falls back to multi-bout-only inside the helpers);
-    # ``"skip"`` → explicit None (legacy behaviour, no isolated-lick
-    # contribution).
-    isolated_lick_handling = str(
-        visual.get("phase_aligned_isolated_lick_handling", "synthetic")
-    )
-    if isolated_lick_handling == "synthetic":
-        synthetic_ili_ms_val = bundle.metadata.get(
-            "pre_stroke_median_ili_ms", float("nan"),
+    # Phase 7a.4-cross-session-angle Addendum #15 (2026-05-04):
+    # ``phase_aligned_ili_source`` config knob (default
+    # ``"synthetic_only"`` per Addendum #14b verdict — Mode 3 won
+    # across all three centered-phase families on the PS46/PS50/PS55
+    # visual gate). The renderer always passes a finite synthetic
+    # ILI alongside synthetic_only / hybrid; real_only ignores it.
+    # NaN-fallback: when ``synthetic_only`` is configured but the
+    # animal's pre-stroke median is non-finite (no pre-stroke
+    # sessions on disk), silently degrade to ``real_only`` rather
+    # than raise — same defensive pattern as Addendum #12.
+    #
+    # Explicit ``ili_source`` kwarg overrides the config knob (used
+    # by the Addendum #14 diagnostic 3-way comparison test driver).
+    if ili_source is None:
+        configured_ili_source = str(
+            visual.get("phase_aligned_ili_source", "synthetic_only")
         )
     else:
-        synthetic_ili_ms_val = None
-    # Phase 7a.4-cross-session-angle Addendum #14 (2026-05-04):
-    # ``ili_source`` defaults to ``"hybrid"`` (preserves
-    # Addendum #12 production behaviour). Test variants pass
-    # ``"real_only"`` or ``"synthetic_only"`` explicitly via the
-    # one-shot diagnostic render driver; no production config knob
-    # yet (those would land in Addendum #15 if a winning mode emerges).
-    ili_source_val = "hybrid" if ili_source is None else str(ili_source)
+        configured_ili_source = str(ili_source)
+
+    synthetic_ili_ms_val = bundle.metadata.get(
+        "pre_stroke_median_ili_ms", float("nan"),
+    )
+    synth_finite = (
+        synthetic_ili_ms_val is not None
+        and np.isfinite(float(synthetic_ili_ms_val))
+        and float(synthetic_ili_ms_val) > 0
+    )
+    if (
+        configured_ili_source == "synthetic_only"
+        and not synth_finite
+    ):
+        # NaN-fallback: animal has no pre-stroke baseline → use
+        # multi-bout-only.
+        ili_source_val = "real_only"
+    else:
+        ili_source_val = configured_ili_source
+
     df_bouts = bundle.df_bouts
     df_phase = _phase_rows_for_mode(
         bundle, phase_mode,
@@ -660,20 +672,30 @@ def _plot_phase_aligned_angle(
 
     animal = bundle.metadata.get("animal", "?")
     date_str = bundle.metadata.get("date", "?")
+    # Phase 7a.4-cross-session-angle Addendum #15 (2026-05-04):
+    # title convention reflects the centered-on-peak phase
+    # construction. User-facing tokens (1st lick / all licks /
+    # first {N} licks) match the PNG filename suffixes.
     if is_multi_cycle:
-        title_suffix = f"first {n_peaks_val} licks"
-        xlabel = (
-            f"Centered lick phase (peak[i] at x=i+0.5; "
-            f"cycle width = forward ILI)"
-        )
+        title_suffix = f"first {n_peaks_val} licks; centered on peak"
+    elif phase_mode == "first_lick":
+        title_suffix = "1st lick; centered on peak"
+    elif phase_mode == "all_multi":
+        title_suffix = "all licks; centered on peak"
     else:
         title_suffix = f"mode={phase_mode}"
+    if is_multi_cycle:
+        xlabel = (
+            f"Centered lick phase (peak[i] at x=i+0.5; "
+            f"cycle width = pre-stroke median ILI)"
+        )
+    else:
         xlabel = (
             "Normalized lick phase (0.5 = peak protrusion; "
-            "cycle width = forward ILI)"
+            "cycle width = pre-stroke median ILI)"
         )
     ax.set_title(
-        f"{animal} {date_str} | phase-aligned tongue angle | {title_suffix}"
+        f"{animal} {date_str} | phase-aligned tongue angle ({title_suffix})"
     )
     ax.set_xlabel(xlabel)
     ax.set_ylabel("Tongue angle (deg)")

@@ -2159,7 +2159,7 @@ class TestBuildFirstLickCenteredPhaseRows:
                 "angle_at_peak": {200.0: -10.0},  # warming-up first lick
             },
         ])
-        out = build_first_lick_centered_phase_rows(bundle)
+        out = build_first_lick_centered_phase_rows(bundle, ili_source="real_only")
         # ILI = 100, window = [150, 250]; peak[0] at t=200 → phase = 0.5
         at_peak = out[np.isclose(out["t_ms"], 200.0)]
         assert len(at_peak) == 1
@@ -2181,7 +2181,7 @@ class TestBuildFirstLickCenteredPhaseRows:
                 "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
             },
         ])
-        out = build_first_lick_centered_phase_rows(bundle)
+        out = build_first_lick_centered_phase_rows(bundle, ili_source="real_only")
         # All emitted t_ms values must be in [150, 250]
         assert (out["t_ms"] >= 150.0 - 0.01).all()
         assert (out["t_ms"] <= 250.0 + 0.01).all()
@@ -2198,7 +2198,7 @@ class TestBuildFirstLickCenteredPhaseRows:
                 "bouts": [{"peak_t_ms": [400.0]}],   # isolated lick
             },
         ])
-        out = build_first_lick_centered_phase_rows(bundle)
+        out = build_first_lick_centered_phase_rows(bundle, ili_source="real_only")
         assert out.empty
 
     def test_per_trial_per_side_isolation(self):
@@ -2217,7 +2217,7 @@ class TestBuildFirstLickCenteredPhaseRows:
                 "bouts": [{"peak_t_ms": [600.0, 700.0]}],
             },
         ])
-        out = build_first_lick_centered_phase_rows(bundle)
+        out = build_first_lick_centered_phase_rows(bundle, ili_source="real_only")
         # Both trials contribute rows; each trial's peak_t_ms must
         # match its own peak[0]. (Use np.isclose for the float
         # comparison — pytest.approx isn't a vector predicate.)
@@ -2238,7 +2238,9 @@ class TestBuildFirstLickCenteredPhaseRows:
             df_phase=pd.DataFrame(), angle_per_frame=pd.DataFrame(),
             metadata={"n_phase_bins": 36},
         )
-        out = build_first_lick_centered_phase_rows(empty)
+        out = build_first_lick_centered_phase_rows(
+            empty, ili_source="real_only",
+        )
         assert out.empty
         # Expected columns are present even on empty result
         for col in (
@@ -2270,7 +2272,7 @@ class TestBuildAllLicksCenteredPhaseRows:
                 },
             },
         ])
-        out = build_all_licks_centered_phase_rows(bundle)
+        out = build_all_licks_centered_phase_rows(bundle, ili_source="real_only")
         # peak_t_ms values rendered: 200 and 300; 400 dropped
         peak_ts_rendered = sorted(out["peak_t_ms"].unique().tolist())
         assert peak_ts_rendered == [200.0, 300.0]
@@ -2297,7 +2299,7 @@ class TestBuildAllLicksCenteredPhaseRows:
                 ],
             },
         ])
-        out = build_all_licks_centered_phase_rows(bundle)
+        out = build_all_licks_centered_phase_rows(bundle, ili_source="real_only")
         peak_ts_rendered = sorted(out["peak_t_ms"].unique().tolist())
         # 200 + 300 from bout 0; 800 + 900 from bout 1; 400 + 1000 dropped
         assert peak_ts_rendered == [200.0, 300.0, 800.0, 900.0]
@@ -2318,7 +2320,7 @@ class TestBuildAllLicksCenteredPhaseRows:
                 ],
             },
         ])
-        out = build_all_licks_centered_phase_rows(bundle)
+        out = build_all_licks_centered_phase_rows(bundle, ili_source="real_only")
         # Two multi-bouts × (n_peaks - 1) cycles each = 1 + 1 = 2
         peak_ts_rendered = sorted(out["peak_t_ms"].unique().tolist())
         assert peak_ts_rendered == [200.0, 800.0]
@@ -2337,7 +2339,7 @@ class TestBuildAllLicksCenteredPhaseRows:
                 "bouts": [{"peak_t_ms": peak_ts}],
             },
         ])
-        out = build_all_licks_centered_phase_rows(bundle)
+        out = build_all_licks_centered_phase_rows(bundle, ili_source="real_only")
         rendered = sorted(out["peak_t_ms"].unique().tolist())
         assert rendered == peak_ts[:-1]   # 600 dropped
 
@@ -2350,7 +2352,9 @@ class TestBuildAllLicksCenteredPhaseRows:
             df_phase=pd.DataFrame(), angle_per_frame=pd.DataFrame(),
             metadata={"n_phase_bins": 36},
         )
-        out = build_all_licks_centered_phase_rows(empty)
+        out = build_all_licks_centered_phase_rows(
+            empty, ili_source="real_only",
+        )
         assert out.empty
 
 
@@ -2374,7 +2378,7 @@ class TestBuildFirstNLicksCenteredPhaseRows:
                 "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
             },
         ])
-        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2)
+        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2, ili_source="real_only")
         # Peak[0] frame at t=200 → x = 0.5
         at_p0 = out[
             np.isclose(out["t_ms"], 200.0)
@@ -2401,7 +2405,7 @@ class TestBuildFirstNLicksCenteredPhaseRows:
                 "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
             },
         ])
-        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2)
+        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2, ili_source="real_only")
         assert (out["phase"] >= -1e-9).all()
         assert (out["phase"] <= 2.0 + 1e-9).all()
 
@@ -2417,7 +2421,7 @@ class TestBuildFirstNLicksCenteredPhaseRows:
                 "bouts": [{"peak_t_ms": [200.0, 300.0]}],   # only 2 peaks
             },
         ])
-        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2)
+        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2, ili_source="real_only")
         assert out.empty
 
     def test_skips_isolated_lick_only_trials(self):
@@ -2431,7 +2435,7 @@ class TestBuildFirstNLicksCenteredPhaseRows:
                 "bouts": [{"peak_t_ms": [400.0]}],
             },
         ])
-        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2)
+        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2, ili_source="real_only")
         assert out.empty
 
     def test_n_peaks_must_be_at_least_2(self):
@@ -2456,7 +2460,9 @@ class TestBuildFirstNLicksCenteredPhaseRows:
                 "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0, 500.0]}],
             },
         ])
-        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=3)
+        out = build_first_n_licks_centered_phase_rows(
+            bundle, n_peaks=3, ili_source="real_only",
+        )
         rendered = sorted(out["peak_t_ms"].unique().tolist())
         assert rendered == [200.0, 300.0, 400.0]   # peak[3]=500 dropped
 
@@ -2489,12 +2495,16 @@ class TestSyntheticILIInCenteredPhaseHelpers:
                 "angle_at_peak": {400.0: -8.0},
             },
         ])
-        # Without synthetic ILI: empty (legacy behaviour).
-        out_none = build_first_lick_centered_phase_rows(bundle)
+        # ili_source="real_only" (= legacy / multi-bout-only):
+        # empty (no multi-bout to anchor a cycle).
+        out_none = build_first_lick_centered_phase_rows(
+            bundle, ili_source="real_only",
+        )
         assert out_none.empty
-        # With synthetic ILI: trial contributes; peak at x=0.5.
+        # ili_source="hybrid" + synthetic ILI: trial contributes;
+        # peak at x=0.5.
         out_synth = build_first_lick_centered_phase_rows(
-            bundle, synthetic_ili_ms=100.0,
+            bundle, synthetic_ili_ms=100.0, ili_source="hybrid",
         )
         assert not out_synth.empty
         at_peak = out_synth[np.isclose(out_synth["t_ms"], 400.0)]
@@ -2522,7 +2532,7 @@ class TestSyntheticILIInCenteredPhaseHelpers:
             },
         ])
         out = build_first_lick_centered_phase_rows(
-            bundle, synthetic_ili_ms=999.0,
+            bundle, synthetic_ili_ms=999.0, ili_source="hybrid",
         )
         # First peak = 200 (isolated). Forward neighbour = 600.
         # ILI = 600 - 200 = 400 (NOT 999 synthetic).
@@ -2547,20 +2557,14 @@ class TestSyntheticILIInCenteredPhaseHelpers:
                 "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
             },
         ])
-        n_legacy = len(
-            build_all_licks_centered_phase_rows(bundle).get(
-                "peak_t_ms", [],
-            ).unique() if not build_all_licks_centered_phase_rows(
-                bundle,
-            ).empty else []
-        )
         n_legacy_simple = sorted(
-            build_all_licks_centered_phase_rows(bundle)["peak_t_ms"]
-            .unique().tolist()
+            build_all_licks_centered_phase_rows(
+                bundle, ili_source="real_only",
+            )["peak_t_ms"].unique().tolist()
         )
         n_synth = sorted(
             build_all_licks_centered_phase_rows(
-                bundle, synthetic_ili_ms=100.0,
+                bundle, synthetic_ili_ms=100.0, ili_source="hybrid",
             )["peak_t_ms"].unique().tolist()
         )
         assert n_legacy_simple == [200.0, 300.0]
@@ -2583,14 +2587,15 @@ class TestSyntheticILIInCenteredPhaseHelpers:
             },
         ])
         legacy = sorted(
-            build_all_licks_centered_phase_rows(bundle)["peak_t_ms"]
-            .unique().tolist()
+            build_all_licks_centered_phase_rows(
+                bundle, ili_source="real_only",
+            )["peak_t_ms"].unique().tolist()
         )
         # Multi-bout: pair (200, 300). 200 contributes; 300 dropped.
         assert legacy == [200.0]
         synth = sorted(
             build_all_licks_centered_phase_rows(
-                bundle, synthetic_ili_ms=150.0,
+                bundle, synthetic_ili_ms=150.0, ili_source="hybrid",
             )["peak_t_ms"].unique().tolist()
         )
         # Synthetic: all 3 peaks contribute. 200 → forward = 300
@@ -2611,12 +2616,15 @@ class TestSyntheticILIInCenteredPhaseHelpers:
                 "bouts": [{"peak_t_ms": [200.0, 300.0]}],
             },
         ])
-        # Legacy: N=2 needs N+1=3 peaks → empty.
-        legacy = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2)
+        # ili_source="real_only": N=2 needs N+1=3 peaks → empty.
+        legacy = build_first_n_licks_centered_phase_rows(
+            bundle, n_peaks=2, ili_source="real_only",
+        )
         assert legacy.empty
-        # Synthetic: N=2 needs only 2 peaks (cycle 1 uses synthetic).
+        # ili_source="hybrid" + synthetic: N=2 needs only 2 peaks
+        # (cycle 1 uses synthetic).
         synth = build_first_n_licks_centered_phase_rows(
-            bundle, n_peaks=2, synthetic_ili_ms=100.0,
+            bundle, n_peaks=2, synthetic_ili_ms=100.0, ili_source="hybrid",
         )
         assert not synth.empty
         rendered = sorted(synth["peak_t_ms"].unique().tolist())
@@ -2715,31 +2723,31 @@ class TestILISourceEnum:
                 bundle, n_peaks=2, ili_source="synthetic_only",
             )
 
-    def test_hybrid_default_is_byte_for_byte_addendum_12(self):
-        """Default ili_source='hybrid' must match Addendum #12
-        behaviour byte-for-byte (no kwarg supplied = hybrid)."""
+    def test_synthetic_only_is_default_after_addendum_15(self):
+        """Phase 7a.4-cross-session-angle Addendum #15 (2026-05-04):
+        helper default ``ili_source`` flipped from ``"hybrid"`` to
+        ``"synthetic_only"`` per the verdict that Mode 3 won the
+        3-way comparison across all centered-phase plot families on
+        PS46/PS50/PS55. The default-no-kwarg call now matches the
+        explicit ``ili_source="synthetic_only"`` call.
+        """
         from stroke_orofacial.dlc_kinematics import (
             build_first_lick_centered_phase_rows,
         )
         bundle = _make_centered_phase_test_bundle([
             {
                 "trial_index": 0, "side": "L",
-                "bouts": [{"peak_t_ms": [400.0]}],   # isolated
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
             },
         ])
-        # No ili_source kwarg + finite synthetic → hybrid path
-        # (matches pre-#14 behaviour where synthetic enabled
-        # isolated-lick contribution).
         out_default = build_first_lick_centered_phase_rows(
-            bundle, synthetic_ili_ms=100.0,
+            bundle, synthetic_ili_ms=200.0,
         )
         out_explicit = build_first_lick_centered_phase_rows(
-            bundle, synthetic_ili_ms=100.0, ili_source="hybrid",
+            bundle, synthetic_ili_ms=200.0, ili_source="synthetic_only",
         )
-        # Both contribute the isolated trial.
         assert not out_default.empty
         assert not out_explicit.empty
-        # Element-wise equality on relevant columns.
         for col in ("trial_index", "peak_t_ms", "t_ms", "phase"):
             assert (
                 out_default[col].to_numpy()

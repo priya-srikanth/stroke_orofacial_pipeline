@@ -560,7 +560,9 @@ class TestPlotFamilies:
         )
         assert isinstance(fig, plt.Figure)
         ax = fig.axes[0]
-        assert "first_lick" in ax.get_title()
+        # Title carries the user-facing ``1st lick`` token (Phase
+        # 7a.4-cross-session-angle Addendum #15 title convention).
+        assert "1st lick" in ax.get_title()
         plt.close(fig)
 
     def test_phase_aligned_angle_mode_all_multi_uses_centered_builder(
@@ -578,11 +580,21 @@ class TestPlotFamilies:
             build_all_licks_centered_phase_rows,
             build_first_lick_centered_phase_rows,
         )
+        # Compare row counts under explicit real_only mode (synthetic
+        # fixture has no per-animal pre-stroke median ILI in metadata,
+        # so synthetic_only / hybrid would raise; real_only is the
+        # consistent comparable). The renderer below uses the
+        # production default (synthetic_only with NaN-fallback to
+        # real_only when synthetic ILI missing).
         n_first_lick = len(
-            build_first_lick_centered_phase_rows(synthetic_bundle),
+            build_first_lick_centered_phase_rows(
+                synthetic_bundle, ili_source="real_only",
+            ),
         )
         n_all_multi = len(
-            build_all_licks_centered_phase_rows(synthetic_bundle),
+            build_all_licks_centered_phase_rows(
+                synthetic_bundle, ili_source="real_only",
+            ),
         )
         assert n_first_lick <= n_all_multi
         # Renderer smoke check + title token assertion.
@@ -590,7 +602,8 @@ class TestPlotFamilies:
         fig = _plot_phase_aligned_angle(
             synthetic_bundle, params=params, mode="all_multi",
         )
-        assert "all_multi" in fig.axes[0].get_title()
+        # Title carries the user-facing ``all licks`` token.
+        assert "all licks" in fig.axes[0].get_title()
         plt.close(fig)
 
     def test_phase_aligned_angle_mode_first_n_licks_dispatches(
