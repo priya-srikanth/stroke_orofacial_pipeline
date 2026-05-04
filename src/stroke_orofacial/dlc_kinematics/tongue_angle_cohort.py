@@ -196,6 +196,35 @@ def _extract_first_peak_aligned(
     return t, mu, sem, n_trials
 
 
+def _extract_reward_aligned(
+    bundle: TongueVisualBundle, side: str,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int] | None:
+    """Per-side mean ± SEM of ``angle_snip`` (per Addendum #8: raw
+    per-frame trace, not bout-windowed) aligned to reward (t=0).
+    Returns ``(t, mu, sem, n_trials)`` or ``None`` if no trials
+    contribute.
+
+    Phase 7a.4-cross-session-angle Addendum #8 (2026-05-04):
+    reward_aligned consumes ``angle_snip`` directly — every frame
+    in the bundle's ``plot_win_ms`` window contributes regardless
+    of bout structure. Cross-session aggregator follows the same
+    convention for byte-aligned per-session vs cross-session
+    semantics.
+    """
+    df_trials = bundle.df_trials
+    if df_trials.empty:
+        return None
+    side_rows = df_trials[df_trials["side"] == side]
+    if side_rows.empty:
+        return None
+    M = np.vstack(side_rows["angle_snip"].to_list()).astype(float)
+    t = np.asarray(side_rows.iloc[0]["t_ms"], float)
+    mu, sem, n_trials = _robust_mean_sem(M)
+    if n_trials == 0:
+        return None
+    return t, mu, sem, n_trials
+
+
 # ============================================================================
 # Cohort aggregator
 # ============================================================================
@@ -300,6 +329,16 @@ def build_tongue_angle_cohort_aggregates(
                         n_trials=n_trials,
                         t=t, mu=mu, sem=sem,
                     ))
+            if "reward_aligned" in requested:
+                triple = _extract_reward_aligned(bundle, side)
+                if triple is not None:
+                    t, mu, sem, n_trials = triple
+                    ts_rows.append(TimeSeriesSessionAggregate(
+                        family="reward_aligned",
+                        side=side, date=d, rel_day=rel_day,
+                        n_trials=n_trials,
+                        t=t, mu=mu, sem=sem,
+                    ))
 
     return TongueAngleCohortAggregates(
         animal=animal,
@@ -373,7 +412,8 @@ def _assign_to_bin(
 
 
 # ============================================================================
-# Render: first_peak_aligned (session_overlays + binned_overlays)
+# Generic time-series renderers (shared by first_peak_aligned + reward_aligned;
+# subsequent cross-session commits will add a separate phase-plot variant).
 # ============================================================================
 
 
@@ -432,13 +472,25 @@ def _add_pre_stroke_patch_and_post_colorbar(
         cbar.set_label("Post-stroke day (d)")
 
 
-def _plot_first_peak_aligned_session_overlays(
+def _plot_time_series_session_overlays(
     cohort: TongueAngleCohortAggregates,
     *,
+    family_token: str,
+    title_label: str,
+    x_axis_label: str,
+    x_clip: tuple[float, float] | None,
     params: dict[str, Any],
 ) -> Figure:
-    """Per-mouse session-overlay plot for ``first_peak_aligned``.
-    1×2 cam-view subplots; one curve per session per side.
+    """Generic 1×2 cam-view session-overlays renderer for any
+    time-series family (first_peak_aligned, reward_aligned, …).
+
+    Each session of ``family_token`` contributes one curve per side
+    (mean ± SEM across trials), colored pre-stroke grey + post-stroke
+    plasma by relative day. Reward-marker axvline at t=0; optional
+    ``x_clip`` (display window) clips both subplots' x-axes.
+
+    Shared right-margin legend (pre-stroke Patch + post-stroke
+    plasma colorbar) per Addendum #17 item 3.
     """
     cohort_cfg = params["dlc_kinematics"]["tongue_angle_cohort"]
     visual = cohort_cfg["visual"]["session_overlays"]
@@ -451,9 +503,7 @@ def _plot_first_peak_aligned_session_overlays(
     fig, axes = plt.subplots(1, 2, figsize=(13.0, 4.6), sharex=True, sharey=True)
     ax_left, ax_right, side_to_ax = _setup_cam_view_axes(fig, axes)
 
-    family_rows = [
-        r for r in cohort.ts_rows if r.family == "first_peak_aligned"
-    ]
+    family_rows = [r for r in cohort.ts_rows if r.family == family_token]
     post_max = _post_max_rel_day(family_rows)
 
     for r in family_rows:
@@ -473,13 +523,14 @@ def _plot_first_peak_aligned_session_overlays(
         ax.axhline(0, color="0.6", lw=1.0, alpha=0.8)
         n_sess = sum(1 for r in family_rows if r.side == side)
         ax.set_title(f"{side} trials  ({n_sess} sessions)")
-        ax.set_xlabel("Time from first detected lick peak (ms)")
+        ax.set_xlabel(x_axis_label)
         ax.grid(True, alpha=0.2)
+        if x_clip is not None:
+            ax.set_xlim(float(x_clip[0]), float(x_clip[1]))
     ax_left.set_ylabel("Tongue angle (deg)")
 
     fig.suptitle(
-        f"{cohort.animal} | first peak-aligned tongue angle | "
-        f"session overlays",
+        f"{cohort.animal} | {title_label} | session overlays",
         y=0.99,
     )
     _add_pre_stroke_patch_and_post_colorbar(
@@ -489,19 +540,23 @@ def _plot_first_peak_aligned_session_overlays(
     return fig
 
 
-def _plot_first_peak_aligned_binned_overlays(
+def _plot_time_series_binned_overlays(
     cohort: TongueAngleCohortAggregates,
     *,
+    family_token: str,
+    title_label: str,
+    x_axis_label: str,
+    x_clip: tuple[float, float] | None,
     params: dict[str, Any],
 ) -> Figure:
-    """Per-mouse binned-overlay plot for ``first_peak_aligned``. One
-    curve per (rel-day-bin, side); per-bin mean = mean of per-
-    session means; per-bin SEM = SEM across sessions in the bin.
+    """Generic 1×2 cam-view binned-overlays renderer for any
+    time-series family. One curve per (rel-day-bin, side); per-bin
+    mean = mean of per-session means; per-bin SEM = SEM across
+    sessions in the bin. Pre-stroke is binned per Addendum #17
+    item 2 (anchored to d0).
 
-    Phase 7a.4-cross-session-angle Addendum #17 (2026-05-04): pre-
-    stroke is binned at ``bin_days`` width anchored to d0
-    (last pre-stroke bin = ``(-(B-1), 0)``). Shared figure-level
-    legend on the right margin; no per-axis legends.
+    Shared figure-level legend on the right margin (one entry per
+    bin) per Addendum #17 item 3.
     """
     cohort_cfg = params["dlc_kinematics"]["tongue_angle_cohort"]
     visual = cohort_cfg["visual"]["binned_overlays"]
@@ -515,16 +570,11 @@ def _plot_first_peak_aligned_binned_overlays(
     fig, axes = plt.subplots(1, 2, figsize=(13.0, 4.6), sharex=True, sharey=True)
     ax_left, ax_right, side_to_ax = _setup_cam_view_axes(fig, axes)
 
-    family_rows = [
-        r for r in cohort.ts_rows if r.family == "first_peak_aligned"
-    ]
+    family_rows = [r for r in cohort.ts_rows if r.family == family_token]
     rel_days = [r.rel_day for r in family_rows]
     bins = _make_rel_day_bins(rel_days, bin_days=cohort.bin_days)
     post_max = _post_max_rel_day(family_rows)
 
-    # Collect legend handles + labels in bin order (use the first
-    # side's render to populate the figure-level legend; bins are
-    # the same across sides).
     legend_handles: list[Any] = []
     legend_labels: list[str] = []
     seen_bins: set[tuple[int, int]] = set()
@@ -573,12 +623,14 @@ def _plot_first_peak_aligned_binned_overlays(
         ax.axvline(0, color="red", ls=":", lw=1.4, alpha=0.9)
         ax.axhline(0, color="0.6", lw=1.0, alpha=0.8)
         ax.set_title(f"{side} trials")
-        ax.set_xlabel("Time from first detected lick peak (ms)")
+        ax.set_xlabel(x_axis_label)
         ax.grid(True, alpha=0.2)
+        if x_clip is not None:
+            ax.set_xlim(float(x_clip[0]), float(x_clip[1]))
     ax_left.set_ylabel("Tongue angle (deg)")
 
     fig.suptitle(
-        f"{cohort.animal} | first peak-aligned tongue angle | "
+        f"{cohort.animal} | {title_label} | "
         f"binned overlays (bin_days={cohort.bin_days})",
         y=0.99,
     )
@@ -593,6 +645,80 @@ def _plot_first_peak_aligned_binned_overlays(
             frameon=False, fontsize=9,
         )
     return fig
+
+
+# ============================================================================
+# Family-specific thin wrappers
+# ============================================================================
+
+
+def _plot_first_peak_aligned_session_overlays(
+    cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
+) -> Figure:
+    """Per-mouse session-overlay plot for ``first_peak_aligned``."""
+    return _plot_time_series_session_overlays(
+        cohort,
+        family_token="first_peak_aligned",
+        title_label="first peak-aligned tongue angle",
+        x_axis_label="Time from first detected lick peak (ms)",
+        x_clip=None,
+        params=params,
+    )
+
+
+def _plot_first_peak_aligned_binned_overlays(
+    cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
+) -> Figure:
+    """Per-mouse binned-overlay plot for ``first_peak_aligned``."""
+    return _plot_time_series_binned_overlays(
+        cohort,
+        family_token="first_peak_aligned",
+        title_label="first peak-aligned tongue angle",
+        x_axis_label="Time from first detected lick peak (ms)",
+        x_clip=None,
+        params=params,
+    )
+
+
+def _plot_reward_aligned_session_overlays(
+    cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
+) -> Figure:
+    """Per-mouse session-overlay plot for ``reward_aligned``. X-axis
+    clipped to ``dlc_kinematics.tongue_visual.reward_aligned_display_window_ms``
+    (default ``[-180, 1000]`` ms) per Addendum #4 — same display
+    window as the per-session reward-aligned plot."""
+    visual_block = params["dlc_kinematics"]["tongue_visual"]
+    display_win = tuple(
+        visual_block.get("reward_aligned_display_window_ms", [-180.0, 1000.0])
+    )
+    return _plot_time_series_session_overlays(
+        cohort,
+        family_token="reward_aligned",
+        title_label="reward-aligned tongue angle",
+        x_axis_label="Time from reward (ms)",
+        x_clip=(float(display_win[0]), float(display_win[1])),
+        params=params,
+    )
+
+
+def _plot_reward_aligned_binned_overlays(
+    cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
+) -> Figure:
+    """Per-mouse binned-overlay plot for ``reward_aligned``. Same
+    display-window clip as :func:`_plot_reward_aligned_session_overlays`.
+    """
+    visual_block = params["dlc_kinematics"]["tongue_visual"]
+    display_win = tuple(
+        visual_block.get("reward_aligned_display_window_ms", [-180.0, 1000.0])
+    )
+    return _plot_time_series_binned_overlays(
+        cohort,
+        family_token="reward_aligned",
+        title_label="reward-aligned tongue angle",
+        x_axis_label="Time from reward (ms)",
+        x_clip=(float(display_win[0]), float(display_win[1])),
+        params=params,
+    )
 
 
 # ============================================================================
@@ -615,6 +741,20 @@ def _save_and_close(fig: Figure, path: Path, *, dpi: float = 200.0) -> None:
 # ============================================================================
 
 
+def _family_paths(
+    out_dir: Path, animal: str, family_token: str,
+) -> dict[str, Path]:
+    """Standard 2-PNG path tuple for any time-series family."""
+    return {
+        "session_overlays": out_dir / (
+            f"{animal}_{family_token}_session_overlays.png"
+        ),
+        "binned_overlays": out_dir / (
+            f"{animal}_{family_token}_binned_overlays.png"
+        ),
+    }
+
+
 def build_first_peak_aligned_cohort(
     animal: str,
     resolver: PathResolver,
@@ -628,11 +768,6 @@ def build_first_peak_aligned_cohort(
     animal: emits ``session_overlays`` + ``binned_overlays`` PNGs.
 
     Returns a dict ``{"session_overlays": Path, "binned_overlays": Path}``.
-
-    If ``cohort`` is provided, reuses it; otherwise builds via
-    :func:`build_tongue_angle_cohort_aggregates`. Subsequent cross-session
-    commits will add a top-level composite that builds the cohort
-    once and dispatches to all 6 family renderers.
     """
     if overwrite not in ("skip", "force"):
         raise ValueError(
@@ -644,18 +779,8 @@ def build_first_peak_aligned_cohort(
         animal_info = get_animal(animal)
 
     out_dir = resolver.tongue_angle_cross_session_dir(animal)
-    paths = {
-        "session_overlays": out_dir / (
-            f"{animal}_first_peak_aligned_session_overlays.png"
-        ),
-        "binned_overlays": out_dir / (
-            f"{animal}_first_peak_aligned_binned_overlays.png"
-        ),
-    }
-    if (
-        overwrite == "skip"
-        and all(p.exists() for p in paths.values())
-    ):
+    paths = _family_paths(out_dir, animal, "first_peak_aligned")
+    if overwrite == "skip" and all(p.exists() for p in paths.values()):
         return paths
 
     if cohort is None:
@@ -673,11 +798,61 @@ def build_first_peak_aligned_cohort(
     return paths
 
 
+def build_reward_aligned_cohort(
+    animal: str,
+    resolver: PathResolver,
+    *,
+    params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    cohort: TongueAngleCohortAggregates | None = None,
+    overwrite: Literal["skip", "force"] = "skip",
+) -> dict[str, Path]:
+    """Render the ``reward_aligned`` cross-session family for one
+    animal: emits ``session_overlays`` + ``binned_overlays`` PNGs.
+
+    Phase 7a.4-cross-session-angle Cross-session #3 (2026-05-04):
+    consumes ``angle_snip`` (per-frame raw angle, per Addendum #8);
+    x-axis clipped to
+    ``dlc_kinematics.tongue_visual.reward_aligned_display_window_ms``
+    (default ``[-180, 1000]`` ms; per Addendum #4) — same display
+    window as the per-session reward-aligned plot for byte-aligned
+    visual identity.
+    """
+    if overwrite not in ("skip", "force"):
+        raise ValueError(
+            f"overwrite must be 'skip' or 'force'; got {overwrite!r}",
+        )
+    if params is None:
+        params = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+
+    out_dir = resolver.tongue_angle_cross_session_dir(animal)
+    paths = _family_paths(out_dir, animal, "reward_aligned")
+    if overwrite == "skip" and all(p.exists() for p in paths.values()):
+        return paths
+
+    if cohort is None:
+        cohort = build_tongue_angle_cohort_aggregates(
+            animal, resolver, params=params, animal_info=animal_info,
+            families=["reward_aligned"],
+        )
+
+    fig_so = _plot_reward_aligned_session_overlays(cohort, params=params)
+    _save_and_close(fig_so, paths["session_overlays"])
+
+    fig_bo = _plot_reward_aligned_binned_overlays(cohort, params=params)
+    _save_and_close(fig_bo, paths["binned_overlays"])
+
+    return paths
+
+
 __all__ = [
     "FAMILY_TOKENS",
     "SUB_VARIANTS",
     "TimeSeriesSessionAggregate",
     "TongueAngleCohortAggregates",
-    "build_tongue_angle_cohort_aggregates",
     "build_first_peak_aligned_cohort",
+    "build_reward_aligned_cohort",
+    "build_tongue_angle_cohort_aggregates",
 ]

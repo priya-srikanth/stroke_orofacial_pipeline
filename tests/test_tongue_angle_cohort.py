@@ -270,15 +270,121 @@ class TestFirstPeakAlignedRenderers:
         fig = _plot_first_peak_aligned_binned_overlays(cohort, params=params)
         assert isinstance(fig, plt.Figure)
         assert len(fig.axes) >= 2
-        # Bins for synthetic data: pre = (-3, -1); post bins (0, 1),
-        # (2, 3) wait — bin_days=2 ⇒ post bins start at 0 with width 2:
-        # 0→(0, 1), 2→(2, 3), 5→(4, 5). 4 bins total expected.
-        # Binned rendering must produce at least 1 line per side
-        # per bin that meets min_sessions_per_bin=1.
+        # Per Addendum #17 d0=pre + binning anchored to d0:
+        # bins for [-3, -1, 0, 2, 5] with B=2 are
+        # (-3, -2), (-1, 0), (1, 2), (5, 6). Min 1 session/bin → all
+        # 4 bins render lines.
         for ax in fig.axes[:2]:
             mean_lines = [
                 ln for ln in ax.get_lines()
                 if len(ln.get_xdata()) > 5
             ]
             assert len(mean_lines) >= 1
+        plt.close(fig)
+
+
+# ============================================================================
+# Cross-session #3: reward_aligned family
+# ============================================================================
+
+
+def _make_synthetic_cohort_reward_aligned(
+    *,
+    animal: str = "PS50",
+    bin_days: int = 2,
+    rel_days: tuple[int, ...] = (-3, -1, 0, 2, 5),
+    n_t_bins: int = 50,
+    seed: int = 11,
+):
+    """Synthetic cohort aggregate for the ``reward_aligned`` family
+    (renderer smoke test)."""
+    from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
+        TimeSeriesSessionAggregate,
+        TongueAngleCohortAggregates,
+    )
+    rng = np.random.default_rng(seed)
+    # Reward window: -180 → 8000 ms (production bundle width per
+    # Addendum #4); plot clips display to [-180, 1000].
+    t = np.linspace(-180.0, 8000.0, n_t_bins)
+    rows: list[TimeSeriesSessionAggregate] = []
+    for rel_day in rel_days:
+        d = (
+            datetime.date(2025, 3, 13)
+            + datetime.timedelta(days=int(rel_day))
+        )
+        for side in ("L", "R"):
+            base = (
+                15.0 * np.exp(-((t - 200.0) ** 2) / (2 * 250.0 ** 2))
+                * (1 if side == "R" else -1)
+            )
+            mu = base + rng.normal(0, 0.4, size=n_t_bins)
+            sem = np.full_like(mu, 0.4)
+            rows.append(TimeSeriesSessionAggregate(
+                family="reward_aligned",
+                side=side, date=d, rel_day=rel_day,
+                n_trials=20, t=t, mu=mu, sem=sem,
+            ))
+    return TongueAngleCohortAggregates(
+        animal=animal, bin_days=bin_days, ts_rows=rows,
+    )
+
+
+class TestRewardAlignedRenderers:
+    """Phase 7a.4-cross-session-angle Cross-session #3 (2026-05-04):
+    reward_aligned family rendering smoke tests."""
+
+    def test_session_overlays_clips_to_display_window(self):
+        """X-axis must be clipped to
+        ``reward_aligned_display_window_ms`` regardless of the
+        bundle's wider data extent. Default = [-180, 1000] ms."""
+        from stroke_orofacial.config_loader import load_defaults
+        from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
+            _plot_reward_aligned_session_overlays,
+        )
+        cohort = _make_synthetic_cohort_reward_aligned()
+        params = load_defaults()
+        fig = _plot_reward_aligned_session_overlays(cohort, params=params)
+        assert isinstance(fig, plt.Figure)
+        # Cam-view subplot ordering pinned via title.
+        assert "R trials" in fig.axes[0].get_title()
+        assert "L trials" in fig.axes[1].get_title()
+        # Display clip applied (default [-180, 1000]).
+        for ax in fig.axes[:2]:
+            xlim = ax.get_xlim()
+            assert xlim[0] == pytest.approx(-180.0)
+            assert xlim[1] == pytest.approx(1000.0)
+        plt.close(fig)
+
+    def test_binned_overlays_clips_to_display_window(self):
+        from stroke_orofacial.config_loader import load_defaults
+        from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
+            _plot_reward_aligned_binned_overlays,
+        )
+        cohort = _make_synthetic_cohort_reward_aligned()
+        params = load_defaults()
+        fig = _plot_reward_aligned_binned_overlays(cohort, params=params)
+        assert isinstance(fig, plt.Figure)
+        for ax in fig.axes[:2]:
+            xlim = ax.get_xlim()
+            assert xlim[0] == pytest.approx(-180.0)
+            assert xlim[1] == pytest.approx(1000.0)
+        plt.close(fig)
+
+    def test_display_window_override_propagates(self):
+        """Overriding ``reward_aligned_display_window_ms`` in params
+        flows through to the cohort renderer."""
+        from stroke_orofacial.config_loader import load_defaults
+        from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
+            _plot_reward_aligned_session_overlays,
+        )
+        cohort = _make_synthetic_cohort_reward_aligned()
+        params = load_defaults()
+        params["dlc_kinematics"]["tongue_visual"][
+            "reward_aligned_display_window_ms"
+        ] = [-100.0, 500.0]
+        fig = _plot_reward_aligned_session_overlays(cohort, params=params)
+        for ax in fig.axes[:2]:
+            xlim = ax.get_xlim()
+            assert xlim[0] == pytest.approx(-100.0)
+            assert xlim[1] == pytest.approx(500.0)
         plt.close(fig)
