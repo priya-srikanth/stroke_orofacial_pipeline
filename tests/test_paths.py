@@ -717,6 +717,31 @@ class TestPhase7a5Paths:
         path.mkdir(parents=True)
         assert path.exists() and path.is_dir()
 
+    def test_tongue_angle_cohort_dir_path(
+        self, monkeypatch, tmp_path,
+    ):
+        """Phase 7a.4-cross-session-angle (2026-05-04): per-mouse
+        cohort figure output directory. Per-mouse only (no date),
+        no eager mkdir; mirrors the
+        :meth:`tongue_jaw_mismatch_cross_session_dir` shape.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tongue_angle_cohort_dir("PS46")
+        expected = (
+            tmp_path
+            / "dlc_kinematics"
+            / "tongue_angle_cohort"
+            / "PS46"
+        )
+        assert path == expected
+        # No eager mkdir — caller (the cohort renderer) creates the dir.
+        assert not path.exists()
+        assert not path.parent.exists()
+        # Caller-driven mkdir round-trips.
+        path.mkdir(parents=True)
+        assert path.exists() and path.is_dir()
+
 
 # ---- Integration test (requires real mount) ----
 

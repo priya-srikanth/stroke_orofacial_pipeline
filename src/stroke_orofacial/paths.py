@@ -470,6 +470,36 @@ class PathResolver:
             / animal
         )
 
+    def tongue_angle_cohort_dir(self, animal: str) -> Path:
+        """Return the Phase 7a.4-cross-session-angle per-mouse cohort
+        figure output directory.
+
+        E.g. ``<outputs>/dlc_kinematics/tongue_angle_cohort/PS46/``.
+
+        Hosts the 12 cross-session PNGs emitted per mouse by
+        :func:`stroke_orofacial.dlc_kinematics.tongue_angle_cohort.build_tongue_angle_cohort`:
+
+          - 6 plot families
+            (``first_peak_aligned``, ``reward_aligned``,
+            ``phase_aligned_angle_1st_lick``,
+            ``phase_aligned_angle_all_licks``,
+            ``phase_aligned_angle_first_2_licks``,
+            ``first_vs_second_peak_scatter``)
+          - 2 sub-variants per family (``session_overlays``,
+            ``binned_overlays``)
+
+        Filename pattern: ``{animal}_{family}_{sub_variant}.png``.
+        Per-mouse (no date dimension); mirrors the
+        :meth:`tongue_jaw_mismatch_cross_session_dir` resolver
+        convention. The renderer creates the directory; this resolver
+        returns the path only — no eager mkdir.
+        """
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "tongue_angle_cohort"
+            / animal
+        )
+
     def mean_sem_visual_dir(
         self,
         bodypart: str,

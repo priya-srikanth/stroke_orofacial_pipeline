@@ -788,6 +788,77 @@ dlc_kinematics:
   # See docs/legacy_snippets/tongue_jaw_mismatch.py (commit 4d34a8f)
   # for the verbatim Cell 53 source.
   # =========================================================
+
+  # =========================================================
+  # Tongue angle cohort (Phase 7a.4-cross-session-angle, 2026-05-04)
+  # =========================================================
+  # Per-mouse cross-session aggregations of the 6 per-session
+  # tongue-angle plot families:
+  #   - first_peak_aligned (mean ± SEM aligned to first detected peak)
+  #   - reward_aligned (mean ± SEM aligned to reward; consumes
+  #     angle_snip directly per Addendum #8)
+  #   - phase_aligned_angle_1st_lick (centered-on-peak, single cycle)
+  #   - phase_aligned_angle_all_licks (centered-on-peak, single cycle)
+  #   - phase_aligned_angle_first_2_licks (centered-on-peak, multi-
+  #     cycle per Addendum #11 Part A)
+  #   - first_vs_second_peak_scatter (per-trial scatter of peak[0]
+  #     angle vs peak[1] angle per Addendum #11 Part B)
+  # × 2 sub-variants per family:
+  #   - session_overlays: one curve/cloud per session per side,
+  #     colored pre-stroke grey + post-stroke plasma by relative day
+  #   - binned_overlays: one curve/centroid per (rel-day-bin, side),
+  #     same colormap; bin width from animal_info.bin_days in
+  #     configs/animals.yaml
+  # = 12 PNGs per mouse, emitted to
+  # ``<outputs>/dlc_kinematics/tongue_angle_cohort/{animal}/``.
+  #
+  # The cohort module reads the same per-session bundles as
+  # ``tongue_visual`` (no separate compute path); per-animal
+  # pre-stroke median ILI is sourced from
+  # ``bundle.metadata["pre_stroke_median_ili_ms"]`` (populated by
+  # :func:`build_tongue_visual_bundle_by_animal_date`).
+  tongue_angle_cohort:
+    # Curve / scatter visual styling. Defaults match the per-session
+    # plot family styling for byte-aligned visual identity (line
+    # widths / alphas) where the data shape is the same.
+    visual:
+      # Per-session-overlay curves: low fill alpha keeps the figure
+      # readable when many sessions stack.
+      session_overlays:
+        line_width: 1.5
+        line_alpha: 0.85
+        sem_fill_alpha: 0.10
+      # Per-bin-overlay curves: higher fill alpha since bin count is
+      # smaller (~3-10 bins per animal vs ~20-50 sessions).
+      binned_overlays:
+        line_width: 2.5
+        line_alpha: 0.85
+        sem_fill_alpha: 0.20
+      # Scatter family styling (first_vs_second_peak_scatter).
+      scatter:
+        scatter_size: 18
+        scatter_alpha: 0.55
+        # Binned variant draws an ellipsoid per bin (mean ± 1 SD on
+        # each axis); centroid marker on top of the ellipsoid.
+        ellipsoid_alpha: 0.20
+        centroid_size: 60
+
+    # Pre-stroke / post-stroke colormap (mirrors
+    # mean_sem_visual.mean_trace.pre_color / post_cmap):
+    pre_color: "0.6"        # mid-grey for pre-stroke sessions / bins
+    post_cmap: "plasma"     # colormap for post-stroke rel_day mapping
+
+    # Min sessions required to render binned_overlays. Sessions with
+    # rel_day < 0 always pool into a single "pre-stroke" bin; post-
+    # stroke bins follow ``animal_info.bin_days`` (PS46-50: 2;
+    # PS51/54/55: 7).
+    min_sessions_per_bin: 1
+
+    # Phase plot family inherits ``phase_aligned_first_n_peaks`` and
+    # ``phase_aligned_ili_source`` from the per-session
+    # ``dlc_kinematics.tongue_visual`` block (Addenda #11A + #15);
+    # cross-session aggregator does not duplicate those knobs.
+
   tongue_jaw_mismatch:
     classifier:
       quiet_tongue_win_ms: [70, 5000]      # window for "zero detected tongue licks"
