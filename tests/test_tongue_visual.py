@@ -412,6 +412,53 @@ class TestPlotFamilies:
         assert any_lines
         plt.close(fig)
 
+    def test_reward_aligned_clips_x_axis_to_display_window(self):
+        """Phase 7a.4-cross-session-angle Addendum #4 (2026-05-04):
+        ``_plot_reward_aligned`` clips the x-axis to
+        ``dlc_kinematics.tongue_visual.reward_aligned_display_window_ms``
+        regardless of the bundle's wider ``plot_win_ms``. Locks the
+        contract that per-session and cross-session reward-aligned
+        plots share the same x-axis byte-for-byte.
+
+        Builds a fixture with the production-default wide bundle window
+        (``[-180, 8000]`` ms) and asserts the rendered xlim matches the
+        narrow display window (``[-180, 1000]`` ms by default).
+        """
+        bundle = _make_synthetic_bundle(plot_win_ms=(-180.0, 8000.0))
+        params = load_defaults()
+        display_win = tuple(
+            params["dlc_kinematics"]["tongue_visual"][
+                "reward_aligned_display_window_ms"
+            ]
+        )
+        fig = _plot_reward_aligned(bundle, params=params)
+        ax = fig.axes[0]
+        xlim_lo, xlim_hi = ax.get_xlim()
+        assert xlim_lo == pytest.approx(float(display_win[0]))
+        assert xlim_hi == pytest.approx(float(display_win[1]))
+        plt.close(fig)
+
+    def test_reward_aligned_display_window_overrides_bundle_data_extent(self):
+        """Same locked contract, exercised the other way: even when the
+        bundle's t_ms extends to 8000 ms, the rendered x-axis is bounded
+        by the display knob, NOT by the data's max(t_ms). Catches a
+        regression where ``set_xlim`` is dropped and matplotlib
+        auto-fits to the data.
+        """
+        bundle = _make_synthetic_bundle(plot_win_ms=(-180.0, 8000.0))
+        # Override knob to a tight window distinct from the production
+        # default so any leakage from auto-fit is visible.
+        params = load_defaults()
+        params["dlc_kinematics"]["tongue_visual"][
+            "reward_aligned_display_window_ms"
+        ] = [-100.0, 500.0]
+        fig = _plot_reward_aligned(bundle, params=params)
+        ax = fig.axes[0]
+        xlim_lo, xlim_hi = ax.get_xlim()
+        assert xlim_lo == pytest.approx(-100.0)
+        assert xlim_hi == pytest.approx(500.0)
+        plt.close(fig)
+
     def test_phase_aligned_angle_returns_nonempty_figure(self, synthetic_bundle):
         params = load_defaults()
         fig = _plot_phase_aligned_angle(synthetic_bundle, params=params)

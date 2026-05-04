@@ -372,11 +372,25 @@ def _plot_reward_aligned(
     params: dict[str, Any],
 ) -> Figure:
     """Family 3 — session-wide reward-aligned tongue angle. Mu±SEM across
-    trials per side (legacy ``_plot_reward_aligned_angle``)."""
+    trials per side (legacy ``_plot_reward_aligned_angle``).
+
+    Display window (Phase 7a.4-cross-session-angle, 2026-05-04,
+    Addendum #4): the bundle's per-trial reward-aligned snippet spans
+    the full ``plot_win_ms`` (default ``[-180, 8000]`` ms) but the
+    rendered x-axis is clipped to
+    ``dlc_kinematics.tongue_visual.reward_aligned_display_window_ms``
+    (default ``[-180, 1000]`` ms) so per-session and cross-session
+    reward-aligned plots share the same x-axis byte-for-byte. The
+    cross-session aggregator reads the same knob from the same
+    config block.
+    """
     visual = params["dlc_kinematics"]["tongue_visual"]
     side_colors = visual["side_colors"]
     time_mode = str(visual.get("modes", {}).get("time_summary", "first_multi"))
     arr_col = _pick_time_array_column(time_mode)
+    display_win_ms = tuple(
+        visual.get("reward_aligned_display_window_ms", [-180.0, 1000.0])
+    )
     df_trials = bundle.df_trials
 
     fig, ax = plt.subplots(figsize=(10.5, 4.2))
@@ -398,6 +412,7 @@ def _plot_reward_aligned(
         ax.plot(t, mu, color=c, lw=2.0, label=f"{side} (trials: {n_trials})")
         ax.fill_between(t, mu - sem, mu + sem, color=c, alpha=0.18, lw=0)
 
+    ax.set_xlim(float(display_win_ms[0]), float(display_win_ms[1]))
     ax.axvline(0, color="red", ls=":", lw=1.4, alpha=0.9)
     ax.axhline(0, color="0.6", lw=1.0, alpha=0.8)
     animal = bundle.metadata.get("animal", "?")
