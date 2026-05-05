@@ -65,6 +65,7 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (  # noqa: E402
     build_first_lick_centered_phase_rows,
     build_first_n_licks_centered_phase_rows,
     build_tongue_visual_bundle_by_animal_date,
+    extract_first_vs_second_peak_pairs,
 )
 from stroke_orofacial.paths import PathResolver  # noqa: E402
 
@@ -131,15 +132,54 @@ class TimeSeriesSessionAggregate:
 
 
 @dataclass(frozen=True)
+class ScatterSessionAggregate:
+    """Per (session, side) scatter aggregate for the
+    ``first_vs_second_peak_scatter`` family.
+
+    Phase 7a.4-cross-session-angle Cross-session #5 (2026-05-04).
+    Rows expose the per-trial (peak[0] angle, peak[1] angle) pairs
+    extracted from the per-session bundle's df_bouts.
+
+    Attributes
+    ----------
+    side : str
+        Trial side, ``"L"`` or ``"R"``.
+    date : datetime.date
+        Session date.
+    rel_day : int
+        Days since stroke (negative or zero = pre-stroke per
+        Addendum #17).
+    n_pairs : int
+        Number of trials with ≥2 detected peaks (= number of
+        rows in ``peak0_angles_deg`` / ``peak1_angles_deg``).
+    peak0_angles_deg : np.ndarray
+        First-peak angle (deg) per trial; shape ``(n_pairs,)``.
+    peak1_angles_deg : np.ndarray
+        Second-peak angle (deg) per trial; shape ``(n_pairs,)``.
+    """
+
+    side: str
+    date: datetime.date
+    rel_day: int
+    n_pairs: int
+    peak0_angles_deg: np.ndarray
+    peak1_angles_deg: np.ndarray
+
+
+@dataclass(frozen=True)
 class TongueAngleCohortAggregates:
     """Per-animal cross-session aggregates across all rendered
     families. Time-series rows keyed by family/side/date; scatter
-    rows added in cross-session #5.
+    rows separately for the ``first_vs_second_peak_scatter`` family
+    (per-trial pairings rather than mean ± SEM time series).
     """
 
     animal: str
     bin_days: int
     ts_rows: list[TimeSeriesSessionAggregate]
+    scatter_rows: list[ScatterSessionAggregate] = field(
+        default_factory=list,
+    )
 
 
 # ============================================================================
@@ -197,6 +237,32 @@ def _extract_first_peak_aligned(
     if n_trials == 0:
         return None
     return t, mu, sem, n_trials
+
+
+def _extract_first_vs_second_peak_pairs(
+    bundle: TongueVisualBundle, side: str,
+) -> tuple[np.ndarray, np.ndarray, int] | None:
+    """Per-side per-trial (peak[0]_angle, peak[1]_angle) pairs.
+    Returns ``(peak0_angles, peak1_angles, n_pairs)`` or ``None``
+    if no eligible trials.
+
+    Phase 7a.4-cross-session-angle Cross-session #5 (2026-05-04).
+    Wraps the existing :func:`extract_first_vs_second_peak_pairs`
+    from tongue_pertrial.py (chronological-first-two-peaks
+    semantic per Addendum #11 Part B), filtered to one side.
+    """
+    pairs = extract_first_vs_second_peak_pairs(bundle.df_bouts)
+    if pairs.empty:
+        return None
+    side_pairs = pairs[pairs["side"] == side]
+    if side_pairs.empty:
+        return None
+    p0 = side_pairs["peak0_angle_deg"].to_numpy(float)
+    p1 = side_pairs["peak1_angle_deg"].to_numpy(float)
+    finite = np.isfinite(p0) & np.isfinite(p1)
+    if not np.any(finite):
+        return None
+    return p0[finite], p1[finite], int(np.sum(finite))
 
 
 def _extract_phase_aligned(
@@ -391,6 +457,7 @@ def build_tongue_angle_cohort_aggregates(
     )
 
     ts_rows: list[TimeSeriesSessionAggregate] = []
+    scatter_rows: list[ScatterSessionAggregate] = []
 
     for d in _enumerate_session_dates(animal, resolver):
         try:
@@ -460,11 +527,23 @@ def build_tongue_angle_cohort_aggregates(
                         n_trials=n_peaks_contrib,
                         t=t, mu=mu, sem=sem,
                     ))
+            if "first_vs_second_peak_scatter" in requested:
+                triple = _extract_first_vs_second_peak_pairs(
+                    bundle, side,
+                )
+                if triple is not None:
+                    p0, p1, n_pairs = triple
+                    scatter_rows.append(ScatterSessionAggregate(
+                        side=side, date=d, rel_day=rel_day,
+                        n_pairs=n_pairs,
+                        peak0_angles_deg=p0, peak1_angles_deg=p1,
+                    ))
 
     return TongueAngleCohortAggregates(
         animal=animal,
         bin_days=int(animal_info.bin_days),
         ts_rows=ts_rows,
+        scatter_rows=scatter_rows,
     )
 
 
@@ -1325,6 +1404,307 @@ def build_reward_aligned_cohort(
     return paths
 
 
+# ============================================================================
+# Scatter family renderers (Cross-session #5).
+# ============================================================================
+
+
+def _post_max_rel_day_scatter(
+    rows: Sequence[ScatterSessionAggregate],
+) -> int | None:
+    post_days = [r.rel_day for r in rows if r.rel_day >= 1]
+    return max(post_days) if post_days else None
+
+
+def _scatter_axis_extent(
+    rows: Sequence[ScatterSessionAggregate],
+) -> float:
+    """Symmetric ``max_abs * 1.05`` across BOTH peak0 and peak1
+    angles, united across both sides — so L vs R subplots share
+    identical axes for direct visual comparison."""
+    all_angles: list[float] = []
+    for r in rows:
+        all_angles.extend(r.peak0_angles_deg.tolist())
+        all_angles.extend(r.peak1_angles_deg.tolist())
+    arr = np.asarray(all_angles, float)
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return 50.0
+    return max(1.0, float(np.nanmax(np.abs(arr))) * 1.05)
+
+
+def _plot_first_vs_second_peak_scatter_session_overlays(
+    cohort: TongueAngleCohortAggregates,
+    *,
+    params: dict[str, Any],
+) -> Figure:
+    """Per-mouse session-overlay scatter plot. 1×2 cam-view (R left,
+    L right). Each trial = one point colored by relative day
+    (pre-stroke grey, post-stroke plasma). Symmetric square axes
+    united across L+R; equal aspect; y=x diagonal reference dashed.
+    """
+    cohort_cfg = params["dlc_kinematics"]["tongue_angle_cohort"]
+    pre_color = str(cohort_cfg["pre_color"])
+    post_cmap = str(cohort_cfg["post_cmap"])
+    scatter_cfg = cohort_cfg["visual"]["scatter"]
+    sc_size = float(scatter_cfg["scatter_size"])
+    sc_alpha = float(scatter_cfg["scatter_alpha"])
+
+    rows = cohort.scatter_rows
+    fig, axes = plt.subplots(
+        1, 2, figsize=(11.0, 5.4), sharex=True, sharey=True,
+    )
+    ax_left, ax_right, side_to_ax = _setup_cam_view_axes(fig, axes)
+
+    if not rows:
+        for ax in axes:
+            ax.text(0.5, 0.5, "No peak pairs available",
+                    ha="center", va="center", transform=ax.transAxes)
+            ax.set_axis_off()
+        fig.suptitle(
+            f"{cohort.animal} | first vs second peak angle | "
+            f"session overlays",
+            y=0.99,
+        )
+        return fig
+
+    max_abs = _scatter_axis_extent(rows)
+    post_max = _post_max_rel_day_scatter(rows)
+
+    for r in rows:
+        ax = side_to_ax[r.side]
+        c = _color_for_rel_day_continuous(
+            r.rel_day, post_max,
+            cmap_name=post_cmap, pre_color=pre_color,
+        )
+        ax.scatter(
+            r.peak0_angles_deg, r.peak1_angles_deg,
+            color=c, s=sc_size, alpha=sc_alpha, edgecolors="none",
+            zorder=2,
+        )
+
+    for ax, side in [(ax_left, "R"), (ax_right, "L")]:
+        # y=x diagonal first so scatter renders on top.
+        ax.plot(
+            [-max_abs, max_abs], [-max_abs, max_abs],
+            color="0.5", ls="--", lw=1.0, alpha=0.7, zorder=1,
+        )
+        ax.axhline(0, color="0.7", lw=0.8, alpha=0.6, zorder=0)
+        ax.axvline(0, color="0.7", lw=0.8, alpha=0.6, zorder=0)
+        n_trials = sum(
+            r.n_pairs for r in rows if r.side == side
+        )
+        ax.set_title(f"{side} trials  ({n_trials} trials total)")
+        ax.set_xlim(-max_abs, +max_abs)
+        ax.set_ylim(-max_abs, +max_abs)
+        ax.set_aspect("equal", adjustable="box")
+        ax.set_xlabel("Peak[0] angle (deg)")
+        ax.grid(True, alpha=0.2)
+    ax_left.set_ylabel("Peak[1] angle (deg)")
+
+    fig.suptitle(
+        f"{cohort.animal} | first vs second peak angle | "
+        f"session overlays (per-trial scatter; diagonal = no first-vs-"
+        f"second difference)",
+        y=0.99,
+    )
+    _add_pre_stroke_patch_and_post_colorbar(
+        fig, axes, pre_color=pre_color,
+        post_cmap=post_cmap, post_max=post_max,
+    )
+    return fig
+
+
+def _plot_first_vs_second_peak_scatter_binned_overlays(
+    cohort: TongueAngleCohortAggregates,
+    *,
+    params: dict[str, Any],
+) -> Figure:
+    """Per-mouse binned-overlay scatter plot. Per-bin centroid (mean
+    of peak0, peak1 across all trials in the bin) + ellipsoid (mean
+    ± 1 SD on each axis) colored by rel_day_bin_center.
+
+    1×2 cam-view + symmetric axes + y=x diagonal + figure-level
+    legend (one entry per bin) on the right margin.
+    """
+    cohort_cfg = params["dlc_kinematics"]["tongue_angle_cohort"]
+    pre_color = str(cohort_cfg["pre_color"])
+    post_cmap = str(cohort_cfg["post_cmap"])
+    scatter_cfg = cohort_cfg["visual"]["scatter"]
+    centroid_size = float(scatter_cfg["centroid_size"])
+    ellipsoid_alpha = float(scatter_cfg["ellipsoid_alpha"])
+    min_per_bin = int(cohort_cfg["min_sessions_per_bin"])
+
+    rows = cohort.scatter_rows
+    fig, axes = plt.subplots(
+        1, 2, figsize=(11.0, 5.4), sharex=True, sharey=True,
+    )
+    ax_left, ax_right, side_to_ax = _setup_cam_view_axes(fig, axes)
+
+    if not rows:
+        for ax in axes:
+            ax.text(0.5, 0.5, "No peak pairs available",
+                    ha="center", va="center", transform=ax.transAxes)
+            ax.set_axis_off()
+        fig.suptitle(
+            f"{cohort.animal} | first vs second peak angle | "
+            f"binned overlays",
+            y=0.99,
+        )
+        return fig
+
+    rel_days = [r.rel_day for r in rows]
+    bins = _make_rel_day_bins(rel_days, bin_days=cohort.bin_days)
+    post_max = _post_max_rel_day_scatter(rows)
+    max_abs = _scatter_axis_extent(rows)
+
+    legend_handles: list[Any] = []
+    legend_labels: list[str] = []
+    seen_bins: set[tuple[int, int]] = set()
+
+    for side in ("L", "R"):
+        ax = side_to_ax[side]
+        side_rows = [r for r in rows if r.side == side]
+        for bin_lo, bin_hi in bins:
+            bin_rows = [
+                r for r in side_rows
+                if bin_lo <= r.rel_day <= bin_hi
+            ]
+            if len(bin_rows) < min_per_bin:
+                continue
+            # Pool all trials in the bin.
+            p0 = np.concatenate([r.peak0_angles_deg for r in bin_rows])
+            p1 = np.concatenate([r.peak1_angles_deg for r in bin_rows])
+            finite = np.isfinite(p0) & np.isfinite(p1)
+            if not np.any(finite):
+                continue
+            p0 = p0[finite]
+            p1 = p1[finite]
+            n_total = int(p0.size)
+            mu0 = float(np.mean(p0))
+            mu1 = float(np.mean(p1))
+            sd0 = float(np.std(p0, ddof=0))
+            sd1 = float(np.std(p1, ddof=0))
+            bin_center = 0.5 * (bin_lo + bin_hi)
+            c = _color_for_rel_day_continuous(
+                bin_center, post_max,
+                cmap_name=post_cmap, pre_color=pre_color,
+            )
+            label = (
+                f"{bin_lo}..{bin_hi} (pre, n_trials={n_total}, "
+                f"n_sessions={len(bin_rows)})"
+                if bin_hi <= 0 else
+                f"{bin_lo}..{bin_hi} "
+                f"(n_trials={n_total}, n_sessions={len(bin_rows)})"
+            )
+            # Ellipsoid as an ellipse patch (axis-aligned: 2 SD wide
+            # × 2 SD tall, centered at (mu0, mu1)).
+            from matplotlib.patches import Ellipse
+            ellipse = Ellipse(
+                xy=(mu0, mu1),
+                width=2 * sd0, height=2 * sd1,
+                angle=0,
+                facecolor=c, edgecolor=c, alpha=ellipsoid_alpha,
+                lw=1.5, zorder=1,
+            )
+            ax.add_patch(ellipse)
+            # Centroid marker.
+            scatter_handle = ax.scatter(
+                [mu0], [mu1], color=c, s=centroid_size,
+                edgecolors="black", linewidth=0.8, zorder=3,
+            )
+            if (bin_lo, bin_hi) not in seen_bins:
+                legend_handles.append(scatter_handle)
+                legend_labels.append(label)
+                seen_bins.add((bin_lo, bin_hi))
+
+        # y=x diagonal under everything.
+        ax.plot(
+            [-max_abs, max_abs], [-max_abs, max_abs],
+            color="0.5", ls="--", lw=1.0, alpha=0.7, zorder=0,
+        )
+        ax.axhline(0, color="0.7", lw=0.8, alpha=0.6, zorder=0)
+        ax.axvline(0, color="0.7", lw=0.8, alpha=0.6, zorder=0)
+        ax.set_title(f"{side} trials")
+        ax.set_xlim(-max_abs, +max_abs)
+        ax.set_ylim(-max_abs, +max_abs)
+        ax.set_aspect("equal", adjustable="box")
+        ax.set_xlabel("Peak[0] angle (deg)")
+        ax.grid(True, alpha=0.2)
+    ax_left.set_ylabel("Peak[1] angle (deg)")
+
+    fig.suptitle(
+        f"{cohort.animal} | first vs second peak angle | "
+        f"binned overlays (centroid + ellipsoid; bin_days={cohort.bin_days})",
+        y=0.99,
+    )
+    fig.subplots_adjust(right=0.78)
+    if legend_handles:
+        fig.legend(
+            legend_handles, legend_labels,
+            loc="upper left",
+            bbox_to_anchor=(0.80, 0.95),
+            frameon=False, fontsize=9,
+        )
+    return fig
+
+
+# ============================================================================
+# Phase + scatter family-level public drivers
+# ============================================================================
+
+
+def build_first_vs_second_peak_scatter_cohort(
+    animal: str,
+    resolver: PathResolver,
+    *,
+    params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    cohort: TongueAngleCohortAggregates | None = None,
+    overwrite: Literal["skip", "force"] = "skip",
+) -> dict[str, Path]:
+    """Render the ``first_vs_second_peak_scatter`` cross-session
+    family for one animal: emits ``session_overlays`` +
+    ``binned_overlays`` PNGs.
+
+    Phase 7a.4-cross-session-angle Cross-session #5 (2026-05-04).
+    Per-trial scatter rather than mean ± SEM time series; binned
+    variant draws per-bin centroid + axis-aligned ellipsoid
+    (mean ± 1 SD on each axis).
+    """
+    if overwrite not in ("skip", "force"):
+        raise ValueError(
+            f"overwrite must be 'skip' or 'force'; got {overwrite!r}",
+        )
+    if params is None:
+        params = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+
+    out_dir = resolver.tongue_angle_cross_session_dir(animal)
+    paths = _family_paths(out_dir, animal, "first_vs_second_peak_scatter")
+    if overwrite == "skip" and all(p.exists() for p in paths.values()):
+        return paths
+
+    if cohort is None:
+        cohort = build_tongue_angle_cohort_aggregates(
+            animal, resolver, params=params, animal_info=animal_info,
+            families=["first_vs_second_peak_scatter"],
+        )
+
+    fig_so = _plot_first_vs_second_peak_scatter_session_overlays(
+        cohort, params=params,
+    )
+    _save_and_close(fig_so, paths["session_overlays"])
+
+    fig_bo = _plot_first_vs_second_peak_scatter_binned_overlays(
+        cohort, params=params,
+    )
+    _save_and_close(fig_bo, paths["binned_overlays"])
+
+    return paths
+
+
 def build_phase_aligned_angle_cohort(
     animal: str,
     resolver: PathResolver,
@@ -1423,9 +1803,11 @@ def build_phase_aligned_angle_cohort(
 __all__ = [
     "FAMILY_TOKENS",
     "SUB_VARIANTS",
+    "ScatterSessionAggregate",
     "TimeSeriesSessionAggregate",
     "TongueAngleCohortAggregates",
     "build_first_peak_aligned_cohort",
+    "build_first_vs_second_peak_scatter_cohort",
     "build_phase_aligned_angle_cohort",
     "build_reward_aligned_cohort",
     "build_tongue_angle_cohort_aggregates",
