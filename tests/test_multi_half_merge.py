@@ -27,6 +27,7 @@ from stroke_orofacial.spout_behavior.multi_half_merge import (
     _shift_frame_indices,
     _shift_time_axis,
     merge_alignment_templates,
+    merge_centered_parquet,
     merge_licks_and_rewards,
 )
 
@@ -990,3 +991,183 @@ class TestComputeAndMergeAlignmentMultiHalf:
 
         # One compute call per half
         assert mock_compute.call_count == 2
+
+
+# ---------- TestCenteredParquetMerge ----------
+
+
+def _make_centered_df(n_rows: int, *, seed: int = 0):
+    """Synthetic centered DLC DataFrame with the 39-column schema shape.
+
+    Bodyparts × {x, y, likelihood} = 13 × 3 = 39 columns. Column names
+    follow the legacy convention but the precise list isn't load-bearing
+    for the merge function — what matters is column-set equality across
+    halves and frame-index continuity in the merged row index.
+    """
+    import numpy as np
+    import pandas as pd
+    rng = np.random.default_rng(seed)
+    bodyparts = [
+        "tongue", "L_eye", "R_eye", "nose", "L_paw", "R_paw",
+        "L_ear", "R_ear", "L_spout", "R_spout", "jaw", "tail", "whisker_pad",
+    ]
+    cols: dict[str, np.ndarray] = {}
+    for bp in bodyparts:
+        cols[f"{bp}_x"] = rng.standard_normal(n_rows).astype("float32")
+        cols[f"{bp}_y"] = rng.standard_normal(n_rows).astype("float32")
+        cols[f"{bp}_likelihood"] = rng.uniform(0.5, 1.0, n_rows).astype("float32")
+    return pd.DataFrame(cols)
+
+
+class TestCenteredParquetMerge:
+    """Cell 13 port: pd.concat axis=0 ignore_index=True, with column
+    parity enforcement."""
+
+    def test_n2_concat_preserves_shape(self, tmp_path: Path):
+        import pandas as pd
+        a_path = tmp_path / "a.parquet"
+        b_path = tmp_path / "b.parquet"
+        df_a = _make_centered_df(100, seed=1)
+        df_b = _make_centered_df(200, seed=2)
+        df_a.to_parquet(a_path, index=False)
+        df_b.to_parquet(b_path, index=False)
+
+        merged_path = merge_centered_parquet([a_path, b_path], tmp_path / "merged.parquet")
+
+        merged = pd.read_parquet(merged_path)
+        assert len(merged) == 300  # 100 + 200
+        # Column set + order preserved (39 columns)
+        assert list(merged.columns) == list(df_a.columns)
+        assert len(merged.columns) == 39
+
+    def test_n2_frame_index_continuity(self, tmp_path: Path):
+        """ignore_index=True yields a fresh RangeIndex(0..n_total-1).
+        Downstream consumers reading row idx as cam-frame idx see a
+        contiguous range matching the alignment-template merged
+        sig_camTimes__idx_cam length."""
+        import pandas as pd
+        a_path = tmp_path / "a.parquet"
+        b_path = tmp_path / "b.parquet"
+        df_a = _make_centered_df(50)
+        df_b = _make_centered_df(75)
+        df_a.to_parquet(a_path, index=False)
+        df_b.to_parquet(b_path, index=False)
+
+        merge_centered_parquet([a_path, b_path], tmp_path / "merged.parquet")
+        merged = pd.read_parquet(tmp_path / "merged.parquet")
+
+        # Row index is a fresh RangeIndex(0..125-1)
+        assert list(merged.index) == list(range(125))
+
+    def test_n2_data_preserved_per_half(self, tmp_path: Path):
+        """Merged rows 0..n_a-1 == half-A; rows n_a..n_a+n_b-1 == half-B.
+        Verifies concat is in acquisition order."""
+        import numpy as np
+        import pandas as pd
+        a_path = tmp_path / "a.parquet"
+        b_path = tmp_path / "b.parquet"
+        df_a = _make_centered_df(20, seed=10)
+        df_b = _make_centered_df(30, seed=20)
+        df_a.to_parquet(a_path, index=False)
+        df_b.to_parquet(b_path, index=False)
+
+        merge_centered_parquet([a_path, b_path], tmp_path / "merged.parquet")
+        merged = pd.read_parquet(tmp_path / "merged.parquet")
+
+        np.testing.assert_array_equal(
+            merged.iloc[:20]["tongue_x"].to_numpy(),
+            df_a["tongue_x"].to_numpy(),
+        )
+        np.testing.assert_array_equal(
+            merged.iloc[20:50]["tongue_x"].to_numpy(),
+            df_b["tongue_x"].to_numpy(),
+        )
+
+    def test_column_mismatch_raises(self, tmp_path: Path):
+        """Different column sets across halves raise ValueError before
+        any concat happens — cell 13 lines 98-99 strict check."""
+        a_path = tmp_path / "a.parquet"
+        b_path = tmp_path / "b.parquet"
+        df_a = _make_centered_df(10)
+        df_b = _make_centered_df(10)
+        df_b = df_b.drop(columns=["tongue_likelihood"])  # remove one column
+        df_a.to_parquet(a_path, index=False)
+        df_b.to_parquet(b_path, index=False)
+
+        with pytest.raises(ValueError, match=r"Column mismatch"):
+            merge_centered_parquet([a_path, b_path], tmp_path / "merged.parquet")
+
+    def test_column_order_mismatch_raises(self, tmp_path: Path):
+        """Same column set but different order also raises — cell 13
+        compares ``list(A.columns) != list(B.columns)`` (order-sensitive)."""
+        a_path = tmp_path / "a.parquet"
+        b_path = tmp_path / "b.parquet"
+        df_a = _make_centered_df(10)
+        df_b = _make_centered_df(10)
+        # Reverse columns
+        df_b = df_b[list(df_b.columns)[::-1]]
+        df_a.to_parquet(a_path, index=False)
+        df_b.to_parquet(b_path, index=False)
+
+        with pytest.raises(ValueError, match=r"Column mismatch"):
+            merge_centered_parquet([a_path, b_path], tmp_path / "merged.parquet")
+
+    def test_n3_extension(self, tmp_path: Path):
+        import pandas as pd
+        paths = [tmp_path / f"h{i}.parquet" for i in range(3)]
+        sizes = [50, 30, 70]
+        for p, n in zip(paths, sizes, strict=True):
+            _make_centered_df(n).to_parquet(p, index=False)
+
+        merge_centered_parquet(paths, tmp_path / "merged.parquet")
+        merged = pd.read_parquet(tmp_path / "merged.parquet")
+        assert len(merged) == sum(sizes)  # 150
+        assert list(merged.index) == list(range(150))
+
+    def test_raises_on_n_lt_2(self, tmp_path: Path):
+        a_path = tmp_path / "a.parquet"
+        _make_centered_df(10).to_parquet(a_path, index=False)
+        with pytest.raises(ValueError, match=r"N >= 2"):
+            merge_centered_parquet([a_path], tmp_path / "out.parquet")
+
+    def test_raises_on_missing_input(self, tmp_path: Path):
+        a_path = tmp_path / "a.parquet"
+        _make_centered_df(10).to_parquet(a_path, index=False)
+        with pytest.raises(FileNotFoundError):
+            merge_centered_parquet(
+                [a_path, tmp_path / "nonexistent.parquet"],
+                tmp_path / "out.parquet",
+            )
+
+    def test_creates_output_parent_dirs(self, tmp_path: Path):
+        a_path = tmp_path / "a.parquet"
+        b_path = tmp_path / "b.parquet"
+        _make_centered_df(10).to_parquet(a_path, index=False)
+        _make_centered_df(10).to_parquet(b_path, index=False)
+        deep = tmp_path / "deep" / "nested" / "merged.parquet"
+        merge_centered_parquet([a_path, b_path], deep)
+        assert deep.exists()
+
+    def test_returns_output_path(self, tmp_path: Path):
+        a_path = tmp_path / "a.parquet"
+        b_path = tmp_path / "b.parquet"
+        _make_centered_df(10).to_parquet(a_path, index=False)
+        _make_centered_df(10).to_parquet(b_path, index=False)
+        out = tmp_path / "merged.parquet"
+        result = merge_centered_parquet([a_path, b_path], out)
+        assert result == out
+        assert result.exists()
+
+    def test_compression_kwarg(self, tmp_path: Path):
+        """Compression kwarg passes through to pandas.to_parquet."""
+        import pandas as pd
+        a_path = tmp_path / "a.parquet"
+        b_path = tmp_path / "b.parquet"
+        _make_centered_df(10).to_parquet(a_path, index=False)
+        _make_centered_df(10).to_parquet(b_path, index=False)
+        merge_centered_parquet(
+            [a_path, b_path], tmp_path / "merged.parquet", compression="snappy",
+        )
+        # File loads back with the alternate compression
+        merged = pd.read_parquet(tmp_path / "merged.parquet")
+        assert len(merged) == 20

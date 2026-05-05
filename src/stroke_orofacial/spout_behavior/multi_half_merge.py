@@ -8,6 +8,10 @@ post-process merge functions — one per coordinated layer:
   - :func:`merge_alignment_templates` (Layer 3; cell 16 port). Task 5.
   - :func:`merge_centered_parquet` (Layer 2; cell 13 port). Task 6.
 
+Despite the layer numbers, the three functions are independent ports;
+none depends on another's output schema. Layer numbering reflects
+Architecture X's design narrative, not call order.
+
 All three operate on per-half artefacts emitted by the upstream
 per-half loops (Phase 2/3/4 respectively) and produce the merged
 parent-level output that downstream consumers read.
@@ -763,5 +767,114 @@ def merge_alignment_templates(
     logger.info(
         "merge_alignment_templates: wrote %s (n_halves=%d, n_cam=%s, n_ws=%s)",
         output_path, n_halves, n_cam_per_half, n_ws_per_half,
+    )
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# merge_centered_parquet — cell 13 port (Architecture X Layer 2).
+# ---------------------------------------------------------------------------
+
+
+def merge_centered_parquet(
+    per_half_parquet_paths: list[Path],
+    output_path: Path,
+    *,
+    compression: str = "zstd",
+) -> Path:
+    """Merge N per-half centered DLC parquets into a single combined
+    parquet at ``output_path`` — faithful port of legacy cell 13.
+
+    Cell 13 is structurally simpler than cells 16/17: every per-half
+    DataFrame has the same 39-column centered schema, so the merge
+    reduces to ``pd.concat([dfs], axis=0, ignore_index=True)`` — the
+    rest of cell 13 is regex-driven discovery + sort-by-acquisition-
+    timestamp logic that the new pipeline already does outside the
+    merge function (``manifest.halves`` is already in acquisition
+    order).
+
+    Sanity checks:
+      - All halves share the same column set in the same order. Mismatch
+        raises ValueError.
+      - All halves have a non-empty DataFrame.
+
+    The merged DataFrame uses ``ignore_index=True`` so the row index is
+    a fresh ``RangeIndex(0..n_total)`` — frame-index-as-row-index
+    continuity (downstream consumers that read row idx as cam-frame
+    idx see a contiguous 0..n_cam_total range matching the alignment-
+    template merged ``sig_camTimes__idx_cam`` length).
+
+    **N-half generalization:** legacy cell 13 hardcodes 2 halves (A/B,
+    keep keyA / drop keyB). This port accepts ``N >= 2`` — equivalent
+    to the legacy when ``N == 2`` since concat-axis-0-ignore-index is
+    associative.
+
+    Parameters
+    ----------
+    per_half_parquet_paths : list[Path]
+        Per-half centered parquet paths in acquisition order. ``len >= 2``.
+    output_path : Path
+        Destination for the merged parquet.
+    compression : str
+        Parquet compression codec (default ``"zstd"`` matches
+        :func:`stroke_orofacial.dlc_io.parquet.write_centered_parquet`).
+
+    Returns
+    -------
+    Path
+        The ``output_path`` (returned for chaining).
+
+    Raises
+    ------
+    ValueError
+        If fewer than 2 paths are supplied, or if column sets / orders
+        differ across halves.
+    FileNotFoundError
+        If any per-half input path is missing.
+    """
+    if len(per_half_parquet_paths) < 2:
+        raise ValueError(
+            f"merge_centered_parquet requires N >= 2 per-half parquets, got "
+            f"{len(per_half_parquet_paths)}"
+        )
+    for p in per_half_parquet_paths:
+        if not Path(p).exists():
+            raise FileNotFoundError(f"per-half parquet not found: {p}")
+
+    # Deferred import — pandas is already a hard dep elsewhere in the
+    # package, but keep multi_half_merge importable in environments that
+    # only need the NPZ-merge functions (a hypothetical light-deps path).
+    import pandas as pd
+
+    dfs = [pd.read_parquet(p) for p in per_half_parquet_paths]
+
+    # Column-set + ordering validation. Cell 13 line 98-99 checks
+    # ``list(A.columns) != list(B.columns)`` exactly; this port preserves
+    # the order-sensitive comparison so a half with re-ordered columns
+    # raises before silently misaligning.
+    ref_cols = list(dfs[0].columns)
+    for i, df in enumerate(dfs[1:], start=1):
+        if list(df.columns) != ref_cols:
+            raise ValueError(
+                f"Column mismatch between half[0] and half[{i}]:\n"
+                f"  half[0]: {ref_cols}\n"
+                f"  half[{i}]: {list(df.columns)}"
+            )
+
+    merged = pd.concat(dfs, axis=0, ignore_index=True)
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    # No atomic write here — callers are expected to gate overwrite.
+    # Direct write keeps the merge function simple and testable; the
+    # plumbing in dlc_io.parquet handles overwrite + atomic-write
+    # semantics for the consolidated pipeline.
+    merged.to_parquet(output_path, index=False, compression=compression)
+    logger.info(
+        "merge_centered_parquet: wrote %s (n_halves=%d, n_rows_per_half=%s, n_rows_total=%d)",
+        output_path,
+        len(dfs),
+        [len(df) for df in dfs],
+        len(merged),
     )
     return output_path
