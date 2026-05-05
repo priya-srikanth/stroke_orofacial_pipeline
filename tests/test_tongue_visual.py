@@ -270,8 +270,18 @@ def synthetic_bundle() -> TongueVisualBundle:
 
 
 class TestRenderTongueQCFigures:
-    def test_emits_6_pngs_per_session(self, tmp_path, synthetic_bundle):
-        """Driver writes 2 family-1 (per-side) + 4 single-PNG families = 6."""
+    def test_emits_9_pngs_per_session(self, tmp_path, synthetic_bundle):
+        """Driver writes 6 family keys: 2 PNGs from qc_trials (per-side)
+        + 3 PNGs from phase_aligned_angle (mode-suffixed
+        _1st_lick / _all_licks / _first_{N}_licks) + 1 PNG each from
+        first_peak_aligned, reward_aligned, first_vs_second_peak_scatter,
+        xy_by_phase = 9 total.
+
+        Updated 2026-05-04 per Addendum #11 Part B: new
+        first_vs_second_peak_scatter family (per-trial scatter of
+        peak[0] angle vs peak[1] angle) inserted between
+        phase_aligned_angle and xy_by_phase in _FAMILIES_ALL.
+        """
         animal = synthetic_bundle.metadata["animal"]
         date = datetime.date.fromisoformat(synthetic_bundle.metadata["date"])
         resolver = PathResolver(output_root=tmp_path)
@@ -280,18 +290,82 @@ class TestRenderTongueQCFigures:
             bundle=synthetic_bundle,
             overwrite="force",
         )
-        # 5 family keys; family 1 has 2 paths, others 1 each. Total 6.
         assert set(out.keys()) == {
             "qc_trials", "first_peak_aligned", "reward_aligned",
-            "phase_aligned_angle", "xy_by_phase",
+            "phase_aligned_angle", "first_vs_second_peak_scatter",
+            "xy_by_phase",
         }
         all_paths = [p for paths in out.values() for p in paths]
-        assert len(all_paths) == 6
+        assert len(all_paths) == 9
         for p in all_paths:
             assert p.exists()
             assert p.stat().st_size > 1024  # > 1 KB sanity
             # No leftover .tmp files from atomic save.
             assert not p.with_name(p.name + ".tmp").exists()
+
+    def test_phase_aligned_angle_emits_mode_suffixed_pngs(
+        self, tmp_path, synthetic_bundle,
+    ):
+        """Phase 7a.4-cross-session-angle Addenda #3 / #11 Part A
+        (2026-05-04): the bare ``phase_aligned_angle.png`` filename is
+        retired. The driver emits three mode-suffixed PNGs per session:
+        ``_1st_lick.png`` (mode = ``first_lick``, Addendum #9),
+        ``_all_licks.png`` (mode = ``all_multi``, Addendum #10), and
+        ``_first_{N}_licks.png`` where ``N`` =
+        ``phase_aligned_first_n_peaks`` config knob (default 2,
+        Addendum #11 Part A).
+        """
+        animal = synthetic_bundle.metadata["animal"]
+        date = datetime.date.fromisoformat(synthetic_bundle.metadata["date"])
+        resolver = PathResolver(output_root=tmp_path)
+        out = render_tongue_qc_figures(
+            animal=animal, date=date, resolver=resolver,
+            bundle=synthetic_bundle,
+            families=["phase_aligned_angle"],
+            overwrite="force",
+        )
+        paths = out["phase_aligned_angle"]
+        assert len(paths) == 3
+        names = {p.name for p in paths}
+        assert names == {
+            "phase_aligned_angle_1st_lick.png",
+            "phase_aligned_angle_all_licks.png",
+            "phase_aligned_angle_first_2_licks.png",
+        }
+        # The bare filename must NOT be emitted.
+        bare = (
+            resolver.tongue_angle_within_session_dir(animal, date) / "phase_aligned_angle.png"
+        )
+        assert not bare.exists()
+
+    def test_first_n_licks_filename_tracks_config_knob(
+        self, tmp_path, synthetic_bundle,
+    ):
+        """Phase 7a.4-cross-session-angle Addendum #11 Part A
+        (2026-05-04): the ``phase_aligned_angle_first_{N}_licks.png``
+        filename tracks the
+        ``dlc_kinematics.tongue_visual.phase_aligned_first_n_peaks``
+        config knob. Override the knob → the suffix changes
+        accordingly.
+        """
+        animal = synthetic_bundle.metadata["animal"]
+        date = datetime.date.fromisoformat(synthetic_bundle.metadata["date"])
+        resolver = PathResolver(output_root=tmp_path)
+        params = load_defaults()
+        params["dlc_kinematics"]["tongue_visual"][
+            "phase_aligned_first_n_peaks"
+        ] = 3
+        out = render_tongue_qc_figures(
+            animal=animal, date=date, resolver=resolver,
+            bundle=synthetic_bundle,
+            families=["phase_aligned_angle"],
+            params=params,
+            overwrite="force",
+        )
+        names = {p.name for p in out["phase_aligned_angle"]}
+        # Override → the variant suffix is now "first_3_licks"
+        assert "phase_aligned_angle_first_3_licks.png" in names
+        assert "phase_aligned_angle_first_2_licks.png" not in names
 
     def test_per_trial_qc_emits_separate_png_per_side(
         self, tmp_path, synthetic_bundle,
@@ -313,7 +387,7 @@ class TestRenderTongueQCFigures:
     def test_overwrite_skip_does_not_rewrite(
         self, tmp_path, synthetic_bundle,
     ):
-        """skip with all 6 PNGs present → return paths immediately
+        """skip with all 9 PNGs present → return paths immediately
         (sentinel-content detection: stomp one PNG with junk; verify it's
         unchanged after skip-mode rerun)."""
         animal = synthetic_bundle.metadata["animal"]
@@ -345,7 +419,7 @@ class TestRenderTongueQCFigures:
             overwrite="force",
         )
         sentinel_path = (
-            resolver.tongue_angle_dir(animal, date) / "first_peak_aligned.png"
+            resolver.tongue_angle_within_session_dir(animal, date) / "first_peak_aligned.png"
         )
         sentinel_path.write_bytes(b"SENTINEL")
         render_tongue_qc_figures(
@@ -412,13 +486,252 @@ class TestPlotFamilies:
         assert any_lines
         plt.close(fig)
 
+    def test_reward_aligned_clips_x_axis_to_display_window(self):
+        """Phase 7a.4-cross-session-angle Addendum #4 (2026-05-04):
+        ``_plot_reward_aligned`` clips the x-axis to
+        ``dlc_kinematics.tongue_visual.reward_aligned_display_window_ms``
+        regardless of the bundle's wider ``plot_win_ms``. Locks the
+        contract that per-session and cross-session reward-aligned
+        plots share the same x-axis byte-for-byte.
+
+        Builds a fixture with the production-default wide bundle window
+        (``[-180, 8000]`` ms) and asserts the rendered xlim matches the
+        narrow display window (``[-180, 1000]`` ms by default).
+        """
+        bundle = _make_synthetic_bundle(plot_win_ms=(-180.0, 8000.0))
+        params = load_defaults()
+        display_win = tuple(
+            params["dlc_kinematics"]["tongue_visual"][
+                "reward_aligned_display_window_ms"
+            ]
+        )
+        fig = _plot_reward_aligned(bundle, params=params)
+        ax = fig.axes[0]
+        xlim_lo, xlim_hi = ax.get_xlim()
+        assert xlim_lo == pytest.approx(float(display_win[0]))
+        assert xlim_hi == pytest.approx(float(display_win[1]))
+        plt.close(fig)
+
+    def test_reward_aligned_display_window_overrides_bundle_data_extent(self):
+        """Same locked contract, exercised the other way: even when the
+        bundle's t_ms extends to 8000 ms, the rendered x-axis is bounded
+        by the display knob, NOT by the data's max(t_ms). Catches a
+        regression where ``set_xlim`` is dropped and matplotlib
+        auto-fits to the data.
+        """
+        bundle = _make_synthetic_bundle(plot_win_ms=(-180.0, 8000.0))
+        # Override knob to a tight window distinct from the production
+        # default so any leakage from auto-fit is visible.
+        params = load_defaults()
+        params["dlc_kinematics"]["tongue_visual"][
+            "reward_aligned_display_window_ms"
+        ] = [-100.0, 500.0]
+        fig = _plot_reward_aligned(bundle, params=params)
+        ax = fig.axes[0]
+        xlim_lo, xlim_hi = ax.get_xlim()
+        assert xlim_lo == pytest.approx(-100.0)
+        assert xlim_hi == pytest.approx(500.0)
+        plt.close(fig)
+
     def test_phase_aligned_angle_returns_nonempty_figure(self, synthetic_bundle):
+        """Default mode path (no ``mode`` arg → falls back to config
+        ``modes.phase_summary``)."""
         params = load_defaults()
         fig = _plot_phase_aligned_angle(synthetic_bundle, params=params)
         assert isinstance(fig, plt.Figure)
         assert len(fig.axes) >= 1
         any_lines = any(len(ax.get_lines()) > 0 for ax in fig.axes)
         assert any_lines
+        plt.close(fig)
+
+    def test_phase_aligned_angle_mode_first_lick_uses_centered_builder(
+        self, synthetic_bundle,
+    ):
+        """Phase 7a.4-cross-session-angle Addenda #9 + #10
+        (2026-05-04): when called with ``mode="first_lick"``,
+        ``_plot_phase_aligned_angle`` dispatches via
+        ``_phase_rows_for_mode`` to
+        :func:`build_first_lick_centered_phase_rows`. The figure is
+        non-empty and the title carries the ``first_lick`` mode
+        token.
+        """
+        params = load_defaults()
+        fig = _plot_phase_aligned_angle(
+            synthetic_bundle, params=params, mode="first_lick",
+        )
+        assert isinstance(fig, plt.Figure)
+        ax = fig.axes[0]
+        # Title carries the user-facing ``1st lick`` token (Phase
+        # 7a.4-cross-session-angle Addendum #15 title convention).
+        assert "1st lick" in ax.get_title()
+        plt.close(fig)
+
+    def test_phase_aligned_angle_mode_all_multi_uses_centered_builder(
+        self, synthetic_bundle,
+    ):
+        """Phase 7a.4-cross-session-angle Addendum #10: mode
+        ``"all_multi"`` dispatches to
+        :func:`build_all_licks_centered_phase_rows` (every peak
+        in every multi-bout, centered with forward ILI; last peak
+        per bout dropped). The all-licks centered output must
+        contain at least as many rows as the first-lick-only
+        output (which is a single-peak subset).
+        """
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+            build_first_lick_centered_phase_rows,
+        )
+        # Compare row counts under explicit real_only mode (synthetic
+        # fixture has no per-animal pre-stroke median ILI in metadata,
+        # so synthetic_only / hybrid would raise; real_only is the
+        # consistent comparable). The renderer below uses the
+        # production default (synthetic_only with NaN-fallback to
+        # real_only when synthetic ILI missing).
+        n_first_lick = len(
+            build_first_lick_centered_phase_rows(
+                synthetic_bundle, ili_source="real_only",
+            ),
+        )
+        n_all_multi = len(
+            build_all_licks_centered_phase_rows(
+                synthetic_bundle, ili_source="real_only",
+            ),
+        )
+        assert n_first_lick <= n_all_multi
+        # Renderer smoke check + title token assertion.
+        params = load_defaults()
+        fig = _plot_phase_aligned_angle(
+            synthetic_bundle, params=params, mode="all_multi",
+        )
+        # Title carries the user-facing ``all licks`` token.
+        assert "all licks" in fig.axes[0].get_title()
+        plt.close(fig)
+
+    def test_phase_aligned_angle_mode_first_n_licks_dispatches(
+        self, synthetic_bundle,
+    ):
+        """Phase 7a.4-cross-session-angle Addendum #11 Part A
+        (2026-05-04): mode ``"first_n_licks"`` dispatches via
+        :func:`_phase_rows_for_mode` to
+        :func:`build_first_n_licks_centered_phase_rows` and renders
+        a multi-cycle plot with x-axis spanning ``[0, n_peaks]``.
+        Title carries ``"first {N} licks"``; xlim is ``(0, N)``.
+        """
+        params = load_defaults()
+        fig = _plot_phase_aligned_angle(
+            synthetic_bundle, params=params,
+            mode="first_n_licks", n_peaks=2,
+        )
+        ax = fig.axes[0]
+        assert "first 2 licks" in ax.get_title()
+        xlim = ax.get_xlim()
+        assert xlim[0] == pytest.approx(0.0)
+        assert xlim[1] == pytest.approx(2.0)
+        plt.close(fig)
+
+    def test_first_vs_second_peak_scatter_uses_cam_view_subplot_ordering(
+        self, synthetic_bundle,
+    ):
+        """Phase 7a.4-cross-session-angle Addendum #11 Part B
+        (2026-05-04): the LEFT subplot must show R-trials and the
+        RIGHT subplot must show L-trials per the cam-view convention
+        (mirrors 7a.4-orientation-fix + 7a.6 C7.2 + Addendum #16
+        per-cycle convention). Pin against silent regression.
+        """
+        from stroke_orofacial.dlc_kinematics.tongue_visual import (
+            _plot_first_vs_second_peak_scatter,
+        )
+        params = load_defaults()
+        fig = _plot_first_vs_second_peak_scatter(
+            synthetic_bundle, params=params,
+        )
+        assert isinstance(fig, plt.Figure)
+        assert len(fig.axes) >= 2
+        assert "R trials" in fig.axes[0].get_title(), (
+            f"expected 'R trials' in left-panel title; got "
+            f"{fig.axes[0].get_title()!r}"
+        )
+        assert "L trials" in fig.axes[1].get_title(), (
+            f"expected 'L trials' in right-panel title; got "
+            f"{fig.axes[1].get_title()!r}"
+        )
+        plt.close(fig)
+
+    def test_first_vs_second_peak_scatter_has_diagonal_reference(
+        self, synthetic_bundle,
+    ):
+        """Phase 7a.4-cross-session-angle Addendum #11 Part B
+        (2026-05-04): each subplot includes a y=x diagonal
+        reference line spanning the full axis range. Pin via
+        the line's slope (≈1 in axis-data coordinates with
+        equal aspect)."""
+        from stroke_orofacial.dlc_kinematics.tongue_visual import (
+            _plot_first_vs_second_peak_scatter,
+        )
+        params = load_defaults()
+        fig = _plot_first_vs_second_peak_scatter(
+            synthetic_bundle, params=params,
+        )
+        for ax in fig.axes[:2]:
+            # The diagonal line goes from (-max, -max) to (+max, +max);
+            # slope = 1.
+            slopes = []
+            for line in ax.get_lines():
+                xd = np.asarray(line.get_xdata())
+                yd = np.asarray(line.get_ydata())
+                if xd.size == 2 and yd.size == 2 and xd[0] != xd[1]:
+                    slopes.append((yd[1] - yd[0]) / (xd[1] - xd[0]))
+            assert any(
+                abs(s - 1.0) < 1e-6 for s in slopes
+            ), (
+                f"expected a y=x diagonal line; got slopes {slopes!r}"
+            )
+        plt.close(fig)
+
+    def test_first_n_licks_renders_per_cycle_line_segments(
+        self, synthetic_bundle,
+    ):
+        """Phase 7a.4-cross-session-angle Addendum #16 (2026-05-04):
+        multi-cycle plots render each cycle as an independent line
+        segment so the boundary discontinuity at x=1, 2, ..., N-1
+        is visible (under Mode 3, synthetic cycle width does not
+        match real per-trial peak-to-peak timing — a connected
+        line would draw between physically distinct time-points).
+
+        Pin: no mean-curve Line2D may span more than one cycle's
+        x range (= 1.0 wide). Synthetic fixture has no pre-stroke
+        median ILI in metadata; force ``ili_source="real_only"``
+        so the helper has data to render.
+        """
+        params = load_defaults()
+        fig = _plot_phase_aligned_angle(
+            synthetic_bundle, params=params,
+            mode="first_n_licks", n_peaks=2,
+            ili_source="real_only",
+        )
+        ax = fig.axes[0]
+        # Mean-curve lines have many sample points; axhline /
+        # axvline reference lines have exactly 2. Filter on length.
+        mean_lines = [
+            ln for ln in ax.get_lines()
+            if len(ln.get_xdata()) > 5
+        ]
+        assert len(mean_lines) >= 2, (
+            f"expected ≥2 mean-curve Line2D artists for multi-cycle "
+            f"plot (per-side × per-cycle); got {len(mean_lines)}"
+        )
+        # No mean-curve line should span more than one cycle's
+        # x range (cycle width = 1.0). Per-cycle segmentation
+        # confines each line to a sub-region of [i, i+1).
+        for line in mean_lines:
+            xdata = np.asarray(line.get_xdata())
+            if xdata.size == 0:
+                continue
+            x_span = float(np.nanmax(xdata) - np.nanmin(xdata))
+            assert x_span < 1.0 + 1e-6, (
+                f"line spans {x_span:.3f} of x; expected < 1.0 "
+                f"(per-cycle segmentation)"
+            )
         plt.close(fig)
 
     def test_xy_by_phase_returns_nonempty_figure(self, synthetic_bundle):

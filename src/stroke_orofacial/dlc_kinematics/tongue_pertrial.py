@@ -42,6 +42,7 @@ Outputs (atomic, three files per session)
 from __future__ import annotations
 
 import datetime
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Sequence
@@ -191,6 +192,884 @@ class _PertrialCoreResult:
 
 
 # ===========================================================================
+# Public selectors / builders over TongueVisualBundle (Addenda #9 + #10)
+# ===========================================================================
+#
+# The phase-aligned-angle plot family (per-session ``_1st_lick`` /
+# ``_all_licks`` PNGs and forthcoming cross-session variants) consumes
+# CENTERED-ON-PEAK phase rows built from per-frame ``angle_snip`` +
+# ``df_bouts`` peak times — NOT the bundle's existing ``df_phase``
+# (which carries legacy peak-to-peak-shifted phase per
+# :func:`_assign_phase_peak_to_peak_shifted`).
+#
+# Centered convention per peak ``p`` with forward inter-lick interval
+# ``ILI = next_peak - p``:
+#
+#   window = (p - ILI / 2, p + ILI / 2)
+#   phase  = (t - (p - ILI / 2)) / ILI ∈ [0, 1]
+#
+# ``p`` lands at ``phase == 0.5``; cycle is symmetric about the peak.
+# The rendered curve reads naturally as "approach peak → at peak →
+# leave peak" left-to-right. See Addenda #9 + #10 DECISIONS entry.
+#
+# LAST PEAK of each multi-bout (no forward ILI) is dropped — no
+# synthetic-ILI fallback. Loses ~10-20% of peaks across the dataset;
+# accepted as the cleanest-convention trade-off.
+#
+# Per Addendum #5 Option α: trials with NO multi-bouts contribute
+# nothing — phase requires ≥2 peaks to define a cycle.
+
+
+_CENTERED_PHASE_ROW_COLUMNS: tuple[str, ...] = (
+    "side", "trial_index", "peak_t_ms", "t_ms", "phase",
+    "phase_bin", "phase_bin_center", "angle_deg",
+)
+
+
+def _empty_centered_phase_rows_df() -> pd.DataFrame:
+    """Empty centered-phase DataFrame with the expected columns."""
+    cols = {
+        "side": pd.Series(dtype=object),
+        "trial_index": pd.Series(dtype=int),
+        "peak_t_ms": pd.Series(dtype=float),
+        "t_ms": pd.Series(dtype=float),
+        "phase": pd.Series(dtype=float),
+        "phase_bin": pd.Series(dtype=int),
+        "phase_bin_center": pd.Series(dtype=float),
+        "angle_deg": pd.Series(dtype=float),
+    }
+    return pd.DataFrame(cols)
+
+
+def _centered_phase_rows_from_peaks(
+    *,
+    peak_times_ms: np.ndarray,
+    ilis_ms: np.ndarray,
+    t_arr: np.ndarray,
+    angle_snip: np.ndarray,
+    side: str,
+    trial_index: int,
+    phase_bin_edges: np.ndarray,
+    phase_bin_centers: np.ndarray,
+) -> list[dict[str, Any]]:
+    """Shared building block for the centered-phase helpers
+    (Addenda #9 + #10).
+
+    For each ``(p, ili)`` pair in ``zip(peak_times_ms, ilis_ms)`` with
+    finite ``ili > 0``, identifies frames in the trial slice whose
+    ``t_arr`` falls in ``(p - ili / 2, p + ili / 2)`` and emits one
+    row per qualifying frame with phase computed as
+    ``(t - (p - ili / 2)) / ili`` (clamped to ``[0, 1]``).
+
+    Returns an unwrapped list of dicts — callers concatenate across
+    trials and sides into the final DataFrame.
+    """
+    out: list[dict[str, Any]] = []
+    n_phase_bins = len(phase_bin_centers)
+    for p, ili in zip(peak_times_ms, ilis_ms):
+        p = float(p)
+        ili = float(ili)
+        if not (np.isfinite(p) and np.isfinite(ili) and ili > 0):
+            continue
+        win_lo = p - ili / 2.0
+        win_hi = p + ili / 2.0
+        mask = (
+            (t_arr >= win_lo) & (t_arr <= win_hi)
+            & np.isfinite(angle_snip)
+        )
+        for ii in np.where(mask)[0]:
+            t = float(t_arr[ii])
+            phase = (t - win_lo) / ili
+            phase = float(np.clip(phase, 0.0, 1.0))
+            bin_idx = int(np.clip(
+                np.searchsorted(phase_bin_edges, phase, side="right") - 1,
+                0, n_phase_bins - 1,
+            ))
+            out.append({
+                "side": side,
+                "trial_index": trial_index,
+                "peak_t_ms": p,
+                "t_ms": t,
+                "phase": phase,
+                "phase_bin": bin_idx,
+                "phase_bin_center": float(phase_bin_centers[bin_idx]),
+                "angle_deg": float(angle_snip[ii]),
+            })
+    return out
+
+
+def _bundle_phase_bin_arrays(
+    bundle: "TongueVisualBundle",
+) -> tuple[np.ndarray, np.ndarray]:
+    n_phase_bins = int(bundle.metadata.get("n_phase_bins", 72))
+    phase_bin_edges = np.linspace(
+        0.0, 1.0, n_phase_bins + 1, dtype=np.float64,
+    )
+    phase_bin_centers = 0.5 * (phase_bin_edges[:-1] + phase_bin_edges[1:])
+    return phase_bin_edges, phase_bin_centers
+
+
+def _trial_arrays(
+    df_trials: pd.DataFrame, trial_index: int, side: str,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Pull ``(t_ms, angle_snip)`` for one trial; ``None`` if missing."""
+    trial_row = df_trials[
+        (df_trials["trial_index"] == trial_index)
+        & (df_trials["side"] == side)
+    ]
+    if trial_row.empty:
+        return None
+    t_arr = np.asarray(trial_row.iloc[0]["t_ms"], dtype=np.float64)
+    angle_arr = np.asarray(trial_row.iloc[0]["angle_snip"], dtype=np.float64)
+    return t_arr, angle_arr
+
+
+def build_first_lick_centered_phase_rows(
+    bundle: "TongueVisualBundle",
+    *,
+    synthetic_ili_ms: float | None = None,
+    ili_source: Literal["real_only", "hybrid", "synthetic_only"] = "synthetic_only",
+) -> pd.DataFrame:
+    """Build centered-on-first-peak phase rows per (trial, side).
+
+    Phase 7a.4-cross-session-angle Addenda #9 / #12 / #14 / #15
+    (2026-05-04).
+
+    ``ili_source`` (Addendum #14; default flipped to
+    ``"synthetic_only"`` per Addendum #15 — Mode 3 won the 3-way
+    PS46/PS50/PS55 visual gate for both ``_1st_lick`` and
+    ``first_2_licks`` plot families):
+
+      - ``"synthetic_only"`` (default): cycle width =
+        ``synthetic_ili_ms`` for EVERY peak regardless of forward-
+        neighbour existence. "First lick" = chronologically-first
+        detected peak. Real-ILI lookup bypassed entirely.
+        ``synthetic_ili_ms`` REQUIRED (raises ValueError if not
+        finite + positive). Eliminates per-cycle width variance
+        from the per-bin aggregation; remaining variance is the
+        natural angle-shape variation across trials (the science
+        of interest).
+      - ``"hybrid"``: "first lick" = chronologically-first detected
+        peak per (trial, side); ILI = forward neighbour across ALL
+        bouts if available, else ``synthetic_ili_ms``. Isolated-
+        lick-only trials contribute via synthetic. Production
+        default between Addendum #12 and Addendum #15.
+      - ``"real_only"``: real forward ILI from same-bout adjacency
+        only. "First lick" = peak[0] of the FIRST MULTI-BOUT per
+        (trial, side); ILI = peak[1] - peak[0] in same bout.
+        Isolated-lick-only trials drop. ``synthetic_ili_ms`` is
+        IGNORED.
+
+    Phase formula (all modes):
+
+      window = (peak_t - ILI / 2, peak_t + ILI / 2)
+      phase  = (t - (peak_t - ILI / 2)) / ILI ∈ [0, 1]
+
+    Returns a DataFrame with columns ``side, trial_index, peak_t_ms,
+    t_ms, phase, phase_bin, phase_bin_center, angle_deg``.
+    """
+    if ili_source not in ("real_only", "hybrid", "synthetic_only"):
+        raise ValueError(
+            f"ili_source must be 'real_only' / 'hybrid' / "
+            f"'synthetic_only'; got {ili_source!r}"
+        )
+    synth = (
+        float(synthetic_ili_ms)
+        if synthetic_ili_ms is not None
+        else float("nan")
+    )
+    synth_finite = np.isfinite(synth) and synth > 0
+    if ili_source == "synthetic_only" and not synth_finite:
+        raise ValueError(
+            f"ili_source='synthetic_only' requires a finite positive "
+            f"synthetic_ili_ms; got {synthetic_ili_ms!r}"
+        )
+    # Byte-for-byte Addendum #12 NaN-fallback semantic: hybrid mode
+    # without a finite synthetic ILI degrades to real_only (multi-
+    # bout-only). Production caller passes
+    # bundle.metadata["pre_stroke_median_ili_ms"] which can be NaN
+    # when the animal has no pre-stroke sessions on disk.
+    if ili_source == "hybrid" and not synth_finite:
+        ili_source = "real_only"
+
+    df_trials = bundle.df_trials
+    df_bouts = bundle.df_bouts
+    if df_trials.empty or df_bouts.empty:
+        return _empty_centered_phase_rows_df()
+
+    phase_bin_edges, phase_bin_centers = _bundle_phase_bin_arrays(bundle)
+
+    rows: list[dict[str, Any]] = []
+    if ili_source == "real_only":
+        # Multi-bout-only: peak[0] of first multi-bout per trial,
+        # ILI from same-bout adjacency.
+        summaries = df_bouts[
+            df_bouts["peak_t_ms"].isna()
+            & (df_bouts["multi_bout_rank"] == 0)
+            & df_bouts["peak_t0_ms"].notna()
+            & df_bouts["peak_t1_ms"].notna()
+        ][["trial_index", "side", "peak_t0_ms", "peak_t1_ms"]].drop_duplicates()
+        if summaries.empty:
+            return _empty_centered_phase_rows_df()
+        for _, summary in summaries.iterrows():
+            trial_idx = int(summary["trial_index"])
+            side = str(summary["side"])
+            arrs = _trial_arrays(df_trials, trial_idx, side)
+            if arrs is None:
+                continue
+            t_arr, angle_arr = arrs
+            p0 = float(summary["peak_t0_ms"])
+            p1 = float(summary["peak_t1_ms"])
+            rows.extend(_centered_phase_rows_from_peaks(
+                peak_times_ms=np.array([p0]),
+                ilis_ms=np.array([p1 - p0]),
+                t_arr=t_arr, angle_snip=angle_arr,
+                side=side, trial_index=trial_idx,
+                phase_bin_edges=phase_bin_edges,
+                phase_bin_centers=phase_bin_centers,
+            ))
+    else:
+        # "hybrid" or "synthetic_only" — both walk all chronologically-
+        # ordered peaks per (trial, side). Hybrid uses real ILI when
+        # available, synthetic as fallback. Synthetic_only forces
+        # synthetic for every peak.
+        per_peak = df_bouts[
+            df_bouts["peak_t_ms"].notna()
+        ][["trial_index", "side", "peak_t_ms"]].sort_values(
+            ["trial_index", "side", "peak_t_ms"],
+        )
+        for (trial_idx, side), grp in per_peak.groupby(
+            ["trial_index", "side"], sort=False,
+        ):
+            peak_times = np.asarray(
+                grp["peak_t_ms"].to_numpy(), dtype=np.float64,
+            )
+            if peak_times.size == 0:
+                continue
+            trial_idx = int(trial_idx)
+            side = str(side)
+            arrs = _trial_arrays(df_trials, trial_idx, side)
+            if arrs is None:
+                continue
+            t_arr, angle_arr = arrs
+            p0 = float(peak_times[0])
+            if ili_source == "synthetic_only":
+                ili = synth
+            else:  # hybrid
+                ili = (
+                    float(peak_times[1] - peak_times[0])
+                    if peak_times.size >= 2 else synth
+                )
+                if not (np.isfinite(ili) and ili > 0):
+                    ili = synth
+            if not (np.isfinite(ili) and ili > 0):
+                # Hybrid with no synthetic available → skip this trial.
+                continue
+            rows.extend(_centered_phase_rows_from_peaks(
+                peak_times_ms=np.array([p0]),
+                ilis_ms=np.array([ili]),
+                t_arr=t_arr, angle_snip=angle_arr,
+                side=side, trial_index=trial_idx,
+                phase_bin_edges=phase_bin_edges,
+                phase_bin_centers=phase_bin_centers,
+            ))
+
+    if not rows:
+        return _empty_centered_phase_rows_df()
+    return pd.DataFrame(rows)
+
+
+def build_first_n_licks_centered_phase_rows(
+    bundle: "TongueVisualBundle",
+    *,
+    n_peaks: int = 2,
+    synthetic_ili_ms: float | None = None,
+    ili_source: Literal["real_only", "hybrid", "synthetic_only"] = "synthetic_only",
+) -> pd.DataFrame:
+    """Build centered-phase rows for the FIRST ``n_peaks`` consecutive
+    licks per (trial, side). Phase 7a.4-cross-session-angle Addenda
+    #11 Part A / #12 / #14 / #15 (2026-05-04).
+
+    ``ili_source`` (Addendum #14; default flipped to
+    ``"synthetic_only"`` per Addendum #15 verdict):
+
+      - ``"synthetic_only"`` (default): first ``n_peaks`` peaks
+        chronologically across all bouts; cycle width =
+        ``synthetic_ili_ms`` for ALL cycles regardless of forward-
+        neighbour existence.
+      - ``"hybrid"``: first ``n_peaks`` peaks chronologically across
+        all bouts; ILI[i] = forward neighbour if available, else
+        ``synthetic_ili_ms``. Requires ``n_peaks`` total peaks.
+      - ``"real_only"``: first ``n_peaks`` peaks of the FIRST
+        MULTI-BOUT; ILI[i] = same-bout forward neighbour. Requires
+        ``n_peaks + 1`` peaks in the first multi-bout.
+
+    Phase formula (peak[i] at x = i + 0.5):
+
+      x_global = (i + 0.5) + (t - p[i]) / ILI[i]   # in [i, i + 1]
+
+    Phase-bin edges/centers span ``[0, n_peaks]`` with
+    ``n_phase_bins * n_peaks`` total bins. Returns a DataFrame with
+    the same columns as the single-cycle builders; ``phase`` /
+    ``phase_bin_center`` span ``[0, n_peaks]``.
+    """
+    if int(n_peaks) < 2:
+        raise ValueError(f"n_peaks must be >= 2; got {n_peaks!r}")
+    if ili_source not in ("real_only", "hybrid", "synthetic_only"):
+        raise ValueError(
+            f"ili_source must be 'real_only' / 'hybrid' / "
+            f"'synthetic_only'; got {ili_source!r}"
+        )
+    synth = (
+        float(synthetic_ili_ms)
+        if synthetic_ili_ms is not None
+        else float("nan")
+    )
+    synth_finite = np.isfinite(synth) and synth > 0
+    if ili_source == "synthetic_only" and not synth_finite:
+        raise ValueError(
+            f"ili_source='synthetic_only' requires a finite positive "
+            f"synthetic_ili_ms; got {synthetic_ili_ms!r}"
+        )
+    # Addendum #12 NaN-fallback: hybrid + missing synthetic → real_only.
+    if ili_source == "hybrid" and not synth_finite:
+        ili_source = "real_only"
+
+    df_trials = bundle.df_trials
+    df_bouts = bundle.df_bouts
+    if df_trials.empty or df_bouts.empty:
+        return _empty_centered_phase_rows_df()
+
+    n_phase_bins = int(bundle.metadata.get("n_phase_bins", 72))
+    total_bins = int(n_phase_bins) * int(n_peaks)
+    phase_bin_edges = np.linspace(
+        0.0, float(n_peaks), total_bins + 1, dtype=np.float64,
+    )
+    phase_bin_centers = 0.5 * (phase_bin_edges[:-1] + phase_bin_edges[1:])
+
+    if ili_source == "real_only":
+        # Multi-bout-only: first multi-bout per trial.
+        per_peak = df_bouts[
+            df_bouts["peak_t_ms"].notna()
+            & (df_bouts["multi_bout_rank"] == 0)
+        ][["trial_index", "side", "peak_t_ms"]].sort_values(
+            ["trial_index", "side", "peak_t_ms"],
+        )
+    else:
+        # hybrid + synthetic_only: chronologically-ordered peaks
+        # across ALL bouts.
+        per_peak = df_bouts[
+            df_bouts["peak_t_ms"].notna()
+        ][["trial_index", "side", "peak_t_ms"]].sort_values(
+            ["trial_index", "side", "peak_t_ms"],
+        )
+    if per_peak.empty:
+        return _empty_centered_phase_rows_df()
+
+    rows: list[dict[str, Any]] = []
+    for (trial_idx, side), grp in per_peak.groupby(
+        ["trial_index", "side"], sort=False,
+    ):
+        peak_times = np.asarray(
+            grp["peak_t_ms"].to_numpy(), dtype=np.float64,
+        )
+        if ili_source == "real_only":
+            # Need n_peaks + 1 peaks in the first multi-bout.
+            if peak_times.size < int(n_peaks) + 1:
+                continue
+        else:
+            # hybrid + synthetic_only: need n_peaks total peaks.
+            if peak_times.size < int(n_peaks):
+                continue
+        trial_idx = int(trial_idx)
+        side = str(side)
+        arrs = _trial_arrays(df_trials, trial_idx, side)
+        if arrs is None:
+            continue
+        t_arr, angle_arr = arrs
+        for i in range(int(n_peaks)):
+            p_i = float(peak_times[i])
+            if ili_source == "synthetic_only":
+                ili = synth
+            elif ili_source == "real_only":
+                # Same-bout forward neighbour required.
+                ili = float(peak_times[i + 1] - p_i)
+                if not (np.isfinite(ili) and ili > 0):
+                    continue
+            else:  # hybrid
+                if i + 1 < peak_times.size:
+                    ili = float(peak_times[i + 1] - p_i)
+                    if not (np.isfinite(ili) and ili > 0):
+                        ili = synth
+                else:
+                    ili = synth
+            if not (np.isfinite(ili) and ili > 0):
+                continue
+            win_lo = p_i - ili / 2.0
+            win_hi = p_i + ili / 2.0
+            mask = (
+                (t_arr >= win_lo) & (t_arr <= win_hi)
+                & np.isfinite(angle_arr)
+            )
+            for ii in np.where(mask)[0]:
+                t = float(t_arr[ii])
+                x_global = float(i) + 0.5 + (t - p_i) / ili
+                x_global = float(np.clip(x_global, 0.0, float(n_peaks)))
+                bin_idx = int(np.clip(
+                    np.searchsorted(
+                        phase_bin_edges, x_global, side="right",
+                    ) - 1,
+                    0, total_bins - 1,
+                ))
+                rows.append({
+                    "side": side,
+                    "trial_index": trial_idx,
+                    "peak_t_ms": p_i,
+                    "t_ms": t,
+                    "phase": x_global,
+                    "phase_bin": bin_idx,
+                    "phase_bin_center": float(phase_bin_centers[bin_idx]),
+                    "angle_deg": float(angle_arr[ii]),
+                })
+
+    if not rows:
+        return _empty_centered_phase_rows_df()
+    return pd.DataFrame(rows)
+
+
+def build_all_licks_centered_phase_rows(
+    bundle: "TongueVisualBundle",
+    *,
+    synthetic_ili_ms: float | None = None,
+    ili_source: Literal["real_only", "hybrid", "synthetic_only"] = "synthetic_only",
+) -> pd.DataFrame:
+    """Build centered-on-peak phase rows for ALL detected licks per
+    (trial, side). Phase 7a.4-cross-session-angle Addenda #10 / #12
+    / #14 / #15 (2026-05-04).
+
+    ``ili_source`` (Addendum #14; default flipped to
+    ``"synthetic_only"`` per Addendum #15 verdict):
+
+      - ``"synthetic_only"`` (default): every peak across all bouts;
+        cycle width = ``synthetic_ili_ms`` for ALL peaks regardless
+        of forward-neighbour existence.
+      - ``"hybrid"``: every peak across all bouts; forward-neighbour
+        ILI if available (across bout boundaries), else
+        ``synthetic_ili_ms``. Last-peak-of-trial + isolated-lick
+        bouts contribute via synthetic. Production default between
+        #12 and #15.
+      - ``"real_only"``: every peak in every MULTI-bout; ILI =
+        same-bout forward neighbour; LAST peak of each bout
+        dropped. Isolated-lick bouts contribute nothing.
+
+    Phase formula:
+
+      window[i] = (p[i] - ILI[i] / 2, p[i] + ILI[i] / 2)
+      phase     = (t - window_lo) / ILI[i] ∈ [0, 1]
+
+    Returns a DataFrame with the same columns as
+    :func:`build_first_lick_centered_phase_rows`.
+    """
+    if ili_source not in ("real_only", "hybrid", "synthetic_only"):
+        raise ValueError(
+            f"ili_source must be 'real_only' / 'hybrid' / "
+            f"'synthetic_only'; got {ili_source!r}"
+        )
+    synth = (
+        float(synthetic_ili_ms)
+        if synthetic_ili_ms is not None
+        else float("nan")
+    )
+    synth_finite = np.isfinite(synth) and synth > 0
+    if ili_source == "synthetic_only" and not synth_finite:
+        raise ValueError(
+            f"ili_source='synthetic_only' requires a finite positive "
+            f"synthetic_ili_ms; got {synthetic_ili_ms!r}"
+        )
+    # Addendum #12 NaN-fallback: hybrid + missing synthetic → real_only.
+    if ili_source == "hybrid" and not synth_finite:
+        ili_source = "real_only"
+
+    df_trials = bundle.df_trials
+    df_bouts = bundle.df_bouts
+    if df_trials.empty or df_bouts.empty:
+        return _empty_centered_phase_rows_df()
+
+    phase_bin_edges, phase_bin_centers = _bundle_phase_bin_arrays(bundle)
+    use_synthetic = (
+        ili_source in ("hybrid", "synthetic_only")
+        and synth_finite
+    )
+
+    if use_synthetic:
+        # All detected peaks per (trial, side), regardless of bout
+        # structure. Forward ILI = chronologically-next peak's
+        # difference; synthetic for the trial's last peak.
+        per_peak = df_bouts[
+            df_bouts["peak_t_ms"].notna()
+        ][["trial_index", "side", "peak_t_ms"]].sort_values(
+            ["trial_index", "side", "peak_t_ms"],
+        )
+    else:
+        # Multi-bout-only: per-peak rows in multi-bouts.
+        per_peak = df_bouts[
+            df_bouts["peak_t_ms"].notna()
+            & df_bouts["multi_bout_rank"].notna()
+        ][["trial_index", "side", "bout_idx", "peak_t_ms"]].sort_values(
+            ["trial_index", "side", "bout_idx", "peak_t_ms"],
+        )
+    if per_peak.empty:
+        return _empty_centered_phase_rows_df()
+
+    rows: list[dict[str, Any]] = []
+    if use_synthetic:
+        for (trial_idx, side), trial_side_rows in per_peak.groupby(
+            ["trial_index", "side"], sort=False,
+        ):
+            trial_idx = int(trial_idx)
+            side = str(side)
+            arrs = _trial_arrays(df_trials, trial_idx, side)
+            if arrs is None:
+                continue
+            t_arr, angle_arr = arrs
+            peak_times = np.asarray(
+                trial_side_rows["peak_t_ms"].to_numpy(), dtype=np.float64,
+            )
+            if peak_times.size == 0:
+                continue
+            peaks_to_render: list[float] = []
+            ilis_to_render: list[float] = []
+            for i in range(peak_times.size):
+                p = float(peak_times[i])
+                if ili_source == "synthetic_only":
+                    ili = synth
+                else:  # hybrid
+                    if i + 1 < peak_times.size:
+                        ili = float(peak_times[i + 1] - peak_times[i])
+                        if not (np.isfinite(ili) and ili > 0):
+                            ili = synth
+                    else:
+                        ili = synth
+                peaks_to_render.append(p)
+                ilis_to_render.append(ili)
+            rows.extend(_centered_phase_rows_from_peaks(
+                peak_times_ms=np.asarray(peaks_to_render),
+                ilis_ms=np.asarray(ilis_to_render),
+                t_arr=t_arr, angle_snip=angle_arr,
+                side=side, trial_index=trial_idx,
+                phase_bin_edges=phase_bin_edges,
+                phase_bin_centers=phase_bin_centers,
+            ))
+    else:
+        for (trial_idx, side), trial_side_rows in per_peak.groupby(
+            ["trial_index", "side"], sort=False,
+        ):
+            trial_idx = int(trial_idx)
+            side = str(side)
+            arrs = _trial_arrays(df_trials, trial_idx, side)
+            if arrs is None:
+                continue
+            t_arr, angle_arr = arrs
+            peaks_to_render = []
+            ilis_to_render = []
+            for _bout_idx, bout_rows in trial_side_rows.groupby(
+                "bout_idx", sort=False,
+            ):
+                peak_times = np.asarray(
+                    bout_rows["peak_t_ms"].to_numpy(),
+                    dtype=np.float64,
+                )
+                if peak_times.size < 2:
+                    continue
+                for i in range(peak_times.size - 1):
+                    p = float(peak_times[i])
+                    ili = float(peak_times[i + 1] - peak_times[i])
+                    peaks_to_render.append(p)
+                    ilis_to_render.append(ili)
+            if not peaks_to_render:
+                continue
+            rows.extend(_centered_phase_rows_from_peaks(
+                peak_times_ms=np.asarray(peaks_to_render),
+                ilis_ms=np.asarray(ilis_to_render),
+                t_arr=t_arr, angle_snip=angle_arr,
+                side=side, trial_index=trial_idx,
+                phase_bin_edges=phase_bin_edges,
+                phase_bin_centers=phase_bin_centers,
+            ))
+
+    if not rows:
+        return _empty_centered_phase_rows_df()
+    return pd.DataFrame(rows)
+
+
+# ===========================================================================
+# First-vs-second peak angle pairs (Phase 7a.4-cross-session-angle
+# Addendum #11 Part B)
+# ===========================================================================
+
+
+def extract_first_vs_second_peak_pairs(
+    df_bouts: pd.DataFrame,
+) -> pd.DataFrame:
+    """Per (trial, side), extract the angle of the first two
+    chronologically-detected lick peaks.
+
+    Phase 7a.4-cross-session-angle Addendum #11 Part B (2026-05-04).
+
+    Used by the per-session ``first_vs_second_peak_scatter`` plot
+    family (and the forthcoming cross-session aggregator) to
+    visualize the per-trial pairing of peak[0] and peak[1] angles
+    — direct view of the warming-up first-lick vs settled second-
+    lick angle phenotype.
+
+    "First two peaks" semantic:
+      Per (trial_index, side), take the two chronologically-
+      earliest per-peak rows in ``df_bouts`` (``peak_t_ms.notna()``)
+      regardless of bout structure (multi-bout vs isolated). This
+      matches the post-#15 centered-phase plot convention where
+      "first lick" means the chronologically-first detected peak.
+      Trials with fewer than 2 detected peaks total contribute
+      nothing.
+
+    Parameters
+    ----------
+    df_bouts : DataFrame
+        Mixed bout-summary + per-peak rows from
+        :class:`TongueVisualBundle.df_bouts`. Per-peak rows have
+        ``peak_t_ms.notna()``; this helper consumes only those.
+
+    Returns
+    -------
+    DataFrame
+        One row per (trial_index, side) with columns:
+          - ``side``
+          - ``trial_index``
+          - ``peak0_t_ms``      first peak time
+          - ``peak0_angle_deg`` first peak angle (degrees)
+          - ``peak1_t_ms``      second peak time
+          - ``peak1_angle_deg`` second peak angle (degrees)
+        Empty DataFrame (with these columns) if ``df_bouts`` is
+        empty or has no eligible (≥2-peak) trials.
+    """
+    cols = (
+        "side", "trial_index",
+        "peak0_t_ms", "peak0_angle_deg",
+        "peak1_t_ms", "peak1_angle_deg",
+    )
+    if df_bouts.empty:
+        return pd.DataFrame(
+            {c: pd.Series(dtype=(int if c == "trial_index" else (
+                object if c == "side" else float)
+            )) for c in cols}
+        )
+    per_peak = df_bouts[
+        df_bouts["peak_t_ms"].notna()
+    ][["trial_index", "side", "peak_t_ms", "peak_angle_deg"]].sort_values(
+        ["trial_index", "side", "peak_t_ms"],
+    )
+    if per_peak.empty:
+        return pd.DataFrame(
+            {c: pd.Series(dtype=(int if c == "trial_index" else (
+                object if c == "side" else float)
+            )) for c in cols}
+        )
+
+    rows: list[dict[str, Any]] = []
+    for (trial_idx, side), grp in per_peak.groupby(
+        ["trial_index", "side"], sort=False,
+    ):
+        if len(grp) < 2:
+            continue
+        first_two = grp.iloc[:2]
+        rows.append({
+            "side": str(side),
+            "trial_index": int(trial_idx),
+            "peak0_t_ms": float(first_two.iloc[0]["peak_t_ms"]),
+            "peak0_angle_deg": float(first_two.iloc[0]["peak_angle_deg"]),
+            "peak1_t_ms": float(first_two.iloc[1]["peak_t_ms"]),
+            "peak1_angle_deg": float(first_two.iloc[1]["peak_angle_deg"]),
+        })
+
+    if not rows:
+        return pd.DataFrame(
+            {c: pd.Series(dtype=(int if c == "trial_index" else (
+                object if c == "side" else float)
+            )) for c in cols}
+        )
+    return pd.DataFrame(rows, columns=list(cols))
+
+
+# ===========================================================================
+# Per-animal pre-stroke median ILI (Phase 7a.4-cross-session-angle Addendum #12)
+# ===========================================================================
+#
+# The synthetic cycle width for isolated licks (and last-peak-of-bout
+# in centered-phase plots under Addendum #12) is the per-animal
+# pre-stroke median ILI in ms. Walking pre-stroke sessions to compute
+# this median is expensive; the cache below makes repeated lookups for
+# the same animal O(1).
+
+
+_PRE_STROKE_MEDIAN_ILI_CACHE: dict[str, float] = {}
+
+
+def compute_pre_stroke_median_ili_ms(
+    animal: str,
+    *,
+    resolver: PathResolver,
+    animal_info: AnimalInfo | None = None,
+    params: dict[str, Any] | None = None,
+) -> float:
+    """Per-animal pre-stroke median multi-bout ILI in milliseconds.
+
+    Phase 7a.4-cross-session-angle Addendum #12 (2026-05-04) — supplies
+    the synthetic cycle width for isolated-lick (and last-peak-of-
+    multi-bout) cycles in the centered-phase plots, so isolated licks
+    plot at the animal's natural pre-stroke lick rate even when no
+    forward-neighboring peak exists.
+
+    Algorithm:
+      1. Enumerate session dates from on-disk
+         ``tongue_pertrial_endpoints_json`` paths (= 7a.3 V3 emit set
+         dates).
+      2. Filter to ``rel_day <= 0`` (pre-stroke; Addendum #17:
+         ``rel_day == 0`` = day of stroke induction, recording done
+         BEFORE stroke earlier that day, so d0 is pre-stroke per
+         project-wide convention) via
+         :meth:`AnimalInfo.day_relative_to_stroke`.
+      3. For each pre-stroke session, build a
+         :class:`TongueVisualBundle` (without recursive median ILI
+         computation — pass ``pre_stroke_median_ili_ms=float("nan")``)
+         and extract per-multi-bout inter-peak intervals
+         (``peak[i + 1] - peak[i]`` for adjacent peaks in the same
+         multi-bout).
+      4. Return the median across all collected ILIs.
+
+    Returns ``float("nan")`` if the animal has no pre-stroke sessions
+    on disk OR no multi-bouts contributed any ILI. Callers (renderers
+    + dispatcher) interpret NaN as "fall back to multi-bout-only
+    behaviour" (i.e., no isolated-lick contribution).
+
+    Note: this function builds bundles for every pre-stroke session
+    sequentially. Cost is roughly N_sessions × bundle_build_time
+    (~5 s each). For repeated lookups, prefer
+    :func:`get_pre_stroke_median_ili_ms` which caches per animal.
+    """
+    if params is None:
+        params = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+
+    endpoints_dir = (
+        resolver.pipeline_outputs(subdir="dlc_kinematics")
+        / "endpoints" / animal
+    )
+    if not endpoints_dir.exists():
+        return float("nan")
+
+    pre_dates: list[datetime.date] = []
+    for p in sorted(endpoints_dir.glob("*.json")):
+        m = re.match(r"(\d{8})\.json$", p.name)
+        if m is None:
+            continue
+        d = datetime.datetime.strptime(m.group(1), "%Y%m%d").date()
+        try:
+            rel_day = int(animal_info.day_relative_to_stroke(d))
+        except Exception:
+            continue
+        # Addendum #17 (2026-05-04): d0 is pre-stroke (recording done
+        # before stroke induction earlier that day). Pre-stroke =
+        # rel_day <= 0 (was rel_day < 0 pre-#17).
+        if rel_day <= 0:
+            pre_dates.append(d)
+
+    if not pre_dates:
+        return float("nan")
+
+    all_ilis_ms: list[float] = []
+    for d in pre_dates:
+        try:
+            manifest = build_manifest(
+                animal, d, resolver, animal_info,
+                analysis_context="dlc.kinematics.tongue_pertrial",
+            )
+        except Exception:
+            continue
+        try:
+            trial_events = _derive_trial_events_from_spout_behavior(
+                animal=animal, date=d, resolver=resolver, manifest=manifest,
+            )
+        except Exception:
+            continue
+        try:
+            bundle = build_tongue_visual_bundle(
+                manifest=manifest, resolver=resolver,
+                trial_events=trial_events, params=params,
+                animal_info=animal_info,
+                # Explicit NaN to short-circuit recursive computation
+                # — this is the lower-level builder; the by-animal-date
+                # wrapper is what populates the cohort scalar.
+                pre_stroke_median_ili_ms=float("nan"),
+            )
+        except Exception:
+            continue
+        df_bouts = bundle.df_bouts
+        if df_bouts.empty:
+            continue
+        per_peak = df_bouts[
+            df_bouts["peak_t_ms"].notna()
+            & df_bouts["multi_bout_rank"].notna()
+        ][["trial_index", "side", "bout_idx", "peak_t_ms"]].sort_values(
+            ["trial_index", "side", "bout_idx", "peak_t_ms"],
+        )
+        if per_peak.empty:
+            continue
+        for _key, grp in per_peak.groupby(
+            ["trial_index", "side", "bout_idx"], sort=False,
+        ):
+            peak_times = np.asarray(
+                grp["peak_t_ms"].to_numpy(), dtype=np.float64,
+            )
+            if peak_times.size < 2:
+                continue
+            for j in range(peak_times.size - 1):
+                ili = float(peak_times[j + 1] - peak_times[j])
+                if np.isfinite(ili) and ili > 0:
+                    all_ilis_ms.append(ili)
+
+    if not all_ilis_ms:
+        return float("nan")
+    return float(np.median(all_ilis_ms))
+
+
+def get_pre_stroke_median_ili_ms(
+    animal: str,
+    *,
+    resolver: PathResolver,
+    animal_info: AnimalInfo | None = None,
+    params: dict[str, Any] | None = None,
+    use_cache: bool = True,
+) -> float:
+    """Cached wrapper around :func:`compute_pre_stroke_median_ili_ms`.
+
+    Phase 7a.4-cross-session-angle Addendum #12 (2026-05-04). Caches
+    per-animal results in a module-level dict to avoid repeated
+    cross-session walks across multiple bundle builds for the same
+    animal in a single process. Pass ``use_cache=False`` to force
+    recomputation (e.g., in tests).
+    """
+    if use_cache and animal in _PRE_STROKE_MEDIAN_ILI_CACHE:
+        return _PRE_STROKE_MEDIAN_ILI_CACHE[animal]
+    value = compute_pre_stroke_median_ili_ms(
+        animal, resolver=resolver,
+        animal_info=animal_info, params=params,
+    )
+    if use_cache:
+        _PRE_STROKE_MEDIAN_ILI_CACHE[animal] = value
+    return value
+
+
+# ===========================================================================
 # Public API
 # ===========================================================================
 
@@ -314,6 +1193,7 @@ def build_tongue_visual_bundle(
     params: dict[str, Any] | None = None,
     *,
     animal_info: AnimalInfo | None = None,
+    pre_stroke_median_ili_ms: float | None = None,
 ) -> TongueVisualBundle:
     """Phase 7a.4 — return the in-memory per-trial array DataFrames for the
     Cell 50 visual gate.
@@ -325,7 +1205,15 @@ def build_tongue_visual_bundle(
 
     Parameters mirror :func:`build_tongue_pertrial` (manifest, resolver,
     trial_events, params, animal_info), minus ``overwrite`` (no I/O to
-    skip).
+    skip), plus ``pre_stroke_median_ili_ms`` (Phase
+    7a.4-cross-session-angle Addendum #12) — explicit per-animal
+    synthetic ILI scalar. Stored at
+    ``bundle.metadata["pre_stroke_median_ili_ms"]`` for downstream
+    centered-phase helpers; defaults to ``NaN`` (= "fall back to
+    multi-bout-only behaviour"). The by-animal-date wrapper
+    :func:`build_tongue_visual_bundle_by_animal_date` populates this
+    value via :func:`get_pre_stroke_median_ili_ms` (cached) when not
+    supplied.
 
     Returns
     -------
@@ -342,6 +1230,7 @@ def build_tongue_visual_bundle(
         trial_events=trial_events,
         params=params,
         animal_info=animal_info,
+        pre_stroke_median_ili_ms=pre_stroke_median_ili_ms,
     )
     return core.visual_bundle
 
@@ -356,7 +1245,15 @@ def build_tongue_visual_bundle_by_animal_date(
 ) -> TongueVisualBundle:
     """Convenience wrapper analogous to
     :func:`build_tongue_pertrial_by_animal_date`. Auto-derives
-    ``trial_events`` from upstream spout_behavior products if not passed."""
+    ``trial_events`` from upstream spout_behavior products if not passed.
+
+    Phase 7a.4-cross-session-angle Addendum #12 (2026-05-04): if
+    ``pre_stroke_median_ili_ms`` is not supplied via ``kwargs``, the
+    per-animal cohort scalar is computed (or read from cache) via
+    :func:`get_pre_stroke_median_ili_ms` and injected into the bundle
+    metadata. Cohort-mode callers can pass the precomputed value
+    explicitly to skip the per-call cache lookup.
+    """
     animal_info = get_animal(animal)
     manifest = build_manifest(
         animal, date, resolver, animal_info,
@@ -367,6 +1264,11 @@ def build_tongue_visual_bundle_by_animal_date(
             animal=animal, date=date, resolver=resolver, manifest=manifest,
         )
     kwargs.setdefault("animal_info", animal_info)
+    if "pre_stroke_median_ili_ms" not in kwargs:
+        kwargs["pre_stroke_median_ili_ms"] = get_pre_stroke_median_ili_ms(
+            animal, resolver=resolver, animal_info=animal_info,
+            params=kwargs.get("params"),
+        )
     return build_tongue_visual_bundle(
         manifest=manifest,
         resolver=resolver,
@@ -1559,6 +2461,7 @@ def _build_tongue_pertrial_core(
     trial_events: Sequence[TrialEvent],
     params: dict[str, Any],
     animal_info: AnimalInfo | None = None,
+    pre_stroke_median_ili_ms: float | None = None,
 ) -> _PertrialCoreResult:
     """Pure-function driver: reads inputs, computes everything, returns result.
 
@@ -1948,6 +2851,23 @@ def _build_tongue_pertrial_core(
         "first_peak_align_win_ms": list(bundle_first_peak_win),
         "n_phase_bins": int(n_phase_bins),
         "max_licks_per_trial": int(bundle_max_licks),
+        # Phase 7a.4-cross-session-angle Addendum #12 (2026-05-04):
+        # per-animal pre-stroke median ILI (ms). Synthetic cycle width
+        # for isolated-lick (and last-peak-of-multi-bout) cycles in
+        # the centered-phase plots. ``NaN`` = "not available" — the
+        # renderer interprets that as "fall back to multi-bout-only
+        # behaviour" (no isolated-lick contribution). Populated by the
+        # by-animal-date wrapper
+        # :func:`build_tongue_visual_bundle_by_animal_date` which
+        # calls :func:`get_pre_stroke_median_ili_ms` (cached). The
+        # lower-level builder :func:`build_tongue_visual_bundle`
+        # accepts an explicit value so the cohort driver / median ILI
+        # walker can short-circuit recursive computation.
+        "pre_stroke_median_ili_ms": (
+            float(pre_stroke_median_ili_ms)
+            if pre_stroke_median_ili_ms is not None
+            else float("nan")
+        ),
     }
     visual_bundle = TongueVisualBundle(
         df_trials=df_trials,

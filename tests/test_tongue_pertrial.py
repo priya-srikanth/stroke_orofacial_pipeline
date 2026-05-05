@@ -48,6 +48,7 @@ from stroke_orofacial.dlc_kinematics._detector import (
 from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
     FEATURE_EXTRACTION_VERSION,
     INTERPOLATION_VERSION,
+    TongueVisualBundle,
     TrialEvent,
     _derive_trial_events_from_spout_behavior,
     _extract_lick1_lick2,
@@ -1982,3 +1983,1011 @@ class TestVisualBundle:
             core.tongue_pertrial = tp  # type: ignore[misc]
         with pytest.raises(FrozenInstanceError):
             vb.df_trials = empty_df  # type: ignore[misc]
+
+
+# ===========================================================================
+# Phase 7a.4-cross-session-angle Addenda #9 + #10:
+# centered-on-peak phase row builders
+# ===========================================================================
+
+
+def _make_centered_phase_test_bundle(
+    trial_specs: "list[dict[str, Any]]",
+    *,
+    fps: float = 250.0,
+    n_phase_bins: int = 36,
+    plot_win_ms: tuple[float, float] = (-180.0, 1500.0),
+) -> "TongueVisualBundle":
+    """Build a minimal TongueVisualBundle for centered-phase helper tests.
+
+    Each ``trial_specs`` entry is a dict with keys:
+      - ``trial_index`` (int)
+      - ``side`` (str: "L" or "R")
+      - ``bouts``: list of {``peak_t_ms``: list[float]} — one entry per
+        bout. Single-element lists model isolated-lick bouts; ≥2-element
+        lists model multi-bouts.
+      - ``angle_at_peak``: optional dict mapping peak_t_ms → angle_deg
+        for the per-frame trace at peak frames; defaults to 0.0.
+
+    Builds a per-trial ``t_ms`` axis at ``fps`` covering ``plot_win_ms``,
+    and an ``angle_snip`` array that is finite (= 0.0 by default, with
+    the angle-at-peak overrides applied at the closest frames). Builds
+    df_bouts with the legacy mixed-row schema (one bout-summary row per
+    bout + one per-peak row per peak). Other df_phase / metadata fields
+    are populated minimally for the helper signature.
+    """
+    pre_f = max(0, int(np.floor(-plot_win_ms[0] / 1000.0 * fps)))
+    post_f = max(0, int(np.ceil(plot_win_ms[1] / 1000.0 * fps)))
+    snip_len = pre_f + post_f + 1
+    t_ms = (np.arange(-pre_f, post_f + 1, dtype=np.float64) / fps) * 1000.0
+
+    trial_rows: list[dict[str, Any]] = []
+    bout_rows: list[dict[str, Any]] = []
+    for spec in trial_specs:
+        side = str(spec["side"])
+        trial_idx = int(spec["trial_index"])
+        bouts = spec["bouts"]
+        angle_at_peak: dict[float, float] = spec.get("angle_at_peak", {})
+
+        angle_arr = np.zeros(snip_len, dtype=np.float64)
+        # Plant per-peak angle values at the closest frame.
+        for bt in bouts:
+            for pt in bt["peak_t_ms"]:
+                if pt in angle_at_peak:
+                    fr_idx = int(np.argmin(np.abs(t_ms - pt)))
+                    angle_arr[fr_idx] = float(angle_at_peak[pt])
+        # df_trials: minimal columns the helpers consume + a few the
+        # bundle dataclass doc names.
+        trial_rows.append({
+            "side": side,
+            "trial_index": trial_idx,
+            "n_peaks": int(sum(len(bt["peak_t_ms"]) for bt in bouts)),
+            "n_bouts": int(len(bouts)),
+            "n_multi_lick_bouts": int(sum(
+                1 for bt in bouts if len(bt["peak_t_ms"]) >= 2
+            )),
+            "first_peak_t_ms": (
+                float(bouts[0]["peak_t_ms"][0]) if bouts else float("nan")
+            ),
+            "t_ms": t_ms.copy(),
+            "y_snip": np.zeros(snip_len),
+            "angle_snip": angle_arr,
+            "angle_allbouts_snip": angle_arr.copy(),
+            "angle_firstbout_snip": angle_arr.copy(),
+            "angle_firstmulti_snip": angle_arr.copy(),
+            "t_firstpeak_align_ms": np.zeros(10),
+            "angle_firstpeak_snip": np.zeros(10),
+        })
+
+        # df_bouts: bout-summary + per-peak rows.
+        multi_rank_counter = 0
+        for bout_idx, bt in enumerate(bouts):
+            peaks = bt["peak_t_ms"]
+            is_multi = len(peaks) >= 2
+            multi_rank = (
+                float(multi_rank_counter) if is_multi else float("nan")
+            )
+            if is_multi:
+                multi_rank_counter += 1
+            bout_rows.append({
+                "side": side,
+                "trial_index": trial_idx,
+                "bout_idx": bout_idx,
+                "bout_rank": bout_idx,
+                "multi_bout_rank": multi_rank,
+                "n_peaks": int(len(peaks)),
+                "bout_t0_ms": float(peaks[0] - 50.0),
+                "bout_t1_ms": float(peaks[-1] + 50.0),
+                "peak_t0_ms": float(peaks[0]) if len(peaks) >= 1 else float("nan"),
+                "peak_t1_ms": float(peaks[1]) if len(peaks) >= 2 else float("nan"),
+                "peak_y0": 0.0, "peak_angle0": 0.0,
+                "peak_y1": 0.0, "peak_angle1": 0.0,
+                "peak_t_ms": float("nan"),
+                "peak_y": float("nan"),
+                "peak_x": float("nan"),
+                "peak_angle_deg": float("nan"),
+            })
+            for pt in peaks:
+                bout_rows.append({
+                    "side": side,
+                    "trial_index": trial_idx,
+                    "bout_idx": bout_idx,
+                    "bout_rank": bout_idx,
+                    "multi_bout_rank": multi_rank,
+                    "n_peaks": int(len(peaks)),
+                    "bout_t0_ms": float(peaks[0] - 50.0),
+                    "bout_t1_ms": float(peaks[-1] + 50.0),
+                    "peak_t0_ms": float("nan"),
+                    "peak_t1_ms": float("nan"),
+                    "peak_y0": float("nan"),
+                    "peak_angle0": float("nan"),
+                    "peak_y1": float("nan"),
+                    "peak_angle1": float("nan"),
+                    "peak_t_ms": float(pt),
+                    "peak_y": 0.0,
+                    "peak_x": 0.0,
+                    "peak_angle_deg": float(angle_at_peak.get(pt, 0.0)),
+                })
+
+    df_trials = pd.DataFrame(trial_rows)
+    df_bouts = pd.DataFrame(bout_rows)
+    df_phase = pd.DataFrame()  # not consumed by centered helpers
+
+    metadata = {
+        "animal": "PSXX",
+        "date": "2025-01-01",
+        "fps": float(fps),
+        "n_frames": 10000,
+        "eye_in_spout_frame_x": 0.0,
+        "eye_in_spout_frame_y": 0.0,
+        "angle_sign_flip": -1.0,
+        "smoothing_gaussian_sigma_ms": 8.0,
+        "feature_extraction_version": "test",
+        "interpolation_version": "test",
+        "plot_win_ms": list(plot_win_ms),
+        "detect_win_ms": [70.0, 3000.0],
+        "first_peak_align_win_ms": [-180.0, 1000.0],
+        "n_phase_bins": int(n_phase_bins),
+        "max_licks_per_trial": 40,
+    }
+    return TongueVisualBundle(
+        df_trials=df_trials,
+        df_bouts=df_bouts,
+        df_phase=df_phase,
+        angle_per_frame=pd.DataFrame(),
+        metadata=metadata,
+    )
+
+
+class TestBuildFirstLickCenteredPhaseRows:
+    """Phase 7a.4-cross-session-angle Addendum #9 (2026-05-04) — centered
+    on peak[0] of the first multi-bout per (trial, side); ILI = peak[1]
+    - peak[0]; window (peak[0] - ILI/2, peak[0] + ILI/2); peak[0] lands
+    at phase=0.5.
+    """
+
+    def test_peak_lands_at_phase_0_5(self):
+        """A frame at peak[0]'s time should map to phase ≈ 0.5 (= the
+        defining property of the centered convention)."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+                "angle_at_peak": {200.0: -10.0},  # warming-up first lick
+            },
+        ])
+        out = build_first_lick_centered_phase_rows(bundle, ili_source="real_only")
+        # ILI = 100, window = [150, 250]; peak[0] at t=200 → phase = 0.5
+        at_peak = out[np.isclose(out["t_ms"], 200.0)]
+        assert len(at_peak) == 1
+        assert at_peak.iloc[0]["phase"] == pytest.approx(0.5, abs=1e-6)
+        # angle_deg at that frame should be the planted -10.0
+        assert at_peak.iloc[0]["angle_deg"] == pytest.approx(-10.0)
+        # peak_t_ms column carries the centered peak's time
+        assert at_peak.iloc[0]["peak_t_ms"] == pytest.approx(200.0)
+
+    def test_window_excludes_frames_outside_ILI_centered_range(self):
+        """ILI = 100 (peaks at 200, 300); window = [150, 250]. Frames at
+        t=100 and t=300 are outside; t=160 (in window) is included."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+            },
+        ])
+        out = build_first_lick_centered_phase_rows(bundle, ili_source="real_only")
+        # All emitted t_ms values must be in [150, 250]
+        assert (out["t_ms"] >= 150.0 - 0.01).all()
+        assert (out["t_ms"] <= 250.0 + 0.01).all()
+
+    def test_skips_isolated_lick_only_trials(self):
+        """Trial with only single-lick bouts (no multi-bout) → no rows
+        per Addendum #5 Option α."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [400.0]}],   # isolated lick
+            },
+        ])
+        out = build_first_lick_centered_phase_rows(bundle, ili_source="real_only")
+        assert out.empty
+
+    def test_per_trial_per_side_isolation(self):
+        """Each (trial, side) gets its own peak[0] window; trial 0's
+        window doesn't leak into trial 1's filter."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0]}],
+            },
+            {
+                "trial_index": 1, "side": "R",
+                "bouts": [{"peak_t_ms": [600.0, 700.0]}],
+            },
+        ])
+        out = build_first_lick_centered_phase_rows(bundle, ili_source="real_only")
+        # Both trials contribute rows; each trial's peak_t_ms must
+        # match its own peak[0]. (Use np.isclose for the float
+        # comparison — pytest.approx isn't a vector predicate.)
+        peak_ts = sorted(out["peak_t_ms"].unique().tolist())
+        assert peak_ts == [200.0, 600.0]
+        # No row from trial 0 has peak_t_ms = 600 (cross-leak check)
+        trial0 = out[out["trial_index"] == 0]
+        assert (trial0["peak_t_ms"] == 200.0).all()
+
+    def test_empty_bundle(self):
+        """Empty df_trials and df_bouts → empty centered DataFrame with
+        the expected columns."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        empty = TongueVisualBundle(
+            df_trials=pd.DataFrame(), df_bouts=pd.DataFrame(),
+            df_phase=pd.DataFrame(), angle_per_frame=pd.DataFrame(),
+            metadata={"n_phase_bins": 36},
+        )
+        out = build_first_lick_centered_phase_rows(
+            empty, ili_source="real_only",
+        )
+        assert out.empty
+        # Expected columns are present even on empty result
+        for col in (
+            "side", "trial_index", "peak_t_ms", "t_ms", "phase",
+            "phase_bin", "phase_bin_center", "angle_deg",
+        ):
+            assert col in out.columns
+
+
+class TestBuildAllLicksCenteredPhaseRows:
+    """Phase 7a.4-cross-session-angle Addendum #10 (2026-05-04) — every
+    peak in every multi-bout per (trial, side); each peak ``p[i]``
+    centered with forward ILI = ``p[i+1] - p[i]``; LAST peak per bout
+    is dropped (no synthetic-ILI fallback).
+    """
+
+    def test_emits_one_cycle_per_peak_except_last_in_bout(self):
+        """3 peaks in one multi-bout → 2 cycles emitted (peaks 0 and 1
+        center their cycles; peak 2 is the last in bout, dropped)."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+                "angle_at_peak": {
+                    200.0: -10.0, 300.0: 5.0, 400.0: 5.0,
+                },
+            },
+        ])
+        out = build_all_licks_centered_phase_rows(bundle, ili_source="real_only")
+        # peak_t_ms values rendered: 200 and 300; 400 dropped
+        peak_ts_rendered = sorted(out["peak_t_ms"].unique().tolist())
+        assert peak_ts_rendered == [200.0, 300.0]
+        # Each rendered peak lands at phase=0.5 in its own cycle
+        for pt in peak_ts_rendered:
+            at_peak = out[
+                np.isclose(out["t_ms"], pt) & (out["peak_t_ms"] == pt)
+            ]
+            assert len(at_peak) == 1
+            assert at_peak.iloc[0]["phase"] == pytest.approx(0.5, abs=1e-6)
+
+    def test_handles_multiple_multi_bouts_in_one_trial(self):
+        """Trial with two multi-bouts (3 peaks each, ILI=100) →
+        2 + 2 = 4 cycles emitted (last peak per bout dropped twice)."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [
+                    {"peak_t_ms": [200.0, 300.0, 400.0]},
+                    {"peak_t_ms": [800.0, 900.0, 1000.0]},
+                ],
+            },
+        ])
+        out = build_all_licks_centered_phase_rows(bundle, ili_source="real_only")
+        peak_ts_rendered = sorted(out["peak_t_ms"].unique().tolist())
+        # 200 + 300 from bout 0; 800 + 900 from bout 1; 400 + 1000 dropped
+        assert peak_ts_rendered == [200.0, 300.0, 800.0, 900.0]
+
+    def test_excludes_isolated_lick_bouts(self):
+        """Single-peak bouts (multi_bout_rank == NaN) contribute nothing
+        — phase requires ≥2 peaks per Addendum #5 Option α."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [
+                    {"peak_t_ms": [200.0, 300.0]},   # multi-bout: 1 cycle
+                    {"peak_t_ms": [600.0]},          # isolated: skipped
+                    {"peak_t_ms": [800.0, 900.0]},   # multi-bout: 1 cycle
+                ],
+            },
+        ])
+        out = build_all_licks_centered_phase_rows(bundle, ili_source="real_only")
+        # Two multi-bouts × (n_peaks - 1) cycles each = 1 + 1 = 2
+        peak_ts_rendered = sorted(out["peak_t_ms"].unique().tolist())
+        assert peak_ts_rendered == [200.0, 800.0]
+        # Confirm 600 (isolated) is absent
+        assert (out["peak_t_ms"] != 600.0).all()
+
+    def test_last_peak_per_bout_dropped(self):
+        """5-peak multi-bout → 4 cycles (peaks 0-3); peak 4 dropped."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+        )
+        peak_ts = [200.0, 300.0, 400.0, 500.0, 600.0]
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": peak_ts}],
+            },
+        ])
+        out = build_all_licks_centered_phase_rows(bundle, ili_source="real_only")
+        rendered = sorted(out["peak_t_ms"].unique().tolist())
+        assert rendered == peak_ts[:-1]   # 600 dropped
+
+    def test_empty_bundle(self):
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+        )
+        empty = TongueVisualBundle(
+            df_trials=pd.DataFrame(), df_bouts=pd.DataFrame(),
+            df_phase=pd.DataFrame(), angle_per_frame=pd.DataFrame(),
+            metadata={"n_phase_bins": 36},
+        )
+        out = build_all_licks_centered_phase_rows(
+            empty, ili_source="real_only",
+        )
+        assert out.empty
+
+
+class TestBuildFirstNLicksCenteredPhaseRows:
+    """Phase 7a.4-cross-session-angle Addendum #11 Part A (2026-05-04):
+    parameterized first-N-licks centered-phase builder. Each peak[i]
+    for i in [0, n_peaks - 1] occupies its own [i, i + 1] cycle with
+    peak[i] at x = i + 0.5; cycle width = peak[i + 1] - peak[i].
+    """
+
+    def test_each_peak_centered_in_its_own_cycle(self):
+        """3 peaks at t=200, 300, 400 (ILI=100 throughout) with N=2:
+        peak[0] at x=0.5 (cycle [0, 1]); peak[1] at x=1.5 (cycle
+        [1, 2])."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+            },
+        ])
+        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2, ili_source="real_only")
+        # Peak[0] frame at t=200 → x = 0.5
+        at_p0 = out[
+            np.isclose(out["t_ms"], 200.0)
+            & (out["peak_t_ms"] == 200.0)
+        ]
+        assert len(at_p0) == 1
+        assert at_p0.iloc[0]["phase"] == pytest.approx(0.5, abs=1e-6)
+        # Peak[1] frame at t=300 → x = 1.5
+        at_p1 = out[
+            np.isclose(out["t_ms"], 300.0)
+            & (out["peak_t_ms"] == 300.0)
+        ]
+        assert len(at_p1) == 1
+        assert at_p1.iloc[0]["phase"] == pytest.approx(1.5, abs=1e-6)
+
+    def test_x_span_within_0_to_n_peaks(self):
+        """All emitted ``phase`` values must be in ``[0, n_peaks]``."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+            },
+        ])
+        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2, ili_source="real_only")
+        assert (out["phase"] >= -1e-9).all()
+        assert (out["phase"] <= 2.0 + 1e-9).all()
+
+    def test_skips_trials_with_too_few_peaks(self):
+        """Trial with only 2 peaks (no peak[2] to define ILI[1]) and
+        N=2 → contributes nothing per Addendum #11 Part A lock."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0]}],   # only 2 peaks
+            },
+        ])
+        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2, ili_source="real_only")
+        assert out.empty
+
+    def test_skips_isolated_lick_only_trials(self):
+        """Trial with only single-lick bouts → no rows."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [400.0]}],
+            },
+        ])
+        out = build_first_n_licks_centered_phase_rows(bundle, n_peaks=2, ili_source="real_only")
+        assert out.empty
+
+    def test_n_peaks_must_be_at_least_2(self):
+        """N=1 is degenerate — raises ValueError."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([])
+        with pytest.raises(ValueError):
+            build_first_n_licks_centered_phase_rows(bundle, n_peaks=1)
+
+    def test_emits_n_peaks_cycles_per_qualifying_trial(self):
+        """Trial with 4 peaks and N=3 → 3 cycles emitted (peaks 0, 1,
+        2 each centered; peak[3] supplies the final ILI's right
+        edge)."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0, 500.0]}],
+            },
+        ])
+        out = build_first_n_licks_centered_phase_rows(
+            bundle, n_peaks=3, ili_source="real_only",
+        )
+        rendered = sorted(out["peak_t_ms"].unique().tolist())
+        assert rendered == [200.0, 300.0, 400.0]   # peak[3]=500 dropped
+
+
+# ===========================================================================
+# Phase 7a.4-cross-session-angle Addendum #12 (2026-05-04):
+# synthetic ILI for isolated licks + last-peak-of-multi-bout
+# ===========================================================================
+
+
+class TestSyntheticILIInCenteredPhaseHelpers:
+    """Phase 7a.4-cross-session-angle Addendum #12 (2026-05-04):
+    centered-phase helpers gain a ``synthetic_ili_ms`` kwarg that
+    enables isolated-lick contribution + last-peak-of-multi-bout
+    fallback. ``synthetic_ili_ms=None`` (default) preserves the
+    legacy multi-bout-only behaviour.
+    """
+
+    def test_first_lick_includes_isolated_only_trial_with_synthetic_ili(self):
+        """Trial with only ONE peak (isolated lick) → with
+        ``synthetic_ili_ms=100``, contributes a centered-on-peak
+        cycle of width 100 ms. Without (None), contributes nothing."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [400.0]}],
+                "angle_at_peak": {400.0: -8.0},
+            },
+        ])
+        # ili_source="real_only" (= legacy / multi-bout-only):
+        # empty (no multi-bout to anchor a cycle).
+        out_none = build_first_lick_centered_phase_rows(
+            bundle, ili_source="real_only",
+        )
+        assert out_none.empty
+        # ili_source="hybrid" + synthetic ILI: trial contributes;
+        # peak at x=0.5.
+        out_synth = build_first_lick_centered_phase_rows(
+            bundle, synthetic_ili_ms=100.0, ili_source="hybrid",
+        )
+        assert not out_synth.empty
+        at_peak = out_synth[np.isclose(out_synth["t_ms"], 400.0)]
+        assert len(at_peak) == 1
+        assert at_peak.iloc[0]["phase"] == pytest.approx(0.5, abs=1e-6)
+        assert at_peak.iloc[0]["angle_deg"] == pytest.approx(-8.0)
+
+    def test_first_lick_uses_real_ili_when_forward_neighbour_exists(self):
+        """Trial with isolated bout AND a separate multi-bout: the
+        chronologically first peak is the isolated one. Its forward
+        neighbour (first peak of the next multi-bout) supplies the
+        REAL ILI; synthetic_ili_ms is only used if no neighbour
+        exists.
+        """
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [
+                    {"peak_t_ms": [200.0]},                # isolated
+                    {"peak_t_ms": [600.0, 700.0, 800.0]},  # multi
+                ],
+            },
+        ])
+        out = build_first_lick_centered_phase_rows(
+            bundle, synthetic_ili_ms=999.0, ili_source="hybrid",
+        )
+        # First peak = 200 (isolated). Forward neighbour = 600.
+        # ILI = 600 - 200 = 400 (NOT 999 synthetic).
+        # Window = [200 - 200, 200 + 200] = [0, 400]. Frame at t=200
+        # → phase = 0.5.
+        at_peak = out[np.isclose(out["t_ms"], 200.0)]
+        assert len(at_peak) == 1
+        assert at_peak.iloc[0]["phase"] == pytest.approx(0.5, abs=1e-6)
+        assert at_peak.iloc[0]["peak_t_ms"] == pytest.approx(200.0)
+
+    def test_all_licks_includes_last_peak_with_synthetic(self):
+        """3 peaks in one multi-bout, no other bouts. Without
+        synthetic: 2 cycles (peak 0 + peak 1; peak 2 dropped). With
+        synthetic: 3 cycles (peak 2 uses synthetic ILI for its
+        forward width)."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+            },
+        ])
+        n_legacy_simple = sorted(
+            build_all_licks_centered_phase_rows(
+                bundle, ili_source="real_only",
+            )["peak_t_ms"].unique().tolist()
+        )
+        n_synth = sorted(
+            build_all_licks_centered_phase_rows(
+                bundle, synthetic_ili_ms=100.0, ili_source="hybrid",
+            )["peak_t_ms"].unique().tolist()
+        )
+        assert n_legacy_simple == [200.0, 300.0]
+        assert n_synth == [200.0, 300.0, 400.0]
+
+    def test_all_licks_includes_isolated_bouts_with_synthetic(self):
+        """Trial with 1 multi-bout + 1 isolated bout. Without
+        synthetic: only multi-bout peaks (minus last). With
+        synthetic: all peaks across all bouts contribute."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [
+                    {"peak_t_ms": [200.0, 300.0]},     # multi (drops 300 in legacy)
+                    {"peak_t_ms": [800.0]},             # isolated
+                ],
+            },
+        ])
+        legacy = sorted(
+            build_all_licks_centered_phase_rows(
+                bundle, ili_source="real_only",
+            )["peak_t_ms"].unique().tolist()
+        )
+        # Multi-bout: pair (200, 300). 200 contributes; 300 dropped.
+        assert legacy == [200.0]
+        synth = sorted(
+            build_all_licks_centered_phase_rows(
+                bundle, synthetic_ili_ms=150.0, ili_source="hybrid",
+            )["peak_t_ms"].unique().tolist()
+        )
+        # Synthetic: all 3 peaks contribute. 200 → forward = 300
+        # (real); 300 → forward = 800 (real, across bouts);
+        # 800 → no forward, synthetic 150.
+        assert synth == [200.0, 300.0, 800.0]
+
+    def test_first_n_licks_uses_synthetic_for_last_cycle(self):
+        """Trial with exactly N peaks (no peak[N] forward neighbour)
+        → without synthetic: contributes nothing; with synthetic:
+        cycle N-1 uses synthetic ILI."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0]}],
+            },
+        ])
+        # ili_source="real_only": N=2 needs N+1=3 peaks → empty.
+        legacy = build_first_n_licks_centered_phase_rows(
+            bundle, n_peaks=2, ili_source="real_only",
+        )
+        assert legacy.empty
+        # ili_source="hybrid" + synthetic: N=2 needs only 2 peaks
+        # (cycle 1 uses synthetic).
+        synth = build_first_n_licks_centered_phase_rows(
+            bundle, n_peaks=2, synthetic_ili_ms=100.0, ili_source="hybrid",
+        )
+        assert not synth.empty
+        rendered = sorted(synth["peak_t_ms"].unique().tolist())
+        assert rendered == [200.0, 300.0]
+
+
+class TestILISourceEnum:
+    """Phase 7a.4-cross-session-angle Addendum #14 (2026-05-04):
+    centered-phase helpers gain an ``ili_source`` kwarg with three
+    choices — ``real_only`` (multi-bout-only, ignores synthetic),
+    ``hybrid`` (default; synthetic as fallback), ``synthetic_only``
+    (synthetic for every cycle, real-ILI lookup bypassed).
+    """
+
+    def test_real_only_drops_isolated_lick_trials(self):
+        """real_only ignores synthetic_ili_ms even when supplied —
+        falls back to multi-bout-only behaviour."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [400.0]}],   # isolated only
+            },
+        ])
+        # synthetic_ili_ms IS supplied but ili_source="real_only"
+        # ignores it. Trial drops because no multi-bout exists.
+        out = build_first_lick_centered_phase_rows(
+            bundle, synthetic_ili_ms=100.0, ili_source="real_only",
+        )
+        assert out.empty
+
+    def test_synthetic_only_uses_synthetic_for_all_cycles(self):
+        """synthetic_only forces uniform cycle width regardless of
+        forward-neighbour existence. Multi-bout's real ILI is
+        IGNORED — every cycle's width = synthetic_ili_ms."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_n_licks_centered_phase_rows,
+        )
+        # Real ILIs are 100 ms (200 → 300 → 400). Synthetic = 200 ms.
+        # Under synthetic_only, both cycles span 200 ms regardless.
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+            },
+        ])
+        out = build_first_n_licks_centered_phase_rows(
+            bundle, n_peaks=2, synthetic_ili_ms=200.0,
+            ili_source="synthetic_only",
+        )
+        # Cycle 0 window = (200 - 100, 200 + 100) = (100, 300).
+        # Cycle 1 window = (300 - 100, 300 + 100) = (200, 400).
+        # Synthetic_only frame at t=200 → x = 0 + 0.5 + 0/200 = 0.5.
+        # If REAL ILI = 100 had been used, window would be (150, 250)
+        # and t=300 wouldn't be in cycle 0; under synthetic_only,
+        # t=300 IS in cycle 0 (window 100..300, end-inclusive) AND
+        # in cycle 1 (window 200..400, start-inclusive).
+        at_p0 = out[(out["peak_t_ms"] == 200.0)]
+        at_p1 = out[(out["peak_t_ms"] == 300.0)]
+        # At t=200 in cycle 0: phase = (200 - 100) / 200 = 0.5.
+        at_p0_t200 = at_p0[at_p0["t_ms"] == 200.0]
+        assert len(at_p0_t200) == 1
+        assert at_p0_t200.iloc[0]["phase"] == pytest.approx(0.5, abs=1e-6)
+        # At t=300 in cycle 1: phase = 1 + 0.5 + 0/200 = 1.5.
+        at_p1_t300 = at_p1[at_p1["t_ms"] == 300.0]
+        assert len(at_p1_t300) == 1
+        assert at_p1_t300.iloc[0]["phase"] == pytest.approx(1.5, abs=1e-6)
+
+    def test_synthetic_only_requires_synthetic_ili(self):
+        """synthetic_only with no synthetic_ili_ms supplied →
+        ValueError (no fallback for fallback-less mode)."""
+        from stroke_orofacial.dlc_kinematics import (
+            build_all_licks_centered_phase_rows,
+            build_first_lick_centered_phase_rows,
+            build_first_n_licks_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+            },
+        ])
+        for fn in (
+            build_first_lick_centered_phase_rows,
+            build_all_licks_centered_phase_rows,
+        ):
+            with pytest.raises(ValueError, match="synthetic_only"):
+                fn(bundle, ili_source="synthetic_only")
+            with pytest.raises(ValueError, match="synthetic_only"):
+                fn(bundle, synthetic_ili_ms=float("nan"),
+                   ili_source="synthetic_only")
+        with pytest.raises(ValueError, match="synthetic_only"):
+            build_first_n_licks_centered_phase_rows(
+                bundle, n_peaks=2, ili_source="synthetic_only",
+            )
+
+    def test_synthetic_only_is_default_after_addendum_15(self):
+        """Phase 7a.4-cross-session-angle Addendum #15 (2026-05-04):
+        helper default ``ili_source`` flipped from ``"hybrid"`` to
+        ``"synthetic_only"`` per the verdict that Mode 3 won the
+        3-way comparison across all centered-phase plot families on
+        PS46/PS50/PS55. The default-no-kwarg call now matches the
+        explicit ``ili_source="synthetic_only"`` call.
+        """
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([
+            {
+                "trial_index": 0, "side": "L",
+                "bouts": [{"peak_t_ms": [200.0, 300.0, 400.0]}],
+            },
+        ])
+        out_default = build_first_lick_centered_phase_rows(
+            bundle, synthetic_ili_ms=200.0,
+        )
+        out_explicit = build_first_lick_centered_phase_rows(
+            bundle, synthetic_ili_ms=200.0, ili_source="synthetic_only",
+        )
+        assert not out_default.empty
+        assert not out_explicit.empty
+        for col in ("trial_index", "peak_t_ms", "t_ms", "phase"):
+            assert (
+                out_default[col].to_numpy()
+                == out_explicit[col].to_numpy()
+            ).all()
+
+    def test_invalid_ili_source_raises(self):
+        from stroke_orofacial.dlc_kinematics import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_centered_phase_test_bundle([])
+        with pytest.raises(ValueError, match="ili_source"):
+            build_first_lick_centered_phase_rows(
+                bundle, ili_source="bogus",
+            )
+
+
+class TestComputePreStrokeMedianILI:
+    """Phase 7a.4-cross-session-angle Addendum #12 (2026-05-04):
+    per-animal pre-stroke median multi-bout ILI helper.
+
+    Smoke-level coverage only — the function reads from on-disk
+    7a.3 V3 endpoints + builds bundles, so a meaningful unit test
+    would either need a heavy synthetic pipeline mock or a real-
+    data integration fixture. The smoke test verifies the empty-
+    case contract; the cache-test verifies idempotence.
+    """
+
+    def test_returns_nan_when_no_endpoints_dir(self, monkeypatch, tmp_path):
+        """A real animal (in animals.yaml) but no on-disk endpoints
+        for that animal → returns NaN. Tests the empty-data
+        short-circuit path."""
+        from stroke_orofacial.dlc_kinematics import (
+            compute_pre_stroke_median_ili_ms,
+        )
+        from stroke_orofacial.animals import get_animal
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        animal_info = get_animal("PS46")
+        v = compute_pre_stroke_median_ili_ms(
+            "PS46", resolver=resolver, animal_info=animal_info,
+        )
+        assert np.isnan(v)
+
+    def test_get_with_cache_is_idempotent(self, monkeypatch, tmp_path):
+        from stroke_orofacial.dlc_kinematics import (
+            get_pre_stroke_median_ili_ms,
+        )
+        from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
+            _PRE_STROKE_MEDIAN_ILI_CACHE,
+        )
+        from stroke_orofacial.animals import get_animal
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        animal_info = get_animal("PS46")
+        cache_key = "PS46"
+        # Clear cache first to avoid leakage from prior tests.
+        _PRE_STROKE_MEDIAN_ILI_CACHE.pop(cache_key, None)
+        v1 = get_pre_stroke_median_ili_ms(
+            cache_key, resolver=resolver, animal_info=animal_info,
+        )
+        v2 = get_pre_stroke_median_ili_ms(
+            cache_key, resolver=resolver, animal_info=animal_info,
+        )
+        # Both NaN (no endpoints dir at tmp_path); cache hit on
+        # second call.
+        assert np.isnan(v1) and np.isnan(v2)
+        assert cache_key in _PRE_STROKE_MEDIAN_ILI_CACHE
+        # Tidy up so the cache state doesn't leak into other tests.
+        _PRE_STROKE_MEDIAN_ILI_CACHE.pop(cache_key, None)
+
+
+# ===========================================================================
+# Phase 7a.4-cross-session-angle Addendum #11 Part B (2026-05-04):
+# extract_first_vs_second_peak_pairs
+# ===========================================================================
+
+
+class TestExtractFirstVsSecondPeakPairs:
+    """Phase 7a.4-cross-session-angle Addendum #11 Part B (2026-05-04):
+    helper that extracts the chronologically-first two detected peak
+    angles per (trial, side) from ``df_bouts``. Used by the
+    ``first_vs_second_peak_scatter`` plot family.
+    """
+
+    @staticmethod
+    def _make_per_peak_row(
+        *, trial_index: int, side: str, peak_t_ms: float,
+        peak_angle_deg: float,
+    ) -> dict[str, Any]:
+        return dict(
+            side=side,
+            trial_index=int(trial_index),
+            bout_idx=0,
+            bout_rank=0,
+            multi_bout_rank=0.0,
+            n_peaks=2,
+            bout_t0_ms=float(peak_t_ms - 50.0),
+            bout_t1_ms=float(peak_t_ms + 50.0),
+            peak_t0_ms=float("nan"),
+            peak_t1_ms=float("nan"),
+            peak_y0=float("nan"),
+            peak_angle0=float("nan"),
+            peak_y1=float("nan"),
+            peak_angle1=float("nan"),
+            peak_t_ms=float(peak_t_ms),
+            peak_y=0.0,
+            peak_x=0.0,
+            peak_angle_deg=float(peak_angle_deg),
+        )
+
+    def test_extracts_first_two_peaks_per_trial(self):
+        from stroke_orofacial.dlc_kinematics import (
+            extract_first_vs_second_peak_pairs,
+        )
+        # Trial 0: 3 peaks at 200/300/400 ms with angles -10/+5/+8.
+        # Pair extracted = (-10, +5).
+        df_bouts = pd.DataFrame([
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=200.0,
+                peak_angle_deg=-10.0,
+            ),
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=300.0,
+                peak_angle_deg=5.0,
+            ),
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=400.0,
+                peak_angle_deg=8.0,
+            ),
+        ])
+        out = extract_first_vs_second_peak_pairs(df_bouts)
+        assert len(out) == 1
+        row = out.iloc[0]
+        assert row["trial_index"] == 0
+        assert row["side"] == "L"
+        assert row["peak0_t_ms"] == pytest.approx(200.0)
+        assert row["peak0_angle_deg"] == pytest.approx(-10.0)
+        assert row["peak1_t_ms"] == pytest.approx(300.0)
+        assert row["peak1_angle_deg"] == pytest.approx(5.0)
+
+    def test_skips_trials_with_fewer_than_two_peaks(self):
+        from stroke_orofacial.dlc_kinematics import (
+            extract_first_vs_second_peak_pairs,
+        )
+        df_bouts = pd.DataFrame([
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=200.0,
+                peak_angle_deg=-10.0,
+            ),  # only 1 peak — skip
+            self._make_per_peak_row(
+                trial_index=1, side="R", peak_t_ms=400.0,
+                peak_angle_deg=2.0,
+            ),
+            self._make_per_peak_row(
+                trial_index=1, side="R", peak_t_ms=500.0,
+                peak_angle_deg=8.0,
+            ),  # 2 peaks — kept
+        ])
+        out = extract_first_vs_second_peak_pairs(df_bouts)
+        assert len(out) == 1
+        assert int(out.iloc[0]["trial_index"]) == 1
+        assert out.iloc[0]["side"] == "R"
+
+    def test_chronological_order_across_bouts(self):
+        """Peak ordering is chronological by ``peak_t_ms`` regardless
+        of bout structure. Trial with isolated bout (peak[0]=200ms)
+        + later multi-bout (peak[1]=600, peak[2]=700): first two
+        peaks are 200 and 600.
+        """
+        from stroke_orofacial.dlc_kinematics import (
+            extract_first_vs_second_peak_pairs,
+        )
+        df_bouts = pd.DataFrame([
+            # Isolated bout, multi_bout_rank=NaN (per-peak row).
+            dict(
+                side="L", trial_index=0,
+                bout_idx=0, bout_rank=0,
+                multi_bout_rank=float("nan"),
+                n_peaks=1,
+                bout_t0_ms=150.0, bout_t1_ms=250.0,
+                peak_t0_ms=float("nan"), peak_t1_ms=float("nan"),
+                peak_y0=float("nan"), peak_angle0=float("nan"),
+                peak_y1=float("nan"), peak_angle1=float("nan"),
+                peak_t_ms=200.0, peak_y=0.0, peak_x=0.0,
+                peak_angle_deg=-15.0,
+            ),
+            # Multi-bout peaks
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=600.0,
+                peak_angle_deg=5.0,
+            ),
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=700.0,
+                peak_angle_deg=8.0,
+            ),
+        ])
+        out = extract_first_vs_second_peak_pairs(df_bouts)
+        assert len(out) == 1
+        assert out.iloc[0]["peak0_t_ms"] == pytest.approx(200.0)
+        assert out.iloc[0]["peak0_angle_deg"] == pytest.approx(-15.0)
+        assert out.iloc[0]["peak1_t_ms"] == pytest.approx(600.0)
+        assert out.iloc[0]["peak1_angle_deg"] == pytest.approx(5.0)
+
+    def test_per_trial_per_side_isolation(self):
+        from stroke_orofacial.dlc_kinematics import (
+            extract_first_vs_second_peak_pairs,
+        )
+        df_bouts = pd.DataFrame([
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=200.0,
+                peak_angle_deg=-10.0,
+            ),
+            self._make_per_peak_row(
+                trial_index=0, side="L", peak_t_ms=300.0,
+                peak_angle_deg=5.0,
+            ),
+            self._make_per_peak_row(
+                trial_index=0, side="R", peak_t_ms=600.0,
+                peak_angle_deg=12.0,
+            ),
+            self._make_per_peak_row(
+                trial_index=0, side="R", peak_t_ms=700.0,
+                peak_angle_deg=15.0,
+            ),
+        ])
+        out = extract_first_vs_second_peak_pairs(df_bouts)
+        assert len(out) == 2
+        keys = sorted(zip(out["trial_index"], out["side"]))
+        assert keys == [(0, "L"), (0, "R")]
+
+    def test_empty_df_bouts(self):
+        from stroke_orofacial.dlc_kinematics import (
+            extract_first_vs_second_peak_pairs,
+        )
+        out = extract_first_vs_second_peak_pairs(pd.DataFrame())
+        assert out.empty
+        for col in (
+            "side", "trial_index",
+            "peak0_t_ms", "peak0_angle_deg",
+            "peak1_t_ms", "peak1_angle_deg",
+        ):
+            assert col in out.columns

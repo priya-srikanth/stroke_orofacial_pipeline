@@ -341,31 +341,39 @@ class PathResolver:
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 
-    def tongue_angle_dir(
+    def tongue_angle_within_session_dir(
         self, animal: str, date: datetime.date,
     ) -> Path:
-        """Return the Phase 7a.4 tongue angle/phase analysis figure output directory.
+        """Return the Phase 7a.4 tongue angle/phase per-session figure
+        output directory.
 
-        E.g. ``<outputs>/dlc_kinematics/tongue_angle/PS50/20250319/``.
+        E.g. ``<outputs>/dlc_kinematics/tongue_angle/within_session/PS50/20250319/``.
 
-        Hosts the 6 PNGs emitted per session by
+        Hosts the 9 PNGs emitted per session by
         :func:`stroke_orofacial.dlc_kinematics.tongue_visual.render_tongue_qc_figures`
-        (Family 1 = 2 PNGs per side; Families 2-5 = 1 PNG each). The
-        renderer creates the directory; this resolver returns the path
-        only — no eager mkdir.
+        (qc_trials × 2 sides + first_peak_aligned + reward_aligned + 3
+        phase_aligned_angle variants + first_vs_second_peak_scatter +
+        xy_by_phase). The renderer creates the directory; this
+        resolver returns the path only — no eager mkdir.
 
-        **Naming history:** Previously ``tongue_visual_qc_dir`` writing
-        to ``dlc_kinematics/figures_qc/tongue/...``; renamed in
-        Phase 7a.4-orientation-and-paths-cleanup (2026-05-03) once the
-        7a.4 visual gate verdict locked in PASS. The "QC" / "figures_qc"
-        suffix reflected the visual-gate provenance and is no longer
-        accurate now that these PNGs are the canonical scientific
-        outputs (not just gate artifacts).
+        **Naming history:**
+          - Pre-7a.4-paths-cleanup: ``tongue_visual_qc_dir`` writing to
+            ``dlc_kinematics/figures_qc/tongue/...``.
+          - 7a.4-paths-cleanup (2026-05-03): renamed to ``tongue_angle_dir``
+            at ``dlc_kinematics/tongue_angle/{animal}/{date}/``.
+          - Phase 7a.4-cross-session-angle Addendum #17 (2026-05-04):
+            renamed to ``tongue_angle_within_session_dir`` and moved to
+            ``dlc_kinematics/tongue_angle/within_session/{animal}/{date}/``
+            for symmetry with the cross-session sibling
+            (:meth:`tongue_angle_cross_session_dir`) and the
+            tongue_jaw_mismatch ``within_session/`` + ``cross_session/``
+            layout (locked Phase 7a.4-paths-cleanup).
         """
         date_str = date.strftime("%Y%m%d")
         return (
             self.pipeline_outputs(subdir="dlc_kinematics")
             / "tongue_angle"
+            / "within_session"
             / animal
             / date_str
         )
@@ -466,6 +474,48 @@ class PathResolver:
         return (
             self.pipeline_outputs(subdir="dlc_kinematics")
             / "tongue_jaw_mismatch"
+            / "cross_session"
+            / animal
+        )
+
+    def tongue_angle_cross_session_dir(self, animal: str) -> Path:
+        """Return the Phase 7a.4-cross-session-angle per-mouse cohort
+        figure output directory.
+
+        E.g. ``<outputs>/dlc_kinematics/tongue_angle/cross_session/PS46/``.
+
+        Hosts the 12 cross-session PNGs emitted per mouse by
+        :func:`stroke_orofacial.dlc_kinematics.tongue_angle_cohort.build_tongue_angle_cohort`:
+
+          - 6 plot families
+            (``first_peak_aligned``, ``reward_aligned``,
+            ``phase_aligned_angle_1st_lick``,
+            ``phase_aligned_angle_all_licks``,
+            ``phase_aligned_angle_first_2_licks``,
+            ``first_vs_second_peak_scatter``)
+          - 2 sub-variants per family (``session_overlays``,
+            ``binned_overlays``)
+
+        Filename pattern: ``{animal}_{family}_{sub_variant}.png``.
+        Per-mouse (no date dimension); mirrors the
+        :meth:`tongue_jaw_mismatch_cross_session_dir` resolver
+        convention. The renderer creates the directory; this resolver
+        returns the path only — no eager mkdir.
+
+        **Naming history:** Phase 7a.4-cross-session-angle initial
+        commits (2026-05-04) used ``tongue_angle_cohort_dir`` →
+        ``dlc_kinematics/tongue_angle_cohort/{animal}/``. Renamed by
+        Phase 7a.4-cross-session-angle Addendum #17 item 5
+        (2026-05-04) to ``tongue_angle_cross_session_dir`` →
+        ``dlc_kinematics/tongue_angle/cross_session/{animal}/`` for
+        symmetry with the per-session
+        :meth:`tongue_angle_within_session_dir` sibling and the
+        tongue_jaw_mismatch ``within_session/`` + ``cross_session/``
+        layout.
+        """
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "tongue_angle"
             / "cross_session"
             / animal
         )
