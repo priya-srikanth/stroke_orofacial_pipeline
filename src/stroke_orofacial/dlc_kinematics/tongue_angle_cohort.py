@@ -61,6 +61,9 @@ from stroke_orofacial.dlc_kinematics.mean_sem_visual import (  # noqa: E402
 )
 from stroke_orofacial.dlc_kinematics.tongue_pertrial import (  # noqa: E402
     TongueVisualBundle,
+    build_all_licks_centered_phase_rows,
+    build_first_lick_centered_phase_rows,
+    build_first_n_licks_centered_phase_rows,
     build_tongue_visual_bundle_by_animal_date,
 )
 from stroke_orofacial.paths import PathResolver  # noqa: E402
@@ -196,6 +199,95 @@ def _extract_first_peak_aligned(
     return t, mu, sem, n_trials
 
 
+def _extract_phase_aligned(
+    bundle: TongueVisualBundle, side: str, *,
+    mode: Literal["first_lick", "all_multi", "first_n_licks"],
+    n_peaks: int = 2,
+    synthetic_ili_ms: float | None = None,
+    ili_source: Literal[
+        "real_only", "hybrid", "synthetic_only",
+    ] = "synthetic_only",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int] | None:
+    """Per-side per-bin mean ± SEM of the centered-phase angle for
+    one of the three phase-plot modes.
+
+    Phase 7a.4-cross-session-angle Cross-session #4 (2026-05-04).
+    Builds centered-phase rows via the appropriate
+    :mod:`tongue_pertrial` helper (per Addenda #9 / #10 / #11A /
+    #15: ``"first_lick"`` → :func:`build_first_lick_centered_phase_rows`;
+    ``"all_multi"`` → :func:`build_all_licks_centered_phase_rows`;
+    ``"first_n_licks"`` →
+    :func:`build_first_n_licks_centered_phase_rows`).
+
+    For each phase bin, aggregates ``angle_deg`` across all
+    contributing rows for the requested side. Returns
+    ``(t, mu, sem, n_peaks_contributing)`` where ``t`` =
+    phase_bin_center array (in ``[0, 1]`` for single-cycle modes,
+    ``[0, n_peaks]`` for ``"first_n_licks"``); ``n_peaks_contributing``
+    is the count of unique ``(trial_index, peak_t_ms)`` tuples.
+    Returns ``None`` if no rows.
+    """
+    if synthetic_ili_ms is None:
+        synthetic_ili_ms = bundle.metadata.get(
+            "pre_stroke_median_ili_ms", float("nan"),
+        )
+    # NaN-fallback (Addendum #12 / #15): if synthetic_only requested
+    # but no finite synthetic ILI is available, degrade to real_only
+    # rather than raising.
+    if (
+        ili_source == "synthetic_only"
+        and not (
+            synthetic_ili_ms is not None
+            and np.isfinite(float(synthetic_ili_ms))
+            and float(synthetic_ili_ms) > 0
+        )
+    ):
+        ili_source = "real_only"
+
+    if mode == "first_lick":
+        df = build_first_lick_centered_phase_rows(
+            bundle, synthetic_ili_ms=synthetic_ili_ms,
+            ili_source=ili_source,
+        )
+    elif mode == "all_multi":
+        df = build_all_licks_centered_phase_rows(
+            bundle, synthetic_ili_ms=synthetic_ili_ms,
+            ili_source=ili_source,
+        )
+    elif mode == "first_n_licks":
+        df = build_first_n_licks_centered_phase_rows(
+            bundle, n_peaks=n_peaks,
+            synthetic_ili_ms=synthetic_ili_ms,
+            ili_source=ili_source,
+        )
+    else:
+        raise ValueError(f"unknown phase mode: {mode!r}")
+
+    if df.empty:
+        return None
+    side_df = df[df["side"] == side]
+    if side_df.empty:
+        return None
+
+    grouped = side_df.groupby("phase_bin_center", as_index=False).agg(
+        angle_mean=("angle_deg", "mean"),
+        angle_sem=(
+            "angle_deg",
+            lambda v: float(
+                np.nanstd(np.asarray(v, float), ddof=0)
+                / np.sqrt(max(1, int(np.sum(np.isfinite(np.asarray(v, float))))))
+            ),
+        ),
+    ).sort_values("phase_bin_center")
+    t = grouped["phase_bin_center"].to_numpy(float)
+    mu = grouped["angle_mean"].to_numpy(float)
+    sem = grouped["angle_sem"].to_numpy(float)
+    n_peaks_contrib = int(
+        len(side_df[["trial_index", "peak_t_ms"]].drop_duplicates())
+    )
+    return t, mu, sem, n_peaks_contrib
+
+
 def _extract_reward_aligned(
     bundle: TongueVisualBundle, side: str,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, int] | None:
@@ -318,6 +410,23 @@ def build_tongue_angle_cohort_aggregates(
             print(f"  [ok]  {animal}/{d.isoformat()} (d{rel_day:+d})",
                   flush=True)
 
+        # Phase-family token → mode kwargs for the centered-phase
+        # extractor (Cross-session #4). first_n_licks pulls n_peaks
+        # from the per-session config knob.
+        n_peaks_first_n = int(
+            params.get("dlc_kinematics", {})
+            .get("tongue_visual", {})
+            .get("phase_aligned_first_n_peaks", 2)
+        )
+        phase_mode_for_family: dict[str, dict[str, Any]] = {
+            "phase_aligned_angle_1st_lick":     {"mode": "first_lick"},
+            "phase_aligned_angle_all_licks":    {"mode": "all_multi"},
+            "phase_aligned_angle_first_2_licks": {
+                "mode": "first_n_licks",
+                "n_peaks": n_peaks_first_n,
+            },
+        }
+
         for side in ("L", "R"):
             if "first_peak_aligned" in requested:
                 triple = _extract_first_peak_aligned(bundle, side)
@@ -337,6 +446,18 @@ def build_tongue_angle_cohort_aggregates(
                         family="reward_aligned",
                         side=side, date=d, rel_day=rel_day,
                         n_trials=n_trials,
+                        t=t, mu=mu, sem=sem,
+                    ))
+            for fam_token, mode_kwargs in phase_mode_for_family.items():
+                if fam_token not in requested:
+                    continue
+                triple = _extract_phase_aligned(bundle, side, **mode_kwargs)
+                if triple is not None:
+                    t, mu, sem, n_peaks_contrib = triple
+                    ts_rows.append(TimeSeriesSessionAggregate(
+                        family=fam_token,
+                        side=side, date=d, rel_day=rel_day,
+                        n_trials=n_peaks_contrib,
                         t=t, mu=mu, sem=sem,
                     ))
 
@@ -680,6 +801,363 @@ def _plot_first_peak_aligned_binned_overlays(
     )
 
 
+# ============================================================================
+# Phase-aligned-angle cross-session renderers (Cross-session #4).
+# Different shape from the time-series helpers: peak markers + per-cycle
+# line segments per Addendum #16 + x-range tied to n_peaks for multi-cycle.
+# ============================================================================
+
+
+def _plot_phase_session_overlays(
+    cohort: TongueAngleCohortAggregates,
+    *,
+    family_token: str,
+    title_label: str,
+    n_peaks: int,
+    params: dict[str, Any],
+) -> Figure:
+    """Generic 1×2 cam-view session-overlays renderer for phase-aligned
+    families. Per-session curves (mean ± SEM aggregated across trials
+    within a session) plotted in phase space; pre-stroke grey,
+    post-stroke plasma colormap by relative day.
+
+    For ``n_peaks >= 2`` (= ``"first_n_licks"`` mode), each curve is
+    split into per-cycle line segments at integer boundaries (Addendum
+    #16); cycle-boundary axvlines at x=1, 2, ..., n-1 (alpha 0.2).
+
+    Peak markers (dashed grey at x=i+0.5 for i in [0, n_peaks-1]).
+    """
+    cohort_cfg = params["dlc_kinematics"]["tongue_angle_cohort"]
+    visual = cohort_cfg["visual"]["session_overlays"]
+    pre_color = str(cohort_cfg["pre_color"])
+    post_cmap = str(cohort_cfg["post_cmap"])
+    line_lw = float(visual["line_width"])
+    alpha_mean = float(visual["alpha_mean"])
+    alpha_sem = float(visual["alpha_sem"])
+
+    is_multi_cycle = n_peaks >= 2
+    x_max = float(n_peaks)
+    fig_width = 8.0 * x_max if is_multi_cycle else 13.0
+    fig, axes = plt.subplots(
+        1, 2, figsize=(fig_width, 4.6), sharex=True, sharey=True,
+    )
+    ax_left, ax_right, side_to_ax = _setup_cam_view_axes(fig, axes)
+
+    family_rows = [r for r in cohort.ts_rows if r.family == family_token]
+    post_max = _post_max_rel_day(family_rows)
+
+    for r in family_rows:
+        ax = side_to_ax[r.side]
+        c = _color_for_rel_day_continuous(
+            r.rel_day, post_max,
+            cmap_name=post_cmap, pre_color=pre_color,
+        )
+        if is_multi_cycle:
+            cycle_idx = np.clip(
+                np.floor(r.t).astype(int), 0, n_peaks - 1,
+            )
+            for cycle_i in range(n_peaks):
+                in_cycle = cycle_idx == cycle_i
+                if not np.any(in_cycle):
+                    continue
+                t_seg = r.t[in_cycle]
+                m_seg = r.mu[in_cycle]
+                s_seg = r.sem[in_cycle]
+                ax.plot(t_seg, m_seg, color=c, lw=line_lw, alpha=alpha_mean)
+                ax.fill_between(
+                    t_seg, m_seg - s_seg, m_seg + s_seg,
+                    color=c, alpha=alpha_sem, lw=0,
+                )
+        else:
+            ax.plot(r.t, r.mu, color=c, lw=line_lw, alpha=alpha_mean)
+            ax.fill_between(
+                r.t, r.mu - r.sem, r.mu + r.sem,
+                color=c, alpha=alpha_sem, lw=0,
+            )
+
+    for ax, side in [(ax_left, "R"), (ax_right, "L")]:
+        ax.axhline(0, color="0.6", lw=1.0, alpha=0.8)
+        if is_multi_cycle:
+            for i in range(n_peaks):
+                ax.axvline(i + 0.5, color="0.7", lw=1.0, ls="--", alpha=0.7)
+            for i in range(1, n_peaks):
+                ax.axvline(
+                    float(i), color="0.5", lw=1.0, ls=":", alpha=0.2,
+                )
+            ax.set_xlim(0, x_max)
+            ax.set_xticks(np.arange(0.0, x_max + 0.5, 0.5))
+        else:
+            ax.axvline(0.0, color="0.7", lw=1.0, ls="--", alpha=0.7)
+            ax.axvline(0.5, color="0.7", lw=1.0, ls="--", alpha=0.7)
+            ax.set_xlim(0, 1)
+            ax.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
+        n_sess = sum(1 for r in family_rows if r.side == side)
+        ax.set_title(f"{side} trials  ({n_sess} sessions)")
+        if is_multi_cycle:
+            ax.set_xlabel(
+                f"Centered lick phase (peak[i] at x=i+0.5; "
+                f"cycle width = pre-stroke median ILI)"
+            )
+        else:
+            ax.set_xlabel(
+                "Normalized lick phase (0.5 = peak protrusion; "
+                "cycle width = pre-stroke median ILI)"
+            )
+        ax.grid(True, alpha=0.2)
+    ax_left.set_ylabel("Tongue angle (deg)")
+
+    fig.suptitle(
+        f"{cohort.animal} | {title_label} | session overlays",
+        y=0.99,
+    )
+    _add_pre_stroke_patch_and_post_colorbar(
+        fig, axes, pre_color=pre_color,
+        post_cmap=post_cmap, post_max=post_max,
+    )
+    return fig
+
+
+def _plot_phase_binned_overlays(
+    cohort: TongueAngleCohortAggregates,
+    *,
+    family_token: str,
+    title_label: str,
+    n_peaks: int,
+    params: dict[str, Any],
+) -> Figure:
+    """Generic 1×2 cam-view binned-overlays renderer for phase-aligned
+    families. Per-bin curves (one per (rel-day-bin, side)); per-bin
+    mean = mean of per-session per-bin means; per-bin SEM = SEM
+    across sessions in the bin.
+
+    Multi-cycle (``n_peaks >= 2``): per-cycle line segments per
+    Addendum #16 + cycle-boundary axvlines.
+    """
+    cohort_cfg = params["dlc_kinematics"]["tongue_angle_cohort"]
+    visual = cohort_cfg["visual"]["binned_overlays"]
+    pre_color = str(cohort_cfg["pre_color"])
+    post_cmap = str(cohort_cfg["post_cmap"])
+    line_lw = float(visual["line_width"])
+    alpha_mean = float(visual["alpha_mean"])
+    alpha_sem = float(visual["alpha_sem"])
+    min_per_bin = int(cohort_cfg["min_sessions_per_bin"])
+
+    is_multi_cycle = n_peaks >= 2
+    x_max = float(n_peaks)
+    fig_width = 8.0 * x_max if is_multi_cycle else 13.0
+    fig, axes = plt.subplots(
+        1, 2, figsize=(fig_width, 4.6), sharex=True, sharey=True,
+    )
+    ax_left, ax_right, side_to_ax = _setup_cam_view_axes(fig, axes)
+
+    family_rows = [r for r in cohort.ts_rows if r.family == family_token]
+    rel_days = [r.rel_day for r in family_rows]
+    bins = _make_rel_day_bins(rel_days, bin_days=cohort.bin_days)
+    post_max = _post_max_rel_day(family_rows)
+
+    legend_handles: list[Any] = []
+    legend_labels: list[str] = []
+    seen_bins: set[tuple[int, int]] = set()
+
+    for side in ("L", "R"):
+        ax = side_to_ax[side]
+        side_rows = [r for r in family_rows if r.side == side]
+        for bin_lo, bin_hi in bins:
+            bin_rows = [
+                r for r in side_rows
+                if bin_lo <= r.rel_day <= bin_hi
+            ]
+            if len(bin_rows) < min_per_bin:
+                continue
+            t = bin_rows[0].t
+            # Aggregate per-session means within the bin.
+            M = np.vstack([r.mu for r in bin_rows]).astype(float)
+            mu_bin = np.nanmean(M, axis=0)
+            n_bin = np.sum(np.isfinite(M), axis=0)
+            sd_bin = np.nanstd(M, axis=0, ddof=0)
+            sem_bin = np.full_like(mu_bin, np.nan)
+            good = n_bin > 0
+            sem_bin[good] = sd_bin[good] / np.sqrt(
+                np.maximum(1, n_bin[good])
+            )
+            bin_center = 0.5 * (bin_lo + bin_hi)
+            c = _color_for_rel_day_continuous(
+                bin_center, post_max,
+                cmap_name=post_cmap, pre_color=pre_color,
+            )
+            label = (
+                f"{bin_lo}..{bin_hi} (pre, n={len(bin_rows)})"
+                if bin_hi <= 0 else
+                f"{bin_lo}..{bin_hi} (n={len(bin_rows)})"
+            )
+            if is_multi_cycle:
+                cycle_idx = np.clip(
+                    np.floor(t).astype(int), 0, n_peaks - 1,
+                )
+                line_for_legend = None
+                for cycle_i in range(n_peaks):
+                    in_cycle = cycle_idx == cycle_i
+                    if not np.any(in_cycle):
+                        continue
+                    t_seg = t[in_cycle]
+                    m_seg = mu_bin[in_cycle]
+                    s_seg = sem_bin[in_cycle]
+                    line, = ax.plot(
+                        t_seg, m_seg, color=c, lw=line_lw, alpha=alpha_mean,
+                    )
+                    ax.fill_between(
+                        t_seg, m_seg - s_seg, m_seg + s_seg,
+                        color=c, alpha=alpha_sem, lw=0,
+                    )
+                    if line_for_legend is None:
+                        line_for_legend = line
+            else:
+                line_for_legend, = ax.plot(
+                    t, mu_bin, color=c, lw=line_lw, alpha=alpha_mean,
+                )
+                ax.fill_between(
+                    t, mu_bin - sem_bin, mu_bin + sem_bin,
+                    color=c, alpha=alpha_sem, lw=0,
+                )
+            if (
+                line_for_legend is not None
+                and (bin_lo, bin_hi) not in seen_bins
+            ):
+                legend_handles.append(line_for_legend)
+                legend_labels.append(label)
+                seen_bins.add((bin_lo, bin_hi))
+
+        ax.axhline(0, color="0.6", lw=1.0, alpha=0.8)
+        if is_multi_cycle:
+            for i in range(n_peaks):
+                ax.axvline(i + 0.5, color="0.7", lw=1.0, ls="--", alpha=0.7)
+            for i in range(1, n_peaks):
+                ax.axvline(
+                    float(i), color="0.5", lw=1.0, ls=":", alpha=0.2,
+                )
+            ax.set_xlim(0, x_max)
+            ax.set_xticks(np.arange(0.0, x_max + 0.5, 0.5))
+            ax.set_xlabel(
+                f"Centered lick phase (peak[i] at x=i+0.5; "
+                f"cycle width = pre-stroke median ILI)"
+            )
+        else:
+            ax.axvline(0.0, color="0.7", lw=1.0, ls="--", alpha=0.7)
+            ax.axvline(0.5, color="0.7", lw=1.0, ls="--", alpha=0.7)
+            ax.set_xlim(0, 1)
+            ax.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
+            ax.set_xlabel(
+                "Normalized lick phase (0.5 = peak protrusion; "
+                "cycle width = pre-stroke median ILI)"
+            )
+        ax.set_title(f"{side} trials")
+        ax.grid(True, alpha=0.2)
+    ax_left.set_ylabel("Tongue angle (deg)")
+
+    fig.suptitle(
+        f"{cohort.animal} | {title_label} | "
+        f"binned overlays (bin_days={cohort.bin_days})",
+        y=0.99,
+    )
+
+    fig.subplots_adjust(right=0.80)
+    if legend_handles:
+        fig.legend(
+            legend_handles, legend_labels,
+            loc="upper left",
+            bbox_to_anchor=(0.82, 0.95),
+            frameon=False, fontsize=9,
+        )
+    return fig
+
+
+# ============================================================================
+# Phase per-mode thin wrappers
+# ============================================================================
+
+
+def _plot_phase_aligned_1st_lick_session_overlays(
+    cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
+) -> Figure:
+    return _plot_phase_session_overlays(
+        cohort,
+        family_token="phase_aligned_angle_1st_lick",
+        title_label="phase-aligned tongue angle (1st lick; centered on peak)",
+        n_peaks=1, params=params,
+    )
+
+
+def _plot_phase_aligned_1st_lick_binned_overlays(
+    cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
+) -> Figure:
+    return _plot_phase_binned_overlays(
+        cohort,
+        family_token="phase_aligned_angle_1st_lick",
+        title_label="phase-aligned tongue angle (1st lick; centered on peak)",
+        n_peaks=1, params=params,
+    )
+
+
+def _plot_phase_aligned_all_licks_session_overlays(
+    cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
+) -> Figure:
+    return _plot_phase_session_overlays(
+        cohort,
+        family_token="phase_aligned_angle_all_licks",
+        title_label="phase-aligned tongue angle (all licks; centered on peak)",
+        n_peaks=1, params=params,
+    )
+
+
+def _plot_phase_aligned_all_licks_binned_overlays(
+    cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
+) -> Figure:
+    return _plot_phase_binned_overlays(
+        cohort,
+        family_token="phase_aligned_angle_all_licks",
+        title_label="phase-aligned tongue angle (all licks; centered on peak)",
+        n_peaks=1, params=params,
+    )
+
+
+def _plot_phase_aligned_first_2_licks_session_overlays(
+    cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
+) -> Figure:
+    n_peaks = int(
+        params["dlc_kinematics"]["tongue_visual"].get(
+            "phase_aligned_first_n_peaks", 2,
+        )
+    )
+    return _plot_phase_session_overlays(
+        cohort,
+        family_token="phase_aligned_angle_first_2_licks",
+        title_label=(
+            f"phase-aligned tongue angle "
+            f"(first {n_peaks} licks; centered on peak)"
+        ),
+        n_peaks=n_peaks, params=params,
+    )
+
+
+def _plot_phase_aligned_first_2_licks_binned_overlays(
+    cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
+) -> Figure:
+    n_peaks = int(
+        params["dlc_kinematics"]["tongue_visual"].get(
+            "phase_aligned_first_n_peaks", 2,
+        )
+    )
+    return _plot_phase_binned_overlays(
+        cohort,
+        family_token="phase_aligned_angle_first_2_licks",
+        title_label=(
+            f"phase-aligned tongue angle "
+            f"(first {n_peaks} licks; centered on peak)"
+        ),
+        n_peaks=n_peaks, params=params,
+    )
+
+
 def _plot_reward_aligned_session_overlays(
     cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
 ) -> Figure:
@@ -847,12 +1325,108 @@ def build_reward_aligned_cohort(
     return paths
 
 
+def build_phase_aligned_angle_cohort(
+    animal: str,
+    resolver: PathResolver,
+    *,
+    params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    cohort: TongueAngleCohortAggregates | None = None,
+    overwrite: Literal["skip", "force"] = "skip",
+) -> dict[str, Path]:
+    """Render the 3 phase-aligned-angle cross-session families for
+    one animal: ``_1st_lick``, ``_all_licks``, ``_first_{N}_licks``.
+    Each family emits ``session_overlays`` + ``binned_overlays`` —
+    6 PNGs total.
+
+    Phase 7a.4-cross-session-angle Cross-session #4 (2026-05-04).
+    Per-session aggregates use the centered-on-peak phase
+    convention (Addenda #9 / #10 / #11A / #15 / #16); cycle-width
+    source = ``synthetic_only`` (Mode 3 default per Addendum #15)
+    sourced from the per-animal pre-stroke median ILI in bundle
+    metadata.
+
+    Returns a flat dict
+    ``{"<family>_session_overlays": Path, "<family>_binned_overlays": Path, ...}``
+    keyed by ``{family}_{sub_variant}`` for all 6 PNGs.
+    """
+    if overwrite not in ("skip", "force"):
+        raise ValueError(
+            f"overwrite must be 'skip' or 'force'; got {overwrite!r}",
+        )
+    if params is None:
+        params = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+
+    n_peaks = int(
+        params["dlc_kinematics"]["tongue_visual"].get(
+            "phase_aligned_first_n_peaks", 2,
+        )
+    )
+    out_dir = resolver.tongue_angle_cross_session_dir(animal)
+    family_tokens = (
+        "phase_aligned_angle_1st_lick",
+        "phase_aligned_angle_all_licks",
+        f"phase_aligned_angle_first_{n_peaks}_licks",
+    )
+    paths: dict[str, Path] = {}
+    for fam in family_tokens:
+        paths[f"{fam}_session_overlays"] = out_dir / (
+            f"{animal}_{fam}_session_overlays.png"
+        )
+        paths[f"{fam}_binned_overlays"] = out_dir / (
+            f"{animal}_{fam}_binned_overlays.png"
+        )
+    if overwrite == "skip" and all(p.exists() for p in paths.values()):
+        return paths
+
+    if cohort is None:
+        cohort = build_tongue_angle_cohort_aggregates(
+            animal, resolver, params=params, animal_info=animal_info,
+            families=[
+                "phase_aligned_angle_1st_lick",
+                "phase_aligned_angle_all_licks",
+                "phase_aligned_angle_first_2_licks",
+            ],
+        )
+
+    # Render per (mode, sub_variant): 3 modes × 2 sub-variants = 6.
+    renderer_map: dict[str, tuple] = {
+        "phase_aligned_angle_1st_lick_session_overlays": (
+            _plot_phase_aligned_1st_lick_session_overlays,
+        ),
+        "phase_aligned_angle_1st_lick_binned_overlays": (
+            _plot_phase_aligned_1st_lick_binned_overlays,
+        ),
+        "phase_aligned_angle_all_licks_session_overlays": (
+            _plot_phase_aligned_all_licks_session_overlays,
+        ),
+        "phase_aligned_angle_all_licks_binned_overlays": (
+            _plot_phase_aligned_all_licks_binned_overlays,
+        ),
+        f"phase_aligned_angle_first_{n_peaks}_licks_session_overlays": (
+            _plot_phase_aligned_first_2_licks_session_overlays,
+        ),
+        f"phase_aligned_angle_first_{n_peaks}_licks_binned_overlays": (
+            _plot_phase_aligned_first_2_licks_binned_overlays,
+        ),
+    }
+    for key, (fn,) in renderer_map.items():
+        png_path = paths[key]
+        fig = fn(cohort, params=params)
+        _save_and_close(fig, png_path)
+
+    return paths
+
+
 __all__ = [
     "FAMILY_TOKENS",
     "SUB_VARIANTS",
     "TimeSeriesSessionAggregate",
     "TongueAngleCohortAggregates",
     "build_first_peak_aligned_cohort",
+    "build_phase_aligned_angle_cohort",
     "build_reward_aligned_cohort",
     "build_tongue_angle_cohort_aggregates",
 ]

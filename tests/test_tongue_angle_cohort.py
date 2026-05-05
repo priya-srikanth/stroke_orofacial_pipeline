@@ -370,6 +370,104 @@ class TestRewardAlignedRenderers:
             assert xlim[1] == pytest.approx(1000.0)
         plt.close(fig)
 
+    def test_phase_session_overlays_single_cycle_xlim(self):
+        """Single-cycle phase plot xlim = [0, 1]."""
+        from stroke_orofacial.config_loader import load_defaults
+        from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
+            TimeSeriesSessionAggregate,
+            TongueAngleCohortAggregates,
+            _plot_phase_aligned_1st_lick_session_overlays,
+        )
+        rng = np.random.default_rng(13)
+        t = np.linspace(0.0, 1.0, 36)
+        rows = []
+        for rel_day in (-3, -1, 0, 2, 5):
+            d = (
+                datetime.date(2025, 3, 13)
+                + datetime.timedelta(days=int(rel_day))
+            )
+            for side in ("L", "R"):
+                mu = (
+                    8.0 * np.sin(2 * np.pi * t)
+                    * (1 if side == "R" else -1)
+                    + rng.normal(0, 0.3, size=t.size)
+                )
+                sem = np.full_like(mu, 0.3)
+                rows.append(TimeSeriesSessionAggregate(
+                    family="phase_aligned_angle_1st_lick",
+                    side=side, date=d, rel_day=rel_day,
+                    n_trials=15, t=t, mu=mu, sem=sem,
+                ))
+        cohort = TongueAngleCohortAggregates(
+            animal="PS50", bin_days=2, ts_rows=rows,
+        )
+        params = load_defaults()
+        fig = _plot_phase_aligned_1st_lick_session_overlays(
+            cohort, params=params,
+        )
+        for ax in fig.axes[:2]:
+            xlim = ax.get_xlim()
+            assert xlim[0] == pytest.approx(0.0)
+            assert xlim[1] == pytest.approx(1.0)
+        plt.close(fig)
+
+    def test_phase_session_overlays_multi_cycle_xlim_and_segments(self):
+        """Multi-cycle (first_2_licks) phase plot xlim = [0, n_peaks]
+        + per-cycle line segments per Addendum #16."""
+        from stroke_orofacial.config_loader import load_defaults
+        from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
+            TimeSeriesSessionAggregate,
+            TongueAngleCohortAggregates,
+            _plot_phase_aligned_first_2_licks_session_overlays,
+        )
+        rng = np.random.default_rng(17)
+        # n_peaks=2; t spans [0, 2] with 36 bins per cycle = 72 total.
+        t = np.linspace(0.0, 2.0, 72)
+        rows = []
+        for rel_day in (-3, -1, 0, 2, 5):
+            d = (
+                datetime.date(2025, 3, 13)
+                + datetime.timedelta(days=int(rel_day))
+            )
+            for side in ("L", "R"):
+                mu = (
+                    8.0 * np.sin(2 * np.pi * t)
+                    * (1 if side == "R" else -1)
+                    + rng.normal(0, 0.3, size=t.size)
+                )
+                sem = np.full_like(mu, 0.3)
+                rows.append(TimeSeriesSessionAggregate(
+                    family="phase_aligned_angle_first_2_licks",
+                    side=side, date=d, rel_day=rel_day,
+                    n_trials=15, t=t, mu=mu, sem=sem,
+                ))
+        cohort = TongueAngleCohortAggregates(
+            animal="PS50", bin_days=2, ts_rows=rows,
+        )
+        params = load_defaults()
+        fig = _plot_phase_aligned_first_2_licks_session_overlays(
+            cohort, params=params,
+        )
+        for ax in fig.axes[:2]:
+            xlim = ax.get_xlim()
+            assert xlim[0] == pytest.approx(0.0)
+            assert xlim[1] == pytest.approx(2.0)
+            # Per-cycle segmentation: each mean-curve Line2D spans
+            # at most one cycle's x range (= 1.0 wide).
+            mean_lines = [
+                ln for ln in ax.get_lines()
+                if len(ln.get_xdata()) > 5
+            ]
+            for line in mean_lines:
+                xd = np.asarray(line.get_xdata())
+                if xd.size == 0:
+                    continue
+                x_span = float(np.nanmax(xd) - np.nanmin(xd))
+                assert x_span < 1.0 + 1e-6, (
+                    f"expected per-cycle segmentation; got x_span={x_span}"
+                )
+        plt.close(fig)
+
     def test_display_window_override_propagates(self):
         """Overriding ``reward_aligned_display_window_ms`` in params
         flows through to the cohort renderer."""
