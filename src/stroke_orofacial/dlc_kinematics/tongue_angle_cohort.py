@@ -1800,6 +1800,77 @@ def build_phase_aligned_angle_cohort(
     return paths
 
 
+def build_tongue_angle_cohort(
+    animal: str,
+    resolver: PathResolver,
+    *,
+    params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["skip", "force"] = "skip",
+) -> dict[str, Path]:
+    """Top-level composite — emit all 12 cross-session PNGs per
+    mouse in a single call. Phase 7a.4-cross-session-angle
+    Cross-session #6 (2026-05-04).
+
+    Builds the cohort aggregates ONCE (single walk over all
+    available sessions; one bundle build per session), then
+    dispatches to the 4 family drivers
+    (:func:`build_first_peak_aligned_cohort`,
+    :func:`build_reward_aligned_cohort`,
+    :func:`build_phase_aligned_angle_cohort`,
+    :func:`build_first_vs_second_peak_scatter_cohort`). Saves ~75%
+    of the per-session walk cost vs. calling each family driver
+    separately.
+
+    Returns a flat dict keyed by ``{family}_{sub_variant}`` for all
+    12 PNGs. The phase family contributes 6 keys (3 modes × 2
+    sub-variants); the other three families contribute 2 keys each.
+    """
+    if overwrite not in ("skip", "force"):
+        raise ValueError(
+            f"overwrite must be 'skip' or 'force'; got {overwrite!r}",
+        )
+    if params is None:
+        params = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+
+    cohort = build_tongue_angle_cohort_aggregates(
+        animal, resolver, params=params, animal_info=animal_info,
+        families=list(FAMILY_TOKENS),
+    )
+
+    all_paths: dict[str, Path] = {}
+
+    # Time-series + scatter family drivers all return
+    # {"session_overlays": Path, "binned_overlays": Path}; prefix
+    # the keys with the family token for the composite return dict.
+    for family_driver, family_token in (
+        (build_first_peak_aligned_cohort, "first_peak_aligned"),
+        (build_reward_aligned_cohort, "reward_aligned"),
+        (build_first_vs_second_peak_scatter_cohort,
+         "first_vs_second_peak_scatter"),
+    ):
+        paths = family_driver(
+            animal=animal, resolver=resolver,
+            params=params, animal_info=animal_info,
+            cohort=cohort, overwrite=overwrite,
+        )
+        for sub_variant, p in paths.items():
+            all_paths[f"{family_token}_{sub_variant}"] = p
+
+    # Phase family driver already returns prefixed keys
+    # (``{family_token}_{sub_variant}`` per mode).
+    phase_paths = build_phase_aligned_angle_cohort(
+        animal=animal, resolver=resolver,
+        params=params, animal_info=animal_info,
+        cohort=cohort, overwrite=overwrite,
+    )
+    all_paths.update(phase_paths)
+
+    return all_paths
+
+
 __all__ = [
     "FAMILY_TOKENS",
     "SUB_VARIANTS",
@@ -1810,5 +1881,6 @@ __all__ = [
     "build_first_vs_second_peak_scatter_cohort",
     "build_phase_aligned_angle_cohort",
     "build_reward_aligned_cohort",
+    "build_tongue_angle_cohort",
     "build_tongue_angle_cohort_aggregates",
 ]
