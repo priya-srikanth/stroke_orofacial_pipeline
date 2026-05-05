@@ -5460,6 +5460,22 @@ landed in PR #94 / 7a.4-paths-cleanup) audit confirmed Outcome B
     candidate panel's terse convention. Cross-session subtitle
     format unaffected.
 
+14. **Eye-midpoint convention LOCKED to per-eye-median-then-midpoint**
+    (Addendum #18, docs-only — no code change). Investigation into
+    a 6° (legacy) vs. 4° (consolidated) peak-angle discrepancy
+    traced to a divergence between legacy
+    `_estimate_session_eye_midpoint`
+    (`docs/legacy_snippets/tongue_pertrial_features.py:4171`,
+    per-frame midpoint THEN `nanmedian` across frames in the
+    both-eyes default path) and consolidated
+    `_compute_eye_in_spout_frame`
+    (`src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py:1635-1641`,
+    per-eye median THEN midpoint, uniform across both default and
+    one-eye-only fallback paths). Locked decision: keep
+    consolidated default — per-eye median is more robust to
+    per-frame head-pose noise. See DECISIONS 2026-05-04 entry
+    Decision 15 for the full rationale.
+
 **Behavior differences vs. legacy:**
 
 - **`d0` is now treated as pre-stroke project-wide.** The legacy
@@ -5490,6 +5506,16 @@ landed in PR #94 / 7a.4-paths-cleanup) audit confirmed Outcome B
   angle cohort module (new), centered-phase helpers (new),
   reward_aligned data source (new column read), pre-stroke
   median (new helper).
+- **Tongue-angle values systematically differ from legacy by
+  ~1-3° at peaks** (Addendum #18). The consolidated
+  `_compute_eye_in_spout_frame` uses per-eye-median-then-midpoint
+  uniformly; legacy `_estimate_session_eye_midpoint` used
+  per-frame-midpoint-then-median in its both-eyes default path.
+  Magnitude depends on per-session head-pose stability; the
+  consolidated convention is locked as the canonical
+  implementation (DECISIONS 2026-05-04 Decision 15). Any
+  cross-cohort analysis comparing consolidated to legacy outputs
+  must account for this systematic offset.
 
 **Visual gate verdict.** Priya PASS 2026-05-04 on the full 36-PNG
 cohort: 12 PNGs × 3 mice (PS46, PS50, PS55) emitted in 8.8 min via

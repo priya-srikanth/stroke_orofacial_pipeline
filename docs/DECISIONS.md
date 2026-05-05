@@ -272,6 +272,43 @@ one PR-close record.
     the already-terse candidate panel subtitle. Cross-session
     figures use a different subtitle format and need no change.
 
+15. **Eye-midpoint convention LOCKED to per-eye-median-then-midpoint
+    (Addendum #18, 2026-05-04).** Investigation into a 6° (legacy)
+    vs. 4° (consolidated) peak-angle discrepancy traced the root
+    cause to a divergence between the legacy and consolidated
+    eye-midpoint computations:
+    - **Legacy** `_estimate_session_eye_midpoint`
+      (`docs/legacy_snippets/tongue_pertrial_features.py:4171`)
+      both-eyes default path computes a per-frame midpoint
+      (`midx = 0.5 * (lx[both] + rx[both])`) THEN takes the
+      `nanmedian` across frames. The one-eye-only fallback path
+      (line 4208) uses per-eye-median-then-midpoint —
+      asymmetric with the default.
+    - **Consolidated** `_compute_eye_in_spout_frame`
+      (`src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py:1635-1641`)
+      uses per-eye-median-then-midpoint UNIFORMLY across both
+      the default (`n_both >= min_valid`) and one-eye-only
+      fallback paths.
+
+    Locked decision: **KEEP consolidated default; do NOT revert
+    to legacy.** No code change. Per-eye median is more robust
+    to per-frame head-pose noise within each eye's tracking
+    (averages over within-eye DLC tracking variability before
+    combining), providing a more stable session-level reference
+    vector for angle computation. Per-frame midpoint is more
+    sensitive to per-frame L/R asymmetry. Particularly
+    valuable for post-stroke sessions where head positioning may
+    shift systematically from pre-stroke baseline.
+
+    Trade-off (deliberate): all angle plots in the consolidated
+    codebase will systematically differ from legacy by ~1-3° at
+    peak frames (precise magnitude depends on per-session head-
+    pose stability). Cross-session comparisons WITHIN the
+    consolidated codebase remain internally consistent. Any
+    cross-cohort analysis comparing consolidated outputs to
+    legacy notebook outputs needs to account for this systematic
+    offset.
+
 **Rationale.**
 
 - **Centered-on-peak convention (Decision 4)** — the legacy
