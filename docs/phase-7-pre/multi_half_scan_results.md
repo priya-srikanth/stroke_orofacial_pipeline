@@ -157,3 +157,98 @@ rather than character-equal.
   within the session-day. The kickoff Task 1d explicitly asked about this; the
   answer is "no timestamp in WS .h5 filenames; timestamp lives in the parent
   `{DATE}{half}/` dirname."
+
+---
+
+## Task 1 verdict — locked 2026-05-05 (Priya)
+
+**Outcome: X1-prime — Pattern A only in scope.**
+
+### Decisions (locked)
+
+1. **Phase 7-pre-multi-half ships Pattern A only.** PS48 20250314 is the
+   only session whose merged outputs the new pipeline must produce.
+   Pattern B (the other 19 STRONG candidates across PS51/PS54/PS55) is
+   "exploratory and not for analyses" — the unlabeled-half (bare `{DATE}`
+   WS subdir, or `a` for the few `a`/`b` cases) is the analyzed half;
+   half-b is silently discarded. **No code changes for Pattern B in
+   this PR.** The existing single-half discovery (`find_wavesurfer_file`
+   + flat DLC top-level glob) already produces the correct behavior on
+   Pattern B by reading the bare `{DATE}` subdir.
+
+   Forward-pointer for a future small follow-up: `Phase
+   7-pre-pattern-B-documentation` — add an explicit comment / docstring
+   note in the single-half discovery path documenting "Pattern B
+   sessions exist; half-b is exploratory and silently discarded by
+   design," so future maintainers don't read it as a bug.
+
+2. **Defensive check signal logic** (Task 2 implementation note). The
+   kickoff originally specified the `MultiHalfNotDeclaredError` as
+   firing when *any* of {n_ws≥2, n_dlc≥2, n_cam≥2} fires without a YAML
+   entry. With Pattern B's signal pattern (n_ws=2, n_dlc=1, n_cam=2)
+   being a non-error case, the check must require `n_dlc≥2` as the
+   discriminator. **New rule:** raise iff `n_dlc≥2 AND no YAML entry`.
+   This makes Pattern A the only configuration that fires the check.
+
+3. **Per-half artefact layout for new pipeline outputs.** Mirror the
+   on-disk convention Priya established for PS48 alignment templates
+   (post-merge cleanup, 2026-05-05): per-half artefacts go in a
+   per-(animal, date) subdir named `{DATE}{halves_concat_label}` (e.g.
+   `20250314ab` for halves `a` + `b`); the merged artefact lives at the
+   parent level (`{DATE}.npz`). Apply this convention to:
+     - `licks_and_rewards/{ANIMAL}/{DATE}ab/{DATE}a.npz` + `{DATE}b.npz`
+       (per-half) + `licks_and_rewards/{ANIMAL}/{DATE}.npz` (merged).
+     - `alignment_templates/cam2/{ANIMAL}/{DATE}ab/{DATE}a.npz` +
+       `{DATE}b.npz` (per-half) +
+       `alignment_templates/cam2/{ANIMAL}/{DATE}.npz` (merged).
+     - `intermediate_data_frames` parquet (Phase 4 input) follows the
+       same shape inside `stroke_orofacial_pipeline_outputs/`.
+   **Downstream consumers always read the parent-level merged file**;
+   per-half files are kept as historical record only. This is the
+   "keep halves, only merged is canonical" pattern Priya confirmed.
+
+4. **`paths.yaml local_processed_spout: windows: null` fix lands in this
+   phase.** The legacy `session_processing3/` is on MICROSCOPE at
+   `\\research...\Priya\facerhythm_stroke_biomarker_exp\analysis\`, not
+   Mac-only. Update is one line. Will land as part of Task 2's config
+   touches.
+
+5. **PS55 20250428 already excluded** (verified 2026-05-05) —
+   `applies_to=['dlc', 'spout_behavior']`,
+   `reason='experimenter error caused inaccurate reward delivery'`.
+   Discovery for that session is naturally short-circuited by the
+   exclusion; multi-half processing path never runs for it. No action
+   needed.
+
+### Implementation implications for Tasks 2-10
+
+- **Task 2 stays in scope mostly as-drafted** but the defensive check
+  predicate is `n_dlc≥2 AND no YAML entry` (not OR-of-3-signals).
+  Registry has one entry: PS48 20250314.
+- **Task 3-6 unchanged.** Per-half loops, three merge functions
+  (cells 13/16/17 ports), all unchanged in shape. Output paths use
+  the `{DATE}{halves_concat_label}/` subdir convention from Decision 3.
+- **Task 7 unchanged** but the productized scan emits a markdown
+  report distinguishing Pattern A (n_dlc≥2 candidates) from Pattern B
+  (n_dlc<2 candidates). Pattern A undeclared → exit code non-zero.
+  Pattern B → log notice only.
+- **Task 8 unchanged.** Synthetic two-half integration test exercises
+  Pattern A only.
+- **Task 9 parity gate.** Single-session: PS48 20250314. Three layers
+  (licks, alignment, parquet). All reachable from Windows now that
+  legacy `session_processing3/` is confirmed on MICROSCOPE.
+- **Task 10 docs.** DECISIONS supersession entry codifies decisions
+  1-4 above (and the X1-prime verdict). MIGRATION_LOG entry. State-doc
+  refresh moves "In flight" → "Recent session log."
+
+### Open question carried forward into Task 2
+
+The cell 13 (parquet merge) sort-by-acquisition-timestamp logic relies
+on `re_ts` regex hits in the parquet entry's KEY (file path string),
+not the parquet content. Two halves become two keys keyed by their
+`{ANIMAL}/video2_{DATE}T{HH_MM_SS}*_filtered.h5` paths. The new
+pipeline's parquet keying convention is locked Phase 7a (parquet stores
+keyed by `(ANIMAL, DATE)` after build_centered_parquet — single-key per
+(animal, date)). For multi-half, the per-half parquets will need to be
+keyed by `(ANIMAL, DATE, HALF_ID)` or `(ANIMAL, DATE{HALF_ID})` so the
+cell 13 port can find both halves to merge. Spec to confirm in Task 6.
