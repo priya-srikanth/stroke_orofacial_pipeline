@@ -15,6 +15,372 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-04 — Phase 7a.4-cross-session-angle — per-mouse cross-session aggregations of tongue angle/phase plot families + centered-on-peak phase convention + per-animal pre-stroke median ILI + d0=pre-stroke project-wide convention update
+
+**Context.** Phase 7a.4-paths-cleanup (PR #94, 2026-05-03) shipped a
+forward-pointer kickoff at
+`docs/prompts/phase-7a.4-cross-session-angle-kickoff.md` for net-new
+cross-session aggregations of the tongue angle/phase plot families
+(`first_peak_aligned`, `phase_aligned_angle`, `reward_aligned`,
+`xy_by_phase`) — counterpart to the 7a.5 / 7a.6 cross-session work
+already shipped for tongue-jaw mismatch and mean/SEM. The kickoff
+locked **Outcome B** (substantial port) + **Architecture B1**
+(net-new module `tongue_angle_cohort.py`) and listed 8 initial
+locks. Phase execution then iterated through 17 addenda + 7 cross-
+session sub-commits across 2026-05-03 → 2026-05-04 (20 commits on
+`phase/7a.4-cross-session-angle`) before closing visual-gate PASS
+on the full 36-PNG cohort (12 PNGs × 3 mice: PS46, PS50, PS55).
+This entry consolidates every decision made during that arc into
+one PR-close record.
+
+**Decisions enacted.**
+
+1. **`d0` is pre-stroke (project-wide convention update;
+   Addendum #17 item 1).** The day labeled `rel_day == 0` is the
+   day stroke is induced — but the behavioral recording for that
+   day happens BEFORE the surgery earlier the same day. So `d0`
+   sessions are pre-stroke data. Convention updated globally:
+     - Pre-stroke: `rel_day <= 0` (was `rel_day < 0` in some
+       helpers — particularly `compute_pre_stroke_median_ili_ms`).
+     - Post-stroke: `rel_day >= 1` (was `rel_day > 0`).
+   Pre-stroke binning is anchored to `d0`: the last pre-stroke
+   bin spans `(-(B-1), 0)` and earlier bins decrement by `B`
+   (where `B = animal_info.bin_days`). Aligns with the legacy
+   `_day_binned._compute_rel_day_bin_label` precedent.
+   Per-animal pre-stroke median ILI re-computed under the new
+   filter; max drift PS51 (156 → 160 ms, 2.6%); tight clustering
+   (156-180 ms across all 8 animals) preserved.
+
+2. **Net-new module `tongue_angle_cohort.py` (Architecture B1).**
+   Per-mouse cross-session aggregator. 6 plot families × 2
+   sub-variants = 12 PNGs per mouse. Single composite driver
+   `build_tongue_angle_cohort(animal, resolver, ...)` builds the
+   cohort aggregates ONCE per animal (single walk over all
+   available sessions; one bundle build per session) and
+   dispatches to all 4 family drivers reusing the cohort=
+   kwarg, saving ~75% of the per-session walk cost vs. calling
+   each family driver separately.
+   Sub-variants:
+     - `session_overlays`: one curve / scatter cloud per session
+       per side, colored pre-stroke grey + post-stroke plasma by
+       relative day.
+     - `binned_overlays`: one curve / centroid per (rel-day-bin,
+       side); bin width from `animal_info.bin_days`.
+
+3. **Per-session `phase_aligned_angle` split into 3 mode-suffixed
+   PNGs (Addendum #3 lock #3 + Addendum #11 Part A).** Retires
+   the bare `phase_aligned_angle.png` filename. Three variants:
+     - `phase_aligned_angle_1st_lick.png` (mode `first_lick`):
+       single cycle centered on peak[0] of the first multi-bout
+       per trial.
+     - `phase_aligned_angle_all_licks.png` (mode `all_multi`):
+       single cycle centered on each peak in every multi-bout
+       per trial.
+     - `phase_aligned_angle_first_2_licks.png` (mode
+       `first_n_licks`, N from
+       `phase_aligned_first_n_peaks` config; default 2):
+       multi-cycle, peak[0]..peak[N-1] each centered in its own
+       `[i, i+1]` cycle (peak[i] at x=i+0.5).
+
+4. **Centered-on-peak phase convention (Addenda #9 + #10;
+   supersedes the legacy peak-to-peak-shifted convention for
+   `_1st_lick` and `_all_licks`).** Each peak's cycle =
+   `(peak_t - ILI/2, peak_t + ILI/2)` where `ILI` is the forward
+   inter-lick interval; `phase = (t - cycle_lo) / ILI` in
+   `[0, 1]`; peak lands at phase=0.5 by construction. Reads
+   left-to-right as "approach peak → at peak → leave peak". The
+   pre-Addendum-#3 first-lick selector (Option C) was
+   semantically wrong — it filtered to the peak[0]→peak[1]
+   interval, which renders the TRANSITION between two peaks
+   (warming-up vs. settled), not the SHAPE of a single lick.
+   That first-pass selector was deleted; replaced by the
+   centered convention.
+   Bundle's `df_phase` is still populated with the legacy peak-
+   to-peak-shifted phase (no production renderer consumes it
+   after Addendum #10, but the column stays for any external
+   reader).
+
+5. **Synthetic-ILI from per-animal pre-stroke median for
+   isolated / last-peak licks (Addendum #12).** Centered-phase
+   helpers gain a `synthetic_ili_ms` kwarg supplying a fallback
+   cycle width for peaks without a forward neighbour. The scalar
+   = per-animal pre-stroke median multi-bout inter-peak interval,
+   computed by walking pre-stroke (`rel_day <= 0`) sessions
+   on disk and taking the median across all detected multi-bout
+   intervals. Cached at module level
+   (`_PRE_STROKE_MEDIAN_ILI_CACHE`) for cohort-walk efficiency.
+   Plumbed end-to-end:
+     - `compute_pre_stroke_median_ili_ms` + `get_pre_stroke_median_ili_ms`
+       in `tongue_pertrial.py` (with cache).
+     - `build_tongue_visual_bundle` gains `pre_stroke_median_ili_ms`
+       kwarg; `bundle.metadata["pre_stroke_median_ili_ms"]` carries
+       the value to renderers.
+     - Cohort-wide upstream emit script
+       `scripts/phase_7a/emit_cohort_for_pre_stroke_median.py`
+       (Addendum #13) ran 45 minutes (256 ok / 134 skip_missing /
+       5 skip_excluded) populating the on-disk parquet/JSON set
+       across all 8 animals so every animal has a valid median.
+       Final medians (post-Addendum-#17 d0=pre filter):
+         PS46:180  PS47:164  PS48:176  PS49:180  PS50:164
+         PS51:160  PS54:156  PS55:168
+   Recursion guard: the median walker calls the lower-level
+   `build_tongue_visual_bundle` directly, passing
+   `pre_stroke_median_ili_ms=NaN` to short-circuit recursive
+   cohort-scalar computation.
+   NaN-fallback: when `synthetic_only` is configured but the
+   animal's median is non-finite, the renderer silently degrades
+   to `real_only` rather than raising.
+
+6. **Mode 3 `synthetic_only` locked as the centered-phase family
+   default (Addendum #15; supersedes the Addendum #12 implicit
+   hybrid+None → real_only fallback).** New config knob
+   `dlc_kinematics.tongue_visual.phase_aligned_ili_source`
+   replaces the prior `phase_aligned_isolated_lick_handling`
+   knob. Three modes:
+     - `"real_only"`: multi-bout-only; peaks without a same-bout
+       forward neighbour DROPPED. Equivalent to the pre-#12 legacy
+       semantic.
+     - `"hybrid"`: real ILI when available, synthetic median as
+       fallback for isolated / last-peak. Was the production
+       behavior between Addenda #12 and #15.
+     - `"synthetic_only"` (DEFAULT): cycle width = synthetic
+       median for every peak, regardless of forward-neighbour
+       existence; real-ILI lookup bypassed.
+   Mode 3 won the 3-way visual-gate comparison (Addendum #14b
+   verdict, 2026-05-04) for all three centered-phase families
+   on PS46 / PS50 / PS55. Eliminating per-cycle width variance
+   from the per-bin aggregation leaves only the natural angle-
+   shape variation across trials — the science of interest.
+
+7. **Per-cycle line segments at cycle boundaries for multi-cycle
+   plots (Addendum #16).** For `first_n_licks` with N≥2, each
+   cycle is rendered as an independent Line2D + fill_between. No
+   line connects the end of one cycle to the start of the next.
+   Under Mode 3 (synthetic_only) every cycle is the same
+   synthetic width regardless of real per-trial timing, so the
+   same x position at a cycle boundary represents physically
+   distinct time-points across trials (gap = `real_ILI[i] -
+   synthetic_ILI`); a connected line at the boundary draws
+   between those distinct time-points and creates a misleading
+   "jump" artifact. Per-cycle segmentation makes the
+   discontinuity explicit — viewer reads "lick 1 shape" and
+   "lick 2 shape" as independent shapes. Cycle-boundary axvlines
+   lowered to `alpha=0.2` (faint eye-guide) since the line
+   break already makes the boundary visually obvious.
+
+8. **`reward_aligned` consumes `angle_snip` directly (Addendum
+   #8; supersedes the Addendum #6 `time_summary: all_bouts`
+   intent).** The reward-aligned per-session and cross-session
+   plots both read `df_trials.angle_snip` (raw per-frame tongue
+   angle, populated for every frame in `plot_win_ms`) instead
+   of dispatching through the bout-windowed
+   `angle_<time_summary>_snip` arrays. Pre-reward baseline +
+   between-bout frames + post-bout decay all contribute to the
+   cross-trial mean. Bout-mode distinction no longer applied to
+   this family. Title's `mode=...` suffix dropped.
+   Side effects:
+     - `dlc_kinematics.tongue_visual.modes.time_summary` is now
+       INTENTIONALLY UNUSED. Default value retained
+       (`"all_bouts"` from Addendum #6) with inline comment
+       marking it as documentation-only — same pattern as
+       `allow_single_lick_bouts` flagged at Addendum #6 First
+       Check.
+     - `_pick_time_array_column` helper marked
+       DEPRECATION-PENDING; no in-repo caller remains.
+   Bundle widening: `plot_win_ms` left edge widened from `0` to
+   `-180` ms (Addendum #4) so the per-session and cross-session
+   reward windows share their x-axis with the first-peak-aligned
+   window. Display clipping to `[-180, 1000]` ms applied at
+   render time via the new
+   `reward_aligned_display_window_ms` config knob (single source
+   of truth for both per-session and cross-session readers).
+
+9. **`first_vs_second_peak_scatter` family added (Addendum #11
+   Part B).** Per-trial scatter of (peak[0] angle, peak[1] angle),
+   one point per trial per side. Direct trial-level visualization
+   of the warming-up first-lick vs. settled second-lick angle
+   phenotype — complements the centered-phase family which shows
+   the time-domain SHAPE of each lick by showing the per-trial
+   PAIRING of angle values. Scope decision:
+   chronologically-first-two-peaks (across all bouts; trials
+   with fewer than 2 detected peaks contribute nothing). Plot
+   shape: 1×2 cam-view; symmetric square axes; equal aspect; y=x
+   diagonal reference dashed grey; cross at origin.
+   `binned_overlays` variant draws per-bin centroid + axis-aligned
+   ellipsoid (mean ± 1 SD on each axis) colored by
+   rel_day_bin_center.
+
+10. **Output path restructure (Addendum #17 item 5).** For
+    symmetry with the `tongue_jaw_mismatch/{within_session,
+    cross_session}/` layout locked Phase 7a.4-paths-cleanup
+    (2026-05-03):
+      - OLD: `dlc_kinematics/tongue_angle/{animal}/{date}/...`,
+        `dlc_kinematics/tongue_angle_cohort/{animal}/...`
+      - NEW: `dlc_kinematics/tongue_angle/within_session/{animal}/{date}/...`,
+        `dlc_kinematics/tongue_angle/cross_session/{animal}/...`
+    Resolver renames in `paths.py`:
+      - `tongue_angle_dir` → `tongue_angle_within_session_dir`
+      - `tongue_angle_cohort_dir` → `tongue_angle_cross_session_dir`
+    Mover script `scripts/phase_7a/move_tongue_angle_to_subdirs.py`
+    (`--dry-run` default; `--execute` flag; idempotent) handles
+    relocation of existing on-disk PNGs. Same pattern as the
+    7a.4-paths-cleanup mover; NOT executed as part of this phase
+    merge.
+
+11. **Cam-view L/R subplot ordering throughout (inherited from
+    7a.4-orientation-fix).** All 1×2 L/R subplot views in the
+    cohort module use `side_to_ax = {"R": axes[0], "L":
+    axes[1]}` — R-trials on figure-left, L-trials on figure-
+    right. The camera mirrors the mouse so mouse-left appears
+    on cam-right; displaying R-trials on figure-left makes panel
+    labels match what the experimenter sees through the camera.
+    Rule applied uniformly: `_plot_first_peak_aligned_*`,
+    `_plot_reward_aligned_*` (via the generic time-series
+    helpers), `_plot_phase_*`, `_plot_first_vs_second_peak_scatter_*`.
+
+12. **Shared right-margin legend convention for cohort plots
+    (Addendum #17 item 3).** Both `session_overlays` and
+    `binned_overlays` reserve the rightmost ~20% of the figure
+    (`subplots_adjust(right=0.80)`) for a figure-level legend;
+    no per-axis legends. `session_overlays` uses a small grey
+    Patch (`pre-stroke (d≤0)`) plus a vertical post-stroke
+    plasma colorbar (continuous; cleaner than ~50-entry textual
+    legend for PS55). `binned_overlays` uses a textual
+    figure-level legend with one entry per bin.
+    Lowered alphas (Addendum #17 item 4): renamed
+    `line_alpha → alpha_mean`, `sem_fill_alpha → alpha_sem`;
+    defaults flipped — `session_overlays` 0.85→0.50 (mean) +
+    0.10→0.05 (SEM); `binned_overlays` 0.85→0.70 + 0.20→0.10
+    so overlapping curves on PS55 (≥50 sessions) read cleanly.
+
+13. **Notebook 13 wire-up + `INCLUDE_TONGUE_ANGLE_COHORT` /
+    `OVERWRITE_TONGUE_ANGLE_COHORT` knobs.** Mirrors the
+    7a.4-paths-cleanup tongue-jaw mismatch cross-session
+    integration pattern (which itself mirrored 7a.5 cross-session
+    + 7a.6 mean/SEM). New per-mouse cell calls
+    `build_tongue_angle_cohort(animal, resolver,
+    overwrite=overwrite_cs)`. `OVERWRITE_TONGUE_ANGLE_COHORT =
+    None` inherits global `OVERWRITE`; `"force"` regenerates
+    cross-session output without re-running the slower per-
+    session pipelines. Notebook now has 13 cells (was 12).
+
+14. **Subtitle trim on tongue-jaw mismatch non-candidate panel
+    (commit `21448cc`, incidental polish per Addendum #7).** The
+    `(candidates: X/Y)` parenthetical on the non-candidate panel
+    described trials NOT shown there (redundant with the
+    candidate panel's own subtitle). Trimmed for symmetry with
+    the already-terse candidate panel subtitle. Cross-session
+    figures use a different subtitle format and need no change.
+
+**Rationale.**
+
+- **Centered-on-peak convention (Decision 4)** — the legacy
+  peak-to-peak-shifted phase convention surfaced an artifact on
+  PS50 L-trials where peak[0] (warming-up, negative angle) and
+  peak[1] (settled, positive angle) caused the phase plot to
+  read "pos then neg" left-to-right because the two halves of
+  the cycle reflected DIFFERENT physical peaks. The centered
+  convention puts a single peak at the middle of its own cycle,
+  so the plot shows that peak's SHAPE — the science of interest.
+- **Mode 3 synthetic_only (Decision 6)** — multi-cycle plots
+  under Mode 1 (`real_only`) drop ~10-20% of peaks (no forward
+  neighbour); under Mode 2 (`hybrid`) the per-cycle width varies
+  trial-by-trial, smearing the per-bin aggregation. Mode 3 fixes
+  every cycle to the same synthetic width, so the only remaining
+  variance in the aggregation is the angle-shape variation
+  across trials. Visual gate confirmed cleaner aggregations
+  across all 3 mice / 3 phase variants.
+- **Per-cycle line segments (Decision 7)** — Mode 3's uniform
+  cycle width creates a real discontinuity at cycle boundaries
+  that connected lines smear over. Explicit segmentation makes
+  the structure (and the convention) legible.
+- **`d0 = pre-stroke` global update (Decision 1)** — corrects a
+  silent off-by-one inherited from the legacy notebook's
+  loose convention. Before #17, `compute_pre_stroke_median_ili_ms`
+  was filtering `rel_day < 0` and missing a session per animal.
+- **Composite driver (Decision 2)** — the per-session walk +
+  bundle build is the dominant cost (~95% of cohort runtime);
+  building cohort aggregates once and dispatching to all 4
+  family drivers via `cohort=` kwarg avoids redundant walks.
+  Confirmed 8.8 min for full 36-PNG cohort across PS46/PS50/PS55.
+- **Path restructure (Decision 10)** — completes the layout
+  symmetry started by Phase 7a.4-paths-cleanup (which moved
+  tongue-jaw mismatch to `within_session/` + `cross_session/`).
+  Now both 7a.4 plot families and 7a.5 mismatch share one
+  layout convention.
+
+**Enforced at.**
+- `src/stroke_orofacial/dlc_kinematics/tongue_angle_cohort.py`
+  (NEW; ~1,886 LOC) — composite driver, 4 family drivers, 4
+  extractors, 4 plot helpers, 2 generic time-series helpers, 4
+  dataclasses, day-binning helpers (`_make_rel_day_bins`,
+  `_rel_day_to_bin`, `_assign_to_bin`).
+- `src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py` —
+  `compute_pre_stroke_median_ili_ms` + cache;
+  `_centered_phase_rows_from_peaks` core + 3 public builders
+  (`build_first_lick_centered_phase_rows`,
+  `build_all_licks_centered_phase_rows`,
+  `build_first_n_licks_centered_phase_rows`); `ili_source` enum;
+  `extract_first_vs_second_peak_pairs` helper;
+  `build_tongue_visual_bundle` + `..._by_animal_date` plumbed
+  with `pre_stroke_median_ili_ms`; pre-stroke filter changed to
+  `rel_day <= 0`.
+- `src/stroke_orofacial/dlc_kinematics/tongue_visual.py` —
+  `_phase_rows_for_mode` dispatcher + `n_peaks` + `ili_source`
+  kwargs on `_plot_phase_aligned_angle`; bundle widening (`plot_win_ms`
+  left edge `0 → -180`); `reward_aligned_display_window_ms`
+  consumption; per-cycle line segmentation for multi-cycle plots;
+  3-mode-suffixed PNG family wired into `_FAMILIES_ALL`;
+  `first_vs_second_peak_scatter` family added; centered-on-peak
+  title convention.
+- `src/stroke_orofacial/paths.py` —
+  `tongue_angle_within_session_dir` (renamed from
+  `tongue_angle_dir`); `tongue_angle_cross_session_dir` (replaces
+  the never-shipped `tongue_angle_cohort_dir` from the early
+  scaffold commit); both with docstring history pointers to this
+  entry.
+- `configs/defaults.yaml` —
+  `dlc_kinematics.tongue_visual.bundle.plot_win_ms: [-180, 8000]`;
+  `reward_aligned_display_window_ms: [-180, 1000]`;
+  `phase_aligned_first_n_peaks: 2`;
+  `phase_aligned_ili_source: "synthetic_only"`;
+  `time_summary: "all_bouts"` retained as documentation-only;
+  new `dlc_kinematics.tongue_angle_cohort:` block (visual
+  styling, colormap, `min_sessions_per_bin`).
+- `notebooks/13_dlc_kinematics_tongue.ipynb` — cell 1 USER
+  INPUTS gain `INCLUDE_TONGUE_ANGLE_COHORT` +
+  `OVERWRITE_TONGUE_ANGLE_COHORT`; cell 2 imports gain
+  `build_tongue_angle_cohort`; new cell 9 per-mouse loop.
+  Notebook now has 13 cells.
+- `scripts/phase_7a/emit_cohort_for_pre_stroke_median.py` (NEW)
+  — cohort-wide upstream emit driver (Decision 5).
+- `scripts/phase_7a/move_tongue_angle_to_subdirs.py` (NEW) —
+  mover for existing on-disk PNGs (Decision 10).
+- `tests/test_tongue_angle_cohort.py` (NEW) — 17 tests
+  covering: robust mean/SEM contract; day-binning under the new
+  `d0 = pre` convention; first-peak-aligned + reward-aligned
+  renderers; phase renderer cycle-boundary segmentation pin;
+  display-window override propagation.
+- `tests/test_tongue_pertrial.py` — extended to cover the 3
+  centered-phase builders; the `ili_source` enum (5 tests:
+  real_only ignore-synthetic, synthetic_only uniform-width,
+  required-arg, hybrid byte-for-byte, invalid-enum);
+  pre-stroke median compute + cache; first-vs-second-peak pairs
+  helper.
+- `tests/test_tongue_visual.py` — extended for the 3-mode-
+  suffixed PNG split, multi-cycle xlim/segmentation, scatter
+  family cam-view + diagonal pin, 9-PNGs-per-session count.
+- `tests/test_paths.py` — `tongue_angle_within_session_dir` +
+  `tongue_angle_cross_session_dir` resolver-rename pins.
+
+**Closes:** every Addendum #1–#17 + cross-session #2–#7 commit
+note's "DECISIONS rationale to be added at PR-close" deferred
+into this entry.
+
+**Tag:** `v7a.4-cross-session-angle` on the PR merge commit.
+
+---
+
 ## 2026-05-03 — Phase 7a.4-paths-cleanup — `figures_qc/` retirement + comparison-grid renderer deletion + tongue-jaw mismatch cross-session wired into notebook 13
 
 **Context.** Phase 7a.4 (PR #86, 2026-04-30) shipped per-(animal, date)
