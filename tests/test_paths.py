@@ -349,6 +349,46 @@ class TestNewConvenienceMethods:
         assert result_a == tmp_path / "camera" / "20250314a" / "PS48"
         assert result_b == tmp_path / "camera" / "20250314b" / "PS48"
 
+    def test_alignment_template_per_half_layout(
+        self, monkeypatch, mac_paths_yaml,
+    ):
+        """Phase 7-pre-multi-half Decision 3: per-half templates land in
+        the per-(animal, date) subdir alongside the parent-level merged
+        template."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver(mac_paths_yaml)
+        result_a = resolver.alignment_template_per_half(
+            "PS48", datetime.date(2025, 3, 14),
+            halves_concat_label="ab", half_id="a",
+        )
+        result_b = resolver.alignment_template_per_half(
+            "PS48", datetime.date(2025, 3, 14),
+            halves_concat_label="ab", half_id="b",
+        )
+        # Subdir is {date_str}{halves_concat_label}; filename is
+        # {date_str}{half_id}.npz. Parent of subdir is animal dir.
+        assert result_a.as_posix() == (
+            "/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/O2_analysis/"
+            "alignment_templates/cam2/PS48/20250314ab/20250314a.npz"
+        )
+        assert result_b.as_posix() == (
+            "/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/O2_analysis/"
+            "alignment_templates/cam2/PS48/20250314ab/20250314b.npz"
+        )
+
+    def test_alignment_template_per_half_three_halves(
+        self, monkeypatch, mac_paths_yaml,
+    ):
+        """halves_concat_label generalizes to N halves (e.g., 'abc' for 3)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver(mac_paths_yaml)
+        result = resolver.alignment_template_per_half(
+            "PS99", datetime.date(2025, 5, 1),
+            halves_concat_label="abc", half_id="c",
+        )
+        assert result.parent.name == "20250501abc"
+        assert result.name == "20250501c.npz"
+
 
 class TestOutputRootOverride:
     """Task #20: ``output_root=`` kwarg on PathResolver.__init__ overrides the

@@ -4,8 +4,7 @@ Faithful ports of the canonical tongue notebook's `# PS48 30350314 merge`
 section (cells 13/16/17). This module hosts Architecture X's three
 post-process merge functions — one per coordinated layer:
 
-  - :func:`merge_licks_and_rewards` (Layer 1; cell 17 port). Currently
-    implemented; this Task-4 commit.
+  - :func:`merge_licks_and_rewards` (Layer 1; cell 17 port). Task 4.
   - :func:`merge_alignment_templates` (Layer 3; cell 16 port). Task 5.
   - :func:`merge_centered_parquet` (Layer 2; cell 13 port). Task 6.
 
@@ -425,4 +424,344 @@ def merge_licks_and_rewards(
     np.savez_compressed(str(output_path), **out)
     logger.info("merge_licks_and_rewards: wrote %s", output_path)
 
+    return output_path
+
+
+# ---------------------------------------------------------------------------
+# merge_alignment_templates — cell 16 port (Architecture X Layer 3).
+# ---------------------------------------------------------------------------
+
+# Required keys on every per-half alignment template (cell 16 lines 41-47).
+# Missing-key check raises before any compute work; matches legacy line 59-62.
+_ALIGNMENT_TEMPLATE_REQ_KEYS: tuple[str, ...] = (
+    "Fs_ws_input",
+    "sig_wsIdx__idx_cam",     # cam-frame -> ws-sample mapping; len = n_cam
+    "sig_camIdx__idx_ws",     # ws-sample -> cam-frame mapping; len = n_ws
+    "sig_camTimes__idx_cam",  # cam time per cam frame
+    "sig_wsTimes__idx_ws",    # ws time per ws sample
+)
+
+# Tolerance for the Fs_ws_input cross-half match check. Cell 16 uses
+# np.isclose default (rtol=1e-05, atol=1e-08); kept as-is for parity.
+_FS_WS_MATCH_RTOL = 1e-5
+_FS_WS_MATCH_ATOL = 1e-8
+
+# Default fallback dt_cam (seconds-per-cam-frame) when neither half's
+# camTimes yields a usable diff median (cell 16 line 122).
+_DEFAULT_DT_CAM_S = 1.0
+
+# Monotonic-ok slack: cell 16 line 159 allows a -1e-9 tolerance on
+# diff (numeric-noise compatible).
+_MONOTONIC_NEG_SLACK = -1e-9
+
+
+def _infer_dt(t: np.ndarray) -> float | None:
+    """Median of finite ``np.diff(t)``; None when fewer than 3 finite points.
+
+    Verbatim from cell 16 lines 108-117. Used to estimate dt_cam (seconds
+    per camera frame) and dt_ws (seconds per WS sample) for time-axis
+    continuity across halves.
+    """
+    t_arr = np.asarray(t, dtype=float)
+    t_arr = t_arr[np.isfinite(t_arr)]
+    if t_arr.size < 3:
+        return None
+    d = np.diff(t_arr)
+    d = d[np.isfinite(d)]
+    if d.size == 0:
+        return None
+    return float(np.nanmedian(d))
+
+
+def _last_finite(t: np.ndarray) -> float:
+    """Last finite value in ``t`` (cell 16 line 127 idiom).
+
+    Returns 0.0 when no finite values — matches the legacy fallback.
+    """
+    t_arr = np.asarray(t, dtype=float)
+    finite = t_arr[np.isfinite(t_arr)]
+    return float(finite[-1]) if finite.size > 0 else 0.0
+
+
+def _first_finite(t: np.ndarray) -> float:
+    """First finite value in ``t`` (cell 16 line 128 idiom).
+
+    Returns 0.0 when no finite values.
+    """
+    t_arr = np.asarray(t, dtype=float)
+    finite = t_arr[np.isfinite(t_arr)]
+    return float(finite[0]) if finite.size > 0 else 0.0
+
+
+def _shift_time_axis(t: np.ndarray, target_start: float) -> np.ndarray:
+    """Shift the finite values of ``t`` so the FIRST finite value sits at
+    ``target_start``.
+
+    Verbatim from cell 16 lines 130 / 136 idiom: ``shift = target_start
+    - first_finite(t)``; add ``shift`` to all finite values; preserve
+    NaNs. Returns a copy.
+    """
+    t_arr = np.asarray(t, dtype=float)
+    shifted = t_arr.copy()
+    if not np.any(np.isfinite(shifted)):
+        return shifted
+    shift = target_start - _first_finite(shifted)
+    mask = np.isfinite(shifted)
+    shifted[mask] = shifted[mask] + shift
+    return shifted
+
+
+def _is_monotonic_nondecreasing(t: np.ndarray) -> bool:
+    """Cell 16 line 156-159 monotonic check (numeric-noise tolerant).
+
+    Returns True when all finite consecutive diffs are >= -1e-9.
+    Returns True trivially when fewer than 3 finite values (no diff
+    to evaluate).
+    """
+    t_arr = np.asarray(t, dtype=float)
+    finite = t_arr[np.isfinite(t_arr)]
+    if finite.size <= 2:
+        return True
+    return bool(np.all(np.diff(finite) >= _MONOTONIC_NEG_SLACK))
+
+
+def merge_alignment_templates(
+    per_half_npz_paths: list[Path],
+    output_path: Path,
+) -> Path:
+    """Merge N per-half alignment templates into a single combined NPZ
+    at ``output_path`` — faithful port of legacy cell 16.
+
+    Concatenates per-half ``sig_*`` arrays along axis 0 with the
+    appropriate per-half offset applied:
+
+      - ``sig_wsIdx__idx_cam`` (cam-frame → ws-sample mapping): half ``i``
+        gets ``ws_offset[i]`` added to its finite values, where
+        ``ws_offset[i] = sum(n_ws[0..i-1])``.
+      - ``sig_camIdx__idx_ws`` (ws-sample → cam-frame mapping): half ``i``
+        gets ``cam_offset[i]`` added to its finite values, where
+        ``cam_offset[i] = sum(n_cam[0..i-1])``.
+      - ``sig_camTimes__idx_cam``: half ``i``'s first-finite value is
+        shifted to ``last_finite(prev_half_camTimes_shifted) + dt_cam``.
+      - ``sig_wsTimes__idx_ws``: same pattern but with ``dt_ws = 1.0 / Fs``.
+
+    NaN-padded sentinel values stay NaN under the offset and time
+    shifts (cell 16 lines 98-104 / 130-136 idiom).
+
+    Sanity checks (cell 16 lines 145-153):
+      - Concatenated cam-array length == sum(n_cam_per_half).
+      - Concatenated ws-array length == sum(n_ws_per_half).
+      - cam-axis arrays share length; ws-axis arrays share length.
+
+    Monotonicity: cell 16 line 161-162 prints a debug check; this port
+    fails loud (raises) when a merged time axis is non-monotonic. The
+    legacy print-only behavior masked subtle bugs; making it strict
+    matches the kickoff Task-1 verdict's "no silent failures" rule.
+
+    **N-half generalization:** legacy cell 16 hardcodes 2 halves. This
+    port accepts ``N >= 2`` with cumulative offsets / time shifts.
+    Provenance keys:
+      - For N == 2: byte-identical legacy keys
+        (``merged_from_A``, ``merged_from_B``, ``ws_offset_samples``,
+        ``cam_offset_frames``).
+      - For N >= 3: list-style keys only
+        (``merged_from_paths``, ``ws_offsets_per_half``,
+        ``cam_offsets_per_half``).
+
+    Parameters
+    ----------
+    per_half_npz_paths : list[Path]
+        Per-half template NPZ paths in acquisition order. ``len >= 2``.
+    output_path : Path
+        Destination for the merged template NPZ.
+
+    Returns
+    -------
+    Path
+        The ``output_path`` (returned for chaining).
+
+    Raises
+    ------
+    ValueError
+        If fewer than 2 per-half paths supplied, OR if any per-half
+        template is missing a required key, OR if ``Fs_ws_input``
+        differs across halves beyond ``np.isclose`` tolerance.
+    FileNotFoundError
+        If any per-half input path is missing.
+    RuntimeError
+        If post-merge length sanity checks fail or a time axis is
+        non-monotonic.
+    """
+    if len(per_half_npz_paths) < 2:
+        raise ValueError(
+            f"merge_alignment_templates requires N >= 2 per-half NPZs, got "
+            f"{len(per_half_npz_paths)}"
+        )
+    for p in per_half_npz_paths:
+        if not Path(p).exists():
+            raise FileNotFoundError(f"per-half alignment template not found: {p}")
+
+    # Load all halves (no allow_pickle — alignment templates are pure numeric).
+    loaded = [np.load(p, allow_pickle=False) for p in per_half_npz_paths]
+    n_halves = len(loaded)
+
+    # Required-key validation (cell 16 lines 49-62) — all halves must
+    # have every REQ_KEY before any compute work fires.
+    missing_per_half: list[list[str]] = []
+    for npz in loaded:
+        missing_per_half.append(
+            [k for k in _ALIGNMENT_TEMPLATE_REQ_KEYS if k not in npz.files]
+        )
+    if any(missing_per_half):
+        msg_lines = ["alignment template missing required keys:"]
+        for i, missing in enumerate(missing_per_half):
+            if missing:
+                msg_lines.append(
+                    f"  half[{i}] ({per_half_npz_paths[i].name}): missing {missing}"
+                )
+        raise ValueError("\n".join(msg_lines))
+
+    # Fs_ws_input cross-half match (cell 16 lines 64-68).
+    Fs_per_half = [float(npz["Fs_ws_input"]) for npz in loaded]
+    Fs = Fs_per_half[0]
+    for i in range(1, n_halves):
+        if not np.isclose(
+            Fs, Fs_per_half[i], rtol=_FS_WS_MATCH_RTOL, atol=_FS_WS_MATCH_ATOL
+        ):
+            raise ValueError(
+                f"Fs_ws_input mismatch: half[0]={Fs} vs half[{i}]={Fs_per_half[i]}"
+            )
+    dt_ws = 1.0 / Fs
+
+    # Per-half native arrays (cell 16 lines 71-86), cast to float64.
+    wsIdx_cam_per = [
+        np.asarray(npz["sig_wsIdx__idx_cam"]).astype(np.float64, copy=False)
+        for npz in loaded
+    ]
+    camIdx_ws_per = [
+        np.asarray(npz["sig_camIdx__idx_ws"]).astype(np.float64, copy=False)
+        for npz in loaded
+    ]
+    camTimes_per = [
+        np.asarray(npz["sig_camTimes__idx_cam"]).astype(np.float64, copy=False)
+        for npz in loaded
+    ]
+    wsTimes_per = [
+        np.asarray(npz["sig_wsTimes__idx_ws"]).astype(np.float64, copy=False)
+        for npz in loaded
+    ]
+
+    # Per-half lengths (cell 16 lines 83-86).
+    n_cam_per_half = [int(len(a)) for a in wsIdx_cam_per]
+    n_ws_per_half = [int(len(a)) for a in camIdx_ws_per]
+
+    # Cumulative offsets: offsets[0]=0; offsets[i]=sum(prev[0..i-1]).
+    cam_offsets: list[int] = [0]
+    ws_offsets: list[int] = [0]
+    for i in range(n_halves - 1):
+        cam_offsets.append(cam_offsets[-1] + n_cam_per_half[i])
+        ws_offsets.append(ws_offsets[-1] + n_ws_per_half[i])
+
+    # Index-array offsets (cell 16 lines 95-104). Half[i]'s wsIdx_cam
+    # values land in the merged ws frame by adding ws_offsets[i]; same
+    # for camIdx_ws with cam_offsets[i].
+    wsIdx_cam_shifted = [
+        _shift_frame_indices(wsIdx_cam_per[i], ws_offsets[i])
+        for i in range(n_halves)
+    ]
+    camIdx_ws_shifted = [
+        _shift_frame_indices(camIdx_ws_per[i], cam_offsets[i])
+        for i in range(n_halves)
+    ]
+
+    # dt_cam inference (cell 16 lines 119-123): try each half in order
+    # until one yields a usable median; fallback to _DEFAULT_DT_CAM_S.
+    dt_cam: float | None = None
+    for ct in camTimes_per:
+        d = _infer_dt(ct)
+        if d is not None:
+            dt_cam = d
+            break
+    if dt_cam is None:
+        dt_cam = _DEFAULT_DT_CAM_S
+
+    # Time-axis shifts (cell 16 lines 126-136). Iterate halves; each
+    # later half's first-finite value lands at last_finite(prev) + dt.
+    # Half 0 is unshifted (its native time base is the merged origin).
+    camTimes_shifted: list[np.ndarray] = [camTimes_per[0]]
+    wsTimes_shifted: list[np.ndarray] = [wsTimes_per[0]]
+    for i in range(1, n_halves):
+        prev_cam_end = _last_finite(camTimes_shifted[-1])
+        camTimes_shifted.append(
+            _shift_time_axis(camTimes_per[i], prev_cam_end + dt_cam)
+        )
+        prev_ws_end = _last_finite(wsTimes_shifted[-1])
+        wsTimes_shifted.append(
+            _shift_time_axis(wsTimes_per[i], prev_ws_end + dt_ws)
+        )
+
+    # Concatenate (cell 16 lines 138-143).
+    wsIdx_cam_M = np.concatenate(wsIdx_cam_shifted, axis=0)
+    camIdx_ws_M = np.concatenate(camIdx_ws_shifted, axis=0)
+    camTimes_M = np.concatenate(camTimes_shifted, axis=0)
+    wsTimes_M = np.concatenate(wsTimes_shifted, axis=0)
+
+    # Length sanity (cell 16 lines 145-153).
+    if len(wsIdx_cam_M) != sum(n_cam_per_half):
+        raise RuntimeError(
+            f"cam length mismatch after merge: {len(wsIdx_cam_M)} != "
+            f"{sum(n_cam_per_half)}"
+        )
+    if len(camIdx_ws_M) != sum(n_ws_per_half):
+        raise RuntimeError(
+            f"ws length mismatch after merge: {len(camIdx_ws_M)} != "
+            f"{sum(n_ws_per_half)}"
+        )
+    if len(camTimes_M) != len(wsIdx_cam_M):
+        raise RuntimeError(
+            f"camTimes length mismatch after merge: "
+            f"len(camTimes)={len(camTimes_M)} vs len(wsIdx_cam)={len(wsIdx_cam_M)}"
+        )
+    if len(wsTimes_M) != len(camIdx_ws_M):
+        raise RuntimeError(
+            f"wsTimes length mismatch after merge: "
+            f"len(wsTimes)={len(wsTimes_M)} vs len(camIdx_ws)={len(camIdx_ws_M)}"
+        )
+
+    # Monotonicity: legacy prints; this port raises (kickoff Task 1
+    # verdict's no-silent-failures rule).
+    if not _is_monotonic_nondecreasing(camTimes_M):
+        raise RuntimeError("merged camTimes is not monotonic non-decreasing")
+    if not _is_monotonic_nondecreasing(wsTimes_M):
+        raise RuntimeError("merged wsTimes is not monotonic non-decreasing")
+
+    # Build output dict (cell 16 lines 164-178 schema).
+    out: dict[str, Any] = {
+        "Fs_ws_input": np.float64(Fs),
+        "sig_wsIdx__idx_cam": wsIdx_cam_M,
+        "sig_camIdx__idx_ws": camIdx_ws_M,
+        "sig_camTimes__idx_cam": camTimes_M,
+        "sig_wsTimes__idx_ws": wsTimes_M,
+    }
+
+    # Provenance — list-style (always emitted) + legacy A/B (N=2 only,
+    # for byte-identical schema match against legacy cell 16 outputs).
+    out["merged_from_paths"] = np.array(
+        [str(p) for p in per_half_npz_paths], dtype=object
+    )
+    out["ws_offsets_per_half"] = np.array(ws_offsets, dtype=np.int64)
+    out["cam_offsets_per_half"] = np.array(cam_offsets, dtype=np.int64)
+    if n_halves == 2:
+        out["merged_from_A"] = str(per_half_npz_paths[0])
+        out["merged_from_B"] = str(per_half_npz_paths[1])
+        out["ws_offset_samples"] = np.int64(ws_offsets[1])
+        out["cam_offset_frames"] = np.int64(cam_offsets[1])
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(str(output_path), **out)
+    logger.info(
+        "merge_alignment_templates: wrote %s (n_halves=%d, n_cam=%s, n_ws=%s)",
+        output_path, n_halves, n_cam_per_half, n_ws_per_half,
+    )
     return output_path

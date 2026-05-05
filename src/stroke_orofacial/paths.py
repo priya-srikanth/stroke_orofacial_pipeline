@@ -199,6 +199,46 @@ class PathResolver:
         date_str = date.strftime("%Y%m%d")
         return self.alignment_templates_dir(cam) / animal / f"{date_str}.npz"
 
+    def alignment_template_per_half(
+        self,
+        animal: str,
+        date: datetime.date,
+        *,
+        halves_concat_label: str,
+        half_id: str,
+        cam: str = "cam2",
+    ) -> Path:
+        """Return the per-half alignment template path for a multi-half session.
+
+        E.g. ``/Volumes/.../alignment_templates/cam2/PS48/20250314ab/20250314a.npz``
+        for PS48 20250314 half a (``halves_concat_label="ab"``).
+
+        Mirrors the on-disk convention Priya established for PS48 20250314
+        (post-merge cleanup, 2026-05-05) and locked as Decision 3 of the
+        Phase 7-pre-multi-half Task 1 verdict: per-half artefacts go in a
+        per-(animal, date) subdir named ``{date_str}{halves_concat_label}``;
+        the merged template lives at the parent level (returned by
+        :meth:`alignment_template`).
+
+        Parameters
+        ----------
+        animal : str
+            Animal identifier (e.g. ``"PS48"``).
+        date : datetime.date
+            Session date.
+        halves_concat_label : str
+            The per-(animal, date) subdir-name suffix — concatenated half
+            ids (e.g. ``"ab"`` for halves ``a`` + ``b``).
+        half_id : str
+            Half identifier letter (``"a"``, ``"b"``, ...).
+        cam : str
+            Camera token (default ``"cam2"`` matching DLC camera).
+        """
+        date_str = date.strftime("%Y%m%d")
+        subdir_name = f"{date_str}{halves_concat_label}"
+        file_name = f"{date_str}{half_id}.npz"
+        return self.alignment_templates_dir(cam) / animal / subdir_name / file_name
+
     def pipeline_outputs(self, subdir: str = "spout_behavior") -> Path:
         """Return the output directory for pipeline outputs on MICROSCOPE.
 

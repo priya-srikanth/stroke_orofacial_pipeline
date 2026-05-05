@@ -13,15 +13,20 @@ Vendor reference for the algorithm being tested:
 
 from __future__ import annotations
 
+import datetime
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from stroke_orofacial.spout_behavior.multi_half_merge import (
+    _infer_dt,
     _infer_n_cam,
+    _is_monotonic_nondecreasing,
     _looks_like_frame_indices,
     _shift_frame_indices,
+    _shift_time_axis,
+    merge_alignment_templates,
     merge_licks_and_rewards,
 )
 
@@ -469,3 +474,519 @@ class TestLicksAndRewardsMerge:
         assert merged["my_custom_cam_axis"].shape == (300,)
         assert int(merged["merged_n_cam_A"]) == 100
         assert int(merged["merged_n_cam_B"]) == 200
+
+
+# ---------- alignment-template helpers ----------
+
+
+class TestInferDt:
+    def test_returns_median_diff(self):
+        t = np.array([0.0, 1.0, 2.0, 3.0, 4.0])
+        assert _infer_dt(t) == 1.0
+
+    def test_handles_jitter_via_median(self):
+        t = np.array([0.0, 0.99, 2.01, 3.0, 4.0])  # diffs ~0.99..1.02
+        assert abs(_infer_dt(t) - 1.0) < 0.05
+
+    def test_skips_nans(self):
+        t = np.array([0.0, np.nan, 1.0, 2.0, np.nan, 3.0])
+        assert _infer_dt(t) == 1.0
+
+    def test_returns_none_when_too_few_finite(self):
+        assert _infer_dt(np.array([np.nan, 1.0])) is None
+        assert _infer_dt(np.array([])) is None
+
+
+class TestShiftTimeAxis:
+    def test_first_finite_lands_at_target(self):
+        t = np.array([10.0, 11.0, 12.0])
+        shifted = _shift_time_axis(t, target_start=100.0)
+        assert shifted[0] == 100.0
+        assert shifted[1] == 101.0
+        assert shifted[2] == 102.0
+
+    def test_nans_preserved(self):
+        t = np.array([np.nan, 5.0, np.nan, 7.0])
+        shifted = _shift_time_axis(t, target_start=0.0)
+        assert np.isnan(shifted[0])
+        assert shifted[1] == 0.0
+        assert np.isnan(shifted[2])
+        assert shifted[3] == 2.0
+
+    def test_all_nan_passthrough(self):
+        t = np.array([np.nan, np.nan, np.nan])
+        shifted = _shift_time_axis(t, target_start=42.0)
+        assert np.all(np.isnan(shifted))
+
+
+class TestIsMonotonicNondecreasing:
+    def test_strictly_increasing(self):
+        assert _is_monotonic_nondecreasing(np.array([0.0, 1.0, 2.0, 3.0])) is True
+
+    def test_equal_consecutive_allowed(self):
+        assert _is_monotonic_nondecreasing(np.array([0.0, 1.0, 1.0, 2.0])) is True
+
+    def test_tiny_negative_within_slack(self):
+        """1e-10 backstep is within the -1e-9 monotonic slack."""
+        assert _is_monotonic_nondecreasing(np.array([0.0, 1.0, 1.0 - 1e-10])) is True
+
+    def test_real_negative_caught(self):
+        assert _is_monotonic_nondecreasing(np.array([0.0, 1.0, 0.5])) is False
+
+    def test_nan_skipped(self):
+        assert _is_monotonic_nondecreasing(np.array([0.0, np.nan, 1.0, 2.0])) is True
+
+    def test_few_finite_trivially_true(self):
+        assert _is_monotonic_nondecreasing(np.array([0.0, 5.0])) is True
+        assert _is_monotonic_nondecreasing(np.array([])) is True
+
+
+# ---------- merge_alignment_templates ----------
+
+
+def _make_per_half_template(
+    path: Path,
+    *,
+    Fs_ws: float = 1000.0,
+    n_cam: int = 100,
+    n_ws: int = 400,
+    cam_t0: float = 0.0,
+    ws_t0: float = 0.0,
+) -> Path:
+    """Save a synthetic alignment template NPZ matching the cell-16 schema.
+
+    Generates well-shaped per-half arrays so the merge function's
+    sanity checks pass:
+      - ``sig_wsIdx__idx_cam`` has length n_cam, values in [0, n_ws)
+        with linear ramp.
+      - ``sig_camIdx__idx_ws`` has length n_ws, values in [0, n_cam)
+        with linear ramp.
+      - ``sig_camTimes__idx_cam`` strictly increasing from cam_t0 with
+        cam-frame dt = n_ws/(Fs_ws*n_cam) (i.e. so n_cam frames span
+        n_ws/Fs_ws seconds).
+      - ``sig_wsTimes__idx_ws`` strictly increasing from ws_t0 with
+        dt_ws = 1/Fs_ws.
+    """
+    dt_ws = 1.0 / Fs_ws
+    dt_cam = (n_ws / Fs_ws) / n_cam
+    payload = {
+        "Fs_ws_input": np.float64(Fs_ws),
+        "sig_wsIdx__idx_cam": np.linspace(0.0, n_ws - 1, n_cam),
+        "sig_camIdx__idx_ws": np.linspace(0.0, n_cam - 1, n_ws),
+        "sig_camTimes__idx_cam": cam_t0 + np.arange(n_cam) * dt_cam,
+        "sig_wsTimes__idx_ws": ws_t0 + np.arange(n_ws) * dt_ws,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(str(path), **payload, allow_pickle=False)
+    return path
+
+
+class TestAlignmentTemplateMerge:
+    def test_n2_offset_semantics(self, tmp_path: Path):
+        """Half-B's wsIdx_cam values get shifted by n_ws_A; camIdx_ws by n_cam_A."""
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _make_per_half_template(a_path, n_cam=10, n_ws=40)
+        _make_per_half_template(b_path, n_cam=20, n_ws=80, cam_t0=10.0, ws_t0=10.0)
+
+        out_path = tmp_path / "merged.npz"
+        merge_alignment_templates([a_path, b_path], out_path)
+
+        merged = np.load(out_path, allow_pickle=True)
+        # Lengths after concat
+        assert merged["sig_wsIdx__idx_cam"].shape == (30,)  # 10 + 20
+        assert merged["sig_camIdx__idx_ws"].shape == (120,)  # 40 + 80
+        # First A frame's ws-index is unchanged (0)
+        assert merged["sig_wsIdx__idx_cam"][0] == 0.0
+        # First B frame's ws-index is shifted by n_ws_A (40)
+        assert merged["sig_wsIdx__idx_cam"][10] == 40.0  # B's 0 + 40
+        # First A ws-sample's cam-index is unchanged (0)
+        assert merged["sig_camIdx__idx_ws"][0] == 0.0
+        # First B ws-sample's cam-index is shifted by n_cam_A (10)
+        assert merged["sig_camIdx__idx_ws"][40] == 10.0  # B's 0 + 10
+
+    def test_n2_time_axis_continuous(self, tmp_path: Path):
+        """Half-B's first time lands at last_finite(A) + dt; merged times
+        are monotonic non-decreasing."""
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _make_per_half_template(
+            a_path, Fs_ws=1000.0, n_cam=10, n_ws=40, cam_t0=0.0, ws_t0=0.0,
+        )
+        # B starts at native time 100.0 — but should be shifted to A's end + dt
+        _make_per_half_template(
+            b_path, Fs_ws=1000.0, n_cam=20, n_ws=80, cam_t0=100.0, ws_t0=100.0,
+        )
+
+        out_path = tmp_path / "merged.npz"
+        merge_alignment_templates([a_path, b_path], out_path)
+
+        merged = np.load(out_path, allow_pickle=True)
+        cam_times = merged["sig_camTimes__idx_cam"]
+        ws_times = merged["sig_wsTimes__idx_ws"]
+        # Half A camTimes start at 0.0 unchanged
+        assert cam_times[0] == 0.0
+        # Half B's first cam time lands at A_last + dt_cam (NOT 100.0)
+        a_last = (10 - 1) * (40 / 1000 / 10)  # = 9 * 0.004 = 0.036
+        dt_cam_a = 40 / 1000 / 10  # = 0.004
+        assert abs(cam_times[10] - (a_last + dt_cam_a)) < 1e-9
+        # Half A wsTimes start at 0.0 unchanged
+        assert ws_times[0] == 0.0
+        # Half B's first ws time lands at A_last + dt_ws (1/Fs = 1ms)
+        ws_a_last = (40 - 1) / 1000.0
+        assert abs(ws_times[40] - (ws_a_last + 1.0 / 1000.0)) < 1e-9
+        # Both axes monotonic
+        assert _is_monotonic_nondecreasing(cam_times)
+        assert _is_monotonic_nondecreasing(ws_times)
+
+    def test_n2_legacy_provenance_keys(self, tmp_path: Path):
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _make_per_half_template(a_path, n_cam=10, n_ws=40)
+        _make_per_half_template(b_path, n_cam=20, n_ws=80)
+        merge_alignment_templates([a_path, b_path], tmp_path / "merged.npz")
+
+        merged = np.load(tmp_path / "merged.npz", allow_pickle=True)
+        # Byte-identical legacy schema for N=2
+        assert str(merged["merged_from_A"]) == str(a_path)
+        assert str(merged["merged_from_B"]) == str(b_path)
+        assert int(merged["ws_offset_samples"]) == 40
+        assert int(merged["cam_offset_frames"]) == 10
+        # 5 REQ_KEYS preserved
+        assert "Fs_ws_input" in merged.files
+        assert "sig_wsIdx__idx_cam" in merged.files
+        assert "sig_camIdx__idx_ws" in merged.files
+        assert "sig_camTimes__idx_cam" in merged.files
+        assert "sig_wsTimes__idx_ws" in merged.files
+        # List-style provenance also emitted
+        assert list(merged["merged_from_paths"]) == [str(a_path), str(b_path)]
+        np.testing.assert_array_equal(
+            merged["ws_offsets_per_half"], np.array([0, 40], dtype=np.int64)
+        )
+        np.testing.assert_array_equal(
+            merged["cam_offsets_per_half"], np.array([0, 10], dtype=np.int64)
+        )
+
+    def test_n3_extension(self, tmp_path: Path):
+        """3-half merge: cumulative offsets, list-style only, no legacy A/B."""
+        paths = [tmp_path / f"h{i}.npz" for i in range(3)]
+        # Per-half lengths: n_cam=[10, 5, 8], n_ws=[40, 20, 32]
+        _make_per_half_template(paths[0], n_cam=10, n_ws=40)
+        _make_per_half_template(paths[1], n_cam=5, n_ws=20)
+        _make_per_half_template(paths[2], n_cam=8, n_ws=32)
+
+        merge_alignment_templates(paths, tmp_path / "merged.npz")
+        merged = np.load(tmp_path / "merged.npz", allow_pickle=True)
+        # Lengths: cam=23, ws=92
+        assert merged["sig_wsIdx__idx_cam"].shape == (23,)
+        assert merged["sig_camIdx__idx_ws"].shape == (92,)
+        # Cumulative offsets
+        np.testing.assert_array_equal(
+            merged["ws_offsets_per_half"], np.array([0, 40, 60], dtype=np.int64),
+        )
+        np.testing.assert_array_equal(
+            merged["cam_offsets_per_half"], np.array([0, 10, 15], dtype=np.int64),
+        )
+        # No legacy A/B keys for N=3
+        assert "merged_from_A" not in merged.files
+        assert "merged_from_B" not in merged.files
+        assert "ws_offset_samples" not in merged.files
+        assert "cam_offset_frames" not in merged.files
+
+    def test_raises_on_fs_mismatch(self, tmp_path: Path):
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _make_per_half_template(a_path, Fs_ws=1000.0, n_cam=10, n_ws=40)
+        _make_per_half_template(b_path, Fs_ws=2000.0, n_cam=20, n_ws=80)  # different Fs
+        with pytest.raises(ValueError, match=r"Fs_ws_input mismatch"):
+            merge_alignment_templates([a_path, b_path], tmp_path / "out.npz")
+
+    def test_raises_on_missing_required_key(self, tmp_path: Path):
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _make_per_half_template(a_path, n_cam=10, n_ws=40)
+        # B missing sig_wsTimes__idx_ws
+        np.savez(
+            str(b_path),
+            Fs_ws_input=np.float64(1000.0),
+            sig_wsIdx__idx_cam=np.zeros(20),
+            sig_camIdx__idx_ws=np.zeros(80),
+            sig_camTimes__idx_cam=np.arange(20, dtype=float),
+            allow_pickle=False,
+        )
+        with pytest.raises(ValueError, match=r"missing required keys"):
+            merge_alignment_templates([a_path, b_path], tmp_path / "out.npz")
+
+    def test_raises_on_n_lt_2(self, tmp_path: Path):
+        a_path = tmp_path / "a.npz"
+        _make_per_half_template(a_path, n_cam=10, n_ws=40)
+        with pytest.raises(ValueError, match=r"N >= 2"):
+            merge_alignment_templates([a_path], tmp_path / "out.npz")
+
+    def test_raises_on_missing_input(self, tmp_path: Path):
+        a_path = tmp_path / "a.npz"
+        _make_per_half_template(a_path, n_cam=10, n_ws=40)
+        with pytest.raises(FileNotFoundError):
+            merge_alignment_templates(
+                [a_path, tmp_path / "nonexistent.npz"],
+                tmp_path / "out.npz",
+            )
+
+    def test_raises_on_non_monotonic_camTimes(self, tmp_path: Path):
+        """Bad input where half-B's native camTimes go BACKWARDS internally
+        produces a non-monotonic merged camTimes — should raise."""
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _make_per_half_template(a_path, n_cam=10, n_ws=40)
+        # B has decreasing camTimes (corrupted input)
+        np.savez(
+            str(b_path),
+            Fs_ws_input=np.float64(1000.0),
+            sig_wsIdx__idx_cam=np.zeros(20),
+            sig_camIdx__idx_ws=np.zeros(80),
+            # decreasing values within the half
+            sig_camTimes__idx_cam=np.linspace(10.0, 0.0, 20),
+            sig_wsTimes__idx_ws=np.arange(80, dtype=float) / 1000.0,
+            allow_pickle=False,
+        )
+        with pytest.raises(RuntimeError, match=r"camTimes is not monotonic"):
+            merge_alignment_templates([a_path, b_path], tmp_path / "out.npz")
+
+    def test_returns_output_path(self, tmp_path: Path):
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _make_per_half_template(a_path, n_cam=10, n_ws=40)
+        _make_per_half_template(b_path, n_cam=20, n_ws=80)
+        out = tmp_path / "merged.npz"
+        result = merge_alignment_templates([a_path, b_path], out)
+        assert result == out
+        assert result.exists()
+
+    def test_creates_output_parent_dirs(self, tmp_path: Path):
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _make_per_half_template(a_path, n_cam=10, n_ws=40)
+        _make_per_half_template(b_path, n_cam=20, n_ws=80)
+        deep = tmp_path / "deep" / "nested" / "merged.npz"
+        merge_alignment_templates([a_path, b_path], deep)
+        assert deep.exists()
+
+    def test_nan_padded_index_arrays_preserved(self, tmp_path: Path):
+        """NaN sentinels in sig_wsIdx_cam stay NaN through offset shift."""
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        # Half A — clean
+        _make_per_half_template(a_path, n_cam=10, n_ws=40)
+        # Half B — wsIdx_cam has a NaN at index 5
+        b_wsIdx = np.linspace(0.0, 19.0, 20)
+        b_wsIdx[5] = np.nan
+        np.savez(
+            str(b_path),
+            Fs_ws_input=np.float64(1000.0),
+            sig_wsIdx__idx_cam=b_wsIdx,
+            sig_camIdx__idx_ws=np.linspace(0.0, 19.0, 80),
+            sig_camTimes__idx_cam=np.arange(20, dtype=float) * 0.004,
+            sig_wsTimes__idx_ws=np.arange(80, dtype=float) / 1000.0,
+            allow_pickle=False,
+        )
+        merge_alignment_templates([a_path, b_path], tmp_path / "merged.npz")
+        merged = np.load(tmp_path / "merged.npz", allow_pickle=True)
+        # Concat index for B's index 5 in merged is 10 + 5 = 15
+        assert np.isnan(merged["sig_wsIdx__idx_cam"][15])
+
+
+# ---------- compute_and_merge_alignment_multi_half (orchestrator) ----------
+
+
+class TestComputeAndMergeAlignmentMultiHalf:
+    """Orchestrator tests with `make_alignment_template` mocked.
+
+    Verifies the per-half subdir layout, the per-half compute path, the
+    merge invocation, and the cache-skip behavior when per-half NPZs
+    already exist.
+    """
+
+    def _make_resolver(self, tmp_path: Path):
+        from stroke_orofacial.paths import PathResolver
+        # Real resolver with output_root override.
+        return PathResolver(output_root=tmp_path / "outputs")
+
+    def _make_multi_half_manifest(self, tmp_path: Path):
+        from stroke_orofacial.manifest import HalfSpec, SessionManifest
+        ws_a = tmp_path / "ws" / "20250314a" / "PS48" / "stroke_0001.h5"
+        ws_b = tmp_path / "ws" / "20250314b" / "PS48" / "stroke_0002.h5"
+        for p in (ws_a, ws_b):
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.touch()
+        halves = [
+            HalfSpec(
+                id="a", ws_subdir="20250314a", cam_subdir="20250314a",
+                file_timestamp="2025-03-14T12_31_07",
+                wavesurfer_file=ws_a,
+            ),
+            HalfSpec(
+                id="b", ws_subdir="20250314b", cam_subdir="20250314b",
+                file_timestamp="2025-03-14T13_09_29",
+                wavesurfer_file=ws_b,
+            ),
+        ]
+        return SessionManifest(
+            session_id="PS48_20250314",
+            animal="PS48",
+            date=datetime.date(2025, 3, 14),
+            day_relative_to_stroke=-5,
+            phase="baseline",
+            wavesurfer_file=None,
+            halves=halves,
+        )
+
+    def test_raises_on_single_half_manifest(self, tmp_path: Path):
+        from stroke_orofacial.alignment.timebase import (
+            compute_and_merge_alignment_multi_half,
+        )
+        from stroke_orofacial.manifest import SessionManifest
+        single = SessionManifest(
+            session_id="PS46_20250307",
+            animal="PS46",
+            date=datetime.date(2025, 3, 7),
+            day_relative_to_stroke=-6,
+            phase="baseline",
+        )
+        with pytest.raises(ValueError, match=r"manifest.halves is None"):
+            compute_and_merge_alignment_multi_half(
+                single, self._make_resolver(tmp_path), {"cam_idx": 2},
+            )
+
+    def test_skips_compute_when_per_half_exists(self, tmp_path: Path):
+        """When per-half NPZs already exist on disk, the orchestrator
+        skips the make_alignment_template compute path and goes straight
+        to merge."""
+        from unittest.mock import patch
+
+        from stroke_orofacial.alignment.timebase import (
+            compute_and_merge_alignment_multi_half,
+        )
+
+        manifest = self._make_multi_half_manifest(tmp_path)
+        resolver = self._make_resolver(tmp_path)
+
+        # Pre-create per-half template NPZs at the expected paths
+        per_half_paths = [
+            resolver.alignment_template_per_half(
+                "PS48", manifest.date,
+                halves_concat_label="ab",
+                half_id=hid,
+            )
+            for hid in ("a", "b")
+        ]
+        _make_per_half_template(per_half_paths[0], n_cam=10, n_ws=40)
+        _make_per_half_template(per_half_paths[1], n_cam=20, n_ws=80)
+
+        # Mock the compute path so we can assert it's NOT called
+        with patch(
+            "stroke_orofacial.alignment.timebase._compute_per_half_alignment_template"
+        ) as mock_compute:
+            merged_path = compute_and_merge_alignment_multi_half(
+                manifest, resolver, {"cam_idx": 2},
+            )
+
+        mock_compute.assert_not_called()
+        assert merged_path.exists()
+        # Merged file at parent level
+        assert merged_path.name == "20250314.npz"
+        assert merged_path.parent.name == "PS48"
+        # Loadable as a merged template (5 REQ_KEYS + provenance)
+        merged = np.load(merged_path, allow_pickle=True)
+        assert "Fs_ws_input" in merged.files
+        assert int(merged["cam_offset_frames"]) == 10
+        assert int(merged["ws_offset_samples"]) == 40
+
+    def test_per_half_paths_use_decision3_subdir_layout(self, tmp_path: Path):
+        """Per-half NPZs land in the {date_str}{halves_concat_label}
+        subdir per Decision 3 (e.g. 20250314ab/), merged at parent level."""
+        from unittest.mock import patch
+
+        from stroke_orofacial.alignment.timebase import (
+            compute_and_merge_alignment_multi_half,
+        )
+
+        manifest = self._make_multi_half_manifest(tmp_path)
+        resolver = self._make_resolver(tmp_path)
+
+        # Pre-create per-half NPZs (skips compute)
+        per_half_paths = [
+            resolver.alignment_template_per_half(
+                "PS48", manifest.date,
+                halves_concat_label="ab",
+                half_id=hid,
+            )
+            for hid in ("a", "b")
+        ]
+        _make_per_half_template(per_half_paths[0], n_cam=10, n_ws=40)
+        _make_per_half_template(per_half_paths[1], n_cam=20, n_ws=80)
+
+        with patch(
+            "stroke_orofacial.alignment.timebase._compute_per_half_alignment_template"
+        ):
+            merged_path = compute_and_merge_alignment_multi_half(
+                manifest, resolver, {"cam_idx": 2},
+            )
+
+        # Per-half paths under cam2/PS48/20250314ab/
+        for hid, p in zip(("a", "b"), per_half_paths):
+            assert p.parent.name == "20250314ab"
+            assert p.name == f"20250314{hid}.npz"
+            assert p.parent.parent.name == "PS48"
+            assert p.parent.parent.parent.name == "cam2"
+        # Merged path at the parent level (NOT in the subdir)
+        assert merged_path.parent.name == "PS48"
+        assert merged_path.name == "20250314.npz"
+
+    def test_force_recompute_invokes_compute_for_each_half(self, tmp_path: Path):
+        """force_recompute=True triggers _compute_per_half_alignment_template
+        for every half, even when per-half NPZs already exist."""
+        from unittest.mock import patch
+
+        from stroke_orofacial.alignment.timebase import (
+            compute_and_merge_alignment_multi_half,
+        )
+
+        manifest = self._make_multi_half_manifest(tmp_path)
+        resolver = self._make_resolver(tmp_path)
+
+        # Pre-create per-half NPZs (would normally skip compute)
+        per_half_paths = [
+            resolver.alignment_template_per_half(
+                "PS48", manifest.date,
+                halves_concat_label="ab",
+                half_id=hid,
+            )
+            for hid in ("a", "b")
+        ]
+        _make_per_half_template(per_half_paths[0], n_cam=10, n_ws=40)
+        _make_per_half_template(per_half_paths[1], n_cam=20, n_ws=80)
+
+        # Mock compute to return a valid template dict
+        def fake_compute(half_spec, animal, date, resolver, params, *, cam_idx):
+            return {
+                "Fs_ws_input": np.float64(1000.0),
+                "sig_wsIdx__idx_cam": np.zeros(10 if half_spec.id == "a" else 20),
+                "sig_camIdx__idx_ws": np.zeros(40 if half_spec.id == "a" else 80),
+                "sig_camTimes__idx_cam": np.arange(
+                    10 if half_spec.id == "a" else 20, dtype=float,
+                ) * 0.004,
+                "sig_wsTimes__idx_ws": np.arange(
+                    40 if half_spec.id == "a" else 80, dtype=float,
+                ) / 1000.0,
+            }
+
+        with patch(
+            "stroke_orofacial.alignment.timebase._compute_per_half_alignment_template",
+            side_effect=fake_compute,
+        ) as mock_compute:
+            compute_and_merge_alignment_multi_half(
+                manifest, resolver, {"cam_idx": 2}, force_recompute=True,
+            )
+
+        # One compute call per half
+        assert mock_compute.call_count == 2
