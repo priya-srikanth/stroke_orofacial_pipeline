@@ -22,10 +22,47 @@ overrides:
       process_treadmill_signal:
         offset_in_volts: 0.0
 
-# Structural session merges (e.g., two wavesurfer files for one session).
-# TODO: merge implementation deferred beyond Phase 2.
-merges:
+# Structural session merges that aren't multi-half acquisition. Empty
+# in the current cohort — Phase 7-pre-multi-half retired the PS48
+# 20250314 placeholder by implementing it under `multi_half_sessions:`
+# below. Kept for future deferred merges if needed.
+merges: {}
+
+# ----------------------------------------------------------------------
+# Multi-half acquisition declarations (Phase 7-pre-multi-half).
+#
+# Lists sessions where WS + camera + DLC acquisition was split across
+# multiple halves and the new pipeline must merge all three layers
+# into per-(animal, date) merged outputs. Opt-in by design — there is
+# NO callable auto-merge path; entries here are the only way per-half
+# processing fires.
+#
+# Scope locked 2026-05-05: Pattern A only (PS48 20250314). Pattern B
+# sessions (n_dlc=1 + n_ws=2 + n_cam=2; 19 sessions across
+# PS51/PS54/PS55) are NOT entered here — they stay on the existing
+# single-half discovery path which correctly picks up the bare {DATE}
+# subdir. Half-b is exploratory and silently discarded by design.
+#
+# Schema:
+#   multi_half_sessions:
+#     <ANIMAL>:
+#       "<YYYYMMDD>":
+#         halves:
+#           - id: <a|b|c|...>             # letter, sorted in acquisition order
+#             ws_subdir: "<dirname>"      # under {ws_root}/{ws_subdir}/{ANIMAL}/
+#             cam_subdir: "<dirname>"     # under {cam_root}/{cam_subdir}/{ANIMAL}/
+#             file_timestamp: "<YYYY-MM-DDTHH_MM_SS>"  # video filename timestamp
+#         reason: "<one-line provenance>"
+multi_half_sessions:
   PS48:
     "20250314":
-      note: "Two wavesurfer files need merging for this session"
-      # merge_strategy: concatenate  # not implemented yet
+      halves:
+        - id: a
+          ws_subdir: "20250314a"
+          cam_subdir: "20250314a"
+          file_timestamp: "2025-03-14T12_31_07"
+        - id: b
+          ws_subdir: "20250314b"
+          cam_subdir: "20250314b"
+          file_timestamp: "2025-03-14T13_09_29"
+      reason: "Pattern A multi-half acquisition; both halves DLC-inferred. Pre-Phase-7-pre this session was a TODO under merges: which raised NotImplementedError to prevent silent partial processing."

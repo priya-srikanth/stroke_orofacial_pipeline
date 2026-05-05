@@ -39,10 +39,15 @@ logical_roots:
       windows: "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Rich\\data\\2pRAM\\facerhythm_stroke_biomarker_exp\\camera"
 
   local_processed_spout:
-    description: "Local spout-behavior processed data (Mac only, legacy)"
+    description: >
+      Legacy spout-behavior processed data root (session_processing3/,
+      basic_behavior_analysis3/). Lives on MICROSCOPE — Phase 7-pre-multi-half
+      Task 1 audit (2026-05-05) confirmed Windows reachability via the same
+      MICROSCOPE share that backs microscope_server. Read-only parity target;
+      the new pipeline writes to microscope_pipeline_outputs.
     mounts:
       mac: "/Users/Priya2/Documents/data/facerhythm_stroke_biomarker_exp/analysis"
-      windows: null  # not available on Windows
+      windows: "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis"
 
 # Derived paths (relative to logical roots)
 derived:

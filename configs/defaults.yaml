@@ -1182,6 +1182,50 @@ reward_window:
 pixel_bins:
   bin_size_px: null
 
+# ---- Multi-half session merging (Phase 7-pre-multi-half) ----
+# Sessions where wavesurfer + camera + DLC acquisition was split across
+# multiple halves (typically because the recording was paused and
+# resumed). Per-(animal, date) declarations live in
+# session_overrides.yaml under `multi_half_sessions:`. This block
+# holds cohort-wide multi-half processing parameters.
+#
+# Scope: Phase 7-pre-multi-half ships Pattern A only (PS48 20250314 —
+# both halves DLC-inferred, true merge of WS + camera + DLC at three
+# coordinated layers). Pattern B (n_dlc=1 + n_ws=2 + n_cam=2; 19
+# sessions in PS51/PS54/PS55) stays on the existing single-half
+# discovery path by design — the unlabeled-half (bare {DATE} WS
+# subdir) is the analyzed half; half-b is exploratory and silently
+# discarded. See docs/phase-7-pre/multi_half_scan_results.md "Task 1
+# verdict" section for the full decision trail.
+
+multi_half:
+  # Defensive-check signal threshold for build_manifest. The check
+  # raises MultiHalfNotDeclaredError only when n_dlc >= n_dlc_min
+  # (Pattern A signal: >=2 filtered DLC H5 files match the date glob)
+  # AND no `multi_half_sessions:` entry covers (animal, date). Pattern
+  # B trips n_ws/n_cam=2 but n_dlc=1, so it does NOT fire the check.
+  scan_signals:
+    n_dlc_min: 2
+
+  # Inference key list for the licks_and_rewards NPZ merge
+  # (cell 17 `_infer_n_cam`) — port verbatim from the legacy notebook
+  # (canonical SHA256 ed12c54...; cell sha b2819b791668e18c...).
+  # Used by `merge_licks_and_rewards()` (Task 4) to determine the
+  # cam-frame count of the first half before offsetting B's frame
+  # indices.
+  cam_count_keys:
+    - "cam_times"
+    - "sig_camTimes__idx_cam"
+    - "t_cam"
+    - "frame_times_s"
+    - "camTimes"
+  # Scalar n_cam keys (preferred fallback after time-series keys).
+  cam_count_int_keys:
+    - "n_frames"
+    - "n_cam"
+    - "nFrames"
+
+
 # ---- DLC inference on O2 (standalone tool) ----
 
 dlc_inference_o2:

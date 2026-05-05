@@ -236,12 +236,14 @@ class TestNewConvenienceMethods:
         cfg = tmp_path / "paths.yaml"
         ws_dir = tmp_path / "wavesurfer"
         ws_dir.mkdir()
+        cam_dir = tmp_path / "camera"
+        cam_dir.mkdir()
         # microscope_pipeline_outputs uses a static /Volumes path so we keep it
         # under the "mac" key — the tests that read it force platform_key='mac'.
-        # wavesurfer_raw uses a real on-disk tmp_path, so it MUST go under the
-        # HOST platform's key (see _HOST_KEY note at top of file). Two mounts
-        # under potentially-different platform keys is fine because each test
-        # only touches one root. .as_posix() avoids Windows \U escape parsing
+        # wavesurfer_raw and camera_raw use real on-disk tmp_path mounts so
+        # they MUST go under the HOST platform's key (see _HOST_KEY note at
+        # top of file). Mixed platform keys is fine because each test only
+        # touches one root. .as_posix() avoids Windows \U escape parsing
         # inside double-quoted YAML.
         cfg.write_text(
             textwrap.dedent(f"""\
@@ -255,6 +257,11 @@ class TestNewConvenienceMethods:
                     mounts:
                       {_HOST_KEY}:
                         - "{ws_dir.as_posix()}"
+                  camera_raw:
+                    description: "raw camera"
+                    mounts:
+                      {_HOST_KEY}:
+                        - "{cam_dir.as_posix()}"
             """)
         )
         return cfg
@@ -276,6 +283,71 @@ class TestNewConvenienceMethods:
         result = resolver.wavesurfer_dir(datetime.date(2025, 3, 7), "PS46")
         ws_dir = tmp_path / "wavesurfer"
         assert result == ws_dir / "20250307" / "PS46"
+
+    def test_wavesurfer_dir_default_half_subdir_is_date_str(
+        self, monkeypatch, full_paths_yaml, tmp_path
+    ):
+        """Phase 7-pre-multi-half: half_subdir=None preserves backwards-compat
+        behavior (subdir = date_str). Verifies the existing single-half code
+        path is unchanged when the kwarg is omitted.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result = resolver.wavesurfer_dir(
+            datetime.date(2025, 3, 14), "PS48", half_subdir=None
+        )
+        assert result == tmp_path / "wavesurfer" / "20250314" / "PS48"
+
+    def test_wavesurfer_dir_with_half_subdir_overrides_date_str(
+        self, monkeypatch, full_paths_yaml, tmp_path
+    ):
+        """Phase 7-pre-multi-half: half_subdir replaces the date_str segment.
+
+        For PS48 20250314 (Pattern A), half-a's WS files live under
+        ``{ws_root}/20250314a/PS48/`` — passing ``half_subdir="20250314a"``
+        resolves there. The kwarg is *the* mechanism by which the per-half
+        discovery in build_manifest finds half-specific WS data.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result_a = resolver.wavesurfer_dir(
+            datetime.date(2025, 3, 14), "PS48", half_subdir="20250314a"
+        )
+        result_b = resolver.wavesurfer_dir(
+            datetime.date(2025, 3, 14), "PS48", half_subdir="20250314b"
+        )
+        assert result_a == tmp_path / "wavesurfer" / "20250314a" / "PS48"
+        assert result_b == tmp_path / "wavesurfer" / "20250314b" / "PS48"
+
+    def test_camera_dir_default_half_subdir_is_date_str(
+        self, monkeypatch, full_paths_yaml, tmp_path
+    ):
+        """Phase 7-pre-multi-half: camera_dir half_subdir mirrors wavesurfer_dir."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result = resolver.camera_dir(
+            datetime.date(2025, 3, 14), "PS48", half_subdir=None
+        )
+        assert result == tmp_path / "camera" / "20250314" / "PS48"
+
+    def test_camera_dir_with_half_subdir_overrides_date_str(
+        self, monkeypatch, full_paths_yaml, tmp_path
+    ):
+        """Phase 7-pre-multi-half: camera-side per-half subdir resolution.
+
+        Camera root mirrors WS root structure (date-then-half-suffix at the
+        top level, animal one level deeper). Same kwarg semantics.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result_a = resolver.camera_dir(
+            datetime.date(2025, 3, 14), "PS48", half_subdir="20250314a"
+        )
+        result_b = resolver.camera_dir(
+            datetime.date(2025, 3, 14), "PS48", half_subdir="20250314b"
+        )
+        assert result_a == tmp_path / "camera" / "20250314a" / "PS48"
+        assert result_b == tmp_path / "camera" / "20250314b" / "PS48"
 
 
 class TestOutputRootOverride:

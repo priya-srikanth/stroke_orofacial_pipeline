@@ -653,21 +653,69 @@ class PathResolver:
             )
         return matches[0]
 
-    def wavesurfer_dir(self, date: datetime.date, animal: str) -> Path:
+    def wavesurfer_dir(
+        self,
+        date: datetime.date,
+        animal: str,
+        *,
+        half_subdir: str | None = None,
+    ) -> Path:
         """Return the wavesurfer session directory for an animal and date.
 
-        E.g. ``/Volumes/.../wavesurfer/20250307/PS46``
-        """
-        date_str = date.strftime("%Y%m%d")
-        return self.root("wavesurfer_raw") / date_str / animal
+        E.g. ``/Volumes/.../wavesurfer/20250307/PS46``.
 
-    def camera_dir(self, date: datetime.date, animal: str) -> Path:
+        Parameters
+        ----------
+        date : datetime.date
+            Session date.
+        animal : str
+            Animal identifier (e.g. ``"PS46"``).
+        half_subdir : str, optional
+            Per-half subdirectory name (e.g. ``"20250314a"``) for
+            multi-half sessions (Phase 7-pre-multi-half). When provided,
+            replaces the default ``date_str`` segment so the resolved
+            path becomes ``{ws_root}/{half_subdir}/{ANIMAL}/``. Default
+            ``None`` preserves the single-half behavior. The Pattern A
+            multi-half on-disk layout for PS48 20250314 has WS files
+            under ``{ws_root}/20250314a/PS48/`` and ``{ws_root}/20250314b/PS48/``;
+            single-half discovery (default) cannot reach those. The
+            ``HalfSpec.ws_subdir`` field on
+            :class:`stroke_orofacial.manifest.SessionManifest` carries
+            the per-half value to pass here.
+        """
+        subdir = half_subdir if half_subdir is not None else date.strftime("%Y%m%d")
+        return self.root("wavesurfer_raw") / subdir / animal
+
+    def camera_dir(
+        self,
+        date: datetime.date,
+        animal: str,
+        *,
+        half_subdir: str | None = None,
+    ) -> Path:
         """Return the camera session directory for an animal and date.
 
-        E.g. ``/Volumes/.../camera/20250307/PS46``
+        E.g. ``/Volumes/.../camera/20250307/PS46``.
+
+        Parameters
+        ----------
+        date : datetime.date
+            Session date.
+        animal : str
+            Animal identifier (e.g. ``"PS46"``).
+        half_subdir : str, optional
+            Per-half subdirectory name (e.g. ``"20250314a"``) for
+            multi-half sessions. Same semantics as
+            :meth:`wavesurfer_dir.half_subdir`: replaces the default
+            ``date_str`` segment so the resolved path becomes
+            ``{cam_root}/{half_subdir}/{ANIMAL}/``. Pattern A multi-half
+            (PS48 20250314) has camera files at ``{cam_root}/20250314a/PS48/``
+            and ``{cam_root}/20250314b/PS48/``. The ``HalfSpec.cam_subdir``
+            field on :class:`stroke_orofacial.manifest.SessionManifest`
+            carries the per-half value to pass here.
         """
-        date_str = date.strftime("%Y%m%d")
-        return self.root("camera_raw") / date_str / animal
+        subdir = half_subdir if half_subdir is not None else date.strftime("%Y%m%d")
+        return self.root("camera_raw") / subdir / animal
 
     # Kept for backward compatibility but deprecated in favor of pipeline_outputs()
     def session_processing_out(self, version: str = "v2") -> Path:
