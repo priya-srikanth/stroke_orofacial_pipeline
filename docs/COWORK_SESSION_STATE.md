@@ -395,14 +395,18 @@ pass).
 
 **In flight:**
 
-*(None on `main`. Phase 7a.6 closed 2026-05-03 with bit-stability
-across all 8 C7.x commits + visual gate PASS verdict from Priya
-(2026-05-02 / 2026-05-03) + notebooks 13 + 14 populated end-to-end.
-The 7a.x DLC kinematics consolidation arc is now fully closed for the
-audited phases: 7a.0/7a.1/7a.2/7a.3/7a.3-jaw/7a.4/7a.5-mismatch/7a.6,
-all merged with their tags + DECISIONS entries. Next-phase pick is
-Priya's
-call from the candidates list below.)*
+*Phase 7-pre-multi-half (PS48 2025-03-14 multi-half acquisition port).
+Branch `phase/7-pre-multi-half` opened 2026-05-05 off `main` at
+`5f45620` (PR #98 kickoff-doc merge). Kickoff at
+`docs/prompts/phase-7-pre-multi-half-kickoff.md` (PR #98, 649 lines).
+Architecture X locked pre-kickoff (per-half processing through Phases
+2/3/4 + post-process merge at three coordinated layers — licks_and_rewards
+NPZ, alignment template, centered DLC parquet); supersedes the
+aspirational 2026-04-21 DECISIONS entry. Opt-in-via-YAML-only safety
+rule with three teeth (read-only scan script, `MultiHalfNotDeclaredError`
+in `build_manifest()`, no callable auto-merge path). Audit-first task
+plan with STOP-and-report after Task 1 (outcome lock X1/X2/X3) and
+Task 9 (parity verdict). Currently in Task 1 (audit, MICROSCOPE-required).*
 
 **Deferred / carry-forward housekeeping:** Remaining safe parallel docket:
 Phase 5.5 polish docs, cohort-wide Phase 5 rerun planning, Phase 6
