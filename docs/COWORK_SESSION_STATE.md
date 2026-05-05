@@ -1,7 +1,8 @@
 # Cowork Session State
 
-**Latest local refresh:** 2026-05-03 (later same day, post-7a.6) —
-Two phases ship today after 7a.6.
+**Latest local refresh:** 2026-05-04 — Phase 7a.4-cross-session-angle
+MERGED, closing the 7a.4 trio. Three phases shipped on 2026-05-03 +
+2026-05-04: orientation-fix → paths-cleanup → cross-session-angle.
 
 **(1) Phase 7a.4-orientation-fix MERGED as PR #93** (merge-commit
 `c34c51d`) + tagged `v7a.4-orientation-fix-cam-view-flip`. Two
@@ -13,50 +14,170 @@ gate verdict PASS Priya 2026-05-03 on PS50/2025-03-19 against
 legacy MICROSCOPE `*_anglePhase_XYphase_*.png`. Closes
 conversation task #41.
 
-**(2) Phase 7a.4-paths-cleanup IN FLIGHT** on `phase/7a.4-paths-cleanup`
-branch (target tag `v7a.4-paths-cleanup`). Net new on top of PR #93:
-(a) three `paths.py` resolver renames retiring the `figures_qc/`
-subtree (`tongue_visual_qc_dir` → `tongue_angle_dir` at
+**(2) Phase 7a.4-paths-cleanup MERGED as PR #94** (merge-commit
+`908caf2`) + tagged `v7a.4-paths-cleanup`. Five non-merge commits
+on the branch: `eb3e5c8` paths.py resolver renames + comparison
+renderer deletion; `dc1e6d2` deprecate visual-gate parity scripts
+(git-mv to `tests/scripts/_deprecated/`); `ab62dd1` notebook 13
+cross-session mismatch wire-up + `INCLUDE_CROSS_SESSION_MISMATCH`
+gate + `OVERWRITE_CROSS_SESSION` sub-knob; `34f3e37` mover script
+`scripts/phase_7a/move_figures_qc_to_new_layout.py` (idempotent
+dry-run default; NOT executed as part of merge); `26728ef` docs +
+forward-pointer kickoff for Phase 7a.4-cross-session-angle. Three
+resolver renames retiring `figures_qc/`:
+`tongue_visual_qc_dir` → `tongue_angle_dir` at
 `dlc_kinematics/tongue_angle/{animal}/{date}/`;
 `tongue_jaw_mismatch_qc_dir` → `tongue_jaw_mismatch_within_session_dir`
 at `tongue_jaw_mismatch/within_session/{animal}/{date}/`;
-`tongue_visual_comparison_dir` DELETED); (b) deletion of the
-`render_comparison_grid` renderer + `_resolve_legacy_png_path` +
-`_save_comparison_grid` + `_LEGACY_SUFFIX` + `mpimg` import +
-public re-export + `TestComparisonGrid` test class — all 7a.4 +
-7a.5 + 7a.6 visual gates have closed PASS so the comparison
-machinery is dead code in production; (c) call-site updates in
-`tongue_jaw_mismatch.py` (`qc_dir` → `within_session_dir`) +
-docstring path examples; (d) test renames in `test_paths.py` with
-docstring history notes; (e) `tests/scripts/_deprecated/README.md`
-documenting frozen-artifact status of `parity_phase7a4_visual_gate.py`
-+ `parity_phase7a5_visual_gate.py` (the actual `git mv` happens
-during the close-out CC sequence — sandbox-git boundary blocks me);
-(f) cross-session tongue-jaw mismatch wired into notebook 13 —
-new cell 8 per-mouse loop + `INCLUDE_CROSS_SESSION_MISMATCH`
-toggle + `OVERWRITE_CROSS_SESSION` per-cell overwrite override
-(None = inherit global; "force" = regenerate without re-running
-per-session loops). The `render_cross_session_figures` function
-shipped in 7a.5 / PR #88 with tests but was never invoked from any
-notebook — this phase fixes that integration oversight; (g) mover
-script `scripts/phase_7a/move_figures_qc_to_new_layout.py`
-(idempotent; dry-run default; typed-confirm DELETE for
-`tongue_comparison/`; NOT executed as part of the merge — runs
-post-merge at user's convenience); (h) forward-pointer kickoff doc
-`docs/prompts/phase-7a.4-cross-session-angle-kickoff.md` (~250
-lines) for queued follow-up phase covering net-new cross-session
-aggregations of tongue angle/phase families + per-session
-phase_aligned_angle split into 1st_lick/all_licks modes (audit-
-first; A/B/C outcomes; locks at Task 1). **No numerical change
-anywhere** — purely layout/naming/dead-code-removal. **DECISIONS
-2026-05-03 entry (separate from PR #93's orientation entry)
-codifies all 6 decisions enacted** + cites 7a.6 (mean_sem path
-layout precedent), 7a.5 (cross-session precedent), and PR #93
-(orientation flip) precedents. pytest green on touched test files
-(Priya 2026-05-03); cross-session mismatch smoke iteration on PS46
-in progress via OVERWRITE flag. **Next-phase queued:** Phase
-7a.4-cross-session-angle (kickoff committed as part of this PR;
-CC executes audit-first post-merge).
+`tongue_visual_comparison_dir` DELETED. Deleted
+`render_comparison_grid` + helpers + `_LEGACY_SUFFIX` + `mpimg`
+import + public re-export + `TestComparisonGrid` test class — all
+7a.4 + 7a.5 + 7a.6 visual gates closed PASS so comparison machinery
+is dead code in production. Tongue-jaw mismatch
+`render_cross_session_figures` (shipped in 7a.5/PR #88 with tests
+but never invoked from any notebook) is now wired into notebook 13
+cell 8; PS46 cross-session smoke run completed successfully via
+the `OVERWRITE_CROSS_SESSION="force"` sub-knob. **No numerical
+change anywhere** — purely layout/naming/dead-code-removal +
+cross-session integration. **DECISIONS 2026-05-03 entry (separate
+from PR #93's orientation entry) codifies all 6 decisions enacted.**
+
+**(3) Phase 7a.4-cross-session-angle MERGED as PR #95** (merge-commit
+`718bbca`) + tagged `v7a.4-cross-session-angle`. Net-new design
+phase: 22 commits driven by an 18-addendum iterative re-spec arc
+between Cowork (driving locks) and CC (audit-first executing per
+kickoff, STOP-and-report at each addendum). **Outcome B**,
+**Architecture B1** (net-new module
+`src/stroke_orofacial/dlc_kinematics/tongue_angle_cohort.py`).
+
+**What shipped:**
+
+PER-SESSION (in `dlc_kinematics/tongue_angle/within_session/{animal}/{date}/`):
+  - 5 existing families unchanged: `qc_trials_side_{L,R}`, `first_peak_aligned`,
+    `reward_aligned`, `xy_by_phase`
+  - 3 phase-aligned-angle variants replacing the bare
+    `phase_aligned_angle.png`:
+    `phase_aligned_angle_1st_lick`, `_all_licks`, `_first_2_licks`
+  - NEW family: `first_vs_second_peak_scatter` (peak[0] angle vs
+    peak[1] angle scatter, per-side, cam-view 1×2)
+
+CROSS-SESSION (in `dlc_kinematics/tongue_angle/cross_session/{animal}/`,
+session_overlays + binned_overlays sub-variants per family):
+  - `first_peak_aligned` (#2 commit `662e11c`)
+  - `reward_aligned` (#3 commit `7ec0d10`; consumes `angle_snip`
+    directly per Addendum #8 — every frame, no bout filtering)
+  - `phase_aligned_angle` × 3 mode variants
+    (`1st_lick`, `all_licks`, `first_2_licks`) (#4 commit `b69e104`)
+  - `first_vs_second_peak_scatter` (#5 commit `17b2de9`)
+  - Top-level composite + notebook 13 wire-up (#6 commit `33ca969`)
+
+NOTEBOOK 13 gains 2 new USER INPUTS knobs + a new per-mouse loop:
+`INCLUDE_TONGUE_ANGLE_COHORT = True`,
+`OVERWRITE_TONGUE_ANGLE_COHORT = None` (inherits global; "force"
+regenerates without re-running per-session loops).
+
+**Major methodological decisions baked into the merged code** (each
+landed via a numbered Addendum; full rationale in DECISIONS
+2026-05-04 entries):
+
+  - **Centered-on-peak phase convention** (Addenda #9 + #10):
+    each peak[i]'s cycle = `(peak_t - ILI/2, peak_t + ILI/2)`,
+    peak at phase=0.5 by construction; phase = u directly (no
+    mod-shift). Diverges from legacy `_assign_phase_peak_to_peak_shifted`
+    which uses peak-to-peak intervals with `mod(u-0.5, 1.0)`.
+    Cleaner left-to-right reading; no warming-up artifact.
+  - **"First lick" = chronologically first peak per trial,
+    regardless of bout structure** (Addendum #12). Not first peak
+    of first multi-bout. Includes isolated licks via synthetic
+    ILI fallback.
+  - **Synthetic ILI for cycle width** (Addendum #12): per-animal
+    pre-stroke median ILI computed once over each animal's
+    pre-stroke baseline (rel_day ≤ 0). Cached as scalar
+    `bundle.metadata["pre_stroke_median_ili_ms"]`.
+  - **`ili_source` enum** (Addendum #14): `real_only` /
+    `hybrid` / `synthetic_only`. Default = `synthetic_only`
+    (Mode 3, locked Addendum #15) — every peak uses the per-
+    animal median. Eliminates per-trial cycle-width variance →
+    smoother phase plots. Loses real-ILI per-trial info; that's
+    acceptable since the science is shape-not-rate.
+  - **Per-cycle line segments** at cycle boundaries (Addendum
+    #16): for first_N_licks plots, render each cycle as an
+    independent line segment with a visible break at x=1, x=2,
+    etc. The cycle boundary represents physically distinct times
+    in the trial; connecting the line would be misleading.
+  - **d0 = pre-stroke** (Addendum #17 item 1): `rel_day <= 0`
+    is pre-stroke; `rel_day >= 1` is post-stroke. Project-wide
+    convention update; affects pre-stroke median ILI helper +
+    cross-session colormap binning.
+  - **Pre-stroke data binned at `bin_days` width** (Addendum #17
+    item 2): pre-stroke no longer pools to a single bin; uses
+    same width as post-stroke. PS46-50 bin_days=2; PS51/54/55
+    bin_days=7. Bins anchor to d0 boundary, extending backwards.
+  - **`reward_aligned` uses `angle_snip` directly** (Addendum #8):
+    not bout-windowed `angle_*_snip`. Plots every frame's tongue
+    angle in the window regardless of bout structure. Includes
+    pre-reward baseline + between-bout frames + post-bout decay.
+    `time_summary` mode config knob is now DEAD CODE (no plot
+    family reads it after Addendum #8) — defaults to "all_bouts"
+    per Addendum #6 but no consumer.
+  - **Reward-aligned display window: [-180, 1000] ms** (Addendum
+    #4) via `reward_aligned_display_window_ms` config knob.
+    Bundle `plot_win_ms` widened to `[-180, 8000]` to support
+    pre-reward frames; per-session + cross-session reward plots
+    clip display via the knob.
+  - **Eye-midpoint convention LOCKED to per-eye-median-then-midpoint**
+    (Addendum #18, Decision 15): consolidated `_compute_eye_in_spout_frame`
+    uses `0.5 * (median(L_eye) + median(R_eye))` uniformly.
+    Diverges from legacy `_estimate_session_eye_midpoint` default
+    (per-frame midpoint then nanmedian) by ~1-3° at peak angles.
+    INTENTIONAL — per-eye median is more robust to per-frame
+    head-pose noise. Documented in DECISIONS Decision 15 +
+    memory.
+  - **Cam-view L/R subplot convention** (inherited from
+    7a.4-orientation-fix): `axes[0]` = R-trials (figure-left);
+    `axes[1]` = L-trials (figure-right); explicit
+    `side_to_ax = {"R": axes[0], "L": axes[1]}` mapping.
+  - **Pre-stroke grey + post-stroke plasma colormap** (inherited
+    from 7a.5/7a.6 cross-session work).
+  - **Shared figure-level legend right of subplots** (Addendum #17
+    item 3): `fig.subplots_adjust(right=0.78)` +
+    `fig.legend(..., bbox_to_anchor=(0.80, 0.95))`. No per-axes
+    legend duplication.
+  - **Low SEM-fill alpha** (Addendum #17 item 4): mean curve
+    alpha=0.50 + SEM band alpha=0.05 for `session_overlays` (~50
+    curves stack readably); 0.70/0.10 for `binned_overlays`.
+
+**Cohort-wide upstream emit completed** (Addendum #13 commit
+`5a95631`): 8 animals × ~50-100 sessions each emitted via
+`scripts/phase_7a/emit_cohort_for_pre_stroke_median.py`. Per-animal
+pre-stroke median ILIs computed from full baseline (not just
+visual-gate sample sessions): PS46=176ms, PS47=160, PS48=176,
+PS49=180, PS50=164, PS51=156, PS54=156, PS55=168ms.
+
+**Visual gate verdict PASS** (Priya 2026-05-04) on all 6
+cross-session family renders for PS46/PS50/PS55 pre-stroke and
+post-stroke recovery sessions.
+
+**Forward-pointers queued for future phases:**
+  - **Lone-lick prevalence cross-session plot** — direct
+    visualization of post-stroke phenotype (n_isolated_licks per
+    trial, averaged per session, pre/post colormap). Complements
+    the angle plots without synthetic-phase machinery. Surfaced
+    during Addendum #5 path α discussion. Small phase, ~3-5
+    commits when picked up.
+  - **Cross-session-mismatch baseline-fill check** — verify
+    whether `tongue_jaw_mismatch.classify_*` (shipped in 7a.5/PR
+    #88) consumes baseline-filled `x_final, y_final` in a way
+    that could inflate post-stroke candidate-rate. Diagnostic
+    pass + possibly small fix.
+  - **Jaw cross-session-angle** if scientific need extends to
+    jaw kinematics. Currently jaw has no per-trial angle pipeline
+    (per the 7a.3-jaw audit); would be a green-field design
+    phase.
+  - **`time_summary` config knob retirement** — dead config
+    after Addendum #8. Small docs PR / commit to remove from
+    `defaults.yaml` or document as "intentionally unused" per
+    the `allow_single_lick_bouts` precedent.
 
 **Earlier 2026-05-03 wrap (Phase 7a.6 — Mean/SEM visual gate close):**
 Phase 7a.6 merged as PR #91
