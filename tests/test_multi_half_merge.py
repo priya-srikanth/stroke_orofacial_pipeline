@@ -858,6 +858,16 @@ class TestComputeAndMergeAlignmentMultiHalf:
                 single, self._make_resolver(tmp_path), {"cam_idx": 2},
             )
 
+    @pytest.mark.skip(
+        reason="Phase 7-pre-multi-half 2026-05-05 incident: this test "
+        "constructs paths via PathResolver(output_root=tmp_path) but the "
+        "alignment_template_per_half resolver doesn't honor output_root; "
+        "writes landed on the live MICROSCOPE legacy template dir and "
+        "overwrote 3 production NPZs with synthetic data. Skipped pending "
+        "the resolver split (alignment_template_legacy_read / _new) which "
+        "routes new-pipeline writes through pipeline_outputs/ — see the "
+        "5-commit guard plan in COWORK_SESSION_STATE.md."
+    )
     def test_skips_compute_when_per_half_exists(self, tmp_path: Path):
         """When per-half NPZs already exist on disk, the orchestrator
         skips the make_alignment_template compute path and goes straight
@@ -902,6 +912,11 @@ class TestComputeAndMergeAlignmentMultiHalf:
         assert int(merged["cam_offset_frames"]) == 10
         assert int(merged["ws_offset_samples"]) == 40
 
+    @pytest.mark.skip(
+        reason="Phase 7-pre-multi-half 2026-05-05 incident — see sibling "
+        "test_skips_compute_when_per_half_exists. Same path-routing bug. "
+        "Re-enabled after the resolver split."
+    )
     def test_per_half_paths_use_decision3_subdir_layout(self, tmp_path: Path):
         """Per-half NPZs land in the {date_str}{halves_concat_label}
         subdir per Decision 3 (e.g. 20250314ab/), merged at parent level."""
@@ -943,6 +958,11 @@ class TestComputeAndMergeAlignmentMultiHalf:
         assert merged_path.parent.name == "PS48"
         assert merged_path.name == "20250314.npz"
 
+    @pytest.mark.skip(
+        reason="Phase 7-pre-multi-half 2026-05-05 incident — see sibling "
+        "test_skips_compute_when_per_half_exists. Same path-routing bug. "
+        "Re-enabled after the resolver split."
+    )
     def test_force_recompute_invokes_compute_for_each_half(self, tmp_path: Path):
         """force_recompute=True triggers _compute_per_half_alignment_template
         for every half, even when per-half NPZs already exist."""
