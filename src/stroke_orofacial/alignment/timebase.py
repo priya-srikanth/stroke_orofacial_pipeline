@@ -198,7 +198,7 @@ def load_or_compute_alignment(
     if cam_idx == 2 and manifest.alignment_template is not None:
         existing_path = manifest.alignment_template
     else:
-        existing_path = resolver.alignment_template(animal, date, cam=cam_name)
+        existing_path = resolver.alignment_template_legacy_read(animal, date, cam=cam_name)
 
     if not force_recompute and existing_path.exists():
         tmpl = load_alignment_template(existing_path)
@@ -357,15 +357,18 @@ def compute_and_merge_alignment_multi_half(
     """Compute per-half alignment templates (or load if present), merge,
     and return the merged template path.
 
-    Layout (Decision 3 of the Phase 7-pre-multi-half Task 1 verdict):
+    Layout (Decision 3 of the Phase 7-pre-multi-half Task 1 verdict;
+    revised 2026-05-05 incident response — paths route through
+    pipeline_outputs/, not the live MICROSCOPE legacy tree):
       - Per-half NPZs land at
-        ``{alignment_templates}/cam2/{ANIMAL}/{date_str}{halves_concat_label}/{date_str}{half_id}.npz``
-        — exposed by :meth:`PathResolver.alignment_template_per_half`.
-      - Merged NPZ lands at the parent
-        ``{alignment_templates}/cam2/{ANIMAL}/{date_str}.npz`` — same path
-        as for single-half sessions, so any downstream consumer reads
-        the merged template via the existing :meth:`PathResolver.alignment_template`
-        regardless of multi-half status.
+        ``<pipeline_outputs>/dlc_analysis/alignment_templates/cam2/{ANIMAL}/{date_str}{halves_concat_label}/{date_str}{half_id}.npz``
+        — exposed by :meth:`PathResolver.alignment_template_per_half_new`.
+      - Merged NPZ lands at
+        ``<pipeline_outputs>/dlc_analysis/alignment_templates/cam2/{ANIMAL}/{date_str}.npz``
+        — exposed by :meth:`PathResolver.alignment_template_new`.
+      Single-half code paths still read legacy templates via
+      :meth:`PathResolver.alignment_template_legacy_read` (which routes
+      through ``microscope_server`` and is read-only).
 
     Behavior:
       - Each per-half NPZ is loaded if present and ``not force_recompute``,
@@ -419,9 +422,14 @@ def compute_and_merge_alignment_multi_half(
     halves = manifest.halves
     halves_concat_label = "".join(h.id for h in halves)
 
-    # Per-half NPZ paths (Decision 3 layout)
+    # Per-half NPZ paths (Decision 3 layout). Routed through
+    # alignment_template_per_half_new (under pipeline_outputs/) so the
+    # 2026-05-05 incident class — writes to the live MICROSCOPE legacy
+    # tree — is structurally impossible. Defense-in-depth via
+    # assert_safe_write_path before each np.savez_compressed below.
+    from stroke_orofacial._writeguard import assert_safe_write_path
     per_half_paths = [
-        resolver.alignment_template_per_half(
+        resolver.alignment_template_per_half_new(
             manifest.animal, manifest.date,
             halves_concat_label=halves_concat_label,
             half_id=h.id,
@@ -438,14 +446,25 @@ def compute_and_merge_alignment_multi_half(
             h, manifest.animal, manifest.date, resolver, params, cam_idx=cam_idx,
         )
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        # Defense-in-depth: writeguard fires before the actual write.
+        # The resolver SHOULD already give us a safe path, but a
+        # belt-and-suspenders check here makes any future regression
+        # in alignment_template_per_half_new fail loud at the call
+        # site instead of silently corrupting legacy data.
+        assert_safe_write_path(out_path)
         np.savez_compressed(str(out_path), **template_dict)
 
-    # Merge (always re-merges; deterministic from per-half NPZs)
+    # Merge — writes to alignment_template_new (parent-level under
+    # pipeline_outputs/). Deterministic from per-half NPZs; merge
+    # function does its own writeguard via the conftest fixture in
+    # tests, and assert_safe_write_path is a redundant check for
+    # the production path here.
     from stroke_orofacial.spout_behavior.multi_half_merge import (
         merge_alignment_templates,
     )
-    merged_path = resolver.alignment_template(
+    merged_path = resolver.alignment_template_new(
         manifest.animal, manifest.date, cam=cam_name,
     )
+    assert_safe_write_path(merged_path)
     merge_alignment_templates(per_half_paths, merged_path)
     return merged_path

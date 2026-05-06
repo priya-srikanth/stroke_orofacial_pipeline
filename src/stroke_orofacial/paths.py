@@ -189,17 +189,77 @@ class PathResolver:
             / cam
         )
 
-    def alignment_template(
+    def alignment_template_legacy_read(
         self, animal: str, date: datetime.date, cam: str = "cam2"
     ) -> Path:
-        """Return the path to a specific alignment template .npz file.
+        """Read-only path for existing legacy alignment templates.
 
-        E.g. ``/Volumes/.../alignment_templates/cam2/PS46/20250307.npz``
+        E.g. ``/Volumes/.../DeepLabCut/O2_analysis/alignment_templates/cam2/PS46/20250307.npz``
+
+        Routes through ``microscope_server`` (the live MICROSCOPE share)
+        where legacy templates were produced by Priya's canonical
+        ``make_alignment_templates_20251216.py`` and the multi-half
+        merge cell 16. Production code uses this path to **discover
+        existing templates only** — never to write.
+
+        Phase 7-pre-multi-half 2026-05-05 incident response: this
+        method was renamed from ``alignment_template`` so call sites
+        that wrote via this resolver (e.g. the multi-half compute-and-
+        merge orchestrator) get a clear "this is for legacy reads
+        only" signal at the API surface. New-pipeline writes go via
+        :meth:`alignment_template_new` (single merged) or
+        :meth:`alignment_template_per_half_new` (per-half multi-half
+        output), both of which route through ``pipeline_outputs/`` and
+        honor the ``output_root`` test override.
+
+        Parameters
+        ----------
+        animal : str
+            Animal identifier (e.g. ``"PS46"``).
+        date : datetime.date
+            Session date.
+        cam : str
+            Camera token (default ``"cam2"`` matching DLC camera).
         """
         date_str = date.strftime("%Y%m%d")
         return self.alignment_templates_dir(cam) / animal / f"{date_str}.npz"
 
-    def alignment_template_per_half(
+    def alignment_template_new(
+        self, animal: str, date: datetime.date, cam: str = "cam2"
+    ) -> Path:
+        """Write path for new-pipeline merged alignment templates.
+
+        E.g. ``<microscope_pipeline_outputs>/dlc_analysis/alignment_templates/cam2/PS48/20250314.npz``
+
+        Routes through :meth:`pipeline_outputs` so ``output_root``
+        kwarg at PathResolver construction time redirects writes to a
+        test-sandbox location. Production callers (the multi-half
+        compute-and-merge orchestrator) write merged templates here
+        instead of overwriting the live legacy tree.
+
+        Mirrors the legacy parent-level layout (``cam2/{ANIMAL}/{date_str}.npz``)
+        so a downstream consumer can rebuild against the new tree
+        without changing logic — only the root differs. Per-half
+        templates emitted alongside live in
+        :meth:`alignment_template_per_half_new`.
+
+        Phase 7-pre-multi-half 2026-05-05 incident response: this
+        method was added so multi-half writes have a structurally
+        safe destination under ``pipeline_outputs/``. The previous
+        write path (``alignment_template`` routing through
+        ``microscope_server``) corrupted 3 legacy NPZs; see the
+        incident report in DECISIONS / COWORK_SESSION_STATE.
+        """
+        date_str = date.strftime("%Y%m%d")
+        return (
+            self.pipeline_outputs(subdir="dlc_analysis")
+            / "alignment_templates"
+            / cam
+            / animal
+            / f"{date_str}.npz"
+        )
+
+    def alignment_template_per_half_new(
         self,
         animal: str,
         date: datetime.date,
@@ -208,17 +268,24 @@ class PathResolver:
         half_id: str,
         cam: str = "cam2",
     ) -> Path:
-        """Return the per-half alignment template path for a multi-half session.
+        """Write path for new-pipeline per-half alignment templates.
 
-        E.g. ``/Volumes/.../alignment_templates/cam2/PS48/20250314ab/20250314a.npz``
+        E.g. ``<microscope_pipeline_outputs>/dlc_analysis/alignment_templates/cam2/PS48/20250314ab/20250314a.npz``
         for PS48 20250314 half a (``halves_concat_label="ab"``).
 
-        Mirrors the on-disk convention Priya established for PS48 20250314
-        (post-merge cleanup, 2026-05-05) and locked as Decision 3 of the
-        Phase 7-pre-multi-half Task 1 verdict: per-half artefacts go in a
-        per-(animal, date) subdir named ``{date_str}{halves_concat_label}``;
-        the merged template lives at the parent level (returned by
-        :meth:`alignment_template`).
+        Routes through :meth:`pipeline_outputs` (under the
+        ``dlc_analysis`` subdir) so ``output_root`` test overrides
+        redirect cleanly. Phase 7-pre-multi-half 2026-05-05 incident
+        response: this is the **safe** counterpart to the old
+        ``alignment_template_per_half`` resolver, which routed
+        through ``microscope_server`` and corrupted 3 legacy NPZs.
+
+        Mirrors the on-disk convention Priya established for PS48
+        20250314 (post-merge cleanup, 2026-05-05) and locked as
+        Decision 3 of the Phase 7-pre-multi-half Task 1 verdict:
+        per-half artefacts go in a per-(animal, date) subdir named
+        ``{date_str}{halves_concat_label}``; the merged template
+        lives at the parent level (:meth:`alignment_template_new`).
 
         Parameters
         ----------
@@ -227,7 +294,7 @@ class PathResolver:
         date : datetime.date
             Session date.
         halves_concat_label : str
-            The per-(animal, date) subdir-name suffix — concatenated half
+            Per-(animal, date) subdir-name suffix — concatenated half
             ids (e.g. ``"ab"`` for halves ``a`` + ``b``).
         half_id : str
             Half identifier letter (``"a"``, ``"b"``, ...).
@@ -237,7 +304,14 @@ class PathResolver:
         date_str = date.strftime("%Y%m%d")
         subdir_name = f"{date_str}{halves_concat_label}"
         file_name = f"{date_str}{half_id}.npz"
-        return self.alignment_templates_dir(cam) / animal / subdir_name / file_name
+        return (
+            self.pipeline_outputs(subdir="dlc_analysis")
+            / "alignment_templates"
+            / cam
+            / animal
+            / subdir_name
+            / file_name
+        )
 
     def pipeline_outputs(self, subdir: str = "spout_behavior") -> Path:
         """Return the output directory for pipeline outputs on MICROSCOPE.

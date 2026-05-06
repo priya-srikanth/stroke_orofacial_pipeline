@@ -138,7 +138,7 @@ class TestIntegrationAlignment:
         date = datetime.date(2025, 3, 7)
 
         # Load existing
-        ref_path = resolver.alignment_template("PS46", date, cam="cam2")
+        ref_path = resolver.alignment_template_legacy_read("PS46", date, cam="cam2")
         ref = load_alignment_template(ref_path)
 
         # Recompute via wrapper
@@ -243,7 +243,7 @@ class TestLoadOrComputeAlignmentRaisesOnMissingWavesurfer:
         # Force-recompute on a manifest with no wavesurfer + no template path.
         resolver = MagicMock(spec=PathResolver)
         # Resolver-fallback path doesn't exist either (forces recompute branch).
-        resolver.alignment_template.return_value = tmp_path / "nope.npz"
+        resolver.alignment_template_legacy_read.return_value = tmp_path / "nope.npz"
 
         manifest = SessionManifest(
             session_id="PS46_20250307",

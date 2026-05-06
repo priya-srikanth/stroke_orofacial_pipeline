@@ -538,7 +538,7 @@ def build_manifest(
     # For Pattern A multi-half sessions the parent-level merged file lives at
     # the same path as a single-half template; per-half templates live in
     # halves[i].alignment_template (populated by Phase 3 output, not here).
-    alignment_path = resolver.alignment_template(animal, date)
+    alignment_path = resolver.alignment_template_legacy_read(animal, date)
     alignment_template = alignment_path if alignment_path.exists() else None
 
     # Compute stroke-relative metadata

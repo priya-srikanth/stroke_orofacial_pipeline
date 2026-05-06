@@ -1407,7 +1407,7 @@ def _derive_trial_events_from_spout_behavior(
     #    _load_reward_centers_cam: prefer manifest if set, else resolver).
     align_path = manifest.alignment_template
     if align_path is None or not align_path.exists():
-        align_path = resolver.alignment_template(animal, date, cam="cam2")
+        align_path = resolver.alignment_template_legacy_read(animal, date, cam="cam2")
     if not align_path.exists():
         raise FileNotFoundError(
             f"{animal}/{date_str}: cam2 alignment template missing at "

@@ -114,9 +114,11 @@ def _make_resolver_for_layout(
     def _dlc_output_dir(animal):
         return dlc_root / animal
 
-    def _alignment_template(animal, date, cam="cam2"):
+    def _alignment_template_legacy_read(animal, date, cam="cam2"):
         # No alignment template emitted in fixture (build_manifest only checks
-        # existence and stores None when missing).
+        # existence and stores None when missing). Renamed in the
+        # 2026-05-05 incident response: the resolver method that build_manifest
+        # uses for legacy template discovery is alignment_template_legacy_read.
         return ws_root.parent / "alignment_templates" / cam / animal / (
             f"{date.strftime('%Y%m%d')}.npz"
         )
@@ -124,7 +126,7 @@ def _make_resolver_for_layout(
     resolver.wavesurfer_dir.side_effect = _ws_dir
     resolver.camera_dir.side_effect = _cam_dir
     resolver.dlc_output_dir.side_effect = _dlc_output_dir
-    resolver.alignment_template.side_effect = _alignment_template
+    resolver.alignment_template_legacy_read.side_effect = _alignment_template_legacy_read
     return resolver
 
 
