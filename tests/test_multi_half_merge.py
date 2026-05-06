@@ -858,20 +858,19 @@ class TestComputeAndMergeAlignmentMultiHalf:
                 single, self._make_resolver(tmp_path), {"cam_idx": 2},
             )
 
-    @pytest.mark.skip(
-        reason="Phase 7-pre-multi-half 2026-05-05 incident: this test "
-        "constructs paths via PathResolver(output_root=tmp_path) but the "
-        "alignment_template_per_half resolver doesn't honor output_root; "
-        "writes landed on the live MICROSCOPE legacy template dir and "
-        "overwrote 3 production NPZs with synthetic data. Skipped pending "
-        "the resolver split (alignment_template_legacy_read / _new) which "
-        "routes new-pipeline writes through pipeline_outputs/ — see the "
-        "5-commit guard plan in COWORK_SESSION_STATE.md."
-    )
     def test_skips_compute_when_per_half_exists(self, tmp_path: Path):
         """When per-half NPZs already exist on disk, the orchestrator
         skips the make_alignment_template compute path and goes straight
-        to merge."""
+        to merge.
+
+        Phase 7-pre-multi-half 2026-05-05 incident response: rewritten
+        to use ``resolver.alignment_template_per_half_new`` (which
+        routes through ``pipeline_outputs/`` and IS overridden by the
+        resolver's ``output_root=tmp_path`` kwarg). The old version
+        used ``alignment_template_per_half``, which routed through
+        the live MICROSCOPE legacy tree regardless of output_root and
+        corrupted 3 production NPZs.
+        """
         from unittest.mock import patch
 
         from stroke_orofacial.alignment.timebase import (
@@ -881,15 +880,27 @@ class TestComputeAndMergeAlignmentMultiHalf:
         manifest = self._make_multi_half_manifest(tmp_path)
         resolver = self._make_resolver(tmp_path)
 
-        # Pre-create per-half template NPZs at the expected paths
+        # Pre-create per-half template NPZs at the expected paths.
+        # _new resolver routes through pipeline_outputs which IS
+        # overridden by output_root=tmp_path on the resolver, so writes
+        # land under tmp_path (safe).
         per_half_paths = [
-            resolver.alignment_template_per_half(
+            resolver.alignment_template_per_half_new(
                 "PS48", manifest.date,
                 halves_concat_label="ab",
                 half_id=hid,
             )
             for hid in ("a", "b")
         ]
+        # Belt: confirm the resolved paths actually live under tmp_path
+        # before any write — the regression check that would have
+        # caught the 2026-05-05 incident.
+        for p in per_half_paths:
+            assert tmp_path in p.parents, (
+                f"per-half path {p} did not resolve under tmp_path; "
+                f"output_root override is not honored — would have "
+                f"reproduced the 2026-05-05 incident class."
+            )
         _make_per_half_template(per_half_paths[0], n_cam=10, n_ws=40)
         _make_per_half_template(per_half_paths[1], n_cam=20, n_ws=80)
 
@@ -902,6 +913,9 @@ class TestComputeAndMergeAlignmentMultiHalf:
             )
 
         mock_compute.assert_not_called()
+        # Merged path also resolves under tmp_path (alignment_template_new
+        # routes through pipeline_outputs).
+        assert tmp_path in merged_path.parents
         assert merged_path.exists()
         # Merged file at parent level
         assert merged_path.name == "20250314.npz"
@@ -912,14 +926,15 @@ class TestComputeAndMergeAlignmentMultiHalf:
         assert int(merged["cam_offset_frames"]) == 10
         assert int(merged["ws_offset_samples"]) == 40
 
-    @pytest.mark.skip(
-        reason="Phase 7-pre-multi-half 2026-05-05 incident — see sibling "
-        "test_skips_compute_when_per_half_exists. Same path-routing bug. "
-        "Re-enabled after the resolver split."
-    )
     def test_per_half_paths_use_decision3_subdir_layout(self, tmp_path: Path):
         """Per-half NPZs land in the {date_str}{halves_concat_label}
-        subdir per Decision 3 (e.g. 20250314ab/), merged at parent level."""
+        subdir per Decision 3 (e.g. 20250314ab/), merged at parent level.
+
+        Phase 7-pre-multi-half 2026-05-05 incident response: rewritten
+        to use ``alignment_template_per_half_new`` with output_root
+        override; verifies the expected pipeline_outputs/dlc_analysis/
+        alignment_templates/cam2/{ANIMAL}/{date}{label}/ shape.
+        """
         from unittest.mock import patch
 
         from stroke_orofacial.alignment.timebase import (
@@ -931,13 +946,15 @@ class TestComputeAndMergeAlignmentMultiHalf:
 
         # Pre-create per-half NPZs (skips compute)
         per_half_paths = [
-            resolver.alignment_template_per_half(
+            resolver.alignment_template_per_half_new(
                 "PS48", manifest.date,
                 halves_concat_label="ab",
                 half_id=hid,
             )
             for hid in ("a", "b")
         ]
+        for p in per_half_paths:
+            assert tmp_path in p.parents
         _make_per_half_template(per_half_paths[0], n_cam=10, n_ws=40)
         _make_per_half_template(per_half_paths[1], n_cam=20, n_ws=80)
 
@@ -948,24 +965,34 @@ class TestComputeAndMergeAlignmentMultiHalf:
                 manifest, resolver, {"cam_idx": 2},
             )
 
-        # Per-half paths under cam2/PS48/20250314ab/
+        # Per-half paths under
+        # <pipeline_outputs>/dlc_analysis/alignment_templates/cam2/PS48/20250314ab/.
+        # Decision 3 layout: subdir name = {date_str}{halves_concat_label}.
         for hid, p in zip(("a", "b"), per_half_paths):
             assert p.parent.name == "20250314ab"
             assert p.name == f"20250314{hid}.npz"
             assert p.parent.parent.name == "PS48"
             assert p.parent.parent.parent.name == "cam2"
+            assert "alignment_templates" in p.parts
+            # New routing: under pipeline_outputs/dlc_analysis, NOT
+            # under O2_analysis.
+            assert "dlc_analysis" in p.parts
+            assert "O2_analysis" not in p.parts
         # Merged path at the parent level (NOT in the subdir)
         assert merged_path.parent.name == "PS48"
         assert merged_path.name == "20250314.npz"
+        # Same routing for merged.
+        assert "dlc_analysis" in merged_path.parts
+        assert "O2_analysis" not in merged_path.parts
 
-    @pytest.mark.skip(
-        reason="Phase 7-pre-multi-half 2026-05-05 incident — see sibling "
-        "test_skips_compute_when_per_half_exists. Same path-routing bug. "
-        "Re-enabled after the resolver split."
-    )
     def test_force_recompute_invokes_compute_for_each_half(self, tmp_path: Path):
         """force_recompute=True triggers _compute_per_half_alignment_template
-        for every half, even when per-half NPZs already exist."""
+        for every half, even when per-half NPZs already exist.
+
+        Phase 7-pre-multi-half 2026-05-05 incident response: rewritten
+        to use the safe _new resolver. Verifies compute is invoked
+        twice (once per half) when force_recompute is True.
+        """
         from unittest.mock import patch
 
         from stroke_orofacial.alignment.timebase import (
@@ -977,13 +1004,15 @@ class TestComputeAndMergeAlignmentMultiHalf:
 
         # Pre-create per-half NPZs (would normally skip compute)
         per_half_paths = [
-            resolver.alignment_template_per_half(
+            resolver.alignment_template_per_half_new(
                 "PS48", manifest.date,
                 halves_concat_label="ab",
                 half_id=hid,
             )
             for hid in ("a", "b")
         ]
+        for p in per_half_paths:
+            assert tmp_path in p.parents
         _make_per_half_template(per_half_paths[0], n_cam=10, n_ws=40)
         _make_per_half_template(per_half_paths[1], n_cam=20, n_ws=80)
 
