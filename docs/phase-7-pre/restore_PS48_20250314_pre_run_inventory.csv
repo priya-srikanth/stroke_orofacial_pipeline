@@ -1,0 +1,10 @@
+path,rel_path,exists,size,mtime_iso
+\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\DeepLabCut\O2_analysis\alignment_templates\cam1\PS48\20250314a.npz,cam1/PS48/20250314a.npz,True,68512195,2026-01-11T19:16:05.420665+00:00
+\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\DeepLabCut\O2_analysis\alignment_templates\cam1\PS48\20250314b.npz,cam1/PS48/20250314b.npz,True,69808587,2026-01-11T19:16:59.929603+00:00
+\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\DeepLabCut\O2_analysis\alignment_templates\cam2\PS48\20250314.npz,cam2/PS48/20250314.npz,True,3920,2026-05-05T23:46:37.555474+00:00
+\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\DeepLabCut\O2_analysis\alignment_templates\cam2\PS48\20250314ab\20250314a.npz,cam2/PS48/20250314ab/20250314a.npz,True,1342,2026-05-05T23:46:37.525022+00:00
+\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\DeepLabCut\O2_analysis\alignment_templates\cam2\PS48\20250314ab\20250314b.npz,cam2/PS48/20250314ab/20250314b.npz,True,1604,2026-05-05T23:46:37.534498+00:00
+\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\DeepLabCut\O2_analysis\alignment_templates\cam3\PS48\20250314a.npz,cam3/PS48/20250314a.npz,True,68512363,2026-01-11T19:16:31.732334+00:00
+\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\DeepLabCut\O2_analysis\alignment_templates\cam3\PS48\20250314b.npz,cam3/PS48/20250314b.npz,True,69808443,2026-01-11T19:17:28.318600+00:00
+\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\DeepLabCut\O2_analysis\alignment_templates\cam4\PS48\20250314a.npz,cam4/PS48/20250314a.npz,True,68512315,2026-01-11T19:16:46.088461+00:00
+\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\DeepLabCut\O2_analysis\alignment_templates\cam4\PS48\20250314b.npz,cam4/PS48/20250314b.npz,True,69808059,2026-01-11T19:17:42.253360+00:00
