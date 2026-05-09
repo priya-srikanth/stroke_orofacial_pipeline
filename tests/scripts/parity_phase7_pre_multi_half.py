@@ -148,10 +148,25 @@ ATOL_NUMERIC = 1e-12
 DEFAULT_ANIMAL = "PS48"
 DEFAULT_DATE = datetime.date(2025, 3, 14)
 
-# Layer 2: cell 16 / merge_alignment_templates provenance keys to compare exactly.
-_ALIGNMENT_PROVENANCE_KEYS = (
+# Layer 2: cell 16 / merge_alignment_templates provenance keys.
+#
+# Split into path-string keys vs numeric keys because the resolver
+# split (Phase 7-pre-multi-half Task 5R) makes path-string provenance
+# DIFFER BY DESIGN between new and legacy: the new pipeline emits
+# pipeline_outputs/-rooted paths while legacy was rooted under
+# O2_analysis/. That divergence is the resolver split working as
+# intended, NOT a parity failure. The harness reports path-string
+# diffs as INFO so an operator can see them, but they don't move
+# Layer 2 from PASS to FAIL.
+#
+# Numeric provenance keys (ws_offset_samples / cam_offset_frames)
+# are scalars produced by the merge algorithm itself — those still
+# exact-match against legacy because the merge math is unchanged.
+_ALIGNMENT_PROVENANCE_PATH_KEYS = (
     "merged_from_A",
     "merged_from_B",
+)
+_ALIGNMENT_PROVENANCE_NUMERIC_KEYS = (
     "ws_offset_samples",
     "cam_offset_frames",
 )
@@ -460,14 +475,30 @@ def _new_alignment_path(
 
 def _compare_alignment_npz(
     new_path: Path, legacy_path: Path,
-) -> list[str]:
-    """Compare two alignment templates per the cell-16 schema rules:
+) -> tuple[list[str], list[str]]:
+    """Compare two alignment templates per the cell-16 schema rules.
+
+    Returns ``(failures, info)``:
+
+      - ``failures``: real parity-blocking mismatches.
+      - ``info``: by-design divergences worth surfacing to the operator
+        but NOT moving the layer verdict from PASS to FAIL.
+
+    Rules:
 
       - Fs_ws_input: exact (np.isclose with default rtol/atol; legacy
-        was generated with float64 so exact equality is the norm).
-      - sig_* arrays: atol=1e-12.
-      - provenance keys (merged_from_A/B + ws_offset_samples +
-        cam_offset_frames): exact via np.array_equal.
+        was generated with float64 so exact equality is the norm). FAIL.
+      - sig_* arrays: atol=1e-12. FAIL.
+      - **Numeric provenance keys** (ws_offset_samples /
+        cam_offset_frames): exact via np.array_equal. These are merge-
+        algorithm scalars and still exact-match. FAIL on diff.
+      - **Path-string provenance keys** (merged_from_A / merged_from_B):
+        treated as INFO, not FAIL. The Task-5R resolver split (Phase
+        7-pre-multi-half) routes new writes through pipeline_outputs/
+        while legacy lived under O2_analysis/, so the merged_from_*
+        path strings DIFFER BY DESIGN. Surfacing them as INFO lets an
+        operator see the resolver split is working without polluting
+        the parity verdict.
 
     The new pipeline's merged template MAY include additional list-
     style provenance keys (merged_from_paths, ws_offsets_per_half,
@@ -477,6 +508,7 @@ def _compare_alignment_npz(
     design; merged_from_paths is the N-half-general form).
     """
     failures: list[str] = []
+    info: list[str] = []
     new_npz = np.load(new_path, allow_pickle=True)
     legacy_npz = np.load(legacy_path, allow_pickle=True)
 
@@ -521,8 +553,8 @@ def _compare_alignment_npz(
                 f"(max|new-legacy|={max_diff} > atol={ATOL_NUMERIC})"
             )
 
-    # Legacy provenance keys exact-match
-    for key in _ALIGNMENT_PROVENANCE_KEYS:
+    # Numeric provenance keys: exact-match → FAIL on diff
+    for key in _ALIGNMENT_PROVENANCE_NUMERIC_KEYS:
         if key not in new_keys or key not in legacy_keys:
             continue  # missing-key already reported above
         a = new_npz[key]
@@ -532,7 +564,19 @@ def _compare_alignment_npz(
                 f"provenance {key!r}: new={a!r} vs legacy={b!r}"
             )
 
-    return failures
+    # Path-string provenance keys: differences are by-design → INFO not FAIL
+    for key in _ALIGNMENT_PROVENANCE_PATH_KEYS:
+        if key not in new_keys or key not in legacy_keys:
+            continue  # missing-key already reported above
+        a = new_npz[key]
+        b = legacy_npz[key]
+        if not np.array_equal(a, b):
+            info.append(
+                f"provenance path {key!r} differs (expected — resolver "
+                f"split): new={str(a)!r} legacy={str(b)!r}"
+            )
+
+    return failures, info
 
 
 def _layer2_alignment(
@@ -572,8 +616,9 @@ def _layer2_alignment(
             )
 
         log(f"  comparing new ↔ legacy (Fs_ws_input exact, "
-            f"sig_* atol={ATOL_NUMERIC}, provenance exact)...")
-        failures = _compare_alignment_npz(new_path, legacy_path)
+            f"sig_* atol={ATOL_NUMERIC}, numeric provenance exact, "
+            f"path-string provenance INFO-only)...")
+        failures, info_lines = _compare_alignment_npz(new_path, legacy_path)
 
     except Exception as e:
         log(f"  ERROR during Layer 2 generation/comparison: {e!r}")
@@ -583,6 +628,13 @@ def _layer2_alignment(
             traceback_str=traceback.format_exc(),
         )
 
+    # Surface INFO lines (path-string provenance diffs) at every verdict.
+    # They never block PASS — they're the resolver split working as intended.
+    if info_lines:
+        log(f"  INFO — {len(info_lines)} by-design divergence(s):")
+        for line in info_lines:
+            log(f"    - {line}")
+
     if failures:
         log(f"  FAIL — {len(failures)} mismatch(es):")
         for f in failures:
@@ -591,13 +643,21 @@ def _layer2_alignment(
             layer=2, name="alignment_template", status="fail",
             summary=f"{len(failures)} mismatch(es) vs legacy",
             failures=failures,
-            info={"new_path": str(new_path), "legacy_path": str(legacy_path)},
+            info={
+                "new_path": str(new_path),
+                "legacy_path": str(legacy_path),
+                "info_lines": info_lines,
+            },
         )
-    log("  PASS — Fs_ws_input + sig_* arrays + provenance all match")
+    log("  PASS — Fs_ws_input + sig_* arrays + numeric provenance all match")
     return LayerResult(
         layer=2, name="alignment_template", status="pass",
         summary=f"all checks pass (atol={ATOL_NUMERIC} on sig_*)",
-        info={"new_path": str(new_path), "legacy_path": str(legacy_path)},
+        info={
+            "new_path": str(new_path),
+            "legacy_path": str(legacy_path),
+            "info_lines": info_lines,
+        },
     )
 
 
