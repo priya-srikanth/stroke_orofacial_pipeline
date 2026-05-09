@@ -149,10 +149,23 @@ def load_or_compute_alignment(
     whether or not DLC inference has run. The DLC guard belongs in
     Phase 4 (parquet builder), not here.
 
-    Default behavior: load from ``manifest.alignment_template`` (cam2 only)
-    or ``alignment_templates/{cam_name}/{animal}/{YYYYMMDD}.npz`` for other
-    cams. If the template doesn't exist (or ``force_recompute=True``),
-    compute fresh from ``manifest.wavesurfer_file`` + camera CSV.
+    Single-entry-point dispatch (Phase 7-pre-multi-half):
+
+      - **Single-half manifest** (``manifest.halves is None``): default
+        behavior — load from ``manifest.alignment_template`` (cam2 only)
+        or via :meth:`PathResolver.alignment_template_legacy_read` for
+        other cams. If the template doesn't exist (or
+        ``force_recompute=True``), compute fresh from
+        ``manifest.wavesurfer_file`` + camera CSV.
+      - **Multi-half manifest** (``manifest.halves is not None``):
+        dispatches into :func:`compute_and_merge_alignment_multi_half`
+        which computes/caches per-half templates (under the ``_new``
+        resolvers, ``pipeline_outputs/``) and merges them. The merged
+        NPZ is then loaded back into an :class:`AlignmentResult`.
+        ``slope_ws_per_camFrame`` and ``intercept_ws_samples`` are NaN
+        for multi-half (each half has its own affine fit; no single
+        diagnostic value applies to a stitched time axis). ``source``
+        on the returned AlignmentResult is ``"merged_multi_half"``.
 
     For callers that prefer the legacy (animal, date) entry point, see
     ``load_or_compute_alignment_by_animal_date()`` below.
@@ -191,6 +204,36 @@ def load_or_compute_alignment(
     cam_name = f"cam{cam_idx}"
     animal = manifest.animal
     date = manifest.date
+
+    # Phase 7-pre-multi-half: multi-half manifests dispatch into the
+    # per-half orchestrator. Single-entry-point flow — downstream callers
+    # of load_or_compute_alignment don't need to know whether the session
+    # is single-half or multi-half; they just get an AlignmentResult.
+    #
+    # The orchestrator computes/caches per-half templates under _new
+    # resolvers (pipeline_outputs/) and merges them into a parent-level
+    # merged NPZ. We then load that merged NPZ and return an
+    # AlignmentResult.
+    #
+    # slope_ws_per_camFrame and intercept_ws_samples are diagnostic-only
+    # in single-half (no downstream consumers; verified 2026-05-09 grep).
+    # For multi-half they are conceptually undefined — each half has its
+    # own affine fit, and a single slope/intercept doesn't apply to a
+    # stitched time axis. Set them to NaN so the AlignmentResult shape
+    # is preserved without inventing a meaningless number.
+    if manifest.halves is not None:
+        merged_path = compute_and_merge_alignment_multi_half(
+            manifest, resolver, params, force_recompute=force_recompute,
+        )
+        tmpl = load_alignment_template(merged_path)
+        return AlignmentResult(
+            sig_camIdx__idx_ws=tmpl["sig_camIdx__idx_ws"],
+            sig_wsIdx__idx_cam=tmpl["sig_wsIdx__idx_cam"],
+            slope_ws_per_camFrame=float("nan"),
+            intercept_ws_samples=float("nan"),
+            Fs_ws=float(tmpl["Fs_ws_input"]),
+            source="merged_multi_half",
+        )
 
     # Existing-template path: prefer the manifest's cam2 entry; fall back
     # to the resolver for other cams (manifest only tracks cam2) or when

@@ -258,3 +258,185 @@ class TestLoadOrComputeAlignmentRaisesOnMissingWavesurfer:
             load_or_compute_alignment(
                 manifest, resolver, params={"cam_idx": 2}, force_recompute=True
             )
+
+
+# ---- Phase 7-pre-multi-half Step 1: dispatch wiring ----
+
+
+class TestLoadOrComputeAlignmentMultiHalfDispatch:
+    """Step 1 wiring: when manifest.halves is not None,
+    load_or_compute_alignment dispatches into
+    compute_and_merge_alignment_multi_half and returns an
+    AlignmentResult loaded from the merged NPZ.
+
+    This is the single-entry-point integration test the Phase 7-pre-
+    multi-half kickoff Step 1 specified — verifies that downstream
+    callers don't need to know whether the session is single-half or
+    multi-half; they just call load_or_compute_alignment(manifest, ...)
+    and get an AlignmentResult.
+    """
+
+    def _make_per_half_template(
+        self, path: Path, *, Fs_ws=1000.0, n_cam=10, n_ws=40,
+    ) -> Path:
+        """Synthetic per-half alignment template NPZ matching cell-16 schema.
+
+        Mirrors the helper in tests/test_multi_half_merge.py but local
+        to keep this test self-contained.
+        """
+        dt_ws = 1.0 / Fs_ws
+        dt_cam = (n_ws / Fs_ws) / n_cam
+        path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(
+            str(path),
+            Fs_ws_input=np.float64(Fs_ws),
+            sig_wsIdx__idx_cam=np.linspace(0.0, n_ws - 1, n_cam),
+            sig_camIdx__idx_ws=np.linspace(0.0, n_cam - 1, n_ws),
+            sig_camTimes__idx_cam=np.arange(n_cam) * dt_cam,
+            sig_wsTimes__idx_ws=np.arange(n_ws) * dt_ws,
+            allow_pickle=False,
+        )
+        return path
+
+    def test_multi_half_dispatch_returns_merged_alignment_result(self, tmp_path):
+        """Synthetic 2-half manifest. Pre-create per-half templates
+        under the _new resolver path so compute is skipped and merge
+        runs deterministically. Then call load_or_compute_alignment
+        AND compute_and_merge_alignment_multi_half directly; verify
+        the AlignmentResult fields match the contents of the merged
+        NPZ that the orchestrator writes.
+        """
+        from stroke_orofacial.alignment.templates import load_alignment_template
+        from stroke_orofacial.alignment.timebase import (
+            compute_and_merge_alignment_multi_half,
+            load_or_compute_alignment,
+        )
+        from stroke_orofacial.manifest import HalfSpec, SessionManifest
+        from stroke_orofacial.paths import PathResolver
+
+        # Synthetic per-half WS files (paths only — orchestrator skips
+        # compute when per-half templates already exist).
+        ws_a = tmp_path / "ws" / "20250314a" / "PS48" / "stroke_0001.h5"
+        ws_b = tmp_path / "ws" / "20250314b" / "PS48" / "stroke_0002.h5"
+        for p in (ws_a, ws_b):
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.touch()
+
+        manifest = SessionManifest(
+            session_id="PS48_20250314",
+            animal="PS48",
+            date=datetime.date(2025, 3, 14),
+            day_relative_to_stroke=-5,
+            phase="baseline",
+            halves=[
+                HalfSpec(
+                    id="a", ws_subdir="20250314a", cam_subdir="20250314a",
+                    file_timestamp="2025-03-14T12_31_07",
+                    wavesurfer_file=ws_a,
+                ),
+                HalfSpec(
+                    id="b", ws_subdir="20250314b", cam_subdir="20250314b",
+                    file_timestamp="2025-03-14T13_09_29",
+                    wavesurfer_file=ws_b,
+                ),
+            ],
+        )
+
+        resolver = PathResolver(output_root=tmp_path / "outputs")
+
+        # Pre-create per-half templates at the _new paths so the
+        # orchestrator's compute branch is skipped (deterministic).
+        per_half_paths = [
+            resolver.alignment_template_per_half_new(
+                "PS48", manifest.date,
+                halves_concat_label="ab", half_id=hid,
+            )
+            for hid in ("a", "b")
+        ]
+        # Belt: per-half paths must land under tmp_path (the post-Commit-4
+        # invariant; would have caught the 2026-05-05 incident).
+        for p in per_half_paths:
+            assert tmp_path in p.parents
+        self._make_per_half_template(per_half_paths[0], n_cam=10, n_ws=40)
+        self._make_per_half_template(per_half_paths[1], n_cam=20, n_ws=80)
+
+        # Call load_or_compute_alignment — should dispatch into the
+        # multi-half orchestrator without us asking explicitly.
+        result_via_dispatch = load_or_compute_alignment(
+            manifest, resolver, params={"cam_idx": 2},
+        )
+
+        # Call the orchestrator directly, load the merged NPZ via the
+        # underlying loader, and compare against result_via_dispatch.
+        merged_path = compute_and_merge_alignment_multi_half(
+            manifest, resolver, params={"cam_idx": 2},
+        )
+        merged_dict = load_alignment_template(merged_path)
+
+        # Field-by-field equivalence
+        np.testing.assert_array_equal(
+            result_via_dispatch.sig_camIdx__idx_ws,
+            merged_dict["sig_camIdx__idx_ws"],
+        )
+        np.testing.assert_array_equal(
+            result_via_dispatch.sig_wsIdx__idx_cam,
+            merged_dict["sig_wsIdx__idx_cam"],
+        )
+        assert result_via_dispatch.Fs_ws == float(merged_dict["Fs_ws_input"])
+
+        # slope/intercept conventions for multi-half (NaN — see
+        # load_or_compute_alignment docstring).
+        assert np.isnan(result_via_dispatch.slope_ws_per_camFrame)
+        assert np.isnan(result_via_dispatch.intercept_ws_samples)
+
+        # source field is the new "merged_multi_half" tag — distinct
+        # from "loaded" / "computed" so callers can introspect.
+        assert result_via_dispatch.source == "merged_multi_half"
+
+        # Sanity: the merged file IS under pipeline_outputs/ (i.e.
+        # tmp_path-rooted), confirming the dispatch routes through the
+        # _new resolver and not _legacy_read.
+        assert tmp_path in merged_path.parents
+        assert "alignment_templates" in merged_path.parts
+        assert "O2_analysis" not in merged_path.parts
+
+    def test_single_half_manifest_does_not_dispatch_to_multi_half(
+        self, tmp_path,
+    ):
+        """Regression guard: a single-half manifest (halves=None) goes
+        through the existing _legacy_read flow, NOT the new dispatch.
+        Confirmed by patching compute_and_merge_alignment_multi_half
+        and asserting it was never called."""
+        from unittest.mock import MagicMock, patch
+
+        from stroke_orofacial.alignment.timebase import load_or_compute_alignment
+        from stroke_orofacial.manifest import SessionManifest
+        from stroke_orofacial.paths import PathResolver
+
+        # Mock resolver — _legacy_read returns a non-existent path so
+        # the flow falls into the recompute branch, where we expect a
+        # FileNotFoundError (no wavesurfer_file). The point is to prove
+        # the multi-half orchestrator was NOT invoked.
+        resolver = MagicMock(spec=PathResolver)
+        resolver.alignment_template_legacy_read.return_value = tmp_path / "nope.npz"
+
+        manifest = SessionManifest(
+            session_id="PS46_20250307",
+            animal="PS46",
+            date=datetime.date(2025, 3, 7),
+            day_relative_to_stroke=-6,
+            phase="baseline",
+            wavesurfer_file=None,
+            alignment_template=None,
+            halves=None,  # single-half
+        )
+
+        with patch(
+            "stroke_orofacial.alignment.timebase.compute_and_merge_alignment_multi_half"
+        ) as mock_orchestrator:
+            with pytest.raises(FileNotFoundError, match="wavesurfer"):
+                load_or_compute_alignment(
+                    manifest, resolver, params={"cam_idx": 2},
+                    force_recompute=True,
+                )
+        mock_orchestrator.assert_not_called()
