@@ -213,6 +213,94 @@ and the future Task 5 proper resumption).**
    orphans into `20250314ab/` subdirs for symmetry, or leave them.
    Documented as a forward-pointer; not in Task 5R scope.
 
+4. **Pattern B = secondary spout-position sessions, NOT exploratory
+   multi-half** (clarified by Priya 2026-05-09 after Task 7 cohort
+   scan). The 19 sessions across PS51/PS54/PS55 with `n_dlc=1, n_ws=2,
+   n_cam=2` flagged as mechanical "Pattern B" by the productized scan
+   classifier are a **deliberate experimental manipulation**: the
+   second acquisition (b half) was run with the water spouts
+   positioned closer to the mouse. This drives an important
+   architectural distinction between two scientifically distinct
+   categories that currently coincide mechanically:
+
+   - **Multi-half acquisition** (mechanical Pattern A; example PS48
+     20250314): one logical session split into two acquisition halves
+     due to technical interruption. Action: MERGE → one session-level
+     output. Handled by this PR's `multi_half_sessions:` registry +
+     `multi_half_merge.py` module.
+
+   - **Secondary spout-position session** (mechanical Pattern B):
+     two logical experimental sessions same day, different spout-
+     distance conditions. Action: KEEP SEPARATE → two session-level
+     outputs (bare-`{DATE}` standard distance + `{DATE}b` closer
+     distance). Scientific intent: bare-vs-b comparison for both
+     spout behavior and (eventually) DLC kinematics. Motivated by
+     the recovery-trajectory phenotype where animals show return of
+     licking to closer spouts BEFORE return of licking to standard
+     further-away spouts.
+
+   These categories happen to overlap today (b halves are exactly the
+   no-DLC ones) but conceptually they diverge — when DLC inference
+   eventually runs on b halves, those sessions become mechanically
+   `n_dlc=2` (matching Pattern A) while remaining semantically
+   secondary-spout-position (must NOT merge). The current Pattern B
+   sessions silently flow through the existing single-half discovery
+   path (bare half processed; b half discarded) — losing the b-half
+   data; a future phase will treat `{DATE}b` as a separate logical
+   session.
+
+   **Architectural compatibility commitments (must hold from this PR
+   forward):**
+
+   a. **The `multi_half_sessions:` registry is "merge-intent" only.**
+      Don't repurpose it for Pattern B sessions. A future
+      `secondary_spout_sessions:` registry handles compare-intent.
+
+   b. **Session-id schema must allow letter suffixes.** Today
+      `SessionManifest.session_id = f"{animal}_{date.strftime('%Y%m%d')}"`.
+      Future Pattern B work needs `session_id = "PS51_20250430b"`
+      alongside `"PS51_20250430"`. Implementation extends with
+      optional `session_suffix: str | None = None` field, threaded
+      through `build_manifest()`, output paths, and `PathResolver`.
+      **Constraint from this PR forward: do NOT bake in assumptions
+      anywhere that `session_id` matches `{animal}_{YYYYMMDD}`
+      exactly** — keep session-id an opaque string callers
+      construct, so the future suffix extension is a small change.
+
+   c. **The defensive check needs a Pattern-B branch when DLC runs
+      on b halves later.** When Priya DLC-infers a b half, the
+      session becomes `n_dlc=2` and would trip
+      `MultiHalfNotDeclaredError`. The Pattern B phase must
+      implement a `secondary_spout_sessions:` registry that overrides
+      the multi-half check (telling the manifest "these halves are
+      separate sessions, not merge candidates").
+
+   d. **Phase 2/3/4 pipelines process manifests opaquely; output
+      separation is via session-id.** The spout-behavior pipeline
+      MUST output for every session it can process — bare-`{DATE}`
+      sessions get their normal single-half outputs, `{DATE}b`
+      sessions get their OWN normal single-half outputs (not
+      currently happening — they're silently discarded; the Pattern
+      B phase fixes this), genuine multi-half sessions like PS48
+      20250314 get a single MERGED output. Downstream analyses
+      filter by session-id subset: "merged + bare-only" for the
+      standard recovery-trajectory analysis, "bare vs b" pairs for
+      the closer-spout-position comparison Priya wants. The Phase
+      2/3/4 code stays generic — it processes whatever manifest is
+      given, doesn't care about Pattern A/B distinctions; the
+      manifest-construction layer (via registry tags) decides
+      merge-vs-keep-separate. Output paths inherit session-id (with
+      letter suffix when applicable per commitment b), so per-
+      session outputs naturally separate by directory layout. Cross-
+      session analyses (`tongue_pertrial`, `mean_sem_visual`,
+      `tongue_jaw_mismatch`, etc.) consume the resulting per-session
+      artefacts and can filter by inspecting session-ids or by
+      querying the registries.
+
+   This forward-pointer becomes a future **Phase 7-pre-secondary-
+   spout** (or similarly-named) phase — out of scope here, scope
+   estimate ~mid-size comparable to this PR.
+
 **Process lesson.** `output_root=` was assumed to redirect ALL writes;
 in reality it only redirected `pipeline_outputs()`. Permanent fix
 makes the assumption true by construction (the resolver split makes

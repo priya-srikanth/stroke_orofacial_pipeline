@@ -390,7 +390,7 @@ is a per-(animal, date) fact, lives in `session_overrides.yaml`.
 
 ---
 
-## Multi-half registry shape (locked pre-kickoff; HH_MM prefix per Task 5R finding)
+## Multi-half registry shape (as shipped on `phase/7-pre-multi-half`)
 
 `configs/session_overrides.yaml` gains:
 
@@ -400,35 +400,40 @@ multi_half_sessions:
     "20250314":
       halves:
         - id: a
-          ws_subdir: "20250314a"                      # subdir under {ws_root}/{ANIMAL}/
-          file_timestamp_prefix: "2025-03-14T12_31"   # HH_MM prefix matches DLC + video + CSV filenames
+          ws_subdir: "20250314a"                # subdir under {ws_root}/{ANIMAL}/
+          cam_subdir: "20250314a"               # subdir under {cam_root}/{date_root}/{ANIMAL}/ (often matches ws_subdir)
+          file_timestamp: "2025-03-14T12_31_07" # full HH_MM_SS — but discovery uses HH_MM prefix glob
         - id: b
           ws_subdir: "20250314b"
-          file_timestamp_prefix: "2025-03-14T13_09"
-      reason: "auto-detected 2026-05-05; 2 WS subdirs (a/b), 2 DLC H5, 2 video+timestamp pairs"
+          cam_subdir: "20250314b"
+          file_timestamp: "2025-03-14T13_09_29"
+      reason: "Pattern A multi-half acquisition; both halves DLC-inferred."
 ```
 
 - `id` letters are user-supplied; they extend naturally for >2-half
   sessions (`a`/`b`/`c`/...).
-- **`file_timestamp_prefix` is `HH_MM` precision, NOT `HH_MM_SS`.**
-  Empirical finding from the Task 5R restore (2026-05-05, PS48
-  20250314): the camera-CSV filename's seconds field can be off by 1
-  second from the .avi and DLC H5 filenames produced from the same
-  acquisition (e.g., `video2_2025-03-14T13_09_29.avi` paired with
+- `cam_subdir` lets the camera dir per half differ from `ws_subdir` if
+  needed; for PS48 20250314 they happen to match.
+- **`file_timestamp` stores full `HH_MM_SS`** (matching the .avi and
+  DLC filename), but **discovery uses an HH_MM-prefix glob** via the
+  `_file_timestamp_minute_prefix` helper in `manifest.py`. Empirical
+  rationale from the Task 5R restore (2026-05-05, PS48 20250314): the
+  camera-CSV filename's seconds field can be off by 1 second from the
+  .avi and DLC H5 filenames produced from the same acquisition (e.g.,
+  `video2_2025-03-14T13_09_29.avi` paired with
   `timestamp2_2025-03-14T13_09_28.csv` — 1-second clock-skew between
-  AVI writer and CSV writer). Storing HH_MM prefix and using it as a
-  glob substring across all three filename patterns dodges this skew.
-  Acceptable because within a single date, two acquisitions starting
-  in the same minute is structurally impossible at the rig.
+  AVI writer and CSV writer). The HH_MM-prefix glob discipline at
+  discovery time dodges the skew while keeping the registry value
+  meaningful (canonical full timestamp).
 - Discovery is **deterministic** given the entry: WS for half `a` =
   `{ws_root}/{ANIMAL}/{ws_subdir}/*.h5` (existing
   `find_wavesurfer_file` runs unchanged inside the per-half subdir,
-  expects exactly 1); DLC for half `a` = glob
-  `{dlc_dir}/video2_*{file_timestamp_prefix}*_filtered.h5` (expects
-  1); video for half `a` = glob
-  `{cam_dir}/video2_*{file_timestamp_prefix}*.avi` (expects 1);
-  CSV for half `a` = glob
-  `{cam_dir}/timestamp2_*{file_timestamp_prefix}*.csv` (expects 1).
+  expects exactly 1); DLC + video + CSV for half `a` use the
+  `_file_timestamp_minute_prefix(file_timestamp)` substring globbed
+  against `{dlc_dir}/video2_*<prefix>*_filtered.h5`,
+  `{cam_dir}/video2_*<prefix>*.avi`, and
+  `{cam_dir}/timestamp2_*<prefix>*.csv` respectively (each expects
+  exactly 1).
 - Mismatch (0 or >1 file at any glob for any half) raises loud. No
   silent half-discard mode anywhere.
 - The entry is the explicit-override mechanism. If filename
@@ -442,7 +447,8 @@ multi_half_sessions:
 class HalfSpec:
     id: str                                  # "a", "b", ...
     ws_subdir: str
-    file_timestamp_prefix: str               # HH_MM (NOT HH_MM_SS)
+    cam_subdir: str
+    file_timestamp: str                      # full HH_MM_SS; discovery globs by HH_MM prefix
     wavesurfer_file: Path | None = None      # resolved at build_manifest()
     dlc_h5_file: Path | None = None
     dlc_csv_file: Path | None = None
@@ -461,8 +467,14 @@ unchanged.** Zero risk of regressing the 7 single-half animals + the
 ~45 PS48 single-half sessions.
 
 `PathResolver.wavesurfer_dir(animal, date, *, half_subdir=None)` gains
-an optional kwarg; default `None` preserves current behavior. ~5 lines
-in `paths.py`.
+an optional kwarg; default `None` preserves current behavior.
+
+**Pattern B note.** This registry is "merge-intent" only. Sessions
+where two acquisition halves represent distinct experimental
+conditions (e.g., closer-spout-position second sessions in PS51 /
+PS54 / PS55) are NOT registered here. See Forward-pointers section
+"Pattern B: secondary spout-position sessions" for the future
+phase that handles compare-intent via a separate registry.
 
 ---
 
@@ -954,6 +966,95 @@ Before opening the PR, confirm:
   consumer in the new pipeline); (c) delete them since they're not
   used. Out of scope for this phase. Cam2 is canonical for downstream
   multi-half consumers.
+
+- **Pattern B: secondary spout-position sessions** (surfaced 2026-05-09
+  during Task 7 cohort scan, scientific intent clarified by Priya same
+  day). The 19 sessions across PS51/PS54/PS55 with `n_dlc=1, n_ws=2,
+  n_cam=2` are NOT exploratory or experimenter mistakes — they are a
+  **deliberate experimental manipulation**: the second acquisition (b
+  half) was run with the water spouts positioned closer to the mouse.
+  Two distinct semantic categories now exist where the mechanical
+  scan classifier currently sees only "Pattern A vs Pattern B":
+    1. **Multi-half acquisition** (mechanical Pattern A; scientific
+       Pattern A): one logical session split into two acquisition
+       halves due to technical interruption. Action: MERGE → one
+       session-level output. Current example: PS48 20250314.
+    2. **Secondary spout-position session** (mechanical Pattern B but
+       scientifically distinct from "multi-half-with-missing-DLC"):
+       two logical experimental sessions same day, different spout-
+       distance conditions. Action: KEEP SEPARATE → two session-level
+       outputs (bare-`{DATE}` standard distance + `{DATE}b` closer
+       distance). Future scientific use: bare-vs-b spout-behavior
+       comparison and bare-vs-b DLC comparison once b halves get DLC-
+       inferred. The bare-vs-b comparative analysis is motivated by
+       a recovery-trajectory phenotype Priya observes: animals often
+       show return of licking to closer spouts BEFORE return of
+       licking to standard further-away spouts.
+  Currently, mechanical Pattern B sessions silently flow through the
+  existing single-half discovery path (bare half processed; b half
+  discarded). This loses the b-half data; correct handling requires
+  treating `{DATE}b` as a separate logical session with its own
+  outputs.
+
+  **Architectural compatibility commitments** (must hold from
+  this PR forward, not violated by Task 5/6/7/8/9 work):
+
+    a. **The `multi_half_sessions:` registry is "merge-intent" only.**
+       Don't repurpose it for Pattern B sessions later. A future
+       `secondary_spout_sessions:` (or similar) registry handles
+       compare-intent.
+
+    b. **Session-id schema must allow letter suffixes.** When the
+       Pattern B phase lands, the manifest needs to support
+       `session_id = "PS51_20250430b"` alongside `"PS51_20250430"`.
+       Today `SessionManifest.session_id = f"{animal}_{date.strftime('%Y%m%d')}"`
+       — date-object-only, no suffix path. Future work extends with
+       optional `session_suffix: str | None = None` field, threaded
+       through `build_manifest()`, output paths, and `PathResolver`.
+       **Constraint for this PR forward: do NOT bake in assumptions
+       anywhere that `session_id` matches `{animal}_{YYYYMMDD}`
+       exactly** — keep the future extension easy by treating
+       session-id as an opaque string that callers construct.
+
+    c. **The defensive check needs a Pattern-B branch when DLC runs
+       on b halves later.** When Priya DLC-infers a b half (PS51
+       20250430b for example), that session becomes mechanical
+       `n_dlc=2` and would trip `MultiHalfNotDeclaredError`. At that
+       point either: (i) a `secondary_spout_sessions:` registry tells
+       the manifest "these halves are separate sessions, not merge
+       candidates," or (ii) the user accidentally registers as
+       `multi_half_sessions:` (which would be WRONG — it'd merge two
+       logical sessions into one). The Pattern B phase must
+       implement (i) and harden the defensive check to refuse to
+       merge `secondary_spout_sessions:`-listed halves.
+
+    d. **Phase 2/3/4 pipelines process manifests opaquely; output
+       separation is via session-id.** The spout-behavior pipeline
+       (Phase 2) MUST output for every session it can process —
+       bare-`{DATE}` sessions get their normal single-half outputs,
+       `{DATE}b` sessions get their OWN normal single-half outputs
+       (currently silently discarded; the Pattern B phase fixes
+       this), genuine multi-half sessions like PS48 20250314 get a
+       single MERGED output. Downstream analyses filter by session-
+       id subset: "merged + bare-only" for the standard recovery-
+       trajectory analysis, "bare vs b" pairs for the closer-spout-
+       position comparison. Phase 2/3/4 code stays generic — it
+       processes whatever manifest is given, doesn't know about
+       Pattern A/B distinctions; the manifest-construction layer
+       (via registry tags) decides merge-vs-keep-separate. Output
+       paths inherit session-id (with letter suffix when applicable
+       per commitment b), so per-session outputs naturally separate
+       by directory layout. Cross-session analyses
+       (`tongue_pertrial`, `mean_sem_visual`, `tongue_jaw_mismatch`,
+       etc.) consume the resulting per-session artefacts and filter
+       by inspecting session-ids or querying the registries.
+
+  This forward-pointer becomes a **Phase 7-pre-secondary-spout** (or
+  similarly-named) future phase. Audit-first kickoff pattern: walk
+  the legacy code for any bare-vs-b cross-session comparison logic
+  Priya may have, decide on registry shape, decide on session-id
+  schema extension, port whatever comparative analyses already exist.
+  Scope estimate: ~mid-size, comparable to this multi-half PR.
 
 ---
 

@@ -462,7 +462,7 @@ Phase 3 alignment + `merge_alignment_templates()` faithful port,
 writing through the new resolver split — original failure mode is
 architecturally impossible to repeat).*
 
-*Three findings carried forward from Task 5R for later phases:
+*Four findings carried forward for later phases:
 (1) `bnpm` dep — legacy alignment notebook needs `frsb` env or
 `pip install bnpm`; bnpm is vendored (Phase 13) but not installed in
 `stroke_orofacial`. (2) CSV/video filename 1-second timestamp skew
@@ -470,7 +470,27 @@ architecturally impossible to repeat).*
 Multi-half registry `file_timestamp_prefix` field uses HH_MM precision
 to dodge this. (3) Orphan cam{1,3,4}/PS48/20250314{a,b}.npz files at
 parent level (no merge file, no subdir) from 2026-01-11 run. Out of
-scope; cam2 is canonical.*
+scope; cam2 is canonical. (4) **Pattern B sessions** = 19 sessions
+across PS51/PS54/PS55 flagged by Task 7 cohort scan; surfaced
+2026-05-09 as a deliberate experimental manipulation (closer-spout-
+position second acquisition same day, NOT exploratory). Currently
+silently single-half-processed (bare half only; b half discarded) —
+loses b-half data. Future Phase 7-pre-secondary-spout will treat
+`{DATE}b` as a separate logical session for bare-vs-b comparison
+(spout behavior immediately; DLC after b halves get DLC-inferred).
+Four architectural compatibility commitments locked: (a)
+`multi_half_sessions:` is merge-intent only, future
+`secondary_spout_sessions:` registry handles compare-intent;
+(b) session-id schema must allow letter suffixes (do NOT bake in
+`{animal}_{YYYYMMDD}` exact-match assumptions anywhere from this
+PR forward); (c) defensive check needs a Pattern-B branch when DLC
+runs on b halves later; (d) Phase 2/3/4 pipelines process manifests
+opaquely with session-id-keyed outputs — spout-behavior MUST output
+for every session (bare separately, b separately, multi-half merged),
+downstream analyses filter by session-id subset (merged+bare-only
+for recovery trajectory, bare-vs-b pairs for closer-spout
+comparison). See DECISIONS finding #4 + kickoff Forward-pointers
+section "Pattern B" for full spec.*
 
 **Deferred / carry-forward housekeeping:** Remaining safe parallel docket:
 Phase 5.5 polish docs, cohort-wide Phase 5 rerun planning, Phase 6
