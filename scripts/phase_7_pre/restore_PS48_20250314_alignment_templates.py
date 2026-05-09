@@ -71,13 +71,40 @@ Five steps
      1342 / 1604 byte files. Restores the on-disk Decision-3
      layout that Priya established post-merge cleanup 2026-01-11.
 
-  5. **Post-run diff + 3-files-changed assertion.** Re-walk the
-     same paths as step 1, compute diff, assert exactly three
-     files changed and the three sizes match the Task 1a
-     inventory:
-       - cam2/PS48/20250314.npz                : 43,873,994 bytes
-       - cam2/PS48/20250314ab/20250314a.npz    : 68,512,651 bytes
-       - cam2/PS48/20250314ab/20250314b.npz    : 69,808,659 bytes
+  5. **Post-run diff + layered validation.** Re-walk the same paths
+     as step 1, compute diff, and run the layered post-run check.
+
+     Tier A (size, per file):
+       |delta| <= 0.1%  -> PASS  (likely deterministic re-run)
+       |delta| <= 5%    -> WARN  (env drift since 2026-01-11; continue)
+       |delta|  > 5%    -> FAIL  (exit 1)
+
+       Strict byte-equality vs Task 1a (43,873,994 / 68,512,651 /
+       69,808,659) was relaxed 2026-05-09 after the Phase 7a.0
+       baseline-seed probe observed scipy 1.15.1 -> 1.17.1 drift in
+       Y0 retune (PS49/PS50 tongue): exact byte-equal NPZ output
+       across versions is not guaranteed even from identical inputs,
+       so the strict assertion would spuriously fail on benign
+       library drift since the 2026-01-11 originals.
+
+     Tier B (structural, ALL must pass or step 5 fails):
+       - Each per-half NPZ loads via np.load.
+       - Each per-half NPZ contains the 5 REQ_KEYS (cell-16
+         `Fs_ws_input` + 4 `sig_*` arrays).
+       - Merged NPZ contains the 5 REQ_KEYS + 4 provenance keys
+         (`merged_from_A`, `merged_from_B`, `ws_offset_samples`,
+         `cam_offset_frames`) per cell-16 lines 168-178.
+       - Length consistency: merged sig_wsIdx__idx_cam length ==
+         n_cam_A + n_cam_B (and analogous for ws-axis arrays).
+       - Fs_ws_input matches across both per-half NPZs and the
+         merged NPZ.
+
+     Tier C (diff shape):
+       - Exactly the 3 expected rel_paths show 'modified' status;
+         cam{1,3,4} cohort all 'unchanged'.
+
+     Step 5 returns rc=0 on PASS or WARN (with WARN printed for
+     audit trail), rc=1 on any FAIL.
 
 CLI
 ---
@@ -112,6 +139,8 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 # ---- Constants (paths, expected sizes) ----
 
@@ -405,7 +434,182 @@ def _diff_inventories(
     return out
 
 
-def _assert_three_files_restored(diff: list[dict[str, Any]]) -> None:
+# Size-tolerance tiers for the layered post-run check (relaxed from
+# strict byte-equality after Cowork's 2026-05-09 review). Phase 7a.0
+# baseline-seed probe observed scipy 1.15.1 -> 1.17.1 drift in Y0 retune
+# (PS49/PS50 tongue) — exact byte-equal NPZ output across versions is
+# not guaranteed even from identical inputs. Strict equality would
+# spuriously fail the restore on benign env drift since 2026-01-11.
+_SIZE_TOLERANCE_PASS_FRAC = 0.001    # ±0.1% -> PASS (likely deterministic)
+_SIZE_TOLERANCE_WARN_FRAC = 0.05     # ±5%   -> WARN (continue); above -> FAIL
+
+# Required keys per the cell-16 vendor (REQ_KEYS list at line 41 of
+# docs/legacy_snippets/multi_half_merge/cell_16_merge_alignment_templates.py).
+_REQ_KEYS_PER_HALF = (
+    "Fs_ws_input",
+    "sig_wsIdx__idx_cam",
+    "sig_camIdx__idx_ws",
+    "sig_camTimes__idx_cam",
+    "sig_wsTimes__idx_ws",
+)
+# Provenance keys cell 16 bakes into the merged NPZ (verified by
+# multi_half_merge.merge_alignment_templates emitting these for N==2;
+# byte-identical with legacy schema).
+_REQ_KEYS_MERGED_PROVENANCE = (
+    "merged_from_A",
+    "merged_from_B",
+    "ws_offset_samples",
+    "cam_offset_frames",
+)
+
+
+def _classify_size_delta(actual: int, expected: int) -> tuple[str, float]:
+    """Return ('pass'|'warn'|'fail', relative_delta).
+
+    Tiers:
+      |delta| <= 0.1%   -> 'pass'  (likely deterministic re-run)
+      |delta| <= 5%     -> 'warn'  (env drift; continue)
+      |delta|  > 5%     -> 'fail'  (suspicious; exit 1)
+    """
+    if expected <= 0:
+        return ("fail", float("inf"))
+    delta = abs(actual - expected) / expected
+    if delta <= _SIZE_TOLERANCE_PASS_FRAC:
+        return ("pass", delta)
+    if delta <= _SIZE_TOLERANCE_WARN_FRAC:
+        return ("warn", delta)
+    return ("fail", delta)
+
+
+def _validate_per_half_npz(path: Path, half_id: str) -> list[str]:
+    """Return a list of validation errors for a per-half template.
+
+    Empty list = passes all structural checks (NPZ loads + has all
+    REQ_KEYS). Non-empty = each entry is a human-readable error.
+    """
+    errors: list[str] = []
+    try:
+        with np.load(path, allow_pickle=False) as npz:
+            files = set(npz.files)
+            for k in _REQ_KEYS_PER_HALF:
+                if k not in files:
+                    errors.append(
+                        f"per-half {half_id}: missing required key {k!r} "
+                        f"in {path.name}"
+                    )
+    except Exception as e:
+        errors.append(
+            f"per-half {half_id}: failed to load {path}: {e!r}"
+        )
+    return errors
+
+
+def _validate_merged_npz(merged_path: Path) -> list[str]:
+    """Return a list of validation errors for the merged template.
+
+    Checks REQ_KEYS plus the cell-16 provenance keys.
+    """
+    errors: list[str] = []
+    try:
+        with np.load(merged_path, allow_pickle=False) as npz:
+            files = set(npz.files)
+            for k in _REQ_KEYS_PER_HALF:
+                if k not in files:
+                    errors.append(
+                        f"merged: missing required key {k!r} in {merged_path.name}"
+                    )
+            for k in _REQ_KEYS_MERGED_PROVENANCE:
+                if k not in files:
+                    errors.append(
+                        f"merged: missing provenance key {k!r} in "
+                        f"{merged_path.name}"
+                    )
+    except Exception as e:
+        errors.append(f"merged: failed to load {merged_path}: {e!r}")
+    return errors
+
+
+def _validate_length_consistency(
+    merged_path: Path, half_a_path: Path, half_b_path: Path,
+) -> list[str]:
+    """Per cell 16 lines 145-153: merged sig_wsIdx__idx_cam length must
+    equal n_cam_A + n_cam_B; same axis for camIdx_ws / wsTimes /
+    camTimes pairs.
+
+    Also verifies Fs_ws_input matches across the two halves (cell 16
+    lines 64-68 — mismatch raises ValueError in the merge function).
+    """
+    errors: list[str] = []
+    try:
+        with np.load(half_a_path, allow_pickle=False) as a, \
+             np.load(half_b_path, allow_pickle=False) as b, \
+             np.load(merged_path, allow_pickle=False) as m:
+            # Half-A / half-B base sizes (cam-axis = wsIdx_cam length;
+            # ws-axis = camIdx_ws length).
+            n_cam_a = int(len(a["sig_wsIdx__idx_cam"]))
+            n_cam_b = int(len(b["sig_wsIdx__idx_cam"]))
+            n_ws_a = int(len(a["sig_camIdx__idx_ws"]))
+            n_ws_b = int(len(b["sig_camIdx__idx_ws"]))
+
+            # Merged cam-axis arrays: should have length n_cam_a + n_cam_b
+            for key in ("sig_wsIdx__idx_cam", "sig_camTimes__idx_cam"):
+                got = int(len(m[key]))
+                want = n_cam_a + n_cam_b
+                if got != want:
+                    errors.append(
+                        f"length consistency: merged {key!r} = {got:,} "
+                        f"!= n_cam_A + n_cam_B = {n_cam_a:,} + {n_cam_b:,}"
+                    )
+            # Merged ws-axis arrays: should have length n_ws_a + n_ws_b
+            for key in ("sig_camIdx__idx_ws", "sig_wsTimes__idx_ws"):
+                got = int(len(m[key]))
+                want = n_ws_a + n_ws_b
+                if got != want:
+                    errors.append(
+                        f"length consistency: merged {key!r} = {got:,} "
+                        f"!= n_ws_A + n_ws_B = {n_ws_a:,} + {n_ws_b:,}"
+                    )
+
+            # Fs_ws_input cross-half match (cell 16 lines 64-68).
+            fs_a = float(a["Fs_ws_input"])
+            fs_b = float(b["Fs_ws_input"])
+            if not np.isclose(fs_a, fs_b):
+                errors.append(
+                    f"Fs_ws_input mismatch across halves: a={fs_a} vs b={fs_b}"
+                )
+            fs_m = float(m["Fs_ws_input"])
+            if not np.isclose(fs_a, fs_m):
+                errors.append(
+                    f"Fs_ws_input mismatch merged vs half-a: "
+                    f"a={fs_a} vs merged={fs_m}"
+                )
+    except Exception as e:
+        errors.append(f"length-consistency check raised: {e!r}")
+    return errors
+
+
+def _check_three_files_restored(diff: list[dict[str, Any]]) -> int:
+    """Layered post-run validation. Returns 0 on PASS / WARN, 1 on FAIL.
+
+    Replaces the original strict-byte-equality assertion (which would
+    have spuriously failed on env drift since 2026-01-11). Layers:
+
+      Tier A (size, per-file):
+        - size delta <= 0.1%  -> PASS
+        - size delta <= 5%    -> WARN (env drift; continue)
+        - size delta  > 5%    -> FAIL
+
+      Tier B (structural):
+        - Each per-half NPZ loads and has the 5 REQ_KEYS.
+        - Merged NPZ loads and has the 5 REQ_KEYS + 4 provenance keys.
+        - Merged sig_wsIdx__idx_cam length == n_cam_A + n_cam_B
+          (and analogous for ws-axis arrays).
+        - Fs_ws_input matches across all three NPZs.
+
+      Tier C (diff shape):
+        - Exactly the 3 expected rel_paths show 'modified' status
+          (with cam{1,3,4} cohort all 'unchanged').
+    """
     changed = [d for d in diff if d["status"] != "unchanged"]
     print(f"  step 5 diff: {len(diff)} entries, {len(changed)} changed")
     for d in changed:
@@ -416,31 +620,83 @@ def _assert_three_files_restored(diff: list[dict[str, Any]]) -> None:
             f"size {sz_pre} -> {sz_post}"
         )
 
-    # Strict assertion: exactly the 3 expected paths changed AND each is
-    # restored to the Task 1a inventory size.
+    # ---- Tier C: diff shape ----
     if len(changed) != 3:
-        raise AssertionError(
-            f"Expected exactly 3 file changes, got {len(changed)}. "
-            f"Changed: {[d['rel_path'] for d in changed]}"
+        print(
+            f"  step 5 FAIL — expected exactly 3 file changes, got "
+            f"{len(changed)}. Changed: {[d['rel_path'] for d in changed]}"
         )
+        return 1
     changed_by_rel = {d["rel_path"]: d for d in changed}
-    for expected_rel, expected_size in EXPECTED_RESTORED_SIZES.items():
-        if expected_rel not in changed_by_rel:
-            raise AssertionError(
-                f"Expected change at {expected_rel} not present in diff. "
-                f"Changes were: {sorted(changed_by_rel.keys())}"
+    missing = sorted(set(EXPECTED_RESTORED_SIZES) - set(changed_by_rel))
+    if missing:
+        print(
+            f"  step 5 FAIL — expected restored paths missing from diff: "
+            f"{missing}. Diff was: {sorted(changed_by_rel)}"
+        )
+        return 1
+
+    # ---- Tier A: size tolerances per file ----
+    overall_tier = "pass"  # promoted to 'warn' if any file warns
+    for rel, expected_size in EXPECTED_RESTORED_SIZES.items():
+        actual_size = changed_by_rel[rel]["size_post"]
+        tier, delta = _classify_size_delta(actual_size, expected_size)
+        delta_pct = delta * 100.0
+        if tier == "pass":
+            print(
+                f"  size  PASS  {rel:48s}  "
+                f"expected={expected_size:>13,} actual={actual_size:>13,} "
+                f"delta={delta_pct:.4f}%"
             )
-        actual_size = changed_by_rel[expected_rel]["size_post"]
-        if actual_size != expected_size:
-            raise AssertionError(
-                f"Post-restore size mismatch at {expected_rel}: "
-                f"expected {expected_size:,} bytes (Task 1a inventory), "
-                f"got {actual_size:,} bytes."
+        elif tier == "warn":
+            print(
+                f"  size  WARN  {rel:48s}  "
+                f"expected={expected_size:>13,} actual={actual_size:>13,} "
+                f"delta={delta_pct:.4f}% (env drift since 2026-01-11; continuing)"
             )
-    print(
-        "  step 5 PASS — exactly 3 files changed, all sizes match "
-        "Task 1a inventory."
+            overall_tier = "warn"
+        else:  # fail
+            print(
+                f"  size  FAIL  {rel:48s}  "
+                f"expected={expected_size:>13,} actual={actual_size:>13,} "
+                f"delta={delta_pct:.4f}% (>{_SIZE_TOLERANCE_WARN_FRAC * 100:.0f}%; "
+                f"too far from Task 1a inventory)"
+            )
+            return 1
+
+    # ---- Tier B: structural checks ----
+    structural_errors: list[str] = []
+    half_a_path = PS48_CAM2_DIR / "20250314ab" / "20250314a.npz"
+    half_b_path = PS48_CAM2_DIR / "20250314ab" / "20250314b.npz"
+    merged_path = PS48_CAM2_DIR / "20250314.npz"
+
+    structural_errors += _validate_per_half_npz(half_a_path, "a")
+    structural_errors += _validate_per_half_npz(half_b_path, "b")
+    structural_errors += _validate_merged_npz(merged_path)
+    structural_errors += _validate_length_consistency(
+        merged_path, half_a_path, half_b_path,
     )
+
+    if structural_errors:
+        print(f"  step 5 FAIL — {len(structural_errors)} structural error(s):")
+        for err in structural_errors:
+            print(f"    {err}")
+        return 1
+    print("  structural checks: all 8 invariants pass")
+
+    if overall_tier == "warn":
+        print(
+            "  step 5 WARN — sizes within ±5% but not ±0.1% of Task 1a "
+            "inventory. Likely benign env drift since 2026-01-11 "
+            "(scipy/numpy version delta documented in Phase 7a.0). "
+            "Structural checks all pass; restore considered successful."
+        )
+    else:
+        print(
+            "  step 5 PASS — exactly 3 files restored, all sizes within "
+            "±0.1% of Task 1a inventory, all structural checks pass."
+        )
+    return 0
 
 
 # ---- Main ----
@@ -510,19 +766,18 @@ def main(argv: list[str] | None = None) -> int:
     _move_per_halves_into_subdir(per_half_paths)
     print()
 
-    # ---- Step 5: post-run diff + assertion ----
-    print("Step 5 — post-run diff + 3-files-changed assertion")
+    # ---- Step 5: post-run diff + layered validation ----
+    print("Step 5 — post-run diff + layered validation (size + structural)")
     post_paths = _walk_inventory_targets()
     post_rows = _stat_inventory(post_paths)
     diff = _diff_inventories(pre_rows, post_rows)
-    try:
-        _assert_three_files_restored(diff)
-    except AssertionError as e:
-        print(f"ASSERTION FAILED: {e}")
-        return 1
+    rc = _check_three_files_restored(diff)
     print()
-    print("RESTORE COMPLETE — all 5 steps succeeded; assertion passed.")
-    return 0
+    if rc == 0:
+        print("RESTORE COMPLETE — all 5 steps succeeded; layered checks pass.")
+    else:
+        print("RESTORE INCOMPLETE — step 5 reported FAIL; investigate before declaring done.")
+    return rc
 
 
 if __name__ == "__main__":
