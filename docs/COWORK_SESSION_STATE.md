@@ -1,6 +1,24 @@
 # Cowork Session State
 
-**Latest local refresh:** 2026-05-04 — Phase 7a.4-cross-session-angle
+**Latest local refresh:** 2026-05-09 — Phase 7-pre-multi-half (PS48
+2025-03-14 multi-half acquisition port) **in flight on
+`phase/7-pre-multi-half`**. Tasks 1-6 structural done; Task 5R
+3-layer write-guard system landed (commits 701540f / 9ef7997 /
+2256eea / b213866 / e11e349) after a 2026-05-05 alignment-template
+overwrite incident on MICROSCOPE; cam2-scoped restore via
+`scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py`
+(commits de671ed + 820f3b6) verdict **PASS** with all 3 corrupted
+files regenerated within ±0.005% of pre-incident sizes. Task 5R steps
+8-9 in flight at CC; Task 5 proper unblocked once those close.
+Architectural takeaway: the resolver split deletes the
+writable-legacy-path API endpoint, so the original incident's failure
+mode is structurally impossible to repeat. Three findings carried
+forward (bnpm dep / CSV-video 1s timestamp skew / orphan cam{1,3,4}
+parent-level halves). See "In flight" section below.
+
+---
+
+**Earlier refresh — 2026-05-04** — Phase 7a.4-cross-session-angle
 MERGED, closing the 7a.4 trio. Three phases shipped on 2026-05-03 +
 2026-05-04: orientation-fix → paths-cleanup → cross-session-angle.
 
@@ -404,9 +422,55 @@ Architecture X locked pre-kickoff (per-half processing through Phases
 NPZ, alignment template, centered DLC parquet); supersedes the
 aspirational 2026-04-21 DECISIONS entry. Opt-in-via-YAML-only safety
 rule with three teeth (read-only scan script, `MultiHalfNotDeclaredError`
-in `build_manifest()`, no callable auto-merge path). Audit-first task
-plan with STOP-and-report after Task 1 (outcome lock X1/X2/X3) and
-Task 9 (parity verdict). Currently in Task 1 (audit, MICROSCOPE-required).*
+in `build_manifest()`, no callable auto-merge path).*
+
+*Tasks 1-6 structural shape landed (manifest extension with `HalfSpec`
++ `halves` + `MultiHalfNotDeclaredError`; `multi_half_merge` module
+with `merge_licks_and_rewards`, `merge_alignment_templates`,
+`merge_centered_parquet`; per-half loops in spout-behavior, alignment,
+DLC parquet builders).*
+
+***2026-05-05 alignment-template overwrite incident** during Task 5
+test-fixture run: `compute_and_merge_alignment_multi_half` synthetic
+fixtures wrote through the `alignment_template()` resolver, which
+routed through live `microscope_server` (not redirected by
+`PathResolver(output_root=tmp_path)`). Three legacy alignment
+templates on MICROSCOPE overwritten with synthetic toy data:
+`cam2/PS48/20250314.npz` (43.9 MB → 3.9 KB),
+`cam2/PS48/20250314ab/20250314a.npz` (68.5 MB → 1.3 KB),
+`cam2/PS48/20250314ab/20250314b.npz` (69.8 MB → 1.6 KB). Tests using
+`output_root=tmp_path` therefore wrote to the live tree.*
+
+***Task 5R (Recovery + 3-layer write guards) landed steps 1-7 across
+commits 701540f / 9ef7997 / 2256eea / b213866 / e11e349 (skip-tests +
+`_writeguard` module + `tests/conftest.py` autouse readonly extension
++ `paths.py` resolver split + test re-enable with `_new` resolvers).
+Architectural fix: Layer 1 deletes the writable-legacy-path API
+endpoint entirely — the original incident's failure mode is no longer
+expressible in code. Live restore commits de671ed + 820f3b6 ran
+2026-05-09 via cam2-scoped Option B script
+(`scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py`),
+regenerating the 3 corrupted files within ±0.005% of pre-incident
+sizes. Layered Tier A/B/C step-5 validation: PASS. Empirical
+scipy/numpy version drift since 2026-01-11 matches Phase 7a.0
+baseline-seed-probe prediction.***
+
+*Task 5R steps 8 (rewire `compute_and_merge_alignment_multi_half`
+through `_new` resolvers exclusively) and 9 (DECISIONS entry draft)
+in flight at CC. Once those close, Task 5 proper resumes (per-half
+Phase 3 alignment + `merge_alignment_templates()` faithful port,
+writing through the new resolver split — original failure mode is
+architecturally impossible to repeat).*
+
+*Three findings carried forward from Task 5R for later phases:
+(1) `bnpm` dep — legacy alignment notebook needs `frsb` env or
+`pip install bnpm`; bnpm is vendored (Phase 13) but not installed in
+`stroke_orofacial`. (2) CSV/video filename 1-second timestamp skew
+(empirical: PS48 20250314 half b had `T13_09_28.csv` vs `T13_09_29.avi`).
+Multi-half registry `file_timestamp_prefix` field uses HH_MM precision
+to dodge this. (3) Orphan cam{1,3,4}/PS48/20250314{a,b}.npz files at
+parent level (no merge file, no subdir) from 2026-01-11 run. Out of
+scope; cam2 is canonical.*
 
 **Deferred / carry-forward housekeeping:** Remaining safe parallel docket:
 Phase 5.5 polish docs, cohort-wide Phase 5 rerun planning, Phase 6
@@ -1737,7 +1801,8 @@ Whatever the server-side feature flag or staged-rollout gate was doing on 2026-0
 - **Windows env prefix.** On Priya's Windows box, `stroke_orofacial` is installed at `C:\Users\sabatini\.conda\envs\` (per-user, user-writable) rather than `C:\ProgramData\anaconda3\envs\` (machine-level, write-locked to non-admin shells). If a rebuild ever hits `EnvironmentNotWritableError` on ProgramData, use an admin-shell `conda env remove` to clear, then re-create from a non-admin shell so conda defaults to the per-user location.
 - **Stale admin-owned pytest tmpdirs on Windows.** `C:\Users\sabatini\AppData\Local\Temp\pytest-of-sabatini\` and `C:\Users\sabatini\GitHub\stroke_orofacial_pipeline\.pytest_cache\` can end up owned by an elevated account after a prior admin-shell pytest run and will produce `PermissionError: [WinError 5]` on setup from a non-elevated shell. Workaround: `pytest --basetemp=C:/Users/sabatini/pytest_tmp`. Proper fix: elevated PowerShell `Remove-Item -Recurse -Force` on both paths.
 - **Cowork's folder view can be stale.** If Priya pushes from Windows and doesn't pull on Mac, Cowork's read of the Mac's disk lags behind origin. Workaround: have Priya `git pull` on Mac before Cowork needs the fresh files, or have Cowork ask her to pull when it seems stale.
-- **Multi-half acquisition sessions require merging at load time.** At least one session (PS48 2025-03-14) was acquired in two halves within a single behavior day — two sets of Flea3 `.avi` videos + timestamp CSVs + two Wavesurfer `.h5` files, one set per acquisition half. Legacy DLC analysis code merges these into one logical session; the new consolidated pipeline does **not yet handle this case**. Must be implemented at the two load boundaries (wavesurfer I/O for Phase 2, DLC H5 + timestamp-CSV + parquet I/O for Phase 4+) before any output-writing run on PS48 20250314 or similar multi-half sessions can be trusted. See TaskList task #18 and DECISIONS 2026-04-21 entry. Until the fix lands, a Phase 2 / Phase 4+ run on PS48 2025-03-14 will silently use only one half of the data (whichever path the discovery layer happens to return first) — a silent-wrongness failure mode with no loud error.
+- **Multi-half acquisition sessions** (e.g. PS48 2025-03-14): two sets of Flea3 `.avi` videos + timestamp CSVs + two Wavesurfer `.h5` files, one set per acquisition half. Phase 7-pre-multi-half (in flight on `phase/7-pre-multi-half`, 2026-05-09) ports legacy merge logic via Architecture X — per-half processing through Phases 2/3/4 + post-process merge at three coordinated layers (`merge_licks_and_rewards`, `merge_alignment_templates`, `merge_centered_parquet`). Architecture X **supersedes** the aspirational 2026-04-21 DECISIONS entry (which proposed merge-at-load-time before the legacy code was visible). Opt-in via committed `multi_half_sessions:` registry in `configs/session_overrides.yaml`; `build_manifest()` raises `MultiHalfNotDeclaredError` on undeclared candidates. Until phase merges, undeclared multi-half sessions raise loud (no silent-half-discard mode anywhere). See `docs/prompts/phase-7-pre-multi-half-kickoff.md` for full spec.
+- **Source-data write guard system** (load-bearing post 2026-05-05 incident). 3-layer architecture in `phase/7-pre-multi-half`: Layer 1 (resolver split — write paths must use `_new` resolvers; legacy-write resolvers don't exist as API endpoints), Layer 2 (`src/stroke_orofacial/_writeguard.py::assert_safe_write_path` called from every writer in `src/`; deny list covers MICROSCOPE legacy + raw-data trees), Layer 3 (`tests/conftest.py` autouse session fixture extends readonly roots to all of MICROSCOPE during tests). **Adding a new writer in `src/`?** First line of the function body must call `assert_safe_write_path(path)`. **Adding a new resolver method?** If it returns a write target, name suffix `_new`; if read-only legacy, `_legacy_read`; plain names are read-with-fallback. Failure mode of the original incident (resolver routes through `microscope_server` not redirected by `output_root=`) is **architecturally impossible to repeat** because Layer 1 deletes the writable-legacy-path API endpoint entirely.
 - **`| tail -80` (or any pipeline-wrapped invocation) silently masks non-zero exit codes unless `set -o pipefail` is active.** In bash, a pipeline's exit code is the exit code of the *last* stage by default — and `tail`, `head`, `grep` with matches, `tee`, etc. almost always exit 0 — so piping a failing command through any of them turns the wrapper's overall exit code into a lie. This bit the 2026-04-21 Phase 6.8a cohort-emit task-runner wrapper: `python scripts/phase_6_8a_first_run_health_report.py --verbose 2>&1 | tail -80` surfaced as "task completed successfully" while conda's `execute(125)` rode the first stage to the floor. Fix: `set -euo pipefail` at the top of any wrapper script. The canonical committed wrapper lives at `scripts/task_runner_wrapper.sh` (v6.8a.3) — source it or copy its prologue into any Windows Task Scheduler / ad-hoc invocation. `PIPESTATUS[0]` is the alternative if `pipefail` is not available.
 - **Sandbox git ops can corrupt `.git/HEAD` on cross-OS-mounted repos.** Since the 2026-04-22 move to same-machine Windows Cowork + CC, Cowork's Linux sandbox mounts the Windows repo tree directly. Running *any* git operation that writes to `.git/` from inside the sandbox on that cross-OS mount is unsafe: a failed `git fetch --all --tags` on 2026-04-22 left `.git/HEAD` truncated (`ref: refs/heads/docs/v6.8a.3-migration-log-refresh` → `ref: refs/heads/docs/`) — subsequent `git branch --show-current` failed with `fatal: Failed to resolve HEAD as a valid ref`. The failure is plausible-enough (no credentials in sandbox → network error partway through) that it won't always be obvious the working tree is now broken. **Rule (hard): Cowork does NOT run `git fetch`, `git pull`, `git checkout <branch>`, `git merge`, `git rebase`, `git reset`, or `git gc` from the sandbox on the cross-OS-mounted repo.** Safe ops from sandbox: `git status`, `git log`, `git diff`, `git branch --show-current` (read-only), and `git add`/`git commit` *only if no authentication or index-rewrite is involved* (in practice this also belongs in the CC Windows terminal). All git state-changing work goes through CC's Windows terminal (GitHub Desktop credential store handles auth). Fix if HEAD is already corrupted: from CC's Windows terminal in the repo root, run `git symbolic-ref HEAD refs/heads/main` (or whatever branch you were on) — restores HEAD in one line, no data loss because only the ref pointer was truncated. See Two-tool workflow section for the full rule + rationale + what triggered the incident.
 - **`NotebookEdit` can re-serialize cells beyond the intended change (diff-size surprise, not a behavior issue).** When editing a cell whose `source` is stored as a JSON array of lines, `NotebookEdit` may rewrite the whole cell's `source` to a single JSON string, and may also normalize escaped unicode (`\u2014` → literal `—`) in *other* cells that get re-serialized as a side effect. Semantically identical JSON — pytest + integration verification confirmed no behavior change on the Phase 6.8a.3 edit — but the `git diff` of the notebook looks much larger than the logical edit. If you see an unexpectedly large notebook diff after a targeted edit, inspect a couple of the "extra" hunks: if they are line-array↔string reshapes or `\u####` → literal-char normalizations, they are cosmetic and safe. Don't try to revert them by hand; that fight isn't worth the time.
@@ -1745,6 +1810,49 @@ Whatever the server-side feature flag or staged-rollout gate was doing on 2026-0
 ---
 
 ## Best warm-start prompt (paste into a new Cowork chat)
+
+End of 2026-05-09 session: Phase 7-pre-multi-half (PS48 2025-03-14
+multi-half acquisition port) **in flight on `phase/7-pre-multi-half`,
+not yet merged**. Tasks 1-6 structural shape landed (manifest
+extension with `HalfSpec` + `halves` + `MultiHalfNotDeclaredError`;
+`spout_behavior/multi_half_merge.py` with the three coordinated
+merge functions; per-half loops in spout-behavior, alignment, DLC
+parquet builders). Task 5R (Recovery + 3-layer write guards) closed
+steps 1-7 across commits 701540f / 9ef7997 / 2256eea / b213866 /
+e11e349, after a 2026-05-05 alignment-template overwrite incident
+during Task 5 test-fixture run (3 legacy MICROSCOPE templates
+overwritten with synthetic toy data; root cause: `alignment_template()`
+resolver routed through live `microscope_server` not redirected by
+`PathResolver(output_root=)`). Cam2-scoped restore via
+`scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py`
+(commits de671ed + 820f3b6) ran 2026-05-09 with PASS verdict —
+all 3 corrupted files regenerated within ±0.005% of pre-incident
+sizes (43,873,994 / 68,512,651 / 69,808,659 bytes). Layered Tier
+A/B/C step-5 validation passed; empirical scipy/numpy version drift
+since 2026-01-11 matches Phase 7a.0 baseline-seed-probe prediction.
+Task 5R steps 8 (rewire `compute_and_merge_alignment_multi_half`
+through `_new` resolvers) and 9 (DECISIONS entry draft) in flight
+at CC. Task 5 proper (per-half Phase 3 alignment) unblocked once
+those close. Architecture X locked pre-kickoff supersedes the
+2026-04-21 DECISIONS entry; opt-in-via-YAML-only safety rule with
+three teeth (read-only scan script, `MultiHalfNotDeclaredError`
+defensive check in `build_manifest()`, no callable auto-merge path).
+3-layer write-guard system: Layer 1 (resolver split — writable-legacy
+API endpoint deleted entirely), Layer 2
+(`src/stroke_orofacial/_writeguard.py::assert_safe_write_path`
+called from every writer in `src/`), Layer 3 (`tests/conftest.py`
+autouse session fixture extending readonly roots to all of MICROSCOPE
+during tests). The original incident's failure mode is
+**architecturally impossible to repeat**. Three findings carried
+forward (bnpm dep — legacy notebook needs frsb env or pip install
+bnpm; CSV/video filename 1-second timestamp skew — multi-half
+registry uses `file_timestamp_prefix` HH_MM precision; orphan
+cam{1,3,4} parent-level halves from 2026-01-11 run — out of scope,
+cam2 canonical). Kickoff at
+`docs/prompts/phase-7-pre-multi-half-kickoff.md` documents Tasks
+0-10 with status markers + DECISIONS entry sketch + 3-layer guard
+spec. Next: confirm Task 5R steps 8-9 close, then Task 5 proper
+resumes, then Tasks 6/7/8/9/10 as originally planned.
 
 End of 2026-05-02 → 2026-05-03 session: Phase 7a.6 closed as PR #91
 (merge-commit `bb4b505`) + tagged `v7a.6-mean-sem`. Bodypart-
