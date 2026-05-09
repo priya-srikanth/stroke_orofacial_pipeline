@@ -15,6 +15,241 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-09 — Phase 7-pre-multi-half Task 5 alignment-template overwrite incident + three-layer write-guard system + cam2-scoped Option B restore
+
+> Working draft — folds into the phase-close DECISIONS at Task 10.
+> Standalone-readable if someone hits this file before Task 10 lands.
+
+**Context.** During the original Task 5 implementation of
+`compute_and_merge_alignment_multi_half` (Phase 7-pre-multi-half), three
+legacy alignment templates on MICROSCOPE for PS48 20250314 — the merged
+file at `cam2/PS48/20250314.npz` (43,873,994 bytes per Task 1a inventory)
+plus the per-halves at `cam2/PS48/20250314ab/{20250314a,20250314b}.npz`
+(68,512,651 / 69,808,659 bytes) — were overwritten with synthetic test
+fixtures (3,920 / 1,342 / 1,604 bytes). All three files mtime'd
+2026-05-05 19:46:37 EDT (within one second). CLAUDE.md ground rule 1
+violated.
+
+**Root cause.** `paths.py::alignment_template()` and
+`alignment_template_per_half()` resolvers routed through the
+`microscope_server` logical root (live MICROSCOPE share) rather than
+`microscope_pipeline_outputs`. The `PathResolver(output_root=...)` test-
+override kwarg only redirects `pipeline_outputs(...)` — it does NOT
+redirect any other resolver. Tests using the standard
+`PathResolver(output_root=tmp_path)` idiom for `compute_and_merge_alignment_multi_half`
+therefore silently routed write paths to the LIVE legacy tree even
+though the test author believed everything was sandboxed under
+`tmp_path`. Three test invocations (one per
+`TestComputeAndMergeAlignmentMultiHalf` test that pre-creates per-half
+templates) compounded the corruption — each pytest run re-overwrote the
+same three legacy paths.
+
+**Decisions enacted (Task 5R, six commits 2026-05-05 → 2026-05-09 on
+branch `phase/7-pre-multi-half`).**
+
+1. **Three-layer write-guard system.** Defense in depth, each layer
+   catching a different failure mode:
+
+   - **Layer 1 — paths.py resolver split (`_legacy_read` / `_new`).**
+     The old `alignment_template()` was renamed to
+     `alignment_template_legacy_read(animal, date, cam)` — read-only,
+     routes through `microscope_server`. Two new write-side resolvers
+     were added: `alignment_template_new(animal, date, cam)` (merged,
+     parent-level) and
+     `alignment_template_per_half_new(animal, date, *, halves_concat_label, half_id, cam)`
+     (per-half subdir layout). Both `_new` resolvers route through
+     `pipeline_outputs("dlc_analysis") / "alignment_templates" / cam / ANIMAL / ...`
+     and therefore honor the `output_root=` test override. Production
+     code routes ALL alignment-template writes through the `_new`
+     resolvers; ALL reads go through `_legacy_read`. No write site in
+     `src/` calls `_legacy_read`. Verified by Task 5R step 8 audit:
+     six `_legacy_read` callers (manifest.py, timebase.py,
+     interpolation.py, mean_sem_visual.py, reward_aligned.py,
+     tongue_pertrial.py) all in read contexts; two `_new` callers in
+     `timebase.py` both in write contexts.
+
+   - **Layer 2 — runtime writeguard module
+     (`src/stroke_orofacial/_writeguard.py`).** Public API:
+     `assert_safe_write_path(path) -> None` raises `WriteGuardError`
+     when `path` resolves under a known-legacy MICROSCOPE / Mac source-
+     data root. Deny list covers Windows UNC + Mac POSIX forms of
+     `MICROSCOPE/Priya/DeepLabCut`,
+     `MICROSCOPE/Priya/facerhythm_stroke_biomarker_exp/{analysis,wavesurfer}`,
+     `MICROSCOPE/Rich/`, the Mac fallback `/Users/Priya2/Documents/.../{analysis,wavesurfer}`,
+     and the legacy GitHub repos (`/Users/Priya2/Github/facerhythm_*`).
+     `pipeline_outputs/` is allowed. Called inline before each
+     `np.savez_compressed` in the multi-half compute orchestrator
+     (defense-in-depth at the call site) — the resolver SHOULD already
+     give safe paths, but a belt-and-suspenders check makes any future
+     regression in `_new` fail loud at the call site instead of silently
+     corrupting legacy data.
+
+   - **Layer 3 — pytest autouse fixture (`tests/conftest.py`).**
+     Monkey-patches `np.savez`, `np.savez_compressed`,
+     `pd.DataFrame.to_parquet`, `Path.write_text`, `Path.write_bytes`,
+     and `Path.replace` to call `assert_safe_write_path` on the
+     destination before delegating to the real implementation.
+     Coverage rationale: the multi-half pipeline writes data via these
+     APIs (NPZ for licks + alignment, parquet for centered DLC, plus
+     atomic-rename via `Path.replace`). Other write APIs (raw
+     `open(..., 'w')`) are NOT patched; production code that uses them
+     should call `assert_safe_write_path` directly. The deliberate gap
+     keeps the patch surface small and brittle-free; the incident-class
+     is fully covered.
+
+2. **`tests/test_conftest_guard.py` sentinel tests (13).** Pin the
+   autouse fixture so a future regression in `tests/conftest.py` cannot
+   silently disable the guard. Each sentinel intentionally targets a
+   canonical legacy UNC path via every patched API and asserts
+   `WriteGuardError`; companion sentinels confirm the guard isn't
+   spuriously blocking writes to `tmp_path`.
+
+3. **Restore via Option B — cam2-scoped one-off Python script.**
+   `scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py`
+   regenerates the three corrupted templates by:
+     i. Walking pre-run inventory at `cam{1-4}/PS48/20250314*` and
+        capturing sizes/mtimes to
+        `docs/phase-7-pre/restore_PS48_20250314_pre_run_inventory.csv`.
+    ii. Calling `make_alignment_templates_20251216.main()` (legacy
+        module loaded from MICROSCOPE via `importlib.util` — no edit
+        of the legacy repo, CLAUDE.md ground rule 2 honored) twice —
+        once for half-a, once for half-b — using per-half WS-processed
+        NPZs on MICROSCOPE
+        (`session_processing3/wavesurfer_signals_processed/PS48/20250314{a,b}.npz`)
+        and per-half cam2 CSVs in Rich's tree
+        (`camera/20250314{a,b}/PS48/timestamp2_2025-03-14T*.csv`).
+   iii. Merging the per-half templates via the existing
+        `multi_half_merge.merge_alignment_templates` (faithful port of
+        legacy cell 16) → parent-level merged at
+        `cam2/PS48/20250314.npz`.
+    iv. Moving the per-half NPZs from parent level into the
+        `20250314ab/` subdir (Decision 3 layout — matches Priya's
+        post-merge cleanup convention from 2026-01-11).
+     v. Post-run diff + layered Tier A/B/C validation (see below).
+
+   The script is the **documented exception** to the writeguard system:
+   it intentionally writes to deny-listed legacy paths. All three
+   guard layers are bypassed by design (resolver split: script
+   constructs paths directly without `PathResolver`; writeguard module:
+   script doesn't call `assert_safe_write_path`; conftest autouse:
+   script runs as a CLI tool outside pytest). The bypass is ONE-OFF
+   and not invoked from any pipeline path; the script's docstring
+   documents the exception explicitly.
+
+4. **Step 5 layered validation (Tier A/B/C) instead of strict byte-
+   equality.** Original spec was strict equality vs Task 1a inventory.
+   Relaxed 2026-05-09 because Phase 7a.0 baseline-seed probe documented
+   scipy 1.15.1 → 1.17.1 drift in Y0 retune (PS49/PS50 tongue): exact
+   byte-equal NPZ output across versions is not guaranteed even from
+   identical inputs. Strict assertion would have spuriously failed the
+   restore on benign env drift since the 2026-01-11 originals.
+
+   - **Tier A (size, per file):** ≤0.1% delta = PASS (likely
+     deterministic re-run); ≤5% = WARN (env drift; continue); >5% =
+     FAIL (exit 1).
+   - **Tier B (structural):** each per-half NPZ loads via `np.load` and
+     contains the 5 cell-16 REQ_KEYS (`Fs_ws_input` +
+     `sig_{wsIdx,camIdx,camTimes,wsTimes}__idx_{cam,ws}`); merged NPZ
+     contains those 5 + 4 provenance keys (`merged_from_A`,
+     `merged_from_B`, `ws_offset_samples`, `cam_offset_frames`); merged
+     `sig_wsIdx__idx_cam` length == n_cam_A + n_cam_B (analogous for
+     ws-axis arrays); `Fs_ws_input` matches across both halves and the
+     merged via `np.isclose`.
+   - **Tier C (diff shape):** exactly the 3 expected paths show
+     `modified` status; cam{1,3,4} cohort all `unchanged`.
+
+**Restore outcome (2026-05-09 14:27 UTC).** Five steps completed; layered
+Tier A/B/C verdict PASS. Empirically observed scipy/numpy drift was
+small but nonzero, validating the Tier A relaxation:
+
+| Path | Task 1a expected | Restored | Delta |
+|---|---|---|---|
+| `cam2/PS48/20250314.npz` | 43,873,994 | 43,875,365 | +0.0031% |
+| `cam2/PS48/20250314ab/20250314a.npz` | 68,512,651 | 68,512,394 | -0.0004% |
+| `cam2/PS48/20250314ab/20250314b.npz` | 69,808,659 | 69,808,402 | -0.0004% |
+
+All three deltas ≤0.005% — well inside the PASS tier (±0.1%). Structural
+checks all pass; cam{1,3,4} per-halves at 2026-01-11 mtimes unchanged.
+No tracebacks. Restore considered successful and complete.
+
+**Three findings surfaced during Task 5R (informed both the restore
+and the future Task 5 proper resumption).**
+
+1. **bnpm is a legacy-notebook-driver dep, NOT a project dep.** The
+   legacy alignment notebook (`batch_process_alignment_20251216PS.ipynb`)
+   imports `bnpm.path_helpers` for `generate_date_range_regex` +
+   `find_date_in_path` + `find_paths`. None of these are in the
+   stroke_orofacial conda env; `pyproject.toml` has no `bnpm` entry
+   (an earlier Phase 2 MIGRATION_LOG note about adding it was
+   reverted). This drove the choice of **Option B (one-off Python
+   script bypassing the notebook) over Option A (papermill on a
+   vendored copy of the notebook)**. The script reaches the same
+   `make_alignment_templates_20251216.main()` function the notebook
+   would call, but constructs per-half input lists manually — single-
+   session scope makes the bnpm regex helper unnecessary.
+
+2. **CSV / .avi filename 1-second skew on PS48 20250314 half-b.**
+   Half-b's timestamp CSV is `timestamp2_2025-03-14T13_09_28.csv` while
+   the .avi (and DLC filename derived from it) is `*T13_09_29.avi`.
+   Half-a is consistent at `T12_31_07` for both. Acquisition-side
+   artifact: the timestamp CSV was written ~1 second before the .avi
+   started rolling. Restore script handles this via an HH_MM-prefix
+   glob (`timestamp2_2025-03-14T13_09*.csv`) — the same loose-glob
+   discipline the new pipeline's per-half discovery uses (per the
+   `_file_timestamp_minute_prefix` helper in `manifest.py`).
+
+3. **Orphan cam{1,3,4} per-halves at parent level on MICROSCOPE.**
+   Pre-run inventory found 6 INTACT files (~68.5 / 69.8 MB each, mtime
+   2026-01-11) at `cam{1,3,4}/PS48/20250314{a,b}.npz`. Priya generated
+   these alongside cam2 in the original 2026-01-11 run (legacy notebook
+   walks `cam_idx in [1,2,3,4]`) but only cam2 was multi-half-merged —
+   cam2 had its per-halves moved into the `20250314ab/` subdir + a
+   merged file created at parent level via cell 16 of the canonical
+   tongue notebook. Cam{1,3,4} were left at parent level as orphan
+   per-halves. The cam2-scoped restore left these untouched. They are
+   read-only references for any future cross-cam analysis but never
+   referenced by the new pipeline (only cam2 is consumed downstream).
+   Future cohort housekeeping: decide whether to move the cam{1,3,4}
+   orphans into `20250314ab/` subdirs for symmetry, or leave them.
+   Documented as a forward-pointer; not in Task 5R scope.
+
+**Process lesson.** `output_root=` was assumed to redirect ALL writes;
+in reality it only redirected `pipeline_outputs()`. Permanent fix
+makes the assumption true by construction (the resolver split makes
+`_new` writers use `pipeline_outputs()` by definition; the writeguard
+module + conftest fixture catch any path-construction bug that
+escapes the resolver discipline). The lesson generalizes: when a
+test override claims to redirect "writes," verify which resolvers
+actually consult the override, and add a regression test that pins
+the inverse — `_new` resolvers MUST honor `output_root`; `_legacy_read`
+resolvers MUST NOT.
+
+**Enforced at.**
+  - `src/stroke_orofacial/paths.py` — `alignment_template_legacy_read`
+    + `alignment_template_new` + `alignment_template_per_half_new`
+    resolver split.
+  - `src/stroke_orofacial/_writeguard.py` — runtime write-guard module
+    (Layer 2).
+  - `tests/conftest.py` — autouse fixture (Layer 3).
+  - `tests/test_writeguard.py` (36 tests) — writeguard module coverage.
+  - `tests/test_conftest_guard.py` (13 sentinel tests) — autouse-fixture
+    sentinel pins.
+  - `tests/test_paths.py` — `_legacy_read` + `_new` resolver tests
+    including the `test_alignment_template_new_honors_output_root`
+    regression guard.
+  - `tests/test_multi_half_merge.py::TestComputeAndMergeAlignmentMultiHalf`
+    — three previously-skipped tests rewritten with `_new` paths +
+    explicit `tmp_path in p.parents` assertion before any write.
+  - `src/stroke_orofacial/alignment/timebase.py::compute_and_merge_alignment_multi_half`
+    — uses `_new` resolvers exclusively; calls `assert_safe_write_path`
+    inline before each `np.savez_compressed` (defense-in-depth).
+  - `scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py`
+    — one-off restore CLI; documented writeguard exception.
+  - `docs/phase-7-pre/restore_PS48_20250314_pre_run_inventory.csv` —
+    pre-run on-disk state captured for the restore audit trail.
+
+---
+
 ## 2026-05-04 — Phase 7a.4-cross-session-angle — per-mouse cross-session aggregations of tongue angle/phase plot families + centered-on-peak phase convention + per-animal pre-stroke median ILI + d0=pre-stroke project-wide convention update
 
 **Context.** Phase 7a.4-paths-cleanup (PR #94, 2026-05-03) shipped a
