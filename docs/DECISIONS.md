@@ -34,7 +34,7 @@ The three superseded entries below have inline pointers to this consolidated rec
 
 Multi-half acquisition produces three artifact families that need three independent merges. The consolidated pipeline runs Phase 2 / 3 / 4 **per-half** under a single `SessionManifest` (with new `HalfSpec` + `halves` fields) and emits per-half artifacts under `{date}{halves_concat_label}/` subdirs (e.g. `PS48/20250314ab/{20250314a,20250314b}.npz`). A post-process **merge** step coalesces each artifact family into the merged parent-level output that downstream consumers read.
 
-The three merge functions live in [`src/stroke_orofacial/spout_behavior/multi_half_merge.py`](../src/stroke_orofacial/spout_behavior/multi_half_merge.py) as faithful ports of the canonical tongue notebook's `# PS48 30350314 merge` section:
+The three merge functions live in [`src/stroke_orofacial/spout_behavior/multi_half_merge.py`](../src/stroke_orofacial/spout_behavior/multi_half_merge.py) as faithful ports of the canonical tongue notebook's `# PS48 20250314 merge` section:
 
 - **Layer 1 — `merge_licks_and_rewards`** (cell 17 port). Concatenates per-half `Lick_L/R`, `Reward_L/R`, `Tone_L/R` index arrays with an offset applied to half-B; see Decision 6 for the schema divergence story.
 - **Layer 3 — `merge_alignment_templates`** (cell 16 port). Concatenates `sig_wsIdx__idx_cam` / `sig_camIdx__idx_ws` / `sig_camTimes__idx_cam` / `sig_wsTimes__idx_ws` with per-half offsets (cumulative `n_ws` / `n_cam` for index axes; first-finite shift to `last_finite(prev) + dt` for time axes). Sanity checks merged length sums, monotonicity (legacy printed; this port raises).
