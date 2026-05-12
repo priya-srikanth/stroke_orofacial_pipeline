@@ -96,6 +96,138 @@ def read_centered_parquet(path: Path | str) -> pd.DataFrame:
     return pd.read_parquet(path)
 
 
+def _center_one_h5(
+    h5_path: Path,
+    center_mode: str,
+    lik_thr: float,
+) -> pd.DataFrame:
+    """Read one DLC h5 file, compute the center, return the centered df.
+
+    Pure helper — used by both the single-half loop and the multi-half
+    per-half loop. No I/O beyond the h5 read; caller writes the parquet.
+    """
+    df_raw = read_dlc(h5_path)
+    cx, cy, mode_used = compute_center(df_raw, center_mode, lik_thr)
+    df_centered = apply_centering(df_raw, cx, cy)
+    logger.debug(
+        "centered %s: %d frames, center=(%s, %.2f, %.2f)",
+        h5_path.name, len(df_centered), mode_used, cx, cy,
+    )
+    return df_centered
+
+
+def _build_centered_parquet_multi_half(
+    manifest: SessionManifest,
+    center_mode: str,
+    resolver: PathResolver,
+    params: dict[str, Any],
+    *,
+    overwrite: Literal["skip", "force"],
+) -> Path:
+    """Per-half Phase 4 DLC loop for multi-half sessions.
+
+    Called by :func:`build_centered_parquet` when ``manifest.halves is
+    not None``. Builds per-half centered parquets to the per-(animal,
+    date) subdir per Decision 3 of the Phase 7-pre-multi-half Task 1
+    verdict, then calls :func:`merge_centered_parquet` to produce the
+    parent-level merged parquet.
+
+    Output paths:
+      - **Per-half:** ``{output_root}/centered_{mode}/{ANIMAL}/{date_str}{label}/{h5_name}.intermediate.{sig}.parquet``
+        where ``label = halves_concat_label`` (e.g. ``"ab"``) and
+        ``h5_name`` is the per-half DLC H5 filename. The per-half
+        filenames already differ across halves (they embed distinct
+        acquisition timestamps), but the ``{date_str}{label}/`` subdir
+        is preserved for symmetry with the licks/templates layout.
+      - **Merged (parent level):** ``{output_root}/centered_{mode}/{ANIMAL}/{halfA_h5_name}.intermediate.{sig}.parquet``.
+        Half-A's H5 filename is reused (matches legacy cell 13's
+        "keep keyA, drop keyB" convention) so any consumer that
+        globs ``video2_{date}T*.parquet`` finds exactly one match.
+
+    Parameters
+    ----------
+    manifest : SessionManifest
+        Multi-half manifest. ``manifest.halves`` must be non-None and
+        every half must have a populated ``dlc_h5_file``.
+    center_mode, resolver, params, overwrite
+        Same semantics as :func:`build_centered_parquet`.
+
+    Returns
+    -------
+    Path
+        Parent-level merged parquet path.
+
+    Raises
+    ------
+    FileNotFoundError
+        If any half's ``dlc_h5_file`` is None — DLC inference for that
+        half hasn't run.
+    """
+    halves = manifest.halves
+    assert halves is not None  # caller checked
+
+    halves_concat_label = "".join(h.id for h in halves)
+    date_str = manifest.date.strftime("%Y%m%d")
+    animal = manifest.animal
+
+    lik_thr = float(params.get("likelihood_threshold", 0.7))
+    compression = str(params.get("compression", "zstd"))
+    sig = _param_sig(center_mode, lik_thr)
+
+    output_root = resolver.pipeline_outputs("dlc_analysis")
+    per_half_subdir = (
+        output_root / f"centered_{center_mode}" / animal
+        / f"{date_str}{halves_concat_label}"
+    )
+
+    # Per-half compute + write
+    per_half_paths: list[Path] = []
+    for h in halves:
+        if h.dlc_h5_file is None:
+            raise FileNotFoundError(
+                f"halves[{h.id}].dlc_h5_file is None for {animal}/{date_str}. "
+                f"Phase 4 multi-half requires DLC inference on every half "
+                f"(per the Pattern A definition; Pattern B sessions stay on "
+                f"the existing single-half code path by design)."
+            )
+        out_name = f"{h.dlc_h5_file.name}.intermediate.{sig}.parquet"
+        out_path = per_half_subdir / out_name
+
+        if overwrite == "skip" and out_path.exists():
+            logger.info("Skip (exists, half %s): %s", h.id, out_path)
+            per_half_paths.append(out_path)
+            continue
+
+        df_centered = _center_one_h5(h.dlc_h5_file, center_mode, lik_thr)
+        if overwrite == "force" and out_path.exists():
+            out_path.unlink()
+        write_centered_parquet(df_centered, out_path, compression=compression)
+        logger.info("Wrote per-half %s: %s (%d frames)", h.id, out_path.name, len(df_centered))
+        per_half_paths.append(out_path)
+
+    # Merged parquet at parent level — uses half-A's H5 filename so the
+    # existing dlc_centered_spout_midpoint_parquet resolver glob
+    # `video2_{date}T*.parquet` finds exactly one match (and it points
+    # at the merged file, NOT a per-half file in the subdir).
+    half_a_h5_name = halves[0].dlc_h5_file.name
+    merged_name = f"{half_a_h5_name}.intermediate.{sig}.parquet"
+    merged_path = output_root / f"centered_{center_mode}" / animal / merged_name
+
+    if overwrite == "skip" and merged_path.exists():
+        logger.info("Skip (exists): %s", merged_path)
+        return merged_path
+    if overwrite == "force" and merged_path.exists():
+        merged_path.unlink()
+
+    # Deferred import to keep the module's top-level light; avoids a
+    # circular tug-of-war if multi_half_merge ever needs to import from
+    # dlc_io.parquet (it doesn't today).
+    from stroke_orofacial.spout_behavior.multi_half_merge import merge_centered_parquet
+    merge_centered_parquet(per_half_paths, merged_path, compression=compression)
+    logger.info("Merged %d per-half parquets -> %s", len(per_half_paths), merged_path.name)
+    return merged_path
+
+
 def build_centered_parquet(
     manifest: SessionManifest,
     center_mode: str,
@@ -119,8 +251,10 @@ def build_centered_parquet(
     Parameters
     ----------
     manifest : SessionManifest
-        Per-session manifest. ``dlc_h5_files`` must be populated — Phase 4
-        is the first DLC-consuming phase, so this is a hard requirement.
+        Per-session manifest. ``dlc_h5_files`` must be populated for
+        single-half sessions; for multi-half sessions
+        (``manifest.halves is not None``) the per-half
+        ``halves[i].dlc_h5_file`` must be populated instead.
     center_mode : str
         One of "nose", "spout_midpoint", "eye_midpoint".
     resolver : PathResolver
@@ -133,23 +267,34 @@ def build_centered_parquet(
     Returns
     -------
     Path or None
-        Path to the written parquet, or None if skipped.
+        Path to the written parquet (single-half: first H5's parquet;
+        multi-half: parent-level merged parquet), or None if skipped.
 
     Raises
     ------
     FileNotFoundError
-        If ``manifest.dlc_h5_files`` is empty (DLC inference hasn't run
-        for this session yet).
+        If ``manifest.dlc_h5_files`` is empty for a single-half manifest,
+        OR any ``halves[i].dlc_h5_file`` is None for a multi-half
+        manifest.
     """
+    if params is None:
+        params = load_defaults().get("dlc_centering", {})
+
+    # Multi-half routing — when manifest.halves is populated, per-half DLC
+    # h5 files live on the HalfSpec records (the parent-level
+    # manifest.dlc_h5_files is empty by the Phase 7-pre-multi-half manifest
+    # contract).
+    if manifest.halves is not None:
+        return _build_centered_parquet_multi_half(
+            manifest, center_mode, resolver, params, overwrite=overwrite,
+        )
+
     if not manifest.dlc_h5_files:
         raise FileNotFoundError(
             f"{manifest.session_id}: manifest.dlc_h5_files is empty. "
             f"Phase 4 parquet building requires DLC. Either provide a "
             f"manifest with DLC files, or run DLC inference first."
         )
-
-    if params is None:
-        params = load_defaults().get("dlc_centering", {})
 
     lik_thr = float(params.get("likelihood_threshold", 0.7))
     compression = str(params.get("compression", "zstd"))
@@ -169,19 +314,13 @@ def build_centered_parquet(
             results.append(out_path)
             continue
 
-        # Read DLC data
-        df_raw = read_dlc(h5_path)
-
-        # Compute center and apply
-        cx, cy, mode_used = compute_center(df_raw, center_mode, lik_thr)
-        df_centered = apply_centering(df_raw, cx, cy)
+        df_centered = _center_one_h5(h5_path, center_mode, lik_thr)
 
         # Write atomically
         if overwrite == "force" and out_path.exists():
             out_path.unlink()
         write_centered_parquet(df_centered, out_path, compression=compression)
-        logger.info("Wrote: %s (%d frames, center=(%s, %.2f, %.2f))",
-                     out_path.name, len(df_centered), mode_used, cx, cy)
+        logger.info("Wrote: %s (%d frames)", out_path.name, len(df_centered))
         results.append(out_path)
 
     return results[0] if results else None

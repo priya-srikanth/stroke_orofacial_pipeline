@@ -149,10 +149,23 @@ def load_or_compute_alignment(
     whether or not DLC inference has run. The DLC guard belongs in
     Phase 4 (parquet builder), not here.
 
-    Default behavior: load from ``manifest.alignment_template`` (cam2 only)
-    or ``alignment_templates/{cam_name}/{animal}/{YYYYMMDD}.npz`` for other
-    cams. If the template doesn't exist (or ``force_recompute=True``),
-    compute fresh from ``manifest.wavesurfer_file`` + camera CSV.
+    Single-entry-point dispatch (Phase 7-pre-multi-half):
+
+      - **Single-half manifest** (``manifest.halves is None``): default
+        behavior — load from ``manifest.alignment_template`` (cam2 only)
+        or via :meth:`PathResolver.alignment_template_legacy_read` for
+        other cams. If the template doesn't exist (or
+        ``force_recompute=True``), compute fresh from
+        ``manifest.wavesurfer_file`` + camera CSV.
+      - **Multi-half manifest** (``manifest.halves is not None``):
+        dispatches into :func:`compute_and_merge_alignment_multi_half`
+        which computes/caches per-half templates (under the ``_new``
+        resolvers, ``pipeline_outputs/``) and merges them. The merged
+        NPZ is then loaded back into an :class:`AlignmentResult`.
+        ``slope_ws_per_camFrame`` and ``intercept_ws_samples`` are NaN
+        for multi-half (each half has its own affine fit; no single
+        diagnostic value applies to a stitched time axis). ``source``
+        on the returned AlignmentResult is ``"merged_multi_half"``.
 
     For callers that prefer the legacy (animal, date) entry point, see
     ``load_or_compute_alignment_by_animal_date()`` below.
@@ -192,13 +205,43 @@ def load_or_compute_alignment(
     animal = manifest.animal
     date = manifest.date
 
+    # Phase 7-pre-multi-half: multi-half manifests dispatch into the
+    # per-half orchestrator. Single-entry-point flow — downstream callers
+    # of load_or_compute_alignment don't need to know whether the session
+    # is single-half or multi-half; they just get an AlignmentResult.
+    #
+    # The orchestrator computes/caches per-half templates under _new
+    # resolvers (pipeline_outputs/) and merges them into a parent-level
+    # merged NPZ. We then load that merged NPZ and return an
+    # AlignmentResult.
+    #
+    # slope_ws_per_camFrame and intercept_ws_samples are diagnostic-only
+    # in single-half (no downstream consumers; verified 2026-05-09 grep).
+    # For multi-half they are conceptually undefined — each half has its
+    # own affine fit, and a single slope/intercept doesn't apply to a
+    # stitched time axis. Set them to NaN so the AlignmentResult shape
+    # is preserved without inventing a meaningless number.
+    if manifest.halves is not None:
+        merged_path = compute_and_merge_alignment_multi_half(
+            manifest, resolver, params, force_recompute=force_recompute,
+        )
+        tmpl = load_alignment_template(merged_path)
+        return AlignmentResult(
+            sig_camIdx__idx_ws=tmpl["sig_camIdx__idx_ws"],
+            sig_wsIdx__idx_cam=tmpl["sig_wsIdx__idx_cam"],
+            slope_ws_per_camFrame=float("nan"),
+            intercept_ws_samples=float("nan"),
+            Fs_ws=float(tmpl["Fs_ws_input"]),
+            source="merged_multi_half",
+        )
+
     # Existing-template path: prefer the manifest's cam2 entry; fall back
     # to the resolver for other cams (manifest only tracks cam2) or when
     # the manifest didn't see the template at build time but it now exists.
     if cam_idx == 2 and manifest.alignment_template is not None:
         existing_path = manifest.alignment_template
     else:
-        existing_path = resolver.alignment_template(animal, date, cam=cam_name)
+        existing_path = resolver.alignment_template_legacy_read(animal, date, cam=cam_name)
 
     if not force_recompute and existing_path.exists():
         tmpl = load_alignment_template(existing_path)
@@ -286,3 +329,185 @@ def load_or_compute_alignment_by_animal_date(
         manifest, resolver, params,
         ws_signals=ws_signals, force_recompute=force_recompute,
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 7-pre-multi-half: per-half Phase 3 alignment + merge orchestration.
+# ---------------------------------------------------------------------------
+
+
+def _compute_per_half_alignment_template(
+    half_spec: Any,
+    animal: str,
+    date: datetime.date,
+    resolver: PathResolver,
+    params: dict[str, Any],
+    *,
+    cam_idx: int = 2,
+) -> dict[str, Any]:
+    """Compute a single-half alignment template dict from a HalfSpec.
+
+    Loads the per-half wavesurfer signals (``half_spec.wavesurfer_file``)
+    and per-half camera CSV (discovered under
+    ``{cam_root}/{half_spec.cam_subdir}/{ANIMAL}/`` via
+    :func:`pick_camera_csv`), then runs :func:`make_alignment_template`
+    with the supplied alignment params. Returns the full template dict
+    — same schema as legacy NPZ output, suitable for direct save via
+    ``np.savez_compressed``.
+
+    Used by :func:`compute_and_merge_alignment_multi_half` to produce
+    the per-half NPZs that feed the cell-16-port merge function.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``half_spec.wavesurfer_file`` is None or missing, or if
+        the per-half camera dir doesn't contain a discoverable CSV.
+    """
+    if half_spec.wavesurfer_file is None:
+        raise FileNotFoundError(
+            f"half {half_spec.id!r}: wavesurfer_file is None. build_manifest() "
+            f"did not locate a .h5 in {{ws_root}}/{half_spec.ws_subdir}/{animal}/. "
+            f"Verify the per-half WS subdir exists and the wavesurfer_raw mount "
+            f"is reachable."
+        )
+
+    from stroke_orofacial.spout_behavior.wavesurfer_io import (
+        load_wavesurfer_signals,
+    )
+    ws_signals = load_wavesurfer_signals(half_spec.wavesurfer_file)
+
+    # Camera CSV discovery — prefer half_spec's discovered timestamp_csv_files
+    # (already filtered by HH_MM-prefix glob in build_manifest), fall back
+    # to a fresh pick_camera_csv inside the per-half cam dir for robustness.
+    if half_spec.timestamp_csv_files:
+        cam_dir = half_spec.timestamp_csv_files[0].parent
+    else:
+        cam_dir = resolver.camera_dir(date, animal, half_subdir=half_spec.cam_subdir)
+    csv_path = pick_camera_csv(cam_dir, cam_idx=cam_idx)
+    cam_csv = load_camera_csv(csv_path)
+
+    return make_alignment_template(ws_signals, cam_csv, params)
+
+
+def compute_and_merge_alignment_multi_half(
+    manifest: SessionManifest,
+    resolver: PathResolver,
+    params: dict[str, Any],
+    *,
+    force_recompute: bool = False,
+) -> Any:
+    """Compute per-half alignment templates (or load if present), merge,
+    and return the merged template path.
+
+    Layout (Decision 3 of the Phase 7-pre-multi-half Task 1 verdict;
+    revised 2026-05-05 incident response — paths route through
+    pipeline_outputs/, not the live MICROSCOPE legacy tree):
+      - Per-half NPZs land at
+        ``<pipeline_outputs>/dlc_analysis/alignment_templates/cam2/{ANIMAL}/{date_str}{halves_concat_label}/{date_str}{half_id}.npz``
+        — exposed by :meth:`PathResolver.alignment_template_per_half_new`.
+      - Merged NPZ lands at
+        ``<pipeline_outputs>/dlc_analysis/alignment_templates/cam2/{ANIMAL}/{date_str}.npz``
+        — exposed by :meth:`PathResolver.alignment_template_new`.
+      Single-half code paths still read legacy templates via
+      :meth:`PathResolver.alignment_template_legacy_read` (which routes
+      through ``microscope_server`` and is read-only).
+
+    Behavior:
+      - Each per-half NPZ is loaded if present and ``not force_recompute``,
+        else computed fresh via :func:`_compute_per_half_alignment_template`
+        + ``np.savez_compressed``.
+      - The merged NPZ is written via :func:`merge_alignment_templates`
+        (a faithful port of legacy cell 16) — overwriting if it exists
+        (the merge function is the canonical writer for this path; if
+        the caller wants to skip recomputation when the merged file is
+        already present, they should branch before calling this
+        function).
+
+    Parameters
+    ----------
+    manifest : SessionManifest
+        Multi-half manifest (``manifest.halves`` must be non-None).
+    resolver : PathResolver
+        Configured path resolver.
+    params : dict
+        ``alignment`` section from defaults.yaml. Required keys: same as
+        :func:`make_alignment_template`'s contract — ``cam_idx``,
+        ``key_sync``, ``csv_idx_sync``, ``csv_idx_time``, ``window``,
+        ``p``, ``min_matched_edges``.
+    force_recompute : bool
+        When True, always recompute every per-half template even if the
+        per-half NPZs exist. Useful for parity-gate runs that compare
+        new outputs to legacy artefacts.
+
+    Returns
+    -------
+    Path
+        The merged template path (parent-level).
+
+    Raises
+    ------
+    ValueError
+        If ``manifest.halves`` is None — caller wired this function on a
+        single-half manifest (use :func:`load_or_compute_alignment`).
+    FileNotFoundError
+        If a half's wavesurfer file or camera CSV is missing during
+        recompute.
+    """
+    if manifest.halves is None:
+        raise ValueError(
+            f"compute_and_merge_alignment_multi_half: manifest.halves is None for "
+            f"{manifest.session_id}. Use load_or_compute_alignment() for "
+            f"single-half sessions."
+        )
+    cam_idx = int(params.get("cam_idx", 2))
+    cam_name = f"cam{cam_idx}"
+    halves = manifest.halves
+    halves_concat_label = "".join(h.id for h in halves)
+
+    # Per-half NPZ paths (Decision 3 layout). Routed through
+    # alignment_template_per_half_new (under pipeline_outputs/) so the
+    # 2026-05-05 incident class — writes to the live MICROSCOPE legacy
+    # tree — is structurally impossible. Defense-in-depth via
+    # assert_safe_write_path before each np.savez_compressed below.
+    from stroke_orofacial._writeguard import assert_safe_write_path
+    per_half_paths = [
+        resolver.alignment_template_per_half_new(
+            manifest.animal, manifest.date,
+            halves_concat_label=halves_concat_label,
+            half_id=h.id,
+            cam=cam_name,
+        )
+        for h in halves
+    ]
+
+    # Compute or skip per-half templates
+    for h, out_path in zip(halves, per_half_paths, strict=True):
+        if out_path.exists() and not force_recompute:
+            continue
+        template_dict = _compute_per_half_alignment_template(
+            h, manifest.animal, manifest.date, resolver, params, cam_idx=cam_idx,
+        )
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        # Defense-in-depth: writeguard fires before the actual write.
+        # The resolver SHOULD already give us a safe path, but a
+        # belt-and-suspenders check here makes any future regression
+        # in alignment_template_per_half_new fail loud at the call
+        # site instead of silently corrupting legacy data.
+        assert_safe_write_path(out_path)
+        np.savez_compressed(str(out_path), **template_dict)
+
+    # Merge — writes to alignment_template_new (parent-level under
+    # pipeline_outputs/). Deterministic from per-half NPZs; merge
+    # function does its own writeguard via the conftest fixture in
+    # tests, and assert_safe_write_path is a redundant check for
+    # the production path here.
+    from stroke_orofacial.spout_behavior.multi_half_merge import (
+        merge_alignment_templates,
+    )
+    merged_path = resolver.alignment_template_new(
+        manifest.animal, manifest.date, cam=cam_name,
+    )
+    assert_safe_write_path(merged_path)
+    merge_alignment_templates(per_half_paths, merged_path)
+    return merged_path

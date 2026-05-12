@@ -1578,8 +1578,10 @@ class TestTrialEventsAutoDerive:
         # exist on the real share. Patch resolver to a non-existent path.
         # We do this by overriding the alignment_template method.
         nonexistent = tmp_path / "no_alignment_anywhere.npz"
+        # Renamed from alignment_template after the 2026-05-05 incident:
+        # the resolver method is now alignment_template_legacy_read.
         monkeypatch.setattr(
-            resolver, "alignment_template",
+            resolver, "alignment_template_legacy_read",
             lambda animal, date, cam="cam2": nonexistent,
         )
         with pytest.raises(FileNotFoundError, match="alignment template missing"):

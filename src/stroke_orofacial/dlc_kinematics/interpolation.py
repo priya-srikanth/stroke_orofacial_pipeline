@@ -544,7 +544,9 @@ def _load_reward_centers_cam(
 
     align_path = manifest.alignment_template
     if align_path is None or not align_path.exists():
-        align_path = resolver.alignment_template(manifest.animal, manifest.date, cam="cam2")
+        align_path = resolver.alignment_template_legacy_read(
+            manifest.animal, manifest.date, cam="cam2",
+        )
     if not align_path.exists():
         raise FileNotFoundError(
             f"{manifest.session_id}: cam2 alignment template missing at "

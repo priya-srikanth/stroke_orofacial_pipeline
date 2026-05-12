@@ -116,8 +116,14 @@ class TestConvenienceMethods:
             "/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/O2_analysis/alignment_templates/cam2"
         )
 
-    def test_alignment_template(self):
-        result = self.resolver.alignment_template(
+    def test_alignment_template_legacy_read(self):
+        """Phase 7-pre-multi-half: renamed from alignment_template after the
+        2026-05-05 incident. Same path semantics — points at the live
+        MICROSCOPE legacy tree — but the _legacy_read suffix signals that
+        this resolver is for READS only. Writes go via alignment_template_new
+        / alignment_template_per_half_new.
+        """
+        result = self.resolver.alignment_template_legacy_read(
             "PS46", datetime.date(2025, 3, 7), cam="cam2"
         )
         assert result.as_posix() == (
@@ -236,12 +242,14 @@ class TestNewConvenienceMethods:
         cfg = tmp_path / "paths.yaml"
         ws_dir = tmp_path / "wavesurfer"
         ws_dir.mkdir()
+        cam_dir = tmp_path / "camera"
+        cam_dir.mkdir()
         # microscope_pipeline_outputs uses a static /Volumes path so we keep it
         # under the "mac" key — the tests that read it force platform_key='mac'.
-        # wavesurfer_raw uses a real on-disk tmp_path, so it MUST go under the
-        # HOST platform's key (see _HOST_KEY note at top of file). Two mounts
-        # under potentially-different platform keys is fine because each test
-        # only touches one root. .as_posix() avoids Windows \U escape parsing
+        # wavesurfer_raw and camera_raw use real on-disk tmp_path mounts so
+        # they MUST go under the HOST platform's key (see _HOST_KEY note at
+        # top of file). Mixed platform keys is fine because each test only
+        # touches one root. .as_posix() avoids Windows \U escape parsing
         # inside double-quoted YAML.
         cfg.write_text(
             textwrap.dedent(f"""\
@@ -255,6 +263,11 @@ class TestNewConvenienceMethods:
                     mounts:
                       {_HOST_KEY}:
                         - "{ws_dir.as_posix()}"
+                  camera_raw:
+                    description: "raw camera"
+                    mounts:
+                      {_HOST_KEY}:
+                        - "{cam_dir.as_posix()}"
             """)
         )
         return cfg
@@ -276,6 +289,155 @@ class TestNewConvenienceMethods:
         result = resolver.wavesurfer_dir(datetime.date(2025, 3, 7), "PS46")
         ws_dir = tmp_path / "wavesurfer"
         assert result == ws_dir / "20250307" / "PS46"
+
+    def test_wavesurfer_dir_default_half_subdir_is_date_str(
+        self, monkeypatch, full_paths_yaml, tmp_path
+    ):
+        """Phase 7-pre-multi-half: half_subdir=None preserves backwards-compat
+        behavior (subdir = date_str). Verifies the existing single-half code
+        path is unchanged when the kwarg is omitted.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result = resolver.wavesurfer_dir(
+            datetime.date(2025, 3, 14), "PS48", half_subdir=None
+        )
+        assert result == tmp_path / "wavesurfer" / "20250314" / "PS48"
+
+    def test_wavesurfer_dir_with_half_subdir_overrides_date_str(
+        self, monkeypatch, full_paths_yaml, tmp_path
+    ):
+        """Phase 7-pre-multi-half: half_subdir replaces the date_str segment.
+
+        For PS48 20250314 (Pattern A), half-a's WS files live under
+        ``{ws_root}/20250314a/PS48/`` — passing ``half_subdir="20250314a"``
+        resolves there. The kwarg is *the* mechanism by which the per-half
+        discovery in build_manifest finds half-specific WS data.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result_a = resolver.wavesurfer_dir(
+            datetime.date(2025, 3, 14), "PS48", half_subdir="20250314a"
+        )
+        result_b = resolver.wavesurfer_dir(
+            datetime.date(2025, 3, 14), "PS48", half_subdir="20250314b"
+        )
+        assert result_a == tmp_path / "wavesurfer" / "20250314a" / "PS48"
+        assert result_b == tmp_path / "wavesurfer" / "20250314b" / "PS48"
+
+    def test_camera_dir_default_half_subdir_is_date_str(
+        self, monkeypatch, full_paths_yaml, tmp_path
+    ):
+        """Phase 7-pre-multi-half: camera_dir half_subdir mirrors wavesurfer_dir."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result = resolver.camera_dir(
+            datetime.date(2025, 3, 14), "PS48", half_subdir=None
+        )
+        assert result == tmp_path / "camera" / "20250314" / "PS48"
+
+    def test_camera_dir_with_half_subdir_overrides_date_str(
+        self, monkeypatch, full_paths_yaml, tmp_path
+    ):
+        """Phase 7-pre-multi-half: camera-side per-half subdir resolution.
+
+        Camera root mirrors WS root structure (date-then-half-suffix at the
+        top level, animal one level deeper). Same kwarg semantics.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result_a = resolver.camera_dir(
+            datetime.date(2025, 3, 14), "PS48", half_subdir="20250314a"
+        )
+        result_b = resolver.camera_dir(
+            datetime.date(2025, 3, 14), "PS48", half_subdir="20250314b"
+        )
+        assert result_a == tmp_path / "camera" / "20250314a" / "PS48"
+        assert result_b == tmp_path / "camera" / "20250314b" / "PS48"
+
+    def test_alignment_template_per_half_new_layout(self, tmp_path: Path):
+        """Phase 7-pre-multi-half Decision 3 + 2026-05-05 incident response:
+        per-half new-pipeline templates land under pipeline_outputs(
+        "dlc_analysis") in the per-(animal, date) subdir alongside the
+        parent-level merged template. The _new suffix signals that
+        these paths route through pipeline_outputs (safe) instead of
+        the live MICROSCOPE legacy tree (unsafe — incident class).
+        """
+        resolver = PathResolver(output_root=tmp_path / "outputs")
+        result_a = resolver.alignment_template_per_half_new(
+            "PS48", datetime.date(2025, 3, 14),
+            halves_concat_label="ab", half_id="a",
+        )
+        result_b = resolver.alignment_template_per_half_new(
+            "PS48", datetime.date(2025, 3, 14),
+            halves_concat_label="ab", half_id="b",
+        )
+        # Path now routes through pipeline_outputs/dlc_analysis/
+        # alignment_templates/, not the legacy O2_analysis tree.
+        assert tmp_path in result_a.parents
+        assert "dlc_analysis" in result_a.as_posix()
+        assert "alignment_templates" in result_a.as_posix()
+        assert "O2_analysis" not in result_a.as_posix()
+        # Subdir is {date_str}{halves_concat_label}; filename is
+        # {date_str}{half_id}.npz. Parent of subdir is animal dir.
+        assert result_a.parent.name == "20250314ab"
+        assert result_a.name == "20250314a.npz"
+        assert result_b.parent.name == "20250314ab"
+        assert result_b.name == "20250314b.npz"
+
+    def test_alignment_template_per_half_new_three_halves(self, tmp_path: Path):
+        """halves_concat_label generalizes to N halves (e.g., 'abc' for 3)."""
+        resolver = PathResolver(output_root=tmp_path / "outputs")
+        result = resolver.alignment_template_per_half_new(
+            "PS99", datetime.date(2025, 5, 1),
+            halves_concat_label="abc", half_id="c",
+        )
+        assert result.parent.name == "20250501abc"
+        assert result.name == "20250501c.npz"
+
+    def test_alignment_template_new_merged_path(self, tmp_path: Path):
+        """The new merged-template resolver lives under pipeline_outputs/
+        at the parent level (mirror of the legacy parent-level layout
+        but in the safe tree)."""
+        resolver = PathResolver(output_root=tmp_path / "outputs")
+        result = resolver.alignment_template_new(
+            "PS48", datetime.date(2025, 3, 14), cam="cam2",
+        )
+        assert tmp_path in result.parents
+        assert "dlc_analysis" in result.as_posix()
+        assert "alignment_templates" in result.as_posix()
+        assert "O2_analysis" not in result.as_posix()
+        assert result.parent.name == "PS48"
+        assert result.name == "20250314.npz"
+
+    def test_alignment_template_new_honors_output_root(self, tmp_path: Path):
+        """output_root=tmp_path redirects alignment_template_new because
+        the latter routes through pipeline_outputs(). Verifies the
+        Phase 7-pre-multi-half 2026-05-05 incident response: previously
+        the alignment_template resolver routed through microscope_server
+        and was NOT redirected by output_root, which was the root cause."""
+        # No env-var override needed; default detection handles it.
+        resolver = PathResolver(output_root=tmp_path / "outputs")
+        result = resolver.alignment_template_new(
+            "PS48", datetime.date(2025, 3, 14), cam="cam2",
+        )
+        # Result lands under tmp_path, NOT under MICROSCOPE.
+        assert tmp_path in result.parents
+        assert "MICROSCOPE" not in result.as_posix()
+
+    def test_alignment_template_per_half_new_honors_output_root(
+        self, tmp_path: Path,
+    ):
+        """Same output_root invariant for the per-half writer. This is
+        the test that would have caught the 2026-05-05 incident before
+        it fired."""
+        resolver = PathResolver(output_root=tmp_path / "outputs")
+        result = resolver.alignment_template_per_half_new(
+            "PS48", datetime.date(2025, 3, 14),
+            halves_concat_label="ab", half_id="a",
+        )
+        assert tmp_path in result.parents
+        assert "MICROSCOPE" not in result.as_posix()
 
 
 class TestOutputRootOverride:
@@ -312,7 +474,14 @@ class TestOutputRootOverride:
         # Other convenience methods unaffected — they resolve from their own
         # logical roots (microscope_server, wavesurfer_raw, camera_raw).
         # On the real config those remain real paths even under override.
-        alignment = resolver.alignment_template("PS46", datetime.date(2025, 3, 7))
+        # alignment_template_legacy_read intentionally routes through
+        # microscope_server even with an output_root override — that's
+        # the read-only legacy path. (alignment_template_new IS
+        # overridden by output_root; covered separately in
+        # TestNewConvenienceMethods.test_alignment_template_new_honors_output_root.)
+        alignment = resolver.alignment_template_legacy_read(
+            "PS46", datetime.date(2025, 3, 7),
+        )
         assert "stroke_orofacial_pipeline_outputs" not in alignment.as_posix()
         assert "DeepLabCut" in alignment.as_posix()
         assert resolver._output_root_override == tmp_path

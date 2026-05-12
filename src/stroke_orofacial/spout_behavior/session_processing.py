@@ -60,6 +60,52 @@ def _output_path(output_root: Path, output_type: str, animal: str, date_str: str
     return output_root / output_type / animal / f"{date_str}.npz"
 
 
+def _halves_concat_label(half_ids: list[str]) -> str:
+    """Return the per-(animal, date) per-half subdir-name suffix.
+
+    For halves with ids ``["a", "b"]`` returns ``"ab"``; for ``["a", "b", "c"]``
+    returns ``"abc"``. The label is appended to the date_str to form the
+    per-half subdirectory name (e.g. ``20250314ab/``) — matching the
+    on-disk layout convention Priya established for PS48 20250314
+    alignment templates and locked in the Phase 7-pre-multi-half Task 1
+    verdict (Decision 3): per-half artefacts go in a subdir alongside
+    the parent-level merged file. See
+    ``docs/phase-7-pre/multi_half_scan_results.md``.
+    """
+    return "".join(half_ids)
+
+
+def _per_half_output_path(
+    output_root: Path,
+    output_type: str,
+    animal: str,
+    date_str: str,
+    halves_concat_label: str,
+    half_id: str,
+) -> Path:
+    """Return the per-half NPZ output path under the per-(animal, date) subdir.
+
+    E.g. for PS48 20250314 half a:
+      ``{output_root}/licks_and_rewards/PS48/20250314ab/20250314a.npz``
+
+    The subdir name is ``{date_str}{halves_concat_label}`` — the joined
+    half ids encode multiplicity (``ab`` for 2 halves, ``abc`` for 3).
+    The filename stays ``{date_str}{half_id}.npz`` for symmetry with
+    the legacy WS+camera per-half subdir naming
+    (``20250314a/`` / ``20250314b/``) — the half_id letter is the same
+    in both the source and the per-half output.
+
+    The merged-output path stays ``{output_root}/{output_type}/{animal}/
+    {date_str}.npz`` (no halves_concat_label segment) so downstream
+    consumers always read the same parent-level path regardless of
+    multi-half status. Task 4's ``merge_licks_and_rewards()`` writes
+    the merged file there.
+    """
+    subdir_name = f"{date_str}{halves_concat_label}"
+    file_name = f"{date_str}{half_id}.npz"
+    return output_root / output_type / animal / subdir_name / file_name
+
+
 def _translate_side_keys(
     payload: dict[str, Any], wavesurfer_matches: bool,
 ) -> dict[str, Any]:
@@ -223,6 +269,147 @@ def _check_overwrite(
     raise ValueError(f"Unknown overwrite mode: {overwrite!r}. Use 'skip', 'prompt', or 'force'.")
 
 
+def _run_phase2_pipeline(
+    ws_file: Path,
+    params: dict[str, Any],
+    ws_match: bool,
+    output_paths: dict[str, Path],
+) -> None:
+    """Run the Phase 2 algorithm on one wavesurfer file, writing the 7 NPZs
+    to the supplied paths.
+
+    Pure-algorithm helper: load WS signals → calibrate + smooth treadmill
+    → detect licks/rewards → detect bouts → save NPZs with side-convention
+    stamping. Caller decides paths and handles overwrite + per-session
+    params.json provenance — this helper just executes the algorithm.
+
+    Used by both the single-half path of :func:`process_session` and the
+    Phase 7-pre-multi-half per-half loop, which writes per-half outputs
+    to the per-half subdir layout (see
+    :func:`_per_half_output_path`). The algorithm is bit-identical
+    across the two callers — multi-half differs only in WHERE the NPZs
+    land, not in WHAT is computed.
+
+    Parameters
+    ----------
+    ws_file : Path
+        Wavesurfer .h5 file to process.
+    params : dict
+        Merged session parameters (defaults + per-session overrides).
+        Must contain the per-step sub-blocks (``process_treadmill_signal``,
+        ``find_licks_and_rewards``, etc.).
+    ws_match : bool
+        Per-animal ``wavesurfer_sides_match_mouse_sides`` flag. False
+        triggers L/R key translation at NPZ emit time so the on-disk
+        labels are mouse-frame regardless of rig orientation.
+    output_paths : dict
+        Mapping of ``output_type`` → ``Path`` for each of the 7 entries
+        in :data:`OUTPUT_TYPES`. The helper creates parent directories
+        as needed and overwrites existing files unconditionally —
+        overwrite gating is the caller's responsibility.
+    """
+    # ---- Step 1: Load wavesurfer signals ----
+    signals = load_wavesurfer_signals(ws_file)
+    Fs = float(signals["sample_rate_input"])
+
+    # Save wavesurfer_signals_processed — raw channel names include
+    # Lick_L/Lick_R etc., translated here to mouse frame at emit.
+    _save_npz_with_side_convention(
+        output_paths["wavesurfer_signals_processed"], signals, ws_match,
+        has_side_keys=True,
+    )
+
+    # ---- Step 2: Calibrate and smooth treadmill ----
+    tm_params = params["process_treadmill_signal"]
+    offset_used = float(tm_params["offset_in_volts"])
+
+    calibrated = calibrate_treadmill(
+        signals["Treadmill"],
+        offset_in_volts=offset_used,
+        voltSec_per_rot=float(tm_params["voltSec_per_rot"]),
+        mm_per_rot=float(tm_params["mm_per_rot"]),
+    )
+
+    sigma_sec = tm_params.get("smoothing_sigma")
+    if sigma_sec is not None:
+        treadmill_smoothed = smooth_treadmill(calibrated, Fs, float(sigma_sec))
+    else:
+        treadmill_smoothed = calibrated
+
+    tm_out = {
+        "Treadmill_smoothed": treadmill_smoothed,
+        "Fs": Fs,
+    }
+    tm_out.update(tm_params)
+    # No L/R content, but stamped for consistency so downstream readers
+    # can assert the convention-metadata contract on every NPZ.
+    _save_npz_with_side_convention(
+        output_paths["treadmill_signals_preprocessed"], tm_out, ws_match,
+        has_side_keys=False,
+    )
+
+    # ---- Step 3: Lick and reward detection ----
+    # Internal lick_idx / reward_idx / tone_idx dicts stay in the
+    # wavesurfer frame so Phase 4/5/6 downstream logic is arithmetically
+    # unchanged. Translation to mouse frame happens only at the NPZ emit
+    # line below.
+    lr_result = find_licks_and_rewards(signals, params["find_licks_and_rewards"])
+    n_samples = int(lr_result["n_samples"])
+
+    lr_out = copy.deepcopy(lr_result)
+    _save_npz_with_side_convention(
+        output_paths["licks_and_rewards"], lr_out, ws_match,
+        has_side_keys=True, allow_pickle=True,
+    )
+
+    lick_idx = {"Lick_L": lr_result["Lick_L"], "Lick_R": lr_result["Lick_R"]}
+    reward_idx = {"Reward_L": lr_result["Reward_L"], "Reward_R": lr_result["Reward_R"]}
+    tone_idx = {"Tone_L": lr_result["Tone_L"], "Tone_R": lr_result["Tone_R"]}
+
+    # ---- Step 4: Running bouts ----
+    running = find_running_bouts(treadmill_smoothed, Fs, params["find_running_bouts"])
+    run_out: dict[str, Any] = {"running_bouts": running}
+    run_out.update(params["find_running_bouts"])
+    _save_npz_with_side_convention(
+        output_paths["running_bouts"], run_out, ws_match, has_side_keys=False,
+    )
+
+    # ---- Step 5: Grooming bouts ----
+    grooming = find_grooming_bouts(lick_idx, n_samples, Fs, params["find_grooming_bouts"])
+    groom_out: dict[str, Any] = {"lick_bool_bad": grooming}
+    groom_out.update(params["find_grooming_bouts"])
+    _save_npz_with_side_convention(
+        output_paths["grooming_bouts"], groom_out, ws_match, has_side_keys=False,
+    )
+
+    # ---- Step 6: Quiet bouts ----
+    quiet = find_quiet_bouts(
+        treadmill_smoothed, grooming, lick_idx, reward_idx, n_samples, Fs,
+        params["find_quiet_bouts"],
+    )
+    quiet_out: dict[str, Any] = {"quiet_bool": quiet}
+    quiet_out.update(params["find_quiet_bouts"])
+    _save_npz_with_side_convention(
+        output_paths["quiet_bouts"], quiet_out, ws_match, has_side_keys=False,
+    )
+
+    # ---- Step 7: Peri-reward periods (consolidated + per-side + per-tone) ----
+    peri_reward = find_peri_reward_periods(
+        reward_idx, n_samples, Fs, params["find_peri_reward_periods"],
+    )
+    peri_sided = find_peri_reward_and_tone_periods(
+        reward_idx, tone_idx, n_samples, Fs,
+        params["find_peri_reward_and_tone_periods"],
+    )
+    peri_out: dict[str, Any] = {"peri_reward_bool": peri_reward}
+    peri_out.update(peri_sided)  # peri_reward_L/R, peri_tone_L/R
+    peri_out.update(params["find_peri_reward_periods"])
+    # peri_reward_L/R + peri_tone_L/R keys translated at emit.
+    _save_npz_with_side_convention(
+        output_paths["peri_reward_periods"], peri_out, ws_match, has_side_keys=True,
+    )
+
+
 def process_session(
     manifest: SessionManifest,
     resolver: PathResolver,
@@ -264,8 +451,24 @@ def process_session(
     NotImplementedError
         If this session has a ``merges`` entry in session_overrides.yaml.
     FileNotFoundError
-        If ``manifest.wavesurfer_file`` is None (wavesurfer data not
-        located when the manifest was built).
+        If ``manifest.wavesurfer_file`` is None for a single-half
+        session (wavesurfer data not located when the manifest was
+        built), or if any per-half ``halves[i].wavesurfer_file`` is
+        None for a multi-half session.
+
+    Notes
+    -----
+    For multi-half sessions (``manifest.halves is not None``), each
+    half is processed independently end-to-end via
+    :func:`_run_phase2_pipeline` and per-half outputs land in the
+    per-(animal, date) subdir
+    (``{output_root}/{output_type}/{ANIMAL}/{date_str}{halves_concat_label}/{date_str}{half_id}.npz``).
+    The returned dict has ``7 * n_halves`` entries keyed
+    ``f"{output_type}__{half_id}"`` for multi-half vs the standard 7
+    entries keyed ``output_type`` for single-half. The merged
+    parent-level NPZs are written by Task 4's
+    ``merge_licks_and_rewards()`` and analogous merge functions —
+    this function only emits the per-half artefacts.
     """
     animal = manifest.animal
     date = manifest.date
@@ -279,18 +482,32 @@ def process_session(
     if overrides_config is None:
         overrides_config = load_session_overrides()
 
-    # Check for merge requirement (deferred — raises if present)
+    # Check for merge requirement (deferred — raises if present). Phase
+    # 7-pre-multi-half retired the PS48 20250314 placeholder by moving
+    # it into multi_half_sessions:; this check now only fires for
+    # genuinely-deferred merges that aren't multi-half.
     check_merge_required(animal, date_str, overrides_config)
 
     # Merge per-session overrides on top of defaults
     params = get_session_params(defaults, animal, date_str, overrides_config)
 
-    # Build output paths
+    # Multi-half branch: per-half loop with per-half output paths.
+    if manifest.halves is not None:
+        return _process_session_multi_half(
+            manifest=manifest,
+            output_root=output_root,
+            params=params,
+            processing_log=processing_log,
+            overwrite=overwrite,
+            animal=animal,
+            date=date,
+            date_str=date_str,
+        )
+
+    # Single-half branch (existing behavior unchanged).
     paths = {t: _output_path(output_root, t, animal, date_str) for t in OUTPUT_TYPES}
 
-    # Check overwrite
     if not _check_overwrite(paths, overwrite, processing_log):
-        # Still write params.json even when skipping, for audit trail
         _save_session_params(
             output_root, animal, date, date_str, params, processing_log, skipped=True
         )
@@ -299,7 +516,6 @@ def process_session(
 
     logger.info("Processing %s/%s ...", animal, date_str)
 
-    # ---- Step 1: Load wavesurfer signals ----
     ws_file = manifest.wavesurfer_file
     if ws_file is None:
         raise FileNotFoundError(
@@ -307,118 +523,111 @@ def process_session(
             f"build_manifest() did not locate a wavesurfer .h5 — is the "
             f"wavesurfer_raw mount available?"
         )
-    signals = load_wavesurfer_signals(ws_file)
-    Fs = float(signals["sample_rate_input"])
 
     # Rig-orientation flag — mirrored downstream to every emitted NPZ so
     # consumers can interpret L/R labels unambiguously.
     ws_match = manifest.wavesurfer_sides_match_mouse_sides
 
-    # Save wavesurfer_signals_processed — raw channel names include
-    # Lick_L/Lick_R etc., translated here to mouse frame at emit.
-    _save_npz_with_side_convention(
-        paths["wavesurfer_signals_processed"], signals, ws_match,
-        has_side_keys=True,
-    )
+    _run_phase2_pipeline(ws_file, params, ws_match, paths)
 
-    # ---- Step 2: Calibrate and smooth treadmill ----
-    tm_params = params["process_treadmill_signal"]
-    # Resolve offset (session override already merged into tm_params)
-    offset_used = float(tm_params["offset_in_volts"])
-
-    calibrated = calibrate_treadmill(
-        signals["Treadmill"],
-        offset_in_volts=offset_used,
-        voltSec_per_rot=float(tm_params["voltSec_per_rot"]),
-        mm_per_rot=float(tm_params["mm_per_rot"]),
-    )
-
-    sigma_sec = tm_params.get("smoothing_sigma")
-    if sigma_sec is not None:
-        treadmill_smoothed = smooth_treadmill(calibrated, Fs, float(sigma_sec))
-    else:
-        treadmill_smoothed = calibrated
-
-    tm_out = {
-        "Treadmill_smoothed": treadmill_smoothed,
-        "Fs": Fs,
-    }
-    tm_out.update(tm_params)
-    # No L/R content, but stamped for consistency so downstream readers
-    # can assert the convention-metadata contract on every NPZ.
-    _save_npz_with_side_convention(
-        paths["treadmill_signals_preprocessed"], tm_out, ws_match,
-        has_side_keys=False,
-    )
-
-    # ---- Step 3: Lick and reward detection ----
-    # Internal lick_idx / reward_idx / tone_idx dicts stay in the
-    # wavesurfer frame so Phase 4/5/6 downstream logic is arithmetically
-    # unchanged. Translation to mouse frame happens only at the NPZ emit
-    # line below.
-    lr_result = find_licks_and_rewards(signals, params["find_licks_and_rewards"])
-    n_samples = int(lr_result["n_samples"])
-
-    lr_out = copy.deepcopy(lr_result)
-    _save_npz_with_side_convention(
-        paths["licks_and_rewards"], lr_out, ws_match,
-        has_side_keys=True, allow_pickle=True,
-    )
-
-    lick_idx = {"Lick_L": lr_result["Lick_L"], "Lick_R": lr_result["Lick_R"]}
-    reward_idx = {"Reward_L": lr_result["Reward_L"], "Reward_R": lr_result["Reward_R"]}
-    tone_idx = {"Tone_L": lr_result["Tone_L"], "Tone_R": lr_result["Tone_R"]}
-
-    # ---- Step 4: Running bouts ----
-    running = find_running_bouts(treadmill_smoothed, Fs, params["find_running_bouts"])
-    run_out: dict[str, Any] = {"running_bouts": running}
-    run_out.update(params["find_running_bouts"])
-    _save_npz_with_side_convention(
-        paths["running_bouts"], run_out, ws_match, has_side_keys=False,
-    )
-
-    # ---- Step 5: Grooming bouts ----
-    grooming = find_grooming_bouts(lick_idx, n_samples, Fs, params["find_grooming_bouts"])
-    groom_out: dict[str, Any] = {"lick_bool_bad": grooming}
-    groom_out.update(params["find_grooming_bouts"])
-    _save_npz_with_side_convention(
-        paths["grooming_bouts"], groom_out, ws_match, has_side_keys=False,
-    )
-
-    # ---- Step 6: Quiet bouts ----
-    quiet = find_quiet_bouts(
-        treadmill_smoothed, grooming, lick_idx, reward_idx, n_samples, Fs,
-        params["find_quiet_bouts"],
-    )
-    quiet_out: dict[str, Any] = {"quiet_bool": quiet}
-    quiet_out.update(params["find_quiet_bouts"])
-    _save_npz_with_side_convention(
-        paths["quiet_bouts"], quiet_out, ws_match, has_side_keys=False,
-    )
-
-    # ---- Step 7: Peri-reward periods (consolidated + per-side + per-tone) ----
-    peri_reward = find_peri_reward_periods(
-        reward_idx, n_samples, Fs, params["find_peri_reward_periods"],
-    )
-    peri_sided = find_peri_reward_and_tone_periods(
-        reward_idx, tone_idx, n_samples, Fs,
-        params["find_peri_reward_and_tone_periods"],
-    )
-    peri_out: dict[str, Any] = {"peri_reward_bool": peri_reward}
-    peri_out.update(peri_sided)  # peri_reward_L/R, peri_tone_L/R
-    peri_out.update(params["find_peri_reward_periods"])
-    # peri_reward_L/R + peri_tone_L/R keys translated at emit.
-    _save_npz_with_side_convention(
-        paths["peri_reward_periods"], peri_out, ws_match, has_side_keys=True,
-    )
-
-    # ---- Save per-session params.json ----
     _save_session_params(
         output_root, animal, date, date_str, params, processing_log, skipped=False
     )
 
     logger.info("Session %s/%s complete. Outputs: %s", animal, date_str, output_root)
     return paths
+
+
+def _process_session_multi_half(
+    *,
+    manifest: SessionManifest,
+    output_root: Path,
+    params: dict[str, Any],
+    processing_log: list[dict],
+    overwrite: Literal["skip", "prompt", "force"],
+    animal: str,
+    date: datetime.date,
+    date_str: str,
+) -> dict[str, Path]:
+    """Per-half Phase 2 loop for multi-half sessions.
+
+    Called by :func:`process_session` when ``manifest.halves is not None``.
+    Each half is processed independently end-to-end via
+    :func:`_run_phase2_pipeline` using its own wavesurfer .h5 file. Per-half
+    NPZs land in the per-(animal, date) subdir per the locked Decision 3
+    layout (see :func:`_per_half_output_path`).
+
+    The function does NOT merge the per-half outputs into the
+    parent-level NPZ — that's Task 4's
+    :func:`stroke_orofacial.spout_behavior.multi_half_merge.merge_licks_and_rewards`
+    (and its sibling per-output-type functions). This function emits
+    per-half artefacts only; the merge is wired in a follow-up task.
+
+    Returns
+    -------
+    dict[str, Path]
+        Mapping of ``f"{output_type}__{half_id}"`` → emitted Path. The
+        flat-keyed shape preserves dict-shape compatibility with the
+        single-half return path while letting tests inspect per-half
+        outputs by composite key.
+    """
+    halves = manifest.halves
+    assert halves is not None  # caller checked
+
+    label = _halves_concat_label([h.id for h in halves])
+
+    # Build per-half output paths for ALL 7 output types × N halves.
+    per_half_paths: dict[str, Path] = {}
+    for h in halves:
+        for output_type in OUTPUT_TYPES:
+            key = f"{output_type}__{h.id}"
+            per_half_paths[key] = _per_half_output_path(
+                output_root, output_type, animal, date_str, label, h.id,
+            )
+
+    # Single overwrite gate across all per-half paths. _check_overwrite
+    # accepts a flat dict and inspects per-key existence.
+    if not _check_overwrite(per_half_paths, overwrite, processing_log):
+        _save_session_params(
+            output_root, animal, date, date_str, params, processing_log, skipped=True
+        )
+        logger.info(
+            "Session %s/%s skipped (all per-half outputs exist; halves=%s).",
+            animal, date_str, [h.id for h in halves],
+        )
+        return {}
+
+    logger.info(
+        "Processing %s/%s multi-half (halves=%s) ...",
+        animal, date_str, [h.id for h in halves],
+    )
+
+    ws_match = manifest.wavesurfer_sides_match_mouse_sides
+
+    # Per-half pipeline — each half is independent.
+    for h in halves:
+        if h.wavesurfer_file is None:
+            raise FileNotFoundError(
+                f"halves[{h.id}].wavesurfer_file is None for {animal}/{date_str}. "
+                f"build_manifest() did not locate a wavesurfer .h5 in "
+                f"{{ws_root}}/{h.ws_subdir}/{animal}/ — is the per-half WS "
+                f"subdir present and the wavesurfer_raw mount available?"
+            )
+        per_half_output_paths = {
+            ot: per_half_paths[f"{ot}__{h.id}"] for ot in OUTPUT_TYPES
+        }
+        logger.info("  Half %s: ws=%s", h.id, h.wavesurfer_file)
+        _run_phase2_pipeline(h.wavesurfer_file, params, ws_match, per_half_output_paths)
+
+    _save_session_params(
+        output_root, animal, date, date_str, params, processing_log, skipped=False
+    )
+
+    logger.info(
+        "Session %s/%s multi-half complete. Per-half outputs: %s/<output_type>/%s/%s%s/",
+        animal, date_str, output_root, animal, date_str, label,
+    )
+    return per_half_paths
 
 
 def process_session_by_animal_date(

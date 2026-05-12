@@ -1,6 +1,54 @@
 # Cowork Session State
 
-**Latest local refresh:** 2026-05-04 — Phase 7a.4-cross-session-angle
+**Latest local refresh:** 2026-05-12 — **Phase 7-pre-multi-half
+CLOSED** on `phase/7-pre-multi-half`. PR #99 merged <FILL after merge>
+as merge-commit `<FILL>`, tagged `v7-pre-multi-half`. Architecture X (three coordinated merge functions
+for licks NPZ / alignment template / centered DLC parquet — faithful
+ports of canonical tongue notebook cells 13/16/17) + three-layer
+write-guard system (paths.py resolver split + `_writeguard` module +
+pytest autouse fixture) + Pattern A scoping (PS48 20250314 only;
+Pattern B closer-spout sessions deferred to a future
+Phase 7-pre-secondary-spout per four locked compatibility commitments).
+Task 9 live parity gate cleared **all 3 layers PASS** on 2026-05-12
+(Layer 1 structural + offset-correctness with side-aware count parity
+via `lr_convention.to_mouse_frame`; Layer 2 atol=1e-12 sig_* +
+numeric provenance + path-string INFO; Layer 3 atol=1e-12 byte-equal
+across 44M cell comparisons + merged row count 1,148,512). Task 5R
+restore PASS (3 alignment templates regenerated within ±0.005% of
+pre-incident sizes). Test suite 1024 passed / 38 skipped (+156 from
+7a.4-cross-session-angle baseline). Three working-draft DECISIONS
+entries consolidated into one phase-close record (2026-05-12 entry,
+inline supersession notes on 2026-04-21 + two 2026-05-09 drafts).
+licks_and_rewards merge schema-divergence locked: ws_sample mode
+applies semantically correct offset = `n_samples_A` to half-B
+(corrects legacy emergent concat-without-offset side-effect), carries
+Tone_* forward, drops misnomer `merged_n_cam_*`, validates +
+carries side-convention stamps. Production wiring of
+`merge_licks_and_rewards` into `process_session_multi_half` deferred
+as a small post-merge follow-up. See "Recent session log — 2026-05-12"
+below.
+
+---
+
+**Earlier refresh — 2026-05-09** — Phase 7-pre-multi-half (PS48
+2025-03-14 multi-half acquisition port) **in flight on
+`phase/7-pre-multi-half`**. Tasks 1-6 structural done; Task 5R
+3-layer write-guard system landed (commits 701540f / 9ef7997 /
+2256eea / b213866 / e11e349) after a 2026-05-05 alignment-template
+overwrite incident on MICROSCOPE; cam2-scoped restore via
+`scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py`
+(commits de671ed + 820f3b6) verdict **PASS** with all 3 corrupted
+files regenerated within ±0.005% of pre-incident sizes. Task 5R steps
+8-9 in flight at CC; Task 5 proper unblocked once those close.
+Architectural takeaway: the resolver split deletes the
+writable-legacy-path API endpoint, so the original incident's failure
+mode is structurally impossible to repeat. Three findings carried
+forward (bnpm dep / CSV-video 1s timestamp skew / orphan cam{1,3,4}
+parent-level halves). Now superseded by the 2026-05-12 close above.
+
+---
+
+**Earlier refresh — 2026-05-04** — Phase 7a.4-cross-session-angle
 MERGED, closing the 7a.4 trio. Three phases shipped on 2026-05-03 +
 2026-05-04: orientation-fix → paths-cleanup → cross-session-angle.
 
@@ -393,16 +441,144 @@ merged 2026-05-03 as PR #91 merge-commit `bb4b505`, tagged
 kickoff V3 retrospective rewrite (~1,794-line historical-narrative
 pass).
 
-**In flight:**
+**In flight:** *None.* Phase 7-pre-multi-half closed 2026-05-12 as PR
+#<FILL>, tagged `v7-pre-multi-half`. `main` at merge-commit `<FILL>`.
+No active feature branch. Next-phase candidate pick pending Priya
+from the list below (top picks: Phase 7-pre-secondary-spout closer-
+spout 2nd acquisition handling for 19 PS51/PS54/PS55 sessions per
+the four locked compatibility commitments; Phase 7a.7 DLC heatmaps;
+Phase 8a.10 spout behavior visual gate). One small post-merge follow-
+up queued: production wiring of `merge_licks_and_rewards` into
+`process_session_multi_half` (deferred from Task 4 per commit
+message; trivial scope, fresh branch).
 
-*(None on `main`. Phase 7a.6 closed 2026-05-03 with bit-stability
-across all 8 C7.x commits + visual gate PASS verdict from Priya
-(2026-05-02 / 2026-05-03) + notebooks 13 + 14 populated end-to-end.
-The 7a.x DLC kinematics consolidation arc is now fully closed for the
-audited phases: 7a.0/7a.1/7a.2/7a.3/7a.3-jaw/7a.4/7a.5-mismatch/7a.6,
-all merged with their tags + DECISIONS entries. Next-phase pick is
-Priya's
-call from the candidates list below.)*
+**Recent session log — 2026-05-12 (Phase 7-pre-multi-half closed;
+Architecture X + 3-layer write-guard + Pattern A/B compat +
+schema divergence + side-aware parity; Task 9 all-3-layers PASS):**
+
+PR #99 merged <FILL after merge> as merge-commit `<FILL>`, tagged
+`v7-pre-multi-half`. Net-new module
+`src/stroke_orofacial/spout_behavior/multi_half_merge.py` (~880L)
+with the three Architecture X merge functions (`merge_licks_and_rewards`,
+`merge_alignment_templates`, `merge_centered_parquet`) as faithful
+ports of canonical tongue notebook cells 13/16/17 — N-half-
+generalized from legacy's 2-half A/B framing. Per-half processing
+through Phases 2/3/4 (`SessionManifest.halves: list[HalfSpec] | None`
++ `MultiHalfNotDeclaredError` defensive check) + post-process merge
+at the three coordinated artifact layers. Pattern A only — PS48
+20250314 the sole session in scope; Pattern B closer-spout 2nd
+acquisitions (19 PS51/PS54/PS55 sessions) deferred to a future
+Phase 7-pre-secondary-spout per four locked architectural
+compatibility commitments (multi_half_sessions: merge-intent only;
+session-id schema allows letter suffixes; defensive check needs
+Pattern-B branch when DLC runs on b halves; Phase 2/3/4 manifest-
+opaque output separation).
+
+**Three-layer write-guard system** shipped after a 2026-05-05
+alignment-template overwrite incident on MICROSCOPE (three legacy
+templates overwritten with synthetic toy data during a Task 5 test
+run — root cause: `PathResolver(output_root=tmp_path)` only
+redirected `pipeline_outputs(...)`, NOT `alignment_template()` which
+routed through live `microscope_server`). Layer 1 — `paths.py`
+resolver split (`_legacy_read` read-only + `_new` writable through
+`pipeline_outputs`); the writable-legacy-path API endpoint is
+**deleted entirely**, original failure mode structurally impossible
+to repeat. Layer 2 — `src/stroke_orofacial/_writeguard.py`
+runtime guard (`assert_safe_write_path` raises `WriteGuardError`
+on writes to deny-listed legacy roots). Layer 3 — `tests/conftest.py`
+autouse fixture monkey-patches `np.savez`, `np.savez_compressed`,
+`pd.DataFrame.to_parquet`, `Path.write_text/write_bytes/replace`.
+36 writeguard tests + 13 conftest sentinel tests pin the system.
+
+**Task 5R restore** via `scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py`
+(cam2-scoped Option B CLI; documented exception to the writeguard
+system) regenerated the three corrupted files within ±0.005% of
+pre-incident sizes (Tier A relaxed from strict equality to ±0.1%
+PASS to accommodate documented scipy 1.15.1 → 1.17.1 drift per
+Phase 7a.0 baseline-seed-probe prediction). Tier B (structural REQ_KEYS
++ length sums + Fs cross-half match) + Tier C (diff shape: exactly
+3 modified; cam{1,3,4} unchanged) both PASS. Restore audit trail at
+`docs/phase-7-pre/restore_PS48_20250314_pre_run_inventory.csv`.
+
+**licks_and_rewards NPZ schema divergence** surfaced 2026-05-09 by
+the Step 5 live parity gate Layer 1 RuntimeError (`_infer_n_cam`
+returned None on the new Phase 2 NPZ — none of cell-17's Tier 1/2
+keys present; Tier 3 fallback catches half-A's `Lick_L=1136` but
+fails on half-B `Lick_R=902 < 1000`). Decision (4-pronged):
+(1) parameterize `merge_licks_and_rewards` with
+`index_space: Literal["cam_frame", "ws_sample"]` — cam_frame default
+preserves legacy semantics for back-compat (existing 11 unit tests
++ 2 integration tests untouched); (2) ws_sample-mode applies offset
+= `n_samples_A` to half-B (corrects legacy emergent concat-without-
+offset side-effect — `_looks_like_frame_indices` returned False on
+WS-sample arrays because max ~2.2M >> n_cam_hint+5=1141, fell
+through to events-concat with NO offset); (3) modernize provenance
+schema (drop misnomer `merged_n_cam_*`, never-applied
+`cam_frame_offset_for_B`, vestigial `allow_pickle`; add
+`merged_n_samples_A/B`, `ws_sample_offset_for_B`); (4) carry
+`Tone_*` forward + validate + carry side-convention stamps. Helper
+renames: `_infer_n_cam` → `_infer_n_count` (adds `fallback_min_size`
+param), `_looks_like_frame_indices` → `_looks_like_index_array`.
++10 new tests in `TestLicksAndRewardsMergeWsSample` + 2 in
+`TestLicksAndRewardsMerge` (default index_space + invalid raises).
+
+**Task 9 parity verdict (live run 2026-05-12).** All 3 layers PASS,
+exit code 0. Layer 1 (licks NPZ): structural + offset-correctness
+with side-aware count parity via `lr_convention.to_mouse_frame`
+(reads `wavesurfer_sides_match_mouse_sides` stamp; PS48=False so
+translates new.L↔legacy.R, new.R↔legacy.L); 3 INFO lines
+(convention decision + 2 path-string divergences). Layer 2
+(alignment template): `atol=1e-12` on all 4 sig_* arrays + numeric
+provenance exact; 2 INFO path lines. Layer 3 (centered parquets):
+`atol=1e-12` byte-equal across 39 cols × 1,148,512 rows × 2 halves
+(~44M cell comparisons); merged row count consistent. Verdict log
+at `.scratch_phase_7_pre/parity_run_20260512T093103.log`.
+
+**Path-string provenance = INFO not FAIL** at Layers 1 and 2 (the
+Task-5R resolver split makes `merged_from_*` paths legitimately
+differ from legacy `O2_analysis/` paths by design; numeric
+provenance keys like `ws_offset_samples`, `cam_offset_frames`,
+`merged_n_samples_A/B` still exact-match because merge math
+unchanged).
+
+**Three working-draft DECISIONS entries consolidated** into the new
+2026-05-12 phase-close record with inline supersession notes:
+2026-04-21 PS48 multi-session handling (aspirational load-boundary
+merge — Architecture X shipped post-process merge instead);
+2026-05-09 schema-divergence (consolidated into Decision 6);
+2026-05-09 Task 5R (consolidated into Decision 3 + Restore outcome).
+DECISIONS 2026-05-12 entry structure: 7 decision sections
+(Architecture X / registry shape / 3-layer guards / Pattern A vs B
+/ four compat commitments / schema divergence / side-aware parity)
++ restore outcome + Task 9 verdict + findings carried forward
+(bnpm dep / CSV-video 1s skew / orphan cam{1,3,4} / future Pattern
+B phase) + process lessons (`output_root` semantics; real-pipeline
+fixtures forward rule; SMB stale-cache; pre-push hook) +
+enforced-at list (source / config / tests / scripts / docs).
+
+**Forward-pointers queued.** (1) Production wiring of
+`merge_licks_and_rewards` into `process_session_multi_half` — small
+follow-up, deferred from Task 4 per its commit message; trivial
+scope on a fresh branch. (2) **Phase 7-pre-secondary-spout** —
+Pattern B closer-spout 2nd acquisition handling for the 19
+PS51/PS54/PS55 sessions; honors the four compatibility commitments
+(Decision 5 of the DECISIONS phase-close entry); scope estimate
+~mid-size comparable to this phase. (3) `bnpm` dep rationalization
+(restore script needs it in active env). (4) Orphan cam{1,3,4}
+parent-level halves housekeeping (cam2 canonical; future cohort
+decision).
+
+**Test state at close.** 1024 passed / 38 skipped on the
+`phase/7-pre-multi-half` branch (+156 from the 868/38 baseline at
+7a.4-cross-session-angle close). Pre-push hook (`/.githooks/pre-push`,
+commit `27004bb`) gates `phase/*` and `main` pushes on
+`import stroke_orofacial` + `pytest --collect-only -q` smokes.
+
+_(2026-05-09 mid-phase narrative — Task 5R working draft + five
+findings including the licks NPZ schema divergence — removed in the
+2026-05-12 phase-close refresh. Durable record lives in DECISIONS
+2026-05-12 + MIGRATION_LOG Phase 7-pre-multi-half + this Recent
+session log entry.)_
 
 **Deferred / carry-forward housekeeping:** Remaining safe parallel docket:
 Phase 5.5 polish docs, cohort-wide Phase 5 rerun planning, Phase 6
@@ -415,18 +591,20 @@ handling (only if explicitly coordinated with Phase 7 I/O work).
 - Windows pytest (last full-suite measurement in the 8a.7.5 session): 361 pass / 28 skip / 0 fail. Phase 8a.7.5 merge added +20 criteria tests + 6 writer-schema tests. Not yet re-measured post-merge or post-clamp-fix; worth a non-blocking re-run at quiet moment to confirm the clamp-fix PR didn't introduce Windows-specific drift (not expected — the fix is pure numpy arithmetic).
 - Pre-existing ruff warnings: 8 unused-import errors carried forward from before 8a (noted in prior Claude Code session summaries). Backlog item; not blocking.
 
-**Next-phase candidates** (in rough priority order, post-2026-05-02 7a.6 merge):
+**Next-phase candidates** (in rough priority order, post-2026-05-12 7-pre-multi-half merge):
 
-1. **Phase 7a.7 — DLC heatmaps visual gate (3 INDEPENDENT legacy sources).** Per Priya 2026-04-30 the kinematic vs heatmap split is parallel-workflow, not supersession. Sources: `20260111_DLC_analysis_build-parquet_tongue.ipynb` (tongue heatmaps + may build upstream parquet); `20251117_DLC_analysis_jaw.ipynb` (jaw heatmaps); `20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb` (cross-bodypart pixelbin heatmaps; stats sub-cells deferred to Phase 9). Each notebook is its own production source. Audit-first kickoff pattern (mirrors 7a.3-jaw / 7a.5-mismatch / 7a.6).
-2. **Phase 7a.4-orientation-fix — flip tongue angle + phase XY plot L/R orientation (small follow-up; surfaced 2026-05-02).** `tongue_visual.py` (7a.4) renders both tongue ANGLE XY plots and tongue PHASE XY plots with L trials on figure LEFT, R trials on figure RIGHT. Priya wants both flipped to L trials on figure RIGHT, R trials on figure LEFT — cam-view convention (mouse left = right side of camera image because camera mirror-images the mouse). Same convention applied to 7a.6's mean XY overlays in C7.2. Small targeted patch to `tongue_visual.py` only — flip subplot indexing + swap subplot titles + verify any per-side colorbar/legend labels stay paired correctly. Don't touch numerical outputs. Single-commit phase, ~1-2 commits including DECISIONS + MIGRATION_LOG. Could parallelize with 7a.7 since they touch different files. Confirmed scope per Priya 2026-05-02 (covers both angle and phase families). Task #41 in conversation task list.
-3. **Phase 7a.8 — new reward-aligned DLC heatmaps visual QC.** Builds on 7a.7's heatmap-rendering machinery. No legacy comparison (these are new outputs). Render heatmaps from consolidated reward-aligned NPZs (Phase 6.8a cohort emit, 13,821 NPZs); generate examples for diverse sessions; iterate plot parameters with Priya's eyeball verdict. Acceptance: publication-grade rendering verdict.
-4. **Phase 8a.10 — spout behavior visual gate.** Single source: `\\research...\Github\facerhythm_stroke_biomarker_exp_Priya\analysis\behavior_report\batch_process_behavior_report_20260116PS.ipynb`. Output dir for legacy comparison: `basic_behavior_analysis3`. Renders comparison grids for spout endpoints (8a.7) + criteria visualizations (8a.7.5) + recovery trajectories (8a.8). Independent of 7a.x; could run in parallel.
-5. **Phase 7a.x-jaw-pertrial-greenfield** (forward-pointer from 7a.3-jaw + 7a.5-mismatch's side-finding). The mismatch port surfaced inline jaw per-trial logic that became `jaw_pertrial.py` (8 scalars). If experimental intent is "richer jaw per-trial features beyond what mismatch needs," that's a green-field design phase (scientific design + detector tuning + synthetic-only validation).
-6. **Phase 7a.x — whisker / face-velocity / PSD branches** of strategy §7. Per-bodypart interpolation + per-trial features. Each branch its own phase. Cell 43 PSD (deferred from 7a.3-jaw + 7a.6) lands here OR as a small standalone PSD follow-up combining tongue 60-86 + jaw 43 + face-velocity sources.
-7. **Phase 9 stats forward-pointer**: stats plots in `20251202_..._stats_pixelbin.ipynb` deferred to Phase 9 statistics work per Priya 2026-04-30. Same notebook also contains heatmaps (covered by 7a.7); Phase 9 work likely overlaps.
-8. **#16 — Phase 5.5 polish** (SSH helper, recovery docs, ControlMaster, auto-rename, unified SVG save, DTW per-edge-shift QC plot). **Ungated** — does not require MICROSCOPE.
-9. **PS48 2025-03-14 multi-half acquisition port** (task #18-adjacent). Ungated except for code-write effort.
-10. **Cohort-wide 7a.2/7a.3 upstream re-emit** (deferred from 7a.4 + 7a.5 day-binned + mismatch acceptance paths) — needed for publication-grade cohort parity vs legacy CSVs. Could be its own mini-phase if/when downstream demands.
+0. **Production wiring of `merge_licks_and_rewards` into `process_session_multi_half`** (post-merge follow-up from Phase 7-pre-multi-half, deferred from Task 4 per its commit message). Trivial scope on a fresh branch — wire the multi-half licks merge into the production code path that runs after per-half emit. Currently the Task 9 parity harness invokes `merge_licks_and_rewards` directly; this follow-up moves it into `process_session_multi_half`. Probably first to land post-7-pre-multi-half.
+1. **Phase 7-pre-secondary-spout (Pattern B closer-spout 2nd acquisitions for 19 PS51/PS54/PS55 sessions).** Surfaced 2026-05-09 during the Phase 7-pre-multi-half cohort scan as a deliberate experimental manipulation (NOT exploratory): each Pattern B session has a bare-`{DATE}` half (standard spout distance) + a `{DATE}b` half (closer spouts). Currently the b half is silently discarded — Pattern B sessions flow through the existing single-half discovery path and lose the closer-spout data. Future phase ships a `secondary_spout_sessions:` registry (compare-intent, separate from `multi_half_sessions:` merge-intent) that treats `{DATE}b` as its own logical session via the four locked compatibility commitments (session-id letter suffixes, defensive-check Pattern-B branch, Phase 2/3/4 manifest-opaque output separation, no `multi_half_sessions:` repurpose). Scope estimate ~mid-size comparable to Phase 7-pre-multi-half. Spout-behavior compare-trace lands immediately; DLC bare-vs-b waits for DLC inference to run on b halves. See DECISIONS 2026-05-12 Decision 5 + kickoff Forward-pointers section "Pattern B" for full spec.
+2. **Phase 7a.7 — DLC heatmaps visual gate (3 INDEPENDENT legacy sources).** Per Priya 2026-04-30 the kinematic vs heatmap split is parallel-workflow, not supersession. Sources: `20260111_DLC_analysis_build-parquet_tongue.ipynb` (tongue heatmaps + may build upstream parquet); `20251117_DLC_analysis_jaw.ipynb` (jaw heatmaps); `20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb` (cross-bodypart pixelbin heatmaps; stats sub-cells deferred to Phase 9). Each notebook is its own production source. Audit-first kickoff pattern (mirrors 7a.3-jaw / 7a.5-mismatch / 7a.6).
+3. **Phase 7a.4-orientation-fix — flip tongue angle + phase XY plot L/R orientation (small follow-up; surfaced 2026-05-02).** `tongue_visual.py` (7a.4) renders both tongue ANGLE XY plots and tongue PHASE XY plots with L trials on figure LEFT, R trials on figure RIGHT. Priya wants both flipped to L trials on figure RIGHT, R trials on figure LEFT — cam-view convention (mouse left = right side of camera image because camera mirror-images the mouse). Same convention applied to 7a.6's mean XY overlays in C7.2. Small targeted patch to `tongue_visual.py` only — flip subplot indexing + swap subplot titles + verify any per-side colorbar/legend labels stay paired correctly. Don't touch numerical outputs. Single-commit phase, ~1-2 commits including DECISIONS + MIGRATION_LOG. Could parallelize with 7a.7 since they touch different files. Confirmed scope per Priya 2026-05-02 (covers both angle and phase families). Task #41 in conversation task list.
+4. **Phase 7a.8 — new reward-aligned DLC heatmaps visual QC.** Builds on 7a.7's heatmap-rendering machinery. No legacy comparison (these are new outputs). Render heatmaps from consolidated reward-aligned NPZs (Phase 6.8a cohort emit, 13,821 NPZs); generate examples for diverse sessions; iterate plot parameters with Priya's eyeball verdict. Acceptance: publication-grade rendering verdict.
+5. **Phase 8a.10 — spout behavior visual gate.** Single source: `\\research...\Github\facerhythm_stroke_biomarker_exp_Priya\analysis\behavior_report\batch_process_behavior_report_20260116PS.ipynb`. Output dir for legacy comparison: `basic_behavior_analysis3`. Renders comparison grids for spout endpoints (8a.7) + criteria visualizations (8a.7.5) + recovery trajectories (8a.8). Independent of 7a.x; could run in parallel.
+6. **Phase 7a.x-jaw-pertrial-greenfield** (forward-pointer from 7a.3-jaw + 7a.5-mismatch's side-finding). The mismatch port surfaced inline jaw per-trial logic that became `jaw_pertrial.py` (8 scalars). If experimental intent is "richer jaw per-trial features beyond what mismatch needs," that's a green-field design phase (scientific design + detector tuning + synthetic-only validation).
+7. **Phase 7a.x — whisker / face-velocity / PSD branches** of strategy §7. Per-bodypart interpolation + per-trial features. Each branch its own phase. Cell 43 PSD (deferred from 7a.3-jaw + 7a.6) lands here OR as a small standalone PSD follow-up combining tongue 60-86 + jaw 43 + face-velocity sources.
+8. **Phase 9 stats forward-pointer**: stats plots in `20251202_..._stats_pixelbin.ipynb` deferred to Phase 9 statistics work per Priya 2026-04-30. Same notebook also contains heatmaps (covered by 7a.7); Phase 9 work likely overlaps.
+9. **#16 — Phase 5.5 polish** (SSH helper, recovery docs, ControlMaster, auto-rename, unified SVG save, DTW per-edge-shift QC plot). **Ungated** — does not require MICROSCOPE.
+10. ~~**PS48 2025-03-14 multi-half acquisition port** (task #18-adjacent).~~ **CLOSED** 2026-05-12 as Phase 7-pre-multi-half, tagged `v7-pre-multi-half`. See "Recent session log — 2026-05-12" + DECISIONS 2026-05-12 + MIGRATION_LOG Phase 7-pre-multi-half.
+11. **Cohort-wide 7a.2/7a.3 upstream re-emit** (deferred from 7a.4 + 7a.5 day-binned + mismatch acceptance paths) — needed for publication-grade cohort parity vs legacy CSVs. Could be its own mini-phase if/when downstream demands.
 
 **Deferred follow-ups still pending (from earlier sessions):**
 
@@ -1733,14 +1911,109 @@ Whatever the server-side feature flag or staged-rollout gate was doing on 2026-0
 - **Windows env prefix.** On Priya's Windows box, `stroke_orofacial` is installed at `C:\Users\sabatini\.conda\envs\` (per-user, user-writable) rather than `C:\ProgramData\anaconda3\envs\` (machine-level, write-locked to non-admin shells). If a rebuild ever hits `EnvironmentNotWritableError` on ProgramData, use an admin-shell `conda env remove` to clear, then re-create from a non-admin shell so conda defaults to the per-user location.
 - **Stale admin-owned pytest tmpdirs on Windows.** `C:\Users\sabatini\AppData\Local\Temp\pytest-of-sabatini\` and `C:\Users\sabatini\GitHub\stroke_orofacial_pipeline\.pytest_cache\` can end up owned by an elevated account after a prior admin-shell pytest run and will produce `PermissionError: [WinError 5]` on setup from a non-elevated shell. Workaround: `pytest --basetemp=C:/Users/sabatini/pytest_tmp`. Proper fix: elevated PowerShell `Remove-Item -Recurse -Force` on both paths.
 - **Cowork's folder view can be stale.** If Priya pushes from Windows and doesn't pull on Mac, Cowork's read of the Mac's disk lags behind origin. Workaround: have Priya `git pull` on Mac before Cowork needs the fresh files, or have Cowork ask her to pull when it seems stale.
-- **Multi-half acquisition sessions require merging at load time.** At least one session (PS48 2025-03-14) was acquired in two halves within a single behavior day — two sets of Flea3 `.avi` videos + timestamp CSVs + two Wavesurfer `.h5` files, one set per acquisition half. Legacy DLC analysis code merges these into one logical session; the new consolidated pipeline does **not yet handle this case**. Must be implemented at the two load boundaries (wavesurfer I/O for Phase 2, DLC H5 + timestamp-CSV + parquet I/O for Phase 4+) before any output-writing run on PS48 20250314 or similar multi-half sessions can be trusted. See TaskList task #18 and DECISIONS 2026-04-21 entry. Until the fix lands, a Phase 2 / Phase 4+ run on PS48 2025-03-14 will silently use only one half of the data (whichever path the discovery layer happens to return first) — a silent-wrongness failure mode with no loud error.
+- **Multi-half acquisition sessions** (e.g. PS48 2025-03-14): two sets of Flea3 `.avi` videos + timestamp CSVs + two Wavesurfer `.h5` files, one set per acquisition half. Phase 7-pre-multi-half (in flight on `phase/7-pre-multi-half`, 2026-05-09) ports legacy merge logic via Architecture X — per-half processing through Phases 2/3/4 + post-process merge at three coordinated layers (`merge_licks_and_rewards`, `merge_alignment_templates`, `merge_centered_parquet`). Architecture X **supersedes** the aspirational 2026-04-21 DECISIONS entry (which proposed merge-at-load-time before the legacy code was visible). Opt-in via committed `multi_half_sessions:` registry in `configs/session_overrides.yaml`; `build_manifest()` raises `MultiHalfNotDeclaredError` on undeclared candidates. Until phase merges, undeclared multi-half sessions raise loud (no silent-half-discard mode anywhere). See `docs/prompts/phase-7-pre-multi-half-kickoff.md` for full spec.
+- **Source-data write guard system** (load-bearing post 2026-05-05 incident). 3-layer architecture in `phase/7-pre-multi-half`: Layer 1 (resolver split — write paths must use `_new` resolvers; legacy-write resolvers don't exist as API endpoints), Layer 2 (`src/stroke_orofacial/_writeguard.py::assert_safe_write_path` called from every writer in `src/`; deny list covers MICROSCOPE legacy + raw-data trees), Layer 3 (`tests/conftest.py` autouse session fixture extends readonly roots to all of MICROSCOPE during tests). **Adding a new writer in `src/`?** First line of the function body must call `assert_safe_write_path(path)`. **Adding a new resolver method?** If it returns a write target, name suffix `_new`; if read-only legacy, `_legacy_read`; plain names are read-with-fallback. Failure mode of the original incident (resolver routes through `microscope_server` not redirected by `output_root=`) is **architecturally impossible to repeat** because Layer 1 deletes the writable-legacy-path API endpoint entirely.
 - **`| tail -80` (or any pipeline-wrapped invocation) silently masks non-zero exit codes unless `set -o pipefail` is active.** In bash, a pipeline's exit code is the exit code of the *last* stage by default — and `tail`, `head`, `grep` with matches, `tee`, etc. almost always exit 0 — so piping a failing command through any of them turns the wrapper's overall exit code into a lie. This bit the 2026-04-21 Phase 6.8a cohort-emit task-runner wrapper: `python scripts/phase_6_8a_first_run_health_report.py --verbose 2>&1 | tail -80` surfaced as "task completed successfully" while conda's `execute(125)` rode the first stage to the floor. Fix: `set -euo pipefail` at the top of any wrapper script. The canonical committed wrapper lives at `scripts/task_runner_wrapper.sh` (v6.8a.3) — source it or copy its prologue into any Windows Task Scheduler / ad-hoc invocation. `PIPESTATUS[0]` is the alternative if `pipefail` is not available.
 - **Sandbox git ops can corrupt `.git/HEAD` on cross-OS-mounted repos.** Since the 2026-04-22 move to same-machine Windows Cowork + CC, Cowork's Linux sandbox mounts the Windows repo tree directly. Running *any* git operation that writes to `.git/` from inside the sandbox on that cross-OS mount is unsafe: a failed `git fetch --all --tags` on 2026-04-22 left `.git/HEAD` truncated (`ref: refs/heads/docs/v6.8a.3-migration-log-refresh` → `ref: refs/heads/docs/`) — subsequent `git branch --show-current` failed with `fatal: Failed to resolve HEAD as a valid ref`. The failure is plausible-enough (no credentials in sandbox → network error partway through) that it won't always be obvious the working tree is now broken. **Rule (hard): Cowork does NOT run `git fetch`, `git pull`, `git checkout <branch>`, `git merge`, `git rebase`, `git reset`, or `git gc` from the sandbox on the cross-OS-mounted repo.** Safe ops from sandbox: `git status`, `git log`, `git diff`, `git branch --show-current` (read-only), and `git add`/`git commit` *only if no authentication or index-rewrite is involved* (in practice this also belongs in the CC Windows terminal). All git state-changing work goes through CC's Windows terminal (GitHub Desktop credential store handles auth). Fix if HEAD is already corrupted: from CC's Windows terminal in the repo root, run `git symbolic-ref HEAD refs/heads/main` (or whatever branch you were on) — restores HEAD in one line, no data loss because only the ref pointer was truncated. See Two-tool workflow section for the full rule + rationale + what triggered the incident.
 - **`NotebookEdit` can re-serialize cells beyond the intended change (diff-size surprise, not a behavior issue).** When editing a cell whose `source` is stored as a JSON array of lines, `NotebookEdit` may rewrite the whole cell's `source` to a single JSON string, and may also normalize escaped unicode (`\u2014` → literal `—`) in *other* cells that get re-serialized as a side effect. Semantically identical JSON — pytest + integration verification confirmed no behavior change on the Phase 6.8a.3 edit — but the `git diff` of the notebook looks much larger than the logical edit. If you see an unexpectedly large notebook diff after a targeted edit, inspect a couple of the "extra" hunks: if they are line-array↔string reshapes or `\u####` → literal-char normalizations, they are cosmetic and safe. Don't try to revert them by hand; that fight isn't worth the time.
+- **Cowork sandbox bash sees a stale SMB-cached view of the workspace folder** (empirically observed 2026-05-09, documented after a multi-turn diagnostic chase). Cowork has TWO different filesystem views of the workspace tree: (a) the **Read / Write / Edit / Grep / Glob tools** go through Cowork's API directly to the Windows host (no cache layer; reflects current disk state); (b) the **`mcp__workspace__bash` tool** runs inside the Linux sandbox, which mounts the workspace via SMB with **read-side caching that does not auto-invalidate**. The two views can diverge for **multiple days** without either auto-syncing. Concrete failure mode observed: `src/stroke_orofacial/alignment/timebase.py` was healthy on the Windows disk (513 lines, SHA `d8de60bd...` matching HEAD, verified Windows-side via `Get-FileHash`); the same file via `mcp__workspace__bash` `cat` / `wc -l` / `sha256sum` consistently returned a 462-line broken snapshot from 3 days earlier. `sync`, `dd bs=1 count=0`, fresh `stat`, and re-reads via `cat` did not invalidate the cache. The Read tool returned the correct healthy 513-line content the entire time. **Rule for Cowork sessions: when verifying disk state, prefer Read / Grep / Glob over bash-based `cat` / `wc -l` / `sha256sum` / `find` / `ls`. For ground-truth git state, ask CC to run `git status` / `git diff` / `Get-FileHash` from the Windows terminal — Cowork-sandbox `git status` reads through the same stale SMB cache and is unreliable.** This generalizes the existing sandbox-git-boundary rule (which prohibits sandbox git WRITE ops) to also prohibit trusting sandbox bash READ observations of file content. CC's Windows terminal is authoritative for both git state and disk-content checks.
 
 ---
 
 ## Best warm-start prompt (paste into a new Cowork chat)
+
+End of 2026-05-12 session: **Phase 7-pre-multi-half closed** as PR
+#99, merge-commit `<FILL after merge>`, tagged `v7-pre-multi-half`. Architecture X for multi-half merge (three
+coordinated functions for licks NPZ / alignment template / centered
+DLC parquet — faithful ports of canonical tongue notebook cells
+13/16/17, N-half-generalized) shipped together with a three-layer
+write-guard system (`paths.py` resolver split + `_writeguard` module +
+pytest autouse fixture) after a 2026-05-05 alignment-template overwrite
+incident on MICROSCOPE was caught and recovered via a cam2-scoped
+restore (3 corrupted files regenerated within ±0.005% of pre-incident
+sizes). Pattern A only in scope (PS48 20250314); Pattern B closer-
+spout 2nd acquisitions (19 PS51/PS54/PS55 sessions) deferred to a
+future Phase 7-pre-secondary-spout per four locked architectural
+compatibility commitments (`multi_half_sessions:` merge-intent only,
+session-id schema allows letter suffixes, defensive check needs
+Pattern-B branch when DLC runs on b halves, Phase 2/3/4 manifest-
+opaque output separation). licks_and_rewards merge schema-divergence
+locked: new `index_space: Literal["cam_frame", "ws_sample"]` param;
+ws_sample mode applies semantically correct offset = `n_samples_A` to
+half-B (corrects legacy emergent concat-without-offset side-effect),
+carries Tone_* forward, drops misnomer `merged_n_cam_*`/never-applied
+`cam_frame_offset_for_B`/vestigial `allow_pickle`; validates + carries
+side-convention stamps; default cam_frame preserves back-compat.
+Layer 1 parity gate reframed structural + offset-correctness with
+side-aware count parity via `lr_convention.to_mouse_frame`. Task 9
+verdict: **all 3 layers PASS, exit 0** (Layer 1 structural; Layer 2
+atol=1e-12 + numeric provenance exact + path-string INFO; Layer 3
+atol=1e-12 byte-equal across 44M cell comparisons). Three working-
+draft DECISIONS entries consolidated into one 2026-05-12 phase-close
+record with inline supersession notes (2026-04-21 aspirational
+multi-session handling + two 2026-05-09 working drafts). Test suite
+1024 passed / 38 skipped (+156 from 7a.4-cross-session-angle baseline).
+`main` at merge-commit `<FILL>`; no active feature branch. One small
+post-merge follow-up queued: production wiring of
+`merge_licks_and_rewards` into `process_session_multi_half` (deferred
+from Task 4 per commit message; trivial scope on a fresh branch).
+**Next-phase candidates** (Priya's pick from queue):
+**Phase 7-pre-secondary-spout** (Pattern B closer-spout sessions per
+the four compat commitments; ~mid-size phase),
+**Phase 7a.7** (DLC heatmaps, 3 independent legacy sources,
+audit-first kickoff pattern),
+**Phase 8a.10** (spout behavior visual gate, independent — could
+parallelize with 7a.7),
+**Phase 7a.8** (new reward-aligned DLC heatmaps QC, builds on 7a.7
+machinery),
+**Phase 5.5 polish** (#16, ungated parallel),
+or production wiring of `merge_licks_and_rewards` as a tiny first
+post-merge commit. Verify
+`git tag --list | grep -E 'v7-pre-multi-half|v7a\.(4|5|6|4-orientation-fix|4-paths-cleanup|4-cross-session-angle)'`
+shows the local + origin tags.
+
+End of 2026-05-09 session: Phase 7-pre-multi-half (PS48 2025-03-14
+multi-half acquisition port) **in flight on `phase/7-pre-multi-half`,
+not yet merged**. Tasks 1-6 structural shape landed (manifest
+extension with `HalfSpec` + `halves` + `MultiHalfNotDeclaredError`;
+`spout_behavior/multi_half_merge.py` with the three coordinated
+merge functions; per-half loops in spout-behavior, alignment, DLC
+parquet builders). Task 5R (Recovery + 3-layer write guards) closed
+steps 1-7 across commits 701540f / 9ef7997 / 2256eea / b213866 /
+e11e349, after a 2026-05-05 alignment-template overwrite incident
+during Task 5 test-fixture run (3 legacy MICROSCOPE templates
+overwritten with synthetic toy data; root cause: `alignment_template()`
+resolver routed through live `microscope_server` not redirected by
+`PathResolver(output_root=)`). Cam2-scoped restore via
+`scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py`
+(commits de671ed + 820f3b6) ran 2026-05-09 with PASS verdict —
+all 3 corrupted files regenerated within ±0.005% of pre-incident
+sizes (43,873,994 / 68,512,651 / 69,808,659 bytes). Layered Tier
+A/B/C step-5 validation passed; empirical scipy/numpy version drift
+since 2026-01-11 matches Phase 7a.0 baseline-seed-probe prediction.
+Task 5R steps 8 (rewire `compute_and_merge_alignment_multi_half`
+through `_new` resolvers) and 9 (DECISIONS entry draft) in flight
+at CC. Task 5 proper (per-half Phase 3 alignment) unblocked once
+those close. Architecture X locked pre-kickoff supersedes the
+2026-04-21 DECISIONS entry; opt-in-via-YAML-only safety rule with
+three teeth (read-only scan script, `MultiHalfNotDeclaredError`
+defensive check in `build_manifest()`, no callable auto-merge path).
+3-layer write-guard system: Layer 1 (resolver split — writable-legacy
+API endpoint deleted entirely), Layer 2
+(`src/stroke_orofacial/_writeguard.py::assert_safe_write_path`
+called from every writer in `src/`), Layer 3 (`tests/conftest.py`
+autouse session fixture extending readonly roots to all of MICROSCOPE
+during tests). The original incident's failure mode is
+**architecturally impossible to repeat**. Three findings carried
+forward (bnpm dep — legacy notebook needs frsb env or pip install
+bnpm; CSV/video filename 1-second timestamp skew — multi-half
+registry uses `file_timestamp_prefix` HH_MM precision; orphan
+cam{1,3,4} parent-level halves from 2026-01-11 run — out of scope,
+cam2 canonical). Kickoff at
+`docs/prompts/phase-7-pre-multi-half-kickoff.md` documents Tasks
+0-10 with status markers + DECISIONS entry sketch + 3-layer guard
+spec. Next: confirm Task 5R steps 8-9 close, then Task 5 proper
+resumes, then Tasks 6/7/8/9/10 as originally planned.
 
 End of 2026-05-02 → 2026-05-03 session: Phase 7a.6 closed as PR #91
 (merge-commit `bb4b505`) + tagged `v7a.6-mean-sem`. Bodypart-

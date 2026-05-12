@@ -55,7 +55,7 @@ def mock_resolver(tmp_path, mock_dlc_dir, mock_alignment_dir) -> MagicMock:
     """Create a mock PathResolver that points to tmp_path fixtures."""
     resolver = MagicMock(spec=PathResolver)
     resolver.dlc_output_dir.return_value = mock_dlc_dir
-    resolver.alignment_template.return_value = (
+    resolver.alignment_template_legacy_read.return_value = (
         mock_alignment_dir / "cam2" / "PS46" / "20250307.npz"
     )
     return resolver
@@ -103,7 +103,7 @@ class TestBuildManifest:
         (dlc_dir / f"{base}_filtered.h5").touch()
         (dlc_dir / f"{base}_filtered.csv").touch()
         # Point alignment template to a non-existent file
-        mock_resolver.alignment_template.return_value = tmp_path / "nonexistent.npz"
+        mock_resolver.alignment_template_legacy_read.return_value = tmp_path / "nonexistent.npz"
 
         info = AnimalInfo(
             animal_id="PS46",
@@ -180,7 +180,7 @@ class TestBuildManifest:
         resolver = MagicMock(spec=PathResolver)
         resolver.dlc_output_dir.return_value = Path("/nonexistent/path")
         # Alignment template path is constructed but won't exist
-        resolver.alignment_template.return_value = tmp_path / "no_template.npz"
+        resolver.alignment_template_legacy_read.return_value = tmp_path / "no_template.npz"
 
         manifest = build_manifest(
             "PS46", datetime.date(2025, 3, 7), resolver, ps46_info

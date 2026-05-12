@@ -15,6 +15,765 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-12 — Phase 7-pre-multi-half close — Architecture X for multi-half merge + three-layer write-guard + Pattern A/B compatibility + licks NPZ schema divergence + side-aware parity
+
+**Supersedes:**
+- 2026-04-21 — *PS48 2025-03-14 multi-session handling (merge two acquisition halves into one analysis session)* (aspirational design entry — replaced by Architecture X actually shipped).
+- 2026-05-09 — *Phase 7-pre-multi-half: `merge_licks_and_rewards` schema-divergence (ws_sample mode supersedes legacy concat-without-offset)* (working draft — consolidated below in Decision 6).
+- 2026-05-09 — *Phase 7-pre-multi-half Task 5 alignment-template overwrite incident + three-layer write-guard system + cam2-scoped Option B restore* (working draft — consolidated below in Decision 3 + Restore outcome).
+
+The three superseded entries below have inline pointers to this consolidated record. They remain in the history (per the never-rewrite-history rule) but are flagged so future readers don't re-derive their content.
+
+**Phase metadata.** Branch `phase/7-pre-multi-half`, opened 2026-05-05 off `main` at `5f45620` (PR #98 kickoff-doc merge). PR #99 merged <FILL after merge> as merge-commit `<FILL>`, tagged `v7-pre-multi-half`. Kickoff `docs/prompts/phase-7-pre-multi-half-kickoff.md`.
+
+**Context.** Phase 7-pre-multi-half ports the PS48 2025-03-14 multi-half acquisition (one logical session split across two acquisition halves because the recording was paused and resumed) into the consolidated pipeline. The dual scope was (a) build the merge machinery (Architecture X) for the three coordinated artifact layers — licks NPZ, alignment template, centered DLC parquet — and (b) ship a write-guard system after a 2026-05-05 test-fixture incident overwrote three legacy MICROSCOPE alignment templates with synthetic toy data. Both landed; Task 9 live parity gate cleared on 2026-05-12.
+
+**Scope locked: Pattern A only.** PS48 20250314 is the sole session in scope. The 19 sessions across PS51/PS54/PS55 with `n_dlc=1, n_ws=2, n_cam=2` that Task 7's cohort scan flagged as "mechanical Pattern B" are a separate scientific category (closer-spout-position 2nd acquisition; see Decision 4 below) — they stay on the existing single-half discovery path by design and become a future Phase 7-pre-secondary-spout. The Phase 7-pre-multi-half code generalizes from 2-half to N-half where each per-layer algorithm naturally extends, but the only production caller is 2-half.
+
+### Decision 1 — Architecture X: three coordinated merge functions, independent per-layer
+
+Multi-half acquisition produces three artifact families that need three independent merges. The consolidated pipeline runs Phase 2 / 3 / 4 **per-half** under a single `SessionManifest` (with new `HalfSpec` + `halves` fields) and emits per-half artifacts under `{date}{halves_concat_label}/` subdirs (e.g. `PS48/20250314ab/{20250314a,20250314b}.npz`). A post-process **merge** step coalesces each artifact family into the merged parent-level output that downstream consumers read.
+
+The three merge functions live in [`src/stroke_orofacial/spout_behavior/multi_half_merge.py`](../src/stroke_orofacial/spout_behavior/multi_half_merge.py) as faithful ports of the canonical tongue notebook's `# PS48 20250314 merge` section:
+
+- **Layer 1 — `merge_licks_and_rewards`** (cell 17 port). Concatenates per-half `Lick_L/R`, `Reward_L/R`, `Tone_L/R` index arrays with an offset applied to half-B; see Decision 6 for the schema divergence story.
+- **Layer 3 — `merge_alignment_templates`** (cell 16 port). Concatenates `sig_wsIdx__idx_cam` / `sig_camIdx__idx_ws` / `sig_camTimes__idx_cam` / `sig_wsTimes__idx_ws` with per-half offsets (cumulative `n_ws` / `n_cam` for index axes; first-finite shift to `last_finite(prev) + dt` for time axes). Sanity checks merged length sums, monotonicity (legacy printed; this port raises).
+- **Layer 2 — `merge_centered_parquet`** (cell 13 port). `pd.concat(axis=0, ignore_index=True)` over per-half centered DLC DataFrames with column-set + order parity validation.
+
+Layer numbers reflect Architecture X's design narrative (a layered build of NPZ → alignment template → centered parquet), NOT call order. The three functions are independent ports; none consumes another's output schema.
+
+**N-half generalization.** Legacy cells hardcoded 2 halves (A/B). This port accepts `N >= 2`. For `N = 2`, the merged NPZ provenance schema is byte-identical to legacy (`merged_from_A` / `merged_from_B` / `cam_frame_offset_for_B` / `merged_n_cam_A` / `merged_n_cam_B` for licks in cam_frame mode; analogous for the other layers). For `N >= 3`, only the list-style provenance keys are emitted (`merged_from_paths` + `merged_n_*_per_half` + `*_offsets_per_half`); no A/B framing.
+
+**Aspirational supersession.** The 2026-04-21 DECISIONS entry on multi-session handling proposed merging at load-boundaries (wavesurfer I/O accepts a path list; DLC I/O accepts a path list). Architecture X supersedes that approach: the merge happens at post-process boundary, per artifact layer, rather than at load time. Rationale: load-time merge would have required threading a multi-half-aware buffer through every Phase 2/3/4 internal that assumes single-half. Post-process merge keeps Phase 2/3/4 internals single-half-shaped (one `HalfSpec` at a time) and locates all multi-half logic in one new module.
+
+### Decision 2 — `multi_half_sessions:` registry in `configs/session_overrides.yaml` (merge-intent only)
+
+Opt-in-via-YAML safety rule with three teeth: (1) a read-only cohort-scan script (`scripts/phase_7_pre/scan_multi_half.py`, Task 7) that surfaces Pattern A candidates; (2) `build_manifest()` raises `MultiHalfNotDeclaredError` when it detects `n_dlc >= n_dlc_min=2` for an (animal, date) pair NOT covered by a `multi_half_sessions:` entry; (3) no callable auto-merge code path — the merge functions are only invoked from `process_session_multi_half` / `compute_and_merge_alignment_multi_half` / `_build_centered_parquet_multi_half`, all of which require a declared `multi_half_sessions:` entry to be reachable.
+
+**Registry shape** (PS48 20250314 example):
+
+```yaml
+multi_half_sessions:
+  PS48:
+    "2025-03-14":
+      halves:
+        - id: a
+          ws_subdir: "20250314a"
+          cam_subdir: "20250314a"
+          file_timestamp: "2025-03-14T12_31_07"
+        - id: b
+          ws_subdir: "20250314b"
+          cam_subdir: "20250314b"
+          file_timestamp: "2025-03-14T13_09_29"
+```
+
+**Merge-intent only.** This registry declares "these halves belong to one logical session — merge them." Do NOT repurpose it for the closer-spout-position Pattern B sessions (Decision 4); a separate future `secondary_spout_sessions:` registry handles compare-intent.
+
+### Decision 3 — Three-layer write-guard system (defense in depth)
+
+Origin: 2026-05-05 alignment-template overwrite incident. Three legacy alignment templates on MICROSCOPE for PS48 20250314 — `cam2/PS48/20250314.npz` (43.9 MB merged), `cam2/PS48/20250314ab/{20250314a,20250314b}.npz` (68.5 / 69.8 MB per-halves) — were overwritten with synthetic test fixtures (3.9 KB / 1.3 KB / 1.6 KB) during a Task 5 test run. Root cause: `paths.py::alignment_template()` and `alignment_template_per_half()` resolvers routed through the `microscope_server` logical root rather than `microscope_pipeline_outputs`. `PathResolver(output_root=...)`'s test-override only redirects `pipeline_outputs(...)` — it does NOT redirect other resolvers. CLAUDE.md ground rule 1 violated.
+
+Three layers, each catching a different failure mode:
+
+- **Layer 1 — `paths.py` resolver split (`_legacy_read` / `_new`).** The old `alignment_template()` was renamed to `alignment_template_legacy_read(animal, date, cam)` (read-only, routes through `microscope_server`). Two new write-side resolvers added: `alignment_template_new(animal, date, cam)` (merged, parent-level) + `alignment_template_per_half_new(animal, date, *, halves_concat_label, half_id, cam)` (per-half subdir layout). Both `_new` resolvers route through `pipeline_outputs("dlc_analysis") / "alignment_templates" / cam / ANIMAL / ...` and therefore honor the `output_root=` override. Production code routes ALL alignment-template writes through `_new`; ALL reads go through `_legacy_read`. **The original failure mode is structurally impossible to repeat — the writable-legacy-path API endpoint is deleted.**
+- **Layer 2 — runtime writeguard module (`src/stroke_orofacial/_writeguard.py`).** Public API: `assert_safe_write_path(path)` raises `WriteGuardError` when `path` resolves under a known-legacy MICROSCOPE / Mac source-data root. Deny list covers Windows UNC + Mac POSIX forms of `MICROSCOPE/Priya/DeepLabCut`, `MICROSCOPE/Priya/facerhythm_stroke_biomarker_exp/{analysis,wavesurfer}`, `MICROSCOPE/Rich/`, the Mac fallback `/Users/Priya2/Documents/.../{analysis,wavesurfer}`, and the legacy GitHub repos. `pipeline_outputs/` is allowed. Called inline before each `np.savez_compressed` in the multi-half compute orchestrator (defense in depth at the call site).
+- **Layer 3 — pytest autouse fixture (`tests/conftest.py`).** Monkey-patches `np.savez`, `np.savez_compressed`, `pd.DataFrame.to_parquet`, `Path.write_text`, `Path.write_bytes`, `Path.replace` to call `assert_safe_write_path` on the destination before delegating. Coverage: every write API used by the multi-half pipeline. Sentinel tests in `tests/test_conftest_guard.py` (13 tests) pin the autouse fixture so a future regression in conftest.py can't silently disable the guard.
+
+### Decision 4 — Pattern A (multi-half merge) vs Pattern B (closer-spout 2nd acquisition)
+
+Clarified 2026-05-09 after Task 7's cohort scan classifier flagged 19 sessions across PS51/PS54/PS55 with `n_dlc=1, n_ws=2, n_cam=2` as mechanical "Pattern B". Priya confirmed these are a **deliberate experimental manipulation**: the second acquisition (b half) was run with the water spouts positioned closer to the mouse. The mechanical and scientific categorizations currently coincide but conceptually diverge:
+
+- **Pattern A — multi-half acquisition** (this PR's scope). One logical session split across two halves due to technical interruption. Action: MERGE → one session-level output.
+- **Pattern B — closer-spout secondary session** (FUTURE phase). Two logical experimental sessions same day, different spout-distance conditions. Action: KEEP SEPARATE → two session-level outputs (bare-`{DATE}` standard distance + `{DATE}b` closer distance). Scientific intent: bare-vs-b comparison for the recovery-trajectory phenotype where animals return to closer spouts BEFORE returning to standard further-away spouts.
+
+When DLC inference eventually runs on b halves, those Pattern B sessions become mechanically `n_dlc=2` (matching Pattern A) while remaining semantically secondary-spout-position. Currently Pattern B sessions silently flow through the existing single-half discovery path (bare half processed; b half discarded) — losing the b-half data. A future **Phase 7-pre-secondary-spout** will treat `{DATE}b` as a separate logical session. Out of scope here; scope estimate ~mid-size comparable to Phase 7-pre-multi-half.
+
+### Decision 5 — Four architectural compatibility commitments (must hold from this PR forward)
+
+These are forward-binding constraints that downstream code MUST honor so the future Pattern B phase remains a small change, not a project-wide refactor:
+
+**(a) `multi_half_sessions:` is merge-intent only.** Don't extend it to compare-intent. A future `secondary_spout_sessions:` registry handles Pattern B.
+
+**(b) Session-id schema must allow letter suffixes.** Today `SessionManifest.session_id = f"{animal}_{date.strftime('%Y%m%d')}"`. Future Pattern B work needs `session_id = "PS51_20250430b"` alongside `"PS51_20250430"`. Implementation extends with optional `session_suffix: str | None = None` field, threaded through `build_manifest()`, output paths, and `PathResolver`. **From this PR forward: do NOT bake in assumptions anywhere that `session_id` matches `{animal}_{YYYYMMDD}` exactly** — treat session-id as an opaque string callers construct.
+
+**(c) The defensive check needs a Pattern-B branch when DLC runs on b halves later.** When Priya DLC-infers a b half, the session becomes `n_dlc=2` and would trip `MultiHalfNotDeclaredError`. The Pattern B phase must implement a `secondary_spout_sessions:` registry that overrides the multi-half check (telling the manifest "these halves are separate sessions, not merge candidates").
+
+**(d) Phase 2/3/4 pipelines process manifests opaquely; output separation is via session-id.** Spout-behavior MUST output for every session it can process — bare-`{DATE}` sessions get normal single-half outputs, `{DATE}b` sessions get their OWN normal single-half outputs (not currently happening — they're silently discarded; the Pattern B phase fixes this), genuine multi-half sessions get a single MERGED output. Downstream cross-session analyses filter by session-id subset ("merged + bare-only" for the standard recovery-trajectory analysis, "bare vs b" pairs for the closer-spout comparison). Phase 2/3/4 code stays generic — manifest-construction layer (via registry tags) decides merge-vs-keep-separate.
+
+### Decision 6 — licks_and_rewards NPZ schema divergence (ws_sample mode supersedes legacy concat-without-offset)
+
+Surfaced 2026-05-09 by the Step 5 live parity gate Layer 1 RuntimeError: the new pipeline's per-half licks NPZ schema is incompatible with the legacy cell-17 `_infer_n_cam` heuristic. On-disk schema audit (`.audit_inspect_licks_npz.py`, 2026-05-09):
+
+- **New per-half NPZ** (`pipeline_outputs/spout_behavior/licks_and_rewards/PS48/20250314ab/{20250314a,20250314b}.npz`): 10 keys = 6 event index arrays (`Lick_L/R`, `Reward_L/R`, `Tone_L/R`, all in WS-sample coords at Fs=1000) + 2 scalars (`Fs`, `n_samples`) + 2 side-convention stamps (`side_convention_version`, `wavesurfer_sides_match_mouse_sides`).
+- **Legacy merged NPZ** (`session_processing3/licks_and_rewards/PS48/20250314.npz`): 11 keys = 4 event index arrays (`Lick_L/R`, `Reward_L/R` — **NO Tone_***) in WS-sample coords + 2 scalars (`Fs`, `n_samples` = only half-A's count) + 5 provenance keys (`merged_from_A/B`, `cam_frame_offset_for_B=1136`, `merged_n_cam_A=1136`, `allow_pickle`).
+
+**Root cause — legacy concat-without-offset was an emergent heuristic side-effect, not designed behavior.** Cell-17's `_looks_like_frame_indices` heuristic asked: is this array integer-ish, non-negative, with max < `n_cam_hint + 5`? For the WS-sample event arrays (max ~2.2M), `n_cam_hint = 1136` (the cam-frame count of half-A picked up via Tier-3 fallback = half-A's `Lick_L.size`), so the check `max < 1141` returned `False`. The arrays fell through to the same-shape-after-axis-0 "event-style concat" branch which applies **NO** offset to half-B's values. The legacy `cam_frame_offset_for_B=1136` was recorded as provenance metadata but never applied. Data confirms: legacy `Lick_L` max = 2,283,893 = half-B `Lick_R` raw max — no offset. The legacy merged NPZ therefore had half-A and half-B indices in overlapping WS-sample ranges with no separator — ambiguous for any reward-aligned or cross-half analysis downstream. **`_infer_n_cam` itself fails on the new schema** because none of its Tier 1/2 keys are present and Tier 3 fallback (largest 1D > 1000) catches half-A's `Lick_L=1136` but fails on half-B (largest 1D = 902, below threshold).
+
+**4-pronged decision.**
+
+1. **Two-mode merge with `index_space: Literal["cam_frame", "ws_sample"]`.** Default `cam_frame` preserves legacy semantics for back-compat (existing 11 unit tests + 2 integration tests stay green). New `ws_sample` is what production uses. Coordinate-space choice is a hard contract — the caller must know which space the per-half NPZs live in; mixing across halves is unsupported.
+
+2. **ws_sample-mode offset semantics: offset half-B by `n_samples_A`.** This is the semantically correct merge legacy *should* have done. Half-A unchanged on the merged time axis; half-B shifts up by `n_samples_A` so the merged session is a unified monotone-partitioned timeline with no overlap. Downstream reward-aligned analyses + future cross-half comparisons can read merged `Lick_L` as a single coherent index axis.
+
+3. **Provenance schema cleanup.** ws_sample mode emits: `merged_from_A/B`, `merged_n_samples_A/B`, `ws_sample_offset_for_B` (= `merged_n_samples_A`), `merged_n_samples_per_half`, `ws_sample_offsets_per_half`. **Dropped:** `merged_n_cam_A/B` (misnomers — values came from Tier-3 fallback = `Lick_L.size`, NOT cam-frame count); `cam_frame_offset_for_B` (cam-frame-named, never applied); `allow_pickle` (vestigial). **Validated + carried forward** across halves (raises on mismatch): `side_convention_version`, `wavesurfer_sides_match_mouse_sides`.
+
+4. **Carry `Tone_L` / `Tone_R` forward** under the same offset rule. Legacy cell-17 didn't carry tones — most likely because that vintage of the notebook predated tone capture in the per-half emit, not a deliberate drop.
+
+Helper renames (generalization): `_infer_n_cam` → `_infer_n_count` (adds `fallback_min_size` param; None disables Tier-3, used in ws_sample mode to avoid misreading event arrays); `_looks_like_frame_indices` → `_looks_like_index_array` (`n_cam_hint` param → `count_hint`).
+
+### Decision 7 — Side-aware Layer 1 parity + path-string INFO at Layer 1/2
+
+**Layer 1 parity reframe — structural + offset-correctness, NOT byte-identity.** Direct byte-parity with legacy was the wrong goal — the new ws_sample schema is by-design different. Layer 1's [`_compare_licks_npz`](../tests/scripts/parity_phase7_pre_multi_half.py) now validates six structural properties: (i) schema correctness (new-schema keys present), (ii) count parity vs legacy (side-aware — see below), (iii) half-A preservation (`merged[:n_A] == half_A` exactly), (iv) half-B offset (`merged[n_A:] == half_B + n_samples_A`; no-overlap check), (v) provenance round-trip (`merged_n_samples_A == half_A.n_samples`; `ws_sample_offset_for_B == merged_n_samples_A`; merged_from_* paths resolve), (vi) stamp inheritance (merged stamps match per-half stamps).
+
+**Side-aware count parity (Check ii).** The new pipeline stamps `wavesurfer_sides_match_mouse_sides` per `stroke_orofacial.lr_convention.stamp_side_convention`; PS48's value is `False` (mirrored rig — WS L = mouse R). The new merged NPZ emits mouse-frame labels; legacy NPZ predates the stamp (assumed ws-frame). Count parity translates new-side ↔ legacy-side using `lr_convention.to_mouse_frame(new_side, ws_matches_mouse)` — L↔R swap is involutive so the same helper works in either direction. The convention decision is logged loudly as the first INFO line in `_compare_licks_npz`'s return so future operators chasing a parity surprise see which frame each NPZ is in.
+
+**Path-string provenance keys = INFO, not FAIL** (Layer 1 + Layer 2). The Task-5R resolver split routes new writes through `pipeline_outputs/` while legacy lived under `O2_analysis/` — so `merged_from_*` path strings DIFFER BY DESIGN. Numeric provenance keys (`ws_offset_samples`, `cam_offset_frames`, `merged_n_samples_A/B`) still exact-match against legacy because the merge math is unchanged.
+
+**Rationale.** The parity-scope principle (2026-04-22 entry) says parity gates validate behavior, not implementation details. Legacy's concat-without-offset was an implementation accident; the new ws_sample mode is the documented intended behavior. Pinning to byte-equality would lock the new pipeline to a quirk we're correcting.
+
+### Restore outcome (Task 5R cam2-scoped Option B, 2026-05-09)
+
+Three corrupted templates restored via [`scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py`](../scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py) — a one-off CLI tool that's the **documented exception** to the writeguard system (intentionally writes to deny-listed legacy paths). All three guard layers bypassed by design; the script's docstring documents the exception explicitly.
+
+Procedure: walk pre-run inventory at `cam{1-4}/PS48/20250314*` → call `make_alignment_templates_20251216.main()` (legacy module loaded via `importlib.util` — no edit of legacy repo, CLAUDE.md ground rule 2 honored) twice (half-a / half-b) → merge per-half templates via `multi_half_merge.merge_alignment_templates` → move per-halves into `20250314ab/` subdir → post-run diff + layered Tier A/B/C validation.
+
+**Tier A relaxation.** Original spec was strict equality vs Task 1a inventory. Relaxed because Phase 7a.0 baseline-seed probe documented scipy 1.15.1 → 1.17.1 drift in Y0 retune (PS49/PS50 tongue): exact byte-equal NPZ output across versions is not guaranteed. Tier A: ≤0.1% size delta = PASS / ≤5% = WARN / >5% = FAIL. Tier B: structural (5 cell-16 REQ_KEYS, length sums, `Fs_ws_input` cross-half match). Tier C: diff shape (exactly 3 expected modified; cam{1,3,4} all unchanged).
+
+**Outcome.** All three deltas ≤0.005% — well inside Tier A PASS:
+
+| Path | Task 1a expected | Restored | Delta |
+|---|---|---|---|
+| `cam2/PS48/20250314.npz` | 43,873,994 | 43,875,365 | +0.0031% |
+| `cam2/PS48/20250314ab/20250314a.npz` | 68,512,651 | 68,512,394 | -0.0004% |
+| `cam2/PS48/20250314ab/20250314b.npz` | 69,808,659 | 69,808,402 | -0.0004% |
+
+### Task 9 parity verdict (live run 2026-05-12, all 3 layers PASS)
+
+[`tests/scripts/parity_phase7_pre_multi_half.py`](../tests/scripts/parity_phase7_pre_multi_half.py) ran end-to-end against MICROSCOPE on PS48 20250314.
+
+- **Layer 1 (licks NPZ) — PASS** at structural + offset-correctness. 3 INFO lines surfaced (convention decision + 2 path-string divergences).
+- **Layer 2 (alignment template) — PASS** at `atol=1e-12` on all 4 sig_* arrays (~merged length 1.15M samples for ws-axis arrays); numeric provenance (`ws_offset_samples`, `cam_offset_frames`) exact. 2 INFO lines (path-string divergences). Source: `merged_multi_half` (compute path, not cache).
+- **Layer 3 (centered parquets) — PASS** at `atol=1e-12` byte-equality across all 39 columns × 1,148,512 rows × 2 halves (~44M cell comparisons exact); merged row count 1,148,512 == sum of legacy per-half lengths.
+
+Exit code 0. Verdict log archived at `.scratch_phase_7_pre/parity_run_20260512T093103.log`.
+
+### Findings carried forward
+
+1. **`bnpm` dependency for legacy alignment notebook.** `make_alignment_templates_20251216.py` imports `bnpm`. The current `stroke_orofacial` conda env does NOT install bnpm (the Phase 13 vendor work brought four pure-numpy helpers from bnpm into the package but did NOT install the full bnpm package). Restore script's `importlib.util`-load path needs bnpm in the active env at runtime — currently relies on `frsb` env or one-off `pip install bnpm` on Priya's side. Forward-pointer: either vendor more bnpm or add bnpm as an optional install.
+
+2. **CSV/video filename 1-second timestamp skew.** Empirical: PS48 20250314 half-b had `timestamp2_2025-03-14T13_09_28.csv` but `video2_2025-03-14T13_09_29.avi`. Pre-acquisition artifact (CSV writes ~1s before AVI starts rolling). Multi-half registry `file_timestamp:` field uses minute-precision (HH_MM) glob in `_file_timestamp_minute_prefix` to dodge this — the same loose-glob discipline the new pipeline's per-half discovery uses.
+
+3. **Orphan cam{1,3,4}/PS48/20250314{a,b}.npz at parent level.** Six INTACT files (~68.5 / 69.8 MB each, mtime 2026-01-11) from Priya's original cam-walk that only merged cam2. Cam2-scoped restore left these untouched; they're read-only references for any future cross-cam analysis but never referenced by the new pipeline. Future cohort housekeeping: decide whether to move into `20250314ab/` subdirs for symmetry, or leave them.
+
+4. **Future Phase 7-pre-secondary-spout** (Pattern B). 19 sessions across PS51/PS54/PS55 with closer-spout 2nd acquisitions, currently silently single-half-processed (b halves discarded). When picked up: implement `secondary_spout_sessions:` registry honoring the four compatibility commitments (Decision 5). Scope estimate ~mid-size comparable to Phase 7-pre-multi-half.
+
+### Process lessons
+
+**`output_root=` was assumed to redirect ALL writes; in reality it only redirected `pipeline_outputs()`.** Permanent fix makes the assumption true by construction (resolver split: `_new` writers use `pipeline_outputs()` by definition; writeguard + conftest catch any path-construction bug that escapes the resolver discipline). **Generalizes:** when a test override claims to redirect "writes," verify which resolvers actually consult the override, and add a regression test that pins the inverse — `_new` resolvers MUST honor `output_root`; `_legacy_read` resolvers MUST NOT.
+
+**Unit-test trust property is degraded when fixtures don't match real upstream output.** The 11 unit tests + 2 synthetic integration tests for `merge_licks_and_rewards` all used synthetic fixtures shaped to match cell-17's input contract. None tested the merge against real new-pipeline output. Step 5's live parity gate caught the upstream schema mismatch before merge to main — the system worked, but the gap should have been closed at unit-test level. **Forward rule for future legacy-port phases: include at least one fixture sourced from a real pipeline run, not just synthetic; surface upstream schema mismatches at unit-test level instead of waiting for the parity gate.**
+
+**SMB stale-cache gotcha (2026-05-09).** `mcp__workspace__bash` view diverged from Windows host disk for 3+ days during this phase. Rule documented at `docs/COWORK_SESSION_STATE.md` Known-gotchas: prefer Read/Grep/Glob over bash for filesystem-state verification. When in doubt, the Windows host disk is authoritative.
+
+**Pre-push hook needs `conda run -n stroke_orofacial git push` from CC's bash shell on Windows.** Bare `python` resolves to the Microsoft Store stub. Added a pre-push smoke gate (`.githooks/pre-push`, commit `27004bb`) that runs `python -c "import stroke_orofacial"` + `pytest --collect-only -q` on `phase/*` and `main` branches; the gate's failure mode is intentionally identical whether the import is broken OR the env isn't active. Memory entry `feedback_git_push_pre_push_hook.md` captures the wrapped-push idiom.
+
+### Enforced at
+
+**Source.**
+- [`src/stroke_orofacial/manifest.py`](../src/stroke_orofacial/manifest.py) — `HalfSpec` dataclass + `halves: list[HalfSpec] | None` field on `SessionManifest` + `MultiHalfNotDeclaredError` + multi-half discovery in `build_manifest()`.
+- [`src/stroke_orofacial/spout_behavior/multi_half_merge.py`](../src/stroke_orofacial/spout_behavior/multi_half_merge.py) — `merge_licks_and_rewards(..., index_space=...)`, `merge_alignment_templates(...)`, `merge_centered_parquet(...)`, `_infer_n_count`, `_looks_like_index_array`, `_validate_side_convention_stamps`.
+- [`src/stroke_orofacial/spout_behavior/session_processing.py`](../src/stroke_orofacial/spout_behavior/session_processing.py) — `process_session_multi_half` per-half loop.
+- [`src/stroke_orofacial/alignment/timebase.py`](../src/stroke_orofacial/alignment/timebase.py) — `compute_and_merge_alignment_multi_half` dispatch + `_compute_per_half_alignment_template`; uses `_new` resolvers exclusively + inline `assert_safe_write_path` defense-in-depth.
+- [`src/stroke_orofacial/dlc_io/parquet.py`](../src/stroke_orofacial/dlc_io/parquet.py) — `_build_centered_parquet_multi_half` per-half loop.
+- [`src/stroke_orofacial/paths.py`](../src/stroke_orofacial/paths.py) — `alignment_template_legacy_read` / `alignment_template_new` / `alignment_template_per_half_new` resolver split (Layer 1 write-guard) + multi-half-aware path resolvers for licks / parquet.
+- [`src/stroke_orofacial/_writeguard.py`](../src/stroke_orofacial/_writeguard.py) — `assert_safe_write_path` module (Layer 2 write-guard).
+
+**Config.**
+- [`configs/defaults.yaml`](../configs/defaults.yaml) — `multi_half:` block (cam_count_keys, cam_count_int_keys, scan_signals.n_dlc_min).
+- [`configs/session_overrides.yaml`](../configs/session_overrides.yaml) — `multi_half_sessions:` registry with PS48 20250314 entry.
+
+**Tests.**
+- [`tests/test_multi_half_merge.py`](../tests/test_multi_half_merge.py) — `TestLicksAndRewardsMerge` (13 tests, cam_frame default) + `TestLicksAndRewardsMergeWsSample` (10 tests, ws_sample mode) + `TestAlignmentTemplateMerge` + `TestCenteredParquetMerge` + `TestComputeAndMergeAlignmentMultiHalf` + `TestInferNCount` + `TestLooksLikeIndexArray`.
+- [`tests/test_writeguard.py`](../tests/test_writeguard.py) — 36 tests for `_writeguard.py` module coverage.
+- [`tests/test_conftest_guard.py`](../tests/test_conftest_guard.py) — 13 sentinel tests pinning the autouse fixture.
+- [`tests/test_paths.py`](../tests/test_paths.py) — `_legacy_read` + `_new` resolver tests including `test_alignment_template_new_honors_output_root` regression guard.
+- [`tests/integration/test_multi_half_integration.py`](../tests/integration/test_multi_half_integration.py) — end-to-end 2-half + 3-half integration on synthetic fixtures.
+- [`tests/scripts/parity_phase7_pre_multi_half.py`](../tests/scripts/parity_phase7_pre_multi_half.py) — Task 9 3-layer live parity gate harness with side-aware Layer 1 + path-string INFO at Layers 1/2.
+- [`tests/conftest.py`](../tests/conftest.py) — autouse fixture (Layer 3 write-guard) extending readonly roots to all of MICROSCOPE during tests.
+
+**Scripts.**
+- [`scripts/phase_7_pre/scan_multi_half.py`](../scripts/phase_7_pre/scan_multi_half.py) — cohort-wide read-only Pattern A scan (Task 7).
+- [`scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py`](../scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py) — one-off cam2-scoped restore CLI; documented writeguard exception.
+
+**Docs.**
+- [`docs/phase-7-pre/restore_PS48_20250314_pre_run_inventory.csv`](phase-7-pre/restore_PS48_20250314_pre_run_inventory.csv) — pre-run on-disk state captured for the restore audit trail.
+- [`docs/legacy_snippets/multi_half_merge/`](legacy_snippets/multi_half_merge/) — cell 13/14/15/16/17 byte-identical vendored from the canonical tongue notebook with SHA256 headers.
+- [`docs/prompts/phase-7-pre-multi-half-kickoff.md`](prompts/phase-7-pre-multi-half-kickoff.md) — kickoff doc (649 lines, PR #98).
+- [`docs/COWORK_SESSION_STATE.md`](COWORK_SESSION_STATE.md) — state-doc refresh with this phase as latest "Recent session log" entry.
+- [`docs/MIGRATION_LOG.md`](MIGRATION_LOG.md) — Phase 7-pre-multi-half migration entry.
+- [`.githooks/pre-push`](../.githooks/pre-push) — pre-push smoke gate added 2026-05-09 (origin: 2026-05-05 timebase.py corruption incident, separate from the alignment-template incident — different root cause).
+
+---
+
+## 2026-05-09 — Phase 7-pre-multi-half: `merge_licks_and_rewards` schema-divergence (ws_sample mode supersedes legacy concat-without-offset)
+
+> **SUPERSEDED 2026-05-12** by *Phase 7-pre-multi-half close* (top of file). Working draft authored mid-phase before the Task 10 consolidation; the schema-divergence material lives there as Decision 6.
+>
+> Working draft — folds into the phase-close DECISIONS at Task 10.
+> Standalone-readable if someone hits this file before Task 10 lands.
+
+**Context.** Step 5 of the Task 9 parity gate live run (2026-05-09)
+surfaced a fundamental coordinate-space mismatch between the legacy
+`session_processing3/licks_and_rewards/PS48/20250314.npz` and the new
+pipeline's per-half NPZs emitted by `process_session_multi_half`. The
+Step 5 run errored at Layer 1 because `_infer_n_cam` returned `None`
+on the new Phase 2 NPZ (the legacy cell-17 schema's count signals —
+`cam_times`, `n_cam`, etc. — are absent from the new schema, which
+carries only `n_samples` as a scalar). On-disk schema audit
+(`.audit_inspect_licks_npz.py`, 2026-05-09):
+
+- **New per-half NPZ** (`pipeline_outputs/spout_behavior/licks_and_rewards/PS48/20250314ab/{20250314a,20250314b}.npz`):
+  10 keys = 6 event index arrays (`Lick_L/R`, `Reward_L/R`, `Tone_L/R`,
+  all in WS-sample coords at Fs=1000) + 2 scalars (`Fs`, `n_samples`)
+  + 2 side-convention stamps (`side_convention_version`,
+  `wavesurfer_sides_match_mouse_sides`).
+- **Legacy merged NPZ** (`session_processing3/licks_and_rewards/PS48/20250314.npz`):
+  11 keys = 4 event index arrays (`Lick_L/R`, `Reward_L/R` — **NO
+  Tone_***) in WS-sample coords + 2 scalars (`Fs`, `n_samples` = only
+  half-A's count) + 5 provenance keys (`merged_from_A/B`,
+  `cam_frame_offset_for_B=1136`, `merged_n_cam_A=1136`, `allow_pickle`).
+
+**Root cause — legacy concat-without-offset was an emergent heuristic
+side-effect, not designed behavior.** Cell-17's `_looks_like_frame_indices`
+heuristic asked: is this array integer-ish, non-negative, with max <
+`n_cam_hint + 5`? For the WS-sample event arrays (max ~2.2M),
+`n_cam_hint = 1136` (the cam-frame count of half-A picked up via
+Tier-3 fallback = half-A's `Lick_L.size`), so the check `max < 1141`
+returned `False`. The arrays fell through to the same-shape-after-axis-0
+"event-style concat" branch which applies **NO** offset to half-B's
+values. The legacy `cam_frame_offset_for_B=1136` was recorded as
+provenance metadata but never applied to the indices themselves. Data
+confirms (audit script output): legacy `Lick_L` max = 2,283,893 =
+half-B `Lick_R` raw max — no offset visible. The legacy merged NPZ
+therefore had half-A and half-B indices in overlapping WS-sample
+ranges with no separator on the merged time axis — ambiguous for any
+reward-aligned or cross-half analysis downstream.
+
+**Decision (4-pronged).**
+
+1. **Two-mode merge with `index_space: Literal["cam_frame", "ws_sample"]`.**
+   Default `cam_frame` preserves legacy cell-17 semantics for back-compat
+   (existing 11 unit tests + 2 integration tests stay green). New
+   `ws_sample` mode is what the new pipeline production path uses.
+   Coordinate-space choice is a hard contract — the caller must know
+   which space the per-half NPZs live in. Mixing across halves is
+   unsupported.
+
+2. **ws_sample-mode offset semantics: offset half-B by `n_samples_A`.**
+   This is the semantically correct merge that legacy *should* have
+   done: half-A indices land unchanged on the merged time axis,
+   half-B indices shift up by `n_samples_A` so the merged session is
+   a unified monotone-partitioned timeline with no overlap. Downstream
+   reward-aligned analyses + future cross-half / bare-vs-b comparisons
+   can read the merged `Lick_L` as a single coherent index axis
+   without needing to re-derive a separator.
+
+3. **Provenance schema cleanup.** ws_sample mode emits:
+   - `merged_from_A`, `merged_from_B` (per-half source paths)
+   - `merged_n_samples_A`, `merged_n_samples_B` (per-half WS sample counts)
+   - `ws_sample_offset_for_B` (= `merged_n_samples_A`)
+   - `merged_n_samples_per_half`, `ws_sample_offsets_per_half` (N-half
+     general form)
+   - Carried-forward side-convention stamps (`side_convention_version`,
+     `wavesurfer_sides_match_mouse_sides`) — validated to match
+     across halves before the merge fires; mismatch raises.
+
+   **Dropped from the merged output:**
+   - `merged_n_cam_A`, `merged_n_cam_B` — misnomers in the legacy schema
+     (the values came from `_infer_n_cam` Tier-3 fallback, which returned
+     `Lick_L.size = 1136`, NOT an actual cam-frame count).
+   - `cam_frame_offset_for_B` — cam-frame-named, but was never applied
+     to the indices in legacy; pure decorative metadata.
+   - `allow_pickle` — vestigial leftover from a buggy `np.savez(...,
+     allow_pickle=True)` invocation that put the kwarg name into the
+     output dict as a key.
+
+4. **Carry `Tone_L` / `Tone_R` forward** under the same offset rule.
+   Legacy cell-17 didn't carry tones — most likely because that
+   vintage of the notebook predated tone capture in the per-half
+   emit, not a deliberate drop. New pipeline emits tones in the
+   per-half NPZs; merging them follows the same `_looks_like_index_array`
+   → offset-and-concat logic that handles `Lick_*` / `Reward_*`.
+
+**Layer 1 parity reframe.** Direct byte-parity with the legacy merged
+NPZ is the wrong validation goal — the new schema is by-design
+different and more correct. Layer 1 of the Task 9 parity gate now
+validates:
+
+  - Schema correctness (new NPZ has all expected ws_sample keys).
+  - Count parity vs legacy (`len(merged.X) == len(legacy.X)` for the
+    4 legacy-compatible event arrays; Tone_* skipped).
+  - Half-A preservation (`merged[:n_A] == half_A` exactly).
+  - Half-B offset (`merged[n_A:] == half_B + n_samples_A`; no-overlap
+    `min(half-B) >= max(half-A)`).
+  - Provenance round-trip (`merged_n_samples_A == half_A.n_samples`;
+    `ws_sample_offset_for_B == merged_n_samples_A`; merged_from_*
+    paths resolve).
+  - Stamp inheritance (merged stamps match per-half stamps).
+
+Path-string provenance differences vs legacy (the Task-5R resolver
+split makes `merged_from_*` paths legitimately differ from legacy
+`O2_analysis/`) surfaced as INFO, never block PASS — same rule
+applied to the Layer 2 comparator in the same commit batch.
+
+**Rationale.** The parity-scope principle (2026-04-22 entry) says
+parity gates validate behavior, not implementation details. Legacy's
+concat-without-offset was an implementation accident; the new
+ws_sample mode is the documented intended behavior. Pinning to byte-
+equality would lock the new pipeline to a quirk that we're correcting.
+The structural + offset-correctness checks pin what *matters* (same
+event counts, semantically-correct offset, provenance round-trip,
+stamp inheritance) without conflating "matches legacy bytes" with
+"correct".
+
+**Enforced at.**
+
+- `src/stroke_orofacial/spout_behavior/multi_half_merge.py` —
+  `merge_licks_and_rewards(..., index_space=...)` with
+  cam_frame/ws_sample branches, `_validate_side_convention_stamps`
+  helper, generalized `_infer_n_count` + `_looks_like_index_array`
+  helpers (renamed from cell-17's `_infer_n_cam` / `_looks_like_frame_indices`).
+- `tests/test_multi_half_merge.py` — `TestLicksAndRewardsMergeWsSample`
+  class (10 new tests) covering offset semantics, no-overlap, count
+  totals, Tone forward, stamp validation, mismatch raises, provenance
+  schema, n_samples inference failure, kwarg override; plus 2 new
+  tests in `TestLicksAndRewardsMerge` pinning default-is-cam_frame
+  + invalid_index_space_raises. Existing 11 cam_frame tests untouched
+  (default preserves their behavior).
+- `tests/scripts/parity_phase7_pre_multi_half.py` — Layer 1 reframed
+  via `_compare_licks_npz(new, legacy, per_half_paths) → (failures,
+  info)`, six structural checks; module + Layer-1-section docstrings
+  document the divergence-from-legacy by design.
+
+**Folds into Task 10 phase-close DECISIONS supersession.** Working
+draft for now; Task 10 will merge this with the Task 5R 2026-05-09
+entry above into the final phase-close `MIGRATION_LOG.md` + DECISIONS
+entry.
+
+---
+
+## 2026-05-09 — Phase 7-pre-multi-half Task 5 alignment-template overwrite incident + three-layer write-guard system + cam2-scoped Option B restore
+
+> **SUPERSEDED 2026-05-12** by *Phase 7-pre-multi-half close* (top of file). Working draft authored mid-phase before the Task 10 consolidation. The write-guard system lives there as Decision 3; the restore outcome lives in the "Restore outcome" section; the four findings (orphans, HH_MM glob, future Pattern B, schema divergence) are reorganized across Decisions 4-6 + Findings carried forward.
+>
+> Working draft — folds into the phase-close DECISIONS at Task 10.
+> Standalone-readable if someone hits this file before Task 10 lands.
+
+**Context.** During the original Task 5 implementation of
+`compute_and_merge_alignment_multi_half` (Phase 7-pre-multi-half), three
+legacy alignment templates on MICROSCOPE for PS48 20250314 — the merged
+file at `cam2/PS48/20250314.npz` (43,873,994 bytes per Task 1a inventory)
+plus the per-halves at `cam2/PS48/20250314ab/{20250314a,20250314b}.npz`
+(68,512,651 / 69,808,659 bytes) — were overwritten with synthetic test
+fixtures (3,920 / 1,342 / 1,604 bytes). All three files mtime'd
+2026-05-05 19:46:37 EDT (within one second). CLAUDE.md ground rule 1
+violated.
+
+**Root cause.** `paths.py::alignment_template()` and
+`alignment_template_per_half()` resolvers routed through the
+`microscope_server` logical root (live MICROSCOPE share) rather than
+`microscope_pipeline_outputs`. The `PathResolver(output_root=...)` test-
+override kwarg only redirects `pipeline_outputs(...)` — it does NOT
+redirect any other resolver. Tests using the standard
+`PathResolver(output_root=tmp_path)` idiom for `compute_and_merge_alignment_multi_half`
+therefore silently routed write paths to the LIVE legacy tree even
+though the test author believed everything was sandboxed under
+`tmp_path`. Three test invocations (one per
+`TestComputeAndMergeAlignmentMultiHalf` test that pre-creates per-half
+templates) compounded the corruption — each pytest run re-overwrote the
+same three legacy paths.
+
+**Decisions enacted (Task 5R, six commits 2026-05-05 → 2026-05-09 on
+branch `phase/7-pre-multi-half`).**
+
+1. **Three-layer write-guard system.** Defense in depth, each layer
+   catching a different failure mode:
+
+   - **Layer 1 — paths.py resolver split (`_legacy_read` / `_new`).**
+     The old `alignment_template()` was renamed to
+     `alignment_template_legacy_read(animal, date, cam)` — read-only,
+     routes through `microscope_server`. Two new write-side resolvers
+     were added: `alignment_template_new(animal, date, cam)` (merged,
+     parent-level) and
+     `alignment_template_per_half_new(animal, date, *, halves_concat_label, half_id, cam)`
+     (per-half subdir layout). Both `_new` resolvers route through
+     `pipeline_outputs("dlc_analysis") / "alignment_templates" / cam / ANIMAL / ...`
+     and therefore honor the `output_root=` test override. Production
+     code routes ALL alignment-template writes through the `_new`
+     resolvers; ALL reads go through `_legacy_read`. No write site in
+     `src/` calls `_legacy_read`. Verified by Task 5R step 8 audit:
+     six `_legacy_read` callers (manifest.py, timebase.py,
+     interpolation.py, mean_sem_visual.py, reward_aligned.py,
+     tongue_pertrial.py) all in read contexts; two `_new` callers in
+     `timebase.py` both in write contexts.
+
+   - **Layer 2 — runtime writeguard module
+     (`src/stroke_orofacial/_writeguard.py`).** Public API:
+     `assert_safe_write_path(path) -> None` raises `WriteGuardError`
+     when `path` resolves under a known-legacy MICROSCOPE / Mac source-
+     data root. Deny list covers Windows UNC + Mac POSIX forms of
+     `MICROSCOPE/Priya/DeepLabCut`,
+     `MICROSCOPE/Priya/facerhythm_stroke_biomarker_exp/{analysis,wavesurfer}`,
+     `MICROSCOPE/Rich/`, the Mac fallback `/Users/Priya2/Documents/.../{analysis,wavesurfer}`,
+     and the legacy GitHub repos (`/Users/Priya2/Github/facerhythm_*`).
+     `pipeline_outputs/` is allowed. Called inline before each
+     `np.savez_compressed` in the multi-half compute orchestrator
+     (defense-in-depth at the call site) — the resolver SHOULD already
+     give safe paths, but a belt-and-suspenders check makes any future
+     regression in `_new` fail loud at the call site instead of silently
+     corrupting legacy data.
+
+   - **Layer 3 — pytest autouse fixture (`tests/conftest.py`).**
+     Monkey-patches `np.savez`, `np.savez_compressed`,
+     `pd.DataFrame.to_parquet`, `Path.write_text`, `Path.write_bytes`,
+     and `Path.replace` to call `assert_safe_write_path` on the
+     destination before delegating to the real implementation.
+     Coverage rationale: the multi-half pipeline writes data via these
+     APIs (NPZ for licks + alignment, parquet for centered DLC, plus
+     atomic-rename via `Path.replace`). Other write APIs (raw
+     `open(..., 'w')`) are NOT patched; production code that uses them
+     should call `assert_safe_write_path` directly. The deliberate gap
+     keeps the patch surface small and brittle-free; the incident-class
+     is fully covered.
+
+2. **`tests/test_conftest_guard.py` sentinel tests (13).** Pin the
+   autouse fixture so a future regression in `tests/conftest.py` cannot
+   silently disable the guard. Each sentinel intentionally targets a
+   canonical legacy UNC path via every patched API and asserts
+   `WriteGuardError`; companion sentinels confirm the guard isn't
+   spuriously blocking writes to `tmp_path`.
+
+3. **Restore via Option B — cam2-scoped one-off Python script.**
+   `scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py`
+   regenerates the three corrupted templates by:
+     i. Walking pre-run inventory at `cam{1-4}/PS48/20250314*` and
+        capturing sizes/mtimes to
+        `docs/phase-7-pre/restore_PS48_20250314_pre_run_inventory.csv`.
+    ii. Calling `make_alignment_templates_20251216.main()` (legacy
+        module loaded from MICROSCOPE via `importlib.util` — no edit
+        of the legacy repo, CLAUDE.md ground rule 2 honored) twice —
+        once for half-a, once for half-b — using per-half WS-processed
+        NPZs on MICROSCOPE
+        (`session_processing3/wavesurfer_signals_processed/PS48/20250314{a,b}.npz`)
+        and per-half cam2 CSVs in Rich's tree
+        (`camera/20250314{a,b}/PS48/timestamp2_2025-03-14T*.csv`).
+   iii. Merging the per-half templates via the existing
+        `multi_half_merge.merge_alignment_templates` (faithful port of
+        legacy cell 16) → parent-level merged at
+        `cam2/PS48/20250314.npz`.
+    iv. Moving the per-half NPZs from parent level into the
+        `20250314ab/` subdir (Decision 3 layout — matches Priya's
+        post-merge cleanup convention from 2026-01-11).
+     v. Post-run diff + layered Tier A/B/C validation (see below).
+
+   The script is the **documented exception** to the writeguard system:
+   it intentionally writes to deny-listed legacy paths. All three
+   guard layers are bypassed by design (resolver split: script
+   constructs paths directly without `PathResolver`; writeguard module:
+   script doesn't call `assert_safe_write_path`; conftest autouse:
+   script runs as a CLI tool outside pytest). The bypass is ONE-OFF
+   and not invoked from any pipeline path; the script's docstring
+   documents the exception explicitly.
+
+4. **Step 5 layered validation (Tier A/B/C) instead of strict byte-
+   equality.** Original spec was strict equality vs Task 1a inventory.
+   Relaxed 2026-05-09 because Phase 7a.0 baseline-seed probe documented
+   scipy 1.15.1 → 1.17.1 drift in Y0 retune (PS49/PS50 tongue): exact
+   byte-equal NPZ output across versions is not guaranteed even from
+   identical inputs. Strict assertion would have spuriously failed the
+   restore on benign env drift since the 2026-01-11 originals.
+
+   - **Tier A (size, per file):** ≤0.1% delta = PASS (likely
+     deterministic re-run); ≤5% = WARN (env drift; continue); >5% =
+     FAIL (exit 1).
+   - **Tier B (structural):** each per-half NPZ loads via `np.load` and
+     contains the 5 cell-16 REQ_KEYS (`Fs_ws_input` +
+     `sig_{wsIdx,camIdx,camTimes,wsTimes}__idx_{cam,ws}`); merged NPZ
+     contains those 5 + 4 provenance keys (`merged_from_A`,
+     `merged_from_B`, `ws_offset_samples`, `cam_offset_frames`); merged
+     `sig_wsIdx__idx_cam` length == n_cam_A + n_cam_B (analogous for
+     ws-axis arrays); `Fs_ws_input` matches across both halves and the
+     merged via `np.isclose`.
+   - **Tier C (diff shape):** exactly the 3 expected paths show
+     `modified` status; cam{1,3,4} cohort all `unchanged`.
+
+**Restore outcome (2026-05-09 14:27 UTC).** Five steps completed; layered
+Tier A/B/C verdict PASS. Empirically observed scipy/numpy drift was
+small but nonzero, validating the Tier A relaxation:
+
+| Path | Task 1a expected | Restored | Delta |
+|---|---|---|---|
+| `cam2/PS48/20250314.npz` | 43,873,994 | 43,875,365 | +0.0031% |
+| `cam2/PS48/20250314ab/20250314a.npz` | 68,512,651 | 68,512,394 | -0.0004% |
+| `cam2/PS48/20250314ab/20250314b.npz` | 69,808,659 | 69,808,402 | -0.0004% |
+
+All three deltas ≤0.005% — well inside the PASS tier (±0.1%). Structural
+checks all pass; cam{1,3,4} per-halves at 2026-01-11 mtimes unchanged.
+No tracebacks. Restore considered successful and complete.
+
+**Three findings surfaced during Task 5R (informed both the restore
+and the future Task 5 proper resumption).**
+
+1. **bnpm is a legacy-notebook-driver dep, NOT a project dep.** The
+   legacy alignment notebook (`batch_process_alignment_20251216PS.ipynb`)
+   imports `bnpm.path_helpers` for `generate_date_range_regex` +
+   `find_date_in_path` + `find_paths`. None of these are in the
+   stroke_orofacial conda env; `pyproject.toml` has no `bnpm` entry
+   (an earlier Phase 2 MIGRATION_LOG note about adding it was
+   reverted). This drove the choice of **Option B (one-off Python
+   script bypassing the notebook) over Option A (papermill on a
+   vendored copy of the notebook)**. The script reaches the same
+   `make_alignment_templates_20251216.main()` function the notebook
+   would call, but constructs per-half input lists manually — single-
+   session scope makes the bnpm regex helper unnecessary.
+
+2. **CSV / .avi filename 1-second skew on PS48 20250314 half-b.**
+   Half-b's timestamp CSV is `timestamp2_2025-03-14T13_09_28.csv` while
+   the .avi (and DLC filename derived from it) is `*T13_09_29.avi`.
+   Half-a is consistent at `T12_31_07` for both. Acquisition-side
+   artifact: the timestamp CSV was written ~1 second before the .avi
+   started rolling. Restore script handles this via an HH_MM-prefix
+   glob (`timestamp2_2025-03-14T13_09*.csv`) — the same loose-glob
+   discipline the new pipeline's per-half discovery uses (per the
+   `_file_timestamp_minute_prefix` helper in `manifest.py`).
+
+3. **Orphan cam{1,3,4} per-halves at parent level on MICROSCOPE.**
+   Pre-run inventory found 6 INTACT files (~68.5 / 69.8 MB each, mtime
+   2026-01-11) at `cam{1,3,4}/PS48/20250314{a,b}.npz`. Priya generated
+   these alongside cam2 in the original 2026-01-11 run (legacy notebook
+   walks `cam_idx in [1,2,3,4]`) but only cam2 was multi-half-merged —
+   cam2 had its per-halves moved into the `20250314ab/` subdir + a
+   merged file created at parent level via cell 16 of the canonical
+   tongue notebook. Cam{1,3,4} were left at parent level as orphan
+   per-halves. The cam2-scoped restore left these untouched. They are
+   read-only references for any future cross-cam analysis but never
+   referenced by the new pipeline (only cam2 is consumed downstream).
+   Future cohort housekeeping: decide whether to move the cam{1,3,4}
+   orphans into `20250314ab/` subdirs for symmetry, or leave them.
+   Documented as a forward-pointer; not in Task 5R scope.
+
+4. **Pattern B = secondary spout-position sessions, NOT exploratory
+   multi-half** (clarified by Priya 2026-05-09 after Task 7 cohort
+   scan). The 19 sessions across PS51/PS54/PS55 with `n_dlc=1, n_ws=2,
+   n_cam=2` flagged as mechanical "Pattern B" by the productized scan
+   classifier are a **deliberate experimental manipulation**: the
+   second acquisition (b half) was run with the water spouts
+   positioned closer to the mouse. This drives an important
+   architectural distinction between two scientifically distinct
+   categories that currently coincide mechanically:
+
+   - **Multi-half acquisition** (mechanical Pattern A; example PS48
+     20250314): one logical session split into two acquisition halves
+     due to technical interruption. Action: MERGE → one session-level
+     output. Handled by this PR's `multi_half_sessions:` registry +
+     `multi_half_merge.py` module.
+
+   - **Secondary spout-position session** (mechanical Pattern B):
+     two logical experimental sessions same day, different spout-
+     distance conditions. Action: KEEP SEPARATE → two session-level
+     outputs (bare-`{DATE}` standard distance + `{DATE}b` closer
+     distance). Scientific intent: bare-vs-b comparison for both
+     spout behavior and (eventually) DLC kinematics. Motivated by
+     the recovery-trajectory phenotype where animals show return of
+     licking to closer spouts BEFORE return of licking to standard
+     further-away spouts.
+
+   These categories happen to overlap today (b halves are exactly the
+   no-DLC ones) but conceptually they diverge — when DLC inference
+   eventually runs on b halves, those sessions become mechanically
+   `n_dlc=2` (matching Pattern A) while remaining semantically
+   secondary-spout-position (must NOT merge). The current Pattern B
+   sessions silently flow through the existing single-half discovery
+   path (bare half processed; b half discarded) — losing the b-half
+   data; a future phase will treat `{DATE}b` as a separate logical
+   session.
+
+   **Architectural compatibility commitments (must hold from this PR
+   forward):**
+
+   a. **The `multi_half_sessions:` registry is "merge-intent" only.**
+      Don't repurpose it for Pattern B sessions. A future
+      `secondary_spout_sessions:` registry handles compare-intent.
+
+   b. **Session-id schema must allow letter suffixes.** Today
+      `SessionManifest.session_id = f"{animal}_{date.strftime('%Y%m%d')}"`.
+      Future Pattern B work needs `session_id = "PS51_20250430b"`
+      alongside `"PS51_20250430"`. Implementation extends with
+      optional `session_suffix: str | None = None` field, threaded
+      through `build_manifest()`, output paths, and `PathResolver`.
+      **Constraint from this PR forward: do NOT bake in assumptions
+      anywhere that `session_id` matches `{animal}_{YYYYMMDD}`
+      exactly** — keep session-id an opaque string callers
+      construct, so the future suffix extension is a small change.
+
+   c. **The defensive check needs a Pattern-B branch when DLC runs
+      on b halves later.** When Priya DLC-infers a b half, the
+      session becomes `n_dlc=2` and would trip
+      `MultiHalfNotDeclaredError`. The Pattern B phase must
+      implement a `secondary_spout_sessions:` registry that overrides
+      the multi-half check (telling the manifest "these halves are
+      separate sessions, not merge candidates").
+
+   d. **Phase 2/3/4 pipelines process manifests opaquely; output
+      separation is via session-id.** The spout-behavior pipeline
+      MUST output for every session it can process — bare-`{DATE}`
+      sessions get their normal single-half outputs, `{DATE}b`
+      sessions get their OWN normal single-half outputs (not
+      currently happening — they're silently discarded; the Pattern
+      B phase fixes this), genuine multi-half sessions like PS48
+      20250314 get a single MERGED output. Downstream analyses
+      filter by session-id subset: "merged + bare-only" for the
+      standard recovery-trajectory analysis, "bare vs b" pairs for
+      the closer-spout-position comparison Priya wants. The Phase
+      2/3/4 code stays generic — it processes whatever manifest is
+      given, doesn't care about Pattern A/B distinctions; the
+      manifest-construction layer (via registry tags) decides
+      merge-vs-keep-separate. Output paths inherit session-id (with
+      letter suffix when applicable per commitment b), so per-
+      session outputs naturally separate by directory layout. Cross-
+      session analyses (`tongue_pertrial`, `mean_sem_visual`,
+      `tongue_jaw_mismatch`, etc.) consume the resulting per-session
+      artefacts and can filter by inspecting session-ids or by
+      querying the registries.
+
+   This forward-pointer becomes a future **Phase 7-pre-secondary-
+   spout** (or similarly-named) phase — out of scope here, scope
+   estimate ~mid-size comparable to this PR.
+
+5. **Licks/rewards NPZ schema divergence: new pipeline uses
+   WS-sample coordinate space; legacy used cam-frame; legacy "merge"
+   was an emergent heuristic side-effect, not designed behavior**
+   (surfaced 2026-05-09 by the Step 5 parity-gate Layer 1 RuntimeError).
+
+   **What cell-17's `_infer_n_cam` heuristic walks for** (in order):
+   Tier 1 — 1D arrays of length `n_cam`: `cam_times`,
+   `sig_camTimes__idx_cam`, `t_cam`, `frame_times_s`, `camTimes`.
+   Tier 2 — integer scalars: `n_frames`, `n_cam`, `nFrames`. Tier 3
+   fallback — largest 1D numeric array with `size > 1000`.
+
+   **What the new per-half NPZ actually has** (10 keys emitted by
+   `find_licks_and_rewards` + `_save_npz_with_side_convention`):
+   `Fs`, `Lick_L/R`, `Reward_L/R`, `Tone_L/R` (all WS-sample-indexed
+   int64 arrays of variable length), `n_samples` (WS sample count
+   scalar), `side_convention_version`, `wavesurfer_sides_match_mouse_sides`.
+   None of cell-17's Tier 1 / Tier 2 keys are present (they're
+   cam-frame metadata; the new pipeline operates in WS-sample space
+   and stores `n_samples` instead). Tier 3 fallback works for halves
+   whose largest event array has >1000 entries (PS48 20250314 half-A
+   `Lick_L = 1136`); fails for halves where all event arrays are
+   smaller (half-B's largest is 902, below the 1000 threshold) →
+   `RuntimeError: Could not infer n_cam`.
+
+   **Legacy merged NPZ was a buggy concat, not a designed merge.**
+   Empirical evidence from on-disk legacy `licks_and_rewards/PS48/
+   20250314.npz`: `Lick_L max = 2,283,893` exactly equals half-B's
+   `Lick_R max` (after the side-flip that legacy applies during
+   merge). No offset was applied to half-B's WS-sample indices when
+   concatenated. The legacy `cam_frame_offset_for_B = 1136` is
+   recorded as metadata but never applied to any array — it's
+   `_infer_n_cam`'s Tier-3 fallback (= half-A's `Lick_L` count) and
+   `_looks_like_frame_indices(Lick_L, n_cam_hint=1136)` returns
+   `False` because `max(Lick_L) ≈ 2.18M >> 1141`. The merge falls
+   through to events-concat without offset. Half-A and half-B events
+   end up in overlapping coordinate ranges; merged NPZ has no
+   coherent unified time axis. `merged_n_cam_A` is also a misnomer
+   (= Lick_L count, not cam-frame count). Legacy also drops `Tone_L/R`
+   from the merged output (likely artifact of pre-tone-port halves,
+   not a deliberate decision).
+
+   **Decision: new pipeline diverges from legacy by design** for
+   `index_space="ws_sample"` mode of `merge_licks_and_rewards`:
+   - **Apply offset = `n_samples_A`** to half-B's event-index arrays
+     (Lick_*/Reward_*/Tone_*) so the merged NPZ has a coherent
+     unified WS-sample time axis. Half-A indices unchanged; half-B
+     indices live at `[n_samples_A, n_samples_A + n_samples_B)`.
+   - **Carry `Tone_L/R` forward** to the merged output (no scientific
+     reason to drop them).
+   - **Modernize provenance schema**: drop `merged_n_cam_A` (misnomer),
+     `cam_frame_offset_for_B` (cam-frame-named, never applied),
+     `allow_pickle` (vestigial NPZ flag stored as data); add
+     `merged_n_samples_A`, `merged_n_samples_B`,
+     `ws_sample_offset_for_B` (= `merged_n_samples_A`, actually
+     applied to half-B arrays); carry forward `side_convention_version`
+     + `wavesurfer_sides_match_mouse_sides` after validating they
+     match across halves; keep `merged_from_A` / `merged_from_B`.
+   - **`index_space="cam_frame"` mode preserves legacy behavior**
+     for any future legacy-style NPZ verification (kept tested via
+     the existing 11-test `TestLicksAndRewardsMerge` suite).
+
+   **Layer 1 parity-gate reframe.** Direct byte-parity between new
+   merged NPZ (offset applied, ws-sample space) and legacy merged NPZ
+   (no offset, overlapping ranges) is structurally impossible and
+   would not be desirable even if it were. Layer 1 instead validates:
+   schema correctness (new-schema keys present), event-count parity
+   vs legacy (`len(merged.Lick_L)` etc. = sum of per-half), half-A
+   preservation (first N entries equal half-A's array exactly),
+   half-B offset (trailing entries equal half-B's array + offset),
+   no-overlap (merged is monotone-non-overlapping by half), provenance
+   round-trip, side-convention-stamp inheritance.
+
+   **Process lesson on test fixtures.** The 11 unit tests + 2
+   synthetic integration tests for `merge_licks_and_rewards` all used
+   synthetic NPZ fixtures shaped to match cell-17's input contract.
+   None tested the merge against real new-pipeline output. The merge
+   function inherited cell-17's input-contract assumptions verbatim
+   without ever validating against actual upstream data. Step 5's
+   live parity gate is the integration boundary that surfaced the
+   gap. The system worked (parity gate caught it before merge to
+   main) but the unit-test trust property is degraded — passing
+   unit + synthetic integration tests didn't imply integration with
+   real pipeline output. **Forward rule for future legacy-port
+   phases: include at least one fixture sourced from a real pipeline
+   run, not just synthetic; surface upstream schema mismatches at
+   unit-test level instead of waiting for the parity gate.**
+
+**Process lesson.** `output_root=` was assumed to redirect ALL writes;
+in reality it only redirected `pipeline_outputs()`. Permanent fix
+makes the assumption true by construction (the resolver split makes
+`_new` writers use `pipeline_outputs()` by definition; the writeguard
+module + conftest fixture catch any path-construction bug that
+escapes the resolver discipline). The lesson generalizes: when a
+test override claims to redirect "writes," verify which resolvers
+actually consult the override, and add a regression test that pins
+the inverse — `_new` resolvers MUST honor `output_root`; `_legacy_read`
+resolvers MUST NOT.
+
+**Enforced at.**
+  - `src/stroke_orofacial/paths.py` — `alignment_template_legacy_read`
+    + `alignment_template_new` + `alignment_template_per_half_new`
+    resolver split.
+  - `src/stroke_orofacial/_writeguard.py` — runtime write-guard module
+    (Layer 2).
+  - `tests/conftest.py` — autouse fixture (Layer 3).
+  - `tests/test_writeguard.py` (36 tests) — writeguard module coverage.
+  - `tests/test_conftest_guard.py` (13 sentinel tests) — autouse-fixture
+    sentinel pins.
+  - `tests/test_paths.py` — `_legacy_read` + `_new` resolver tests
+    including the `test_alignment_template_new_honors_output_root`
+    regression guard.
+  - `tests/test_multi_half_merge.py::TestComputeAndMergeAlignmentMultiHalf`
+    — three previously-skipped tests rewritten with `_new` paths +
+    explicit `tmp_path in p.parents` assertion before any write.
+  - `src/stroke_orofacial/alignment/timebase.py::compute_and_merge_alignment_multi_half`
+    — uses `_new` resolvers exclusively; calls `assert_safe_write_path`
+    inline before each `np.savez_compressed` (defense-in-depth).
+  - `scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py`
+    — one-off restore CLI; documented writeguard exception.
+  - `docs/phase-7-pre/restore_PS48_20250314_pre_run_inventory.csv` —
+    pre-run on-disk state captured for the restore audit trail.
+
+---
+
 ## 2026-05-04 — Phase 7a.4-cross-session-angle — per-mouse cross-session aggregations of tongue angle/phase plot families + centered-on-peak phase convention + per-animal pre-stroke median ILI + d0=pre-stroke project-wide convention update
 
 **Context.** Phase 7a.4-paths-cleanup (PR #94, 2026-05-03) shipped a
@@ -2438,6 +3197,8 @@ PR #79's baseline-seed probe and scipy-version pilot findings.
 ---
 
 ## 2026-04-21 — PS48 2025-03-14 multi-session handling (merge two acquisition halves into one analysis session)
+
+> **SUPERSEDED 2026-05-12** by *Phase 7-pre-multi-half close* (top of file). This entry proposed merging at load-boundaries (wavesurfer I/O / DLC I/O accept path lists); Architecture X shipped instead — per-half processing through Phases 2/3/4 + post-process merge at three coordinated artifact layers. The "Decision" / "Rationale" / "Enforced at" listed below are aspirational and were not the design that landed; see Decision 1 of the 2026-05-12 entry for the actual architecture.
 
 - *Context:* Priya flagged during the Phase 6.8a diagnostic post-mortem
   that PS48 2025-03-14 was split across two acquisitions within one

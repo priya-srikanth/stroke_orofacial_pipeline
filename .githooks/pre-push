@@ -1,0 +1,22 @@
+#!/bin/bash
+# Phase-branch pre-push gate: refuse push if any tracked .py file is
+# broken at import / collect time. Catches truncated/half-edited files
+# (origin: 2026-05-05 timebase.py incident — ~5h between corruption
+# and discovery; pre-push gate makes the discovery loop ~5s).
+
+set -e
+branch=$(git symbolic-ref --short HEAD)
+case "$branch" in
+  phase/*|main)
+    echo "[pre-push] $branch — running import + collect smokes"
+    python -c "import stroke_orofacial" || {
+      echo "FATAL: stroke_orofacial fails to import. Likely a truncated file." >&2
+      exit 1
+    }
+    pytest --collect-only -q > /dev/null || {
+      echo "FATAL: pytest collection failed." >&2
+      exit 2
+    }
+    echo "[pre-push] smokes OK"
+    ;;
+esac
