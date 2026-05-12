@@ -79,6 +79,8 @@ from typing import Any, Literal
 
 import tempfile
 
+import numpy as np
+
 from stroke_orofacial.manifest import (
     OverlappingRegistryError,
     load_secondary_spout_sessions,
@@ -87,8 +89,6 @@ from stroke_orofacial.paths import PathResolver
 from stroke_orofacial.spout_behavior.session_processing import (
     process_session_by_animal_date,
 )
-
-# numpy + OUTPUT_TYPES are imported lazily by Layer 2 (Task 6c).
 
 
 # ---- Constants ----
@@ -551,6 +551,220 @@ def _layer1_bare_half_byte_identity(
     )
 
 
+def _validate_b_half_licks_npz(
+    b_path: Path, bare_path: Path | None,
+) -> list[str]:
+    """Structural checks on a b-half licks_and_rewards NPZ.
+
+    Required keys, dtypes, side-convention-stamp parity with bare half
+    (when present). Returns list of failure strings; empty = PASS.
+    """
+    failures: list[str] = []
+    try:
+        b_data = np.load(b_path, allow_pickle=True)
+    except Exception as e:
+        return [f"could not load b-half NPZ {b_path}: {e!r}"]
+
+    missing = [k for k in _LICKS_REQUIRED_KEYS if k not in b_data.files]
+    if missing:
+        failures.append(
+            f"licks_and_rewards b-half missing required keys: {missing}"
+        )
+
+    # Event arrays should be 1D int (Lick_L/R, Reward_L/R, Tone_L/R)
+    for key in ("Lick_L", "Lick_R", "Reward_L", "Reward_R", "Tone_L", "Tone_R"):
+        if key not in b_data.files:
+            continue
+        arr = np.asarray(b_data[key])
+        if arr.ndim != 1:
+            failures.append(
+                f"licks_and_rewards b-half {key!r}: expected 1D, got ndim={arr.ndim}"
+            )
+        if not np.issubdtype(arr.dtype, np.integer):
+            failures.append(
+                f"licks_and_rewards b-half {key!r}: expected int dtype, got {arr.dtype}"
+            )
+
+    # n_samples plausible
+    if "n_samples" in b_data.files:
+        n_samples = int(np.asarray(b_data["n_samples"]))
+        if n_samples <= 0 or n_samples >= 100_000_000:
+            failures.append(
+                f"licks_and_rewards b-half n_samples={n_samples} "
+                f"outside plausible range (0, 100M)"
+            )
+
+    # Side-convention stamps must match the bare half's stamps
+    # (regression for Task 3a-d plumbing — both halves of a Pattern B
+    # session share the same animal-info rig orientation).
+    if bare_path is not None and bare_path.exists():
+        try:
+            bare_data = np.load(bare_path, allow_pickle=True)
+        except Exception as e:
+            failures.append(
+                f"could not load bare-half NPZ for stamp comparison: {e!r}"
+            )
+        else:
+            for key in _SIDE_CONVENTION_KEYS:
+                if key not in b_data.files or key not in bare_data.files:
+                    continue
+                b_val = np.asarray(b_data[key]).item()
+                bare_val = np.asarray(bare_data[key]).item()
+                if b_val != bare_val:
+                    failures.append(
+                        f"licks_and_rewards b-half {key!r}: "
+                        f"b={b_val!r} vs bare={bare_val!r} (mismatch)"
+                    )
+
+            # Fs must match
+            if "Fs" in b_data.files and "Fs" in bare_data.files:
+                b_fs = float(np.asarray(b_data["Fs"]))
+                bare_fs = float(np.asarray(bare_data["Fs"]))
+                if b_fs != bare_fs:
+                    failures.append(
+                        f"licks_and_rewards b-half Fs: "
+                        f"b={b_fs} vs bare={bare_fs} (mismatch)"
+                    )
+
+    return failures
+
+
+def _validate_b_half_generic_npz(
+    b_path: Path, bare_path: Path | None, output_type: str,
+) -> list[str]:
+    """Generic structural checks for the 6 non-licks output types.
+
+    The bare half's keyset is treated as ground truth — Layer 2
+    verifies the b-half NPZ has the same keys.
+    """
+    failures: list[str] = []
+    try:
+        b_data = np.load(b_path, allow_pickle=True)
+    except Exception as e:
+        return [f"could not load b-half {output_type} NPZ {b_path}: {e!r}"]
+
+    if bare_path is not None and bare_path.exists():
+        try:
+            bare_data = np.load(bare_path, allow_pickle=True)
+        except Exception as e:
+            failures.append(
+                f"could not load bare-half {output_type} NPZ for "
+                f"keyset comparison: {e!r}"
+            )
+        else:
+            b_keys = set(b_data.files)
+            bare_keys = set(bare_data.files)
+            missing = bare_keys - b_keys
+            if missing:
+                failures.append(
+                    f"{output_type} b-half missing keys present in "
+                    f"bare-half: {sorted(missing)}"
+                )
+
+    return failures
+
+
+def _validate_b_half_params_json(
+    b_path: Path, animal: str, date_str: str,
+) -> list[str]:
+    """Structural checks on a b-half params.json file.
+
+    - Parses as valid JSON.
+    - ``session_id`` == ``f"{animal}_{date_str}b"`` (regression for
+      Task 3d's manifest.session_id propagation through provenance).
+    - ``run_timestamp`` present (any string; content irrelevant).
+    """
+    failures: list[str] = []
+    try:
+        with b_path.open(encoding="utf-8") as f:
+            record = json.load(f)
+    except Exception as e:
+        return [f"could not parse params.json {b_path}: {e!r}"]
+
+    expected_session_id = f"{animal}_{date_str}b"
+    actual_session_id = record.get("session_id")
+    if actual_session_id != expected_session_id:
+        failures.append(
+            f"params.json session_id: expected {expected_session_id!r}, "
+            f"got {actual_session_id!r} (Task 3d regression?)"
+        )
+
+    if "run_timestamp" not in record:
+        failures.append(
+            "params.json missing run_timestamp field"
+        )
+
+    return failures
+
+
+def _validate_b_half_outputs(
+    animal: str,
+    date: datetime.date,
+    tmp_root: Path,
+) -> tuple[list[str], dict[str, Any]]:
+    """Walk ``tmp_root`` for b-half outputs and run per-output-type
+    structural checks.
+
+    Returns ``(failures, info)`` where ``failures`` is a list of error
+    strings (empty = PASS) and ``info`` is per-session metadata.
+    """
+    date_str = date.strftime("%Y%m%d")
+    failures: list[str] = []
+    info: dict[str, Any] = {
+        "session_key": f"{animal}/{date_str}",
+        "n_b_files_checked": 0,
+        "n_b_npz_files": 0,
+        "n_b_params_json": 0,
+        "b_outputs_per_type": {},
+    }
+
+    # Find every b-half NPZ + params.json under tmp_root. b-half filename
+    # is ``{date_str}b.<ext>``.
+    b_filename = f"{date_str}b"
+    for p in sorted(tmp_root.rglob("*")):
+        if not p.is_file():
+            continue
+        name = p.name
+        if not name.startswith(b_filename):
+            continue
+        after = name[len(b_filename):]
+        if not after.startswith("."):
+            continue  # not a clean b-half file
+
+        info["n_b_files_checked"] += 1
+        # Identify output_type from path
+        # Expected layout: {output_type}/{animal}/{date_str}b.<ext>
+        # OR params/{animal}/{date_str}b.json
+        parts = p.relative_to(tmp_root).parts
+        if len(parts) < 3:
+            failures.append(
+                f"unexpected b-half output path layout: "
+                f"{p.relative_to(tmp_root).as_posix()}"
+            )
+            continue
+        output_type = parts[0]
+        # Bare-half counterpart at the same layout with bare filename
+        bare_path = p.parent / f"{date_str}{p.suffix}"
+
+        info["b_outputs_per_type"][output_type] = (
+            info["b_outputs_per_type"].get(output_type, 0) + 1
+        )
+
+        if output_type == "params":
+            info["n_b_params_json"] += 1
+            failures.extend(_validate_b_half_params_json(p, animal, date_str))
+        elif output_type == "licks_and_rewards":
+            info["n_b_npz_files"] += 1
+            failures.extend(_validate_b_half_licks_npz(p, bare_path))
+        else:
+            info["n_b_npz_files"] += 1
+            failures.extend(
+                _validate_b_half_generic_npz(p, bare_path, output_type)
+            )
+
+    return failures, info
+
+
 def _layer2_b_half_structural(
     log: _ForensicLog,
     cohort: list[tuple[str, datetime.date]],
@@ -558,17 +772,122 @@ def _layer2_b_half_structural(
 ) -> LayerResult:
     """Layer 2 — b-half structural validation.
 
-    Filled in by Task 6c. Placeholder returns SKIP_NO_LEGACY for
-    Task 6a.
+    For each Pattern B session, run ``process_session_by_animal_date``
+    against the feature branch and structurally validate every b-half
+    output (NPZ keysets, scalar shapes, side-convention stamp parity
+    with the bare half, params.json session_id-suffix propagation).
+
+    No legacy comparison — b halves were silently discarded pre-PR.
+    SKIP_NO_B_HALF (surfaced as INFO, not FAIL) when both halves of a
+    session failed to emit (e.g., PS55/2025-04-24 if the bare override
+    didn't take effect AND the b half also failed).
     """
     log("=" * 70)
     log("Layer 2 — b-half structural validation")
     log("=" * 70)
-    log("  (Task 6a skeleton — Layer 2 implementation lands in Task 6c)")
+
+    all_failures: list[str] = []
+    per_session_info: list[dict[str, Any]] = []
+    n_pass = n_fail = n_skip_no_b = 0
+
+    for i, (animal, date) in enumerate(cohort, start=1):
+        date_str = date.strftime("%Y%m%d")
+        session_key = f"{animal}/{date_str}"
+        log(f"[{i}/{len(cohort)}] {session_key}: ", )
+
+        try:
+            with tempfile.TemporaryDirectory(
+                prefix="parity_layer2_",
+            ) as tmp:
+                tmp_root = Path(tmp)
+                resolver = PathResolver(output_root=tmp_root)
+                result_per_suffix = process_session_by_animal_date(
+                    animal, date, resolver,
+                    overwrite="force",
+                    overrides_config=overrides_config,
+                )
+
+                # Check b-half exists in result
+                if "b" not in result_per_suffix:
+                    log(
+                        "  SKIP_NO_B_HALF: b half did not emit "
+                        "(partial-failure path inside "
+                        "process_session_by_animal_date)"
+                    )
+                    n_skip_no_b += 1
+                    continue
+
+                session_failures, session_info = _validate_b_half_outputs(
+                    animal, date, tmp_root,
+                )
+
+                if session_failures:
+                    log(
+                        f"  FAIL: {len(session_failures)} structural "
+                        f"check(s) failed. info={session_info}"
+                    )
+                    for sf in session_failures[:10]:
+                        log(f"    - {sf}")
+                    all_failures.extend(session_failures)
+                    n_fail += 1
+                else:
+                    log(
+                        f"  PASS: {session_info['n_b_files_checked']} "
+                        f"b-half files validated "
+                        f"({session_info['n_b_npz_files']} NPZs + "
+                        f"{session_info['n_b_params_json']} params.json)"
+                    )
+                    n_pass += 1
+
+                per_session_info.append(session_info)
+        except Exception as e:
+            tb = traceback.format_exc()
+            log(f"  ERROR during Layer 2 for {session_key}: {e!r}")
+            return LayerResult(
+                layer=2, name="b_half_structural",
+                status="error",
+                summary=f"exception during {session_key}: {e!r}",
+                traceback_str=tb,
+            )
+
+    log("")
+    log(
+        f"Layer 2 summary: "
+        f"{n_pass} PASS, {n_skip_no_b} SKIP_NO_B_HALF, "
+        f"{n_fail} FAIL out of {len(cohort)} sessions"
+    )
+
+    if all_failures:
+        return LayerResult(
+            layer=2, name="b_half_structural",
+            status="fail",
+            summary=(
+                f"{n_fail} sessions had structural failures "
+                f"({len(all_failures)} total)"
+            ),
+            failures=all_failures,
+            info={
+                "n_pass": n_pass,
+                "n_fail": n_fail,
+                "n_skip_no_b": n_skip_no_b,
+                "per_session_info": per_session_info,
+            },
+        )
+
+    # All PASS or SKIP_NO_B_HALF. The latter is informational.
+    summary = f"{n_pass} sessions structurally valid"
+    if n_skip_no_b:
+        summary += f"; {n_skip_no_b} skip_no_b_half (b half didn't emit)"
     return LayerResult(
         layer=2, name="b_half_structural",
-        status="skip_no_legacy",
-        summary="Task 6a skeleton placeholder; Task 6c implements",
+        status="pass",
+        summary=summary,
+        info={
+            "n_pass": n_pass,
+            "n_fail": n_fail,
+            "n_skip_no_b": n_skip_no_b,
+            "per_session_info": per_session_info,
+        },
     )
 
 
