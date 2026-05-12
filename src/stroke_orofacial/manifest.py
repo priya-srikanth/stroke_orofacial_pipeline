@@ -800,7 +800,16 @@ def build_manifest(
     # For Pattern A multi-half sessions the parent-level merged file lives at
     # the same path as a single-half template; per-half templates live in
     # halves[i].alignment_template (populated by Phase 3 output, not here).
-    alignment_path = resolver.alignment_template_legacy_read(animal, date)
+    #
+    # Phase 7-pre-secondary-spout: thread session_suffix into the cache-
+    # discovery resolver call so Pattern B b-half manifests resolve to
+    # the suffix-aware ``{date_str}b.npz`` cached template (not the bare-
+    # half ``{date_str}.npz``). Without this, the b-half manifest's
+    # ``.alignment_template`` would point at the bare-half template,
+    # causing Phase 3 to short-circuit cache-hit on the wrong file.
+    alignment_path = resolver.alignment_template_legacy_read(
+        animal, date, session_suffix=session_suffix,
+    )
     alignment_template = alignment_path if alignment_path.exists() else None
 
     # Compute stroke-relative metadata

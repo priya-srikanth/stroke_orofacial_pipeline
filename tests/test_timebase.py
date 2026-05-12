@@ -115,9 +115,14 @@ class TestIntegrationAlignment:
 
         resolver = PathResolver()
         params = load_defaults()["alignment"]
-        result = load_or_compute_alignment_by_animal_date(
+        # Phase 7-pre-secondary-spout: wrapper now returns
+        # dict[str | None, AlignmentResult]. PS46/2025-03-07 is a
+        # vanilla single-half session → single-entry {None: ...}.
+        result_per_suffix = load_or_compute_alignment_by_animal_date(
             "PS46", datetime.date(2025, 3, 7), resolver, params
         )
+        assert set(result_per_suffix.keys()) == {None}
+        result = result_per_suffix[None]
         assert result.source == "loaded"
         assert result.sig_camIdx__idx_ws.shape[0] > 0
         assert result.sig_wsIdx__idx_cam.shape[0] > 0
@@ -141,10 +146,14 @@ class TestIntegrationAlignment:
         ref_path = resolver.alignment_template_legacy_read("PS46", date, cam="cam2")
         ref = load_alignment_template(ref_path)
 
-        # Recompute via wrapper
-        result = load_or_compute_alignment_by_animal_date(
+        # Recompute via wrapper. Phase 7-pre-secondary-spout: new
+        # return shape is dict[str | None, AlignmentResult]; PS46 is
+        # vanilla single-half so the dict has one None entry.
+        result_per_suffix = load_or_compute_alignment_by_animal_date(
             "PS46", date, resolver, params, force_recompute=True
         )
+        assert set(result_per_suffix.keys()) == {None}
+        result = result_per_suffix[None]
         assert result.source == "computed"
 
         # Compare (tolerances per amendment 1 + Phase 13 env-migration note).

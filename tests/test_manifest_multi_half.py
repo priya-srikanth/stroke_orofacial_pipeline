@@ -127,13 +127,19 @@ def _make_resolver_for_layout(
     def _dlc_output_dir(animal):
         return dlc_root / animal
 
-    def _alignment_template_legacy_read(animal, date, cam="cam2"):
+    def _alignment_template_legacy_read(
+        animal, date, cam="cam2", *, session_suffix=None,
+    ):
         # No alignment template emitted in fixture (build_manifest only checks
         # existence and stores None when missing). Renamed in the
         # 2026-05-05 incident response: the resolver method that build_manifest
         # uses for legacy template discovery is alignment_template_legacy_read.
+        # Phase 7-pre-secondary-spout: also accept session_suffix kwarg
+        # (Task 5 added it to the real resolver). Mirror suffix-aware
+        # filename behavior for Pattern B b-half discovery.
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         return ws_root.parent / "alignment_templates" / cam / animal / (
-            f"{date.strftime('%Y%m%d')}.npz"
+            f"{date_str}.npz"
         )
 
     resolver.wavesurfer_dir.side_effect = _ws_dir
