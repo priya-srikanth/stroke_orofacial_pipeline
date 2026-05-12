@@ -7,8 +7,8 @@ Layer 3: 5/5 PASS). **Outcome A** (infrastructure-only, no legacy
 bare-vs-b comparison code to port — Task 1 audit confirmed). 19
 sessions across PS51 (×2) / PS54 (×11) / PS55 (×6); PS55/2025-04-24
 asymmetric-WS-dir edge case handled via `bare_ws_subdir_override:
-"20250424a"` in `secondary_spout_sessions:` registry. PR #<FILL>
-merged <FILL> as merge-commit `<FILL>`, tagged `v7-pre-secondary-spout`.
+"20250424a"` in `secondary_spout_sessions:` registry. PR #105
+merged 2026-05-12 as merge-commit `29324eb`, tagged `v7-pre-secondary-spout`.
 The forward-pointer Phase 7-pre-multi-half Decision 5 committed
 (Pattern B compatibility — four locked architectural commitments
 honored: `multi_half_sessions:` merge-intent only; session-id schema
@@ -477,8 +477,8 @@ kickoff V3 retrospective rewrite (~1,794-line historical-narrative
 pass).
 
 **In flight:** *None.* Phase 7-pre-secondary-spout closed 2026-05-12 as
-PR #<FILL>, tagged `v7-pre-secondary-spout`. `main` at merge-commit
-`<FILL>` (the Phase 7-pre-secondary-spout merge; supersedes the
+PR #105, tagged `v7-pre-secondary-spout`. `main` at merge-commit
+`29324eb` (the Phase 7-pre-secondary-spout merge; supersedes the
 2026-05-12 PR #100 wiring follow-up that left `main` at `35708e7`).
 No active feature branch. Next-phase candidate pick pending Priya
 from the list below — Phase 7-pre-secondary-spout deletion from
@@ -492,7 +492,7 @@ Pattern B 19-session cohort + 4 architectural commitments
 discharged + Outcome A infrastructure-only + module-level free
 function path-suffix pattern + bare-vs-b → 8a.10 fold-in):**
 
-PR #<FILL> merged <FILL> as merge-commit `<FILL>`, tagged
+PR #105 merged 2026-05-12 as merge-commit `29324eb`, tagged
 `v7-pre-secondary-spout`. 13-commit subtask breakdown on
 `phase/7-pre-secondary-spout`:
 
@@ -620,10 +620,10 @@ forward-pointers):
    — Priya's call at PR review)
 
 **Post-merge obligations:** (a) push `v7-pre-secondary-spout` tag
-on merge SHA per CLAUDE.md §Git discipline; (b) backfill `<FILL>`
-placeholders in DECISIONS + MIGRATION_LOG + state-doc via a small
-close-out polish PR mirroring PR #101's 7-pre-multi-half pattern;
-(c) decide on cohort-wide re-emit (manual or chore-PR).
+on merge SHA per CLAUDE.md §Git discipline; (b) backfill the phase-
+metadata placeholders in DECISIONS + MIGRATION_LOG + state-doc via
+a small close-out polish PR mirroring PR #101's 7-pre-multi-half
+pattern; (c) decide on cohort-wide re-emit (manual or chore-PR).
 
 ---
 
@@ -1785,7 +1785,7 @@ section; most likely Phase 7 — DLC kinematics — via the existing
 
 **Completed since last state refresh:**
 
-- **Phase 7-pre-secondary-spout — Pattern B closer-spout 2nd-acquisition handling for PS51/PS54/PS55 (19 sessions; Outcome A infrastructure-only).** 13 commits on `phase/7-pre-secondary-spout` (Task 2 `f13d789` registry + Task 3a `b24c704` / 3b `ededaf5` / 3c `43cde64` / 3d `c8e29cf` session_suffix threading + Task 4 `b738dc1` Phase 2 driver + Task 5 `eabcecf` Phase 3 driver + Task 6a `34df83a` / 6b `ee1aba1` / 6c `5acdecc` / 6d `ce6e3cf` / 6e `5f9a327` 3-layer parity gate + Task 8 amended `8ac6983` DECISIONS+MIGRATION_LOG + bare-vs-b → 8a.10 fold-in + Task 9 `<NEW SHA>` state-doc). Task 6 live MICROSCOPE verdict: Layer 1 PASS (18 byte-equal + 1 PS55/2025-04-24 expected-divergence via `bare_ws_subdir_override`), Layer 2 PASS (19/19 b-half structural — required keys + Fs + side-convention stamps + session_id-suffix), Layer 3 PASS (5/5 synthetic defensive-check scenarios). Task 1 audit confirmed Outcome A — legacy notebooks (`playground_analyze_behavior_report_PS20250610.ipynb` + `batch_process_behavior_report_20260116PS.ipynb`) omit `*b` dates from `include_dates`, no bare-vs-b comparison code to port. **4 architectural commitments from 7-pre-multi-half Decision 5 honored**: `multi_half_sessions:` merge-intent only; session-id schema allows letter suffixes via `session_suffix` field; `MultiHalfNotDeclaredError` gains Pattern-B branch (suppresses when `secondary_spout_sessions:` covers `(animal, date)`); Phase 2/3/4 manifest-opaque output separation by session-id. Most architecturally significant decision this phase: the **module-level free function path-suffix pattern** (Decision 5 of the 7-pre-secondary-spout DECISIONS entry) — caller-side `date_str_suffixed = date_str + (manifest.session_suffix or "")` for free-function helpers that bypass PathResolver methods. **Bare-vs-b spout-behavior outcome comparison folded into Phase 8a.10 scope** per Priya 2026-05-12 (NOT a separate Phase 7-pre-secondary-spout-compare phase); DLC-side bare-vs-b comparison remains a separate forward-pointer (Phase 7-pre-secondary-spout-compare-DLC), blocked on b-half DLC inference. Test suite 1164 passed / 38 skipped (+15 from harness comparator tests). Pattern A regression: 152/152. PR #<FILL> merged <FILL> as merge-commit `<FILL>`, tagged `v7-pre-secondary-spout`. See DECISIONS 2026-05-12 Phase 7-pre-secondary-spout + MIGRATION_LOG Phase 7-pre-secondary-spout.
+- **Phase 7-pre-secondary-spout — Pattern B closer-spout 2nd-acquisition handling for PS51/PS54/PS55 (19 sessions; Outcome A infrastructure-only).** 13 commits on `phase/7-pre-secondary-spout` (Task 2 `f13d789` registry + Task 3a `b24c704` / 3b `ededaf5` / 3c `43cde64` / 3d `c8e29cf` session_suffix threading + Task 4 `b738dc1` Phase 2 driver + Task 5 `eabcecf` Phase 3 driver + Task 6a `34df83a` / 6b `ee1aba1` / 6c `5acdecc` / 6d `ce6e3cf` / 6e `5f9a327` 3-layer parity gate + Task 8 amended `8ac6983` DECISIONS+MIGRATION_LOG + bare-vs-b → 8a.10 fold-in + Task 9 `<NEW SHA>` state-doc). Task 6 live MICROSCOPE verdict: Layer 1 PASS (18 byte-equal + 1 PS55/2025-04-24 expected-divergence via `bare_ws_subdir_override`), Layer 2 PASS (19/19 b-half structural — required keys + Fs + side-convention stamps + session_id-suffix), Layer 3 PASS (5/5 synthetic defensive-check scenarios). Task 1 audit confirmed Outcome A — legacy notebooks (`playground_analyze_behavior_report_PS20250610.ipynb` + `batch_process_behavior_report_20260116PS.ipynb`) omit `*b` dates from `include_dates`, no bare-vs-b comparison code to port. **4 architectural commitments from 7-pre-multi-half Decision 5 honored**: `multi_half_sessions:` merge-intent only; session-id schema allows letter suffixes via `session_suffix` field; `MultiHalfNotDeclaredError` gains Pattern-B branch (suppresses when `secondary_spout_sessions:` covers `(animal, date)`); Phase 2/3/4 manifest-opaque output separation by session-id. Most architecturally significant decision this phase: the **module-level free function path-suffix pattern** (Decision 5 of the 7-pre-secondary-spout DECISIONS entry) — caller-side `date_str_suffixed = date_str + (manifest.session_suffix or "")` for free-function helpers that bypass PathResolver methods. **Bare-vs-b spout-behavior outcome comparison folded into Phase 8a.10 scope** per Priya 2026-05-12 (NOT a separate Phase 7-pre-secondary-spout-compare phase); DLC-side bare-vs-b comparison remains a separate forward-pointer (Phase 7-pre-secondary-spout-compare-DLC), blocked on b-half DLC inference. Test suite 1164 passed / 38 skipped (+15 from harness comparator tests). Pattern A regression: 152/152. PR #105 merged 2026-05-12 as merge-commit `29324eb`, tagged `v7-pre-secondary-spout`. See DECISIONS 2026-05-12 Phase 7-pre-secondary-spout + MIGRATION_LOG Phase 7-pre-secondary-spout.
 - **Task #41 — Phase 7a.4-orientation-fix (state-doc retrocapture; shipped 2026-05-03 + 2026-05-04).** Comprehensive grep audit of `src/stroke_orofacial/dlc_kinematics/` confirms cam-view convention (R-trials on figure-LEFT, L-trials on figure-RIGHT) is universally applied across every L/R subplot site: `tongue_visual.py::_plot_xy_by_phase` (PR #93 merge-commit `c34c51d`, tagged `v7a.4-orientation-fix-cam-view-flip`); `tongue_visual.py::_plot_first_vs_second_peak_scatter` and all 6+ plot families in `tongue_angle_cohort.py` via `_setup_cam_view_axes(...)` helper (PR #95 7a.4-cross-session-angle, merge-commit `718bbca`); `mean_sem_visual.py` (7a.6 C7.2). No remaining L-on-LEFT instances. Other rendering functions (`_plot_per_trial_qc_traces`, `_plot_first_peak_aligned`, `_plot_reward_aligned`, `_plot_phase_aligned_angle`) don't use L/R subplots — they overlay sides on a single axes by color, so there's no orientation to flip. State-doc Next-phase candidates list and Pending-open queue both carried stale references through the 7-pre-multi-half close-out polish; this entry retroactively captures closure.
 - **Phase 7-pre-multi-half follow-up — wire `merge_licks_and_rewards` into `_process_session_multi_half` (PR #100, merge-commit `35708e7`, 2026-05-12).** Wire `merge_licks_and_rewards` into `_process_session_multi_half` so multi-half sessions emit the parent-level merged licks NPZ as part of normal Phase-2 processing (deferred from Task 4 of Phase 7-pre-multi-half). After the per-half loop, the per-half NPZs are merged via `index_space="ws_sample"` and land at the canonical parent-level path `{output_root}/licks_and_rewards/{animal}/{date}.npz`; single-half code path unchanged. +1 unit test (`TestMergeWiring::test_merged_licks_npz_written_alongside_per_half`) verifies per-half + merged NPZs on disk with correct ws_sample offset semantics. Full pytest suite 1072 passed / 38 skipped (+1 vs branch base). No tag — captured as `Forward-pointer resolved` note in `docs/MIGRATION_LOG.md` below the Phase 7-pre-multi-half entry, per the small-post-merge-follow-up convention.
 - **Task #18 — AnimalInfo cohort metadata schema (retrocapture; shipped
@@ -2083,8 +2083,8 @@ Whatever the server-side feature flag or staged-rollout gate was doing on 2026-0
 ## Best warm-start prompt (paste into a new Cowork chat)
 
 End of 2026-05-12 session (later, post-7-pre-multi-half close):
-**Phase 7-pre-secondary-spout closed** as PR #<FILL>, merge-commit
-`<FILL>`, tagged `v7-pre-secondary-spout`. Pattern B closer-spout
+**Phase 7-pre-secondary-spout closed** as PR #105, merge-commit
+`29324eb`, tagged `v7-pre-secondary-spout`. Pattern B closer-spout
 2nd-acquisition handling for the 19 PS51/PS54/PS55 sessions; Outcome
 A from Task 1 audit (no legacy bare-vs-b comparison code to port);
 Task 6 live MICROSCOPE parity verdict **all 3 layers PASS** (Layer
@@ -2119,19 +2119,21 @@ the forward rule "capture baselines on `main` as a chore-PR before
 opening any byte-identity-parity feature branch." Test suite 1164
 passed / 38 skipped (+15 from harness comparator tests on top of the
 1149 Task 5 baseline). Pattern A regression: 152/152. `main` at
-merge-commit `<FILL>`; no active feature branch. **Post-merge
+merge-commit `29324eb`; no active feature branch. **Post-merge
 obligations remaining:** (a) push `v7-pre-secondary-spout` tag on
-merge SHA; (b) backfill `<FILL>` placeholders in DECISIONS +
-MIGRATION_LOG + state-doc via small close-out polish PR (mirrors
-PR #101 pattern for 7-pre-multi-half); (c) decide on cohort-wide
-re-emit (manual operator step or chore-PR). **Next-phase candidates**
-(Priya's pick from renumbered queue): **Phase 7a.7** (DLC heatmaps,
-3 legacy sources, audit-first; candidate #0), **Phase 8a.10** (spout
-behavior visual gate, NOW scope-expanded with bare-vs-b spout-behavior
-comparison; candidate #2), **Phase 7a.8** (reward-aligned DLC heatmaps
-QC; candidate #1), **Phase 5.5 polish** (#16, ungated parallel;
-candidate #6), or the **close-out polish PR** for `<FILL>` backfill
-(small docs-only PR mirroring PR #101). Verify
+merge SHA — **DONE** (annotated tag on `29324eb`, pushed to origin);
+(b) backfill phase-metadata placeholders in DECISIONS + MIGRATION_LOG
++ state-doc via small close-out polish PR (mirrors PR #101 pattern
+for 7-pre-multi-half) — **DONE** (this commit); (c) decide on
+cohort-wide re-emit (manual operator step or chore-PR). **Next-phase
+candidates** (Priya's pick from renumbered queue): **Phase 7a.7**
+(DLC heatmaps, 3 legacy sources, audit-first; candidate #0),
+**Phase 8a.10** (spout behavior visual gate, NOW scope-expanded
+with bare-vs-b spout-behavior comparison; candidate #2),
+**Phase 7a.8** (reward-aligned DLC heatmaps QC; candidate #1),
+**Phase 5.5 polish** (#16, ungated parallel; candidate #6), or
+the cohort-wide re-emit decision (manual or chore-PR; obligation
+(c) remaining). Verify
 `git tag --list | grep -E 'v7-pre-secondary-spout|v7-pre-multi-half'`
 shows both phase tags locally + on origin.
 
