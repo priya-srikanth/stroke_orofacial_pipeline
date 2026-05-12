@@ -15,6 +15,151 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-09 — Phase 7-pre-multi-half: `merge_licks_and_rewards` schema-divergence (ws_sample mode supersedes legacy concat-without-offset)
+
+> Working draft — folds into the phase-close DECISIONS at Task 10.
+> Standalone-readable if someone hits this file before Task 10 lands.
+
+**Context.** Step 5 of the Task 9 parity gate live run (2026-05-09)
+surfaced a fundamental coordinate-space mismatch between the legacy
+`session_processing3/licks_and_rewards/PS48/20250314.npz` and the new
+pipeline's per-half NPZs emitted by `process_session_multi_half`. The
+Step 5 run errored at Layer 1 because `_infer_n_cam` returned `None`
+on the new Phase 2 NPZ (the legacy cell-17 schema's count signals —
+`cam_times`, `n_cam`, etc. — are absent from the new schema, which
+carries only `n_samples` as a scalar). On-disk schema audit
+(`.audit_inspect_licks_npz.py`, 2026-05-09):
+
+- **New per-half NPZ** (`pipeline_outputs/spout_behavior/licks_and_rewards/PS48/20250314ab/{20250314a,20250314b}.npz`):
+  10 keys = 6 event index arrays (`Lick_L/R`, `Reward_L/R`, `Tone_L/R`,
+  all in WS-sample coords at Fs=1000) + 2 scalars (`Fs`, `n_samples`)
+  + 2 side-convention stamps (`side_convention_version`,
+  `wavesurfer_sides_match_mouse_sides`).
+- **Legacy merged NPZ** (`session_processing3/licks_and_rewards/PS48/20250314.npz`):
+  11 keys = 4 event index arrays (`Lick_L/R`, `Reward_L/R` — **NO
+  Tone_***) in WS-sample coords + 2 scalars (`Fs`, `n_samples` = only
+  half-A's count) + 5 provenance keys (`merged_from_A/B`,
+  `cam_frame_offset_for_B=1136`, `merged_n_cam_A=1136`, `allow_pickle`).
+
+**Root cause — legacy concat-without-offset was an emergent heuristic
+side-effect, not designed behavior.** Cell-17's `_looks_like_frame_indices`
+heuristic asked: is this array integer-ish, non-negative, with max <
+`n_cam_hint + 5`? For the WS-sample event arrays (max ~2.2M),
+`n_cam_hint = 1136` (the cam-frame count of half-A picked up via
+Tier-3 fallback = half-A's `Lick_L.size`), so the check `max < 1141`
+returned `False`. The arrays fell through to the same-shape-after-axis-0
+"event-style concat" branch which applies **NO** offset to half-B's
+values. The legacy `cam_frame_offset_for_B=1136` was recorded as
+provenance metadata but never applied to the indices themselves. Data
+confirms (audit script output): legacy `Lick_L` max = 2,283,893 =
+half-B `Lick_R` raw max — no offset visible. The legacy merged NPZ
+therefore had half-A and half-B indices in overlapping WS-sample
+ranges with no separator on the merged time axis — ambiguous for any
+reward-aligned or cross-half analysis downstream.
+
+**Decision (4-pronged).**
+
+1. **Two-mode merge with `index_space: Literal["cam_frame", "ws_sample"]`.**
+   Default `cam_frame` preserves legacy cell-17 semantics for back-compat
+   (existing 11 unit tests + 2 integration tests stay green). New
+   `ws_sample` mode is what the new pipeline production path uses.
+   Coordinate-space choice is a hard contract — the caller must know
+   which space the per-half NPZs live in. Mixing across halves is
+   unsupported.
+
+2. **ws_sample-mode offset semantics: offset half-B by `n_samples_A`.**
+   This is the semantically correct merge that legacy *should* have
+   done: half-A indices land unchanged on the merged time axis,
+   half-B indices shift up by `n_samples_A` so the merged session is
+   a unified monotone-partitioned timeline with no overlap. Downstream
+   reward-aligned analyses + future cross-half / bare-vs-b comparisons
+   can read the merged `Lick_L` as a single coherent index axis
+   without needing to re-derive a separator.
+
+3. **Provenance schema cleanup.** ws_sample mode emits:
+   - `merged_from_A`, `merged_from_B` (per-half source paths)
+   - `merged_n_samples_A`, `merged_n_samples_B` (per-half WS sample counts)
+   - `ws_sample_offset_for_B` (= `merged_n_samples_A`)
+   - `merged_n_samples_per_half`, `ws_sample_offsets_per_half` (N-half
+     general form)
+   - Carried-forward side-convention stamps (`side_convention_version`,
+     `wavesurfer_sides_match_mouse_sides`) — validated to match
+     across halves before the merge fires; mismatch raises.
+
+   **Dropped from the merged output:**
+   - `merged_n_cam_A`, `merged_n_cam_B` — misnomers in the legacy schema
+     (the values came from `_infer_n_cam` Tier-3 fallback, which returned
+     `Lick_L.size = 1136`, NOT an actual cam-frame count).
+   - `cam_frame_offset_for_B` — cam-frame-named, but was never applied
+     to the indices in legacy; pure decorative metadata.
+   - `allow_pickle` — vestigial leftover from a buggy `np.savez(...,
+     allow_pickle=True)` invocation that put the kwarg name into the
+     output dict as a key.
+
+4. **Carry `Tone_L` / `Tone_R` forward** under the same offset rule.
+   Legacy cell-17 didn't carry tones — most likely because that
+   vintage of the notebook predated tone capture in the per-half
+   emit, not a deliberate drop. New pipeline emits tones in the
+   per-half NPZs; merging them follows the same `_looks_like_index_array`
+   → offset-and-concat logic that handles `Lick_*` / `Reward_*`.
+
+**Layer 1 parity reframe.** Direct byte-parity with the legacy merged
+NPZ is the wrong validation goal — the new schema is by-design
+different and more correct. Layer 1 of the Task 9 parity gate now
+validates:
+
+  - Schema correctness (new NPZ has all expected ws_sample keys).
+  - Count parity vs legacy (`len(merged.X) == len(legacy.X)` for the
+    4 legacy-compatible event arrays; Tone_* skipped).
+  - Half-A preservation (`merged[:n_A] == half_A` exactly).
+  - Half-B offset (`merged[n_A:] == half_B + n_samples_A`; no-overlap
+    `min(half-B) >= max(half-A)`).
+  - Provenance round-trip (`merged_n_samples_A == half_A.n_samples`;
+    `ws_sample_offset_for_B == merged_n_samples_A`; merged_from_*
+    paths resolve).
+  - Stamp inheritance (merged stamps match per-half stamps).
+
+Path-string provenance differences vs legacy (the Task-5R resolver
+split makes `merged_from_*` paths legitimately differ from legacy
+`O2_analysis/`) surfaced as INFO, never block PASS — same rule
+applied to the Layer 2 comparator in the same commit batch.
+
+**Rationale.** The parity-scope principle (2026-04-22 entry) says
+parity gates validate behavior, not implementation details. Legacy's
+concat-without-offset was an implementation accident; the new
+ws_sample mode is the documented intended behavior. Pinning to byte-
+equality would lock the new pipeline to a quirk that we're correcting.
+The structural + offset-correctness checks pin what *matters* (same
+event counts, semantically-correct offset, provenance round-trip,
+stamp inheritance) without conflating "matches legacy bytes" with
+"correct".
+
+**Enforced at.**
+
+- `src/stroke_orofacial/spout_behavior/multi_half_merge.py` —
+  `merge_licks_and_rewards(..., index_space=...)` with
+  cam_frame/ws_sample branches, `_validate_side_convention_stamps`
+  helper, generalized `_infer_n_count` + `_looks_like_index_array`
+  helpers (renamed from cell-17's `_infer_n_cam` / `_looks_like_frame_indices`).
+- `tests/test_multi_half_merge.py` — `TestLicksAndRewardsMergeWsSample`
+  class (10 new tests) covering offset semantics, no-overlap, count
+  totals, Tone forward, stamp validation, mismatch raises, provenance
+  schema, n_samples inference failure, kwarg override; plus 2 new
+  tests in `TestLicksAndRewardsMerge` pinning default-is-cam_frame
+  + invalid_index_space_raises. Existing 11 cam_frame tests untouched
+  (default preserves their behavior).
+- `tests/scripts/parity_phase7_pre_multi_half.py` — Layer 1 reframed
+  via `_compare_licks_npz(new, legacy, per_half_paths) → (failures,
+  info)`, six structural checks; module + Layer-1-section docstrings
+  document the divergence-from-legacy by design.
+
+**Folds into Task 10 phase-close DECISIONS supersession.** Working
+draft for now; Task 10 will merge this with the Task 5R 2026-05-09
+entry above into the final phase-close `MIGRATION_LOG.md` + DECISIONS
+entry.
+
+---
+
 ## 2026-05-09 — Phase 7-pre-multi-half Task 5 alignment-template overwrite incident + three-layer write-guard system + cam2-scoped Option B restore
 
 > Working draft — folds into the phase-close DECISIONS at Task 10.
@@ -300,6 +445,93 @@ and the future Task 5 proper resumption).**
    This forward-pointer becomes a future **Phase 7-pre-secondary-
    spout** (or similarly-named) phase — out of scope here, scope
    estimate ~mid-size comparable to this PR.
+
+5. **Licks/rewards NPZ schema divergence: new pipeline uses
+   WS-sample coordinate space; legacy used cam-frame; legacy "merge"
+   was an emergent heuristic side-effect, not designed behavior**
+   (surfaced 2026-05-09 by the Step 5 parity-gate Layer 1 RuntimeError).
+
+   **What cell-17's `_infer_n_cam` heuristic walks for** (in order):
+   Tier 1 — 1D arrays of length `n_cam`: `cam_times`,
+   `sig_camTimes__idx_cam`, `t_cam`, `frame_times_s`, `camTimes`.
+   Tier 2 — integer scalars: `n_frames`, `n_cam`, `nFrames`. Tier 3
+   fallback — largest 1D numeric array with `size > 1000`.
+
+   **What the new per-half NPZ actually has** (10 keys emitted by
+   `find_licks_and_rewards` + `_save_npz_with_side_convention`):
+   `Fs`, `Lick_L/R`, `Reward_L/R`, `Tone_L/R` (all WS-sample-indexed
+   int64 arrays of variable length), `n_samples` (WS sample count
+   scalar), `side_convention_version`, `wavesurfer_sides_match_mouse_sides`.
+   None of cell-17's Tier 1 / Tier 2 keys are present (they're
+   cam-frame metadata; the new pipeline operates in WS-sample space
+   and stores `n_samples` instead). Tier 3 fallback works for halves
+   whose largest event array has >1000 entries (PS48 20250314 half-A
+   `Lick_L = 1136`); fails for halves where all event arrays are
+   smaller (half-B's largest is 902, below the 1000 threshold) →
+   `RuntimeError: Could not infer n_cam`.
+
+   **Legacy merged NPZ was a buggy concat, not a designed merge.**
+   Empirical evidence from on-disk legacy `licks_and_rewards/PS48/
+   20250314.npz`: `Lick_L max = 2,283,893` exactly equals half-B's
+   `Lick_R max` (after the side-flip that legacy applies during
+   merge). No offset was applied to half-B's WS-sample indices when
+   concatenated. The legacy `cam_frame_offset_for_B = 1136` is
+   recorded as metadata but never applied to any array — it's
+   `_infer_n_cam`'s Tier-3 fallback (= half-A's `Lick_L` count) and
+   `_looks_like_frame_indices(Lick_L, n_cam_hint=1136)` returns
+   `False` because `max(Lick_L) ≈ 2.18M >> 1141`. The merge falls
+   through to events-concat without offset. Half-A and half-B events
+   end up in overlapping coordinate ranges; merged NPZ has no
+   coherent unified time axis. `merged_n_cam_A` is also a misnomer
+   (= Lick_L count, not cam-frame count). Legacy also drops `Tone_L/R`
+   from the merged output (likely artifact of pre-tone-port halves,
+   not a deliberate decision).
+
+   **Decision: new pipeline diverges from legacy by design** for
+   `index_space="ws_sample"` mode of `merge_licks_and_rewards`:
+   - **Apply offset = `n_samples_A`** to half-B's event-index arrays
+     (Lick_*/Reward_*/Tone_*) so the merged NPZ has a coherent
+     unified WS-sample time axis. Half-A indices unchanged; half-B
+     indices live at `[n_samples_A, n_samples_A + n_samples_B)`.
+   - **Carry `Tone_L/R` forward** to the merged output (no scientific
+     reason to drop them).
+   - **Modernize provenance schema**: drop `merged_n_cam_A` (misnomer),
+     `cam_frame_offset_for_B` (cam-frame-named, never applied),
+     `allow_pickle` (vestigial NPZ flag stored as data); add
+     `merged_n_samples_A`, `merged_n_samples_B`,
+     `ws_sample_offset_for_B` (= `merged_n_samples_A`, actually
+     applied to half-B arrays); carry forward `side_convention_version`
+     + `wavesurfer_sides_match_mouse_sides` after validating they
+     match across halves; keep `merged_from_A` / `merged_from_B`.
+   - **`index_space="cam_frame"` mode preserves legacy behavior**
+     for any future legacy-style NPZ verification (kept tested via
+     the existing 11-test `TestLicksAndRewardsMerge` suite).
+
+   **Layer 1 parity-gate reframe.** Direct byte-parity between new
+   merged NPZ (offset applied, ws-sample space) and legacy merged NPZ
+   (no offset, overlapping ranges) is structurally impossible and
+   would not be desirable even if it were. Layer 1 instead validates:
+   schema correctness (new-schema keys present), event-count parity
+   vs legacy (`len(merged.Lick_L)` etc. = sum of per-half), half-A
+   preservation (first N entries equal half-A's array exactly),
+   half-B offset (trailing entries equal half-B's array + offset),
+   no-overlap (merged is monotone-non-overlapping by half), provenance
+   round-trip, side-convention-stamp inheritance.
+
+   **Process lesson on test fixtures.** The 11 unit tests + 2
+   synthetic integration tests for `merge_licks_and_rewards` all used
+   synthetic NPZ fixtures shaped to match cell-17's input contract.
+   None tested the merge against real new-pipeline output. The merge
+   function inherited cell-17's input-contract assumptions verbatim
+   without ever validating against actual upstream data. Step 5's
+   live parity gate is the integration boundary that surfaced the
+   gap. The system worked (parity gate caught it before merge to
+   main) but the unit-test trust property is degraded — passing
+   unit + synthetic integration tests didn't imply integration with
+   real pipeline output. **Forward rule for future legacy-port
+   phases: include at least one fixture sourced from a real pipeline
+   run, not just synthetic; surface upstream schema mismatches at
+   unit-test level instead of waiting for the parity gate.**
 
 **Process lesson.** `output_root=` was assumed to redirect ALL writes;
 in reality it only redirected `pipeline_outputs()`. Permanent fix
