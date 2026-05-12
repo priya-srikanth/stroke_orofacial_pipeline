@@ -161,6 +161,7 @@ from stroke_orofacial.alignment.timebase import load_or_compute_alignment
 from stroke_orofacial.animals import get_animal
 from stroke_orofacial.config_loader import load_defaults, load_session_overrides
 from stroke_orofacial.dlc_io.parquet import _center_one_h5, _param_sig
+from stroke_orofacial.lr_convention import to_mouse_frame
 from stroke_orofacial.manifest import build_manifest
 from stroke_orofacial.paths import PathResolver
 from stroke_orofacial.spout_behavior.multi_half_merge import (
@@ -369,15 +370,29 @@ def _compare_licks_npz(
 
       1. **Schema correctness** — new NPZ has all expected ws_sample-mode
          keys (:data:`_LICKS_WS_REQUIRED_KEYS`). Missing keys = FAIL.
-      2. **Count parity vs legacy** — ``len(merged.X) == len(legacy.X)``
-         for each of the 4 legacy-compatible event arrays
-         (:data:`_LICKS_EVENT_ARRAYS_LEGACY_COMPATIBLE`). Tone_* skipped
-         (legacy didn't have them).
+      2. **Count parity vs legacy (side-aware)** — for each of the 4
+         legacy-compatible event arrays
+         (:data:`_LICKS_EVENT_ARRAYS_LEGACY_COMPATIBLE`), compare
+         ``len(merged.X_<new_side>)`` against
+         ``len(legacy.X_<legacy_side>)`` where the side mapping accounts
+         for the side-convention stamp:
+
+           - New NPZ carries
+             ``wavesurfer_sides_match_mouse_sides`` (mouse-frame labels
+             when False, ws-frame-equivalent when True).
+           - Legacy NPZ predates the stamp (assumed ws-frame).
+           - When stamp = True → direct side comparison.
+           - When stamp = False → L↔R swap (use
+             :func:`stroke_orofacial.lr_convention.to_mouse_frame`,
+             which is involutive on L/R so it works in either direction).
+
+         Tone_* skipped (legacy cell-17 vintage predated tone capture).
       3. **Half-A preservation** — first ``n_per_half_A`` entries of
          ``merged.X`` equal ``half-A.X`` exactly (no offset on half-A).
+         Same-frame comparison (both in mouse frame); no side translation.
       4. **Half-B offset** — trailing entries equal
          ``half-B.X + merged_n_samples_A``. Plus no-overlap check:
-         ``min(half-B portion) >= max(half-A portion)``.
+         ``min(half-B portion) >= max(half-A portion)``. Same-frame.
       5. **Provenance round-trip** —
          ``merged_n_samples_A == per_half_A.n_samples``;
          ``ws_sample_offset_for_B == merged_n_samples_A``;
@@ -388,6 +403,10 @@ def _compare_licks_npz(
          would have raised before writing).
 
     INFO (not failures):
+      - **Convention decision** (always emitted, first INFO line): which
+        frame each NPZ is in, whether translation was applied to count
+        parity, and the per-side mapping used. Future readers chasing
+        a parity surprise should see this immediately.
       - Path-string provenance differences vs legacy (the Task-5R
         resolver split makes new merged_from_* paths legitimately
         differ from legacy O2_analysis paths).
@@ -410,21 +429,70 @@ def _compare_licks_npz(
             f"schema: new merged NPZ missing required ws_sample keys: {missing}"
         )
 
-    # ---- Check 2: count parity vs legacy (4 legacy-compatible event arrays) ----
-    for key in _LICKS_EVENT_ARRAYS_LEGACY_COMPATIBLE:
-        if key not in new_keys:
+    # ---- Check 2: count parity vs legacy (side-aware) ----
+    #
+    # The new pipeline stamps the side-convention scalar
+    # `wavesurfer_sides_match_mouse_sides` on every emitted licks NPZ
+    # (per stroke_orofacial.lr_convention.stamp_side_convention). The
+    # legacy NPZ predates the stamp and is assumed to hold ws-frame
+    # labels. So the side mapping for count parity depends on the
+    # stamp value:
+    #
+    #   - stamp True  → new emits ws-frame-equivalent labels → direct
+    #     L↔L / R↔R count comparison against legacy.
+    #   - stamp False → new emits mouse-frame labels (L/R swapped on
+    #     emit) → must compare new.L against legacy.R (and vice versa)
+    #     to align semantics.
+    #
+    # We use lr_convention.to_mouse_frame(side, matches) as the per-
+    # side translator. Mathematically it's "give me the mouse-frame
+    # equivalent of a ws-frame side"; because L↔R swap is involutive,
+    # the same function answers "give me the ws-frame equivalent of a
+    # mouse-frame side" when called with the new pipeline's stamp.
+    if "wavesurfer_sides_match_mouse_sides" in new_keys:
+        ws_matches_mouse = bool(
+            np.asarray(new_npz["wavesurfer_sides_match_mouse_sides"])
+        )
+    else:
+        # Schema check above will have flagged this as a missing key;
+        # default to True for the count check so we don't crash trying
+        # to compute the mapping.
+        ws_matches_mouse = True
+    if ws_matches_mouse:
+        info.append(
+            "convention: new NPZ stamp wavesurfer_sides_match_mouse_sides=True "
+            "→ new labels match legacy ws-frame labels → direct L↔L / R↔R "
+            "count comparison (no translation applied)"
+        )
+    else:
+        info.append(
+            "convention: new NPZ stamp wavesurfer_sides_match_mouse_sides=False "
+            "→ new emits mouse-frame labels (L↔R swap on emit); legacy NPZ "
+            "predates stamp (ws-frame default) → count parity translates "
+            "new.L↔legacy.R, new.R↔legacy.L via lr_convention.to_mouse_frame"
+        )
+
+    for new_key in _LICKS_EVENT_ARRAYS_LEGACY_COMPATIBLE:
+        if new_key not in new_keys:
             continue  # already reported as schema-missing above
-        if key not in legacy_npz.files:
+        # Translate the trailing _L / _R suffix using to_mouse_frame.
+        # Keys are formatted "{stem}_{side}" where side ∈ {"L", "R"}.
+        stem, _, new_side = new_key.rpartition("_")
+        legacy_side = to_mouse_frame(new_side, ws_matches_mouse)
+        legacy_key = f"{stem}_{legacy_side}"
+        if legacy_key not in legacy_npz.files:
             failures.append(
-                f"count parity: legacy NPZ missing event array {key!r} "
-                f"(expected for legacy-compatible comparison)"
+                f"count parity: legacy NPZ missing event array "
+                f"{legacy_key!r} (translated from new {new_key!r} "
+                f"under ws_matches_mouse={ws_matches_mouse})"
             )
             continue
-        n_new = int(np.asarray(new_npz[key]).size)
-        n_legacy = int(np.asarray(legacy_npz[key]).size)
+        n_new = int(np.asarray(new_npz[new_key]).size)
+        n_legacy = int(np.asarray(legacy_npz[legacy_key]).size)
         if n_new != n_legacy:
             failures.append(
-                f"count parity {key!r}: new len={n_new} vs legacy len={n_legacy}"
+                f"count parity new {new_key!r} ↔ legacy {legacy_key!r}: "
+                f"new len={n_new} vs legacy len={n_legacy}"
             )
 
     # ---- Check 3-4: half-A preservation + half-B offset + no-overlap ----
