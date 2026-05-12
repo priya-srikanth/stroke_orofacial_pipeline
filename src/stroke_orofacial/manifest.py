@@ -48,6 +48,22 @@ class MultiHalfNotDeclaredError(RuntimeError):
     """
 
 
+class OverlappingRegistryError(RuntimeError):
+    """Raised when an ``(animal, date)`` pair appears in BOTH
+    ``multi_half_sessions:`` and ``secondary_spout_sessions:`` in
+    ``configs/session_overrides.yaml``.
+
+    Per DECISIONS 2026-05-12 Decision 5(a), these two registries are
+    mutually exclusive by design: ``multi_half_sessions:`` is
+    merge-intent (Pattern A — one logical session split across halves
+    due to technical interruption); ``secondary_spout_sessions:`` is
+    compare-intent (Pattern B — bare + closer-spout halves treated as
+    two separate logical sessions). Overlap is a configuration bug; the
+    loader raises this on every overrides-config load so the error
+    surfaces immediately, not after Phase 2/3 dispatch.
+    """
+
+
 @dataclass
 class HalfSpec:
     """Per-half acquisition record for multi-half sessions
@@ -447,6 +463,162 @@ def _format_pattern_a_yaml_stub(
         lines.append(f'          file_timestamp: "{ts}"')
     lines.append('      reason: "auto-detected by build_manifest defensive check"')
     return "\n".join(lines)
+
+
+# Allowed override keys on every per-date entry in
+# ``secondary_spout_sessions:`` (Phase 7-pre-secondary-spout Task 2).
+# An empty entry value (``{}``) means "use standard convention" (bare
+# WS+cam dirs = ``{DATE}``; b-half dirs = ``{DATE}b``). Listed keys allow
+# explicit override of the four discoverable subdirs. Unknown keys raise
+# ``ValueError`` on load so YAML typos surface immediately.
+_SECONDARY_SPOUT_OVERRIDE_KEYS: frozenset[str] = frozenset({
+    "bare_ws_subdir_override",
+    "bare_cam_subdir_override",
+    "b_ws_subdir_override",
+    "b_cam_subdir_override",
+})
+
+
+def _multi_half_date_str_as_iso(date_str: str) -> str:
+    """Convert ``multi_half_sessions:`` YYYYMMDD key to ISO YYYY-MM-DD.
+
+    ``multi_half_sessions:`` keys (e.g. ``"20250314"``) and
+    ``secondary_spout_sessions:`` keys (e.g. ``"2025-04-30"``) use
+    different date formats by historical convention. Mutual-exclusion
+    validation normalizes both sides to ISO for comparison so the
+    overlap check is format-agnostic.
+
+    Returns the input unchanged if it doesn't match YYYYMMDD (e.g. a
+    malformed entry — we let downstream parsing surface the issue
+    rather than silently dropping it).
+    """
+    if len(date_str) == 8 and date_str.isdigit():
+        return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+    return date_str
+
+
+def load_secondary_spout_sessions(
+    overrides_config: dict[str, Any],
+) -> dict[str, dict[str, dict[str, Any]]]:
+    """Load and validate ``secondary_spout_sessions:`` from the overrides
+    config.
+
+    Returns a nested mapping ``{animal: {iso_date_str: override_dict}}``
+    where each ``override_dict`` is either empty (use standard
+    ``{DATE}``/``{DATE}b`` convention) or contains a subset of
+    :data:`_SECONDARY_SPOUT_OVERRIDE_KEYS` mapping subdir-role names to
+    explicit dirname overrides.
+
+    Parameters
+    ----------
+    overrides_config : dict
+        Parsed contents of ``configs/session_overrides.yaml`` (typically
+        from :func:`stroke_orofacial.config_loader.load_session_overrides`).
+
+    Returns
+    -------
+    dict[str, dict[str, dict[str, Any]]]
+        Nested mapping ``{animal: {iso_date_str: override_dict}}``.
+        Empty when the YAML has no ``secondary_spout_sessions:`` block
+        (back-compat: animals without Pattern B sessions don't need to
+        configure anything).
+
+    Raises
+    ------
+    OverlappingRegistryError
+        If any ``(animal, date)`` pair appears in BOTH
+        ``multi_half_sessions:`` and ``secondary_spout_sessions:`` —
+        per DECISIONS 2026-05-12 Decision 5(a) these registries are
+        mutually exclusive (merge-intent vs compare-intent).
+    ValueError
+        If an entry contains an unknown override key not listed in
+        :data:`_SECONDARY_SPOUT_OVERRIDE_KEYS`. The error message
+        includes the ``(animal, date)`` that contained the typo so
+        the user can find it without grepping the whole file.
+    """
+    raw = overrides_config.get("secondary_spout_sessions", {}) or {}
+    out: dict[str, dict[str, dict[str, Any]]] = {}
+    for animal, dates in raw.items():
+        if not dates:
+            # Animal listed with no dates — treat as no Pattern B
+            # entries for that animal. Allowed; loader skips silently.
+            continue
+        animal_out: dict[str, dict[str, Any]] = {}
+        for date_str, entry in dates.items():
+            # PyYAML returns {} for empty mappings and None for
+            # explicit ``~`` / no-value. Normalize both to {}.
+            entry_dict = dict(entry) if entry else {}
+            unknown = set(entry_dict) - _SECONDARY_SPOUT_OVERRIDE_KEYS
+            if unknown:
+                raise ValueError(
+                    f"secondary_spout_sessions:{animal}:{date_str!r} "
+                    f"contains unknown override key(s) "
+                    f"{sorted(unknown)}. Allowed keys: "
+                    f"{sorted(_SECONDARY_SPOUT_OVERRIDE_KEYS)}."
+                )
+            animal_out[date_str] = entry_dict
+        if animal_out:
+            out[animal] = animal_out
+
+    # Mutual-exclusion check against multi_half_sessions: per Decision 5(a).
+    # Normalize multi-half dates from YYYYMMDD to ISO for symmetric
+    # comparison — the two registries use different on-disk date
+    # conventions but logically reference the same calendar dates.
+    multi_half = overrides_config.get("multi_half_sessions", {}) or {}
+    for animal, dates in multi_half.items():
+        for mh_date_str in (dates or {}):
+            iso = _multi_half_date_str_as_iso(mh_date_str)
+            if animal in out and iso in out[animal]:
+                raise OverlappingRegistryError(
+                    f"({animal}, {iso}) listed in both "
+                    f"multi_half_sessions: (merge-intent) and "
+                    f"secondary_spout_sessions: (compare-intent). "
+                    f"These registries are mutually exclusive per "
+                    f"DECISIONS 2026-05-12 Decision 5(a). Remove the "
+                    f"entry from whichever registry doesn't match the "
+                    f"intent for this session."
+                )
+
+    return out
+
+
+def get_secondary_spout_entry(
+    animal: str,
+    date: datetime.date,
+    overrides_config: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Return the per-session secondary-spout override dict (possibly
+    empty) if ``(animal, date)`` is registered, else ``None``.
+
+    Convenience accessor over :func:`load_secondary_spout_sessions` for
+    the common per-session-lookup case. Callers that need the full
+    cohort should call ``load_secondary_spout_sessions`` directly to
+    avoid re-validating on every lookup.
+
+    Parameters
+    ----------
+    animal : str
+        Animal ID (e.g. ``"PS51"``).
+    date : datetime.date
+        Session date.
+    overrides_config : dict
+        Parsed ``configs/session_overrides.yaml`` contents.
+
+    Returns
+    -------
+    dict[str, Any] or None
+        Override dict (possibly empty ``{}`` for default convention)
+        when the session is a registered Pattern B session; ``None``
+        when it isn't (vanilla single-half OR Pattern A multi-half).
+
+    Raises
+    ------
+    OverlappingRegistryError, ValueError
+        See :func:`load_secondary_spout_sessions`.
+    """
+    registry = load_secondary_spout_sessions(overrides_config)
+    iso = date.isoformat()
+    return registry.get(animal, {}).get(iso)
 
 
 def build_manifest(

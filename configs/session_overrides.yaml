@@ -66,3 +66,77 @@ multi_half_sessions:
           cam_subdir: "20250314b"
           file_timestamp: "2025-03-14T13_09_29"
       reason: "Pattern A multi-half acquisition; both halves DLC-inferred. Pre-Phase-7-pre this session was a TODO under merges: which raised NotImplementedError to prevent silent partial processing."
+
+# ----------------------------------------------------------------------
+# Secondary-spout (Pattern B) declarations — Phase 7-pre-secondary-spout
+# (PR #<FILL>, merged <FILL after merge> as merge-commit `<FILL>`,
+# tagged `v7-pre-secondary-spout`).
+#
+# Lists sessions where the second acquisition (b half) was run with the
+# water spouts positioned closer to the mouse. Scientific intent:
+# bare-vs-b comparison for the recovery-trajectory phenotype Priya
+# observes (animals return to closer spouts BEFORE returning to standard
+# further-away spouts).
+#
+# Per DECISIONS 2026-05-12 Decision 5(a): this registry is COMPARE-INTENT
+# only — mutually exclusive with `multi_half_sessions:` (merge-intent).
+# Loader (`load_secondary_spout_sessions` in `manifest.py`) raises
+# `OverlappingRegistryError` if any (animal, date) pair appears in BOTH.
+#
+# Per Decision 5(d): the manifest-construction layer decides whether a
+# (animal, date) pair yields ONE single-half manifest (default), ONE
+# multi-half-merged manifest (Pattern A — `multi_half_sessions:`), or
+# TWO single-half manifests (Pattern B — here; one with
+# `session_suffix=None` for bare, one with `session_suffix="b"`).
+#
+# Registry shape — RICHER per-session form (Phase 7-pre-secondary-spout
+# Task 1 audit recommendation). Per-date value is a dict of optional
+# per-half subdir overrides. Empty dict `{}` = default convention
+# (bare WS+cam dir is `{DATE}`, b half dir is `{DATE}b`). Overrides:
+#
+#   - bare_ws_subdir_override:  bare WS dirname when not `{DATE}`
+#   - bare_cam_subdir_override: bare cam dirname when not `{DATE}`
+#   - b_ws_subdir_override:     b half WS dirname when not `{DATE}b`
+#   - b_cam_subdir_override:    b half cam dirname when not `{DATE}b`
+#
+# Why richer instead of an implicit `{DATE}` → `{DATE}a` fallback rule:
+# legacy `batch_process_behavior_report_20260116PS.ipynb` treats `{DATE}a`
+# as a regular date label cohort-wide (`include_dates` for PS51/PS54/PS55
+# all list both `20250424a` and `20250425a` as standalone bare sessions).
+# An implicit fallback risks false-discovery of unrelated a-suffix
+# sessions; explicit-via-registry is safer and self-documenting.
+# See [Phase 7-pre-secondary-spout audit notes — Task 1 recommendation (f)].
+#
+# Schema:
+#   secondary_spout_sessions:
+#     <ANIMAL>:
+#       "<YYYY-MM-DD>":               # ISO date string
+#         bare_ws_subdir_override: "<dirname>"   # optional
+#         bare_cam_subdir_override: "<dirname>"  # optional
+#         b_ws_subdir_override: "<dirname>"      # optional
+#         b_cam_subdir_override: "<dirname>"     # optional
+#       "<YYYY-MM-DD>": {}            # default convention
+secondary_spout_sessions:
+  PS51:
+    "2025-04-30": {}
+    "2025-05-05": {}
+  PS54:
+    "2025-04-30": {}
+    "2025-05-30": {}
+    "2025-06-16": {}
+    "2025-06-18": {}
+    "2025-06-19": {}
+    "2025-06-20": {}
+    "2025-06-21": {}
+    "2025-06-23": {}
+    "2025-06-24": {}
+    "2025-06-25": {}
+    "2025-06-26": {}
+  PS55:
+    "2025-04-24":
+      bare_ws_subdir_override: "20250424a"   # bare cam dir IS "20250424"; only WS is asymmetric
+    "2025-04-28": {}                          # n_dlc=0 OK — Phase 2/3 are DLC-free
+    "2025-04-30": {}
+    "2025-05-30": {}
+    "2025-06-01": {}
+    "2025-06-05": {}
