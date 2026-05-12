@@ -5649,3 +5649,87 @@ Verdict log archived at `.scratch_phase_7_pre/parity_run_20260512T093103.log`.
 **Branch:** `feat/wire-merge-licks-and-rewards-into-process-session-multi-half`
 
 Resolves forward-pointer #1 from the Phase 7-pre-multi-half entry above. The Task 9 parity harness invoked `merge_licks_and_rewards` directly after per-half processing; production `_process_session_multi_half` now does so itself. After the per-half loop, the per-half `licks_and_rewards` NPZs are merged into the parent-level `{date}.npz` via `merge_licks_and_rewards(per_half_paths, merged_path, index_space="ws_sample")` — half-B event indices shift by `n_samples_A` so the merged timeline is unified. Single-half code path unchanged (no merge invoked when `manifest.halves is None`). +1 unit test (`TestMergeWiring::test_merged_licks_npz_written_alongside_per_half`) verifies per-half + merged NPZs on disk with offset semantics. Sibling Phase 3 / Phase 4 merges remain out of scope; no tag.
+
+---
+
+## Phase 7-pre-secondary-spout — Pattern B closer-spout 2nd-acquisition handling for PS51/PS54/PS55 (19 sessions, Outcome A)
+
+**Date:** 2026-05-12
+**PR:** #<FILL after gh pr create>
+**Tag on merge:** `v7-pre-secondary-spout`
+**Branch:** `phase/7-pre-secondary-spout`
+
+**Scope.** Wire the 19 Pattern B sessions across PS51/PS54/PS55 (where the second acquisition was run with closer-positioned water spouts) through Phase 2 (spout-behavior) + Phase 3 (alignment) as **separate logical sessions** per the four compatibility commitments locked by [Phase 7-pre-multi-half DECISIONS Decision 5](DECISIONS.md). Pre-PR, the `{DATE}b` half was silently dropped by single-half discovery; this phase implements `secondary_spout_sessions:` registry + `session_suffix` field threading + per-suffix driver iteration so both halves produce their own outputs. Task 1 audit returned **Outcome A — infrastructure-only**: legacy notebooks (`playground_analyze_behavior_report_PS20250610.ipynb` + `batch_process_behavior_report_20260116PS.ipynb`) omit `*b` dates from `include_dates`, so no bare-vs-b comparison code exists to port. Phase 4 (DLC) is forward-pointer-only.
+
+**What landed.**
+
+1. [`configs/session_overrides.yaml`](../configs/session_overrides.yaml) — new `secondary_spout_sessions:` block; 19 entries across PS51 (2) / PS54 (11) / PS55 (6); PS55/2025-04-24 carries `bare_ws_subdir_override: "20250424a"` for the asymmetric WS layout (richer per-session shape locked by Task 1 audit; legacy `include_dates` evidence ruled out implicit `{DATE}` → `{DATE}a` fallback rule).
+
+2. [`src/stroke_orofacial/manifest.py`](../src/stroke_orofacial/manifest.py) — `SessionManifest.session_suffix: str | None = None` field; `build_manifest()` gains `session_suffix: str | None = None` kwarg + consumes `secondary_spout_sessions:` entry for bare/b WS+cam subdir override resolution; Pattern-B branch in `MultiHalfNotDeclaredError` defensive check (suppresses when registry covers `(animal, date)`); `iter_session_suffixes()` helper (returns `[None]` for non-Pattern-B / Pattern A, `[None, "b"]` for Pattern B); `load_secondary_spout_sessions()` + `get_secondary_spout_entry()` registry loaders + `OverlappingRegistryError` exception class + `_multi_half_date_str_as_iso()` private date-format reconciliation helper; `build_manifest`'s alignment-template discovery now threads `session_suffix` into `alignment_template_legacy_read` (Task 5.3 audit finding).
+
+3. [`src/stroke_orofacial/paths.py`](../src/stroke_orofacial/paths.py) — `wavesurfer_dir` + `camera_dir` gain `subdir_override: str | None = None` kwarg (mutually exclusive with `half_subdir` — Pattern A vs Pattern B caller-intent at the same call site is a category error; raises `ValueError` if both passed); 10 per-session output resolvers gain `session_suffix: str | None = None` kwarg (filename construction appends suffix); `alignment_template_per_half_new` deliberately UNCHANGED — Pattern A multi-half-only resolver; passing `session_suffix=` raises `TypeError` (regression-pinned).
+
+4. [`src/stroke_orofacial/spout_behavior/session_processing.py`](../src/stroke_orofacial/spout_behavior/session_processing.py) — `process_session_by_animal_date` + `process_animal` now iterate `iter_session_suffixes` and return `dict[str | None, dict[str, Path]]` / `list[dict[str | None, dict[str, Path]]]`. Partial-failure tolerance: per-suffix failure logs WARNING and continues; if ALL suffixes fail, re-raises the FIRST `FileNotFoundError`. `process_session`'s single-half branch uses caller-side `date_str_suffixed = date_str + (manifest.session_suffix or "")` for `_output_path` + `_save_session_params` calls (the **module-level free function path-suffix pattern**, parallel to Task 3c's resolver-kwarg pattern). `_save_session_params` reads `manifest.session_id` (Task 3d), so provenance JSONs carry the suffix.
+
+5. [`src/stroke_orofacial/alignment/timebase.py`](../src/stroke_orofacial/alignment/timebase.py) — `load_or_compute_alignment_by_animal_date` iterates `iter_session_suffixes`, returns `dict[str | None, AlignmentResult]`, same partial-failure pattern (catches `(FileNotFoundError, RuntimeError)`). 3 cache-discovery / cam_dir-fallback sites inside `load_or_compute_alignment` threaded with `manifest.session_suffix` per the Task 5.1 audit. `load_or_compute_alignment` primary manifest-first entry SIGNATURE UNCHANGED — the parity harness at `tests/scripts/parity_phase7_pre_multi_half.py` (locked out of scope) continues to import + call this resolver cleanly.
+
+6. [`tests/test_secondary_spout_registry.py`](../tests/test_secondary_spout_registry.py) — 25 tests covering registry loader, `iter_session_suffixes`, mutual-exclusion validation, override-key allowlist + typo detection, default-convention vs explicit-override semantics.
+
+7. [`tests/test_manifest.py`](../tests/test_manifest.py) — `TestSessionSuffixField` (dataclass-level) + `TestBuildManifestSessionSuffix` (kwarg threading + Pattern-B defensive check + `session_suffix`-without-registry-entry guard; ~10 new tests on top of existing).
+
+8. [`tests/test_paths.py`](../tests/test_paths.py) — `subdir_override` kwarg tests for `wavesurfer_dir` / `camera_dir` (fallback + mutual-exclusion) + per-resolver `session_suffix` tests for 10 output resolvers (suffix=None preserves pre-PR; suffix="b" appends "b") + `alignment_template_per_half_new_rejects_session_suffix` Pattern-A-boundary guard + `{wavesurfer_dir,camera_dir}_rejects_session_suffix` guards (13 new tests).
+
+9. [`tests/test_session_processing.py`](../tests/test_session_processing.py) — 3 existing tests updated for the new `dict[str | None, dict[str, Path]]` return shape; new `test_session_id_inherits_suffix` (Task 3d regression guard).
+
+10. [`tests/test_session_processing_secondary_spout.py`](../tests/test_session_processing_secondary_spout.py) — 10 tests covering Phase 2 driver per-suffix iteration + partial-failure (bare-missing / b-missing / both-missing) + PS55/2025-04-24 `bare_ws_subdir_override` consumption + Pattern A regression + provenance JSON session_id-suffix + lazy-load `overrides_config`.
+
+11. [`tests/test_timebase.py`](../tests/test_timebase.py) — 2 existing integration tests updated for new return shape.
+
+12. [`tests/test_timebase_secondary_spout.py`](../tests/test_timebase_secondary_spout.py) — 10 tests covering Phase 3 driver per-suffix iteration + cache-discovery `session_suffix` propagation (b-half cache hits its own NPZ, NOT the bare half's) + partial-failure + Pattern A unchanged + lazy-load.
+
+13. [`tests/test_manifest_multi_half.py`](../tests/test_manifest_multi_half.py) — `_make_resolver_for_layout._ws_dir` / `_cam_dir` / `_alignment_template_legacy_read` fixture side_effects updated to accept the new `subdir_override` / `session_suffix` kwargs (mirroring the real resolver signatures). Without this fixture update, the Task 3b build_manifest changes broke the 15 multi-half tests at the resolver-mock boundary.
+
+14. [`tests/test_parity_harness_secondary_spout.py`](../tests/test_parity_harness_secondary_spout.py) — 15 synthetic-fixture unit tests for the Layer 1 byte-identity comparator helpers (`_is_params_json`, `_is_bare_half_path`, `_compare_bare_half_byte_identity`). Catches comparator bugs without needing MICROSCOPE.
+
+15. [`tests/scripts/parity_phase7_pre_secondary_spout.py`](../tests/scripts/parity_phase7_pre_secondary_spout.py) — 3-layer live parity harness (~870 lines). Forensic log + `_ForensicLog` tee-writer + exit-code-driven verdict + CLI argparse + per-layer skip semantics. Mirrors the multi-half harness structure.
+
+16. DECISIONS 2026-05-12 entry (this commit, the entry above this MIGRATION_LOG section) + this MIGRATION_LOG entry + COWORK_SESSION_STATE refresh (Task 9).
+
+**Task 6 parity verdict (live MICROSCOPE run 2026-05-12 16:40, re-run after Task 6e bug fixes).**
+
+| Layer | Status | Detail |
+|---|---|---|
+| 1 — bare-half byte-identity | PASS | 18/19 sessions byte-equal vs Task 0.5 baselines (excluding `params/*.json` per Task 0.5 finding); **1 SPECIAL: PS55/2025-04-24** bare half now succeeds via `bare_ws_subdir_override` (expected divergence — baseline errored on missing `20250424` dir; post-PR resolves to `20250424a` per the registry entry). |
+| 2 — b-half structural validation | PASS | 19/19 sessions × 8 files each (7 NPZs + 1 `params.json`); all required keys present, dtypes correct, Fs + side-convention stamps inherit from bare half, `session_id` ends in `b`. |
+| 3 — defensive-check synthetic | PASS | 5/5 scenarios green (Pattern A iter_suffixes → [None]; Pattern B → [None, "b"]; overlapping registry raises; Pattern B suppresses defensive check; non-Pattern-B unchanged). |
+
+Verdict log archived at `.scratch_phase_7_pre/parity_run_secondary_spout_rerun_20260512T164049.log` (gitignored — log is a runtime artifact). First-run log with the surfaced harness bugs preserved at `.scratch_phase_7_pre/parity_run_secondary_spout_full_20260512T163347.log` for reference.
+
+**Task 0.5 chore-PR (#104) precondition.** Pre-PR baseline SHA256s for the 19 cohort sessions were captured against `main` HEAD `fe91569` (the kickoff PR #103 merge commit) BEFORE this feature branch existed. Baseline JSON at [`tests/scripts/_baselines/phase_7_pre_secondary_spout/sha256.json`](../tests/scripts/_baselines/phase_7_pre_secondary_spout/sha256.json). The baseline records 18 successful sessions + 1 errored (PS55/2025-04-24 — bare `{DATE}` dir not discovered pre-PR; this phase's `bare_ws_subdir_override` brings it into scope). `params/*.json` files are non-deterministic across runs (`run_timestamp` field); Layer 1 comparator excludes them.
+
+**Intentional behavior differences vs pre-PR `main`.**
+
+- **The b half of every Pattern B `(animal, date)` now flows through Phase 2 + Phase 3** instead of being discarded. No legacy artifact for the b half exists for comparison; Layer 2 structural validation only.
+- **PS55/2025-04-24 bare half now succeeds** (was erroring on `main` pre-PR per Task 0.5 baseline). The `bare_ws_subdir_override: "20250424a"` registry entry brings the asymmetric WS subdir (`20250424a` for WS, `20250424` for cam — empirically confirmed by Task 1 audit's directory listing) into scope without an implicit fallback rule.
+- **`process_session_by_animal_date` return shape changed** from `dict[str, Path]` to `dict[str | None, dict[str, Path]]`. Non-Pattern-B sessions return single-entry `{None: {...}}`. Decision validated by zero-callers audit on `process_animal` and update of 3 known test callers + 1 script caller (Task 0.5 baseline script; consumes only side effects, not return value).
+- **`load_or_compute_alignment_by_animal_date` return shape changed** similarly to `dict[str | None, AlignmentResult]`. 2 existing integration tests in `test_timebase.py` updated.
+
+**Exit criteria met.**
+
+- [x] Task 6 Layer 1 byte-identity: 18 PASS + 1 SPECIAL (expected divergence) + 0 FAIL on the 19-session cohort.
+- [x] Task 6 Layer 2 structural validation: 19/19 PASS (every b half emits 7 NPZs + 1 provenance JSON; structural checks green).
+- [x] Task 6 Layer 3 synthetic: 5/5 scenarios PASS.
+- [x] Full pytest suite green: **1164 passed, 38 skipped** (was 1091 passed at Phase 7-pre-multi-half-closeout-polish baseline; net +73 from this phase's new tests + the 7-pre-secondary-spout-baselines chore that landed Task 0.5).
+- [x] DECISIONS 2026-05-12 entry (above) + this MIGRATION_LOG entry + state-doc refresh (Task 9).
+- [x] Pattern A regression verified across multi_half_merge / writeguard / conftest_guard / integration/test_multi_half_integration / test_session_processing_multi_half — **152/152 PASS** through every sub-task.
+
+**Forward-pointers queued for future phases.**
+
+1. **Phase 7-pre-secondary-spout-compare-DLC.** Lands after Priya DLC-infers the 19 b-half cam dirs. Wires Phase 4 (centered parquet) to produce b-half outputs per the same `session_suffix="b"` convention; ports bare-vs-b DLC cross-session comparison analyses (the kinematics-side counterpart to the spout-behavior comparison folded into Phase 8a.10 — see forward-pointer #3 below). Blocked on out-of-band DLC inference.
+2. **DLC-side path resolver fields deferred.** [`src/stroke_orofacial/paths.py`](../src/stroke_orofacial/paths.py) lines 756 / 760 / 766 (`dlc_centered_spout_midpoint_parquet` glob) + [`src/stroke_orofacial/dlc_io/parquet.py`](../src/stroke_orofacial/dlc_io/parquet.py) lines 294 / 377 (provenance write) — DLC handling is forward-pointer-only per the kickoff allowlist. Pattern A's `halves_concat_label` continues to work unchanged.
+3. **Bare-vs-b spout-behavior comparison — folded into Phase 8a.10 scope per Priya 2026-05-12.** Per-(animal, date) pairing of standard-distance bare half vs closer-spout b half licking outcomes across the 19 Pattern B sessions. Lands when Phase 8a.10 is picked up; Phase 8a.10's Next-phase-candidates entry in [`docs/COWORK_SESSION_STATE.md`](COWORK_SESSION_STATE.md) updated to reflect the expanded scope (see Task 9 commit). Rationale (per DECISIONS 2026-05-12 Phase 7-pre-secondary-spout entry, Findings #3): 8a.10's existing scope already touches the spout-behavior visualization surface; consolidating reduces phase fragmentation; the DLC-side comparison stays a separate forward-pointer (above #1) because it's blocked on DLC b-half inference.
+4. **Weak candidates investigation.** PS51/2025-04-29 + PS54/2025-05-08 (n_ws=1, n_cam=2, n_dlc=1) — out of scope for the Pattern B registry (neither half is a complete pair). Worth flagging for Priya's future investigation as a data-state question (b-cam-dir-only suggests experimenter restart or misnomered directory).
+5. **`bnpm` dep + orphan cam{1,3,4}/PS48/20250314{a,b}.npz housekeeping** — carried forward from 7-pre-multi-half. Still pending; orthogonal to this phase.
+6. **One-time cohort-wide re-emit.** Phase 2 + Phase 3 now produce b-half outputs for the 19 Pattern B sessions, but the canonical `pipeline_outputs/` tree still lacks them. The cohort-emit runners need a re-run to populate the b-half paths. Decision: bundle as a manual post-merge step in Task 9's PR description, OR carve out as a separate small chore-PR mirroring the Task 0.5 baseline-capture pattern. Pick at Task 9 time.
+
+**Tag:** `v7-pre-secondary-spout` on the merge commit.
