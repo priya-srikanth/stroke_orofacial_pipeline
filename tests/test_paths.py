@@ -355,6 +355,296 @@ class TestNewConvenienceMethods:
         assert result_a == tmp_path / "camera" / "20250314a" / "PS48"
         assert result_b == tmp_path / "camera" / "20250314b" / "PS48"
 
+    # ---- Phase 7-pre-secondary-spout Task 3b: subdir_override kwarg ----
+
+    def test_wavesurfer_dir_uses_subdir_override_when_set(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        """Pattern B b-half / asymmetric-bare case: subdir_override
+        replaces the date_str segment. Same internal effect as
+        half_subdir but documented as the Pattern B caller-intent."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result_b = resolver.wavesurfer_dir(
+            datetime.date(2025, 4, 30), "PS51",
+            subdir_override="20250430b",
+        )
+        result_bare_override = resolver.wavesurfer_dir(
+            datetime.date(2025, 4, 24), "PS55",
+            subdir_override="20250424a",  # asymmetric-bare for PS55/2025-04-24
+        )
+        assert result_b == tmp_path / "wavesurfer" / "20250430b" / "PS51"
+        assert result_bare_override == (
+            tmp_path / "wavesurfer" / "20250424a" / "PS55"
+        )
+
+    def test_wavesurfer_dir_falls_back_to_date_strftime_when_none(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        """Regression: subdir_override=None preserves byte-identical
+        pre-PR behavior (subdir = date.strftime('%Y%m%d')). Every
+        existing non-Pattern-B call hits this branch."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result = resolver.wavesurfer_dir(
+            datetime.date(2025, 4, 30), "PS51", subdir_override=None,
+        )
+        assert result == tmp_path / "wavesurfer" / "20250430" / "PS51"
+
+    def test_camera_dir_uses_subdir_override_when_set(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        """camera_dir mirrors wavesurfer_dir's subdir_override
+        semantics."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result = resolver.camera_dir(
+            datetime.date(2025, 5, 30), "PS54",
+            subdir_override="20250530b",
+        )
+        assert result == tmp_path / "camera" / "20250530b" / "PS54"
+
+    def test_camera_dir_falls_back_to_date_strftime_when_none(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result = resolver.camera_dir(
+            datetime.date(2025, 5, 30), "PS54", subdir_override=None,
+        )
+        assert result == tmp_path / "camera" / "20250530" / "PS54"
+
+    def test_wavesurfer_dir_rejects_both_kwargs(
+        self, monkeypatch, full_paths_yaml,
+    ):
+        """half_subdir and subdir_override are mutually exclusive —
+        passing both raises. Pattern A and Pattern B intents must not
+        mix at the same call site."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            resolver.wavesurfer_dir(
+                datetime.date(2025, 3, 14), "PS48",
+                half_subdir="20250314a",
+                subdir_override="20250314a",
+            )
+
+    def test_camera_dir_rejects_both_kwargs(
+        self, monkeypatch, full_paths_yaml,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            resolver.camera_dir(
+                datetime.date(2025, 3, 14), "PS48",
+                half_subdir="20250314a",
+                subdir_override="20250314a",
+            )
+
+    # ---- Phase 7-pre-secondary-spout Task 3c: per-session output
+    # resolvers session_suffix kwarg threading ----
+
+    def test_alignment_template_legacy_read_session_suffix(
+        self, monkeypatch,
+    ):
+        """Per-session output resolver: session_suffix kwarg appends
+        to date_str. session_suffix=None preserves pre-PR (regression).
+
+        Uses the default PathResolver config (not full_paths_yaml)
+        because alignment_template_legacy_read routes through the
+        microscope_server logical root which the test-fixture YAML
+        doesn't override."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver()
+        date = datetime.date(2025, 4, 30)
+        bare = resolver.alignment_template_legacy_read(
+            "PS51", date, session_suffix=None,
+        )
+        b = resolver.alignment_template_legacy_read(
+            "PS51", date, session_suffix="b",
+        )
+        assert bare.name == "20250430.npz"
+        assert b.name == "20250430b.npz"
+        # Parent dirs identical (only filename carries the suffix here)
+        assert bare.parent == b.parent
+
+    def test_alignment_template_new_session_suffix(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml, output_root=tmp_path)
+        date = datetime.date(2025, 4, 30)
+        bare = resolver.alignment_template_new("PS51", date)
+        b = resolver.alignment_template_new(
+            "PS51", date, session_suffix="b",
+        )
+        assert bare.name == "20250430.npz"
+        assert b.name == "20250430b.npz"
+
+    def test_interpolated_trace_session_suffix(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml, output_root=tmp_path)
+        date = datetime.date(2025, 4, 30)
+        bare = resolver.interpolated_trace(
+            "tongue", "PS51", date,
+        )
+        b = resolver.interpolated_trace(
+            "tongue", "PS51", date, session_suffix="b",
+        )
+        assert bare.name == "20250430.parquet"
+        assert b.name == "20250430b.parquet"
+
+    def test_tongue_pertrial_angle_parquet_session_suffix(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml, output_root=tmp_path)
+        date = datetime.date(2025, 4, 30)
+        bare = resolver.tongue_pertrial_angle_parquet("PS51", date)
+        b = resolver.tongue_pertrial_angle_parquet(
+            "PS51", date, session_suffix="b",
+        )
+        assert bare.name == "20250430.parquet"
+        assert b.name == "20250430b.parquet"
+
+    def test_tongue_pertrial_licking_dynamics_traces_parquet_session_suffix(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml, output_root=tmp_path)
+        date = datetime.date(2025, 4, 30)
+        bare = resolver.tongue_pertrial_licking_dynamics_traces_parquet(
+            "PS51", date,
+        )
+        b = resolver.tongue_pertrial_licking_dynamics_traces_parquet(
+            "PS51", date, session_suffix="b",
+        )
+        assert bare.name == "20250430.parquet"
+        assert b.name == "20250430b.parquet"
+
+    def test_tongue_pertrial_endpoints_json_session_suffix(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml, output_root=tmp_path)
+        date = datetime.date(2025, 4, 30)
+        bare = resolver.tongue_pertrial_endpoints_json("PS51", date)
+        b = resolver.tongue_pertrial_endpoints_json(
+            "PS51", date, session_suffix="b",
+        )
+        assert bare.name == "20250430.json"
+        assert b.name == "20250430b.json"
+
+    def test_tongue_angle_within_session_dir_session_suffix(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        """Directory-pattern resolver (date_str is the dir name, not a
+        filename) — session_suffix appends to the dir name."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml, output_root=tmp_path)
+        date = datetime.date(2025, 4, 30)
+        bare = resolver.tongue_angle_within_session_dir("PS51", date)
+        b = resolver.tongue_angle_within_session_dir(
+            "PS51", date, session_suffix="b",
+        )
+        assert bare.name == "20250430"
+        assert b.name == "20250430b"
+
+    def test_jaw_pertrial_endpoints_json_session_suffix(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml, output_root=tmp_path)
+        date = datetime.date(2025, 4, 30)
+        bare = resolver.jaw_pertrial_endpoints_json("PS51", date)
+        b = resolver.jaw_pertrial_endpoints_json(
+            "PS51", date, session_suffix="b",
+        )
+        assert bare.name == "20250430.json"
+        assert b.name == "20250430b.json"
+
+    def test_tongue_jaw_mismatch_candidate_trials_parquet_session_suffix(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml, output_root=tmp_path)
+        date = datetime.date(2025, 4, 30)
+        bare = resolver.tongue_jaw_mismatch_candidate_trials_parquet(
+            "PS51", date,
+        )
+        b = resolver.tongue_jaw_mismatch_candidate_trials_parquet(
+            "PS51", date, session_suffix="b",
+        )
+        assert bare.name == "20250430.parquet"
+        assert b.name == "20250430b.parquet"
+
+    def test_tongue_jaw_mismatch_within_session_dir_session_suffix(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        """Directory-pattern resolver — session_suffix appends to the
+        dir name."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml, output_root=tmp_path)
+        date = datetime.date(2025, 4, 30)
+        bare = resolver.tongue_jaw_mismatch_within_session_dir(
+            "PS51", date,
+        )
+        b = resolver.tongue_jaw_mismatch_within_session_dir(
+            "PS51", date, session_suffix="b",
+        )
+        assert bare.name == "20250430"
+        assert b.name == "20250430b"
+
+    def test_alignment_template_per_half_new_rejects_session_suffix(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        """Pattern A multi-half-aware resolver MUST NOT accept a
+        session_suffix kwarg — mixing Pattern A's halves_concat_label
+        / half_id with Pattern B's session_suffix is a category error.
+        Verifies the kickoff's Pattern-A/Pattern-B isolation rule."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml, output_root=tmp_path)
+        date = datetime.date(2025, 3, 14)
+        # Existing Pattern A call works
+        out = resolver.alignment_template_per_half_new(
+            "PS48", date, halves_concat_label="ab", half_id="a",
+        )
+        assert out.name == "20250314a.npz"
+        # Passing session_suffix raises TypeError (unexpected kwarg)
+        with pytest.raises(TypeError, match="session_suffix"):
+            resolver.alignment_template_per_half_new(
+                "PS48", date, halves_concat_label="ab", half_id="a",
+                session_suffix="b",
+            )
+
+    def test_wavesurfer_dir_rejects_session_suffix(
+        self, monkeypatch, full_paths_yaml,
+    ):
+        """Input-path resolver `wavesurfer_dir` already has
+        `subdir_override` as its Pattern B kwarg; a `session_suffix`
+        kwarg would be redundant/confusing. Must raise TypeError."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        with pytest.raises(TypeError, match="session_suffix"):
+            resolver.wavesurfer_dir(
+                datetime.date(2025, 4, 30), "PS51",
+                session_suffix="b",
+            )
+
+    def test_camera_dir_rejects_session_suffix(
+        self, monkeypatch, full_paths_yaml,
+    ):
+        """Same as wavesurfer_dir — camera_dir uses subdir_override."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        with pytest.raises(TypeError, match="session_suffix"):
+            resolver.camera_dir(
+                datetime.date(2025, 4, 30), "PS51",
+                session_suffix="b",
+            )
+
     def test_alignment_template_per_half_new_layout(self, tmp_path: Path):
         """Phase 7-pre-multi-half Decision 3 + 2026-05-05 incident response:
         per-half new-pipeline templates land under pipeline_outputs(

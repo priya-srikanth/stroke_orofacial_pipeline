@@ -1,20 +1,55 @@
 # Cowork Session State
 
-**Latest local refresh:** 2026-05-12 — **Phase 7-pre-multi-half
-CLOSED** on `phase/7-pre-multi-half`. PR #99 merged 2026-05-12
+**Latest local refresh:** 2026-05-12 — **Phase 7-pre-secondary-spout
+CLOSED** on `phase/7-pre-secondary-spout` after Task 6 live MICROSCOPE
+parity verdict (Layer 1: 18 PASS + 1 SPECIAL; Layer 2: 19/19 PASS;
+Layer 3: 5/5 PASS). **Outcome A** (infrastructure-only, no legacy
+bare-vs-b comparison code to port — Task 1 audit confirmed). 19
+sessions across PS51 (×2) / PS54 (×11) / PS55 (×6); PS55/2025-04-24
+asymmetric-WS-dir edge case handled via `bare_ws_subdir_override:
+"20250424a"` in `secondary_spout_sessions:` registry. PR #<FILL>
+merged <FILL> as merge-commit `<FILL>`, tagged `v7-pre-secondary-spout`.
+The forward-pointer Phase 7-pre-multi-half Decision 5 committed
+(Pattern B compatibility — four locked architectural commitments
+honored: `multi_half_sessions:` merge-intent only; session-id schema
+allows letter suffixes via `session_suffix` field; defensive check
+gains Pattern-B branch suppressing `MultiHalfNotDeclaredError`;
+Phase 2/3/4 manifest-opaque output separation) is **fully
+discharged**. Bare-vs-b spout-behavior outcome comparison **folded
+into Phase 8a.10 scope** per Priya 2026-05-12 (see DECISIONS
+2026-05-12 Findings #3 + MIGRATION_LOG forward-pointer #3) — NOT
+a separate Phase 7-pre-secondary-spout-compare phase. DLC-side
+comparison remains a separate forward-pointer
+(**Phase 7-pre-secondary-spout-compare-DLC**), blocked on b-half
+DLC inference. Most architecturally significant decision this
+phase: **the module-level free function path-suffix pattern**
+(Decision 5) — parallel to PathResolver session_suffix kwargs;
+caller-side `date_str_suffixed = date_str + (manifest.session_suffix
+or "")` for free-function helpers that bypass the resolver
+(`_output_path`, `_params_json_path`, 3 sites inside
+`load_or_compute_alignment` + `manifest.build_manifest` alignment-
+template discovery). Test suite 1164 passed / 38 skipped (+15 from
+the parity-harness comparator unit tests). Pattern A regression:
+152/152. See "Recent session log — 2026-05-12 (Phase 7-pre-secondary-
+spout)" below.
+
+---
+
+**Earlier refresh — 2026-05-12 (Phase 7-pre-multi-half close)** — Phase 7-pre-multi-half
+CLOSED on `phase/7-pre-multi-half`. PR #99 merged 2026-05-12
 as merge-commit `d14d831`, tagged `v7-pre-multi-half`. Architecture X (three coordinated merge functions
 for licks NPZ / alignment template / centered DLC parquet — faithful
 ports of canonical tongue notebook cells 13/16/17) + three-layer
 write-guard system (paths.py resolver split + `_writeguard` module +
 pytest autouse fixture) + Pattern A scoping (PS48 20250314 only;
-Pattern B closer-spout sessions deferred to a future
-Phase 7-pre-secondary-spout per four locked compatibility commitments).
-Task 9 live parity gate cleared **all 3 layers PASS** on 2026-05-12
-(Layer 1 structural + offset-correctness with side-aware count parity
-via `lr_convention.to_mouse_frame`; Layer 2 atol=1e-12 sig_* +
-numeric provenance + path-string INFO; Layer 3 atol=1e-12 byte-equal
-across 44M cell comparisons + merged row count 1,148,512). Task 5R
-restore PASS (3 alignment templates regenerated within ±0.005% of
+Pattern B closer-spout sessions handled by Phase 7-pre-secondary-spout
+above per four locked compatibility commitments). Task 9 live parity
+gate cleared **all 3 layers PASS** on 2026-05-12 (Layer 1 structural
++ offset-correctness with side-aware count parity via
+`lr_convention.to_mouse_frame`; Layer 2 atol=1e-12 sig_* + numeric
+provenance + path-string INFO; Layer 3 atol=1e-12 byte-equal across
+44M cell comparisons + merged row count 1,148,512). Task 5R restore
+PASS (3 alignment templates regenerated within ±0.005% of
 pre-incident sizes). Test suite 1024 passed / 38 skipped (+156 from
 7a.4-cross-session-angle baseline). Three working-draft DECISIONS
 entries consolidated into one phase-close record (2026-05-12 entry,
@@ -24,9 +59,9 @@ applies semantically correct offset = `n_samples_A` to half-B
 (corrects legacy emergent concat-without-offset side-effect), carries
 Tone_* forward, drops misnomer `merged_n_cam_*`, validates +
 carries side-convention stamps. Production wiring of
-`merge_licks_and_rewards` into `process_session_multi_half` deferred
-as a small post-merge follow-up. See "Recent session log — 2026-05-12"
-below.
+`merge_licks_and_rewards` into `process_session_multi_half` landed
+post-merge in PR #100. Now superseded by the Phase 7-pre-secondary-spout
+close above.
 
 ---
 
@@ -441,16 +476,156 @@ merged 2026-05-03 as PR #91 merge-commit `bb4b505`, tagged
 kickoff V3 retrospective rewrite (~1,794-line historical-narrative
 pass).
 
-**In flight:** *None.* Phase 7-pre-multi-half closed 2026-05-12 as PR
-#99, tagged `v7-pre-multi-half`. `main` at merge-commit `35708e7`
-(post the 2026-05-12 wiring follow-up PR #100 that moved
-`merge_licks_and_rewards` into `_process_session_multi_half`, closing
-the deferred-from-Task-4 loop). No active feature branch. Next-phase
-candidate pick pending Priya from the list below (top picks: Phase
-7-pre-secondary-spout closer-spout 2nd acquisition handling for 19
-PS51/PS54/PS55 sessions per the four locked compatibility
-commitments; Phase 7a.7 DLC heatmaps; Phase 8a.10 spout behavior
-visual gate).
+**In flight:** *None.* Phase 7-pre-secondary-spout closed 2026-05-12 as
+PR #<FILL>, tagged `v7-pre-secondary-spout`. `main` at merge-commit
+`<FILL>` (the Phase 7-pre-secondary-spout merge; supersedes the
+2026-05-12 PR #100 wiring follow-up that left `main` at `35708e7`).
+No active feature branch. Next-phase candidate pick pending Priya
+from the list below — Phase 7-pre-secondary-spout deletion from
+the candidates list means Phase 7a.7 (DLC heatmaps) is now top of
+the queue; Phase 8a.10 (spout-behavior visual gate) gained scope
+expansion to cover the bare-vs-b spout-behavior comparison per
+Priya 2026-05-12 fold-in decision.
+
+**Recent session log — 2026-05-12 (Phase 7-pre-secondary-spout closed;
+Pattern B 19-session cohort + 4 architectural commitments
+discharged + Outcome A infrastructure-only + module-level free
+function path-suffix pattern + bare-vs-b → 8a.10 fold-in):**
+
+PR #<FILL> merged <FILL> as merge-commit `<FILL>`, tagged
+`v7-pre-secondary-spout`. 13-commit subtask breakdown on
+`phase/7-pre-secondary-spout`:
+
+- **Task 2 `f13d789`** — `secondary_spout_sessions:` registry in
+  `configs/session_overrides.yaml` (19 entries: PS51 ×2, PS54 ×11,
+  PS55 ×6; PS55/2025-04-24 carries `bare_ws_subdir_override:
+  "20250424a"`); loader (`load_secondary_spout_sessions` +
+  `get_secondary_spout_entry`) + `OverlappingRegistryError` exception
+  class + `_multi_half_date_str_as_iso()` date-format reconciliation
+  helper in `manifest.py`; 25 tests.
+- **Task 3a `b24c704`** — `SessionManifest.session_suffix: str | None
+  = None` field + `iter_session_suffixes()` helper (returns `[None]`
+  for non-Pattern-B / Pattern A; `[None, "b"]` for Pattern B); session_id
+  construction integrates suffix via `f"{animal}_{date_str}{suffix or
+  ''}"`.
+- **Task 3b `ededaf5`** — `build_manifest()` gains `session_suffix:
+  str | None = None` kwarg + consumes `secondary_spout_sessions:`
+  entry for bare/b WS+cam subdir override resolution + Pattern-B
+  branch in `MultiHalfNotDeclaredError` defensive check (suppresses
+  raise when registry covers `(animal, date)`); `ValueError` guard
+  when `session_suffix` is non-None but registry doesn't cover the
+  pair; `paths.py` `wavesurfer_dir` / `camera_dir` gain
+  `subdir_override` kwarg (mutually exclusive with `half_subdir`).
+- **Task 3c `43cde64`** — `paths.py` per-session resolvers
+  (10 of them: `alignment_template_legacy_read`,
+  `alignment_template_new`, `interpolated_trace`,
+  `tongue_pertrial_*_parquet`, `tongue_pertrial_endpoints_json`,
+  `tongue_angle_within_session_dir`, `jaw_pertrial_endpoints_json`,
+  `tongue_jaw_mismatch_candidate_trials_parquet`,
+  `tongue_jaw_mismatch_within_session_dir`) gain `session_suffix`
+  kwarg. `alignment_template_per_half_new` deliberately UNCHANGED
+  (Pattern A multi-half-only; `session_suffix=` kwarg raises
+  TypeError — regression-pinned).
+- **Task 3d `c8e29cf`** — `_save_session_params` in
+  `session_processing.py` reads `manifest.session_id` instead of
+  reconstructing `f"{animal}_{date_str}"` locally; provenance JSONs
+  for b-half sessions carry the suffix.
+- **Task 4 `b738dc1`** — Phase 2 driver: `process_session_by_animal_date`
+  + `process_animal` iterate `iter_session_suffixes`, return
+  `dict[str | None, dict[str, Path]]` and `list[dict[str | None,
+  dict[str, Path]]]`. Partial-failure tolerance: per-suffix
+  `FileNotFoundError` logs WARNING + continues; all-suffix-failure
+  re-raises FIRST exception. Single-half branch of `process_session`
+  uses caller-side `date_str_suffixed` for `_output_path` +
+  `_save_session_params` (the **module-level free function
+  path-suffix pattern** — Decision 5 of the DECISIONS entry).
+- **Task 5 `eabcecf`** — Phase 3 driver:
+  `load_or_compute_alignment_by_animal_date` iterates + returns
+  `dict[str | None, AlignmentResult]` with same partial-failure
+  semantics (catches `(FileNotFoundError, RuntimeError)`).
+  **3-site audit** in `load_or_compute_alignment` + `build_manifest`
+  threaded `session_suffix` into cache-discovery
+  (`alignment_template_legacy_read`) + cam_dir fallback +
+  manifest's alignment-template resolution. Without these fixes,
+  Pattern B b-half manifests would have spuriously cache-missed
+  / spuriously cache-hit on the bare half's NPZ.
+- **Task 6a `34df83a` + 6b `ee1aba1` + 6c `5acdecc` + 6d `ce6e3cf`
+  + 6e `5f9a327`** — 3-layer parity gate at
+  [`tests/scripts/parity_phase7_pre_secondary_spout.py`](../tests/scripts/parity_phase7_pre_secondary_spout.py)
+  (~870 lines) mirroring the multi-half harness structure.
+  Layer 1: bare-half byte-identity vs Task 0.5 baseline JSON at
+  `tests/scripts/_baselines/phase_7_pre_secondary_spout/sha256.json`,
+  excluding `params/*.json` per Task 0.5 finding. Layer 2: b-half
+  structural validation (required keys + dtypes + Fs + side-convention
+  stamps inherited from bare + session_id-suffix). Layer 3: 5
+  synthetic defensive-check scenarios. Task 6e fixed two
+  harness bugs caught by the live run: Layer 1's PS55/2025-04-24
+  expected-divergence short-circuit didn't fire; Layer 2's
+  output_type detection used `parts[0]` (always `"spout_behavior"`)
+  instead of `parts[1]`. Plus 15 synthetic-fixture comparator unit
+  tests at `tests/test_parity_harness_secondary_spout.py`.
+- **Task 8 amended `8ac6983`** — DECISIONS 2026-05-12 Phase
+  7-pre-secondary-spout entry (8 numbered Decisions + 4 sub-sections,
+  161 lines) + MIGRATION_LOG Phase 7-pre-secondary-spout entry
+  (83 lines) + bare-vs-b → 8a.10 fold-in note in Findings #3 +
+  forward-pointer #3 respectively. Post-Task-8 STOP-and-report
+  decision (Priya 2026-05-12) folded into the amend.
+- **Task 9 `<NEW SHA>`** — state-doc refresh (this commit).
+
+**Task 6 live MICROSCOPE parity verdict** (verdict log at
+`.scratch_phase_7_pre/parity_run_secondary_spout_rerun_20260512T164049.log`):
+
+| Layer | Status | Detail |
+|---|---|---|
+| 1 — bare-half byte-identity | PASS | 18/18 byte-equal vs Task 0.5 baselines; 1 SPECIAL: PS55/2025-04-24 (expected divergence via `bare_ws_subdir_override`) |
+| 2 — b-half structural validation | PASS | 19/19 × 8 files each (7 NPZs + 1 `params.json`); all schema checks green |
+| 3 — defensive-check synthetic | PASS | 5/5 scenarios |
+
+**Task 0.5 precondition** (PR #104, merge-commit `6323bec`, 2026-05-12):
+pre-PR baseline SHA256s for the 19 cohort sessions captured against
+`main` HEAD `fe91569` (PR #103 kickoff merge) BEFORE this feature
+branch was created. Forward rule re-affirmed: capture baselines on
+`main` as a small chore-PR before opening any feature branch with a
+byte-identity parity layer.
+
+**The 4 architectural commitments from 7-pre-multi-half Decision 5
+are fully discharged.** `multi_half_sessions:` (merge-intent) and
+`secondary_spout_sessions:` (compare-intent) are mutually exclusive
+by design — `OverlappingRegistryError` raises at config-load time
+if both list the same `(animal, date)` pair. session-id schema
+accepts letter suffixes via `manifest.session_suffix`. Defensive
+check has a Pattern-B branch (registry-coverage suppresses
+`MultiHalfNotDeclaredError`). Phase 2/3/4 stay manifest-opaque;
+output separation is by session-id alone.
+
+**Bare-vs-b spout-behavior outcome comparison folded into Phase
+8a.10's scope** per Priya 2026-05-12 (DECISIONS Findings #3 +
+MIGRATION_LOG forward-pointer #3). 8a.10's Next-phase-candidates
+entry above updated to reflect the expansion. The DLC-side
+counterpart stays a separate forward-pointer
+(**Phase 7-pre-secondary-spout-compare-DLC** — candidate #9 in
+the renumbered list), blocked on b-half DLC inference.
+
+**Forward-pointers carried forward** (full list in DECISIONS
+2026-05-12 Phase 7-pre-secondary-spout Findings + MIGRATION_LOG
+forward-pointers):
+1. Phase 7-pre-secondary-spout-compare-DLC (b-half DLC + comparison)
+2. `paths.py:756/760/766` + `dlc_io/parquet.py:294,377` DLC-side
+   resolver fields deferred to the compare-DLC phase
+3. (bare-vs-b spout-behavior comparison → folded into 8a.10 above)
+4. Weak candidates (PS51/2025-04-29, PS54/2025-05-08)
+5. `bnpm` dep + orphan cam{1,3,4} housekeeping (carried from
+   7-pre-multi-half)
+6. One-time cohort-wide re-emit (manual operator step or chore-PR
+   — Priya's call at PR review)
+
+**Post-merge obligations:** (a) push `v7-pre-secondary-spout` tag
+on merge SHA per CLAUDE.md §Git discipline; (b) backfill `<FILL>`
+placeholders in DECISIONS + MIGRATION_LOG + state-doc via a small
+close-out polish PR mirroring PR #101's 7-pre-multi-half pattern;
+(c) decide on cohort-wide re-emit (manual or chore-PR).
+
+---
 
 **Recent session log — 2026-05-12 (Phase 7-pre-multi-half closed;
 Architecture X + 3-layer write-guard + Pattern A/B compat +
@@ -591,18 +766,18 @@ handling (only if explicitly coordinated with Phase 7 I/O work).
 - Windows pytest (last full-suite measurement in the 8a.7.5 session): 361 pass / 28 skip / 0 fail. Phase 8a.7.5 merge added +20 criteria tests + 6 writer-schema tests. Not yet re-measured post-merge or post-clamp-fix; worth a non-blocking re-run at quiet moment to confirm the clamp-fix PR didn't introduce Windows-specific drift (not expected — the fix is pure numpy arithmetic).
 - Pre-existing ruff warnings: 8 unused-import errors carried forward from before 8a (noted in prior Claude Code session summaries). Backlog item; not blocking.
 
-**Next-phase candidates** (in rough priority order, post-2026-05-12 7-pre-multi-half merge):
+**Next-phase candidates** (in rough priority order, post-2026-05-12 7-pre-secondary-spout merge):
 
-0. **Phase 7-pre-secondary-spout (Pattern B closer-spout 2nd acquisitions for 19 PS51/PS54/PS55 sessions).** Surfaced 2026-05-09 during the Phase 7-pre-multi-half cohort scan as a deliberate experimental manipulation (NOT exploratory): each Pattern B session has a bare-`{DATE}` half (standard spout distance) + a `{DATE}b` half (closer spouts). Currently the b half is silently discarded — Pattern B sessions flow through the existing single-half discovery path and lose the closer-spout data. Future phase ships a `secondary_spout_sessions:` registry (compare-intent, separate from `multi_half_sessions:` merge-intent) that treats `{DATE}b` as its own logical session via the four locked compatibility commitments (session-id letter suffixes, defensive-check Pattern-B branch, Phase 2/3/4 manifest-opaque output separation, no `multi_half_sessions:` repurpose). Scope estimate ~mid-size comparable to Phase 7-pre-multi-half. Spout-behavior compare-trace lands immediately; DLC bare-vs-b waits for DLC inference to run on b halves. See DECISIONS 2026-05-12 Decision 5 + kickoff Forward-pointers section "Pattern B" for full spec.
-1. **Phase 7a.7 — DLC heatmaps visual gate (3 INDEPENDENT legacy sources).** Per Priya 2026-04-30 the kinematic vs heatmap split is parallel-workflow, not supersession. Sources: `20260111_DLC_analysis_build-parquet_tongue.ipynb` (tongue heatmaps + may build upstream parquet); `20251117_DLC_analysis_jaw.ipynb` (jaw heatmaps); `20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb` (cross-bodypart pixelbin heatmaps; stats sub-cells deferred to Phase 9). Each notebook is its own production source. Audit-first kickoff pattern (mirrors 7a.3-jaw / 7a.5-mismatch / 7a.6).
-2. **Phase 7a.8 — new reward-aligned DLC heatmaps visual QC.** Builds on 7a.7's heatmap-rendering machinery. No legacy comparison (these are new outputs). Render heatmaps from consolidated reward-aligned NPZs (Phase 6.8a cohort emit, 13,821 NPZs); generate examples for diverse sessions; iterate plot parameters with Priya's eyeball verdict. Acceptance: publication-grade rendering verdict.
-3. **Phase 8a.10 — spout behavior visual gate.** Single source: `\\research...\Github\facerhythm_stroke_biomarker_exp_Priya\analysis\behavior_report\batch_process_behavior_report_20260116PS.ipynb`. Output dir for legacy comparison: `basic_behavior_analysis3`. Renders comparison grids for spout endpoints (8a.7) + criteria visualizations (8a.7.5) + recovery trajectories (8a.8). Independent of 7a.x; could run in parallel.
-4. **Phase 7a.x-jaw-pertrial-greenfield** (forward-pointer from 7a.3-jaw + 7a.5-mismatch's side-finding). The mismatch port surfaced inline jaw per-trial logic that became `jaw_pertrial.py` (8 scalars). If experimental intent is "richer jaw per-trial features beyond what mismatch needs," that's a green-field design phase (scientific design + detector tuning + synthetic-only validation).
-5. **Phase 7a.x — whisker / face-velocity / PSD branches** of strategy §7. Per-bodypart interpolation + per-trial features. Each branch its own phase. Cell 43 PSD (deferred from 7a.3-jaw + 7a.6) lands here OR as a small standalone PSD follow-up combining tongue 60-86 + jaw 43 + face-velocity sources.
-6. **Phase 9 stats forward-pointer**: stats plots in `20251202_..._stats_pixelbin.ipynb` deferred to Phase 9 statistics work per Priya 2026-04-30. Same notebook also contains heatmaps (covered by 7a.7); Phase 9 work likely overlaps.
-7. **#16 — Phase 5.5 polish** (SSH helper, recovery docs, ControlMaster, auto-rename, unified SVG save, DTW per-edge-shift QC plot). **Ungated** — does not require MICROSCOPE.
-8. ~~**PS48 2025-03-14 multi-half acquisition port** (task #18-adjacent).~~ **CLOSED** 2026-05-12 as Phase 7-pre-multi-half, tagged `v7-pre-multi-half`. See "Recent session log — 2026-05-12" + DECISIONS 2026-05-12 + MIGRATION_LOG Phase 7-pre-multi-half.
-9. **Cohort-wide 7a.2/7a.3 upstream re-emit** (deferred from 7a.4 + 7a.5 day-binned + mismatch acceptance paths) — needed for publication-grade cohort parity vs legacy CSVs. Could be its own mini-phase if/when downstream demands.
+0. **Phase 7a.7 — DLC heatmaps visual gate (3 INDEPENDENT legacy sources).** Per Priya 2026-04-30 the kinematic vs heatmap split is parallel-workflow, not supersession. Sources: `20260111_DLC_analysis_build-parquet_tongue.ipynb` (tongue heatmaps + may build upstream parquet); `20251117_DLC_analysis_jaw.ipynb` (jaw heatmaps); `20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb` (cross-bodypart pixelbin heatmaps; stats sub-cells deferred to Phase 9). Each notebook is its own production source. Audit-first kickoff pattern (mirrors 7a.3-jaw / 7a.5-mismatch / 7a.6).
+1. **Phase 7a.8 — new reward-aligned DLC heatmaps visual QC.** Builds on 7a.7's heatmap-rendering machinery. No legacy comparison (these are new outputs). Render heatmaps from consolidated reward-aligned NPZs (Phase 6.8a cohort emit, 13,821 NPZs); generate examples for diverse sessions; iterate plot parameters with Priya's eyeball verdict. Acceptance: publication-grade rendering verdict.
+2. **Phase 8a.10 — spout behavior visual gate.** Single source: `\\research...\Github\facerhythm_stroke_biomarker_exp_Priya\analysis\behavior_report\batch_process_behavior_report_20260116PS.ipynb`. Output dir for legacy comparison: `basic_behavior_analysis3`. Renders comparison grids for spout endpoints (8a.7) + criteria visualizations (8a.7.5) + recovery trajectories (8a.8). Independent of 7a.x; could run in parallel. **SCOPE EXPANSION (Priya 2026-05-12):** also covers bare-vs-b spout-behavior outcome comparison — per-(animal, date) pairing of standard-distance bare half vs closer-spout b half licking outcomes across the 19 PS51/PS54/PS55 Pattern B sessions now produced by Phase 7-pre-secondary-spout (per DECISIONS 2026-05-12 Phase 7-pre-secondary-spout Findings #3 + MIGRATION_LOG Phase 7-pre-secondary-spout forward-pointer #3 fold-in decision). 8a.10 now combines: legacy-parity grids (spout endpoints / criteria / trajectories) PLUS the bare-vs-b comparison surface. Single phase; comparable scope to original-spec 8a.10 + ~30-50% expansion. The DLC-side counterpart (kinematics bare-vs-b comparison) stays a separate forward-pointer below (Phase 7-pre-secondary-spout-compare-DLC) because it's blocked on b-half DLC inference.
+3. **Phase 7a.x-jaw-pertrial-greenfield** (forward-pointer from 7a.3-jaw + 7a.5-mismatch's side-finding). The mismatch port surfaced inline jaw per-trial logic that became `jaw_pertrial.py` (8 scalars). If experimental intent is "richer jaw per-trial features beyond what mismatch needs," that's a green-field design phase (scientific design + detector tuning + synthetic-only validation).
+4. **Phase 7a.x — whisker / face-velocity / PSD branches** of strategy §7. Per-bodypart interpolation + per-trial features. Each branch its own phase. Cell 43 PSD (deferred from 7a.3-jaw + 7a.6) lands here OR as a small standalone PSD follow-up combining tongue 60-86 + jaw 43 + face-velocity sources.
+5. **Phase 9 stats forward-pointer**: stats plots in `20251202_..._stats_pixelbin.ipynb` deferred to Phase 9 statistics work per Priya 2026-04-30. Same notebook also contains heatmaps (covered by 7a.7); Phase 9 work likely overlaps.
+6. **#16 — Phase 5.5 polish** (SSH helper, recovery docs, ControlMaster, auto-rename, unified SVG save, DTW per-edge-shift QC plot). **Ungated** — does not require MICROSCOPE.
+7. ~~**PS48 2025-03-14 multi-half acquisition port** (task #18-adjacent).~~ **CLOSED** 2026-05-12 as Phase 7-pre-multi-half, tagged `v7-pre-multi-half`. See "Recent session log — 2026-05-12 (Phase 7-pre-multi-half close)" + DECISIONS 2026-05-12 Phase 7-pre-multi-half + MIGRATION_LOG Phase 7-pre-multi-half.
+8. **Cohort-wide 7a.2/7a.3 upstream re-emit** (deferred from 7a.4 + 7a.5 day-binned + mismatch acceptance paths) — needed for publication-grade cohort parity vs legacy CSVs. Could be its own mini-phase if/when downstream demands.
+9. **Phase 7-pre-secondary-spout-compare-DLC.** Blocked on Priya DLC-inferring the 19 b-half cam dirs across PS51/PS54/PS55. Wires Phase 4 (centered parquet) to produce b-half outputs per the `session_suffix="b"` convention; ports bare-vs-b DLC cross-session comparison analyses (the **kinematics-side counterpart** to 8a.10's spout-behavior comparison from candidate #2's scope expansion). Out of scope until b-half DLC inference runs. See DECISIONS 2026-05-12 Phase 7-pre-secondary-spout Findings #1 + MIGRATION_LOG forward-pointer #1.
 
 **Deferred follow-ups still pending (from earlier sessions):**
 
@@ -1610,6 +1785,7 @@ section; most likely Phase 7 — DLC kinematics — via the existing
 
 **Completed since last state refresh:**
 
+- **Phase 7-pre-secondary-spout — Pattern B closer-spout 2nd-acquisition handling for PS51/PS54/PS55 (19 sessions; Outcome A infrastructure-only).** 13 commits on `phase/7-pre-secondary-spout` (Task 2 `f13d789` registry + Task 3a `b24c704` / 3b `ededaf5` / 3c `43cde64` / 3d `c8e29cf` session_suffix threading + Task 4 `b738dc1` Phase 2 driver + Task 5 `eabcecf` Phase 3 driver + Task 6a `34df83a` / 6b `ee1aba1` / 6c `5acdecc` / 6d `ce6e3cf` / 6e `5f9a327` 3-layer parity gate + Task 8 amended `8ac6983` DECISIONS+MIGRATION_LOG + bare-vs-b → 8a.10 fold-in + Task 9 `<NEW SHA>` state-doc). Task 6 live MICROSCOPE verdict: Layer 1 PASS (18 byte-equal + 1 PS55/2025-04-24 expected-divergence via `bare_ws_subdir_override`), Layer 2 PASS (19/19 b-half structural — required keys + Fs + side-convention stamps + session_id-suffix), Layer 3 PASS (5/5 synthetic defensive-check scenarios). Task 1 audit confirmed Outcome A — legacy notebooks (`playground_analyze_behavior_report_PS20250610.ipynb` + `batch_process_behavior_report_20260116PS.ipynb`) omit `*b` dates from `include_dates`, no bare-vs-b comparison code to port. **4 architectural commitments from 7-pre-multi-half Decision 5 honored**: `multi_half_sessions:` merge-intent only; session-id schema allows letter suffixes via `session_suffix` field; `MultiHalfNotDeclaredError` gains Pattern-B branch (suppresses when `secondary_spout_sessions:` covers `(animal, date)`); Phase 2/3/4 manifest-opaque output separation by session-id. Most architecturally significant decision this phase: the **module-level free function path-suffix pattern** (Decision 5 of the 7-pre-secondary-spout DECISIONS entry) — caller-side `date_str_suffixed = date_str + (manifest.session_suffix or "")` for free-function helpers that bypass PathResolver methods. **Bare-vs-b spout-behavior outcome comparison folded into Phase 8a.10 scope** per Priya 2026-05-12 (NOT a separate Phase 7-pre-secondary-spout-compare phase); DLC-side bare-vs-b comparison remains a separate forward-pointer (Phase 7-pre-secondary-spout-compare-DLC), blocked on b-half DLC inference. Test suite 1164 passed / 38 skipped (+15 from harness comparator tests). Pattern A regression: 152/152. PR #<FILL> merged <FILL> as merge-commit `<FILL>`, tagged `v7-pre-secondary-spout`. See DECISIONS 2026-05-12 Phase 7-pre-secondary-spout + MIGRATION_LOG Phase 7-pre-secondary-spout.
 - **Task #41 — Phase 7a.4-orientation-fix (state-doc retrocapture; shipped 2026-05-03 + 2026-05-04).** Comprehensive grep audit of `src/stroke_orofacial/dlc_kinematics/` confirms cam-view convention (R-trials on figure-LEFT, L-trials on figure-RIGHT) is universally applied across every L/R subplot site: `tongue_visual.py::_plot_xy_by_phase` (PR #93 merge-commit `c34c51d`, tagged `v7a.4-orientation-fix-cam-view-flip`); `tongue_visual.py::_plot_first_vs_second_peak_scatter` and all 6+ plot families in `tongue_angle_cohort.py` via `_setup_cam_view_axes(...)` helper (PR #95 7a.4-cross-session-angle, merge-commit `718bbca`); `mean_sem_visual.py` (7a.6 C7.2). No remaining L-on-LEFT instances. Other rendering functions (`_plot_per_trial_qc_traces`, `_plot_first_peak_aligned`, `_plot_reward_aligned`, `_plot_phase_aligned_angle`) don't use L/R subplots — they overlay sides on a single axes by color, so there's no orientation to flip. State-doc Next-phase candidates list and Pending-open queue both carried stale references through the 7-pre-multi-half close-out polish; this entry retroactively captures closure.
 - **Phase 7-pre-multi-half follow-up — wire `merge_licks_and_rewards` into `_process_session_multi_half` (PR #100, merge-commit `35708e7`, 2026-05-12).** Wire `merge_licks_and_rewards` into `_process_session_multi_half` so multi-half sessions emit the parent-level merged licks NPZ as part of normal Phase-2 processing (deferred from Task 4 of Phase 7-pre-multi-half). After the per-half loop, the per-half NPZs are merged via `index_space="ws_sample"` and land at the canonical parent-level path `{output_root}/licks_and_rewards/{animal}/{date}.npz`; single-half code path unchanged. +1 unit test (`TestMergeWiring::test_merged_licks_npz_written_alongside_per_half`) verifies per-half + merged NPZs on disk with correct ws_sample offset semantics. Full pytest suite 1072 passed / 38 skipped (+1 vs branch base). No tag — captured as `Forward-pointer resolved` note in `docs/MIGRATION_LOG.md` below the Phase 7-pre-multi-half entry, per the small-post-merge-follow-up convention.
 - **Task #18 — AnimalInfo cohort metadata schema (retrocapture; shipped
@@ -1906,7 +2082,63 @@ Whatever the server-side feature flag or staged-rollout gate was doing on 2026-0
 
 ## Best warm-start prompt (paste into a new Cowork chat)
 
-End of 2026-05-12 session: **Phase 7-pre-multi-half closed** as PR
+End of 2026-05-12 session (later, post-7-pre-multi-half close):
+**Phase 7-pre-secondary-spout closed** as PR #<FILL>, merge-commit
+`<FILL>`, tagged `v7-pre-secondary-spout`. Pattern B closer-spout
+2nd-acquisition handling for the 19 PS51/PS54/PS55 sessions; Outcome
+A from Task 1 audit (no legacy bare-vs-b comparison code to port);
+Task 6 live MICROSCOPE parity verdict **all 3 layers PASS** (Layer
+1: 18 byte-equal + 1 PS55/2025-04-24 expected-divergence via
+`bare_ws_subdir_override`; Layer 2: 19/19 b-half structural; Layer 3:
+5/5 synthetic defensive-check). The 4 architectural compatibility
+commitments from 7-pre-multi-half Decision 5 are fully discharged:
+`multi_half_sessions:` (merge-intent) + `secondary_spout_sessions:`
+(compare-intent) are mutually exclusive (`OverlappingRegistryError`
+at load time); `SessionManifest.session_suffix` field threaded
+through `build_manifest` + 10 PathResolver per-session resolvers +
+caller-side `date_str_suffixed` for module-level free-function
+helpers (the **module-level free function path-suffix pattern** —
+parallel to PathResolver kwargs; Decision 5 of the 7-pre-secondary-
+spout DECISIONS entry, surfaced in Task 4 + generalized in Task 5
+via 3-site audit); `MultiHalfNotDeclaredError` gains Pattern-B
+branch (registry-coverage suppresses); Phase 2/3/4 stay
+manifest-opaque with output separation by session-id. Driver return
+shapes changed: `process_session_by_animal_date` →
+`dict[str | None, dict[str, Path]]`; `load_or_compute_alignment_by_animal_date`
+→ `dict[str | None, AlignmentResult]`. Partial-failure tolerance:
+log + continue per suffix; re-raise FIRST on all-suffix-failure.
+Bare-vs-b spout-behavior outcome comparison folded into Phase 8a.10
+scope per Priya 2026-05-12 (DECISIONS Findings #3 / MIGRATION_LOG
+forward-pointer #3) — NOT a separate compare phase. DLC-side
+comparison remains a separate forward-pointer (Phase
+7-pre-secondary-spout-compare-DLC, blocked on b-half DLC inference;
+candidate #9 in the renumbered Next-phase queue). Task 0.5 precondition
+(PR #104, merge-commit `6323bec`): pre-PR baselines captured against
+`main` HEAD `fe91569` BEFORE the feature branch existed — re-affirms
+the forward rule "capture baselines on `main` as a chore-PR before
+opening any byte-identity-parity feature branch." Test suite 1164
+passed / 38 skipped (+15 from harness comparator tests on top of the
+1149 Task 5 baseline). Pattern A regression: 152/152. `main` at
+merge-commit `<FILL>`; no active feature branch. **Post-merge
+obligations remaining:** (a) push `v7-pre-secondary-spout` tag on
+merge SHA; (b) backfill `<FILL>` placeholders in DECISIONS +
+MIGRATION_LOG + state-doc via small close-out polish PR (mirrors
+PR #101 pattern for 7-pre-multi-half); (c) decide on cohort-wide
+re-emit (manual operator step or chore-PR). **Next-phase candidates**
+(Priya's pick from renumbered queue): **Phase 7a.7** (DLC heatmaps,
+3 legacy sources, audit-first; candidate #0), **Phase 8a.10** (spout
+behavior visual gate, NOW scope-expanded with bare-vs-b spout-behavior
+comparison; candidate #2), **Phase 7a.8** (reward-aligned DLC heatmaps
+QC; candidate #1), **Phase 5.5 polish** (#16, ungated parallel;
+candidate #6), or the **close-out polish PR** for `<FILL>` backfill
+(small docs-only PR mirroring PR #101). Verify
+`git tag --list | grep -E 'v7-pre-secondary-spout|v7-pre-multi-half'`
+shows both phase tags locally + on origin.
+
+---
+
+End of 2026-05-12 session (earlier, Phase 7-pre-multi-half close):
+**Phase 7-pre-multi-half closed** as PR
 #99, merge-commit `d14d831`, tagged `v7-pre-multi-half`. Architecture X for multi-half merge (three
 coordinated functions for licks NPZ / alignment template / centered
 DLC parquet — faithful ports of canonical tongue notebook cells

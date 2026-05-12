@@ -10,6 +10,7 @@ Implements the §4.4 time-base contract from DESIGN.md:
 from __future__ import annotations
 
 import datetime
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -22,8 +23,14 @@ from stroke_orofacial.alignment.templates import (
     pick_camera_csv,
 )
 from stroke_orofacial.animals import get_animal
-from stroke_orofacial.manifest import SessionManifest, build_manifest
+from stroke_orofacial.manifest import (
+    SessionManifest,
+    build_manifest,
+    iter_session_suffixes,
+)
 from stroke_orofacial.paths import PathResolver
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -238,10 +245,21 @@ def load_or_compute_alignment(
     # Existing-template path: prefer the manifest's cam2 entry; fall back
     # to the resolver for other cams (manifest only tracks cam2) or when
     # the manifest didn't see the template at build time but it now exists.
+    #
+    # Phase 7-pre-secondary-spout: thread manifest.session_suffix into
+    # the cache-discovery resolver so Pattern B b-half manifests look at
+    # {date_str}b.npz (not {date_str}.npz). Without this thread, the
+    # b-half load would spuriously miss the cache + overwrite the bare-
+    # half template on recompute (since neither b nor bare write to disk
+    # in the single-half branch, but the cache-hit logic short-circuits
+    # the recompute incorrectly).
     if cam_idx == 2 and manifest.alignment_template is not None:
         existing_path = manifest.alignment_template
     else:
-        existing_path = resolver.alignment_template_legacy_read(animal, date, cam=cam_name)
+        existing_path = resolver.alignment_template_legacy_read(
+            animal, date, cam=cam_name,
+            session_suffix=manifest.session_suffix,
+        )
 
     if not force_recompute and existing_path.exists():
         tmpl = load_alignment_template(existing_path)
@@ -271,10 +289,28 @@ def load_or_compute_alignment(
     # Get camera CSV. For cam2, prefer the directory the manifest already
     # discovered for video_files; fall back to the resolver for other cams
     # or when the manifest has no videos discovered.
+    #
+    # Phase 7-pre-secondary-spout: derive a subdir_override for the
+    # fallback path so Pattern B b-half manifests resolve to the b-half
+    # cam dir ``{date_str}b/`` by convention. The if-branch (line above)
+    # already resolves correctly because build_manifest populates
+    # manifest.video_files using the suffix-aware cam_dir at manifest-
+    # build time. This else-branch fallback only fires when video
+    # discovery yielded no AVIs (degraded case); without the override
+    # it would silently resolve to the bare-half cam dir. The
+    # Pattern B bare-half + bare_cam_subdir_override case is unsupported
+    # here (no current cohort session has that asymmetry; Task 1 audit
+    # confirms PS55/2025-04-24 has WS asymmetry only).
     if cam_idx == 2 and manifest.video_files:
         cam_dir = manifest.video_files[0].parent
     else:
-        cam_dir = resolver.camera_dir(date, animal)
+        date_str = date.strftime("%Y%m%d")
+        cam_subdir_override = (
+            f"{date_str}b" if manifest.session_suffix == "b" else None
+        )
+        cam_dir = resolver.camera_dir(
+            date, animal, subdir_override=cam_subdir_override,
+        )
     csv_path = pick_camera_csv(cam_dir, cam_idx=cam_idx)
     cam_csv = load_camera_csv(csv_path)
 
@@ -299,17 +335,30 @@ def load_or_compute_alignment_by_animal_date(
     *,
     ws_signals: dict[str, np.ndarray] | None = None,
     force_recompute: bool = False,
-) -> AlignmentResult:
-    """Convenience wrapper: builds a SessionManifest then calls load_or_compute_alignment().
+    overrides_config: dict[str, Any] | None = None,
+) -> dict[str | None, AlignmentResult]:
+    """Convenience wrapper: builds one or more ``SessionManifest`` instances
+    then calls :func:`load_or_compute_alignment` for each.
 
-    Equivalent to::
+    Phase 7-pre-secondary-spout: the wrapper iterates
+    :func:`stroke_orofacial.manifest.iter_session_suffixes` so Pattern B
+    (closer-spout 2nd-acquisition) sessions compute BOTH halves'
+    alignment templates as independent single-half templates — one
+    bare half (``session_suffix=None``) and one b half
+    (``session_suffix="b"``). Vanilla single-half + Pattern A
+    multi-half-merged sessions iterate once with
+    ``session_suffix=None``; Pattern A's merged result still comes
+    back through :func:`load_or_compute_alignment` →
+    :func:`compute_and_merge_alignment_multi_half` (unchanged), wrapped
+    in a single-entry ``{None: AlignmentResult(source="merged_multi_half")}``
+    dict.
 
-        animal_info = get_animal(animal)
-        manifest = build_manifest(
-            animal, date, resolver, animal_info,
-            analysis_context="alignment",
-        )
-        return load_or_compute_alignment(manifest, resolver, params, ...)
+    There is NO Phase 3 merge for Pattern B sessions — each half emits
+    its own alignment template at its own suffix-aware path (the
+    ``{date_str}.npz`` / ``{date_str}b.npz`` write convention is owned
+    by :meth:`PathResolver.alignment_template_legacy_read` /
+    :meth:`PathResolver.alignment_template_new`, both already
+    suffix-aware per Phase 7-pre-secondary-spout Task 3c).
 
     Phase 3 alignment is DLC-agnostic; ``build_manifest()`` treats DLC
     files as optional, so this wrapper works for sessions where DLC
@@ -319,16 +368,112 @@ def load_or_compute_alignment_by_animal_date(
     block alignment since the wavesurfer↔camera mapping needs the camera
     timestamp CSVs — mark those sessions with ``applies_to: [dlc,
     alignment]`` or ``applies_to: [alignment]`` as appropriate.
+
+    Parameters
+    ----------
+    animal : str
+        Animal ID.
+    date : datetime.date
+        Session date.
+    resolver : PathResolver
+        Configured path resolver.
+    params : dict
+        The ``alignment`` section from defaults.yaml.
+    ws_signals : dict, optional
+        Pre-loaded wavesurfer signals. Threaded through to every
+        per-suffix :func:`load_or_compute_alignment` call. Typically
+        only meaningful for non-Pattern-B sessions (one suffix); for
+        Pattern B, each half loads its own WS signals from its own
+        per-half WS file.
+    force_recompute : bool
+        If True, always recompute even if existing templates exist.
+        Applied to every suffix in the iteration.
+    overrides_config : dict, optional
+        Pre-loaded ``configs/session_overrides.yaml`` dict. When None,
+        lazily loaded here (once per call) and threaded through to
+        :func:`build_manifest`. Tests may pass an in-memory dict to
+        avoid touching the on-disk YAML.
+
+    Returns
+    -------
+    dict[str | None, AlignmentResult]
+        Mapping ``session_suffix -> AlignmentResult``. Keys:
+
+        - ``None`` (always present for non-Pattern-B and Pattern A
+          sessions; present for Pattern B if the bare half succeeded).
+        - ``"b"`` (present for Pattern B sessions if the b half
+          succeeded).
+
+        Partial-failure tolerance: if one half raises
+        :class:`FileNotFoundError` or :class:`RuntimeError` (missing
+        WS/cam inputs OR alignment-compute boundary error) but the
+        other half succeeds, the returned dict includes only the
+        successful half's entry; the failure is logged as a WARNING.
+        If BOTH halves fail, the FIRST encountered exception is
+        re-raised so single-half callers' existing semantics are
+        preserved.
+
+    Raises
+    ------
+    FileNotFoundError, RuntimeError
+        When EVERY suffix raises. Single-half non-Pattern-B sessions
+        surface this as before — there's only one suffix in the
+        iteration, so a single raise becomes the re-raise.
     """
     animal_info = get_animal(animal)
-    manifest = build_manifest(
-        animal, date, resolver, animal_info,
-        analysis_context="alignment",
-    )
-    return load_or_compute_alignment(
-        manifest, resolver, params,
-        ws_signals=ws_signals, force_recompute=force_recompute,
-    )
+
+    # Lazy-load overrides_config once (mirrors build_manifest's pattern
+    # and process_session_by_animal_date's Task-4 lazy-load).
+    if overrides_config is None:
+        from stroke_orofacial.config_loader import load_session_overrides
+        overrides_config = load_session_overrides()
+
+    suffixes = iter_session_suffixes(animal, date, overrides_config)
+    result_per_suffix: dict[str | None, AlignmentResult] = {}
+    per_suffix_errors: dict[str | None, Exception] = {}
+
+    for suffix in suffixes:
+        try:
+            manifest = build_manifest(
+                animal, date, resolver, animal_info,
+                analysis_context="alignment",
+                overrides_config=overrides_config,
+                session_suffix=suffix,
+            )
+            result_per_suffix[suffix] = load_or_compute_alignment(
+                manifest, resolver, params,
+                ws_signals=ws_signals,
+                force_recompute=force_recompute,
+            )
+        except (FileNotFoundError, RuntimeError) as e:
+            # FileNotFoundError: missing on-disk inputs (WS file, cam
+            # CSV) for this half.
+            # RuntimeError: alignment-compute boundary errors
+            # (e.g. monotonicity / shape failures from
+            # make_alignment_template) — partial-failure tolerance
+            # lets the other half still produce a result.
+            per_suffix_errors[suffix] = e
+            logger.warning(
+                "Phase 7-pre-secondary-spout: skipping alignment for "
+                "%s/%s suffix=%r due to %s: %s",
+                animal, date.isoformat(), suffix, type(e).__name__, e,
+            )
+            # Continue to the next suffix.
+
+    # Partial-failure policy: if at least one suffix succeeded, return
+    # the partial result. If all suffixes failed, re-raise the first
+    # exception so single-half callers' existing raise semantics are
+    # preserved unchanged.
+    if not result_per_suffix:
+        if per_suffix_errors:
+            first_suffix = next(iter(per_suffix_errors))
+            raise per_suffix_errors[first_suffix]
+        # No suffixes iterated at all — impossible because
+        # iter_session_suffixes always returns at least [None]. Defensive
+        # case: return empty mapping.
+        return {}
+
+    return result_per_suffix
 
 
 # ---------------------------------------------------------------------------

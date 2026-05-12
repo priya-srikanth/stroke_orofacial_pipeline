@@ -102,7 +102,7 @@ class TestSaveSessionParams:
 
         path = _save_session_params(
             tmp_path, "PS46", datetime.date(2025, 3, 7), "20250307",
-            params, log, skipped=False,
+            params, log, skipped=False, session_id="PS46_20250307",
         )
 
         assert path.exists()
@@ -140,7 +140,7 @@ class TestSaveSessionParams:
 
         path = _save_session_params(
             tmp_path, "PS46", datetime.date(2025, 3, 7), "20250307",
-            params, log, skipped=True,
+            params, log, skipped=True, session_id="PS46_20250307",
         )
 
         with open(path) as f:
@@ -161,10 +161,35 @@ class TestSaveSessionParams:
         }
         path = _save_session_params(
             tmp_path, "PS51", datetime.date(2025, 4, 25), "20250425",
-            params, [], skipped=False,
+            params, [], skipped=False, session_id="PS51_20250425",
         )
         assert path == tmp_path / "params" / "PS51" / "20250425.json"
         assert path.exists()
+
+    def test_session_id_inherits_suffix(self, tmp_path):
+        """Phase 7-pre-secondary-spout Task 3d: when the caller passes a
+        suffix-aware session_id (e.g. from a Pattern B b-half manifest's
+        ``manifest.session_id``), the provenance JSON carries the
+        suffix through faithfully. Pins the contract that the
+        provenance dict no longer constructs ``f"{animal}_{date_str}"``
+        locally — it reads what the caller passes."""
+        params = {
+            "process_treadmill_signal": {},
+            "find_running_bouts": {},
+            "find_licks_and_rewards": {},
+            "find_grooming_bouts": {},
+            "find_quiet_bouts": {},
+            "find_peri_reward_periods": {},
+        }
+        path = _save_session_params(
+            tmp_path, "PS51", datetime.date(2025, 4, 30), "20250430",
+            params, [], skipped=False, session_id="PS51_20250430b",
+        )
+        with open(path) as f:
+            record = json.load(f)
+        assert record["session_id"] == "PS51_20250430b"
+        # date is the calendar date, NOT the session_id; stays unchanged
+        assert record["date"] == "2025-04-30"
 
 
 # ---- Integration: parity check on MICROSCOPE outputs ----
@@ -213,8 +238,11 @@ class TestIntegrationProcessSession:
         date = datetime.date(2025, 3, 7)
         result = process_session_by_animal_date("PS46", date, resolver, overwrite="force")
 
-        # Should have returned paths for all 7 output types
-        assert len(result) == 7
+        # Phase 7-pre-secondary-spout: return shape is now
+        # {session_suffix: {output_type: Path}}. PS46/2025-03-07 is a
+        # vanilla single-half session → single-entry {None: {...7 paths...}}.
+        assert set(result.keys()) == {None}
+        assert len(result[None]) == 7
 
         # Per-session params.json should exist under the tmp_path output root
         params_path = tmp_path / "spout_behavior" / "params" / "PS46" / "20250307.json"
@@ -244,9 +272,11 @@ class TestIntegrationProcessSession:
         # First run ensures outputs exist (force)
         process_session_by_animal_date("PS46", date, resolver, overwrite="force")
 
-        # Second run with skip — should return empty dict but write params.json
+        # Second run with skip — should return {None: {}} (outer dict
+        # keyed by session_suffix; inner dict empty because all outputs
+        # already existed) and still write params.json.
         result = process_session_by_animal_date("PS46", date, resolver, overwrite="skip")
-        assert result == {}
+        assert result == {None: {}}
 
         params_path = tmp_path / "spout_behavior" / "params" / "PS46" / "20250307.json"
         assert params_path.exists()
