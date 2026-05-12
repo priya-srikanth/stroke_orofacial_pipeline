@@ -177,11 +177,20 @@ def _save_session_params(
     params: dict[str, Any],
     processing_log: list[dict],
     skipped: bool,
+    *,
+    session_id: str,
 ) -> Path:
     """Write per-session params.json with full provenance metadata.
 
     Always written, even when the session is skipped, to maintain a
     complete audit trail.
+
+    Phase 7-pre-secondary-spout: ``session_id`` is now a required kwarg
+    sourced from ``manifest.session_id`` (rather than constructed
+    locally as ``f"{animal}_{date_str}"``). This propagates the Pattern
+    B b-half suffix into the provenance JSON automatically when the
+    caller passes a Pattern B b-half manifest (Task 3a/3b changed
+    ``manifest.session_id`` to incorporate the suffix).
     """
     spout_keys = [
         "process_treadmill_signal", "find_running_bouts", "find_licks_and_rewards",
@@ -191,7 +200,7 @@ def _save_session_params(
     params_subset = {k: params[k] for k in spout_keys if k in params}
 
     record = {
-        "session_id": f"{animal}_{date_str}",
+        "session_id": session_id,
         "animal": animal,
         "date": date.isoformat(),
         "run_timestamp": datetime.datetime.now().isoformat(),
@@ -510,7 +519,8 @@ def process_session(
 
     if not _check_overwrite(paths, overwrite, processing_log):
         _save_session_params(
-            output_root, animal, date, date_str, params, processing_log, skipped=True
+            output_root, animal, date, date_str, params, processing_log,
+            skipped=True, session_id=manifest.session_id,
         )
         logger.info("Session %s/%s skipped (all outputs exist).", animal, date_str)
         return {}
@@ -532,7 +542,8 @@ def process_session(
     _run_phase2_pipeline(ws_file, params, ws_match, paths)
 
     _save_session_params(
-        output_root, animal, date, date_str, params, processing_log, skipped=False
+        output_root, animal, date, date_str, params, processing_log,
+        skipped=False, session_id=manifest.session_id,
     )
 
     logger.info("Session %s/%s complete. Outputs: %s", animal, date_str, output_root)
@@ -592,7 +603,8 @@ def _process_session_multi_half(
     # accepts a flat dict and inspects per-key existence.
     if not _check_overwrite(per_half_paths, overwrite, processing_log):
         _save_session_params(
-            output_root, animal, date, date_str, params, processing_log, skipped=True
+            output_root, animal, date, date_str, params, processing_log,
+            skipped=True, session_id=manifest.session_id,
         )
         logger.info(
             "Session %s/%s skipped (all per-half outputs exist; halves=%s).",
@@ -644,7 +656,8 @@ def _process_session_multi_half(
     )
 
     _save_session_params(
-        output_root, animal, date, date_str, params, processing_log, skipped=False
+        output_root, animal, date, date_str, params, processing_log,
+        skipped=False, session_id=manifest.session_id,
     )
 
     logger.info(

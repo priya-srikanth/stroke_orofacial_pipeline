@@ -102,7 +102,7 @@ class TestSaveSessionParams:
 
         path = _save_session_params(
             tmp_path, "PS46", datetime.date(2025, 3, 7), "20250307",
-            params, log, skipped=False,
+            params, log, skipped=False, session_id="PS46_20250307",
         )
 
         assert path.exists()
@@ -140,7 +140,7 @@ class TestSaveSessionParams:
 
         path = _save_session_params(
             tmp_path, "PS46", datetime.date(2025, 3, 7), "20250307",
-            params, log, skipped=True,
+            params, log, skipped=True, session_id="PS46_20250307",
         )
 
         with open(path) as f:
@@ -161,10 +161,35 @@ class TestSaveSessionParams:
         }
         path = _save_session_params(
             tmp_path, "PS51", datetime.date(2025, 4, 25), "20250425",
-            params, [], skipped=False,
+            params, [], skipped=False, session_id="PS51_20250425",
         )
         assert path == tmp_path / "params" / "PS51" / "20250425.json"
         assert path.exists()
+
+    def test_session_id_inherits_suffix(self, tmp_path):
+        """Phase 7-pre-secondary-spout Task 3d: when the caller passes a
+        suffix-aware session_id (e.g. from a Pattern B b-half manifest's
+        ``manifest.session_id``), the provenance JSON carries the
+        suffix through faithfully. Pins the contract that the
+        provenance dict no longer constructs ``f"{animal}_{date_str}"``
+        locally — it reads what the caller passes."""
+        params = {
+            "process_treadmill_signal": {},
+            "find_running_bouts": {},
+            "find_licks_and_rewards": {},
+            "find_grooming_bouts": {},
+            "find_quiet_bouts": {},
+            "find_peri_reward_periods": {},
+        }
+        path = _save_session_params(
+            tmp_path, "PS51", datetime.date(2025, 4, 30), "20250430",
+            params, [], skipped=False, session_id="PS51_20250430b",
+        )
+        with open(path) as f:
+            record = json.load(f)
+        assert record["session_id"] == "PS51_20250430b"
+        # date is the calendar date, NOT the session_id; stays unchanged
+        assert record["date"] == "2025-04-30"
 
 
 # ---- Integration: parity check on MICROSCOPE outputs ----
