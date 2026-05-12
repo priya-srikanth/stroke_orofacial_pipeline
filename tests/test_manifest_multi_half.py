@@ -98,17 +98,30 @@ def _make_resolver_for_layout(
     """Build a MagicMock PathResolver routing the four convenience methods
     used by ``build_manifest`` to the supplied root paths.
 
-    ``wavesurfer_dir`` and ``camera_dir`` honor the ``half_subdir`` kwarg
-    so per-half discovery resolves to the correct per-half subdir.
+    ``wavesurfer_dir`` and ``camera_dir`` honor both the Phase 7-pre-
+    multi-half ``half_subdir`` kwarg (Pattern A) and the Phase
+    7-pre-secondary-spout ``subdir_override`` kwarg (Pattern B) so
+    per-half discovery resolves to the correct per-half subdir under
+    either dispatch. Mutually exclusive (matching the real resolver).
     """
     resolver = MagicMock(spec=PathResolver)
 
-    def _ws_dir(date, animal, *, half_subdir=None):
-        subdir = half_subdir if half_subdir is not None else date.strftime("%Y%m%d")
+    def _ws_dir(date, animal, *, half_subdir=None, subdir_override=None):
+        if half_subdir is not None and subdir_override is not None:
+            raise ValueError(
+                "half_subdir and subdir_override are mutually exclusive"
+            )
+        explicit = half_subdir if half_subdir is not None else subdir_override
+        subdir = explicit if explicit is not None else date.strftime("%Y%m%d")
         return ws_root / subdir / animal
 
-    def _cam_dir(date, animal, *, half_subdir=None):
-        subdir = half_subdir if half_subdir is not None else date.strftime("%Y%m%d")
+    def _cam_dir(date, animal, *, half_subdir=None, subdir_override=None):
+        if half_subdir is not None and subdir_override is not None:
+            raise ValueError(
+                "half_subdir and subdir_override are mutually exclusive"
+            )
+        explicit = half_subdir if half_subdir is not None else subdir_override
+        subdir = explicit if explicit is not None else date.strftime("%Y%m%d")
         return cam_root / subdir / animal
 
     def _dlc_output_dir(animal):

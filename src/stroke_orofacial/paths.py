@@ -190,7 +190,12 @@ class PathResolver:
         )
 
     def alignment_template_legacy_read(
-        self, animal: str, date: datetime.date, cam: str = "cam2"
+        self,
+        animal: str,
+        date: datetime.date,
+        cam: str = "cam2",
+        *,
+        session_suffix: str | None = None,
     ) -> Path:
         """Read-only path for existing legacy alignment templates.
 
@@ -220,12 +225,22 @@ class PathResolver:
             Session date.
         cam : str
             Camera token (default ``"cam2"`` matching DLC camera).
+        session_suffix : str, optional
+            Phase 7-pre-secondary-spout — Pattern B session suffix.
+            When set, appended to ``date_str`` so per-session output
+            filename is ``{date_str}{session_suffix}.npz`` (e.g.
+            ``20250430b.npz``). ``None`` preserves pre-PR behavior.
         """
-        date_str = date.strftime("%Y%m%d")
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         return self.alignment_templates_dir(cam) / animal / f"{date_str}.npz"
 
     def alignment_template_new(
-        self, animal: str, date: datetime.date, cam: str = "cam2"
+        self,
+        animal: str,
+        date: datetime.date,
+        cam: str = "cam2",
+        *,
+        session_suffix: str | None = None,
     ) -> Path:
         """Write path for new-pipeline merged alignment templates.
 
@@ -249,8 +264,13 @@ class PathResolver:
         write path (``alignment_template`` routing through
         ``microscope_server``) corrupted 3 legacy NPZs; see the
         incident report in DECISIONS / COWORK_SESSION_STATE.
+
+        Phase 7-pre-secondary-spout: ``session_suffix`` (kwarg) appends
+        to ``date_str`` so b-half outputs land at
+        ``...{ANIMAL}/{date_str}b.npz``. ``None`` preserves pre-PR
+        behavior.
         """
-        date_str = date.strftime("%Y%m%d")
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         return (
             self.pipeline_outputs(subdir="dlc_analysis")
             / "alignment_templates"
@@ -300,8 +320,16 @@ class PathResolver:
             Half identifier letter (``"a"``, ``"b"``, ...).
         cam : str
             Camera token (default ``"cam2"`` matching DLC camera).
+
+        Phase 7-pre-secondary-spout: this resolver is **Pattern A
+        multi-half-only** by design — Pattern B sessions never use it
+        (their bare/b halves are separate sessions, not merge halves).
+        Intentionally NOT extended with a ``session_suffix`` kwarg;
+        mixing Pattern A's ``halves_concat_label`` / ``half_id`` with
+        Pattern B's ``session_suffix`` at the same call site is a
+        category error.
         """
-        date_str = date.strftime("%Y%m%d")
+        date_str = date.strftime("%Y%m%d")  # Pattern A multi-half base
         subdir_name = f"{date_str}{halves_concat_label}"
         file_name = f"{date_str}{half_id}.npz"
         return (
@@ -333,6 +361,7 @@ class PathResolver:
         date: datetime.date,
         *,
         variant: str = "parquet",
+        session_suffix: str | None = None,
     ) -> Path:
         """Return the output path for a Phase 7a interpolated-trace artifact.
 
@@ -354,7 +383,7 @@ class PathResolver:
         :meth:`pipeline_outputs`'s ``output_root`` test-override behavior
         via the same ``_output_root_override`` hook.
         """
-        date_str = date.strftime("%Y%m%d")
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         ext = {"parquet": "parquet", "qc_npz": "qc.npz"}[variant]
         out = (
             self.pipeline_outputs(subdir="dlc_analysis")
@@ -368,6 +397,7 @@ class PathResolver:
 
     def tongue_pertrial_angle_parquet(
         self, animal: str, date: datetime.date,
+        *, session_suffix: str | None = None,
     ) -> Path:
         """Return the Phase 7a.3 per-frame tongue-angle parquet path.
 
@@ -378,7 +408,7 @@ class PathResolver:
         ``output_root`` test-override behavior via ``_output_root_override``.
         Parent directory is created eagerly.
         """
-        date_str = date.strftime("%Y%m%d")
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         out = (
             self.pipeline_outputs(subdir="dlc_kinematics")
             / "features"
@@ -391,6 +421,7 @@ class PathResolver:
 
     def tongue_pertrial_licking_dynamics_traces_parquet(
         self, animal: str, date: datetime.date,
+        *, session_suffix: str | None = None,
     ) -> Path:
         """Return the Phase 7a.3 per-session × side licking-dynamics traces parquet.
 
@@ -400,7 +431,7 @@ class PathResolver:
         :meth:`interpolated_trace`'s convention. Parent directory is created
         eagerly.
         """
-        date_str = date.strftime("%Y%m%d")
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         out = (
             self.pipeline_outputs(subdir="dlc_kinematics")
             / "licking_dynamics"
@@ -413,6 +444,7 @@ class PathResolver:
 
     def tongue_pertrial_endpoints_json(
         self, animal: str, date: datetime.date,
+        *, session_suffix: str | None = None,
     ) -> Path:
         """Return the Phase 7a.3 per-trial endpoints JSON path.
 
@@ -422,7 +454,7 @@ class PathResolver:
         :meth:`interpolated_trace`'s convention. Parent directory is created
         eagerly.
         """
-        date_str = date.strftime("%Y%m%d")
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         out = (
             self.pipeline_outputs(subdir="dlc_kinematics")
             / "endpoints"
@@ -457,6 +489,7 @@ class PathResolver:
 
     def tongue_angle_within_session_dir(
         self, animal: str, date: datetime.date,
+        *, session_suffix: str | None = None,
     ) -> Path:
         """Return the Phase 7a.4 tongue angle/phase per-session figure
         output directory.
@@ -483,7 +516,7 @@ class PathResolver:
             tongue_jaw_mismatch ``within_session/`` + ``cross_session/``
             layout (locked Phase 7a.4-paths-cleanup).
         """
-        date_str = date.strftime("%Y%m%d")
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         return (
             self.pipeline_outputs(subdir="dlc_kinematics")
             / "tongue_angle"
@@ -494,6 +527,7 @@ class PathResolver:
 
     def jaw_pertrial_endpoints_json(
         self, animal: str, date: datetime.date,
+        *, session_suffix: str | None = None,
     ) -> Path:
         """Return the Phase 7a.5 per-trial jaw scalars JSON path.
 
@@ -506,7 +540,7 @@ class PathResolver:
         :meth:`interpolated_trace` / :meth:`tongue_pertrial_endpoints_json`
         conventions. Parent directory is created eagerly.
         """
-        date_str = date.strftime("%Y%m%d")
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         out = (
             self.pipeline_outputs(subdir="dlc_kinematics")
             / "jaw_pertrial"
@@ -519,6 +553,7 @@ class PathResolver:
 
     def tongue_jaw_mismatch_candidate_trials_parquet(
         self, animal: str, date: datetime.date,
+        *, session_suffix: str | None = None,
     ) -> Path:
         """Return the Phase 7a.5 per-session tongue-jaw mismatch candidate-trials parquet.
 
@@ -530,7 +565,7 @@ class PathResolver:
         :func:`stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch.classify_tongue_jaw_mismatch`.
         Filename uses ``%Y%m%d``. Parent directory is created eagerly.
         """
-        date_str = date.strftime("%Y%m%d")
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         out = (
             self.pipeline_outputs(subdir="dlc_kinematics")
             / "tongue_jaw_mismatch"
@@ -543,6 +578,7 @@ class PathResolver:
 
     def tongue_jaw_mismatch_within_session_dir(
         self, animal: str, date: datetime.date,
+        *, session_suffix: str | None = None,
     ) -> Path:
         """Return the Phase 7a.5 mismatch within-session figure output directory.
 
@@ -564,7 +600,7 @@ class PathResolver:
         ``jaw_pass_qc`` is unaffected — that's domain vocabulary, not
         a directory name.)
         """
-        date_str = date.strftime("%Y%m%d")
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         return (
             self.pipeline_outputs(subdir="dlc_kinematics")
             / "tongue_jaw_mismatch"
