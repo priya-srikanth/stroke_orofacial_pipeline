@@ -17,14 +17,43 @@ Layers
          emits 14 per-half NPZs (7 output types × 2 halves) under
          ``...spout_behavior/<output_type>/PS48/20250314ab/``.
       b) calling ``merge_licks_and_rewards([per_half_a, per_half_b],
-         ...)`` directly to produce the merged NPZ.
-    The harness writes the merged result to a
-    ``_parity/`` subdir (NOT the canonical parent-level path) so
-    repeated runs don't fight any parallel pipeline writes.
+         ..., index_space="ws_sample")`` directly to produce the
+         merged NPZ.
+
+    The harness writes the merged result to a ``_parity/`` subdir
+    (NOT the canonical parent-level path) so repeated runs don't fight
+    any parallel pipeline writes.
+
+    **Comparison is structural + offset-correctness, NOT byte-identity.**
+    Legacy cell-17 stored half-B indices unshifted (an emergent
+    heuristic side-effect: cell-17's ``_looks_like_frame_indices``
+    returned False on WS-sample arrays because max values >>
+    n_cam_hint+5, so they fell through to events-concat with no
+    offset). That produced overlapping half-A and half-B ranges on
+    the merged time axis with no separator — ambiguous downstream.
+    The new ws_sample-mode merge corrects this by offsetting half-B
+    by ``n_samples_A``. Byte-equality to legacy would be the wrong
+    parity goal.
+
+    Six structural checks (see ``_compare_licks_npz`` docstring):
+      1. Schema correctness — new NPZ has all expected ws_sample keys.
+      2. Count parity vs legacy — len(merged.X) == len(legacy.X) for
+         Lick_L/R + Reward_L/R (Tone_* skipped; legacy didn't have).
+      3. Half-A preservation — first n_per_half_A entries match half-A
+         exactly (no offset on half-A).
+      4. Half-B offset — trailing entries equal half-B + n_samples_A;
+         plus no-overlap check: min(half-B) >= max(half-A).
+      5. Provenance round-trip — merged_n_samples_A == half_A.n_samples;
+         ws_sample_offset_for_B == merged_n_samples_A; merged_from_*
+         paths resolve on disk.
+      6. Stamp inheritance — side-convention stamps match per-halves.
+
+    Path-string provenance keys (merged_from_A/B) legitimately differ
+    from legacy by design (Task-5R resolver split) — surfaced as INFO,
+    never block PASS.
+
     Compare to legacy at
     ``\\research...\Priya\facerhythm_stroke_biomarker_exp\analysis\session_processing3\licks_and_rewards\PS48\20250314.npz``.
-    Per-key value equality with ``atol=1e-12`` for numeric arrays;
-    exact match for object arrays + provenance keys.
 
     Note: ``merge_licks_and_rewards`` is NOT yet wired into
     ``process_session_multi_half`` (deferred from Task 4 per its
@@ -178,14 +207,41 @@ _ALIGNMENT_SIG_KEYS = (
     "sig_wsTimes__idx_ws",
 )
 
-# Layer 1: legacy licks NPZ provenance keys (cell 17 schema; emitted
-# by merge_licks_and_rewards for N=2). Compared exact-match.
-_LICKS_PROVENANCE_KEYS = (
-    "merged_from_A",
-    "merged_from_B",
-    "cam_frame_offset_for_B",
-    "merged_n_cam_A",
-    "merged_n_cam_B",
+# Layer 1: ws_sample-mode event index arrays. The first 4 also exist in
+# legacy (count-parity check applies); Tone_* are new-pipeline-only
+# (legacy cell-17 vintage predated tone capture, so legacy NPZs have
+# no Tone_*).
+_LICKS_EVENT_ARRAYS_LEGACY_COMPATIBLE: tuple[str, ...] = (
+    "Lick_L", "Lick_R", "Reward_L", "Reward_R",
+)
+_LICKS_EVENT_ARRAYS_NEW_ONLY: tuple[str, ...] = ("Tone_L", "Tone_R")
+_LICKS_EVENT_ARRAYS_ALL: tuple[str, ...] = (
+    *_LICKS_EVENT_ARRAYS_LEGACY_COMPATIBLE,
+    *_LICKS_EVENT_ARRAYS_NEW_ONLY,
+)
+
+# Layer 1: ws_sample-mode merged-NPZ schema. The new merged file must
+# carry these keys (per merge_licks_and_rewards index_space='ws_sample'
+# docstring). Missing any of these is a schema-correctness FAIL.
+_LICKS_WS_REQUIRED_KEYS: tuple[str, ...] = (
+    "Fs", "n_samples",
+    "Lick_L", "Lick_R", "Reward_L", "Reward_R", "Tone_L", "Tone_R",
+    "side_convention_version", "wavesurfer_sides_match_mouse_sides",
+    "merged_from_A", "merged_from_B",
+    "merged_n_samples_A", "merged_n_samples_B",
+    "ws_sample_offset_for_B",
+)
+
+# Layer 1: path-string provenance keys that legitimately differ from
+# legacy by design (Task-5R resolver split). Surfaced as INFO not FAIL.
+_LICKS_PATH_PROVENANCE_KEYS: tuple[str, ...] = ("merged_from_A", "merged_from_B")
+
+# Layer 1: side-convention stamp keys carried forward by the ws_sample
+# merge. Inheritance-check compares merged stamps against per-half
+# stamps (must match for the merge to have happened at all).
+_LICKS_STAMP_KEYS: tuple[str, ...] = (
+    "side_convention_version",
+    "wavesurfer_sides_match_mouse_sides",
 )
 
 
@@ -296,79 +352,203 @@ def _new_merged_licks_parity_path(
 
 
 def _compare_licks_npz(
-    new_path: Path, legacy_path: Path,
-) -> list[str]:
-    """Compare two licks NPZs key-by-key.
+    new_path: Path, legacy_path: Path, per_half_paths: list[Path],
+) -> tuple[list[str], list[str]]:
+    """Compare two licks NPZs structurally + offset-correctness.
 
-    - Numeric arrays: ``np.allclose(..., atol=ATOL_NUMERIC, rtol=0)``.
-    - Object arrays / scalars: ``np.array_equal``.
-    - Schema: union of keys; missing on either side is a failure.
+    Phase 7-pre-multi-half reframed Layer 1: NOT byte-identity to legacy.
+    Legacy cell-17 stored half-B indices unshifted on the merged time
+    axis (an emergent heuristic side-effect — see DECISIONS), producing
+    half-A and half-B in overlapping WS-sample ranges with no separator.
+    The new ws_sample-mode merge applies the n_samples_A offset to
+    half-B so the merged time axis is unified and unambiguous. Byte-
+    equality is the wrong parity goal — the new schema is BY DESIGN
+    different (and more correct) than legacy.
 
-    Returns a list of human-readable failure strings (empty list = PASS).
+    Six checks:
+
+      1. **Schema correctness** — new NPZ has all expected ws_sample-mode
+         keys (:data:`_LICKS_WS_REQUIRED_KEYS`). Missing keys = FAIL.
+      2. **Count parity vs legacy** — ``len(merged.X) == len(legacy.X)``
+         for each of the 4 legacy-compatible event arrays
+         (:data:`_LICKS_EVENT_ARRAYS_LEGACY_COMPATIBLE`). Tone_* skipped
+         (legacy didn't have them).
+      3. **Half-A preservation** — first ``n_per_half_A`` entries of
+         ``merged.X`` equal ``half-A.X`` exactly (no offset on half-A).
+      4. **Half-B offset** — trailing entries equal
+         ``half-B.X + merged_n_samples_A``. Plus no-overlap check:
+         ``min(half-B portion) >= max(half-A portion)``.
+      5. **Provenance round-trip** —
+         ``merged_n_samples_A == per_half_A.n_samples``;
+         ``ws_sample_offset_for_B == merged_n_samples_A``;
+         ``merged_from_A`` / ``merged_from_B`` strings resolve to existing
+         on-disk per-half paths.
+      6. **Stamp inheritance** — side-convention stamps on the merged
+         NPZ match the per-half stamps (must be identical or the merge
+         would have raised before writing).
+
+    INFO (not failures):
+      - Path-string provenance differences vs legacy (the Task-5R
+        resolver split makes new merged_from_* paths legitimately
+        differ from legacy O2_analysis paths).
+
+    Returns ``(failures, info)`` — failures are real parity blockers;
+    info is by-design divergences surfaced to the operator.
     """
     failures: list[str] = []
+    info: list[str] = []
     new_npz = np.load(new_path, allow_pickle=True)
     legacy_npz = np.load(legacy_path, allow_pickle=True)
+    per_half_npzs = [np.load(p, allow_pickle=True) for p in per_half_paths]
 
     new_keys = set(new_npz.files)
-    legacy_keys = set(legacy_npz.files)
-    missing_in_new = legacy_keys - new_keys
-    missing_in_legacy = new_keys - legacy_keys
-    if missing_in_new:
+
+    # ---- Check 1: schema correctness ----
+    missing = [k for k in _LICKS_WS_REQUIRED_KEYS if k not in new_keys]
+    if missing:
         failures.append(
-            f"keys present in legacy but missing in new: {sorted(missing_in_new)}"
-        )
-    if missing_in_legacy:
-        failures.append(
-            f"keys present in new but missing in legacy: {sorted(missing_in_legacy)}"
+            f"schema: new merged NPZ missing required ws_sample keys: {missing}"
         )
 
-    common = sorted(new_keys & legacy_keys)
-    for key in common:
-        a = new_npz[key]
-        b = legacy_npz[key]
-        # Provenance keys: exact match (str / int)
-        if key in _LICKS_PROVENANCE_KEYS:
-            if not np.array_equal(a, b):
-                failures.append(
-                    f"provenance key {key!r} differs: new={a!r} legacy={b!r}"
-                )
-            continue
-        # Shape check
-        try:
-            a_arr = np.asarray(a)
-            b_arr = np.asarray(b)
-        except Exception as e:
-            failures.append(f"key {key!r}: array conversion failed: {e!r}")
-            continue
-        if a_arr.shape != b_arr.shape:
+    # ---- Check 2: count parity vs legacy (4 legacy-compatible event arrays) ----
+    for key in _LICKS_EVENT_ARRAYS_LEGACY_COMPATIBLE:
+        if key not in new_keys:
+            continue  # already reported as schema-missing above
+        if key not in legacy_npz.files:
             failures.append(
-                f"key {key!r}: shape mismatch new={a_arr.shape} legacy={b_arr.shape}"
+                f"count parity: legacy NPZ missing event array {key!r} "
+                f"(expected for legacy-compatible comparison)"
             )
             continue
-        if a_arr.dtype != b_arr.dtype:
-            # dtype mismatch on numeric: try comparing values anyway
-            # (e.g., int32 vs int64 may still match by value); record as info-only
+        n_new = int(np.asarray(new_npz[key]).size)
+        n_legacy = int(np.asarray(legacy_npz[key]).size)
+        if n_new != n_legacy:
             failures.append(
-                f"key {key!r}: dtype mismatch new={a_arr.dtype} legacy={b_arr.dtype} "
-                f"(values still compared below)"
+                f"count parity {key!r}: new len={n_new} vs legacy len={n_legacy}"
             )
-        # Value comparison
-        if np.issubdtype(a_arr.dtype, np.number) and np.issubdtype(b_arr.dtype, np.number):
-            if not np.allclose(a_arr, b_arr, atol=ATOL_NUMERIC, rtol=0, equal_nan=True):
-                # Quantify the worst case for triage
-                diff = np.abs(a_arr.astype(np.float64) - b_arr.astype(np.float64))
-                max_diff = float(np.nanmax(diff)) if diff.size > 0 else float("nan")
+
+    # ---- Check 3-4: half-A preservation + half-B offset + no-overlap ----
+    # Only meaningful for N=2 halves (the production scope).
+    if len(per_half_npzs) == 2 and "merged_n_samples_A" in new_keys:
+        n_samples_A = int(np.asarray(new_npz["merged_n_samples_A"]))
+        for key in _LICKS_EVENT_ARRAYS_ALL:
+            if key not in new_keys:
+                continue
+            merged_arr = np.asarray(new_npz[key])
+            half_A_arr = (
+                np.asarray(per_half_npzs[0][key])
+                if key in per_half_npzs[0].files else None
+            )
+            half_B_arr = (
+                np.asarray(per_half_npzs[1][key])
+                if key in per_half_npzs[1].files else None
+            )
+            if half_A_arr is None or half_B_arr is None:
                 failures.append(
-                    f"key {key!r}: numeric arrays differ "
-                    f"(max|new-legacy|={max_diff} > atol={ATOL_NUMERIC})"
+                    f"half-A/B preservation {key!r}: missing on per-half "
+                    f"(A_present={half_A_arr is not None}, "
+                    f"B_present={half_B_arr is not None})"
                 )
-        else:
-            if not np.array_equal(a_arr, b_arr):
+                continue
+            n_A = int(half_A_arr.size)
+            n_B = int(half_B_arr.size)
+            if merged_arr.size != n_A + n_B:
                 failures.append(
-                    f"key {key!r}: non-numeric arrays differ"
+                    f"half-A/B count {key!r}: merged size={merged_arr.size} "
+                    f"!= A({n_A}) + B({n_B}) = {n_A + n_B}"
                 )
-    return failures
+                continue
+
+            # Check 3: half-A preservation (no offset applied to half-A)
+            if not np.array_equal(merged_arr[:n_A], half_A_arr):
+                failures.append(
+                    f"half-A preservation {key!r}: merged[:{n_A}] != half-A "
+                    f"(first divergence at idx "
+                    f"{int(np.where(merged_arr[:n_A] != half_A_arr)[0][0])})"
+                )
+
+            # Check 4: half-B offset == half-B + n_samples_A
+            if not np.array_equal(merged_arr[n_A:], half_B_arr + n_samples_A):
+                failures.append(
+                    f"half-B offset {key!r}: merged[{n_A}:] != "
+                    f"half-B + n_samples_A ({n_samples_A})"
+                )
+                continue
+
+            # Check 4b: no-overlap between half-A portion and half-B portion
+            if n_A > 0 and n_B > 0:
+                a_max = int(merged_arr[:n_A].max())
+                b_min = int(merged_arr[n_A:].min())
+                if b_min < a_max:
+                    failures.append(
+                        f"no-overlap {key!r}: half-B min ({b_min}) < "
+                        f"half-A max ({a_max}); merged time axis is not "
+                        f"monotone-partitioned at n_samples_A"
+                    )
+
+    # ---- Check 5: provenance round-trip ----
+    if (
+        len(per_half_npzs) == 2
+        and "merged_n_samples_A" in new_keys
+        and "n_samples" in per_half_npzs[0].files
+    ):
+        merged_n_A = int(np.asarray(new_npz["merged_n_samples_A"]))
+        half_n_A = int(np.asarray(per_half_npzs[0]["n_samples"]))
+        if merged_n_A != half_n_A:
+            failures.append(
+                f"provenance: merged_n_samples_A ({merged_n_A}) != "
+                f"per-half[0].n_samples ({half_n_A})"
+            )
+    if (
+        "merged_n_samples_A" in new_keys
+        and "ws_sample_offset_for_B" in new_keys
+    ):
+        merged_n_A = int(np.asarray(new_npz["merged_n_samples_A"]))
+        offset_B = int(np.asarray(new_npz["ws_sample_offset_for_B"]))
+        if offset_B != merged_n_A:
+            failures.append(
+                f"provenance: ws_sample_offset_for_B ({offset_B}) != "
+                f"merged_n_samples_A ({merged_n_A})"
+            )
+    for key in ("merged_from_A", "merged_from_B"):
+        if key not in new_keys:
+            continue
+        path_str = str(new_npz[key])
+        if not Path(path_str).exists():
+            failures.append(
+                f"provenance: {key!r} path does not resolve on disk: "
+                f"{path_str}"
+            )
+
+    # ---- Check 6: stamp inheritance ----
+    if len(per_half_npzs) >= 1:
+        for key in _LICKS_STAMP_KEYS:
+            if key not in new_keys:
+                continue  # already reported as schema-missing
+            merged_val = np.asarray(new_npz[key]).item()
+            for i, half_npz in enumerate(per_half_npzs):
+                if key not in half_npz.files:
+                    continue
+                half_val = np.asarray(half_npz[key]).item()
+                if merged_val != half_val:
+                    failures.append(
+                        f"stamp inheritance {key!r}: merged={merged_val!r} "
+                        f"vs half[{i}]={half_val!r}"
+                    )
+
+    # ---- INFO: path-string differences vs legacy ----
+    for key in _LICKS_PATH_PROVENANCE_KEYS:
+        if key not in new_keys or key not in legacy_npz.files:
+            continue
+        a = str(new_npz[key])
+        b = str(legacy_npz[key])
+        if a != b:
+            info.append(
+                f"provenance path {key!r} differs (expected — resolver "
+                f"split): new={a!r} legacy={b!r}"
+            )
+
+    return failures, info
 
 
 def _layer1_licks(
@@ -416,18 +596,32 @@ def _layer1_licks(
                     summary=f"per-half NPZ not produced: {p}",
                 )
 
-        # Step 3: merge per-halves into the parity-subdir merged path
-        log(f"  merging per-half NPZs into {new_merged_path}...")
-        merge_licks_and_rewards(per_half_paths, new_merged_path)
+        # Step 3: merge per-halves into the parity-subdir merged path.
+        # ws_sample mode: the per-half NPZs emitted by process_session
+        # live in WS-sample coordinates (n_samples scalar + WS-indexed
+        # event arrays), so the merge must use ws_sample semantics —
+        # cam_frame mode would fail to infer n_cam (no cam-frame keys
+        # in the new schema) and apply the wrong offset to half-B.
+        log(f"  merging per-half NPZs into {new_merged_path} "
+            f"(index_space='ws_sample')...")
+        merge_licks_and_rewards(
+            per_half_paths, new_merged_path, index_space="ws_sample",
+        )
         if not new_merged_path.exists():
             return LayerResult(
                 layer=1, name="licks_and_rewards", status="error",
                 summary=f"merged NPZ not written: {new_merged_path}",
             )
 
-        # Step 4: compare to legacy
-        log(f"  comparing new merged ↔ legacy ({ATOL_NUMERIC} atol)...")
-        failures = _compare_licks_npz(new_merged_path, legacy_path)
+        # Step 4: structural + offset-correctness comparison vs legacy.
+        # NOT byte-identity — legacy stored half-B unshifted (emergent
+        # cell-17 heuristic side-effect; see DECISIONS). See
+        # _compare_licks_npz docstring for the 6-check breakdown.
+        log("  comparing new merged ↔ legacy + per-halves "
+            "(structural + offset-correctness, NOT byte-identity)...")
+        failures, info_lines = _compare_licks_npz(
+            new_merged_path, legacy_path, per_half_paths,
+        )
 
     except Exception as e:
         log(f"  ERROR during Layer 1 generation/comparison: {e!r}")
@@ -437,21 +631,38 @@ def _layer1_licks(
             traceback_str=traceback.format_exc(),
         )
 
+    # Surface INFO lines (by-design divergences) at every verdict.
+    if info_lines:
+        log(f"  INFO — {len(info_lines)} by-design divergence(s):")
+        for line in info_lines:
+            log(f"    - {line}")
+
     if failures:
-        log(f"  FAIL — {len(failures)} key/shape/value mismatch(es):")
+        log(f"  FAIL — {len(failures)} structural/offset mismatch(es):")
         for f in failures:
             log(f"    - {f}")
         return LayerResult(
             layer=1, name="licks_and_rewards", status="fail",
-            summary=f"{len(failures)} mismatch(es) vs legacy",
+            summary=f"{len(failures)} structural/offset mismatch(es)",
             failures=failures,
-            info={"new_path": str(new_merged_path), "legacy_path": str(legacy_path)},
+            info={
+                "new_path": str(new_merged_path),
+                "legacy_path": str(legacy_path),
+                "per_half_paths": [str(p) for p in per_half_paths],
+                "info_lines": info_lines,
+            },
         )
-    log(f"  PASS — all keys match within atol={ATOL_NUMERIC}")
+    log("  PASS — schema correct, count parity vs legacy, half-A "
+        "preservation + half-B offset, provenance + stamps consistent")
     return LayerResult(
         layer=1, name="licks_and_rewards", status="pass",
-        summary=f"all keys match (atol={ATOL_NUMERIC})",
-        info={"new_path": str(new_merged_path), "legacy_path": str(legacy_path)},
+        summary="structural + offset-correctness all green",
+        info={
+            "new_path": str(new_merged_path),
+            "legacy_path": str(legacy_path),
+            "per_half_paths": [str(p) for p in per_half_paths],
+            "info_lines": info_lines,
+        },
     )
 
 
