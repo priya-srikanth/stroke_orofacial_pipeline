@@ -690,6 +690,7 @@ def build_manifest(
     analysis_context: str | None = None,
     *,
     overrides_config: dict[str, Any] | None = None,
+    session_suffix: str | None = None,
 ) -> SessionManifest:
     """Build a SessionManifest for one animal + date.
 
@@ -720,6 +721,22 @@ def build_manifest(
         ``halves`` is populated when an entry covers ``(animal, date)``,
         else single-half discovery proceeds. Tests may pass an
         in-memory dict to avoid touching the on-disk YAML.
+    session_suffix : str or None
+        Phase 7-pre-secondary-spout — Pattern B selector (DECISIONS
+        2026-05-12 Decision 5(b)/(d)). When ``None`` (default), builds
+        a vanilla single-half OR Pattern A multi-half manifest exactly
+        as pre-PR. When ``"b"`` AND ``(animal, date)`` is registered in
+        ``secondary_spout_sessions:``, builds the b-half manifest: WS
+        + cam discovery uses the b-half subdir (``{date_str}b`` by
+        default; overrideable via the registry entry's
+        ``b_ws_subdir_override`` / ``b_cam_subdir_override``).
+        ``session_id`` carries the suffix on the returned manifest.
+
+        When ``session_suffix is None`` AND ``(animal, date)`` IS in
+        ``secondary_spout_sessions:``, the bare half is built — same
+        path as a non-Pattern-B session EXCEPT when the registry entry
+        sets ``bare_ws_subdir_override`` / ``bare_cam_subdir_override``
+        (handles PS55/2025-04-24's asymmetric ``20250424a`` WS dir).
 
     Returns
     -------
@@ -749,6 +766,18 @@ def build_manifest(
         ``configs/session_overrides.yaml`` after manual review. Skipped
         when the session is excluded for ``analysis_context`` (the
         exclusion gate takes precedence).
+
+        Per DECISIONS 2026-05-12 Decision 5(c), the check is ALSO
+        skipped when ``(animal, date)`` is registered in
+        ``secondary_spout_sessions:`` — Pattern B sessions are
+        compare-intent (separate manifests per half), so an
+        ``n_dlc >= 2`` signal on those is the future state where
+        DLC inference has run on both halves and is NOT a merge
+        candidate.
+    ValueError
+        When ``session_suffix`` is non-None but ``(animal, date)`` is
+        NOT registered in ``secondary_spout_sessions:`` — the suffix
+        only has a defined meaning under registry coverage.
     """
     # Discover DLC files (optional — DLC inference may not have run yet
     # for this session, or the DLC output mount may be unavailable). DLC
@@ -781,12 +810,6 @@ def build_manifest(
     # Check exclusions
     excluded, exclusion_reason = animal_info.is_excluded(date, analysis_context)
 
-    # Phase 7-pre-secondary-spout: session_suffix is None in Task 3a (this
-    # commit lands the field-plumbing only); Task 3b wires session_suffix
-    # as a kwarg on build_manifest() so Pattern B b-half manifests get
-    # session_suffix="b". The session_id construction below already
-    # handles the future non-None case so Task 3b is a pure kwarg-add.
-    session_suffix: str | None = None
     date_str = date.strftime("%Y%m%d")
     session_id = f"{animal}_{date_str}{session_suffix or ''}"
 
@@ -798,14 +821,35 @@ def build_manifest(
         overrides_config = load_session_overrides()
     halves = _build_half_specs(animal, date_str, overrides_config, date, resolver)
 
+    # Phase 7-pre-secondary-spout: lookup secondary_spout_sessions registry
+    # so the bare/b-half subdir-override fields can drive single-half
+    # discovery for Pattern B sessions. ``secondary_spout_entry is None``
+    # when (animal, date) is NOT a registered Pattern B session — every
+    # existing single-half + Pattern A call path hits that branch.
+    secondary_spout_entry = get_secondary_spout_entry(
+        animal, date, overrides_config,
+    )
+    if session_suffix is not None and secondary_spout_entry is None:
+        raise ValueError(
+            f"build_manifest({animal}, {date}, session_suffix="
+            f"{session_suffix!r}): session_suffix is non-None but "
+            f"({animal}, {date.isoformat()}) is NOT registered in "
+            f"secondary_spout_sessions:. The suffix only has a defined "
+            f"meaning under registry coverage."
+        )
+
     # Defensive check: Pattern A signal (n_dlc >= 2) without a YAML entry
     # is a configuration bug — fail loud with an actionable stub. Skipped
     # for excluded sessions because exclusion overrides any silent-discard
-    # concern. Pattern B sessions never trip this (n_dlc=1).
+    # concern. Pattern B sessions never trip this in the current cohort
+    # (n_dlc=1 for all 19 PS51/PS54/PS55 sessions); the registry-coverage
+    # branch (DECISIONS 2026-05-12 Decision 5(c)) future-proofs the check
+    # for when Priya eventually DLC-infers b halves and n_dlc becomes 2.
     if (
         halves is None
         and not excluded
         and len(dlc_h5_files) >= _PATTERN_A_N_DLC_MIN
+        and secondary_spout_entry is None
     ):
         stub = _format_pattern_a_yaml_stub(animal, date_str, dlc_h5_files)
         raise MultiHalfNotDeclaredError(
@@ -823,6 +867,34 @@ def build_manifest(
     # prevent downstream consumers from accidentally treating the bare
     # {DATE} subdir as canonical (it doesn't exist for Pattern A multi-half
     # — only the per-half {DATE}{half_id} subdirs do).
+    # Phase 7-pre-secondary-spout: resolve the per-modality subdir-override
+    # for Pattern B sessions. For bare-half (session_suffix is None) the
+    # override is None unless the registry sets bare_*_subdir_override —
+    # so a non-Pattern-B session sees ws_subdir_override=None and the
+    # resolver falls back to date_str (byte-identical to pre-PR). For
+    # b-half (session_suffix == "b") the override defaults to
+    # f"{date_str}b" so the resolver finds the closer-spout dir.
+    ws_subdir_override: str | None = None
+    cam_subdir_override: str | None = None
+    if secondary_spout_entry is not None:
+        if session_suffix == "b":
+            ws_subdir_override = secondary_spout_entry.get(
+                "b_ws_subdir_override", f"{date_str}b",
+            )
+            cam_subdir_override = secondary_spout_entry.get(
+                "b_cam_subdir_override", f"{date_str}b",
+            )
+        else:
+            # session_suffix is None — bare half of a Pattern B session.
+            # Only the explicit override applies; otherwise the resolver
+            # uses date_str (which is exactly the non-Pattern-B path).
+            ws_subdir_override = secondary_spout_entry.get(
+                "bare_ws_subdir_override",
+            )
+            cam_subdir_override = secondary_spout_entry.get(
+                "bare_cam_subdir_override",
+            )
+
     wavesurfer_file: Path | None = None
     video_files: list[Path] = []
     if halves is None:
@@ -830,7 +902,9 @@ def build_manifest(
             from stroke_orofacial.spout_behavior.wavesurfer_io import (
                 find_wavesurfer_file,
             )
-            ws_dir = resolver.wavesurfer_dir(date, animal)
+            ws_dir = resolver.wavesurfer_dir(
+                date, animal, subdir_override=ws_subdir_override,
+            )
             if ws_dir.exists():
                 wavesurfer_file = find_wavesurfer_file(ws_dir)
         except (FileNotFoundError, ValueError):
@@ -838,7 +912,9 @@ def build_manifest(
 
         try:
             from stroke_orofacial.alignment.templates import discover_video_files
-            cam_dir = resolver.camera_dir(date, animal)
+            cam_dir = resolver.camera_dir(
+                date, animal, subdir_override=cam_subdir_override,
+            )
             video_files = discover_video_files(cam_dir, cam_idx=2)
         except (FileNotFoundError, RuntimeError):
             pass  # camera data not available

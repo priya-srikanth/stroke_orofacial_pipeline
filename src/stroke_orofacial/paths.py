@@ -773,6 +773,7 @@ class PathResolver:
         animal: str,
         *,
         half_subdir: str | None = None,
+        subdir_override: str | None = None,
     ) -> Path:
         """Return the wavesurfer session directory for an animal and date.
 
@@ -796,8 +797,24 @@ class PathResolver:
             ``HalfSpec.ws_subdir`` field on
             :class:`stroke_orofacial.manifest.SessionManifest` carries
             the per-half value to pass here.
+        subdir_override : str, optional
+            Pattern B secondary-spout override (Phase 7-pre-secondary-spout).
+            Same semantic effect as ``half_subdir`` (replaces the
+            ``date_str`` segment with the supplied dirname), kept as a
+            separate kwarg so caller-side intent is documented: callers
+            building Pattern A per-half paths pass ``half_subdir``;
+            callers building Pattern B bare/b-half paths pass
+            ``subdir_override``. Mutually exclusive — passing both
+            raises ``ValueError`` because the two intents shouldn't mix
+            at the same call site.
         """
-        subdir = half_subdir if half_subdir is not None else date.strftime("%Y%m%d")
+        if half_subdir is not None and subdir_override is not None:
+            raise ValueError(
+                "wavesurfer_dir: half_subdir and subdir_override are "
+                "mutually exclusive (Pattern A vs Pattern B intents)"
+            )
+        explicit = half_subdir if half_subdir is not None else subdir_override
+        subdir = explicit if explicit is not None else date.strftime("%Y%m%d")
         return self.root("wavesurfer_raw") / subdir / animal
 
     def camera_dir(
@@ -806,6 +823,7 @@ class PathResolver:
         animal: str,
         *,
         half_subdir: str | None = None,
+        subdir_override: str | None = None,
     ) -> Path:
         """Return the camera session directory for an animal and date.
 
@@ -827,8 +845,19 @@ class PathResolver:
             and ``{cam_root}/20250314b/PS48/``. The ``HalfSpec.cam_subdir``
             field on :class:`stroke_orofacial.manifest.SessionManifest`
             carries the per-half value to pass here.
+        subdir_override : str, optional
+            Pattern B secondary-spout override (Phase 7-pre-secondary-spout).
+            Same semantic effect as ``half_subdir``; documented separately
+            so caller-side intent is unambiguous. Mutually exclusive
+            with ``half_subdir`` — passing both raises ``ValueError``.
         """
-        subdir = half_subdir if half_subdir is not None else date.strftime("%Y%m%d")
+        if half_subdir is not None and subdir_override is not None:
+            raise ValueError(
+                "camera_dir: half_subdir and subdir_override are "
+                "mutually exclusive (Pattern A vs Pattern B intents)"
+            )
+        explicit = half_subdir if half_subdir is not None else subdir_override
+        subdir = explicit if explicit is not None else date.strftime("%Y%m%d")
         return self.root("camera_raw") / subdir / animal
 
     # Kept for backward compatibility but deprecated in favor of pipeline_outputs()

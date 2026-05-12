@@ -355,6 +355,92 @@ class TestNewConvenienceMethods:
         assert result_a == tmp_path / "camera" / "20250314a" / "PS48"
         assert result_b == tmp_path / "camera" / "20250314b" / "PS48"
 
+    # ---- Phase 7-pre-secondary-spout Task 3b: subdir_override kwarg ----
+
+    def test_wavesurfer_dir_uses_subdir_override_when_set(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        """Pattern B b-half / asymmetric-bare case: subdir_override
+        replaces the date_str segment. Same internal effect as
+        half_subdir but documented as the Pattern B caller-intent."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result_b = resolver.wavesurfer_dir(
+            datetime.date(2025, 4, 30), "PS51",
+            subdir_override="20250430b",
+        )
+        result_bare_override = resolver.wavesurfer_dir(
+            datetime.date(2025, 4, 24), "PS55",
+            subdir_override="20250424a",  # asymmetric-bare for PS55/2025-04-24
+        )
+        assert result_b == tmp_path / "wavesurfer" / "20250430b" / "PS51"
+        assert result_bare_override == (
+            tmp_path / "wavesurfer" / "20250424a" / "PS55"
+        )
+
+    def test_wavesurfer_dir_falls_back_to_date_strftime_when_none(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        """Regression: subdir_override=None preserves byte-identical
+        pre-PR behavior (subdir = date.strftime('%Y%m%d')). Every
+        existing non-Pattern-B call hits this branch."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result = resolver.wavesurfer_dir(
+            datetime.date(2025, 4, 30), "PS51", subdir_override=None,
+        )
+        assert result == tmp_path / "wavesurfer" / "20250430" / "PS51"
+
+    def test_camera_dir_uses_subdir_override_when_set(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        """camera_dir mirrors wavesurfer_dir's subdir_override
+        semantics."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result = resolver.camera_dir(
+            datetime.date(2025, 5, 30), "PS54",
+            subdir_override="20250530b",
+        )
+        assert result == tmp_path / "camera" / "20250530b" / "PS54"
+
+    def test_camera_dir_falls_back_to_date_strftime_when_none(
+        self, monkeypatch, full_paths_yaml, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        result = resolver.camera_dir(
+            datetime.date(2025, 5, 30), "PS54", subdir_override=None,
+        )
+        assert result == tmp_path / "camera" / "20250530" / "PS54"
+
+    def test_wavesurfer_dir_rejects_both_kwargs(
+        self, monkeypatch, full_paths_yaml,
+    ):
+        """half_subdir and subdir_override are mutually exclusive —
+        passing both raises. Pattern A and Pattern B intents must not
+        mix at the same call site."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            resolver.wavesurfer_dir(
+                datetime.date(2025, 3, 14), "PS48",
+                half_subdir="20250314a",
+                subdir_override="20250314a",
+            )
+
+    def test_camera_dir_rejects_both_kwargs(
+        self, monkeypatch, full_paths_yaml,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(full_paths_yaml)
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            resolver.camera_dir(
+                datetime.date(2025, 3, 14), "PS48",
+                half_subdir="20250314a",
+                subdir_override="20250314a",
+            )
+
     def test_alignment_template_per_half_new_layout(self, tmp_path: Path):
         """Phase 7-pre-multi-half Decision 3 + 2026-05-05 incident response:
         per-half new-pipeline templates land under pipeline_outputs(

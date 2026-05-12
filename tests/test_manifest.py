@@ -204,6 +204,287 @@ class TestBuildManifest:
         assert manifest.dlc_csv_files == []
 
 
+# ---- Phase 7-pre-secondary-spout Task 3b: build_manifest session_suffix ----
+
+
+def _ps51_info() -> AnimalInfo:
+    """PS51 metadata fixture. Stroke date 2025-04-29 (per
+    batch_process_behavior_report_20260116PS d0); session window
+    matches the legacy notebook."""
+    return AnimalInfo(
+        animal_id="PS51",
+        stroke_date=datetime.date(2025, 4, 30),
+        session_start=datetime.date(2025, 4, 16),
+        session_end=datetime.date(2025, 7, 9),
+    )
+
+
+def _ps55_info() -> AnimalInfo:
+    return AnimalInfo(
+        animal_id="PS55",
+        stroke_date=datetime.date(2025, 5, 1),
+        session_start=datetime.date(2025, 4, 16),
+        session_end=datetime.date(2025, 7, 9),
+    )
+
+
+def _ps48_info() -> AnimalInfo:
+    """PS48 fixture (Pattern A multi-half session)."""
+    return AnimalInfo(
+        animal_id="PS48",
+        stroke_date=datetime.date(2025, 3, 13),
+        session_start=datetime.date(2025, 3, 7),
+        session_end=datetime.date(2025, 4, 6),
+    )
+
+
+def _mock_resolver_for_pattern_b(tmp_path: Path) -> MagicMock:
+    """PathResolver mock that returns non-existent ws/cam dirs (so
+    discovery skips cleanly) but records the call args for assertion.
+    Mirrors the mock_resolver fixture pattern but without DLC + alignment
+    set up — Pattern B tests don't need those."""
+    resolver = MagicMock(spec=PathResolver)
+    resolver.dlc_output_dir.return_value = tmp_path / "no_dlc_dir"
+    resolver.alignment_template_legacy_read.return_value = (
+        tmp_path / "no_alignment.npz"
+    )
+    resolver.wavesurfer_dir.return_value = tmp_path / "no_ws_dir"
+    resolver.camera_dir.return_value = tmp_path / "no_cam_dir"
+    return resolver
+
+
+class TestBuildManifestSessionSuffix:
+    """build_manifest's session_suffix kwarg + Pattern-B override
+    consumption + Pattern-B branch in MultiHalfNotDeclaredError.
+
+    Uses synthetic overrides_config dicts so the tests don't depend
+    on configs/session_overrides.yaml. Resolver is mocked to return
+    non-existent dirs (discovery skips cleanly); call-arg spies
+    verify the subdir_override kwarg was threaded correctly.
+    """
+
+    def test_session_suffix_threads_through_to_session_id(self, tmp_path):
+        """session_suffix='b' → session_id ends in 'b'."""
+        resolver = _mock_resolver_for_pattern_b(tmp_path)
+        overrides = {
+            "secondary_spout_sessions": {
+                "PS51": {"2025-04-30": {}},
+            },
+        }
+        manifest = build_manifest(
+            "PS51", datetime.date(2025, 4, 30), resolver, _ps51_info(),
+            overrides_config=overrides, session_suffix="b",
+        )
+        assert manifest.session_id == "PS51_20250430b"
+        assert manifest.session_suffix == "b"
+
+    def test_pattern_b_bare_uses_override_when_present(self, tmp_path):
+        """PS55/2025-04-24 with bare_ws_subdir_override='20250424a' →
+        wavesurfer_dir called with subdir_override='20250424a'."""
+        resolver = _mock_resolver_for_pattern_b(tmp_path)
+        overrides = {
+            "secondary_spout_sessions": {
+                "PS55": {
+                    "2025-04-24": {
+                        "bare_ws_subdir_override": "20250424a",
+                    },
+                },
+            },
+        }
+        build_manifest(
+            "PS55", datetime.date(2025, 4, 24), resolver, _ps55_info(),
+            overrides_config=overrides, session_suffix=None,
+        )
+        # Spy: wavesurfer_dir should have been called with the override
+        kwargs = resolver.wavesurfer_dir.call_args.kwargs
+        assert kwargs.get("subdir_override") == "20250424a"
+        # cam_dir has no override → None (resolver uses date_str)
+        cam_kwargs = resolver.camera_dir.call_args.kwargs
+        assert cam_kwargs.get("subdir_override") is None
+
+    def test_pattern_b_bare_no_override_uses_date_str(self, tmp_path):
+        """Pattern B bare half without overrides → resolver called with
+        subdir_override=None (resolver falls back to date_str)."""
+        resolver = _mock_resolver_for_pattern_b(tmp_path)
+        overrides = {
+            "secondary_spout_sessions": {
+                "PS51": {"2025-04-30": {}},
+            },
+        }
+        build_manifest(
+            "PS51", datetime.date(2025, 4, 30), resolver, _ps51_info(),
+            overrides_config=overrides, session_suffix=None,
+        )
+        # Spy: no override passed → resolver falls back to date_str
+        assert resolver.wavesurfer_dir.call_args.kwargs.get(
+            "subdir_override"
+        ) is None
+        assert resolver.camera_dir.call_args.kwargs.get(
+            "subdir_override"
+        ) is None
+
+    def test_pattern_b_b_half_uses_override_when_present(self, tmp_path):
+        """Pattern B b-half with b_ws_subdir_override='customb' →
+        wavesurfer_dir called with subdir_override='customb'."""
+        resolver = _mock_resolver_for_pattern_b(tmp_path)
+        overrides = {
+            "secondary_spout_sessions": {
+                "PS55": {
+                    "2025-04-24": {
+                        "b_ws_subdir_override": "20250424b_custom",
+                    },
+                },
+            },
+        }
+        build_manifest(
+            "PS55", datetime.date(2025, 4, 24), resolver, _ps55_info(),
+            overrides_config=overrides, session_suffix="b",
+        )
+        assert resolver.wavesurfer_dir.call_args.kwargs.get(
+            "subdir_override"
+        ) == "20250424b_custom"
+
+    def test_pattern_b_b_half_no_override_uses_date_b(self, tmp_path):
+        """Pattern B b-half without override → resolver called with
+        subdir_override='{date_str}b' (the locked default convention)."""
+        resolver = _mock_resolver_for_pattern_b(tmp_path)
+        overrides = {
+            "secondary_spout_sessions": {
+                "PS51": {"2025-04-30": {}},
+            },
+        }
+        build_manifest(
+            "PS51", datetime.date(2025, 4, 30), resolver, _ps51_info(),
+            overrides_config=overrides, session_suffix="b",
+        )
+        assert resolver.wavesurfer_dir.call_args.kwargs.get(
+            "subdir_override"
+        ) == "20250430b"
+        assert resolver.camera_dir.call_args.kwargs.get(
+            "subdir_override"
+        ) == "20250430b"
+
+    def test_non_pattern_b_unchanged_behavior(
+        self, mock_resolver, ps46_info,
+    ):
+        """Regression guard: a non-Pattern-B session passes
+        subdir_override=None to the resolver. Verifies the
+        existing single-half code path is byte-identical to pre-PR."""
+        manifest = build_manifest(
+            "PS46", datetime.date(2025, 3, 7), mock_resolver, ps46_info,
+            overrides_config={},
+        )
+        assert manifest.session_id == "PS46_20250307"
+        assert manifest.session_suffix is None
+        # wavesurfer_dir called with no override (resolver uses date_str)
+        ws_kwargs = mock_resolver.wavesurfer_dir.call_args.kwargs
+        assert ws_kwargs.get("subdir_override") is None
+
+    def test_session_suffix_without_registry_entry_raises(
+        self, tmp_path,
+    ):
+        """Passing session_suffix='b' for an (animal, date) NOT in
+        secondary_spout_sessions: raises ValueError. The suffix only
+        has a defined meaning under registry coverage."""
+        resolver = _mock_resolver_for_pattern_b(tmp_path)
+        with pytest.raises(ValueError, match="NOT registered"):
+            build_manifest(
+                "PS46", datetime.date(2025, 3, 7), resolver,
+                AnimalInfo(
+                    animal_id="PS46",
+                    stroke_date=datetime.date(2025, 3, 13),
+                    session_start=datetime.date(2025, 3, 7),
+                    session_end=datetime.date(2025, 4, 6),
+                ),
+                overrides_config={}, session_suffix="b",
+            )
+
+    def test_pattern_b_in_registry_suppresses_multi_half_check(
+        self, tmp_path,
+    ):
+        """Per DECISIONS 2026-05-12 Decision 5(c): an n_dlc>=2 signal on
+        a Pattern B session does NOT trip MultiHalfNotDeclaredError —
+        the registry coverage means "these halves are separate sessions,
+        not merge candidates." Simulates the future state where Priya
+        DLC-infers the b halves."""
+        resolver = MagicMock(spec=PathResolver)
+        # Synthesize a DLC dir with 2 filtered files for 2025-04-30 to
+        # trigger the Pattern A signal.
+        dlc_dir = tmp_path / "PS51_dlc"
+        dlc_dir.mkdir()
+        for ts in ("12_00_00", "13_30_00"):
+            base = (
+                f"video2_2025-04-30T{ts}DLC_Resnet50_video2"
+                "Jan26shuffle5_snapshot_060"
+            )
+            (dlc_dir / f"{base}_filtered.h5").touch()
+            (dlc_dir / f"{base}_filtered.csv").touch()
+        resolver.dlc_output_dir.return_value = dlc_dir
+        resolver.alignment_template_legacy_read.return_value = (
+            tmp_path / "no_alignment.npz"
+        )
+        resolver.wavesurfer_dir.return_value = tmp_path / "no_ws"
+        resolver.camera_dir.return_value = tmp_path / "no_cam"
+
+        overrides = {
+            "secondary_spout_sessions": {
+                "PS51": {"2025-04-30": {}},
+            },
+        }
+        # No raise: Pattern B registry coverage suppresses the check.
+        manifest = build_manifest(
+            "PS51", datetime.date(2025, 4, 30), resolver, _ps51_info(),
+            overrides_config=overrides,
+        )
+        # Bare manifest got built; session_suffix stays None.
+        assert manifest.session_id == "PS51_20250430"
+        assert manifest.session_suffix is None
+        # And the n_dlc=2 DLC files DID get discovered (they exist on
+        # disk in the fixture) — confirms the check didn't short-circuit
+        # the discovery.
+        assert len(manifest.dlc_h5_files) == 2
+
+    def test_pattern_b_NOT_in_registry_still_raises_when_n_dlc_2(
+        self, tmp_path,
+    ):
+        """Regression guard for the registry-gating: a session with
+        n_dlc=2 and NO registry entry (neither multi_half_sessions: nor
+        secondary_spout_sessions:) STILL raises MultiHalfNotDeclaredError.
+        Confirms the Pattern-B branch is registry-gated, not
+        blanket-disabled."""
+        from stroke_orofacial.manifest import MultiHalfNotDeclaredError
+
+        resolver = MagicMock(spec=PathResolver)
+        dlc_dir = tmp_path / "PS99_dlc"
+        dlc_dir.mkdir()
+        for ts in ("12_00_00", "13_30_00"):
+            base = (
+                f"video2_2026-01-01T{ts}DLC_Resnet50_video2"
+                "Jan26shuffle5_snapshot_060"
+            )
+            (dlc_dir / f"{base}_filtered.h5").touch()
+            (dlc_dir / f"{base}_filtered.csv").touch()
+        resolver.dlc_output_dir.return_value = dlc_dir
+        resolver.alignment_template_legacy_read.return_value = (
+            tmp_path / "no_alignment.npz"
+        )
+        resolver.wavesurfer_dir.return_value = tmp_path / "no_ws"
+        resolver.camera_dir.return_value = tmp_path / "no_cam"
+
+        info = AnimalInfo(
+            animal_id="PS99",
+            stroke_date=datetime.date(2026, 1, 1),
+            session_start=datetime.date(2026, 1, 1),
+            session_end=datetime.date(2026, 1, 31),
+        )
+        # No registry entries → defensive check fires.
+        with pytest.raises(MultiHalfNotDeclaredError):
+            build_manifest(
+                "PS99", datetime.date(2026, 1, 1), resolver, info,
+                overrides_config={},
+            )
+
+
 # ---- Integration test (requires real mount) ----
 
 _MOUNT = Path("/Volumes/Neurobio/MICROSCOPE/Priya")
