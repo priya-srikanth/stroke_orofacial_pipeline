@@ -1,14 +1,19 @@
 """Phase 7-pre-multi-half tests for multi_half_merge.
 
-Covers the cell-17 port :func:`merge_licks_and_rewards` plus the
-ported helpers (:func:`_infer_n_cam`, :func:`_looks_like_frame_indices`,
+Covers the cell-17 port :func:`merge_licks_and_rewards` (in both
+``cam_frame`` and ``ws_sample`` modes) plus the ported helpers
+(:func:`_infer_n_count`, :func:`_looks_like_index_array`,
 :func:`_shift_frame_indices`). Synthetic fixtures cover the legacy
 2-half case (PS48 20250314 production scope) plus the N-half
 generalization.
 
-Vendor reference for the algorithm being tested:
+Vendor reference for the cam_frame algorithm:
 ``docs/legacy_snippets/multi_half_merge/cell_17_merge_licks_and_rewards.py``
 (notebook SHA256 ed12c54...; cell SHA256 b2819b791668e18c...).
+
+ws_sample mode: new-pipeline-Phase-2 semantics — see
+:func:`merge_licks_and_rewards` docstring for the coordinate-space
+rationale and the divergence-from-legacy intentional design.
 """
 
 from __future__ import annotations
@@ -21,9 +26,9 @@ import pytest
 
 from stroke_orofacial.spout_behavior.multi_half_merge import (
     _infer_dt,
-    _infer_n_cam,
+    _infer_n_count,
     _is_monotonic_nondecreasing,
-    _looks_like_frame_indices,
+    _looks_like_index_array,
     _shift_frame_indices,
     _shift_time_axis,
     merge_alignment_templates,
@@ -32,14 +37,25 @@ from stroke_orofacial.spout_behavior.multi_half_merge import (
 )
 
 
-# ---------- _infer_n_cam ----------
+# ---------- _infer_n_count ----------
 
 
-class TestInferNCam:
+class TestInferNCount:
+    """Generalized cell-17 _infer_n_cam — both cam_frame and ws_sample modes."""
+
+    # Helper to wrap the cam-mode default kwargs (most tests use cam mode).
+    @staticmethod
+    def _cam(npz):
+        return _infer_n_count(
+            npz,
+            count_keys=("cam_times", "sig_camTimes__idx_cam", "t_cam", "frame_times_s", "camTimes"),
+            count_int_keys=("n_frames", "n_cam", "nFrames"),
+        )
+
     def test_tier_1_cam_times_array_size(self):
         """Highest-priority: a 1D `cam_times` array's size is n_cam."""
         npz = {"cam_times": np.linspace(0, 10, 5_000)}
-        assert _infer_n_cam(npz) == 5_000
+        assert self._cam(npz) == 5_000
 
     def test_tier_1_priority_order(self):
         """When multiple Tier-1 keys are present, the first key in the
@@ -49,77 +65,104 @@ class TestInferNCam:
             "camTimes": np.zeros(7_000),  # last in order
             "cam_times": np.zeros(5_000),  # first in order
         }
-        assert _infer_n_cam(npz) == 5_000
+        assert self._cam(npz) == 5_000
 
     def test_tier_2_scalar_n_frames(self):
         """When no Tier-1 keys, fall back to a scalar `n_frames`."""
         npz = {"n_frames": np.int64(4_242)}
-        assert _infer_n_cam(npz) == 4_242
+        assert self._cam(npz) == 4_242
 
     def test_tier_3_fallback_largest_long_1d_array(self):
         """When no Tier-1/2 keys, return size of the largest 1D
-        numeric array > _FALLBACK_CAM_TIMESERIES_MIN_SIZE (1000)."""
+        numeric array > fallback_min_size (default 1000)."""
         npz = {
             "small": np.zeros(500),  # below threshold
             "medium": np.zeros(1_500),  # candidate
             "large": np.zeros(8_000),  # winner
             "small_obj": np.array(["a", "b"], dtype=object),  # non-numeric
         }
-        assert _infer_n_cam(npz) == 8_000
+        assert self._cam(npz) == 8_000
 
     def test_returns_none_when_no_signal(self):
         """No Tier-1/2 keys, no 1D arrays > 1000 → None."""
         npz = {"foo": np.zeros(500), "bar": np.array(42)}
-        assert _infer_n_cam(npz) is None
+        assert self._cam(npz) is None
+
+    def test_ws_mode_tier_2_n_samples(self):
+        """ws_sample mode: Tier-2 scalar `n_samples` is the only signal
+        the new Phase 2 NPZ provides for the count axis."""
+        npz = {"n_samples": np.int64(2_253_363)}
+        assert _infer_n_count(
+            npz,
+            count_keys=(),
+            count_int_keys=("n_samples",),
+            fallback_min_size=None,
+        ) == 2_253_363
+
+    def test_ws_mode_tier_3_disabled(self):
+        """ws_sample mode disables Tier-3 fallback (fallback_min_size=None)
+        so a 1D event-index array (e.g. Lick_L of length 1136) is NOT
+        misread as a count signal."""
+        npz = {
+            "Lick_L": np.arange(1136),  # >1000 — would trigger Tier-3 if enabled
+        }
+        assert _infer_n_count(
+            npz,
+            count_keys=(),
+            count_int_keys=("n_samples",),
+            fallback_min_size=None,
+        ) is None
 
 
-# ---------- _looks_like_frame_indices ----------
+# ---------- _looks_like_index_array ----------
 
 
-class TestLooksLikeFrameIndices:
+class TestLooksLikeIndexArray:
+    """Generalized cell-17 _looks_like_frame_indices — applies in both modes."""
+
     def test_clean_integer_indices_within_bound(self):
         arr = np.array([0, 5, 100, 999], dtype=float)
-        assert _looks_like_frame_indices(arr, n_cam_hint=1_000) is True
+        assert _looks_like_index_array(arr, count_hint=1_000) is True
 
-    def test_indices_just_above_n_cam_within_slack(self):
+    def test_indices_just_above_count_within_slack(self):
         """Slack of 5 allows a few-index overshoot (e.g. clamp values
-        at exactly n_cam are common in legacy data)."""
+        at exactly count_hint are common in legacy data)."""
         arr = np.array([0, 999, 1_001], dtype=float)  # 1_001 < 1_000+5
-        assert _looks_like_frame_indices(arr, n_cam_hint=1_000) is True
+        assert _looks_like_index_array(arr, count_hint=1_000) is True
 
-    def test_indices_well_above_n_cam(self):
+    def test_indices_well_above_count(self):
         arr = np.array([0, 999, 5_000], dtype=float)  # 5_000 >> 1_000+5
-        assert _looks_like_frame_indices(arr, n_cam_hint=1_000) is False
+        assert _looks_like_index_array(arr, count_hint=1_000) is False
 
     def test_non_integer_floats_rejected(self):
         arr = np.array([0.5, 1.5, 2.5], dtype=float)
-        assert _looks_like_frame_indices(arr, n_cam_hint=10) is False
+        assert _looks_like_index_array(arr, count_hint=10) is False
 
     def test_negative_values_rejected(self):
         arr = np.array([-5, 10, 20], dtype=float)
-        assert _looks_like_frame_indices(arr, n_cam_hint=100) is False
+        assert _looks_like_index_array(arr, count_hint=100) is False
 
     def test_nans_tolerated(self):
         arr = np.array([0, 5, np.nan, 100], dtype=float)
-        assert _looks_like_frame_indices(arr, n_cam_hint=1_000) is True
+        assert _looks_like_index_array(arr, count_hint=1_000) is True
 
     def test_all_nan_rejected(self):
         arr = np.array([np.nan, np.nan, np.nan], dtype=float)
-        assert _looks_like_frame_indices(arr, n_cam_hint=100) is False
+        assert _looks_like_index_array(arr, count_hint=100) is False
 
     def test_no_hint_passes_above_check(self):
-        """When n_cam_hint is None, the upper bound check is skipped —
+        """When count_hint is None, the upper bound check is skipped —
         any non-negative integer-ish 1D array is accepted."""
         arr = np.array([0, 5, 100_000_000], dtype=float)
-        assert _looks_like_frame_indices(arr, n_cam_hint=None) is True
+        assert _looks_like_index_array(arr, count_hint=None) is True
 
     def test_2d_array_rejected(self):
         arr = np.zeros((10, 2))
-        assert _looks_like_frame_indices(arr, n_cam_hint=100) is False
+        assert _looks_like_index_array(arr, count_hint=100) is False
 
     def test_string_array_rejected(self):
         arr = np.array(["a", "b"], dtype=object)
-        assert _looks_like_frame_indices(arr, n_cam_hint=100) is False
+        assert _looks_like_index_array(arr, count_hint=100) is False
 
 
 # ---------- _shift_frame_indices ----------
@@ -446,7 +489,7 @@ class TestLicksAndRewardsMerge:
         assert "merged_from_A" in merged.files
 
     def test_kwargs_override_default_inference_keys(self, tmp_path: Path):
-        """Custom cam_count_keys can be passed to drive _infer_n_cam from
+        """Custom cam_count_keys can be passed to drive _infer_n_count from
         a non-default key — used by tests and by callers that source the
         list from configs/defaults.yaml multi_half:."""
         a_path = tmp_path / "a.npz"
@@ -475,6 +518,331 @@ class TestLicksAndRewardsMerge:
         assert merged["my_custom_cam_axis"].shape == (300,)
         assert int(merged["merged_n_cam_A"]) == 100
         assert int(merged["merged_n_cam_B"]) == 200
+
+    def test_default_index_space_is_cam_frame(self, tmp_path: Path):
+        """Smoke check: omitting index_space gives the legacy cam_frame
+        behavior (this is what makes the 11 pre-existing tests stay
+        green without modification — default preserves back-compat)."""
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _save_half(a_path, n_cam=100)
+        _save_half(b_path, n_cam=250)
+        out_path = tmp_path / "merged.npz"
+        merge_licks_and_rewards([a_path, b_path], out_path)  # no index_space
+        merged = np.load(out_path, allow_pickle=True)
+        # cam_frame schema present
+        assert "merged_n_cam_A" in merged.files
+        assert "cam_frame_offset_for_B" in merged.files
+        # ws_sample schema absent
+        assert "merged_n_samples_A" not in merged.files
+        assert "ws_sample_offset_for_B" not in merged.files
+
+    def test_invalid_index_space_raises(self, tmp_path: Path):
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _save_half(a_path, n_cam=100)
+        _save_half(b_path, n_cam=100)
+        with pytest.raises(ValueError, match=r"index_space must be"):
+            merge_licks_and_rewards(
+                [a_path, b_path], tmp_path / "out.npz", index_space="cam_idx",
+            )
+
+
+# ---------- TestLicksAndRewardsMergeWsSample ----------
+
+
+def _save_ws_half(
+    path: Path,
+    *,
+    n_samples: int,
+    side_convention_match: bool = False,
+    side_convention_version: int = 1,
+    extras: dict | None = None,
+) -> Path:
+    """Save a synthetic per-half licks NPZ in the new Phase 2 ws_sample schema.
+
+    Mirrors what session_processing._run_phase2_pipeline writes via
+    find_licks_and_rewards + _save_npz_with_side_convention: the index
+    arrays + Fs + n_samples (WS sample count) + 2 side-convention stamps.
+    The ``extras`` dict overrides individual keys / adds events.
+    """
+    payload: dict = {
+        "Fs": np.float64(1000.0),
+        "n_samples": np.int64(n_samples),
+        "side_convention_version": np.int64(side_convention_version),
+        "wavesurfer_sides_match_mouse_sides": np.bool_(side_convention_match),
+    }
+    if extras:
+        payload.update(extras)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(str(path), **payload, allow_pickle=False)
+    return path
+
+
+class TestLicksAndRewardsMergeWsSample:
+    """ws_sample mode tests (new-pipeline-Phase-2 semantics).
+
+    The legacy concat-without-offset behavior was an emergent heuristic
+    side-effect (see DECISIONS): ws-sample event-index arrays had max
+    values >> n_cam_hint+5, so cell-17's _looks_like_frame_indices
+    returned False on them and they fell through to the same-shape
+    event-style concat path with NO offset applied. This produced a
+    merged Lick_L where half-A and half-B indices live in overlapping
+    WS-sample ranges with no separator — ambiguous downstream.
+
+    ws_sample mode here corrects that: half-B WS-sample indices are
+    offset by half-A's n_samples so the merged time axis is unified
+    and unambiguous. Tests below pin the offset semantics, the
+    schema cleanup, and the side-convention stamp validation.
+    """
+
+    def test_offset_applied_to_event_indices(self, tmp_path: Path):
+        """Half-A's Lick_L unchanged; half-B's Lick_L shifted by n_samples_A."""
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _save_ws_half(
+            a_path, n_samples=2_253_363,
+            extras={"Lick_L": np.array([100, 1_000_000, 2_000_000], dtype=np.int64)},
+        )
+        _save_ws_half(
+            b_path, n_samples=2_300_517,
+            extras={"Lick_L": np.array([200, 500_000, 2_200_000], dtype=np.int64)},
+        )
+        out_path = tmp_path / "merged.npz"
+        merge_licks_and_rewards(
+            [a_path, b_path], out_path, index_space="ws_sample",
+        )
+
+        merged = np.load(out_path, allow_pickle=True)
+        n_A = 2_253_363
+        # A unchanged; B shifted by n_samples_A
+        np.testing.assert_array_equal(
+            merged["Lick_L"],
+            np.array(
+                [100, 1_000_000, 2_000_000,
+                 200 + n_A, 500_000 + n_A, 2_200_000 + n_A],
+                dtype=np.int64,
+            ),
+        )
+
+    def test_no_overlap_after_offset(self, tmp_path: Path):
+        """min(half-B portion) > max(half-A portion) — merged time axis
+        is monotone partitioned at n_samples_A."""
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        n_A = 1_000_000
+        _save_ws_half(
+            a_path, n_samples=n_A,
+            extras={"Reward_L": np.array([100, 999_999], dtype=np.int64)},
+        )
+        _save_ws_half(
+            b_path, n_samples=2_000_000,
+            extras={"Reward_L": np.array([0, 1_999_999], dtype=np.int64)},
+        )
+        merge_licks_and_rewards(
+            [a_path, b_path], tmp_path / "out.npz", index_space="ws_sample",
+        )
+        merged = np.load(tmp_path / "out.npz", allow_pickle=True)
+        # half-A portion: [100, 999_999]; half-B portion: [n_A, n_A + 1_999_999]
+        a_max = int(merged["Reward_L"][:2].max())
+        b_min = int(merged["Reward_L"][2:].min())
+        assert b_min >= a_max, (
+            f"merged Reward_L overlaps: half-A max={a_max}, half-B min={b_min}"
+        )
+
+    def test_total_count_assertion(self, tmp_path: Path):
+        """len(merged.X) == len(half-A.X) + len(half-B.X) for every event arr."""
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _save_ws_half(
+            a_path, n_samples=1_000_000,
+            extras={
+                "Lick_L": np.array([1, 2, 3], dtype=np.int64),
+                "Lick_R": np.array([10, 20], dtype=np.int64),
+                "Reward_L": np.array([100], dtype=np.int64),
+                "Reward_R": np.array([200, 300, 400, 500], dtype=np.int64),
+            },
+        )
+        _save_ws_half(
+            b_path, n_samples=2_000_000,
+            extras={
+                "Lick_L": np.array([1, 2, 3, 4, 5], dtype=np.int64),
+                "Lick_R": np.array([10, 20, 30], dtype=np.int64),
+                "Reward_L": np.array([100, 200], dtype=np.int64),
+                "Reward_R": np.array([300, 400], dtype=np.int64),
+            },
+        )
+        merge_licks_and_rewards(
+            [a_path, b_path], tmp_path / "out.npz", index_space="ws_sample",
+        )
+        merged = np.load(tmp_path / "out.npz", allow_pickle=True)
+        assert merged["Lick_L"].shape == (3 + 5,)
+        assert merged["Lick_R"].shape == (2 + 3,)
+        assert merged["Reward_L"].shape == (1 + 2,)
+        assert merged["Reward_R"].shape == (4 + 2,)
+
+    def test_tone_arrays_carried_forward_with_offset(self, tmp_path: Path):
+        """Tone_L/R get the same offset treatment as Lick_*/Reward_* —
+        legacy cell-17 dropped Tone_* (they didn't exist at that vintage);
+        ws_sample mode carries them forward by virtue of treating any
+        index-array key uniformly."""
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        n_A = 1_000_000
+        _save_ws_half(
+            a_path, n_samples=n_A,
+            extras={"Tone_L": np.array([500, 999_000], dtype=np.int64)},
+        )
+        _save_ws_half(
+            b_path, n_samples=2_000_000,
+            extras={"Tone_L": np.array([1_000, 1_500_000], dtype=np.int64)},
+        )
+        merge_licks_and_rewards(
+            [a_path, b_path], tmp_path / "out.npz", index_space="ws_sample",
+        )
+        merged = np.load(tmp_path / "out.npz", allow_pickle=True)
+        np.testing.assert_array_equal(
+            merged["Tone_L"],
+            np.array(
+                [500, 999_000, 1_000 + n_A, 1_500_000 + n_A],
+                dtype=np.int64,
+            ),
+        )
+
+    def test_side_convention_stamps_carried_forward(self, tmp_path: Path):
+        """Matching side-convention stamps across halves are validated
+        and the scalars are preserved on the merged NPZ."""
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _save_ws_half(
+            a_path, n_samples=1_000_000,
+            side_convention_match=False, side_convention_version=1,
+        )
+        _save_ws_half(
+            b_path, n_samples=2_000_000,
+            side_convention_match=False, side_convention_version=1,
+        )
+        merge_licks_and_rewards(
+            [a_path, b_path], tmp_path / "out.npz", index_space="ws_sample",
+        )
+        merged = np.load(tmp_path / "out.npz", allow_pickle=True)
+        assert int(merged["side_convention_version"]) == 1
+        assert bool(merged["wavesurfer_sides_match_mouse_sides"]) is False
+
+    def test_side_convention_mismatch_raises(self, tmp_path: Path):
+        """Mismatched stamps across halves → ValueError before merge work."""
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _save_ws_half(
+            a_path, n_samples=1_000_000, side_convention_match=False,
+        )
+        _save_ws_half(
+            b_path, n_samples=2_000_000, side_convention_match=True,  # MISMATCH
+        )
+        with pytest.raises(ValueError, match=r"side-convention.*mismatch"):
+            merge_licks_and_rewards(
+                [a_path, b_path], tmp_path / "out.npz", index_space="ws_sample",
+            )
+
+    def test_side_convention_missing_key_raises(self, tmp_path: Path):
+        """Missing side-convention key in any half → ValueError."""
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _save_ws_half(a_path, n_samples=1_000_000)
+        # B has only Fs + n_samples — both side-convention keys missing
+        np.savez(
+            str(b_path),
+            Fs=np.float64(1000.0),
+            n_samples=np.int64(2_000_000),
+        )
+        with pytest.raises(ValueError, match=r"missing required side-convention"):
+            merge_licks_and_rewards(
+                [a_path, b_path], tmp_path / "out.npz", index_space="ws_sample",
+            )
+
+    def test_ws_sample_provenance_schema(self, tmp_path: Path):
+        """ws_sample mode emits new schema (merged_n_samples_*,
+        ws_sample_offset_for_B) and OMITS legacy cam_frame quirk keys
+        (merged_n_cam_*, cam_frame_offset_for_B, allow_pickle)."""
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _save_ws_half(a_path, n_samples=1_500_000)
+        _save_ws_half(b_path, n_samples=2_500_000)
+        merge_licks_and_rewards(
+            [a_path, b_path], tmp_path / "out.npz", index_space="ws_sample",
+        )
+        merged = np.load(tmp_path / "out.npz", allow_pickle=True)
+
+        # New schema present
+        assert str(merged["merged_from_A"]) == str(a_path)
+        assert str(merged["merged_from_B"]) == str(b_path)
+        assert int(merged["ws_sample_offset_for_B"]) == 1_500_000
+        assert int(merged["merged_n_samples_A"]) == 1_500_000
+        assert int(merged["merged_n_samples_B"]) == 2_500_000
+        np.testing.assert_array_equal(
+            merged["merged_n_samples_per_half"],
+            np.array([1_500_000, 2_500_000], dtype=np.int64),
+        )
+        np.testing.assert_array_equal(
+            merged["ws_sample_offsets_per_half"],
+            np.array([0, 1_500_000], dtype=np.int64),
+        )
+
+        # Legacy quirk keys ABSENT
+        assert "merged_n_cam_A" not in merged.files
+        assert "merged_n_cam_B" not in merged.files
+        assert "merged_n_cam_per_half" not in merged.files
+        assert "cam_frame_offset_for_B" not in merged.files
+        assert "cam_frame_offsets_per_half" not in merged.files
+        assert "allow_pickle" not in merged.files
+
+    def test_n_samples_inference_failure_raises(self, tmp_path: Path):
+        """When the per-half NPZ has no n_samples scalar (and no Tier-3
+        fallback in ws_sample mode), raise loud."""
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        # Save without n_samples — only side-convention stamps
+        np.savez(
+            str(a_path),
+            Fs=np.float64(1000.0),
+            side_convention_version=np.int64(1),
+            wavesurfer_sides_match_mouse_sides=np.bool_(False),
+            Lick_L=np.arange(1500),  # would be Tier-3 fallback in cam mode
+        )
+        np.savez(
+            str(b_path),
+            Fs=np.float64(1000.0),
+            side_convention_version=np.int64(1),
+            wavesurfer_sides_match_mouse_sides=np.bool_(False),
+            Lick_L=np.arange(1500),
+        )
+        with pytest.raises(RuntimeError, match=r"Could not infer n_samples"):
+            merge_licks_and_rewards(
+                [a_path, b_path], tmp_path / "out.npz", index_space="ws_sample",
+            )
+
+    def test_ws_count_int_keys_kwarg_override(self, tmp_path: Path):
+        """ws_count_int_keys override drives _infer_n_count from a custom
+        scalar key — used by callers sourcing the list from
+        configs/defaults.yaml multi_half:."""
+        a_path = tmp_path / "a.npz"
+        b_path = tmp_path / "b.npz"
+        _save_ws_half(
+            a_path, n_samples=1_000_000,
+            extras={"my_ws_count": np.int64(1_000_000)},
+        )
+        _save_ws_half(
+            b_path, n_samples=2_000_000,
+            extras={"my_ws_count": np.int64(2_000_000)},
+        )
+        merge_licks_and_rewards(
+            [a_path, b_path], tmp_path / "out.npz",
+            index_space="ws_sample",
+            ws_count_int_keys=["my_ws_count"],
+        )
+        merged = np.load(tmp_path / "out.npz", allow_pickle=True)
+        assert int(merged["merged_n_samples_A"]) == 1_000_000
+        assert int(merged["merged_n_samples_B"]) == 2_000_000
 
 
 # ---------- alignment-template helpers ----------

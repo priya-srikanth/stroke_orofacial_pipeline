@@ -33,23 +33,35 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Module-level constants ported verbatim from cell 17 (`_infer_n_cam` keys
-# and `_looks_like_frame_indices` heuristics). Kept module-private because
-# these match upstream convention rather than user-tunable behavior — the
-# canonical `defaults.yaml multi_half:` block exposes them via cohort-wide
-# config for parity with the kickoff Task-2 schema, but the function
-# defaults to these constants when the kwargs are omitted (so unit tests
-# don't need to plumb a defaults dict for every call).
+# Module-level constants for the licks-and-rewards merge. Two coordinate
+# spaces are supported (see merge_licks_and_rewards docstring for the full
+# explanation):
+#
+#   index_space="cam_frame": legacy cell-17 semantics. Per-half count is
+#       n_cam (cam-frame count). Used by tests + any caller still feeding
+#       legacy cell-17-style NPZs into the merge.
+#
+#   index_space="ws_sample": new-pipeline-Phase-2 semantics. Per-half count
+#       is n_samples (wavesurfer sample count). Used in production for the
+#       new pipeline's per-half licks NPZs from
+#       spout_behavior.lick_detection.find_licks_and_rewards.
+#
+# Each space has its own count_keys (Tier-1 timeseries) + count_int_keys
+# (Tier-2 scalars) registered below. _infer_n_count walks Tier 1/2/3 with
+# the supplied lists. The defaults are exposed via configs/defaults.yaml
+# multi_half: for cohort-wide override; the function defaults to these
+# constants when the kwargs are omitted so unit tests don't need a
+# defaults dict.
 # ---------------------------------------------------------------------------
 
-# Keys in priority order whose 1D array length gives n_cam (cell 17 verbatim).
+# cam_frame mode — keys whose 1D array length gives n_cam (cell 17 verbatim).
 _DEFAULT_CAM_COUNT_KEYS: tuple[str, ...] = (
     "cam_times",
     "sig_camTimes__idx_cam",
@@ -58,24 +70,43 @@ _DEFAULT_CAM_COUNT_KEYS: tuple[str, ...] = (
     "camTimes",
 )
 
-# Keys in priority order whose scalar value gives n_cam (cell 17 verbatim).
+# cam_frame mode — keys whose scalar value gives n_cam (cell 17 verbatim).
 _DEFAULT_CAM_COUNT_INT_KEYS: tuple[str, ...] = (
     "n_frames",
     "n_cam",
     "nFrames",
 )
 
-# Threshold below which a 1D numeric array is too short to be a "cam-frame
-# timeseries" candidate in the fallback path (cell 17 line 134, > 1000).
+# ws_sample mode — keys whose 1D array length gives n_samples. Empty by
+# default: the new Phase 2 NPZ schema does NOT carry a per-WS-sample 1D
+# timeseries (event-index arrays are short — len ~ #licks — and would be
+# misclassified as a count signal under the Tier-3 fallback). Tier-2 only.
+_DEFAULT_WS_COUNT_KEYS: tuple[str, ...] = ()
+
+# ws_sample mode — scalar n_samples key. Phase 2 emits this directly via
+# find_licks_and_rewards's return dict; the value equals the wavesurfer
+# sample count of the half (Fs * duration).
+_DEFAULT_WS_COUNT_INT_KEYS: tuple[str, ...] = ("n_samples",)
+
+# Side-convention stamp keys carried forward in ws_sample mode. Both must
+# match across halves; mismatch raises before any merge work.
+_SIDE_CONVENTION_KEYS: tuple[str, ...] = (
+    "side_convention_version",
+    "wavesurfer_sides_match_mouse_sides",
+)
+
+# Threshold below which a 1D numeric array is too short to be a count-axis
+# timeseries candidate in the fallback path (cell 17 line 134, > 1000).
+# Used in cam_frame mode; ws_sample mode disables Tier-3 fallback.
 _FALLBACK_CAM_TIMESERIES_MIN_SIZE = 1000
 
-# Slack on the upper bound for the frame-index heuristic (cell 17 line 156:
-# `mx < (n_cam_hint + 5)`). Sentinel/clamp values at exactly n_cam are
+# Slack on the upper bound for the index-array heuristic (cell 17 line 156:
+# `mx < (count_hint + 5)`). Sentinel/clamp values at exactly count_hint are
 # common enough that a few-element slack avoids false negatives.
 _FRAME_INDEX_MAX_SLACK = 5
 
-# Quantization tolerance for the integer-ish check on candidate frame
-# indices (cell 17 line 148). Frame indices may be stored as floats
+# Quantization tolerance for the integer-ish check on candidate index
+# arrays (cell 17 line 148). Index arrays may be stored as floats
 # (NaN-padded sentinel for missing); checking `|x - round(x)| <= tol`
 # in the finite subset preserves int detection without dropping
 # the NaN-tolerance the heuristic provides.
@@ -106,23 +137,29 @@ def _is_numeric_array(x: Any) -> bool:
     return (arr is not None) and np.issubdtype(arr.dtype, np.number)
 
 
-def _infer_n_cam(
+def _infer_n_count(
     npz_files: dict[str, Any],
     *,
-    cam_count_keys: tuple[str, ...] | list[str] = _DEFAULT_CAM_COUNT_KEYS,
-    cam_count_int_keys: tuple[str, ...] | list[str] = _DEFAULT_CAM_COUNT_INT_KEYS,
+    count_keys: tuple[str, ...] | list[str],
+    count_int_keys: tuple[str, ...] | list[str],
+    fallback_min_size: int | None = _FALLBACK_CAM_TIMESERIES_MIN_SIZE,
 ) -> int | None:
-    """Infer the wavesurfer-frame n_cam count from a per-half NPZ payload.
+    """Infer a per-half axis count (n_cam or n_samples) from an NPZ payload.
 
-    Tier 1 (cell 17 lines 113-119): the first 1D array among
-    ``cam_count_keys`` whose .size is positive — return its size.
+    Generalizes the cell-17 ``_infer_n_cam`` Tier-1/2/3 strategy to either
+    cam-frame (``count_*_keys = _DEFAULT_CAM_COUNT_*_KEYS``) or wavesurfer-
+    sample (``count_*_keys = _DEFAULT_WS_COUNT_*_KEYS``) axes.
+
+    Tier 1 (cell 17 lines 113-119): the first 1D array among ``count_keys``
+    whose .size is positive — return its size.
 
     Tier 2 (cell 17 lines 120-125): the first scalar-coercible value
-    among ``cam_count_int_keys``.
+    among ``count_int_keys``.
 
-    Tier 3 (cell 17 lines 127-135): the largest 1D numeric array of
-    size > :data:`_FALLBACK_CAM_TIMESERIES_MIN_SIZE` — assumed to be a
-    cam-aligned timeseries.
+    Tier 3 (cell 17 lines 127-135): the largest 1D numeric array of size
+    > ``fallback_min_size``. Disabled when ``fallback_min_size`` is None
+    — used by ws_sample mode where event-index arrays are 1D numeric and
+    would be misclassified as a count-axis timeseries.
 
     Returns None when no signal yields a count. Callers must check;
     cell 17 raises a RuntimeError in that case (line 165-169) which
@@ -134,23 +171,31 @@ def _infer_n_cam(
         Mapping of key -> array. In the production path this is the
         ``np.lib.npyio.NpzFile`` returned by :func:`np.load`. Tests pass
         a plain dict with the same access shape.
+    count_keys : sequence of str
+        Tier-1 array keys to probe in priority order.
+    count_int_keys : sequence of str
+        Tier-2 scalar keys to probe in priority order.
+    fallback_min_size : int or None
+        Tier-3 size threshold. Pass None to disable Tier-3.
     """
-    # Tier 1: known cam-aligned timeseries
-    for k in cam_count_keys:
+    # Tier 1: known count-axis timeseries
+    for k in count_keys:
         if k in npz_files:
             arr = np.asarray(npz_files[k])
             if arr.ndim == 1 and arr.size > 0:
                 return int(arr.size)
 
-    # Tier 2: known scalar n_cam keys
-    for k in cam_count_int_keys:
+    # Tier 2: known scalar count keys
+    for k in count_int_keys:
         if k in npz_files:
             try:
                 return int(npz_files[k])
             except Exception:
                 pass
 
-    # Tier 3: largest 1D numeric array > size threshold
+    # Tier 3: largest 1D numeric array > size threshold (when enabled)
+    if fallback_min_size is None:
+        return None
     best: int | None = None
     file_keys = (
         npz_files.files if hasattr(npz_files, "files") else list(npz_files.keys())
@@ -161,15 +206,20 @@ def _infer_n_cam(
             continue
         if (
             arr.ndim == 1
-            and arr.size > _FALLBACK_CAM_TIMESERIES_MIN_SIZE
+            and arr.size > fallback_min_size
             and _is_numeric_array(arr)
         ):
             best = max(best or 0, int(arr.size))
     return best
 
 
-def _looks_like_frame_indices(arr: Any, n_cam_hint: int | None) -> bool:
-    """Return True iff ``arr`` looks like a per-frame index array.
+def _looks_like_index_array(arr: Any, count_hint: int | None) -> bool:
+    """Return True iff ``arr`` looks like a per-axis index array.
+
+    Generalizes cell 17's frame-index heuristic to either coordinate
+    space (cam-frame indices in cam_frame mode; wavesurfer-sample
+    indices in ws_sample mode). Same integer-ish + non-negative +
+    bounded-by-count semantics either way.
 
     Heuristics (cell 17 lines 137-157):
       - 1D, non-empty, numeric.
@@ -178,11 +228,11 @@ def _looks_like_frame_indices(arr: Any, n_cam_hint: int | None) -> bool:
       - All finite values are non-negative (allowing -1 as a sentinel
         is intentionally NOT supported by the legacy heuristic; this
         port preserves that strict bound).
-      - Max finite value is below ``n_cam_hint + _FRAME_INDEX_MAX_SLACK``
+      - Max finite value is below ``count_hint + _FRAME_INDEX_MAX_SLACK``
         when a hint is supplied.
 
-    Used by :func:`merge_licks_and_rewards` to decide whether to
-    offset a B-half array by the cam-frame offset before concatenation.
+    Used by :func:`merge_licks_and_rewards` to decide whether to offset
+    a B-half array by the cumulative count before concatenation.
     """
     a = np.asarray(arr)
     if a.ndim != 1 or a.size == 0:
@@ -199,8 +249,8 @@ def _looks_like_frame_indices(arr: Any, n_cam_hint: int | None) -> bool:
     mx = float(np.nanmax(aa))
     if mn < -1:
         return False
-    if n_cam_hint is not None and np.isfinite(n_cam_hint) and n_cam_hint > 0:
-        return mx < (n_cam_hint + _FRAME_INDEX_MAX_SLACK)
+    if count_hint is not None and np.isfinite(count_hint) and count_hint > 0:
+        return mx < (count_hint + _FRAME_INDEX_MAX_SLACK)
     return True
 
 
@@ -210,7 +260,8 @@ def _shift_frame_indices(arr: np.ndarray, offset: int) -> np.ndarray:
     Verbatim from cell 17 lines 198-200 / 222-224 — the same shift
     code appears twice in the legacy cell (common-key and only-B
     branches). NaN sentinels stay NaN; finite values shift by ``offset``.
-    Returns a copy.
+    Returns a copy. Used in both cam_frame (offset = cumulative n_cam)
+    and ws_sample (offset = cumulative n_samples) modes.
     """
     shifted = arr.copy()
     mask = np.isfinite(shifted)
@@ -218,42 +269,132 @@ def _shift_frame_indices(arr: np.ndarray, offset: int) -> np.ndarray:
     return shifted
 
 
+def _scalar_value(x: Any) -> Any:
+    """Extract a Python scalar from a 0-d numpy array; pass through otherwise.
+
+    Used by :func:`_validate_side_convention_stamps` to compare scalar
+    values across halves without numpy-array-truthiness pitfalls.
+    """
+    a = np.asarray(x)
+    return a.item() if a.ndim == 0 else x
+
+
+def _validate_side_convention_stamps(
+    loaded: list[Any], paths: list[Path],
+) -> None:
+    """Validate that per-half side-convention stamps exist + match across halves.
+
+    ws_sample mode requires both keys (``side_convention_version`` and
+    ``wavesurfer_sides_match_mouse_sides``) to be present in every half
+    AND identical across halves — otherwise the merged Lick_L/R indices
+    would silently mix two different side-flip conventions, producing
+    a corrupt time series.
+
+    Raises ValueError on missing keys or value mismatch. Called only
+    from ws_sample mode; cam_frame mode has no analogous stamp.
+    """
+    for key in _SIDE_CONVENTION_KEYS:
+        for i, npz in enumerate(loaded):
+            if key not in npz.files:
+                raise ValueError(
+                    f"per-half licks NPZ missing required side-convention key "
+                    f"{key!r} (index_space='ws_sample'): {paths[i]}"
+                )
+        ref = _scalar_value(loaded[0][key])
+        for i in range(1, len(loaded)):
+            cur = _scalar_value(loaded[i][key])
+            if cur != ref:
+                raise ValueError(
+                    f"per-half side-convention mismatch on key {key!r}: "
+                    f"half[0] ({Path(paths[0]).name})={ref!r} vs "
+                    f"half[{i}] ({Path(paths[i]).name})={cur!r}. "
+                    f"Cannot merge halves with different side conventions."
+                )
+
+
 def merge_licks_and_rewards(
     per_half_npz_paths: list[Path],
     output_path: Path,
     *,
+    index_space: Literal["cam_frame", "ws_sample"] = "cam_frame",
     cam_count_keys: tuple[str, ...] | list[str] | None = None,
     cam_count_int_keys: tuple[str, ...] | list[str] | None = None,
+    ws_count_keys: tuple[str, ...] | list[str] | None = None,
+    ws_count_int_keys: tuple[str, ...] | list[str] | None = None,
 ) -> Path:
     """Merge N per-half ``licks_and_rewards`` NPZs into a single combined
-    NPZ at ``output_path`` — faithful port of legacy cell 17.
+    NPZ at ``output_path``.
 
-    The merge follows cell 17's three-tier per-key strategy applied to
-    every key present in any of the per-half NPZs:
+    Two operating modes selected by ``index_space``:
 
-      1. **1D timeseries of length n_cam[i]** in every half →
+    **cam_frame** (default — legacy cell-17 semantics).
+        Per-half count is ``n_cam`` (cam-frame count), inferred via
+        Tier-1/2/3 from ``cam_count_keys`` / ``cam_count_int_keys`` /
+        1D-fallback. Index arrays detected by
+        :func:`_looks_like_index_array` get offset by cumulative
+        ``n_cam`` before concat. Emits the legacy provenance schema
+        for N=2 (``merged_from_A``, ``merged_from_B``,
+        ``cam_frame_offset_for_B``, ``merged_n_cam_A``, ``merged_n_cam_B``)
+        so the merged NPZ is byte-identical to a cell-17 output for
+        any downstream reader of the legacy schema.
+
+    **ws_sample** (new-pipeline-Phase-2 semantics).
+        Per-half count is ``n_samples`` (wavesurfer sample count),
+        inferred via ``ws_count_keys`` / ``ws_count_int_keys`` (Tier-3
+        1D-fallback DISABLED — ws_sample event-index arrays are
+        themselves 1D numeric and would be misread as a count signal).
+        Index arrays (``Lick_L``, ``Lick_R``, ``Reward_L``, ``Reward_R``,
+        ``Tone_L``, ``Tone_R``) get offset by cumulative ``n_samples``
+        before concat — half-A indices land unchanged on the merged
+        time axis, half-B indices shift up by ``n_samples_A`` so the
+        merged session is a unified WS-sample timeline with no overlap.
+        Validates per-half side-convention stamps
+        (:data:`_SIDE_CONVENTION_KEYS`) match across halves; raises on
+        mismatch; carries them forward to the merged output. Emits the
+        new provenance schema for N=2 (``merged_from_A``,
+        ``merged_from_B``, ``ws_sample_offset_for_B``,
+        ``merged_n_samples_A``, ``merged_n_samples_B``). Does NOT emit
+        cam_frame quirk keys.
+
+        Coordinate-space rationale: legacy cell-17 stored half-B
+        indices in their native WS-sample range [0, n_samples_B) and
+        recorded ``cam_frame_offset_for_B`` as informational metadata
+        only — the data shows half-B indices were never actually
+        offset. Downstream consumers reading legacy merged NPZs got
+        an ambiguous time axis (half-A and half-B indices in
+        overlapping ranges with no separator). The ws_sample mode here
+        APPLIES the offset to half-B indices so the merged time axis
+        is unambiguous; this is what reward-aligned analyses + future
+        cross-half comparisons actually need.
+
+    Coordinate-space choice is a hard contract: the caller must know
+    which space the per-half NPZs live in (Phase 2 emits ws_sample;
+    legacy cell-17 inputs were cam_frame). Mixing index_space across
+    halves is unsupported.
+
+    The per-key dispatch (within either mode) follows cell 17's three-
+    tier strategy applied to every key present in any of the per-half NPZs:
+
+      1. **1D timeseries of length count[i]** in every half →
          :func:`numpy.concatenate` along axis 0.
-      2. **Frame-index arrays** (per :func:`_looks_like_frame_indices`)
-         → offset half ``i`` by the cumulative cam-frame count of
-         halves ``0..i-1``, then concatenate.
+      2. **Index arrays** (per :func:`_looks_like_index_array`) →
+         offset half ``i`` by the cumulative count of halves
+         ``0..i-1``, then concatenate.
       3. **Same-shape arrays beyond first axis** → concatenate along
          axis 0 (event-style stacking).
 
     Default fallback (cell 17 line 211): keep half ``0``'s value
     verbatim. Keys present in only some halves are carried over from
-    whichever half holds them, with frame-index detection still applied
-    to half-i-only arrays so their indices land in the merged frame.
+    whichever half holds them, with index-detection still applied to
+    half-i-only arrays so their indices land in the merged frame.
 
     **N-half generalization:** legacy cell 17 hardcodes 2 halves
-    (``A`` / ``B``). This port accepts ``N >= 2``. For ``N == 2`` the
-    emitted provenance keys are byte-identical to legacy
-    (``merged_from_A``, ``merged_from_B``, ``cam_frame_offset_for_B``,
-    ``merged_n_cam_A``, ``merged_n_cam_B``) so any downstream reader
-    of legacy-merged NPZs sees the same shape. For ``N >= 3`` the
-    legacy A/B keys are NOT emitted (no canonical mapping for >2 halves);
-    list-style provenance keys (``merged_from_paths``,
-    ``merged_n_cam_per_half``, ``cam_frame_offsets_per_half``) are
-    always emitted.
+    (``A`` / ``B``). This port accepts ``N >= 2``. The mode-specific
+    A/B legacy keys are emitted ONLY when N=2; for N >= 3 the A/B
+    framing has no canonical mapping and readers fall back to the
+    list-style keys (always emitted: ``merged_from_paths`` + the
+    mode-specific ``merged_n_<axis>_per_half`` and
+    ``<axis>_offsets_per_half``).
 
     Parameters
     ----------
@@ -263,13 +404,21 @@ def merge_licks_and_rewards(
         Destination for the merged NPZ. Parent directories are created
         as needed. Existing files are overwritten unconditionally —
         upstream callers should gate on overwrite.
+    index_space : {'cam_frame', 'ws_sample'}
+        Coordinate space of the per-half index arrays. See the mode
+        descriptions above. Default ``'cam_frame'`` for back-compat
+        with existing tests + legacy callers.
     cam_count_keys, cam_count_int_keys : sequences of str, optional
-        Override the default :func:`_infer_n_cam` key lists. None →
-        use the module-level defaults sourced from cell 17. The
-        canonical ``configs/defaults.yaml multi_half:`` block exposes
-        these for cohort-wide configuration; the merge function
-        defaults to the ported constants so unit tests don't need a
-        defaults dict.
+        Override the default :func:`_infer_n_count` key lists for
+        cam_frame mode. None → use the module-level defaults sourced
+        from cell 17. The canonical ``configs/defaults.yaml multi_half:``
+        block exposes these for cohort-wide configuration. Ignored
+        when ``index_space='ws_sample'``.
+    ws_count_keys, ws_count_int_keys : sequences of str, optional
+        Override the default :func:`_infer_n_count` key lists for
+        ws_sample mode. None → use the module-level defaults
+        (``count_keys=()``, ``count_int_keys=("n_samples",)``).
+        Ignored when ``index_space='cam_frame'``.
 
     Returns
     -------
@@ -279,11 +428,14 @@ def merge_licks_and_rewards(
     Raises
     ------
     ValueError
-        If fewer than 2 per-half paths are supplied.
+        If fewer than 2 per-half paths are supplied; if ``index_space``
+        is not one of the two supported values; if (ws_sample mode
+        only) any half is missing a side-convention key, or the
+        side-convention values disagree across halves.
     FileNotFoundError
         If any per-half input path is missing.
     RuntimeError
-        If :func:`_infer_n_cam` returns None for any half (no signal
+        If :func:`_infer_n_count` returns None for any half (no signal
         yielded a count) — same fail-loud semantics as cell 17 line
         165-169.
     """
@@ -296,35 +448,79 @@ def merge_licks_and_rewards(
         if not Path(p).exists():
             raise FileNotFoundError(f"per-half licks NPZ not found: {p}")
 
-    keys_a = cam_count_keys if cam_count_keys is not None else _DEFAULT_CAM_COUNT_KEYS
-    keys_int = (
-        cam_count_int_keys
-        if cam_count_int_keys is not None
-        else _DEFAULT_CAM_COUNT_INT_KEYS
-    )
+    if index_space not in ("cam_frame", "ws_sample"):
+        raise ValueError(
+            f"index_space must be 'cam_frame' or 'ws_sample', got "
+            f"{index_space!r}"
+        )
+
+    # Mode-specific key list selection + Tier-3 fallback enable/disable.
+    if index_space == "cam_frame":
+        keys_a = (
+            cam_count_keys
+            if cam_count_keys is not None
+            else _DEFAULT_CAM_COUNT_KEYS
+        )
+        keys_int = (
+            cam_count_int_keys
+            if cam_count_int_keys is not None
+            else _DEFAULT_CAM_COUNT_INT_KEYS
+        )
+        fallback_min: int | None = _FALLBACK_CAM_TIMESERIES_MIN_SIZE
+    else:  # ws_sample
+        keys_a = (
+            ws_count_keys
+            if ws_count_keys is not None
+            else _DEFAULT_WS_COUNT_KEYS
+        )
+        keys_int = (
+            ws_count_int_keys
+            if ws_count_int_keys is not None
+            else _DEFAULT_WS_COUNT_INT_KEYS
+        )
+        # Tier-3 fallback disabled in ws_sample mode: event-index arrays
+        # in the new schema are 1D numeric and would otherwise be picked
+        # up as a count-axis timeseries, yielding a wrong n_samples.
+        fallback_min = None
 
     # Load each half. allow_pickle=True matches cell 17 line 87-88 — the
     # licks NPZ may contain object-array entries (dict-typed sub-results).
     loaded = [np.load(p, allow_pickle=True) for p in per_half_npz_paths]
     n_halves = len(loaded)
 
-    # Infer n_cam per half (Tier 1/2/3 from _infer_n_cam).
-    n_cam_per_half: list[int | None] = []
-    for i, npz in enumerate(loaded):
-        n = _infer_n_cam(npz, cam_count_keys=keys_a, cam_count_int_keys=keys_int)
-        if n is None:
-            raise RuntimeError(
-                f"Could not infer n_cam (frame count) from per-half NPZ "
-                f"{per_half_npz_paths[i]}. Add one of the cam_count_keys "
-                f"({list(keys_a)}) or cam_count_int_keys ({list(keys_int)}) "
-                f"to the upstream Phase 2 emit, or pass an override via "
-                f"the kwargs."
-            )
-        n_cam_per_half.append(n)
+    # ws_sample mode only: validate side-convention stamps before any
+    # merge work fires. Mismatched stamps would silently corrupt the
+    # merged time axis (mixing two side-flip conventions in one Lick_L).
+    if index_space == "ws_sample":
+        _validate_side_convention_stamps(loaded, per_half_npz_paths)
 
-    # Cumulative cam-frame offsets: offsets[0]=0, offsets[i]=sum(n_cam[0..i-1]).
+    # Infer per-half count (Tier 1/2/3 via _infer_n_count, mode-specific keys).
+    n_per_half: list[int] = []
+    for i, npz in enumerate(loaded):
+        n = _infer_n_count(
+            npz,
+            count_keys=keys_a,
+            count_int_keys=keys_int,
+            fallback_min_size=fallback_min,
+        )
+        if n is None:
+            count_label = (
+                "n_cam (frame count)"
+                if index_space == "cam_frame"
+                else "n_samples (WS sample count)"
+            )
+            raise RuntimeError(
+                f"Could not infer {count_label} from per-half NPZ "
+                f"{per_half_npz_paths[i]} (index_space={index_space!r}). "
+                f"Add one of count_keys ({list(keys_a)}) or count_int_keys "
+                f"({list(keys_int)}) to the upstream emit, or pass an "
+                f"override via the kwargs."
+            )
+        n_per_half.append(int(n))
+
+    # Cumulative offsets: offsets[0]=0, offsets[i]=sum(n[0..i-1]).
     offsets: list[int] = [0]
-    for n in n_cam_per_half[:-1]:
+    for n in n_per_half[:-1]:
         offsets.append(offsets[-1] + int(n))
 
     # Per-half key sets and the union over all halves.
@@ -336,9 +532,9 @@ def merge_licks_and_rewards(
     ]
 
     logger.info(
-        "merge_licks_and_rewards: n_halves=%d n_cam_per_half=%s offsets=%s "
-        "common_keys=%d union_keys=%d",
-        n_halves, n_cam_per_half, offsets, len(common), len(union_keys),
+        "merge_licks_and_rewards: index_space=%s n_halves=%d n_per_half=%s "
+        "offsets=%s common_keys=%d union_keys=%d",
+        index_space, n_halves, n_per_half, offsets, len(common), len(union_keys),
     )
 
     out: dict[str, Any] = {}
@@ -353,20 +549,20 @@ def merge_licks_and_rewards(
             out[k] = arrs[0]
             continue
 
-        # Tier 1: 1D numeric timeseries of length n_cam[i] in every half
+        # Tier 1: 1D numeric timeseries of length count[i] in every half
         if all(
             a.ndim == 1
             and _is_numeric_array(a)
-            and a.size == n_cam_per_half[i]
+            and a.size == n_per_half[i]
             for i, a in enumerate(np_arrs)
         ):
             out[k] = np.concatenate(np_arrs, axis=0)
             continue
 
-        # Tier 2: frame-index arrays — offset each half by its cumulative
-        # n_cam, then concatenate.
+        # Tier 2: index arrays — offset each half by its cumulative
+        # count, then concatenate.
         if all(
-            _looks_like_frame_indices(a, n_cam_per_half[i])
+            _looks_like_index_array(a, n_per_half[i])
             for i, a in enumerate(np_arrs)
         ):
             shifted = [
@@ -386,15 +582,17 @@ def merge_licks_and_rewards(
             out[k] = np.concatenate(np_arrs, axis=0)
             continue
 
-        # Default: keep half-0's value (cell 17 line 211).
+        # Default: keep half-0's value (cell 17 line 211). Side-convention
+        # stamps land here in ws_sample mode — they're scalars, validated
+        # to match across halves above, so half-0's value is correct.
         out[k] = arrs[0]
 
     # ---- Only-in-half keys ----
     for i in range(n_halves):
         for k in only_in_half[i]:
             arr_i = _as_array(loaded[i][k])
-            if arr_i is not None and _looks_like_frame_indices(
-                arr_i, n_cam_per_half[i]
+            if arr_i is not None and _looks_like_index_array(
+                arr_i, n_per_half[i]
             ):
                 out[k] = _shift_frame_indices(arr_i, offsets[i])
             else:
@@ -405,19 +603,29 @@ def merge_licks_and_rewards(
     out["merged_from_paths"] = np.array(
         [str(p) for p in per_half_npz_paths], dtype=object
     )
-    out["merged_n_cam_per_half"] = np.array(n_cam_per_half, dtype=np.int64)
-    out["cam_frame_offsets_per_half"] = np.array(offsets, dtype=np.int64)
 
-    # 2-half byte-identical legacy keys: emit ONLY when N=2 so the
-    # merged NPZ for Pattern A (PS48 20250314) matches legacy cell 17
-    # output schema exactly. For N>=3 the A/B framing has no canonical
-    # mapping; readers fall back to the list-style keys above.
-    if n_halves == 2:
-        out["merged_from_A"] = str(per_half_npz_paths[0])
-        out["merged_from_B"] = str(per_half_npz_paths[1])
-        out["cam_frame_offset_for_B"] = np.int64(offsets[1])
-        out["merged_n_cam_A"] = np.int64(n_cam_per_half[0])
-        out["merged_n_cam_B"] = np.int64(n_cam_per_half[1])
+    if index_space == "cam_frame":
+        out["merged_n_cam_per_half"] = np.array(n_per_half, dtype=np.int64)
+        out["cam_frame_offsets_per_half"] = np.array(offsets, dtype=np.int64)
+        # 2-half legacy A/B keys (byte-identical to cell 17 output schema).
+        if n_halves == 2:
+            out["merged_from_A"] = str(per_half_npz_paths[0])
+            out["merged_from_B"] = str(per_half_npz_paths[1])
+            out["cam_frame_offset_for_B"] = np.int64(offsets[1])
+            out["merged_n_cam_A"] = np.int64(n_per_half[0])
+            out["merged_n_cam_B"] = np.int64(n_per_half[1])
+    else:  # ws_sample
+        out["merged_n_samples_per_half"] = np.array(n_per_half, dtype=np.int64)
+        out["ws_sample_offsets_per_half"] = np.array(offsets, dtype=np.int64)
+        # 2-half new-schema A/B keys. NO cam_frame quirk keys —
+        # merged_n_cam_*, cam_frame_offset_for_B, allow_pickle are all
+        # absent from the ws_sample output by design.
+        if n_halves == 2:
+            out["merged_from_A"] = str(per_half_npz_paths[0])
+            out["merged_from_B"] = str(per_half_npz_paths[1])
+            out["ws_sample_offset_for_B"] = np.int64(offsets[1])
+            out["merged_n_samples_A"] = np.int64(n_per_half[0])
+            out["merged_n_samples_B"] = np.int64(n_per_half[1])
 
     # ---- Save ----
     output_path = Path(output_path)
@@ -426,7 +634,10 @@ def merge_licks_and_rewards(
     # the merged file is byte-comparable with legacy outputs in the
     # parity gate (Task 9).
     np.savez_compressed(str(output_path), **out)
-    logger.info("merge_licks_and_rewards: wrote %s", output_path)
+    logger.info(
+        "merge_licks_and_rewards: wrote %s (index_space=%s, n_halves=%d)",
+        output_path, index_space, n_halves,
+    )
 
     return output_path
 
