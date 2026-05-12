@@ -460,28 +460,48 @@ def _layer1_bare_half_byte_identity(
                         n_fail += 1
                     continue
 
-                # Compare bytes
+                # Expected-divergence short-circuit: when the baseline
+                # has an error entry for this session but post-PR
+                # produced outputs, the byte-identity comparison would
+                # spuriously flag every output as "NEW file emitted
+                # post-PR" (since the baseline has no hashes for the
+                # session). Treat this case as SPECIAL/expected-
+                # divergence — count the emitted outputs and continue.
+                # Structural validation lives in Layer 2.
+                if baseline_errored_this_session:
+                    # Count post-PR bare-half outputs without comparing
+                    # bytes (baseline has no hashes to compare against).
+                    n_emitted = sum(
+                        1 for p in tmp_root.rglob("*")
+                        if p.is_file()
+                        and _is_bare_half_path(
+                            p.relative_to(tmp_root).as_posix(),
+                            animal, date_str,
+                        )
+                        and not _is_params_json(
+                            p.relative_to(tmp_root).as_posix()
+                        )
+                    )
+                    log(
+                        f"  SPECIAL: bare-half SUCCEEDED post-PR but "
+                        f"baseline ERRORED. Expected divergence "
+                        f"(likely via bare_ws_subdir_override). "
+                        f"{n_emitted} bare-half files emitted "
+                        f"post-PR; byte-identity skipped (no baseline "
+                        f"hashes). Baseline error: "
+                        f"{baseline_errors[session_key]!r}"
+                    )
+                    n_special += 1
+                    continue
+
+                # Compare bytes (only when baseline had hashes for this
+                # session — i.e., NOT the expected-divergence case).
                 session_failures, session_info = _compare_bare_half_byte_identity(
                     animal, date, tmp_root,
                     baseline_hashes, baseline_errors,
                 )
 
-                if baseline_errored_this_session and not session_failures:
-                    # Expected-divergence path: baseline errored, but
-                    # post-PR succeeded AND structural checks pass.
-                    # PS55/2025-04-24 typical outcome if the registry
-                    # override took effect.
-                    log(
-                        f"  SPECIAL: bare-half SUCCEEDED post-PR but "
-                        f"baseline ERRORED. Expected divergence "
-                        f"(likely via bare_ws_subdir_override). "
-                        f"{session_info['n_files_checked']} bare-half "
-                        f"files emitted; "
-                        f"{session_info['n_files_excluded_params']} "
-                        f"params/*.json excluded from byte-identity."
-                    )
-                    n_special += 1
-                elif session_failures:
+                if session_failures:
                     log(
                         f"  FAIL: {len(session_failures)} "
                         f"mismatch(es). info={session_info}"
@@ -719,7 +739,12 @@ def _validate_b_half_outputs(
     }
 
     # Find every b-half NPZ + params.json under tmp_root. b-half filename
-    # is ``{date_str}b.<ext>``.
+    # is ``{date_str}b.<ext>``. Actual layout (from
+    # PathResolver(output_root=tmp_root).pipeline_outputs("spout_behavior")):
+    #   {tmp_root}/spout_behavior/{output_type}/{animal}/{date_str}b.npz
+    #   {tmp_root}/spout_behavior/params/{animal}/{date_str}b.json
+    # So parts[0]="spout_behavior", parts[1]=output_type. Params files
+    # detected by .json suffix (output_type literally "params").
     b_filename = f"{date_str}b"
     for p in sorted(tmp_root.rglob("*")):
         if not p.is_file():
@@ -732,17 +757,20 @@ def _validate_b_half_outputs(
             continue  # not a clean b-half file
 
         info["n_b_files_checked"] += 1
-        # Identify output_type from path
-        # Expected layout: {output_type}/{animal}/{date_str}b.<ext>
-        # OR params/{animal}/{date_str}b.json
         parts = p.relative_to(tmp_root).parts
-        if len(parts) < 3:
+        # Expected layout: spout_behavior/{output_type}/{animal}/{filename}
+        # parts[0] = top-level pipeline-outputs subdir (always
+        # "spout_behavior" for Phase 2 outputs)
+        # parts[1] = output_type (or "params")
+        # parts[2] = animal
+        # parts[3] = filename
+        if len(parts) < 4:
             failures.append(
-                f"unexpected b-half output path layout: "
+                f"unexpected b-half output path layout (too few segments): "
                 f"{p.relative_to(tmp_root).as_posix()}"
             )
             continue
-        output_type = parts[0]
+        output_type = parts[1]
         # Bare-half counterpart at the same layout with bare filename
         bare_path = p.parent / f"{date_str}{p.suffix}"
 
@@ -750,9 +778,12 @@ def _validate_b_half_outputs(
             info["b_outputs_per_type"].get(output_type, 0) + 1
         )
 
-        if output_type == "params":
+        # Detect by suffix to avoid mis-routing JSON through np.load
+        if p.suffix == ".json":
             info["n_b_params_json"] += 1
-            failures.extend(_validate_b_half_params_json(p, animal, date_str))
+            failures.extend(
+                _validate_b_half_params_json(p, animal, date_str)
+            )
         elif output_type == "licks_and_rewards":
             info["n_b_npz_files"] += 1
             failures.extend(_validate_b_half_licks_npz(p, bare_path))
