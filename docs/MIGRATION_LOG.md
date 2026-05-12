@@ -5655,7 +5655,7 @@ Resolves forward-pointer #1 from the Phase 7-pre-multi-half entry above. The Tas
 ## Phase 7-pre-secondary-spout — Pattern B closer-spout 2nd-acquisition handling for PS51/PS54/PS55 (19 sessions, Outcome A)
 
 **Date:** 2026-05-12
-**PR:** #<FILL after gh pr create>
+**PR:** #105 (merge-commit `29324eb`)
 **Tag on merge:** `v7-pre-secondary-spout`
 **Branch:** `phase/7-pre-secondary-spout`
 
