@@ -5640,3 +5640,12 @@ Verdict log archived at `.scratch_phase_7_pre/parity_run_20260512T093103.log`.
 4. **Orphan cam{1,3,4}/PS48/20250314{a,b}.npz housekeeping** — six 2026-01-11 INTACT files at parent level. Out of scope; cam2 is canonical for the pipeline. Future cohort housekeeping decision: move into `20250314ab/` subdirs for symmetry, or leave.
 
 **Tag:** `v7-pre-multi-half` on the merge commit.
+
+---
+
+### Forward-pointer resolved: wire `merge_licks_and_rewards` into `process_session` multi-half
+
+**Date:** 2026-05-12
+**Branch:** `feat/wire-merge-licks-and-rewards-into-process-session-multi-half`
+
+Resolves forward-pointer #1 from the Phase 7-pre-multi-half entry above. The Task 9 parity harness invoked `merge_licks_and_rewards` directly after per-half processing; production `_process_session_multi_half` now does so itself. After the per-half loop, the per-half `licks_and_rewards` NPZs are merged into the parent-level `{date}.npz` via `merge_licks_and_rewards(per_half_paths, merged_path, index_space="ws_sample")` — half-B event indices shift by `n_samples_A` so the merged timeline is unified. Single-half code path unchanged (no merge invoked when `manifest.halves is None`). +1 unit test (`TestMergeWiring::test_merged_licks_npz_written_alongside_per_half`) verifies per-half + merged NPZs on disk with offset semantics. Sibling Phase 3 / Phase 4 merges remain out of scope; no tag.

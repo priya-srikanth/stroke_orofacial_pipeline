@@ -35,6 +35,7 @@ from stroke_orofacial.spout_behavior.bouts import (
 )
 from stroke_orofacial.lr_convention import stamp_side_convention
 from stroke_orofacial.spout_behavior.lick_detection import find_licks_and_rewards
+from stroke_orofacial.spout_behavior.multi_half_merge import merge_licks_and_rewards
 from stroke_orofacial.spout_behavior.wavesurfer_io import (
     calibrate_treadmill,
     load_wavesurfer_signals,
@@ -557,11 +558,13 @@ def _process_session_multi_half(
     NPZs land in the per-(animal, date) subdir per the locked Decision 3
     layout (see :func:`_per_half_output_path`).
 
-    The function does NOT merge the per-half outputs into the
-    parent-level NPZ — that's Task 4's
+    After the per-half loop, the per-half ``licks_and_rewards`` NPZs are
+    merged into a single parent-level ``{date_str}.npz`` via
     :func:`stroke_orofacial.spout_behavior.multi_half_merge.merge_licks_and_rewards`
-    (and its sibling per-output-type functions). This function emits
-    per-half artefacts only; the merge is wired in a follow-up task.
+    with ``index_space="ws_sample"`` — half-B event indices shift by
+    cumulative ``n_samples_A`` so the merged timeline is unified.
+    Sibling merges (``merge_alignment_templates`` / ``merge_centered_parquet``)
+    belong to Phase 3 / Phase 4 wiring and are out of scope here.
 
     Returns
     -------
@@ -619,13 +622,35 @@ def _process_session_multi_half(
         logger.info("  Half %s: ws=%s", h.id, h.wavesurfer_file)
         _run_phase2_pipeline(h.wavesurfer_file, params, ws_match, per_half_output_paths)
 
+    # Merge per-half licks_and_rewards NPZs into the parent-level merged
+    # NPZ. ws_sample mode: the per-half NPZs emitted by _run_phase2_pipeline
+    # carry the n_samples scalar + WS-sample-indexed event arrays
+    # (Lick_*, Reward_*, Tone_*), so the merge offsets half-B by cumulative
+    # n_samples_A to produce a unified WS-sample timeline. The merged
+    # file lands at the parent-level canonical path (no halves_concat_label
+    # segment) so downstream consumers read one path regardless of
+    # multi-half status. Sibling Phase 3 / Phase 4 merges are wired
+    # elsewhere (alignment.timebase / dlc_io.parquet) and not invoked here.
+    per_half_licks_paths = [
+        per_half_paths[f"licks_and_rewards__{h.id}"] for h in halves
+    ]
+    merged_licks_path = _output_path(
+        output_root, "licks_and_rewards", animal, date_str,
+    )
+    merge_licks_and_rewards(
+        per_half_licks_paths,
+        merged_licks_path,
+        index_space="ws_sample",
+    )
+
     _save_session_params(
         output_root, animal, date, date_str, params, processing_log, skipped=False
     )
 
     logger.info(
-        "Session %s/%s multi-half complete. Per-half outputs: %s/<output_type>/%s/%s%s/",
-        animal, date_str, output_root, animal, date_str, label,
+        "Session %s/%s multi-half complete. Per-half outputs: %s/<output_type>/%s/%s%s/ ; "
+        "merged licks NPZ: %s",
+        animal, date_str, output_root, animal, date_str, label, merged_licks_path,
     )
     return per_half_paths
 

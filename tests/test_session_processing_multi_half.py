@@ -27,6 +27,7 @@ import datetime
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 
 from stroke_orofacial.manifest import HalfSpec, SessionManifest
@@ -35,6 +36,17 @@ from stroke_orofacial.spout_behavior.session_processing import (
     _halves_concat_label,
     _per_half_output_path,
     process_session,
+)
+
+
+# Module path of the merge function used by _process_session_multi_half.
+# Patched in tests that mock _run_phase2_pipeline (so per-half NPZs are
+# never actually written to disk) — without the merge patch, the merge
+# call inside production code would raise FileNotFoundError on the
+# missing per-half NPZs. Tests that exercise the real merge (see
+# TestMergeWiring) leave this unpatched.
+_MERGE_PATCH_TARGET = (
+    "stroke_orofacial.spout_behavior.session_processing.merge_licks_and_rewards"
 )
 
 
@@ -185,7 +197,7 @@ class TestProcessSessionMultiHalf:
 
         with patch(
             "stroke_orofacial.spout_behavior.session_processing._run_phase2_pipeline"
-        ) as mock_pipeline:
+        ) as mock_pipeline, patch(_MERGE_PATCH_TARGET):
             result = process_session(
                 manifest, resolver,
                 overwrite="force",
@@ -213,13 +225,16 @@ class TestProcessSessionMultiHalf:
         self, tmp_path: Path, minimal_defaults
     ):
         """Per-half outputs land in ``{date_str}{halves_concat_label}/``
-        subdir; merged-file path (parent level) is NOT written here."""
+        subdir; the returned dict keys per-half NPZ paths (the merged
+        parent-level NPZ written by ``merge_licks_and_rewards`` lives
+        at ``...{output_type}/{animal}/{date_str}.npz`` — NOT in the
+        per-half subdir)."""
         manifest = _make_pattern_a_manifest(tmp_path)
         resolver = _make_resolver(tmp_path)
 
         with patch(
             "stroke_orofacial.spout_behavior.session_processing._run_phase2_pipeline"
-        ) as _mock:
+        ) as _mock, patch(_MERGE_PATCH_TARGET):
             result = process_session(
                 manifest, resolver,
                 overwrite="force",
@@ -252,7 +267,7 @@ class TestProcessSessionMultiHalf:
 
         with patch(
             "stroke_orofacial.spout_behavior.session_processing._run_phase2_pipeline"
-        ) as mock_pipeline:
+        ) as mock_pipeline, patch(_MERGE_PATCH_TARGET):
             process_session(
                 manifest, resolver,
                 overwrite="force",
@@ -320,7 +335,7 @@ class TestProcessSessionMultiHalf:
 
         with patch(
             "stroke_orofacial.spout_behavior.session_processing._run_phase2_pipeline"
-        ) as mock_pipeline:
+        ) as mock_pipeline, patch(_MERGE_PATCH_TARGET):
             result = process_session(
                 manifest, resolver,
                 overwrite="force",
@@ -342,7 +357,7 @@ class TestProcessSessionMultiHalf:
 
         with patch(
             "stroke_orofacial.spout_behavior.session_processing._run_phase2_pipeline"
-        ):
+        ), patch(_MERGE_PATCH_TARGET):
             with pytest.raises(FileNotFoundError) as excinfo:
                 process_session(
                     manifest, resolver,
@@ -367,7 +382,7 @@ class TestProcessSessionMultiHalf:
 
         with patch(
             "stroke_orofacial.spout_behavior.session_processing._run_phase2_pipeline"
-        ):
+        ), patch(_MERGE_PATCH_TARGET):
             process_session(
                 manifest, resolver,
                 overwrite="force",
@@ -418,3 +433,166 @@ class TestSingleHalfPathUnchanged:
         # Output paths match the legacy single-half layout (no subdir)
         assert result["licks_and_rewards"].name == "20250307.npz"
         assert result["licks_and_rewards"].parent.name == "PS46"
+
+
+class TestMergeWiring:
+    """End-to-end wiring of ``merge_licks_and_rewards`` into the multi-half
+    branch of ``process_session``.
+
+    Unlike the dispatch tests above, these tests do NOT mock the merge —
+    they stub ``_run_phase2_pipeline`` to write minimal-but-valid per-half
+    licks NPZs (n_samples + WS-sample-indexed event arrays + side-
+    convention stamps) so the real merge function can consume them. This
+    is the integration boundary between the per-half loop (Phase 2) and
+    the licks merge (Task 4 ``merge_licks_and_rewards``) — verifying it
+    here closes the deferred-from-Task-4 loop noted in the kickoff doc.
+    """
+
+    @staticmethod
+    def _write_synthetic_per_half_npzs(
+        ws_file: Path,
+        params: dict,
+        ws_match: bool,
+        output_paths: dict[str, Path],
+        *,
+        half_a_marker: str,
+        half_b_marker: str,
+        n_samples_a: int,
+        n_samples_b: int,
+        half_a_licks: np.ndarray,
+        half_b_licks: np.ndarray,
+    ) -> None:
+        """Stand-in for ``_run_phase2_pipeline`` that writes per-half NPZs.
+
+        Identifies which half is being processed by inspecting the
+        ws_file name — the per-half manifest puts a stable marker in
+        each half's WS path (``stroke_0001.h5`` for A, ``stroke_0002.h5``
+        for B in :func:`_make_pattern_a_manifest`). The licks NPZ
+        carries the keys the real merge needs (n_samples + 6 event
+        arrays + side-convention stamps); the other 6 output types are
+        written as empty NPZs so on-disk file-existence holds for any
+        downstream check.
+        """
+        if half_a_marker in str(ws_file):
+            n_samples = n_samples_a
+            lick_l = half_a_licks
+        else:
+            assert half_b_marker in str(ws_file), (
+                f"unexpected ws_file: {ws_file}"
+            )
+            n_samples = n_samples_b
+            lick_l = half_b_licks
+
+        licks_payload = {
+            "n_samples": np.int64(n_samples),
+            "Fs": np.float64(20000.0),
+            "Lick_L": lick_l.astype(np.int64, copy=False),
+            "Lick_R": np.array([], dtype=np.int64),
+            "Reward_L": np.array([], dtype=np.int64),
+            "Reward_R": np.array([], dtype=np.int64),
+            "Tone_L": np.array([], dtype=np.int64),
+            "Tone_R": np.array([], dtype=np.int64),
+            "side_convention_version": np.int64(1),
+            "wavesurfer_sides_match_mouse_sides": True,
+        }
+
+        for output_type, path in output_paths.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if output_type == "licks_and_rewards":
+                np.savez_compressed(path, **licks_payload)
+            else:
+                # Empty NPZ — the merge only reads licks_and_rewards/;
+                # the other 6 outputs just need to exist on disk for
+                # consistency with the real pipeline behavior.
+                np.savez_compressed(path)
+
+    def test_merged_licks_npz_written_alongside_per_half(
+        self, tmp_path: Path, minimal_defaults
+    ):
+        """``process_session`` on a multi-half manifest emits per-half
+        licks NPZs AND a merged parent-level licks NPZ.
+
+        Verifies the full path of artefacts:
+          - 2 per-half NPZs at ``.../licks_and_rewards/PS48/20250314ab/{date}{half}.npz``
+          - 1 merged NPZ at ``.../licks_and_rewards/PS48/20250314.npz``
+
+        Verifies offset semantics in ws_sample mode: half-A indices
+        pass through unchanged, half-B indices land at ``half_b_value
+        + n_samples_A`` (so the merged time axis is a unified WS-sample
+        timeline with no overlap between halves).
+        """
+        n_samples_a = 100_000
+        n_samples_b = 120_000
+        half_a_licks = np.array([10, 50, 99_999], dtype=np.int64)
+        half_b_licks = np.array([5, 60_000, 119_999], dtype=np.int64)
+
+        manifest = _make_pattern_a_manifest(tmp_path)
+        resolver = _make_resolver(tmp_path)
+        out_root = tmp_path / "outputs" / "spout_behavior"
+
+        def fake_pipeline(ws_file, params, ws_match, output_paths):
+            self._write_synthetic_per_half_npzs(
+                ws_file, params, ws_match, output_paths,
+                half_a_marker="stroke_0001.h5",
+                half_b_marker="stroke_0002.h5",
+                n_samples_a=n_samples_a,
+                n_samples_b=n_samples_b,
+                half_a_licks=half_a_licks,
+                half_b_licks=half_b_licks,
+            )
+
+        with patch(
+            "stroke_orofacial.spout_behavior.session_processing._run_phase2_pipeline",
+            side_effect=fake_pipeline,
+        ):
+            result = process_session(
+                manifest, resolver,
+                overwrite="force",
+                defaults=minimal_defaults,
+                overrides_config={},
+            )
+
+        # Per-half licks NPZs exist on disk
+        per_half_a = (
+            out_root / "licks_and_rewards" / "PS48"
+            / "20250314ab" / "20250314a.npz"
+        )
+        per_half_b = (
+            out_root / "licks_and_rewards" / "PS48"
+            / "20250314ab" / "20250314b.npz"
+        )
+        assert per_half_a.exists()
+        assert per_half_b.exists()
+        # Returned dict still keys per-half paths (shape unchanged by
+        # the merge wiring — the merged path is derivable but not
+        # included in the dict to keep single-half / multi-half return
+        # shapes orthogonal).
+        assert result["licks_and_rewards__a"] == per_half_a
+        assert result["licks_and_rewards__b"] == per_half_b
+
+        # Merged NPZ at parent-level path (no halves_concat_label segment)
+        merged_path = (
+            out_root / "licks_and_rewards" / "PS48" / "20250314.npz"
+        )
+        assert merged_path.exists(), (
+            f"merged licks NPZ missing — merge_licks_and_rewards "
+            f"wiring did not fire: {merged_path}"
+        )
+
+        # Provenance round-trip: merged carries per-half counts + offset
+        merged = np.load(merged_path, allow_pickle=True)
+        assert int(merged["merged_n_samples_A"]) == n_samples_a
+        assert int(merged["merged_n_samples_B"]) == n_samples_b
+        assert int(merged["ws_sample_offset_for_B"]) == n_samples_a
+
+        # Offset semantics: half-A indices preserved, half-B indices
+        # shifted by n_samples_A so they sit in [n_samples_A, total).
+        merged_lick_l = np.asarray(merged["Lick_L"])
+        expected = np.concatenate(
+            [half_a_licks, half_b_licks + n_samples_a]
+        )
+        np.testing.assert_array_equal(merged_lick_l, expected)
+        # No overlap between half-A and half-B portions
+        assert int(merged_lick_l[:half_a_licks.size].max()) < int(
+            merged_lick_l[half_a_licks.size:].min()
+        )
