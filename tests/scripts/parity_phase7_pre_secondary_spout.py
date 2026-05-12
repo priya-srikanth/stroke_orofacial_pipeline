@@ -77,15 +77,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+import tempfile
+
 from stroke_orofacial.manifest import (
     OverlappingRegistryError,
     load_secondary_spout_sessions,
 )
+from stroke_orofacial.paths import PathResolver
+from stroke_orofacial.spout_behavior.session_processing import (
+    process_session_by_animal_date,
+)
 
-# tempfile, numpy, PathResolver, process_session_by_animal_date,
-# OUTPUT_TYPES are imported lazily by Layer 1/2/3 implementations
-# (Tasks 6b/c/d) to keep the Task 6a skeleton's import surface
-# minimal + ruff-clean.
+# numpy + OUTPUT_TYPES are imported lazily by Layer 2 (Task 6c).
 
 
 # ---- Constants ----
@@ -252,6 +255,127 @@ def _walk_and_hash(root: Path) -> dict[str, str]:
 # ---- Layer 1, 2, 3 placeholders (filled in by Tasks 6b/c/d) ----
 
 
+def _is_params_json(rel: str) -> bool:
+    """Return True iff ``rel`` is a per-session params provenance JSON.
+
+    Per Task 0.5 finding (empirically verified), ``params/*.json``
+    files carry a ``run_timestamp`` field that varies on every run.
+    Byte-identity comparison must EXCLUDE these files; their content
+    is validated structurally elsewhere (Task 3d test pins
+    session_id-suffix propagation).
+    """
+    return rel.startswith("params/") or "/params/" in rel
+
+
+def _is_bare_half_path(
+    rel: str, animal: str, date_str: str,
+) -> bool:
+    """Return True iff a relative path (under ``output_root``) belongs
+    to the bare half of ``(animal, date_str)``.
+
+    Bare-half outputs land at ``{output_type}/{animal}/{date_str}.{ext}``
+    or ``params/{animal}/{date_str}.json``. b-half outputs land at
+    ``{output_type}/{animal}/{date_str}b.{ext}``. The Pattern A
+    multi-half subdir convention (``{date_str}ab/``) is not
+    Pattern-B-relevant.
+
+    Heuristic: filename matches ``{date_str}.<ext>`` (no suffix
+    immediately following date_str). Rejects ``{date_str}b.<ext>``,
+    ``{date_str}ab/{date_str}a.<ext>``, etc.
+    """
+    name = rel.rsplit("/", 1)[-1]
+    # Filename starts with date_str. If the next char is a digit/letter
+    # (e.g., "b" for b-half, "a" for Pattern A halves), it's not the
+    # bare half. The bare-half filename is exactly "{date_str}.<ext>"
+    # — the character right after date_str must be a "." (extension
+    # separator).
+    if not name.startswith(date_str):
+        return False
+    after = name[len(date_str):]
+    return after.startswith(".")
+
+
+def _compare_bare_half_byte_identity(
+    animal: str,
+    date: datetime.date,
+    tmp_root: Path,
+    baseline_hashes: dict[str, str],
+    baseline_errors: dict[str, str],
+) -> tuple[list[str], dict[str, Any]]:
+    """Compare bare-half output hashes against the baseline.
+
+    Returns ``(failures, info)``:
+      - ``failures``: per-output mismatch messages (strings); empty
+        list means PASS for this session.
+      - ``info``: per-session metadata (hash counts, excluded
+        params/*.json count, special-case notes).
+
+    Excludes ``params/*.json`` per Task 0.5 finding. Walks ``tmp_root``
+    for files whose relative path matches the bare-half-path heuristic
+    (no suffix immediately after ``date_str`` in the filename).
+    Baseline lookup key format mirrors the Task 0.5 capture script's
+    output: ``f"{animal}/{date_str}/{relpath}"``.
+    """
+    date_str = date.strftime("%Y%m%d")
+    failures: list[str] = []
+    info: dict[str, Any] = {
+        "session_key": f"{animal}/{date_str}",
+        "n_files_checked": 0,
+        "n_files_excluded_params": 0,
+        "n_files_missing_in_baseline": 0,
+        "n_files_extra_in_baseline": 0,
+    }
+
+    # Walk + hash every bare-half file under tmp_root
+    hashes_now: dict[str, str] = {}
+    for p in sorted(tmp_root.rglob("*")):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(tmp_root).as_posix()
+        if not _is_bare_half_path(rel, animal, date_str):
+            continue  # b-half or Pattern A subdir — not Layer 1 scope
+        full_key = f"{animal}/{date_str}/{rel}"
+        if _is_params_json(rel):
+            info["n_files_excluded_params"] += 1
+            continue
+        digest = _sha256_file(p)
+        hashes_now[full_key] = digest
+
+    info["n_files_checked"] = len(hashes_now)
+
+    # Compare each computed hash against baseline
+    for full_key, current_digest in hashes_now.items():
+        if full_key not in baseline_hashes:
+            info["n_files_missing_in_baseline"] += 1
+            failures.append(
+                f"NEW file emitted post-PR (not in baseline): {full_key}"
+            )
+            continue
+        baseline_digest = baseline_hashes[full_key]
+        if current_digest != baseline_digest:
+            failures.append(
+                f"BYTE MISMATCH: {full_key}\n"
+                f"  baseline:  {baseline_digest}\n"
+                f"  post-PR:   {current_digest}"
+            )
+
+    # Also check baseline-only files (regression: baseline expected
+    # them but post-PR didn't emit them).
+    session_prefix = f"{animal}/{date_str}/"
+    baseline_keys_for_session = {
+        k for k in baseline_hashes if k.startswith(session_prefix)
+        and not _is_params_json(k[len(session_prefix):])
+    }
+    for k in baseline_keys_for_session:
+        if k not in hashes_now:
+            info["n_files_extra_in_baseline"] += 1
+            failures.append(
+                f"MISSING file post-PR (was in baseline): {k}"
+            )
+
+    return failures, info
+
+
 def _layer1_bare_half_byte_identity(
     log: _ForensicLog,
     cohort: list[tuple[str, datetime.date]],
@@ -260,17 +384,170 @@ def _layer1_bare_half_byte_identity(
 ) -> LayerResult:
     """Layer 1 — bare-half byte-identity vs Task 0.5 baseline.
 
-    Filled in by Task 6b. Placeholder returns SKIP_NO_LEGACY so the
-    Task 6a skeleton run produces a sensible verdict.
+    For each Pattern B session, run ``process_session_by_animal_date``
+    against the feature branch with ``output_root=tmp_path``, SHA256
+    every bare-half output, and compare against the baseline. Excludes
+    ``params/*.json`` per Task 0.5 finding (non-deterministic
+    ``run_timestamp``).
+
+    Edge case PS55/2025-04-24 (in baseline ``errors`` block): two
+    valid outcomes — bare-half still errors with matching message
+    (trivial parity), OR bare-half succeeds via the
+    ``bare_ws_subdir_override`` in the registry (expected divergence;
+    structurally validate). Either outcome = PASS for that session.
     """
     log("=" * 70)
     log("Layer 1 — bare-half byte-identity vs Task 0.5 baseline")
     log("=" * 70)
-    log("  (Task 6a skeleton — Layer 1 implementation lands in Task 6b)")
+
+    baseline_hashes: dict[str, str] = baseline.get("hashes", {})
+    baseline_errors: dict[str, str] = baseline.get("errors", {})
+    log(
+        f"  baseline: {len(baseline_hashes)} hashes, "
+        f"{len(baseline_errors)} errored sessions"
+    )
+    log(
+        "  excluding params/*.json from byte-identity per "
+        "Task 0.5 finding (run_timestamp non-deterministic)"
+    )
+
+    all_failures: list[str] = []
+    per_session_info: list[dict[str, Any]] = []
+    n_pass = n_fail = n_special = 0
+
+    for i, (animal, date) in enumerate(cohort, start=1):
+        date_str = date.strftime("%Y%m%d")
+        session_key = f"{animal}/{date_str}"
+        log(f"[{i}/{len(cohort)}] {session_key}: ", )
+
+        baseline_errored_this_session = session_key in baseline_errors
+
+        try:
+            with tempfile.TemporaryDirectory(
+                prefix="parity_layer1_",
+            ) as tmp:
+                tmp_root = Path(tmp)
+                resolver = PathResolver(output_root=tmp_root)
+                result_per_suffix = process_session_by_animal_date(
+                    animal, date, resolver,
+                    overwrite="force",
+                    overrides_config=overrides_config,
+                )
+
+                # Extract bare-half result (key=None). Missing => bare
+                # half failed; check whether the baseline ALSO marked
+                # this session as errored (PS55/2025-04-24 case).
+                bare_result = result_per_suffix.get(None)
+                if bare_result is None:
+                    if baseline_errored_this_session:
+                        log(
+                            f"  SPECIAL: bare-half failed post-PR "
+                            f"(matches baseline ERROR). Trivial "
+                            f"parity. baseline error msg: "
+                            f"{baseline_errors[session_key]}"
+                        )
+                        n_special += 1
+                    else:
+                        msg = (
+                            f"{session_key}: bare-half failed post-PR "
+                            f"but baseline expected success (no "
+                            f"baseline error entry). The Task-4 "
+                            f"partial-failure handler swallowed the "
+                            f"error inside process_session_by_animal_date."
+                        )
+                        log(f"  FAIL: {msg}")
+                        all_failures.append(msg)
+                        n_fail += 1
+                    continue
+
+                # Compare bytes
+                session_failures, session_info = _compare_bare_half_byte_identity(
+                    animal, date, tmp_root,
+                    baseline_hashes, baseline_errors,
+                )
+
+                if baseline_errored_this_session and not session_failures:
+                    # Expected-divergence path: baseline errored, but
+                    # post-PR succeeded AND structural checks pass.
+                    # PS55/2025-04-24 typical outcome if the registry
+                    # override took effect.
+                    log(
+                        f"  SPECIAL: bare-half SUCCEEDED post-PR but "
+                        f"baseline ERRORED. Expected divergence "
+                        f"(likely via bare_ws_subdir_override). "
+                        f"{session_info['n_files_checked']} bare-half "
+                        f"files emitted; "
+                        f"{session_info['n_files_excluded_params']} "
+                        f"params/*.json excluded from byte-identity."
+                    )
+                    n_special += 1
+                elif session_failures:
+                    log(
+                        f"  FAIL: {len(session_failures)} "
+                        f"mismatch(es). info={session_info}"
+                    )
+                    for sf in session_failures[:10]:
+                        log(f"    - {sf}")
+                    all_failures.extend(session_failures)
+                    n_fail += 1
+                else:
+                    log(
+                        f"  PASS: {session_info['n_files_checked']} "
+                        f"bytes-equal; "
+                        f"{session_info['n_files_excluded_params']} "
+                        f"params/*.json excluded"
+                    )
+                    n_pass += 1
+
+                per_session_info.append(session_info)
+        except Exception as e:
+            tb = traceback.format_exc()
+            log(f"  ERROR during Layer 1 for {session_key}: {e!r}")
+            return LayerResult(
+                layer=1, name="bare_half_byte_identity",
+                status="error",
+                summary=f"exception during {session_key}: {e!r}",
+                traceback_str=tb,
+            )
+
+    log("")
+    log(
+        f"Layer 1 summary: "
+        f"{n_pass} PASS, {n_special} SPECIAL (expected divergence / "
+        f"trivial-parity error), {n_fail} FAIL out of {len(cohort)} "
+        f"sessions"
+    )
+
+    if all_failures:
+        return LayerResult(
+            layer=1, name="bare_half_byte_identity",
+            status="fail",
+            summary=(
+                f"{n_fail} sessions FAILed byte-identity "
+                f"({len(all_failures)} total mismatches)"
+            ),
+            failures=all_failures,
+            info={
+                "n_pass": n_pass,
+                "n_fail": n_fail,
+                "n_special": n_special,
+                "per_session_info": per_session_info,
+            },
+        )
+
     return LayerResult(
         layer=1, name="bare_half_byte_identity",
-        status="skip_no_legacy",
-        summary="Task 6a skeleton placeholder; Task 6b implements",
+        status="pass",
+        summary=(
+            f"{n_pass} sessions byte-identical; {n_special} "
+            f"expected-divergence/trivial-parity"
+        ),
+        info={
+            "n_pass": n_pass,
+            "n_fail": n_fail,
+            "n_special": n_special,
+            "per_session_info": per_session_info,
+        },
     )
 
 
