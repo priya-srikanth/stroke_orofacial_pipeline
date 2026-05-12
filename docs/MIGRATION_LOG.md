@@ -5550,7 +5550,7 @@ future renderer runs write to the new
 ## Phase 7-pre-multi-half — PS48 2025-03-14 multi-half acquisition port (Architecture X + three-layer write-guard)
 
 **Date:** 2026-05-12
-**PR:** #<FILL after `gh pr create`>
+**PR:** #99
 **Tag on merge:** `v7-pre-multi-half`
 **Branch:** `phase/7-pre-multi-half`
 

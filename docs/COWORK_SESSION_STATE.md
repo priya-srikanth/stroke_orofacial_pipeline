@@ -1,9 +1,8 @@
 # Cowork Session State
 
 **Latest local refresh:** 2026-05-12 — **Phase 7-pre-multi-half
-CLOSED** on `phase/7-pre-multi-half`. PR #<FILL after `gh pr create`>
-merged <FILL after merge> as merge-commit `<FILL>`, tagged
-`v7-pre-multi-half`. Architecture X (three coordinated merge functions
+CLOSED** on `phase/7-pre-multi-half`. PR #99 merged <FILL after merge>
+as merge-commit `<FILL>`, tagged `v7-pre-multi-half`. Architecture X (three coordinated merge functions
 for licks NPZ / alignment template / centered DLC parquet — faithful
 ports of canonical tongue notebook cells 13/16/17) + three-layer
 write-guard system (paths.py resolver split + `_writeguard` module +
@@ -457,8 +456,8 @@ message; trivial scope, fresh branch).
 Architecture X + 3-layer write-guard + Pattern A/B compat +
 schema divergence + side-aware parity; Task 9 all-3-layers PASS):**
 
-PR #<FILL after `gh pr create`> merged <FILL after merge> as
-merge-commit `<FILL>`, tagged `v7-pre-multi-half`. Net-new module
+PR #99 merged <FILL after merge> as merge-commit `<FILL>`, tagged
+`v7-pre-multi-half`. Net-new module
 `src/stroke_orofacial/spout_behavior/multi_half_merge.py` (~880L)
 with the three Architecture X merge functions (`merge_licks_and_rewards`,
 `merge_alignment_templates`, `merge_centered_parquet`) as faithful
@@ -1924,8 +1923,7 @@ Whatever the server-side feature flag or staged-rollout gate was doing on 2026-0
 ## Best warm-start prompt (paste into a new Cowork chat)
 
 End of 2026-05-12 session: **Phase 7-pre-multi-half closed** as PR
-#<FILL after `gh pr create`>, merge-commit `<FILL after merge>`,
-tagged `v7-pre-multi-half`. Architecture X for multi-half merge (three
+#99, merge-commit `<FILL after merge>`, tagged `v7-pre-multi-half`. Architecture X for multi-half merge (three
 coordinated functions for licks NPZ / alignment template / centered
 DLC parquet — faithful ports of canonical tongue notebook cells
 13/16/17, N-half-generalized) shipped together with a three-layer
