@@ -238,8 +238,11 @@ class TestIntegrationProcessSession:
         date = datetime.date(2025, 3, 7)
         result = process_session_by_animal_date("PS46", date, resolver, overwrite="force")
 
-        # Should have returned paths for all 7 output types
-        assert len(result) == 7
+        # Phase 7-pre-secondary-spout: return shape is now
+        # {session_suffix: {output_type: Path}}. PS46/2025-03-07 is a
+        # vanilla single-half session → single-entry {None: {...7 paths...}}.
+        assert set(result.keys()) == {None}
+        assert len(result[None]) == 7
 
         # Per-session params.json should exist under the tmp_path output root
         params_path = tmp_path / "spout_behavior" / "params" / "PS46" / "20250307.json"
@@ -269,9 +272,11 @@ class TestIntegrationProcessSession:
         # First run ensures outputs exist (force)
         process_session_by_animal_date("PS46", date, resolver, overwrite="force")
 
-        # Second run with skip — should return empty dict but write params.json
+        # Second run with skip — should return {None: {}} (outer dict
+        # keyed by session_suffix; inner dict empty because all outputs
+        # already existed) and still write params.json.
         result = process_session_by_animal_date("PS46", date, resolver, overwrite="skip")
-        assert result == {}
+        assert result == {None: {}}
 
         params_path = tmp_path / "spout_behavior" / "params" / "PS46" / "20250307.json"
         assert params_path.exists()

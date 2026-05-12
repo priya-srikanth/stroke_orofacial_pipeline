@@ -24,7 +24,11 @@ from stroke_orofacial.config_loader import (
     load_defaults,
     load_session_overrides,
 )
-from stroke_orofacial.manifest import SessionManifest, build_manifest
+from stroke_orofacial.manifest import (
+    SessionManifest,
+    build_manifest,
+    iter_session_suffixes,
+)
 from stroke_orofacial.paths import PathResolver
 from stroke_orofacial.spout_behavior.bouts import (
     find_grooming_bouts,
@@ -483,6 +487,12 @@ def process_session(
     animal = manifest.animal
     date = manifest.date
     date_str = date.strftime("%Y%m%d")
+    # Phase 7-pre-secondary-spout: single-half output paths + params.json
+    # filename incorporate session_suffix so Pattern B b-half outputs
+    # don't overwrite the bare half's. date_str (pure YYYYMMDD) stays
+    # the lookup key for registries (multi_half_sessions:,
+    # session_overrides:) which are date-scoped, not suffix-scoped.
+    date_str_suffixed = date_str + (manifest.session_suffix or "")
     output_root = resolver.pipeline_outputs("spout_behavior")
     processing_log: list[dict] = []
 
@@ -495,13 +505,17 @@ def process_session(
     # Check for merge requirement (deferred — raises if present). Phase
     # 7-pre-multi-half retired the PS48 20250314 placeholder by moving
     # it into multi_half_sessions:; this check now only fires for
-    # genuinely-deferred merges that aren't multi-half.
+    # genuinely-deferred merges that aren't multi-half. Uses calendar
+    # date_str (registry keys are per-date, not per-half).
     check_merge_required(animal, date_str, overrides_config)
 
-    # Merge per-session overrides on top of defaults
+    # Merge per-session overrides on top of defaults. Per-date lookup
+    # — Pattern B halves share the same overrides entry by design.
     params = get_session_params(defaults, animal, date_str, overrides_config)
 
     # Multi-half branch: per-half loop with per-half output paths.
+    # Pattern A only — Pattern B never sets manifest.halves (its halves
+    # are independent single-half manifests, one per session_suffix).
     if manifest.halves is not None:
         return _process_session_multi_half(
             manifest=manifest,
@@ -514,23 +528,32 @@ def process_session(
             date_str=date_str,
         )
 
-    # Single-half branch (existing behavior unchanged).
-    paths = {t: _output_path(output_root, t, animal, date_str) for t in OUTPUT_TYPES}
+    # Single-half branch (Pattern B b-half + bare-with-override OR
+    # vanilla single-half). Output paths use date_str_suffixed so
+    # Pattern B halves emit to distinct files.
+    paths = {
+        t: _output_path(output_root, t, animal, date_str_suffixed)
+        for t in OUTPUT_TYPES
+    }
 
     if not _check_overwrite(paths, overwrite, processing_log):
         _save_session_params(
-            output_root, animal, date, date_str, params, processing_log,
+            output_root, animal, date, date_str_suffixed,
+            params, processing_log,
             skipped=True, session_id=manifest.session_id,
         )
-        logger.info("Session %s/%s skipped (all outputs exist).", animal, date_str)
+        logger.info(
+            "Session %s/%s skipped (all outputs exist).",
+            animal, date_str_suffixed,
+        )
         return {}
 
-    logger.info("Processing %s/%s ...", animal, date_str)
+    logger.info("Processing %s/%s ...", animal, date_str_suffixed)
 
     ws_file = manifest.wavesurfer_file
     if ws_file is None:
         raise FileNotFoundError(
-            f"manifest.wavesurfer_file is None for {animal}/{date_str}. "
+            f"manifest.wavesurfer_file is None for {animal}/{date_str_suffixed}. "
             f"build_manifest() did not locate a wavesurfer .h5 — is the "
             f"wavesurfer_raw mount available?"
         )
@@ -542,11 +565,15 @@ def process_session(
     _run_phase2_pipeline(ws_file, params, ws_match, paths)
 
     _save_session_params(
-        output_root, animal, date, date_str, params, processing_log,
+        output_root, animal, date, date_str_suffixed,
+        params, processing_log,
         skipped=False, session_id=manifest.session_id,
     )
 
-    logger.info("Session %s/%s complete. Outputs: %s", animal, date_str, output_root)
+    logger.info(
+        "Session %s/%s complete. Outputs: %s",
+        animal, date_str_suffixed, output_root,
+    )
     return paths
 
 
@@ -676,40 +703,134 @@ def process_session_by_animal_date(
     overwrite: Literal["skip", "prompt", "force"] = "skip",
     defaults: dict[str, Any] | None = None,
     overrides_config: dict[str, Any] | None = None,
-) -> dict[str, Path]:
-    """Convenience wrapper: builds a SessionManifest then calls process_session().
+) -> dict[str | None, dict[str, Path]]:
+    """Convenience wrapper: builds one or more ``SessionManifest`` instances
+    then calls :func:`process_session` for each.
 
-    Equivalent to::
+    Phase 7-pre-secondary-spout: the wrapper now iterates
+    :func:`stroke_orofacial.manifest.iter_session_suffixes` so Pattern B
+    (closer-spout 2nd-acquisition) sessions process BOTH halves
+    independently — one bare half (``session_suffix=None``) and one
+    b half (``session_suffix="b"``). Vanilla single-half + Pattern A
+    multi-half-merged sessions iterate once with
+    ``session_suffix=None`` (so their return shape is a single-entry
+    ``{None: {...}}`` dict — Pattern A's merge still happens INSIDE
+    :func:`process_session` via the multi-half branch).
 
-        animal_info = get_animal(animal)
-        manifest = build_manifest(
-            animal, date, resolver, animal_info,
-            analysis_context="spout_behavior",
-        )
-        return process_session(manifest, resolver, ...)
-
-    Phase 2 (spout behavior) is DLC-free by design: ``build_manifest()``
-    treats DLC files as optional and yields empty lists when missing, so
-    this wrapper works for sessions where DLC inference hasn't run yet
-    or where video recording failed but wavesurfer is still clean.
+    Phase 2 (spout behavior) is DLC-free by design:
+    :func:`build_manifest` treats DLC files as optional and yields
+    empty lists when missing, so this wrapper works for sessions
+    where DLC inference hasn't run yet or where video recording
+    failed but wavesurfer is still clean.
 
     The ``analysis_context="spout_behavior"`` argument scopes
     exclusion checks to spout-behavior-relevant entries — sessions
     marked ``applies_to: [dlc]`` (DLC-only exclusions) flow through
     this pipeline unexcluded.
+
+    Parameters
+    ----------
+    animal : str
+        Animal ID.
+    date : datetime.date
+        Session date.
+    resolver : PathResolver
+        Configured path resolver.
+    overwrite : str
+        Overwrite mode passed to :func:`process_session`.
+    defaults : dict, optional
+        Pre-loaded ``defaults.yaml`` dict. When None, lazily loaded
+        inside :func:`process_session`.
+    overrides_config : dict, optional
+        Pre-loaded ``configs/session_overrides.yaml`` dict. When None,
+        lazily loaded here (once per call) and threaded through to
+        :func:`build_manifest` and :func:`process_session`. Tests may
+        pass an in-memory dict to avoid touching the on-disk YAML.
+
+    Returns
+    -------
+    dict[str | None, dict[str, Path]]
+        Mapping ``session_suffix -> per-suffix-result``, where each
+        per-suffix-result is a ``dict[str, Path]`` keyed by output type
+        (the exact shape :func:`process_session` returns). Keys:
+
+        - ``None`` (always present for non-Pattern-B and Pattern A
+          sessions; present for Pattern B if the bare half succeeded).
+        - ``"b"`` (present for Pattern B sessions if the b half
+          succeeded).
+
+        Partial-failure tolerance: if one half of a Pattern B session
+        raises :class:`FileNotFoundError` (e.g. missing WS file) but
+        the other half succeeds, the returned dict includes only the
+        successful half's entry; the failure is logged as a warning.
+        If BOTH halves fail, the FIRST encountered :class:`FileNotFoundError`
+        is re-raised so single-half callers' existing semantics are
+        preserved.
+
+    Raises
+    ------
+    FileNotFoundError
+        When EVERY suffix raises during ``process_session`` due to
+        missing data. Single-half non-Pattern-B sessions surface this
+        as before — there's only one suffix in the iteration, so a
+        single raise becomes the re-raise.
     """
     animal_info = get_animal(animal)
-    manifest = build_manifest(
-        animal, date, resolver, animal_info,
-        analysis_context="spout_behavior",
-    )
-    return process_session(
-        manifest,
-        resolver,
-        overwrite=overwrite,
-        defaults=defaults,
-        overrides_config=overrides_config,
-    )
+
+    # Lazy-load overrides_config once (mirrors build_manifest's pattern at
+    # manifest.py:797-799). The same dict is threaded through every
+    # build_manifest + process_session call below so the per-suffix
+    # iteration reads a consistent snapshot.
+    if overrides_config is None:
+        overrides_config = load_session_overrides()
+
+    # Per-suffix iteration: [None] for non-Pattern-B and Pattern A
+    # (one logical session); [None, "b"] for Pattern B (two logical
+    # sessions).
+    suffixes = iter_session_suffixes(animal, date, overrides_config)
+    result_per_suffix: dict[str | None, dict[str, Path]] = {}
+    per_suffix_errors: dict[str | None, FileNotFoundError] = {}
+
+    for suffix in suffixes:
+        try:
+            manifest = build_manifest(
+                animal, date, resolver, animal_info,
+                analysis_context="spout_behavior",
+                overrides_config=overrides_config,
+                session_suffix=suffix,
+            )
+            result_per_suffix[suffix] = process_session(
+                manifest,
+                resolver,
+                overwrite=overwrite,
+                defaults=defaults,
+                overrides_config=overrides_config,
+            )
+        except FileNotFoundError as e:
+            per_suffix_errors[suffix] = e
+            logger.warning(
+                "Phase 7-pre-secondary-spout: skipping %s/%s "
+                "suffix=%r due to FileNotFoundError: %s",
+                animal, date.isoformat(), suffix, e,
+            )
+            # Continue to the next suffix — partial-failure tolerance
+            # for Pattern B sessions where one half's data is on disk
+            # and the other isn't (e.g. mid-cohort acquisition).
+
+    # Partial-failure policy: if anything succeeded, return the partial
+    # result. If everything failed, re-raise the first error so
+    # single-half callers see the existing FileNotFoundError-on-missing-
+    # data semantics unchanged.
+    if not result_per_suffix:
+        if per_suffix_errors:
+            first_suffix = next(iter(per_suffix_errors))
+            raise per_suffix_errors[first_suffix]
+        # No suffixes iterated at all — impossible because
+        # iter_session_suffixes always returns at least [None]. Defensive
+        # case: return empty mapping (no-op rather than spurious raise).
+        return {}
+
+    return result_per_suffix
 
 
 def process_animal(
@@ -718,12 +839,22 @@ def process_animal(
     resolver: PathResolver,
     *,
     overwrite: Literal["skip", "prompt", "force"] = "skip",
-) -> list[dict[str, Path]]:
+) -> list[dict[str | None, dict[str, Path]]]:
     """Run the spout-behavior pipeline for all sessions of one animal.
 
-    Thin loop over ``process_session_by_animal_date()``. Loads
+    Thin loop over :func:`process_session_by_animal_date`. Loads
     ``defaults.yaml`` and ``session_overrides.yaml`` once for the whole
     animal.
+
+    Phase 7-pre-secondary-spout: return shape is now
+    ``list[dict[str | None, dict[str, Path]]]`` to mirror
+    :func:`process_session_by_animal_date`'s per-suffix return.
+    Non-Pattern-B + Pattern A multi-half-merged dates yield one inner
+    entry keyed ``None``; Pattern B dates yield up to two inner
+    entries (``None`` + ``"b"``). Skipped or fully-failed dates
+    contribute an empty dict ``{}`` (no inner suffix keys) — caller
+    can distinguish "fully processed" from "skipped" by checking
+    whether the per-date dict is empty.
 
     Parameters
     ----------
@@ -734,18 +865,22 @@ def process_animal(
     resolver : PathResolver
         Configured path resolver.
     overwrite : str
-        Overwrite mode passed to ``process_session()``.
+        Overwrite mode passed to :func:`process_session`.
 
     Returns
     -------
-    list[dict[str, Path]]
-        One dict per date (empty dict for skipped sessions).
+    list[dict[str | None, dict[str, Path]]]
+        One outer entry per input date. Each outer entry maps
+        ``session_suffix`` (``None`` or ``"b"``) to the
+        :func:`process_session` per-output-type result dict. Empty
+        outer entry ``{}`` for dates that failed entirely
+        (FileNotFoundError) or are exclusion-skipped.
     """
     # Load configs once for the whole animal
     defaults = load_defaults()
     overrides_config = load_session_overrides()
 
-    results = []
+    results: list[dict[str | None, dict[str, Path]]] = []
     for date in dates:
         try:
             result = process_session_by_animal_date(
@@ -759,6 +894,11 @@ def process_animal(
             logger.warning("Skipping %s/%s: %s", animal, date, e)
             results.append({})
         except FileNotFoundError as e:
+            # Per-date catch — fires when EVERY suffix for this date
+            # raised inside process_session_by_animal_date and that
+            # function re-raised the first error. Partial-success
+            # cases (one suffix worked) skip this branch because the
+            # function returns a (partial) dict instead of raising.
             logger.warning("Skipping %s/%s: %s", animal, date, e)
             results.append({})
     return results
