@@ -15,14 +15,20 @@ Layers
     by:
       a) running ``process_session`` on a multi-half manifest →
          emits 14 per-half NPZs (7 output types × 2 halves) under
-         ``...spout_behavior/<output_type>/PS48/20250314ab/``.
+         ``...spout_behavior/<output_type>/PS48/20250314ab/`` AND
+         (since PR #100) the production-merged licks NPZ at the
+         canonical parent-level path
+         ``...spout_behavior/licks_and_rewards/PS48/20250314.npz``
+         — the merge is wired into ``_process_session_multi_half``
+         at ``session_processing.py:640``.
       b) calling ``merge_licks_and_rewards([per_half_a, per_half_b],
-         ..., index_space="ws_sample")`` directly to produce the
-         merged NPZ.
-
-    The harness writes the merged result to a ``_parity/`` subdir
-    (NOT the canonical parent-level path) so repeated runs don't fight
-    any parallel pipeline writes.
+         ..., index_space="ws_sample")`` a second time, redirecting
+         the output to a ``_parity/`` subdir. This is defensive
+         parity isolation, not a sign that production wiring is
+         missing: the comparator reads the ``_parity/``-subdir file
+         so a concurrent run of the production pipeline can't
+         perturb the verdict by rewriting the canonical merged
+         path mid-comparison.
 
     **Comparison is structural + offset-correctness, NOT byte-identity.**
     Legacy cell-17 stored half-B indices unshifted (an emergent
@@ -54,11 +60,6 @@ Layers
 
     Compare to legacy at
     ``\\research...\Priya\facerhythm_stroke_biomarker_exp\analysis\session_processing3\licks_and_rewards\PS48\20250314.npz``.
-
-    Note: ``merge_licks_and_rewards`` is NOT yet wired into
-    ``process_session_multi_half`` (deferred from Task 4 per its
-    commit message). The harness invokes the merge function directly,
-    matching what the future production wiring will do.
 
   Layer 2 (Phase 3 — alignment template).
     Generate new pipeline's merged alignment template at

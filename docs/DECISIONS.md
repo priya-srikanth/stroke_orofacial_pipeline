@@ -24,7 +24,7 @@ Entries are reverse-chronological (newest at top). Format:
 
 The three superseded entries below have inline pointers to this consolidated record. They remain in the history (per the never-rewrite-history rule) but are flagged so future readers don't re-derive their content.
 
-**Phase metadata.** Branch `phase/7-pre-multi-half`, opened 2026-05-05 off `main` at `5f45620` (PR #98 kickoff-doc merge). PR #99 merged <FILL after merge> as merge-commit `<FILL>`, tagged `v7-pre-multi-half`. Kickoff `docs/prompts/phase-7-pre-multi-half-kickoff.md`.
+**Phase metadata.** Branch `phase/7-pre-multi-half`, opened 2026-05-05 off `main` at `5f45620` (PR #98 kickoff-doc merge). PR #99 merged 2026-05-12 as merge-commit `d14d831`, tagged `v7-pre-multi-half`. Kickoff `docs/prompts/phase-7-pre-multi-half-kickoff.md`.
 
 **Context.** Phase 7-pre-multi-half ports the PS48 2025-03-14 multi-half acquisition (one logical session split across two acquisition halves because the recording was paused and resumed) into the consolidated pipeline. The dual scope was (a) build the merge machinery (Architecture X) for the three coordinated artifact layers — licks NPZ, alignment template, centered DLC parquet — and (b) ship a write-guard system after a 2026-05-05 test-fixture incident overwrote three legacy MICROSCOPE alignment templates with synthetic toy data. Both landed; Task 9 live parity gate cleared on 2026-05-12.
 
