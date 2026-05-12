@@ -197,6 +197,16 @@ class SessionManifest:
         to the parent-level merged path (populated by Phase 3 once
         the merge is run); per-half templates live in
         ``halves[i].alignment_template``.
+    session_suffix : str or None
+        Optional letter suffix for Pattern B secondary-spout sessions
+        (Phase 7-pre-secondary-spout). ``None`` for standard
+        single-half + Pattern A multi-half-merged sessions; ``"b"``
+        for the closer-spout second acquisition of a Pattern B
+        ``(animal, date)``. When non-None, the suffix appears at the
+        end of :attr:`session_id` and (per Task 3) at the end of
+        per-session output subdir names (e.g. ``20250430b/`` instead
+        of ``20250430/``). See DECISIONS 2026-05-12 Decision 5(b) for
+        the session-id schema contract.
     """
 
     session_id: str
@@ -221,6 +231,12 @@ class SessionManifest:
     # behavior; populated only when session_overrides.yaml has a
     # multi_half_sessions:{animal}:{date} entry.
     halves: list[HalfSpec] | None = None
+    # Phase 7-pre-secondary-spout: optional letter suffix for Pattern B
+    # secondary-spout sessions. None for standard single-half and
+    # Pattern A multi-half-merged sessions; "b" for the closer-spout
+    # second acquisition of a Pattern B (animal, date). The suffix
+    # appears at the end of session_id and per-session output subdirs.
+    session_suffix: str | None = None
 
 
 def _discover_dlc_files(
@@ -621,6 +637,51 @@ def get_secondary_spout_entry(
     return registry.get(animal, {}).get(iso)
 
 
+def iter_session_suffixes(
+    animal: str,
+    date: datetime.date,
+    overrides_config: dict[str, Any],
+) -> list[str | None]:
+    """Return the session_suffix values a driver should iterate for an
+    ``(animal, date)`` pair.
+
+    For Pattern B sessions (declared in ``secondary_spout_sessions:``)
+    the driver should process the bare half AND the b half — returns
+    ``[None, "b"]``. For all other sessions (vanilla single-half;
+    Pattern A multi-half-merged) the driver processes one logical
+    session — returns ``[None]``.
+
+    Used by the Phase 2 (spout-behavior) and Phase 3 (alignment) drivers
+    in Tasks 4-5 to fan out one ``build_manifest()`` call per suffix.
+    Pure function; reads the registry via
+    :func:`get_secondary_spout_entry` and synthesizes the suffix list.
+
+    Parameters
+    ----------
+    animal : str
+        Animal ID (e.g. ``"PS51"``).
+    date : datetime.date
+        Session date.
+    overrides_config : dict
+        Parsed ``configs/session_overrides.yaml`` contents.
+
+    Returns
+    -------
+    list[str | None]
+        ``[None, "b"]`` for Pattern B sessions; ``[None]`` otherwise.
+        Order matches acquisition order (bare half first).
+
+    Raises
+    ------
+    OverlappingRegistryError, ValueError
+        Propagated from :func:`get_secondary_spout_entry`.
+    """
+    entry = get_secondary_spout_entry(animal, date, overrides_config)
+    if entry is None:
+        return [None]
+    return [None, "b"]
+
+
 def build_manifest(
     animal: str,
     date: datetime.date,
@@ -720,8 +781,14 @@ def build_manifest(
     # Check exclusions
     excluded, exclusion_reason = animal_info.is_excluded(date, analysis_context)
 
-    session_id = f"{animal}_{date.strftime('%Y%m%d')}"
+    # Phase 7-pre-secondary-spout: session_suffix is None in Task 3a (this
+    # commit lands the field-plumbing only); Task 3b wires session_suffix
+    # as a kwarg on build_manifest() so Pattern B b-half manifests get
+    # session_suffix="b". The session_id construction below already
+    # handles the future non-None case so Task 3b is a pure kwarg-add.
+    session_suffix: str | None = None
     date_str = date.strftime("%Y%m%d")
+    session_id = f"{animal}_{date_str}{session_suffix or ''}"
 
     # Phase 7-pre-multi-half: lookup multi_half_sessions registry to decide
     # between single-half and per-half discovery. Lazy-load the overrides
@@ -799,4 +866,5 @@ def build_manifest(
             animal_info.wavesurfer_sides_match_mouse_sides
         ),
         halves=halves,
+        session_suffix=session_suffix,
     )

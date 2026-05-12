@@ -25,6 +25,7 @@ from stroke_orofacial.config_loader import load_session_overrides
 from stroke_orofacial.manifest import (
     OverlappingRegistryError,
     get_secondary_spout_entry,
+    iter_session_suffixes,
     load_secondary_spout_sessions,
 )
 
@@ -316,3 +317,71 @@ class TestUnknownOverrideKey:
                 },
             },
         }
+
+
+# ---------- Phase 7-pre-secondary-spout Task 3a: iter_session_suffixes ----------
+
+
+class TestIterSessionSuffixes:
+    """``iter_session_suffixes`` returns the suffix-fan-out list a
+    Phase 2/3 driver should iterate per (animal, date). Pattern B
+    sessions yield two manifests (bare + b); everything else yields
+    one (bare only). Used by Tasks 4-5 drivers."""
+
+    def test_returns_bare_only_for_non_pattern_b(self, overrides_config):
+        """Vanilla single-half session — driver does ONE
+        build_manifest call with session_suffix=None."""
+        out = iter_session_suffixes(
+            "PS46", datetime.date(2025, 3, 7), overrides_config,
+        )
+        assert out == [None]
+
+    def test_returns_bare_only_for_pattern_a_multi_half(self, overrides_config):
+        """Pattern A multi-half-merged session (PS48/2025-03-14) —
+        driver does ONE build_manifest call; halves merge into the
+        single returned manifest. session_suffix stays None."""
+        out = iter_session_suffixes(
+            "PS48", datetime.date(2025, 3, 14), overrides_config,
+        )
+        assert out == [None]
+
+    def test_returns_bare_plus_b_for_pattern_b(self, overrides_config):
+        """Pattern B session — driver does TWO build_manifest calls:
+        one for the bare half (session_suffix=None), one for the b
+        half (session_suffix='b'). Order: bare first."""
+        out = iter_session_suffixes(
+            "PS51", datetime.date(2025, 4, 30), overrides_config,
+        )
+        assert out == [None, "b"]
+
+    def test_handles_PS55_20250424_with_override(self, overrides_config):
+        """PS55/2025-04-24 is Pattern B AND carries
+        bare_ws_subdir_override. iter_session_suffixes returns
+        [None, 'b'] regardless of override contents — the override
+        affects resolver dir-name resolution (Task 3c), not the
+        suffix-fan-out list."""
+        out = iter_session_suffixes(
+            "PS55", datetime.date(2025, 4, 24), overrides_config,
+        )
+        assert out == [None, "b"]
+
+    def test_synthetic_pattern_b_returns_bare_plus_b(self):
+        """Synthetic config: any (animal, date) in
+        secondary_spout_sessions: yields [None, 'b']."""
+        config = {
+            "secondary_spout_sessions": {
+                "PS99": {"2025-01-01": {}},
+            },
+        }
+        out = iter_session_suffixes(
+            "PS99", datetime.date(2025, 1, 1), config,
+        )
+        assert out == [None, "b"]
+
+    def test_synthetic_empty_config_returns_bare_only(self):
+        """Empty config (no registry) → every session is non-Pattern-B
+        → [None]."""
+        out = iter_session_suffixes(
+            "PS99", datetime.date(2025, 1, 1), {},
+        )
+        assert out == [None]

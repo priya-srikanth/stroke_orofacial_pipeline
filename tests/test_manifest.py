@@ -10,6 +10,7 @@ import pytest
 
 from stroke_orofacial.animals import AnimalInfo, Exclusion
 from stroke_orofacial.manifest import (
+    SessionManifest,
     build_manifest,
     _discover_dlc_files,
 )
@@ -236,3 +237,57 @@ class TestIntegrationManifest:
         # Alignment template should exist for this date
         assert manifest.alignment_template is not None
         assert manifest.alignment_template.exists()
+
+
+# ---------- Phase 7-pre-secondary-spout Task 3a: session_suffix field ----------
+
+
+class TestSessionSuffixField:
+    """Field-level tests for SessionManifest.session_suffix (Task 3a).
+
+    The dataclass holds session_suffix as a passed field, not a
+    computed property — the "session_id ends in suffix" contract is
+    enforced at session_id-construction time (build_manifest in
+    Task 3a; b-half-aware callers in Tasks 3b+). These tests pin the
+    field's default behavior + that the dataclass can carry a
+    suffix-aware session_id alongside its session_suffix field.
+    """
+
+    def _make_manifest(self, **overrides) -> SessionManifest:
+        """Build a minimal SessionManifest with sane defaults."""
+        defaults = dict(
+            session_id="PS46_20250307",
+            animal="PS46",
+            date=datetime.date(2025, 3, 7),
+            day_relative_to_stroke=-6,
+            phase="baseline",
+        )
+        defaults.update(overrides)
+        return SessionManifest(**defaults)
+
+    def test_session_suffix_default_is_none(self):
+        m = self._make_manifest()
+        assert m.session_suffix is None
+
+    def test_session_id_uses_session_suffix_when_set(self):
+        """A synthetic Pattern B b-half manifest can carry both fields
+        consistently. The dataclass doesn't enforce the relationship;
+        build_manifest is responsible for emitting consistent values."""
+        m = self._make_manifest(
+            session_id="PS51_20250430b",
+            animal="PS51",
+            date=datetime.date(2025, 4, 30),
+            session_suffix="b",
+        )
+        assert m.session_suffix == "b"
+        assert m.session_id.endswith("b")
+        assert m.session_id == "PS51_20250430b"
+
+    def test_session_id_unchanged_when_session_suffix_is_none(self):
+        """Regression: standard single-half + Pattern A multi-half-merged
+        manifests carry session_suffix=None and session_id WITHOUT a
+        suffix. This is the pre-PR shape and must remain the default."""
+        m = self._make_manifest()
+        assert m.session_suffix is None
+        assert m.session_id == "PS46_20250307"
+        assert not m.session_id.endswith("b")
