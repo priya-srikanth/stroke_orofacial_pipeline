@@ -85,18 +85,18 @@ _X_B = 1
 # Display labels (Addendum #2 Tweak 1, 2026-05-13). Code identifiers
 # ("bare" / "b") stay everywhere; only the rendered tick labels +
 # axis title change. Row 3 raster's y-axis half labels also use these.
-BARE_VS_B_DISPLAY_LABELS: dict[str, str] = {
+SPOUT_DISTANCE_DISPLAY_LABELS: dict[str, str] = {
     "bare": "Standard",
     "b": "Close",
 }
-BARE_VS_B_XAXIS_TITLE = "Spout Distance"
+SPOUT_DISTANCE_XAXIS_TITLE = "Spout Distance"
 
 # Per-condition palette (Addendum #2 Tweak 2). Dots AND mean line
 # share the same color per condition (replacing CG-B3 Round 1's
 # SIDE_COLORS-coded dots + uniformly red mean line). Reuses the
 # black + tab:orange pair the deleted CG-B2 endpoint 5 used, since
 # black/orange contrast well in both SVG and PNG.
-BARE_VS_B_CONDITION_COLORS: dict[str, str] = {
+SPOUT_DISTANCE_CONDITION_COLORS: dict[str, str] = {
     "bare": "black",
     "b": "tab:orange",
 }
@@ -292,7 +292,7 @@ def list_cohort_b_animals(
     """Return sorted Cohort B animal IDs from the registry.
 
     Convenience helper for the orchestrator notebook to default
-    ``ANIMALS_BARE_VS_B`` to all registered animals.
+    ``ANIMALS_SPOUT_CLOSE_VS_STD`` to all registered animals.
     """
     if overrides_config is None:
         overrides_config = load_session_overrides()
@@ -304,7 +304,7 @@ def list_cohort_b_animals(
 # Commit-group B3: cohort-only animal summary (3 endpoints × L/R grid)
 # =====================================================================
 #
-# Output: bare_vs_b/cohort/<animal>_summary.{svg,png}
+# Output: spout_close_vs_std/cohort/<animal>_summary.{svg,png}
 # Layout: 3 rows × 2 cols.
 #   Row 1: accuracy_firstCorrectLickAll per side (L, R)
 #   Row 2: numLicks_bySession (correct + incorrect) per side
@@ -391,8 +391,8 @@ def _plot_row_per_session_dots_and_means(
     Plots one dot per session per condition at x ∈ {0 (bare), 1 (b)},
     same-date gray connectors, and per-condition horizontal mean bars.
     Dots + mean bars share a per-condition color (Addendum #2 Tweak 2):
-    bare uses :data:`BARE_VS_B_CONDITION_COLORS["bare"]`, b uses
-    :data:`BARE_VS_B_CONDITION_COLORS["b"]`. Caller sets y-axis
+    bare uses :data:`SPOUT_DISTANCE_CONDITION_COLORS["bare"]`, b uses
+    :data:`SPOUT_DISTANCE_CONDITION_COLORS["b"]`. Caller sets y-axis
     limits, labels, etc.
     """
     n_sessions = len(bare_vals)
@@ -401,8 +401,8 @@ def _plot_row_per_session_dots_and_means(
             f"per-session value mismatch: bare={n_sessions}, "
             f"b={len(b_vals)}"
         )
-    bare_color = BARE_VS_B_CONDITION_COLORS["bare"]
-    b_color = BARE_VS_B_CONDITION_COLORS["b"]
+    bare_color = SPOUT_DISTANCE_CONDITION_COLORS["bare"]
+    b_color = SPOUT_DISTANCE_CONDITION_COLORS["b"]
     # Same-date connectors (one line per session; gray spans both
     # conditions).
     for v_bare, v_b in zip(bare_vals, b_vals, strict=True):
@@ -447,8 +447,8 @@ def _plot_row_per_session_dots_and_means(
     # stay "bare" / "b".
     ax.set_xticks([_X_BARE, _X_B])
     ax.set_xticklabels([
-        BARE_VS_B_DISPLAY_LABELS["bare"],
-        BARE_VS_B_DISPLAY_LABELS["b"],
+        SPOUT_DISTANCE_DISPLAY_LABELS["bare"],
+        SPOUT_DISTANCE_DISPLAY_LABELS["b"],
     ])
     ax.set_xlim(-0.5, 1.5)
     _ = side_reward  # ignore — only used by callers for labelling
@@ -585,8 +585,8 @@ def _plot_row_lick_raster(
     if n_bare > 0 and n_b > 0:
         ax.set_yticks([n_bare / 2, n_bare + 0.5 + n_b / 2])
         ax.set_yticklabels([
-            BARE_VS_B_DISPLAY_LABELS["bare"],
-            BARE_VS_B_DISPLAY_LABELS["b"],
+            SPOUT_DISTANCE_DISPLAY_LABELS["bare"],
+            SPOUT_DISTANCE_DISPLAY_LABELS["b"],
         ])
     # Y-limit: per-panel snug by default; caller can pass y_range
     # to enforce a shared limit across L/R panels (Tweak 4).
@@ -599,7 +599,7 @@ def _plot_row_lick_raster(
     return n_bare, n_b
 
 
-def render_animal_summary_bare_vs_b(
+def render_animal_summary_spout_close_vs_std(
     animal: str,
     *,
     sessions: list[SessionPairData] | None = None,
@@ -611,8 +611,8 @@ def render_animal_summary_bare_vs_b(
     """Render one 3×2 cohort summary figure for one animal.
 
     Addendum #1 (2026-05-13) cohort-only design. Output:
-    ``{resolver.bare_vs_b_dir(animal=None)}/<animal>_summary.{svg,png}``
-    (the ``animal=None`` branch resolves to ``.../bare_vs_b/cohort/``).
+    ``{resolver.spout_close_vs_std_dir(animal=None)}/<animal>_summary.{svg,png}``
+    (the ``animal=None`` branch resolves to ``.../spout_close_vs_std/cohort/``).
 
     Layout (3 rows × 2 cols):
       - Row 1, cols (L, R): accuracy_firstCorrectLickAll. Per-session
@@ -664,7 +664,7 @@ def render_animal_summary_bare_vs_b(
         ))
     if len(sessions) == 0:
         raise ValueError(
-            f"render_animal_summary_bare_vs_b: no post-stroke Cohort B "
+            f"render_animal_summary_spout_close_vs_std: no post-stroke Cohort B "
             f"sessions for {animal!r} — cannot build the 3×2 summary "
             f"grid"
         )
@@ -755,7 +755,7 @@ def render_animal_summary_bare_vs_b(
         # Addendum #2 Tweak 1: "Spout Distance" xlabel on Row 2
         # (the bottom-most categorical-x row). Row 1's categorical
         # x context is inferred from Row 2 directly below it.
-        ax.set_xlabel(BARE_VS_B_XAXIS_TITLE)
+        ax.set_xlabel(SPOUT_DISTANCE_XAXIS_TITLE)
         if jj == 0:
             ax.set_ylabel("Mean licks per trial")
 
@@ -809,7 +809,7 @@ def render_animal_summary_bare_vs_b(
     fig.tight_layout(rect=[0, 0.02, 1, 0.97])
 
     # Save.
-    out_dir = resolver.bare_vs_b_dir(animal=None)
+    out_dir = resolver.spout_close_vs_std_dir(animal=None)
     out_dir.mkdir(parents=True, exist_ok=True)
     svg_path = out_dir / f"{animal}_summary.svg"
     png_path = out_dir / f"{animal}_summary.png"
@@ -819,7 +819,7 @@ def render_animal_summary_bare_vs_b(
         if overwrite == "raise":
             plt.close(fig)
             raise FileExistsError(
-                f"bare_vs_b cohort target exists: {target}"
+                f"spout_close_vs_std cohort target exists: {target}"
             )
         if overwrite == "skip":
             plt.close(fig)
@@ -836,6 +836,6 @@ __all__ = [
     "iter_cohort_b_session_keys",
     "iter_cohort_b_sessions",
     "list_cohort_b_animals",
-    "render_animal_summary_bare_vs_b",
+    "render_animal_summary_spout_close_vs_std",
 ]
 

@@ -944,24 +944,29 @@ class PathResolver:
             / "spout_behavior_figures" / "summary"
         )
 
-    def bare_vs_b_dir(self, animal: str | None = None) -> Path:
-        """Return the bare-vs-b comparison figures output directory.
+    def spout_close_vs_std_dir(self, animal: str | None = None) -> Path:
+        """Return the spout-close-vs-standard comparison figures
+        output directory.
 
-        Phase 8a.10 sub-deliverable B output root.
+        Phase 8a.10 sub-deliverable B output root. Renamed from
+        ``bare_vs_b_dir`` per Addendum #3 2026-05-13 — user-facing
+        nomenclature is "spout close vs standard". Underlying
+        ``half_suffix="bare"`` / ``"b"`` identifiers stay legacy
+        (NPZ keys, registry, ``load_session_plot_data`` signature).
 
         Layout (Addendum #1 2026-05-13 — cohort-only design):
           - ``animal=None`` →
-            ``{pipeline_outputs/spout_behavior}/spout_behavior_figures/bare_vs_b/cohort/``
+            ``{pipeline_outputs/spout_behavior}/spout_behavior_figures/spout_close_vs_std/cohort/``
             (cohort summary outputs, one file per animal:
             ``<animal>_summary.{svg,png}``).
           - ``animal="PS55"`` →
-            ``{pipeline_outputs/spout_behavior}/spout_behavior_figures/bare_vs_b/PS55/``
+            ``{pipeline_outputs/spout_behavior}/spout_behavior_figures/spout_close_vs_std/PS55/``
             (legacy per-animal nested dir from CG-B2; superseded by
             Addendum #1 and orphan-cleaned by the orchestrator).
         """
         base = (
             self.pipeline_outputs("spout_behavior")
-            / "spout_behavior_figures" / "bare_vs_b"
+            / "spout_behavior_figures" / "spout_close_vs_std"
         )
         if animal is None:
             return base / "cohort"

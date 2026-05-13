@@ -1,12 +1,12 @@
-"""Tests for stroke_orofacial.spout_behavior.bare_vs_b.
+"""Tests for stroke_orofacial.spout_behavior.spout_close_vs_std.
 
 Phase 8a.10 sub-deliverable B. Covers:
 
   - CG-B1 shared infrastructure: post-stroke filter (rel_day >= 2),
     optional ``animals=`` subset (PS55 pilot), n_dlc=0 graceful
-    handling, SessionPairData shape, PathResolver.bare_vs_b_dir.
+    handling, SessionPairData shape, PathResolver.spout_close_vs_std_dir.
   - CG-B3 cohort renderer (Addendum #1 2026-05-13 cohort-only design):
-    render_animal_summary_bare_vs_b produces a 3×2 grid with the
+    render_animal_summary_spout_close_vs_std produces a 3×2 grid with the
     expected output path + structural pins (denominator semantics,
     raster divider).
 
@@ -25,13 +25,13 @@ import pytest
 
 from stroke_orofacial.animals import AnimalInfo
 from stroke_orofacial.paths import PathResolver
-from stroke_orofacial.spout_behavior.bare_vs_b import (
+from stroke_orofacial.spout_behavior.spout_close_vs_std import (
     COHORT_B_REL_DAY_MIN,
     SessionPairData,
     iter_cohort_b_session_keys,
     iter_cohort_b_sessions,
     list_cohort_b_animals,
-    render_animal_summary_bare_vs_b,
+    render_animal_summary_spout_close_vs_std,
 )
 from stroke_orofacial.spout_behavior.visual_gate import SessionPlotData
 
@@ -293,27 +293,27 @@ class TestSessionPairData:
         assert pair.bare.n_samples_session != pair.b.n_samples_session
 
 
-class TestPathResolverBareVsBDir:
+class TestPathResolverSpoutCloseVsStdDir:
     def test_no_animal_returns_cohort_dir(self, tmp_path):
-        """Addendum #1 (2026-05-13): ``bare_vs_b_dir(animal=None)``
+        """Addendum #1 (2026-05-13): ``spout_close_vs_std_dir(animal=None)``
         returns the cohort/ subdir, where the per-animal summary
         outputs land (``<animal>_summary.{svg,png}``)."""
         resolver = PathResolver(output_root=tmp_path)
-        d = resolver.bare_vs_b_dir()
+        d = resolver.spout_close_vs_std_dir()
         assert d.name == "cohort"
-        assert d.parent.name == "bare_vs_b"
+        assert d.parent.name == "spout_close_vs_std"
         assert d.parent.parent.name == "spout_behavior_figures"
 
     def test_per_animal_returns_legacy_per_session_dir(self, tmp_path):
-        """`bare_vs_b_dir('PS55')` returns the legacy CG-B2
+        """`spout_close_vs_std_dir('PS55')` returns the legacy CG-B2
         per-animal nested dir. CG-B3 keeps this resolver branch so
         the orchestrator can target it for orphan cleanup
         (CG-B2's per-session pilot outputs are superseded by
         Addendum #1)."""
         resolver = PathResolver(output_root=tmp_path)
-        d = resolver.bare_vs_b_dir("PS55")
+        d = resolver.spout_close_vs_std_dir("PS55")
         assert d.name == "PS55"
-        assert d.parent.name == "bare_vs_b"
+        assert d.parent.name == "spout_close_vs_std"
 
 
 class TestIterCohortBSessionsEndToEnd:
@@ -498,14 +498,14 @@ def synth_pairs_3_sessions() -> list[SessionPairData]:
     return pairs
 
 
-class TestRenderAnimalSummaryBareVsB:
+class TestRenderAnimalSummarySpoutCloseVsStd:
     def test_returns_expected_cohort_paths(
         self, synth_pairs_3_sessions, tmp_path,
     ):
         """Pin: outputs land at
-        ``bare_vs_b/cohort/<animal>_summary.{svg,png}``."""
+        ``spout_close_vs_std/cohort/<animal>_summary.{svg,png}``."""
         resolver = PathResolver(output_root=tmp_path)
-        svg, png = render_animal_summary_bare_vs_b(
+        svg, png = render_animal_summary_spout_close_vs_std(
             "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
         )
         assert svg.exists() and svg.stat().st_size > 0
@@ -513,13 +513,13 @@ class TestRenderAnimalSummaryBareVsB:
         assert svg.name == "PS55_summary.svg"
         assert png.name == "PS55_summary.png"
         assert svg.parent.name == "cohort"
-        assert svg.parent.parent.name == "bare_vs_b"
+        assert svg.parent.parent.name == "spout_close_vs_std"
 
     def test_raises_when_no_sessions(self, tmp_path):
         """Empty session list → ValueError (no grid to build)."""
         resolver = PathResolver(output_root=tmp_path)
         with pytest.raises(ValueError, match="no post-stroke Cohort B"):
-            render_animal_summary_bare_vs_b(
+            render_animal_summary_spout_close_vs_std(
                 "PS55", sessions=[], resolver=resolver,
             )
 
@@ -529,7 +529,7 @@ class TestRenderAnimalSummaryBareVsB:
         """Pin: figure has 6 axes (3 rows × 2 cols)."""
         import re
         resolver = PathResolver(output_root=tmp_path)
-        svg, _png = render_animal_summary_bare_vs_b(
+        svg, _png = render_animal_summary_spout_close_vs_std(
             "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
         )
         text = svg.read_text(encoding="utf-8")
@@ -550,7 +550,7 @@ class TestRenderAnimalSummaryBareVsB:
         = 1.0 (the legacy non-All sibling). The cohort renderer
         must compute the addendum-mandated 0.25 value.
         """
-        from stroke_orofacial.spout_behavior.bare_vs_b import (
+        from stroke_orofacial.spout_behavior.spout_close_vs_std import (
             _half_accuracy_firstCorrectLickAll_per_side,
         )
         # 4 L-reward trials at samples 1000, 5000, 9000, 13000.
@@ -576,7 +576,7 @@ class TestRenderAnimalSummaryBareVsB:
         """Pin: Row 3's pooled raster inherits visual_gate's dot
         polish (alpha=0.6 + thin reward marker 0.5)."""
         resolver = PathResolver(output_root=tmp_path)
-        svg, _png = render_animal_summary_bare_vs_b(
+        svg, _png = render_animal_summary_spout_close_vs_std(
             "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
         )
         text = svg.read_text(encoding="utf-8")
@@ -607,14 +607,14 @@ class TestRenderAnimalSummaryBareVsB:
                 b=_make_session("20250601"),
             ),
         ]
-        from stroke_orofacial.spout_behavior import bare_vs_b as mod
+        from stroke_orofacial.spout_behavior import spout_close_vs_std as mod
 
         def fake_iter(*args, **kwargs):
             for p in pairs:
                 yield p
 
         monkeypatch.setattr(mod, "iter_cohort_b_sessions", fake_iter)
-        svg, _png = render_animal_summary_bare_vs_b(
+        svg, _png = render_animal_summary_spout_close_vs_std(
             "PS55", resolver=resolver,
         )
         assert svg.exists()
@@ -648,7 +648,7 @@ class TestCgB3R2Polish:
         attached to the text groups), so we can pin via literal
         string presence."""
         resolver = PathResolver(output_root=tmp_path)
-        svg, _png = render_animal_summary_bare_vs_b(
+        svg, _png = render_animal_summary_spout_close_vs_std(
             "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
         )
         text = svg.read_text(encoding="utf-8")
@@ -670,16 +670,16 @@ class TestCgB3R2Polish:
         bare condition → black (#000000), b condition → tab:orange
         (#ff7f0e). The mean horizontal bar's stroke color matches
         the dot stroke color at the same x-position."""
-        from stroke_orofacial.spout_behavior.bare_vs_b import (
-            BARE_VS_B_CONDITION_COLORS,
+        from stroke_orofacial.spout_behavior.spout_close_vs_std import (
+            SPOUT_DISTANCE_CONDITION_COLORS,
             COHORT_MEAN_BAR_LINEWIDTH,
         )
-        assert BARE_VS_B_CONDITION_COLORS["bare"] == "black"
-        assert BARE_VS_B_CONDITION_COLORS["b"] == "tab:orange"
+        assert SPOUT_DISTANCE_CONDITION_COLORS["bare"] == "black"
+        assert SPOUT_DISTANCE_CONDITION_COLORS["b"] == "tab:orange"
         assert COHORT_MEAN_BAR_LINEWIDTH == 0.75
 
         resolver = PathResolver(output_root=tmp_path)
-        svg, _png = render_animal_summary_bare_vs_b(
+        svg, _png = render_animal_summary_spout_close_vs_std(
             "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
         )
         text = svg.read_text(encoding="utf-8")
@@ -700,7 +700,7 @@ class TestCgB3R2Polish:
         × 2 panels → (3-1) × 2 × 2 = 8 boundary lines total
         (lightgray, alpha 0.5, linewidth 0.3)."""
         resolver = PathResolver(output_root=tmp_path)
-        svg, _png = render_animal_summary_bare_vs_b(
+        svg, _png = render_animal_summary_spout_close_vs_std(
             "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
         )
         text = svg.read_text(encoding="utf-8")
@@ -747,7 +747,7 @@ class TestCgB3R2Polish:
             matplotlib.axes.Axes, "set_ylim", recording_set_ylim,
         )
         resolver = PathResolver(output_root=tmp_path)
-        render_animal_summary_bare_vs_b(
+        render_animal_summary_spout_close_vs_std(
             "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
         )
         # The renderer issues exactly: row1_L, row1_R, row2_L, row2_R,
