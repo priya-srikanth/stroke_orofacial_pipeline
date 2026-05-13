@@ -624,3 +624,149 @@ class TestRenderAnimalSummaryBareVsB:
         # appears (true for any n>0 multi-digit; weak pin).
         assert "DejaVuSans" in text  # text rendering happened
 
+
+# ---- CG-B3 Round 2 polish (Addendum #2, 2026-05-13) ----
+
+
+class TestCgB3R2Polish:
+    """Pins for Addendum #2 tweaks 1-4.
+
+    Tweak 1 — display labels (Standard / Close / Spout Distance).
+    Tweak 2 — per-condition palette (dots + mean line same color).
+    Tweak 3 — inter-session boundary lines in Row 3 raster.
+    Tweak 4 — shared y-lim across L/R panels (Rows 1 and 2)."""
+
+    def test_tweak_1_display_labels_replace_bare_b(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        """Pin: SVG contains "Standard", "Close", "Spout Distance"
+        (rendered tick labels + axis title). Raw "bare" / "b" text
+        does NOT appear as visible tick-label text.
+
+        matplotlib emits text-as-paths but ALSO embeds the literal
+        text strings in the SVG (as metadata / comment markers
+        attached to the text groups), so we can pin via literal
+        string presence."""
+        resolver = PathResolver(output_root=tmp_path)
+        svg, _png = render_animal_summary_bare_vs_b(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        text = svg.read_text(encoding="utf-8")
+        assert "Standard" in text, "display label 'Standard' missing"
+        assert "Close" in text, "display label 'Close' missing"
+        assert "Spout Distance" in text, "axis title 'Spout Distance' missing"
+        # No raw "bare" / "b" tick-label text (case-sensitive).
+        # Look for the rendered tick-label form — matplotlib embeds
+        # the label string between '">' and '<' for each text node
+        # representation, OR as a standalone literal.
+        assert '"bare"' not in text, "raw 'bare' tick-label leaked"
+        assert ">bare<" not in text, "raw 'bare' tick-label leaked"
+
+    def test_tweak_2_mean_line_color_matches_dot_color(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        """Pin: dots + mean line share per-condition colors.
+
+        bare condition → black (#000000), b condition → tab:orange
+        (#ff7f0e). The mean horizontal bar's stroke color matches
+        the dot stroke color at the same x-position."""
+        from stroke_orofacial.spout_behavior.bare_vs_b import (
+            BARE_VS_B_CONDITION_COLORS,
+            COHORT_MEAN_BAR_LINEWIDTH,
+        )
+        assert BARE_VS_B_CONDITION_COLORS["bare"] == "black"
+        assert BARE_VS_B_CONDITION_COLORS["b"] == "tab:orange"
+        assert COHORT_MEAN_BAR_LINEWIDTH == 0.75
+
+        resolver = PathResolver(output_root=tmp_path)
+        svg, _png = render_animal_summary_bare_vs_b(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        text = svg.read_text(encoding="utf-8")
+        # Both per-condition palette colors appear as stroke/fill.
+        # #ff7f0e (b/orange) is distinctive — must appear in dots +
+        # mean line for the b condition.
+        assert "#ff7f0e" in text, "tab:orange (b condition) missing"
+        # Black appears in many places (axes, text), so just confirm
+        # the palette constants are wired.
+
+    def test_tweak_3_inter_session_boundary_count(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        """Pin: Row 3 raster has ``(n_sessions - 1)`` inter-session
+        boundary lines within EACH half × 2 panels (L, R).
+
+        Per addendum's PS55 worked example: 3 sessions × 2 halves
+        × 2 panels → (3-1) × 2 × 2 = 8 boundary lines total
+        (lightgray, alpha 0.5, linewidth 0.3)."""
+        resolver = PathResolver(output_root=tmp_path)
+        svg, _png = render_animal_summary_bare_vs_b(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        text = svg.read_text(encoding="utf-8")
+        # Each boundary line carries three distinctive style
+        # attributes. The intersection (counted independently below)
+        # should match exactly.
+        n_lightgray = text.count("#d3d3d3")
+        n_thin = text.count("stroke-width: 0.3")
+        n_half_opacity = text.count("stroke-opacity: 0.5")
+        # n_sessions=3 → (3-1) + (3-1) = 4 per panel × 2 panels = 8.
+        expected = (3 - 1) * 2 * 2
+        assert n_lightgray == expected, (
+            f"expected {expected} lightgray refs (inter-session "
+            f"boundaries); got {n_lightgray}"
+        )
+        assert n_thin == expected, (
+            f"expected {expected} stroke-width: 0.3 refs; got {n_thin}"
+        )
+        assert n_half_opacity == expected, (
+            f"expected {expected} stroke-opacity: 0.5 refs; got "
+            f"{n_half_opacity}"
+        )
+
+    def test_tweak_4_shared_ylim_row1_and_row2(
+        self, synth_pairs_3_sessions, tmp_path, monkeypatch,
+    ):
+        """Pin: Row 1 panels (L, R) share y-lim; Row 2 panels share
+        y-lim. Capture every ax.set_ylim call via monkeypatch and
+        verify that the same y-range is applied to both panels per
+        row."""
+        import matplotlib
+        captured: list[tuple[float, float]] = []
+        orig = matplotlib.axes.Axes.set_ylim
+
+        def recording_set_ylim(self, *args, **kwargs):
+            # set_ylim(*, bottom=None, top=None) or set_ylim(left, right).
+            if len(args) == 2:
+                captured.append((float(args[0]), float(args[1])))
+            elif len(args) == 1 and isinstance(args[0], (tuple, list)):
+                captured.append((float(args[0][0]), float(args[0][1])))
+            return orig(self, *args, **kwargs)
+
+        monkeypatch.setattr(
+            matplotlib.axes.Axes, "set_ylim", recording_set_ylim,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        render_animal_summary_bare_vs_b(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        # The renderer issues exactly: row1_L, row1_R, row2_L, row2_R,
+        # row3_L, row3_R for ax.set_ylim — 6 calls minimum (matplotlib
+        # may also call set_ylim internally during tight_layout, but
+        # the per-row pair structure should hold for the first 6).
+        assert len(captured) >= 6, (
+            f"expected ≥6 set_ylim calls; got {len(captured)}"
+        )
+        row1_L, row1_R = captured[0], captured[1]
+        row2_L, row2_R = captured[2], captured[3]
+        row3_L, row3_R = captured[4], captured[5]
+        assert row1_L == row1_R, (
+            f"Row 1 L/R y-lim mismatch: {row1_L} vs {row1_R}"
+        )
+        assert row2_L == row2_R, (
+            f"Row 2 L/R y-lim mismatch: {row2_L} vs {row2_R}"
+        )
+        assert row3_L == row3_R, (
+            f"Row 3 L/R y-lim mismatch: {row3_L} vs {row3_R}"
+        )
+

@@ -63,7 +63,6 @@ from stroke_orofacial.animals import AnimalInfo, get_animal
 from stroke_orofacial.config_loader import load_session_overrides
 from stroke_orofacial.paths import PathResolver
 from stroke_orofacial.spout_behavior.visual_gate import (
-    SIDE_COLORS,
     SessionPlotData,
     compute_first_lick_correct,
     compute_trial_lick_delays,
@@ -82,13 +81,42 @@ COHORT_B_REL_DAY_MIN = 2
 # Cohort renderer x-axis category positions (categorical: bare, b).
 _X_BARE = 0
 _X_B = 1
-# Color for the per-condition mean horizontal bar.
-COHORT_MEAN_BAR_COLOR = "red"
-# Style for same-date bare/b connector lines.
+
+# Display labels (Addendum #2 Tweak 1, 2026-05-13). Code identifiers
+# ("bare" / "b") stay everywhere; only the rendered tick labels +
+# axis title change. Row 3 raster's y-axis half labels also use these.
+BARE_VS_B_DISPLAY_LABELS: dict[str, str] = {
+    "bare": "Standard",
+    "b": "Close",
+}
+BARE_VS_B_XAXIS_TITLE = "Spout Distance"
+
+# Per-condition palette (Addendum #2 Tweak 2). Dots AND mean line
+# share the same color per condition (replacing CG-B3 Round 1's
+# SIDE_COLORS-coded dots + uniformly red mean line). Reuses the
+# black + tab:orange pair the deleted CG-B2 endpoint 5 used, since
+# black/orange contrast well in both SVG and PNG.
+BARE_VS_B_CONDITION_COLORS: dict[str, str] = {
+    "bare": "black",
+    "b": "tab:orange",
+}
+# Per-condition mean horizontal bar linewidth (Addendum #2 Tweak 2:
+# narrower than CG-B3 R1's 1.6).
+COHORT_MEAN_BAR_LINEWIDTH = 0.75
+
+# Style for same-date bare/b connector lines (unchanged; gray).
 COHORT_CONNECTOR_KWARGS: dict[str, Any] = {
     "color": "grey",
     "linewidth": 0.5,
     "alpha": 0.4,
+}
+
+# Row 3 inter-session boundary line styling (Addendum #2 Tweak 3).
+RASTER_INTRA_HALF_BOUNDARY_KWARGS: dict[str, Any] = {
+    "color": "lightgray",
+    "linewidth": 0.3,
+    "alpha": 0.5,
+    "zorder": 1,
 }
 
 
@@ -355,15 +383,17 @@ def _plot_row_per_session_dots_and_means(
     *,
     bare_vals: list[float],
     b_vals: list[float],
-    marker_color: str,
     marker: str = "o",
     marker_face: bool = True,
 ) -> None:
     """Generic dot-plot helper for Rows 1 and 2.
 
     Plots one dot per session per condition at x ∈ {0 (bare), 1 (b)},
-    same-date connectors, and red horizontal mean bars. Caller sets
-    y-axis limits, labels, etc.
+    same-date gray connectors, and per-condition horizontal mean bars.
+    Dots + mean bars share a per-condition color (Addendum #2 Tweak 2):
+    bare uses :data:`BARE_VS_B_CONDITION_COLORS["bare"]`, b uses
+    :data:`BARE_VS_B_CONDITION_COLORS["b"]`. Caller sets y-axis
+    limits, labels, etc.
     """
     n_sessions = len(bare_vals)
     if n_sessions != len(b_vals):
@@ -371,7 +401,10 @@ def _plot_row_per_session_dots_and_means(
             f"per-session value mismatch: bare={n_sessions}, "
             f"b={len(b_vals)}"
         )
-    # Same-date connectors (one line per session).
+    bare_color = BARE_VS_B_CONDITION_COLORS["bare"]
+    b_color = BARE_VS_B_CONDITION_COLORS["b"]
+    # Same-date connectors (one line per session; gray spans both
+    # conditions).
     for v_bare, v_b in zip(bare_vals, b_vals, strict=True):
         if np.isnan(v_bare) or np.isnan(v_b):
             continue
@@ -379,32 +412,44 @@ def _plot_row_per_session_dots_and_means(
             [_X_BARE, _X_B], [v_bare, v_b],
             **COHORT_CONNECTOR_KWARGS, zorder=1,
         )
-    # Per-session dots.
-    facecolor = marker_color if marker_face else "none"
-    for x, vals in ((_X_BARE, bare_vals), (_X_B, b_vals)):
+    # Per-session dots, color = per-condition palette.
+    for x, vals, condition_color in (
+        (_X_BARE, bare_vals, bare_color),
+        (_X_B, b_vals, b_color),
+    ):
+        facecolor = condition_color if marker_face else "none"
         for v in vals:
             if np.isnan(v):
                 continue
             ax.scatter(
                 x, v, s=24, marker=marker,
-                facecolor=facecolor, edgecolor=marker_color,
+                facecolor=facecolor, edgecolor=condition_color,
                 linewidth=0.8, zorder=2,
             )
-    # Mean bars.
+    # Mean bars, color = same per-condition palette as the dots.
     bare_arr = np.array(bare_vals, dtype=float)
     b_arr = np.array(b_vals, dtype=float)
     bare_mean = float(np.nanmean(bare_arr)) if bare_arr.size > 0 else float("nan")
     b_mean = float(np.nanmean(b_arr)) if b_arr.size > 0 else float("nan")
-    for x, m in ((_X_BARE, bare_mean), (_X_B, b_mean)):
+    for x, m, condition_color in (
+        (_X_BARE, bare_mean, bare_color),
+        (_X_B, b_mean, b_color),
+    ):
         if np.isnan(m):
             continue
         ax.hlines(
             m, x - 0.3, x + 0.3,
-            color=COHORT_MEAN_BAR_COLOR, linewidth=1.6, zorder=3,
+            color=condition_color,
+            linewidth=COHORT_MEAN_BAR_LINEWIDTH, zorder=3,
         )
-    # X-axis ticks for the categorical pair.
+    # X-axis ticks for the categorical pair. Tweak 1: rendered
+    # labels are "Standard" / "Close"; underlying code identifiers
+    # stay "bare" / "b".
     ax.set_xticks([_X_BARE, _X_B])
-    ax.set_xticklabels(["bare", "b"])
+    ax.set_xticklabels([
+        BARE_VS_B_DISPLAY_LABELS["bare"],
+        BARE_VS_B_DISPLAY_LABELS["b"],
+    ])
     ax.set_xlim(-0.5, 1.5)
     _ = side_reward  # ignore — only used by callers for labelling
 
@@ -416,7 +461,8 @@ def _plot_row_lick_raster(
     *,
     window: tuple[float, float] | list[float],
     config: dict[str, Any],
-) -> None:
+    y_range: tuple[float, float] | None = None,
+) -> tuple[int, int]:
     """Row 3: pooled cohort lick raster, bare top / b bottom.
 
     Trials are pooled across sessions in date order:
@@ -426,7 +472,23 @@ def _plot_row_lick_raster(
       - horizontal divider line at y = n_bare.
       - rows ``n_bare .. n_bare + n_b - 1`` (bottom): b-half trials,
         same ordering.
-    Dot conventions inherited from visual_gate raster.
+
+    Addendum #2 Tweak 3: thin light-gray horizontal lines mark
+    inter-session boundaries within each half (between consecutive
+    sessions). Count per panel = ``(n_bare_sessions - 1) +
+    (n_b_sessions - 1)``.
+
+    Addendum #2 Tweak 4: caller may pass ``y_range`` to enforce a
+    shared y-limit across L/R panels (pads the shorter side with
+    whitespace below the data). Default ``None`` falls back to a
+    snug per-panel ylim.
+
+    Returns
+    -------
+    tuple[int, int]
+        ``(n_bare, n_b)`` — total trial counts per half for this
+        side. Callers use this to compute the shared y-range across
+        L/R panels (Tweak 4).
     """
     # First pass: count trials per session in each half to assign
     # global y indices.
@@ -446,7 +508,7 @@ def _plot_row_lick_raster(
     for pair, n_bare_session, n_b_session in zip(
         sessions, bare_trials_per_session, b_trials_per_session, strict=True,
     ):
-        for half, session, y_base in (
+        for _half, session, y_base in (
             ("bare", pair.bare, bare_y_offset),
             ("b", pair.b, b_y_offset),
         ):
@@ -478,6 +540,29 @@ def _plot_row_lick_raster(
         bare_y_offset += n_bare_session
         b_y_offset += n_b_session
 
+    # Inter-session boundary lines within each half (Tweak 3).
+    # One line between consecutive sessions; count per half =
+    # n_sessions - 1.
+    xmin, xmax = config["raster_xlim"]
+    cum_bare = 0
+    for i, n_session in enumerate(bare_trials_per_session):
+        if i == len(bare_trials_per_session) - 1:
+            break  # no boundary after the last session
+        cum_bare += n_session
+        ax.hlines(
+            cum_bare - 0.5, xmin=xmin, xmax=xmax,
+            **RASTER_INTRA_HALF_BOUNDARY_KWARGS,
+        )
+    cum_b = n_bare + 1  # b half starts at this y offset
+    for i, n_session in enumerate(b_trials_per_session):
+        if i == len(b_trials_per_session) - 1:
+            break
+        cum_b += n_session
+        ax.hlines(
+            cum_b - 0.5, xmin=xmin, xmax=xmax,
+            **RASTER_INTRA_HALF_BOUNDARY_KWARGS,
+        )
+
     # Reward marker — single line covering both halves' x=0.
     ax.plot(
         [0, 0], [0, max(1, n_bare + n_b + 1)],
@@ -485,23 +570,33 @@ def _plot_row_lick_raster(
         alpha=config["raster_reward_marker_alpha"],
         linewidth=config["raster_reward_marker_linewidth"],
     )
-    # Divider line between bare and b halves.
+    # Divider line between bare ("Standard") and b ("Close") halves
+    # — kept thicker / darker than the intra-half boundary lines.
     ax.hlines(
         n_bare + 0.5,
-        xmin=config["raster_xlim"][0],
-        xmax=config["raster_xlim"][1],
+        xmin=xmin, xmax=xmax,
         color="black", linewidth=0.8, linestyle="-", zorder=4,
     )
-    ax.set_xlim(*config["raster_xlim"])
+    ax.set_xlim(xmin, xmax)
     ax.set_xticks(config["raster_xticks"])
     ax.tick_params(axis="x", labelsize=config["xtick_fontsize"])
-    # Y-axis: label the two halves at their midpoints.
+    # Y-axis: label the two halves at their midpoints using the
+    # Standard/Close display labels (Tweak 1).
     if n_bare > 0 and n_b > 0:
         ax.set_yticks([n_bare / 2, n_bare + 0.5 + n_b / 2])
-        ax.set_yticklabels(["bare", "b"])
-    ax.set_ylim(-0.5, n_bare + n_b + 1.5)
+        ax.set_yticklabels([
+            BARE_VS_B_DISPLAY_LABELS["bare"],
+            BARE_VS_B_DISPLAY_LABELS["b"],
+        ])
+    # Y-limit: per-panel snug by default; caller can pass y_range
+    # to enforce a shared limit across L/R panels (Tweak 4).
+    if y_range is None:
+        ax.set_ylim(-0.5, n_bare + n_b + 1.5)
+    else:
+        ax.set_ylim(*y_range)
     ax.invert_yaxis()  # row 0 at top
     ax.set_title(f"Reward {side_reward}", fontsize="small")
+    return n_bare, n_b
 
 
 def render_animal_summary_bare_vs_b(
@@ -594,6 +689,27 @@ def render_animal_summary_bare_vs_b(
             b_n_correct[side].append(n_b[side]["correct"])
             b_n_incorrect[side].append(n_b[side]["incorrect"])
 
+    # ---- Compute shared y-limits (Addendum #2 Tweak 4) ----
+    # Empirical per-row max across BOTH L and R panels; padded 10%.
+    def _empirical_ymax(*lists: list[float]) -> float:
+        flat = np.concatenate([np.asarray(L, dtype=float) for L in lists])
+        if flat.size == 0:
+            return 0.0
+        return float(np.nanmax(flat))
+    # Row 1: accuracy. Clip to [0, 1] (accuracy bounds).
+    row1_max = _empirical_ymax(
+        bare_acc["L"], b_acc["L"], bare_acc["R"], b_acc["R"],
+    )
+    row1_ylim = (0.0, min(1.0, row1_max * 1.1 + 0.05))
+    # Row 2: mean licks per trial. No upper clip.
+    row2_max = _empirical_ymax(
+        bare_n_correct["L"], bare_n_incorrect["L"],
+        b_n_correct["L"], b_n_incorrect["L"],
+        bare_n_correct["R"], bare_n_incorrect["R"],
+        b_n_correct["R"], b_n_incorrect["R"],
+    )
+    row2_ylim = (0.0, max(1.0, row2_max * 1.1))
+
     # ---- Build figure ----
     figsize = (10.0, 12.0)
     fig, axs = plt.subplots(
@@ -607,9 +723,8 @@ def render_animal_summary_bare_vs_b(
             ax, side,
             bare_vals=bare_acc[side],
             b_vals=b_acc[side],
-            marker_color=SIDE_COLORS[side],
         )
-        ax.set_ylim(*config["accuracy_y_range"])
+        ax.set_ylim(*row1_ylim)  # shared L/R per Tweak 4
         ax.set_title(f"Reward {side}: first-lick correct (all trials)",
                      fontsize="small")
         if jj == 0:
@@ -624,7 +739,6 @@ def render_animal_summary_bare_vs_b(
             ax, side,
             bare_vals=bare_n_correct[side],
             b_vals=b_n_correct[side],
-            marker_color=SIDE_COLORS[side],
             marker="o", marker_face=True,
         )
         # Incorrect (hollow squares) — replicates the dashed
@@ -633,26 +747,59 @@ def render_animal_summary_bare_vs_b(
             ax, side,
             bare_vals=bare_n_incorrect[side],
             b_vals=b_n_incorrect[side],
-            marker_color=SIDE_COLORS[side],
             marker="s", marker_face=False,
         )
-        ax.set_ylim(0, config["numlicks_y_max"])
+        ax.set_ylim(*row2_ylim)  # shared L/R per Tweak 4
         ax.set_title(f"Reward {side}: mean licks/trial (corr ●, incorr ◻)",
                      fontsize="small")
+        # Addendum #2 Tweak 1: "Spout Distance" xlabel on Row 2
+        # (the bottom-most categorical-x row). Row 1's categorical
+        # x context is inferred from Row 2 directly below it.
+        ax.set_xlabel(BARE_VS_B_XAXIS_TITLE)
         if jj == 0:
             ax.set_ylabel("Mean licks per trial")
 
-    # Row 3: pooled lick raster
+    # Row 3: pooled lick raster.
+    # Tweak 4: sync y-lim across L/R by padding the shorter side to
+    # the max total trial count. (For PS55, L and R are typically
+    # equal; for cohorts with unequal trial budgets per side, the
+    # shorter side gets whitespace below.)
+    row3_totals: dict[str, tuple[int, int]] = {}
+    for jj, side in enumerate(("L", "R")):
+        ax = axs[2, jj]
+        # First pass per side: count trials without rendering (cheap
+        # — just reads rewards_idx). We do this twice (once here,
+        # once inside _plot_row_lick_raster) but the cost is trivial.
+        n_bare_side = sum(
+            len(p.bare.rewards_idx[f"Reward_{side}"]) for p in sessions
+        )
+        n_b_side = sum(
+            len(p.b.rewards_idx[f"Reward_{side}"]) for p in sessions
+        )
+        row3_totals[side] = (n_bare_side, n_b_side)
+    row3_max_total = max(
+        row3_totals["L"][0] + row3_totals["L"][1],
+        row3_totals["R"][0] + row3_totals["R"][1],
+    )
+    # Shared y-range for both panels — covers the max trial total +
+    # divider gap.
+    row3_ylim = (-0.5, row3_max_total + 1.5)
     for jj, side in enumerate(("L", "R")):
         ax = axs[2, jj]
         _plot_row_lick_raster(
             ax, side, sessions,
             window=window, config=config,
+            y_range=row3_ylim,
         )
         if jj == 0:
-            ax.set_ylabel("Trials (bare top / b bottom)")
+            ax.set_ylabel("Trials (Standard top / Close bottom)")
+        # Tweak 1: bottom-row x-axis title = "Spout Distance"
+        # (applies to all 3 rows via supxlabel below; bottom row
+        # alone would be ax.set_xlabel here, but supxlabel keeps the
+        # 3 row x-axes aligned visually).
 
-    # X-label for raster row only.
+    # Figure-level x-axis title for the categorical (Standard, Close)
+    # axis — Addendum #2 Tweak 1.
     fig.supxlabel(
         "Time (s)", fontsize=config["raster_xlabel_fontsize"],
     )
