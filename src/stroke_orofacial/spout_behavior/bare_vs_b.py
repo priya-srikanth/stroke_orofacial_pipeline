@@ -1,53 +1,51 @@
 """Phase 8a.10 sub-deliverable B — bare-vs-b comparison.
 
-Scope: post-stroke comparison of bare-half (single-spout) vs b-half
-(secondary-spout) session conditions for the 14 Pattern B sessions
-across PS51, PS54, PS55. Five endpoints (per kickoff 2026-05-13):
+Scope (Addendum #1 2026-05-13 — cohort-only design): post-stroke
+comparison of bare-half (single-spout) vs b-half (secondary-spout)
+session conditions for the 14 Pattern B sessions across PS51, PS54,
+PS55. The scientific message is *excursion limitation relieved by
+proximity*: post-stroke mice reach the closer secondary spout more
+reliably than the standard-distance bare spout, and contact more
+frequently once there.
 
-  1. First-lick accuracy (per-session bar + cohort recovery curve)
-  2. Correct/incorrect licks per side (faceted bar + cohort curve)
-  3. Lick raster (side-by-side; no cohort aggregation)
-  4. First-lick latency (side-by-side distributions + cohort curve)
-  5. Reward acquisition rate over time (NEW; cohort curve)
+3 retained endpoints, rendered as a single 3×2 cohort grid per
+animal (rows = endpoint, cols = mouse-side L vs R):
 
-This module ships:
-  - CG-B1: shared infrastructure — :class:`SessionPairData`,
-    :func:`iter_cohort_b_sessions`, :func:`iter_cohort_b_session_keys`.
-  - CG-B2: per-session paired-panel renderers for the 5 endpoints
-    (added Priya 2026-05-13, PS55 pilot scope first).
-  - CG-B3: per-animal cohort recovery curves (deferred to a later
-    commit).
+  Row 1: ``accuracy_firstCorrectLickAll`` — first-correct-lick
+    fraction, denominator = ALL trials of that cue type. Matches
+    the legacy ``accuracy_firstCorrectLickAll`` family. Per-session
+    dot, same-date bare/b connector, red horizontal mean bar.
+  Row 2: ``numLicks_bySession`` (correct + incorrect) — mean licks
+    per trial. Replicates the layering convention of visual_gate's
+    ``render_numLicks_bySession_correct_and_incorrect``. Per-session
+    dots + connectors + mean bar (same pattern as Row 1).
+  Row 3: ``lick_raster`` — bare trials top half, b trials bottom
+    half, horizontal divider. Trials pooled across sessions in date
+    order. Dot conventions inherited from visual_gate raster
+    (alpha=0.6, zorder layering, explicit xticks, thin reward
+    marker).
 
-Endpoint 5 color palette
-------------------------
-The 4 endpoints that share L/R semantics reuse SIDE_COLORS
-(mouse-L=dodgerblue, mouse-R=mediumvioletred). Endpoint 5 ("reward
-acquisition rate over time") would conflict — its two lines split
-on bare-vs-b, not L-vs-R. To avoid the visual collision, endpoint
-5 uses a distinct palette: bare=black, b=tab:orange (pinned via
-:data:`BARE_VS_B_LINE_COLORS`). Endpoint 5 plots cumulative rewards
-combined across L/R per half (2 lines total) for the cleanest
-first-cut visualization. DECISIONS-entry queued for phase wrap.
+Superseded scope (CG-B2): per-session paired panels for 5 endpoints
+were implemented under CG-B2 (commit d757294) but eliminated per
+Addendum #1. The 2 dropped endpoints (first-lick-latency, reward-
+acquisition-rate-over-time) had no downstream scientific consumer.
 
 Cohort B (Pattern B) registry lives in
 ``configs/session_overrides.yaml`` under ``secondary_spout_sessions:``.
-This module reads that registry, filters to post-stroke sessions
-(:meth:`AnimalInfo.day_relative_to_stroke` ``>= 2``; cuts both d0
-and d+1 — Priya 2026-05-13), and pairs each survivor's bare half
-with its b half via :func:`load_session_plot_data` (extended for
-this phase to accept a ``half_suffix`` kwarg).
-
-Filter convention note: ``rel_day >= 2`` (NOT ``>= 1``). The d+1
-session is the immediate stroke-aftermath day and is excluded
-alongside d0. Filter intent is "strictly post first post-stroke
-day". DECISIONS-entry deferred to phase wrap.
+:func:`iter_cohort_b_sessions` reads that registry, filters to
+post-stroke sessions (:meth:`AnimalInfo.day_relative_to_stroke`
+``>= 2`` — drops both d0 and d+1), and pairs each survivor's bare
+half with its b half via :func:`load_session_plot_data` (extended
+for this phase to accept a ``half_suffix`` kwarg).
 
 Forward-pointer to Phase 8a.10.1
 --------------------------------
-Endpoint 5 ("reward acquisition rate over time") currently plots
-tone-cue acquisition rate, not reward-acquisition rate, due to the
-deferred Tone↔Reward swap (Phase 8a.10.1). Renderer code is
-faithful; underlying data is mis-labeled until 8a.10.1's re-emit.
+The Reward_{L,R} channels carry tone-cue indices (not reward
+indices) cohort-wide due to the deferred Tone↔Reward swap (Phase
+8a.10.1). Renderer code is faithful; semantic labels will
+retroactively match data after 8a.10.1's re-emit. Affects Row 3's
+"reward marker" line semantics (currently marks tone onset, not
+reward delivery).
 """
 
 from __future__ import annotations
@@ -81,12 +79,16 @@ from stroke_orofacial.spout_behavior.visual_gate import (
 # cohort from 19 (pre-filter) to 14 (post-filter).
 COHORT_B_REL_DAY_MIN = 2
 
-# Endpoint 5 (reward acquisition rate over time) color palette.
-# DISTINCT from SIDE_COLORS because endpoint 5 splits on bare/b, not
-# L/R. Pinned via test_bare_vs_b_endpoint_5_color_palette.
-BARE_VS_B_LINE_COLORS: dict[str, str] = {
-    "bare": "black",
-    "b": "tab:orange",
+# Cohort renderer x-axis category positions (categorical: bare, b).
+_X_BARE = 0
+_X_B = 1
+# Color for the per-condition mean horizontal bar.
+COHORT_MEAN_BAR_COLOR = "red"
+# Style for same-date bare/b connector lines.
+COHORT_CONNECTOR_KWARGS: dict[str, Any] = {
+    "color": "grey",
+    "linewidth": 0.5,
+    "alpha": 0.4,
 }
 
 
@@ -271,249 +273,187 @@ def list_cohort_b_animals(
 
 
 # =====================================================================
-# Commit-group B2: per-session paired-panel rendering (5 endpoints)
+# Commit-group B3: cohort-only animal summary (3 endpoints × L/R grid)
 # =====================================================================
 #
-# Per-session output: bare_vs_b/<animal>/<date_str>_<endpoint>.{svg,png}
-#
-# Style: reuses sub-deliverable A's polish — SIDE_COLORS for L/R,
-# raster_dot_alpha=0.6 + zorder + raster_xticks=[0,5] +
-# xtick_fontsize=5 + raster_reward_marker_linewidth=0.5 for the lick
-# raster endpoint. Endpoint 5 uses BARE_VS_B_LINE_COLORS instead of
-# SIDE_COLORS to disambiguate the bare-vs-b axis from the L/R axis.
+# Output: bare_vs_b/cohort/<animal>_summary.{svg,png}
+# Layout: 3 rows × 2 cols.
+#   Row 1: accuracy_firstCorrectLickAll per side (L, R)
+#   Row 2: numLicks_bySession (correct + incorrect) per side
+#   Row 3: lick_raster per side, bare top / b bottom
 
 
-def save_bare_vs_b_figure(
-    fig,
-    animal: str,
-    date_str: str,
-    endpoint: str,
-    resolver: PathResolver,
-    *,
-    overwrite: Literal["force", "skip", "raise"] = "force",
-) -> tuple[Path, Path]:
-    """Save a bare-vs-b figure to the per-animal nested directory.
-
-    Writes SVG + PNG at
-    ``{resolver.bare_vs_b_dir(animal)}/{date_str}_{endpoint}.{svg,png}``.
-
-    Parameters
-    ----------
-    endpoint : str
-        Endpoint slug used in the filename — e.g.
-        ``"first_lick_accuracy"``, ``"correct_incorrect_per_side"``,
-        ``"lick_raster"``, ``"first_lick_latency"``,
-        ``"reward_acquisition_over_time"``.
-    overwrite : {"force", "skip", "raise"}
-        Same semantics as :func:`save_visual_gate_figure`.
-    """
-    out_dir = resolver.bare_vs_b_dir(animal)
-    svg_path = out_dir / f"{date_str}_{endpoint}.svg"
-    png_path = out_dir / f"{date_str}_{endpoint}.png"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    for target in (svg_path, png_path):
-        if not target.exists():
-            continue
-        if overwrite == "raise":
-            raise FileExistsError(f"bare_vs_b target exists: {target}")
-        if overwrite == "skip":
-            return svg_path, png_path
-    fig.savefig(svg_path, format="svg")
-    fig.savefig(png_path, format="png", dpi=300)
-    return svg_path, png_path
-
-
-def _session_title(pair: SessionPairData) -> str:
-    """Standard suptitle: animal + ISO date."""
-    return f"{pair.animal}  {pair.date.isoformat()}"
-
-
-def _half_accuracy_per_side(
+def _half_accuracy_firstCorrectLickAll_per_side(
     session: SessionPlotData,
     window_around_rewards: tuple[float, float] | list[float],
 ) -> dict[str, float]:
-    """Mean first-lick-correct per side for one half.
+    """Mean first-lick-correct per side for one half, ALL-trials
+    denominator (treat_none_as_zero=True semantics).
 
-    Wraps :func:`compute_first_lick_correct` +
-    :func:`compute_firstLickCorrect_bySession` for the per-half case.
-    None values are excluded from the mean (matches
-    accuracy_firstCorrectLick semantics).
+    Matches the legacy ``accuracy_firstCorrectLickAll`` family
+    (visual_gate.compute_firstLickCorrect_bySession with
+    ``treat_none_as_zero=True``). Per Addendum #1: no-lick trials
+    counted as 0, denominator = ALL trials of that cue type.
+
+    Worked example (from addendum): 2 first-correct-licks across 48
+    cue trials → 0.042 (NOT 2/2 = 1.0).
     """
     delays = compute_trial_lick_delays(session, window_around_rewards)
     flc = compute_first_lick_correct(delays)
     out: dict[str, float] = {}
     for side in ("L", "R"):
         per_reward = flc[side]
-        arr = np.array(
-            [np.nan if v is None else float(v) for v in per_reward.values()],
-            dtype=float,
-        )
-        out[side] = float(np.nanmean(arr)) if arr.size > 0 else float("nan")
+        if len(per_reward) == 0:
+            out[side] = float("nan")
+            continue
+        # treat_none_as_zero=True: None (no post-reward licks at all)
+        # counted as 0 (incorrect). Denominator = ALL trials.
+        vals = [0.0 if v is None else float(v) for v in per_reward.values()]
+        out[side] = float(np.mean(vals))
     return out
 
 
-def render_bare_vs_b_first_lick_accuracy(
-    pair: SessionPairData,
-    resolver: PathResolver,
-    *,
-    config: dict[str, Any] | None = None,
-    behavior_params: dict[str, Any] | None = None,
-    overwrite: Literal["force", "skip", "raise"] = "force",
-) -> tuple[Path, Path]:
-    """Endpoint 1: per-session first-lick accuracy, bare vs b.
-
-    Grouped bar chart with 4 bars: bare-L, bare-R, b-L, b-R. Y-axis
-    is fraction-correct ∈ [0, 1]; reuses SIDE_COLORS (mouse-L =
-    dodgerblue, mouse-R = mediumvioletred). The bare-vs-b axis is
-    encoded via x-position (bare on left, b on right) + a vertical
-    separator.
-    """
-    config = config or load_visual_gate_config()
-    behavior_params = behavior_params or load_behavior_report_params()
-    window = behavior_params["window_around_rewards"]
-
-    bare_acc = _half_accuracy_per_side(pair.bare, window)
-    b_acc = _half_accuracy_per_side(pair.b, window)
-
-    fig, ax = plt.subplots(figsize=(4, 3))
-    xs = [0, 1, 2.5, 3.5]
-    heights = [bare_acc["L"], bare_acc["R"], b_acc["L"], b_acc["R"]]
-    colors = [
-        SIDE_COLORS["L"], SIDE_COLORS["R"],
-        SIDE_COLORS["L"], SIDE_COLORS["R"],
-    ]
-    ax.bar(xs, heights, color=colors, width=0.8)
-    ax.set_xticks(xs)
-    ax.set_xticklabels(
-        ["bare L", "bare R", "b L", "b R"],
-        fontsize=config["xtick_fontsize"],
-    )
-    ax.axvline(1.75, color="grey", linestyle=":", linewidth=0.8)
-    ax.set_ylim(*config["accuracy_y_range"])
-    ax.set_ylabel("First-lick accuracy")
-    ax.set_title(_session_title(pair))
-    fig.tight_layout()
-    paths = save_bare_vs_b_figure(
-        fig, pair.animal, pair.date.strftime("%Y%m%d"),
-        "first_lick_accuracy", resolver, overwrite=overwrite,
-    )
-    plt.close(fig)
-    return paths
-
-
-def _half_lick_counts_per_side(
+def _half_mean_licks_per_trial_per_side(
     session: SessionPlotData,
     window_around_rewards: tuple[float, float] | list[float],
-) -> dict[str, dict[str, int]]:
-    """Total post-reward lick counts split by (reward_side,
-    correctness). Window comes from ``window_around_rewards`` (the
-    same one used for the raster, NOT the criteria_4 tighter window).
+) -> dict[str, dict[str, float]]:
+    """Mean licks per trial within window, split by (reward_side,
+    correctness). Returns
+    ``{"L": {"correct": float, "incorrect": float}, "R": {...}}``.
 
-    Returns ``{"L": {"correct": n, "incorrect": n}, "R": {...}}``.
+    Replicates visual_gate's ``numLicks_bySession_correct_and_incorrect``
+    convention: per-trial counts averaged across trials of that
+    reward side. Correct = lick on same side as reward; incorrect =
+    lick on other side.
     """
     delays = compute_trial_lick_delays(session, window_around_rewards)
-    out: dict[str, dict[str, int]] = {"L": {}, "R": {}}
+    out: dict[str, dict[str, float]] = {"L": {}, "R": {}}
     for side_reward in ("L", "R"):
-        n_correct = 0
-        n_incorrect = 0
-        for _idx, by_side in delays[f"Reward_{side_reward}"].items():
-            n_correct += int(by_side[f"Lick_{side_reward}"].size)
+        per_reward = delays[f"Reward_{side_reward}"]
+        n_trials = len(per_reward)
+        if n_trials == 0:
+            out[side_reward] = {
+                "correct": float("nan"), "incorrect": float("nan"),
+            }
+            continue
+        correct_counts: list[int] = []
+        incorrect_counts: list[int] = []
+        for _idx, by_side in per_reward.items():
+            correct_counts.append(int(by_side[f"Lick_{side_reward}"].size))
             other = "R" if side_reward == "L" else "L"
-            n_incorrect += int(by_side[f"Lick_{other}"].size)
-        out[side_reward] = {"correct": n_correct, "incorrect": n_incorrect}
+            incorrect_counts.append(int(by_side[f"Lick_{other}"].size))
+        out[side_reward] = {
+            "correct": float(np.mean(correct_counts)),
+            "incorrect": float(np.mean(incorrect_counts)),
+        }
     return out
 
 
-def render_bare_vs_b_correct_incorrect_per_side(
-    pair: SessionPairData,
-    resolver: PathResolver,
+def _plot_row_per_session_dots_and_means(
+    ax,
+    side_reward: Literal["L", "R"],
     *,
-    config: dict[str, Any] | None = None,
-    behavior_params: dict[str, Any] | None = None,
-    overwrite: Literal["force", "skip", "raise"] = "force",
-) -> tuple[Path, Path]:
-    """Endpoint 2: per-session correct/incorrect lick counts by side.
+    bare_vals: list[float],
+    b_vals: list[float],
+    marker_color: str,
+    marker: str = "o",
+    marker_face: bool = True,
+) -> None:
+    """Generic dot-plot helper for Rows 1 and 2.
 
-    Two sub-panels (bare on left, b on right). Each panel has 4 bars:
-    L-correct, L-incorrect, R-correct, R-incorrect. Color = side
-    (SIDE_COLORS); hatch differentiates correct (solid) from
-    incorrect (hatched).
+    Plots one dot per session per condition at x ∈ {0 (bare), 1 (b)},
+    same-date connectors, and red horizontal mean bars. Caller sets
+    y-axis limits, labels, etc.
     """
-    config = config or load_visual_gate_config()
-    behavior_params = behavior_params or load_behavior_report_params()
-    window = behavior_params["window_around_rewards"]
+    n_sessions = len(bare_vals)
+    if n_sessions != len(b_vals):
+        raise ValueError(
+            f"per-session value mismatch: bare={n_sessions}, "
+            f"b={len(b_vals)}"
+        )
+    # Same-date connectors (one line per session).
+    for v_bare, v_b in zip(bare_vals, b_vals, strict=True):
+        if np.isnan(v_bare) or np.isnan(v_b):
+            continue
+        ax.plot(
+            [_X_BARE, _X_B], [v_bare, v_b],
+            **COHORT_CONNECTOR_KWARGS, zorder=1,
+        )
+    # Per-session dots.
+    facecolor = marker_color if marker_face else "none"
+    for x, vals in ((_X_BARE, bare_vals), (_X_B, b_vals)):
+        for v in vals:
+            if np.isnan(v):
+                continue
+            ax.scatter(
+                x, v, s=24, marker=marker,
+                facecolor=facecolor, edgecolor=marker_color,
+                linewidth=0.8, zorder=2,
+            )
+    # Mean bars.
+    bare_arr = np.array(bare_vals, dtype=float)
+    b_arr = np.array(b_vals, dtype=float)
+    bare_mean = float(np.nanmean(bare_arr)) if bare_arr.size > 0 else float("nan")
+    b_mean = float(np.nanmean(b_arr)) if b_arr.size > 0 else float("nan")
+    for x, m in ((_X_BARE, bare_mean), (_X_B, b_mean)):
+        if np.isnan(m):
+            continue
+        ax.hlines(
+            m, x - 0.3, x + 0.3,
+            color=COHORT_MEAN_BAR_COLOR, linewidth=1.6, zorder=3,
+        )
+    # X-axis ticks for the categorical pair.
+    ax.set_xticks([_X_BARE, _X_B])
+    ax.set_xticklabels(["bare", "b"])
+    ax.set_xlim(-0.5, 1.5)
+    _ = side_reward  # ignore — only used by callers for labelling
 
-    bare_counts = _half_lick_counts_per_side(pair.bare, window)
-    b_counts = _half_lick_counts_per_side(pair.b, window)
 
-    fig, axs = plt.subplots(1, 2, figsize=(7, 3), sharey=True)
-    for ax, counts, title in (
-        (axs[0], bare_counts, "bare"),
-        (axs[1], b_counts, "b"),
-    ):
-        xs = [0, 1, 2, 3]
-        labels = ["L corr", "L incorr", "R corr", "R incorr"]
-        heights = [
-            counts["L"]["correct"], counts["L"]["incorrect"],
-            counts["R"]["correct"], counts["R"]["incorrect"],
-        ]
-        colors = [
-            SIDE_COLORS["L"], SIDE_COLORS["L"],
-            SIDE_COLORS["R"], SIDE_COLORS["R"],
-        ]
-        hatches = ["", "//", "", "//"]
-        bars = ax.bar(xs, heights, color=colors, edgecolor="white")
-        for bar, hatch in zip(bars, hatches, strict=True):
-            bar.set_hatch(hatch)
-        ax.set_xticks(xs)
-        ax.set_xticklabels(labels, fontsize=config["xtick_fontsize"])
-        ax.set_title(title)
-    axs[0].set_ylabel("Lick count (within window)")
-    fig.suptitle(_session_title(pair))
-    fig.tight_layout()
-    paths = save_bare_vs_b_figure(
-        fig, pair.animal, pair.date.strftime("%Y%m%d"),
-        "correct_incorrect_per_side", resolver, overwrite=overwrite,
-    )
-    plt.close(fig)
-    return paths
-
-
-def render_bare_vs_b_lick_raster(
-    pair: SessionPairData,
-    resolver: PathResolver,
+def _plot_row_lick_raster(
+    ax,
+    side_reward: Literal["L", "R"],
+    sessions: list[SessionPairData],
     *,
-    config: dict[str, Any] | None = None,
-    behavior_params: dict[str, Any] | None = None,
-    overwrite: Literal["force", "skip", "raise"] = "force",
-) -> tuple[Path, Path]:
-    """Endpoint 3: side-by-side per-session lick rasters.
+    window: tuple[float, float] | list[float],
+    config: dict[str, Any],
+) -> None:
+    """Row 3: pooled cohort lick raster, bare top / b bottom.
 
-    Layout: 2 rows × 2 cols.
-      - Rows = reward side (top: Reward L; bottom: Reward R).
-      - Cols = half (left: bare; right: b).
-    Per-cell content matches sub-deliverable A's ``render_lick_raster``:
-    dot scatter with green=correct / magenta=incorrect, alpha=0.6,
-    zorder layering (incorrect on top), explicit xticks [0, 5],
-    thin reward marker at x=0.
+    Trials are pooled across sessions in date order:
+      - rows ``0 .. n_bare-1`` (top): bare-half trials of cue
+        ``side_reward``, concatenated chronologically across
+        sessions.
+      - horizontal divider line at y = n_bare.
+      - rows ``n_bare .. n_bare + n_b - 1`` (bottom): b-half trials,
+        same ordering.
+    Dot conventions inherited from visual_gate raster.
     """
-    config = config or load_visual_gate_config()
-    behavior_params = behavior_params or load_behavior_report_params()
-    window = behavior_params["window_around_rewards"]
+    # First pass: count trials per session in each half to assign
+    # global y indices.
+    bare_trials_per_session: list[int] = []
+    b_trials_per_session: list[int] = []
+    for pair in sessions:
+        bare_n = len(pair.bare.rewards_idx[f"Reward_{side_reward}"])
+        b_n = len(pair.b.rewards_idx[f"Reward_{side_reward}"])
+        bare_trials_per_session.append(bare_n)
+        b_trials_per_session.append(b_n)
+    n_bare = sum(bare_trials_per_session)
+    n_b = sum(b_trials_per_session)
 
-    fig, axs = plt.subplots(
-        nrows=2, ncols=2,
-        figsize=(5, 4),
-        squeeze=False, sharex=True,
-    )
-    for jj, (label, session) in enumerate(
-        (("bare", pair.bare), ("b", pair.b)),
+    # Second pass: scatter dots at global y indices.
+    bare_y_offset = 0
+    b_y_offset = n_bare + 1  # +1 for divider gap
+    for pair, n_bare_session, n_b_session in zip(
+        sessions, bare_trials_per_session, b_trials_per_session, strict=True,
     ):
-        delays_full = compute_trial_lick_delays(session, window)
-        for ii, side_reward in enumerate(("L", "R")):
-            ax = axs[ii, jj]
+        for half, session, y_base in (
+            ("bare", pair.bare, bare_y_offset),
+            ("b", pair.b, b_y_offset),
+        ):
+            delays_full = compute_trial_lick_delays(session, window)
             delays_by_reward = delays_full[f"Reward_{side_reward}"]
             for idx_reward, by_side in delays_by_reward.items():
+                trial_y = y_base + idx_reward
                 for side_lick in ("L", "R"):
                     lick_delays = by_side[f"Lick_{side_lick}"]
                     if lick_delays.size == 0:
@@ -529,241 +469,226 @@ def render_bare_vs_b_lick_raster(
                     )
                     ax.scatter(
                         lick_delays / session.sample_rate,
-                        np.full_like(lick_delays, idx_reward, dtype=float),
+                        np.full_like(lick_delays, trial_y, dtype=float),
                         s=config["raster_dot_size"],
                         color=color,
                         alpha=config["raster_dot_alpha"],
                         zorder=dot_zorder,
                     )
-            n_trials = len(delays_by_reward)
-            ax.plot(
-                [0, 0], [0, n_trials],
-                config["raster_reward_marker_color"],
-                alpha=config["raster_reward_marker_alpha"],
-                linewidth=config["raster_reward_marker_linewidth"],
-            )
-            ax.set_xlim(*config["raster_xlim"])
-            ax.set_xticks(config["raster_xticks"])
-            if ii == 0:
-                ax.set_title(label)
-            if ii == 1:
-                ax.tick_params(
-                    axis="x", labelsize=config["xtick_fontsize"],
-                )
-            if jj == 0:
-                ax.set_ylabel(f"Trials (mouse {side_reward})")
-            else:
-                ax.set_yticklabels([])
-    fig.supxlabel(
-        "Time (s)", fontsize=config["raster_xlabel_fontsize"],
+        bare_y_offset += n_bare_session
+        b_y_offset += n_b_session
+
+    # Reward marker — single line covering both halves' x=0.
+    ax.plot(
+        [0, 0], [0, max(1, n_bare + n_b + 1)],
+        config["raster_reward_marker_color"],
+        alpha=config["raster_reward_marker_alpha"],
+        linewidth=config["raster_reward_marker_linewidth"],
     )
-    fig.suptitle(_session_title(pair))
-    fig.tight_layout()
-    paths = save_bare_vs_b_figure(
-        fig, pair.animal, pair.date.strftime("%Y%m%d"),
-        "lick_raster", resolver, overwrite=overwrite,
+    # Divider line between bare and b halves.
+    ax.hlines(
+        n_bare + 0.5,
+        xmin=config["raster_xlim"][0],
+        xmax=config["raster_xlim"][1],
+        color="black", linewidth=0.8, linestyle="-", zorder=4,
     )
-    plt.close(fig)
-    return paths
+    ax.set_xlim(*config["raster_xlim"])
+    ax.set_xticks(config["raster_xticks"])
+    ax.tick_params(axis="x", labelsize=config["xtick_fontsize"])
+    # Y-axis: label the two halves at their midpoints.
+    if n_bare > 0 and n_b > 0:
+        ax.set_yticks([n_bare / 2, n_bare + 0.5 + n_b / 2])
+        ax.set_yticklabels(["bare", "b"])
+    ax.set_ylim(-0.5, n_bare + n_b + 1.5)
+    ax.invert_yaxis()  # row 0 at top
+    ax.set_title(f"Reward {side_reward}", fontsize="small")
 
 
-def _first_lick_latencies_per_side(
-    session: SessionPlotData,
-    window_around_rewards: tuple[float, float] | list[float],
-) -> dict[str, np.ndarray]:
-    """First post-reward lick latencies per side (seconds).
-
-    For each reward side, returns an array of first post-reward
-    correct-side lick latencies (one per trial; NaN when no correct
-    post-reward lick exists). Used by the latency endpoint.
-    """
-    delays_full = compute_trial_lick_delays(session, window_around_rewards)
-    out: dict[str, np.ndarray] = {}
-    for side_reward in ("L", "R"):
-        latencies: list[float] = []
-        for _idx, by_side in delays_full[f"Reward_{side_reward}"].items():
-            correct_post = by_side[f"Lick_{side_reward}"]
-            correct_post = correct_post[correct_post >= 0]
-            if correct_post.size > 0:
-                latencies.append(
-                    float(correct_post[0]) / session.sample_rate,
-                )
-            else:
-                latencies.append(float("nan"))
-        out[side_reward] = np.array(latencies, dtype=float)
-    return out
-
-
-def render_bare_vs_b_first_lick_latency(
-    pair: SessionPairData,
-    resolver: PathResolver,
+def render_animal_summary_bare_vs_b(
+    animal: str,
     *,
+    sessions: list[SessionPairData] | None = None,
+    resolver: PathResolver,
     config: dict[str, Any] | None = None,
     behavior_params: dict[str, Any] | None = None,
     overwrite: Literal["force", "skip", "raise"] = "force",
 ) -> tuple[Path, Path]:
-    """Endpoint 4: per-session first-lick latency distributions.
+    """Render one 3×2 cohort summary figure for one animal.
 
-    Strip + box plot, x = ["bare L", "bare R", "b L", "b R"],
-    y = latency (s). Color = side (SIDE_COLORS); a vertical
-    separator divides bare from b.
+    Addendum #1 (2026-05-13) cohort-only design. Output:
+    ``{resolver.bare_vs_b_dir(animal=None)}/<animal>_summary.{svg,png}``
+    (the ``animal=None`` branch resolves to ``.../bare_vs_b/cohort/``).
+
+    Layout (3 rows × 2 cols):
+      - Row 1, cols (L, R): accuracy_firstCorrectLickAll. Per-session
+        dot, same-date bare/b connector, red horizontal mean bar.
+        Y ∈ [0, 1]. Denominator = ALL trials (treat_none_as_zero=True).
+      - Row 2, cols (L, R): mean licks per trial. Correct (solid
+        circle) and incorrect (hollow square) layered per session at
+        each x position. Same connectors + mean bars as Row 1.
+      - Row 3, cols (L, R): pooled lick raster, bare top / b bottom,
+        divider line. Trials pooled chronologically across sessions.
+
+    Parameters
+    ----------
+    animal : str
+        e.g. ``"PS55"``.
+    sessions : list of SessionPairData, optional
+        Pre-loaded post-stroke Cohort B sessions for this animal.
+        ``None`` loads via :func:`iter_cohort_b_sessions` with
+        ``animals=[animal]``.
+    resolver : PathResolver
+        For input NPZ paths + output figure paths.
+    config : dict, optional
+        Pre-loaded ``visual_gate:`` block from
+        ``configs/defaults.yaml``. ``None`` loads via
+        :func:`load_visual_gate_config`.
+    behavior_params : dict, optional
+        Pre-loaded ``behavior_report:`` block. ``None`` loads via
+        :func:`load_behavior_report_params`.
+    overwrite : {"force", "skip", "raise"}
+        Same semantics as :func:`save_visual_gate_figure`.
+
+    Returns
+    -------
+    tuple[Path, Path]
+        ``(svg_path, png_path)``.
+
+    Raises
+    ------
+    ValueError
+        If the animal has zero post-stroke Cohort B sessions.
     """
     config = config or load_visual_gate_config()
     behavior_params = behavior_params or load_behavior_report_params()
     window = behavior_params["window_around_rewards"]
 
-    bare_lat = _first_lick_latencies_per_side(pair.bare, window)
-    b_lat = _first_lick_latencies_per_side(pair.b, window)
+    if sessions is None:
+        sessions = list(iter_cohort_b_sessions(
+            resolver, animals=[animal],
+        ))
+    if len(sessions) == 0:
+        raise ValueError(
+            f"render_animal_summary_bare_vs_b: no post-stroke Cohort B "
+            f"sessions for {animal!r} — cannot build the 3×2 summary "
+            f"grid"
+        )
 
-    fig, ax = plt.subplots(figsize=(4, 3))
-    positions = [0, 1, 2.5, 3.5]
-    datasets = [
-        bare_lat["L"], bare_lat["R"],
-        b_lat["L"], b_lat["R"],
-    ]
-    colors = [
-        SIDE_COLORS["L"], SIDE_COLORS["R"],
-        SIDE_COLORS["L"], SIDE_COLORS["R"],
-    ]
-    for pos, data, color in zip(positions, datasets, colors, strict=True):
-        finite = data[np.isfinite(data)]
-        if finite.size > 0:
-            # Strip plot (jittered) under a translucent box.
-            jitter = 0.12 * (np.random.RandomState(42).rand(finite.size) - 0.5)
-            ax.scatter(
-                np.full_like(finite, pos) + jitter, finite,
-                s=4, color=color, alpha=0.5, zorder=2,
+    # ---- Compute per-session scalars (Rows 1 + 2) ----
+    bare_acc: dict[str, list[float]] = {"L": [], "R": []}
+    b_acc: dict[str, list[float]] = {"L": [], "R": []}
+    bare_n_correct: dict[str, list[float]] = {"L": [], "R": []}
+    bare_n_incorrect: dict[str, list[float]] = {"L": [], "R": []}
+    b_n_correct: dict[str, list[float]] = {"L": [], "R": []}
+    b_n_incorrect: dict[str, list[float]] = {"L": [], "R": []}
+    for pair in sessions:
+        a_bare = _half_accuracy_firstCorrectLickAll_per_side(pair.bare, window)
+        a_b = _half_accuracy_firstCorrectLickAll_per_side(pair.b, window)
+        n_bare = _half_mean_licks_per_trial_per_side(pair.bare, window)
+        n_b = _half_mean_licks_per_trial_per_side(pair.b, window)
+        for side in ("L", "R"):
+            bare_acc[side].append(a_bare[side])
+            b_acc[side].append(a_b[side])
+            bare_n_correct[side].append(n_bare[side]["correct"])
+            bare_n_incorrect[side].append(n_bare[side]["incorrect"])
+            b_n_correct[side].append(n_b[side]["correct"])
+            b_n_incorrect[side].append(n_b[side]["incorrect"])
+
+    # ---- Build figure ----
+    figsize = (10.0, 12.0)
+    fig, axs = plt.subplots(
+        nrows=3, ncols=2, figsize=figsize, squeeze=False,
+    )
+
+    # Row 1: accuracy_firstCorrectLickAll
+    for jj, side in enumerate(("L", "R")):
+        ax = axs[0, jj]
+        _plot_row_per_session_dots_and_means(
+            ax, side,
+            bare_vals=bare_acc[side],
+            b_vals=b_acc[side],
+            marker_color=SIDE_COLORS[side],
+        )
+        ax.set_ylim(*config["accuracy_y_range"])
+        ax.set_title(f"Reward {side}: first-lick correct (all trials)",
+                     fontsize="small")
+        if jj == 0:
+            ax.set_ylabel("Accuracy (first-lick correct / all trials)")
+
+    # Row 2: numLicks_bySession (correct + incorrect)
+    for jj, side in enumerate(("L", "R")):
+        ax = axs[1, jj]
+        # Correct (solid filled circles) — replicates the visual_gate
+        # numLicks "correct" solid line.
+        _plot_row_per_session_dots_and_means(
+            ax, side,
+            bare_vals=bare_n_correct[side],
+            b_vals=b_n_correct[side],
+            marker_color=SIDE_COLORS[side],
+            marker="o", marker_face=True,
+        )
+        # Incorrect (hollow squares) — replicates the dashed
+        # "incorrect" line layer.
+        _plot_row_per_session_dots_and_means(
+            ax, side,
+            bare_vals=bare_n_incorrect[side],
+            b_vals=b_n_incorrect[side],
+            marker_color=SIDE_COLORS[side],
+            marker="s", marker_face=False,
+        )
+        ax.set_ylim(0, config["numlicks_y_max"])
+        ax.set_title(f"Reward {side}: mean licks/trial (corr ●, incorr ◻)",
+                     fontsize="small")
+        if jj == 0:
+            ax.set_ylabel("Mean licks per trial")
+
+    # Row 3: pooled lick raster
+    for jj, side in enumerate(("L", "R")):
+        ax = axs[2, jj]
+        _plot_row_lick_raster(
+            ax, side, sessions,
+            window=window, config=config,
+        )
+        if jj == 0:
+            ax.set_ylabel("Trials (bare top / b bottom)")
+
+    # X-label for raster row only.
+    fig.supxlabel(
+        "Time (s)", fontsize=config["raster_xlabel_fontsize"],
+    )
+    fig.suptitle(
+        f"{animal}  bare vs b  (n={len(sessions)} post-stroke sessions)",
+    )
+    fig.tight_layout(rect=[0, 0.02, 1, 0.97])
+
+    # Save.
+    out_dir = resolver.bare_vs_b_dir(animal=None)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    svg_path = out_dir / f"{animal}_summary.svg"
+    png_path = out_dir / f"{animal}_summary.png"
+    for target in (svg_path, png_path):
+        if not target.exists():
+            continue
+        if overwrite == "raise":
+            plt.close(fig)
+            raise FileExistsError(
+                f"bare_vs_b cohort target exists: {target}"
             )
-            ax.boxplot(
-                [finite], positions=[pos], widths=0.35,
-                showfliers=False, zorder=3,
-                medianprops={"color": "black", "linewidth": 1.0},
-                boxprops={"color": color, "linewidth": 1.0},
-                whiskerprops={"color": color, "linewidth": 1.0},
-                capprops={"color": color, "linewidth": 1.0},
-            )
-    ax.axvline(1.75, color="grey", linestyle=":", linewidth=0.8)
-    ax.set_xticks(positions)
-    ax.set_xticklabels(
-        ["bare L", "bare R", "b L", "b R"],
-        fontsize=config["xtick_fontsize"],
-    )
-    ax.set_ylim(0, config["latency_y_max"])
-    ax.set_ylabel("First-lick latency (s)")
-    ax.set_title(_session_title(pair))
-    fig.tight_layout()
-    paths = save_bare_vs_b_figure(
-        fig, pair.animal, pair.date.strftime("%Y%m%d"),
-        "first_lick_latency", resolver, overwrite=overwrite,
-    )
+        if overwrite == "skip":
+            plt.close(fig)
+            return svg_path, png_path
+    fig.savefig(svg_path, format="svg")
+    fig.savefig(png_path, format="png", dpi=300)
     plt.close(fig)
-    return paths
-
-
-def _cumulative_rewards_over_time(
-    session: SessionPlotData,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Return ``(t_seconds, cumulative_count)`` arrays.
-
-    Combines L and R rewards into one cumulative count. ``t_seconds``
-    starts at 0 (session start). Both arrays are step-style: each
-    reward event adds a new (t, count) point. An initial (0, 0)
-    point anchors the line.
-
-    Forward-pointer to Phase 8a.10.1: ``rewards_idx`` currently
-    carries TONE-cue indices (not actual rewards) due to the
-    cohort-wide Tone↔Reward swap. Endpoint code is correct;
-    semantic label will retroactively match data after 8a.10.1's
-    re-emit.
-    """
-    all_rewards = np.concatenate(
-        [session.rewards_idx["Reward_L"], session.rewards_idx["Reward_R"]]
-    ).astype(int)
-    all_rewards.sort()
-    t = all_rewards / session.sample_rate
-    counts = np.arange(1, t.size + 1, dtype=int)
-    # Prepend (0, 0).
-    t = np.concatenate([[0.0], t])
-    counts = np.concatenate([[0], counts])
-    return t, counts
-
-
-def render_bare_vs_b_reward_acquisition_over_time(
-    pair: SessionPairData,
-    resolver: PathResolver,
-    *,
-    config: dict[str, Any] | None = None,
-    behavior_params: dict[str, Any] | None = None,
-    overwrite: Literal["force", "skip", "raise"] = "force",
-) -> tuple[Path, Path]:
-    """Endpoint 5 (NEW; no legacy precedent): cumulative rewards
-    over within-session time, bare vs b overlaid.
-
-    Layout: 1 panel, 2 lines (bare, b). Uses
-    :data:`BARE_VS_B_LINE_COLORS` (bare=black, b=tab:orange) — NOT
-    SIDE_COLORS, because the two lines split on bare-vs-b condition
-    and the L/R distinction is collapsed (L and R rewards are summed
-    per half for a cleanest first-cut visualization).
-
-    Forward-pointer to Phase 8a.10.1
-    --------------------------------
-    Plots TONE-cue acquisition rate currently (cohort-wide Tone↔Reward
-    swap deferred to 8a.10.1). Endpoint code is faithful; semantic
-    labels will retroactively match data after 8a.10.1's re-emit.
-    """
-    _ = config or load_visual_gate_config()
-    _ = behavior_params or load_behavior_report_params()
-
-    t_bare, n_bare = _cumulative_rewards_over_time(pair.bare)
-    t_b, n_b = _cumulative_rewards_over_time(pair.b)
-
-    fig, ax = plt.subplots(figsize=(5, 3))
-    ax.step(
-        t_bare, n_bare, where="post",
-        color=BARE_VS_B_LINE_COLORS["bare"], label="bare",
-    )
-    ax.step(
-        t_b, n_b, where="post",
-        color=BARE_VS_B_LINE_COLORS["b"], label="b",
-    )
-    ax.set_xlabel("Time within session (s)")
-    ax.set_ylabel("Cumulative rewards (L+R combined)")
-    ax.legend(loc="lower right")
-    ax.set_title(_session_title(pair))
-    fig.tight_layout()
-    paths = save_bare_vs_b_figure(
-        fig, pair.animal, pair.date.strftime("%Y%m%d"),
-        "reward_acquisition_over_time", resolver, overwrite=overwrite,
-    )
-    plt.close(fig)
-    return paths
-
-
-# Convenience: list of (endpoint_slug, render_fn) pairs so the
-# orchestrator can iterate cleanly.
-PER_SESSION_RENDERERS: list[tuple[str, Any]] = [
-    ("first_lick_accuracy", render_bare_vs_b_first_lick_accuracy),
-    ("correct_incorrect_per_side",
-     render_bare_vs_b_correct_incorrect_per_side),
-    ("lick_raster", render_bare_vs_b_lick_raster),
-    ("first_lick_latency", render_bare_vs_b_first_lick_latency),
-    ("reward_acquisition_over_time",
-     render_bare_vs_b_reward_acquisition_over_time),
-]
+    return svg_path, png_path
 
 
 __all__ = [
-    "BARE_VS_B_LINE_COLORS",
     "COHORT_B_REL_DAY_MIN",
-    "PER_SESSION_RENDERERS",
     "SessionPairData",
     "iter_cohort_b_session_keys",
     "iter_cohort_b_sessions",
     "list_cohort_b_animals",
-    "render_bare_vs_b_correct_incorrect_per_side",
-    "render_bare_vs_b_first_lick_accuracy",
-    "render_bare_vs_b_first_lick_latency",
-    "render_bare_vs_b_lick_raster",
-    "render_bare_vs_b_reward_acquisition_over_time",
-    "save_bare_vs_b_figure",
+    "render_animal_summary_bare_vs_b",
 ]
+
