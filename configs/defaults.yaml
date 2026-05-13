@@ -1472,11 +1472,15 @@ spout_close_vs_std:
   # visual_gate.raster_xticks=[0, 5] (single-session, sparser) is
   # unchanged.
   raster_xticks: [0, 1, 2, 3, 4, 5]
-  # Row 4 raster y-axis typography (Addendum #5 Tweak 3). Numeric
-  # trial-count yticks replace the R3-R4 Standard/Close half text
-  # ticks. Half labels relocate outside the LEFT spine.
-  raster_ytick_fontsize: 11
+  # Row 4 raster y-axis typography (Addendum #5 Tweak 3 + Addendum
+  # #7 + post-R7 follow-on). Per-session "0" tick markers (R7)
+  # stack densely on PS54 (20 markers per panel); raster_ytick_fontsize
+  # 11→8 keeps them readable. raster_ylabel_labelpad pushes the
+  # "Trials" axis title past the left-spine half labels
+  # ("Standard"/"Close") so they don't visually overlap.
+  raster_ytick_fontsize: 8
   raster_ylabel_fontsize: 13
+  raster_ylabel_labelpad: 20
   # "Standard"/"Close" half labels outside the LEFT spine, rotated
   # 90° CCW (bottom-to-top reading; mirrors the day labels'
   # rotated-270° right-spine convention).

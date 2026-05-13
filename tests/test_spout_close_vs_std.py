@@ -1006,11 +1006,12 @@ class TestCgB3R4Polish:
                 f"got kwargs={kwargs}"
             )
 
-    def test_tweak_2_day_labels_rotate_270(
+    def test_tweak_2_day_labels_rotation_horizontal(
         self, synth_pairs_3_sessions, tmp_path,
     ):
-        """Pin: day labels use rotation=270 (was 90 in R3). Capture
-        ax.text calls via mock-patch."""
+        """Pin: day labels use rotation=0 (R6/Addendum #6 horizontal
+        flip; supersedes R4 Tweak 2's rotation=270). Horizontal
+        labels are readable on dense cohorts like PS54 (20 labels)."""
         import matplotlib
         import unittest.mock as mock
         captured: list[dict] = []
@@ -1034,8 +1035,9 @@ class TestCgB3R4Polish:
         day_calls = [c for c in captured if c["x"] > 1.0 and c["s"].startswith("d")]
         assert len(day_calls) > 0, "no day-label ax.text calls captured"
         for c in day_calls:
-            assert c["rotation"] == 270, (
-                f"day label rotation should be 270 (R4 flip), got "
+            assert c["rotation"] == 0, (
+                f"day label rotation should be 0 (R6 horizontal "
+                f"flip; supersedes R4 rotation=270), got "
                 f"{c['rotation']} on label {c['s']!r}"
             )
 
@@ -1145,13 +1147,13 @@ class TestCgB3R5Polish:
             f"expected [0,1,2,3,4,5]; got {xticks}"
         )
 
-    def test_tweak_2_day_label_rotation_mode_default(
+    def test_tweak_2_day_label_anchor_horizontal(
         self, synth_pairs_3_sessions, tmp_path,
     ):
-        """Pin: day labels use rotation_mode='default' (R5 Tweak 2
-        centering fix). Earlier R4 used rotation_mode='anchor'
-        which mis-aligned the anchor at the visual top of the
-        rotated text."""
+        """Pin: day labels anchored at ha='left', va='center' with
+        rotation=0 (R6/Addendum #6 horizontal flip; supersedes R5's
+        rotation_mode='default' centering-for-rotated-text fix —
+        with rotation=0, rotation_mode is moot)."""
         import matplotlib
         import unittest.mock as mock
         captured: list[dict] = []
@@ -1162,7 +1164,8 @@ class TestCgB3R5Polish:
                 "x": float(x),
                 "s": str(s),
                 "rotation": kwargs.get("rotation"),
-                "rotation_mode": kwargs.get("rotation_mode"),
+                "ha": kwargs.get("ha"),
+                "va": kwargs.get("va"),
             })
             return orig(self, x, y, s, *args, **kwargs)
 
@@ -1179,9 +1182,17 @@ class TestCgB3R5Polish:
         ]
         assert len(day_calls) > 0
         for c in day_calls:
-            assert c["rotation_mode"] == "default", (
-                f"day label rotation_mode should be 'default' "
-                f"(R5 fix); got {c['rotation_mode']!r}"
+            assert c["rotation"] == 0, (
+                f"day label rotation should be 0 (R6); got "
+                f"{c['rotation']!r}"
+            )
+            assert c["ha"] == "left", (
+                f"day label ha should be 'left' (text anchored to "
+                f"its left edge at x=1.02); got {c['ha']!r}"
+            )
+            assert c["va"] == "center", (
+                f"day label va should be 'center' (vertically "
+                f"centered on session block); got {c['va']!r}"
             )
 
     def test_tweak_3a_row_4_ylabel_is_trials(
@@ -1335,12 +1346,18 @@ class TestCgB3R5Polish:
             )
 
     def test_tweak_3_new_config_knobs(self):
-        """Pin: 4 new config knobs from R5."""
+        """Pin: R5 raster y-axis knobs + R7 follow-on labelpad knob.
+
+        R7-follow-on tweaks (post-R7 user feedback): raster_ytick_fontsize
+        dropped 11→8 (for PS54's 20 stacked '0' markers density);
+        raster_ylabel_labelpad added (pushes 'Trials' axis title past
+        the rotated half-spine labels)."""
         from stroke_orofacial.spout_behavior.spout_close_vs_std import (
             load_cohort_config,
         )
         cfg = load_cohort_config()
-        assert cfg["raster_ytick_fontsize"] == 11
+        assert cfg["raster_ytick_fontsize"] == 8
         assert cfg["raster_ylabel_fontsize"] == 13
         assert cfg["raster_half_label_fontsize"] == 11
+        assert cfg["raster_ylabel_labelpad"] == 20
 

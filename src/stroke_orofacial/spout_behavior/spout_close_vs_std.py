@@ -599,9 +599,8 @@ def _plot_row_lick_raster(
         ax.text(
             1.02, center_y, f"d{rel_day:+d}",
             transform=ax.get_yaxis_transform(),
-            rotation=270,
-            rotation_mode="default",
-            ha="center", va="center",
+            rotation=0,
+            ha="left", va="center",
             fontsize=day_label_fontsize,
         )
         bare_y_running += n_session
@@ -616,9 +615,8 @@ def _plot_row_lick_raster(
         ax.text(
             1.02, center_y, f"d{rel_day:+d}",
             transform=ax.get_yaxis_transform(),
-            rotation=270,
-            rotation_mode="default",
-            ha="center", va="center",
+            rotation=0,
+            ha="left", va="center",
             fontsize=day_label_fontsize,
         )
         b_y_running += n_session
@@ -980,11 +978,14 @@ def render_animal_summary_spout_close_vs_std(
         )
         # Addendum #5 Tweak 3a: Row 4 ylabel = "Trials" (replaces
         # R3-R4's "(Standard top / Close bottom)"; the half labels
-        # now sit outside the left spine).
+        # now sit outside the left spine). Post-R7 follow-on:
+        # labelpad pushes "Trials" past the rotated half labels
+        # ("Standard" / "Close") so the title doesn't overlap them.
         if jj == 0:
             ax.set_ylabel(
                 "Trials",
                 fontsize=cohort_config["raster_ylabel_fontsize"],
+                labelpad=cohort_config["raster_ylabel_labelpad"],
             )
     fig.suptitle(
         f"{animal}  spout close vs standard  "
