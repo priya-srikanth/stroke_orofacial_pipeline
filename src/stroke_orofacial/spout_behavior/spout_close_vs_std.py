@@ -649,13 +649,26 @@ def _plot_row_lick_raster(
     ax.tick_params(
         axis="x", labelsize=cohort_config["raster_xtick_fontsize"],
     )
-    # Addendum #5 Tweak 3: numeric trial-count y-ticks (was R3/R4's
-    # Standard/Close text ticks). Y-axis NOT inverted — y=0 at
-    # bottom, max-trial-count at top (matches visual_gate single-
-    # session raster convention; "earlier trials at bottom").
+    # Addendum #7 Tweak (supersedes Addendum #5 Tweak 3b): per-
+    # session-relative y-ticks. Each session's row range starts at
+    # session-local trial 0 (the BOTTOM of that session's block in
+    # the panel — y=0 is at the bottom of the panel, no invert).
+    # Place one tick at the y-coordinate of each session's first
+    # trial; label all "0". For PS55: 6 sessions (3 Standard + 3
+    # Close) → 6 "0" markers per panel. For PS54: 20 sessions → 20
+    # markers.
     n_total = n_bare + n_b
-    ax.set_yticks([0, n_total])
-    ax.set_yticklabels(["0", str(n_total)])
+    y_session_starts: list[int] = []
+    cum = 0
+    for n_session in bare_trials_per_session:
+        y_session_starts.append(cum)
+        cum += n_session
+    cum = n_bare + 1  # b half starts after Standard + divider gap
+    for n_session in b_trials_per_session:
+        y_session_starts.append(cum)
+        cum += n_session
+    ax.set_yticks(y_session_starts)
+    ax.set_yticklabels(["0"] * len(y_session_starts))
     ax.tick_params(
         axis="y", labelsize=cohort_config["raster_ytick_fontsize"],
     )

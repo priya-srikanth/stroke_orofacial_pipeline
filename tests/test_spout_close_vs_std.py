@@ -1225,13 +1225,15 @@ class TestCgB3R5Polish:
     def test_tweak_3b_numeric_yticks_and_3c_not_inverted(
         self, synth_pairs_3_sessions, tmp_path, monkeypatch,
     ):
-        """Pin: Row 4 panels have numeric y-tick labels ('0' +
-        total trial count) and the y-axis is NOT inverted
-        (get_ylim()[0] < get_ylim()[1]).
+        """Pin: Row 4 panels have per-session "0" y-tick labels
+        (Addendum #7 supersedes R5's cumulative ['0', '<n_total>'])
+        and the y-axis is NOT inverted.
 
+        Each session's row range starts with a "0" tick at the
+        bottom of that session's block. For the synth fixture
+        (3 Standard + 3 Close sessions) = 6 "0" ticks per panel.
         Captures ax.set_yticklabels via monkeypatch and verifies
-        ['0', '<n_total>'] format. Captures ax.set_ylim to verify
-        bottom < top."""
+        all-zero labels with length == n_sessions_total."""
         import matplotlib
         captured_ticklabels: list[list] = []
         orig_setyticks = matplotlib.axes.Axes.set_yticklabels
@@ -1250,14 +1252,30 @@ class TestCgB3R5Polish:
         render_animal_summary_spout_close_vs_std(
             "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
         )
-        # Numeric trial-count tick labels: ['0', '<n_total>'].
-        numeric_calls = [
+        # Per-session "0" tick labels — 6 per panel for the synth
+        # fixture (3 Standard + 3 Close sessions). Both Row 4 panels
+        # (L, R) emit this list → 2 matching calls.
+        n_sessions_total = 2 * len(synth_pairs_3_sessions)  # bare + b
+        zero_marker_calls = [
+            labels for labels in captured_ticklabels
+            if len(labels) == n_sessions_total
+            and all(L == "0" for L in labels)
+        ]
+        assert len(zero_marker_calls) >= 1, (
+            f"expected ≥1 per-session '0' yticklabel call with "
+            f"length {n_sessions_total} (R7 Addendum #7); "
+            f"got: {captured_ticklabels}"
+        )
+        # Sanity: no R5 cumulative ['0', '<N>'] form should appear
+        # post-R7.
+        cumulative_form = [
             labels for labels in captured_ticklabels
             if len(labels) == 2 and labels[0] == "0" and labels[1].isdigit()
+            and labels[1] != "0"
         ]
-        assert len(numeric_calls) >= 1, (
-            f"expected ≥1 numeric ['0', '<N>'] yticklabel call; "
-            f"got: {captured_ticklabels}"
+        assert len(cumulative_form) == 0, (
+            f"R5 cumulative ['0', '<N>'] form should be superseded "
+            f"by R7's per-session form; got {cumulative_form}"
         )
         # No "Standard"/"Close" yticklabel calls (they relocated
         # to the left-spine ax.text outside the axes).
