@@ -1428,3 +1428,27 @@ behavior_report:
     window: [0, 2.5]
     num_licks_correct_min: 5
     num_licks_incorrect_max: 0
+
+
+# ============================================================
+# Phase 8a.10 sub-deliverable B — spout-close-vs-standard
+# cohort renderer (Addendum #3 Tweak 6 typography knobs).
+# Single 3-row figure per animal (renamed from bare_vs_b per
+# Addendum #3 2026-05-13). The renderer renders a 4-row × 2-col
+# grid: accuracy_firstCorrectLickAll / correct-licks / incorrect-
+# licks / lick-raster (faceted L vs R columns).
+# ============================================================
+spout_close_vs_std:
+  # Panel title fontsize — bumped from matplotlib default (~11) to
+  # 14 for cohort-level legibility. Visual-gate single-session
+  # panels keep their existing smaller defaults.
+  panel_title_fontsize: 14
+  # Cohort raster xtick fontsize — bumped from
+  # visual_gate.xtick_fontsize=5 (single-session) to 9 (cohort).
+  raster_xtick_fontsize: 9
+  # Cohort raster "Time (s)" supxlabel fontsize — bumped from
+  # visual_gate.raster_xlabel_fontsize=8 to 11.
+  raster_xlabel_fontsize: 11
+  # Per-session "d+N" labels on the right of the Row 4 raster
+  # (Addendum #3 Tweak 4); rotated 90°.
+  raster_day_label_fontsize: 7

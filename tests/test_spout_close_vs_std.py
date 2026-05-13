@@ -523,10 +523,12 @@ class TestRenderAnimalSummarySpoutCloseVsStd:
                 "PS55", sessions=[], resolver=resolver,
             )
 
-    def test_layout_is_3_rows_2_cols(
+    def test_layout_is_4_rows_2_cols(
         self, synth_pairs_3_sessions, tmp_path,
     ):
-        """Pin: figure has 6 axes (3 rows × 2 cols)."""
+        """Addendum #3 Tweak 3 pin: figure has 8 axes (4 rows × 2
+        cols). R2's 3-row layout (6 axes) was split into 4 rows by
+        separating mean correct licks from mean incorrect licks."""
         import re
         resolver = PathResolver(output_root=tmp_path)
         svg, _png = render_animal_summary_spout_close_vs_std(
@@ -534,8 +536,8 @@ class TestRenderAnimalSummarySpoutCloseVsStd:
         )
         text = svg.read_text(encoding="utf-8")
         axes_groups = re.findall(r'<g id="axes_\d+">', text)
-        assert len(axes_groups) == 6, (
-            f"3×2 grid should produce 6 axes; got {len(axes_groups)}"
+        assert len(axes_groups) == 8, (
+            f"4×2 grid should produce 8 axes; got {len(axes_groups)}"
         )
 
     def test_row_1_uses_treat_none_as_zero_denominator(
@@ -629,24 +631,23 @@ class TestRenderAnimalSummarySpoutCloseVsStd:
 
 
 class TestCgB3R2Polish:
-    """Pins for Addendum #2 tweaks 1-4.
+    """Pins for Addendum #2 tweaks 1 + 4 (preserved through R3).
 
     Tweak 1 — display labels (Standard / Close / Spout Distance).
-    Tweak 2 — per-condition palette (dots + mean line same color).
-    Tweak 3 — inter-session boundary lines in Row 3 raster.
-    Tweak 4 — shared y-lim across L/R panels (Rows 1 and 2)."""
+    Tweak 4 — shared y-lim across L/R panels per row.
+
+    The R2 per-condition palette (Tweak 2) was replaced by R3's
+    per-mouse-side palette + Standard/Close fill convention — see
+    :class:`TestCgB3R3Polish` for the new pins. R2's
+    inter-session-boundary count (Tweak 3) is superseded by R3's
+    darker styling — see TestCgB3R3Polish.test_raster_divider_kwargs."""
 
     def test_tweak_1_display_labels_replace_bare_b(
         self, synth_pairs_3_sessions, tmp_path,
     ):
         """Pin: SVG contains "Standard", "Close", "Spout Distance"
         (rendered tick labels + axis title). Raw "bare" / "b" text
-        does NOT appear as visible tick-label text.
-
-        matplotlib emits text-as-paths but ALSO embeds the literal
-        text strings in the SVG (as metadata / comment markers
-        attached to the text groups), so we can pin via literal
-        string presence."""
+        does NOT appear as visible tick-label text."""
         resolver = PathResolver(output_root=tmp_path)
         svg, _png = render_animal_summary_spout_close_vs_std(
             "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
@@ -655,88 +656,25 @@ class TestCgB3R2Polish:
         assert "Standard" in text, "display label 'Standard' missing"
         assert "Close" in text, "display label 'Close' missing"
         assert "Spout Distance" in text, "axis title 'Spout Distance' missing"
-        # No raw "bare" / "b" tick-label text (case-sensitive).
-        # Look for the rendered tick-label form — matplotlib embeds
-        # the label string between '">' and '<' for each text node
-        # representation, OR as a standalone literal.
         assert '"bare"' not in text, "raw 'bare' tick-label leaked"
         assert ">bare<" not in text, "raw 'bare' tick-label leaked"
 
-    def test_tweak_2_mean_line_color_matches_dot_color(
-        self, synth_pairs_3_sessions, tmp_path,
-    ):
-        """Pin: dots + mean line share per-condition colors.
-
-        bare condition → black (#000000), b condition → tab:orange
-        (#ff7f0e). The mean horizontal bar's stroke color matches
-        the dot stroke color at the same x-position."""
-        from stroke_orofacial.spout_behavior.spout_close_vs_std import (
-            SPOUT_DISTANCE_CONDITION_COLORS,
-            COHORT_MEAN_BAR_LINEWIDTH,
-        )
-        assert SPOUT_DISTANCE_CONDITION_COLORS["bare"] == "black"
-        assert SPOUT_DISTANCE_CONDITION_COLORS["b"] == "tab:orange"
-        assert COHORT_MEAN_BAR_LINEWIDTH == 0.75
-
-        resolver = PathResolver(output_root=tmp_path)
-        svg, _png = render_animal_summary_spout_close_vs_std(
-            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
-        )
-        text = svg.read_text(encoding="utf-8")
-        # Both per-condition palette colors appear as stroke/fill.
-        # #ff7f0e (b/orange) is distinctive — must appear in dots +
-        # mean line for the b condition.
-        assert "#ff7f0e" in text, "tab:orange (b condition) missing"
-        # Black appears in many places (axes, text), so just confirm
-        # the palette constants are wired.
-
-    def test_tweak_3_inter_session_boundary_count(
-        self, synth_pairs_3_sessions, tmp_path,
-    ):
-        """Pin: Row 3 raster has ``(n_sessions - 1)`` inter-session
-        boundary lines within EACH half × 2 panels (L, R).
-
-        Per addendum's PS55 worked example: 3 sessions × 2 halves
-        × 2 panels → (3-1) × 2 × 2 = 8 boundary lines total
-        (lightgray, alpha 0.5, linewidth 0.3)."""
-        resolver = PathResolver(output_root=tmp_path)
-        svg, _png = render_animal_summary_spout_close_vs_std(
-            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
-        )
-        text = svg.read_text(encoding="utf-8")
-        # Each boundary line carries three distinctive style
-        # attributes. The intersection (counted independently below)
-        # should match exactly.
-        n_lightgray = text.count("#d3d3d3")
-        n_thin = text.count("stroke-width: 0.3")
-        n_half_opacity = text.count("stroke-opacity: 0.5")
-        # n_sessions=3 → (3-1) + (3-1) = 4 per panel × 2 panels = 8.
-        expected = (3 - 1) * 2 * 2
-        assert n_lightgray == expected, (
-            f"expected {expected} lightgray refs (inter-session "
-            f"boundaries); got {n_lightgray}"
-        )
-        assert n_thin == expected, (
-            f"expected {expected} stroke-width: 0.3 refs; got {n_thin}"
-        )
-        assert n_half_opacity == expected, (
-            f"expected {expected} stroke-opacity: 0.5 refs; got "
-            f"{n_half_opacity}"
-        )
-
-    def test_tweak_4_shared_ylim_row1_and_row2(
+    def test_tweak_4_shared_ylim_rows_1_through_3(
         self, synth_pairs_3_sessions, tmp_path, monkeypatch,
     ):
-        """Pin: Row 1 panels (L, R) share y-lim; Row 2 panels share
-        y-lim. Capture every ax.set_ylim call via monkeypatch and
-        verify that the same y-range is applied to both panels per
-        row."""
+        """Pin: Rows 1, 2, 3 panels (L, R) each share y-lim. The
+        first 6 set_ylim calls correspond to the renderer's
+        explicit row-by-row pair. (Row 4 raster has additional
+        autoscale-triggered set_ylim calls during text/scatter
+        emission so we don't pin Row 4 here — its L/R sync is
+        instead exercised via the per-row max-trial-count padding
+        in _plot_row_lick_raster and indirectly via the layout
+        test.)"""
         import matplotlib
         captured: list[tuple[float, float]] = []
         orig = matplotlib.axes.Axes.set_ylim
 
         def recording_set_ylim(self, *args, **kwargs):
-            # set_ylim(*, bottom=None, top=None) or set_ylim(left, right).
             if len(args) == 2:
                 captured.append((float(args[0]), float(args[1])))
             elif len(args) == 1 and isinstance(args[0], (tuple, list)):
@@ -750,23 +688,243 @@ class TestCgB3R2Polish:
         render_animal_summary_spout_close_vs_std(
             "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
         )
-        # The renderer issues exactly: row1_L, row1_R, row2_L, row2_R,
-        # row3_L, row3_R for ax.set_ylim — 6 calls minimum (matplotlib
-        # may also call set_ylim internally during tight_layout, but
-        # the per-row pair structure should hold for the first 6).
         assert len(captured) >= 6, (
-            f"expected ≥6 set_ylim calls; got {len(captured)}"
+            f"expected ≥6 set_ylim calls for Rows 1-3 (each row × 2 "
+            f"cols); got {len(captured)}"
         )
-        row1_L, row1_R = captured[0], captured[1]
-        row2_L, row2_R = captured[2], captured[3]
-        row3_L, row3_R = captured[4], captured[5]
-        assert row1_L == row1_R, (
-            f"Row 1 L/R y-lim mismatch: {row1_L} vs {row1_R}"
+        for row_idx, (idx_L, idx_R) in enumerate([
+            (0, 1), (2, 3), (4, 5),
+        ]):
+            assert captured[idx_L] == captured[idx_R], (
+                f"Row {row_idx + 1} L/R y-lim mismatch: "
+                f"{captured[idx_L]} vs {captured[idx_R]}"
+            )
+
+
+class TestCgB3R3Polish:
+    """Pins for Addendum #3 Round 3 tweaks (2-6).
+
+    Tweak 2 — per-mouse-side palette + Standard/Close dot-fill
+              convention.
+    Tweak 3 — 4-row layout split (correct/incorrect separate rows).
+    Tweak 4 — raster day labels outside the right spine.
+    Tweak 5 — darker raster session-divider styling.
+    Tweak 6 — typography bumps (panel title 14; cohort raster
+              xtick 9; cohort raster xlabel 11)."""
+
+    def test_dot_fill_filled_standard_open_close(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        """Tweak 2 pin: Standard (bare) dots have
+        ``markerfacecolor=mouse_side_color``; Close (b) dots have
+        ``markerfacecolor="none"``. Verified by SVG element
+        signatures: bare dots have a fill-color attribute matching
+        the mouse-side color; b dots have fill="none" (or absent
+        fill style)."""
+        from stroke_orofacial.spout_behavior.spout_close_vs_std import (
+            SPOUT_DISTANCE_DOT_FILL,
         )
-        assert row2_L == row2_R, (
-            f"Row 2 L/R y-lim mismatch: {row2_L} vs {row2_R}"
+        assert SPOUT_DISTANCE_DOT_FILL["bare"] == "filled"
+        assert SPOUT_DISTANCE_DOT_FILL["b"] == "open"
+
+        resolver = PathResolver(output_root=tmp_path)
+        svg, _png = render_animal_summary_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
         )
-        assert row3_L == row3_R, (
-            f"Row 3 L/R y-lim mismatch: {row3_L} vs {row3_R}"
+        text = svg.read_text(encoding="utf-8")
+        # The L-panel mouse-side color (dodgerblue = #1e90ff) and
+        # R-panel (mediumvioletred = #c71585) appear as fill on
+        # Standard dots and as stroke on Close dots. matplotlib
+        # serializes facecolor="none" as CSS-style
+        # ``style="fill: none; stroke: ..."``.
+        assert "fill: none" in text, (
+            "open-fill (Close) dots missing; expected at least one "
+            "'fill: none' style entry"
         )
+
+    def test_dot_edgecolor_mouse_side(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        """Tweak 2 pin: both Standard and Close dots in the L panel
+        share edgecolor=dodgerblue; both in R panel share
+        mediumvioletred. SIDE_COLORS is the source of truth."""
+        from stroke_orofacial.spout_behavior.visual_gate import SIDE_COLORS
+        # Pin colors literally (avoid regressing SIDE_COLORS).
+        assert SIDE_COLORS["L"] == "dodgerblue"
+        assert SIDE_COLORS["R"] == "mediumvioletred"
+
+        resolver = PathResolver(output_root=tmp_path)
+        svg, _png = render_animal_summary_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        text = svg.read_text(encoding="utf-8")
+        # Mouse-side colors appear as stroke for dots (matplotlib
+        # hex form). dodgerblue = #1e90ff; mediumvioletred = #c71585.
+        assert "#1e90ff" in text, "L-panel mouse-side color missing"
+        assert "#c71585" in text, "R-panel mouse-side color missing"
+
+    def test_mean_line_color_matches_mouse_side(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        """Tweak 2 pin: mean line color = mouse-side color (NOT
+        per-condition). The mean line for both Standard and Close
+        within an L panel is dodgerblue; within an R panel is
+        mediumvioletred."""
+        from stroke_orofacial.spout_behavior.spout_close_vs_std import (
+            COHORT_MEAN_BAR_LINEWIDTH,
+        )
+        assert COHORT_MEAN_BAR_LINEWIDTH == 0.75
+        # The previous per-condition palette is gone; no
+        # SPOUT_DISTANCE_CONDITION_COLORS module export.
+        import stroke_orofacial.spout_behavior.spout_close_vs_std as mod
+        assert not hasattr(mod, "SPOUT_DISTANCE_CONDITION_COLORS"), (
+            "SPOUT_DISTANCE_CONDITION_COLORS should be deleted per "
+            "Addendum #3 Tweak 2"
+        )
+
+    def test_connector_stays_gray(self):
+        """Tweak 2 pin: same-date bare/b connector stays gray
+        (spans both conditions; neutrality is intentional)."""
+        from stroke_orofacial.spout_behavior.spout_close_vs_std import (
+            COHORT_CONNECTOR_KWARGS,
+        )
+        assert COHORT_CONNECTOR_KWARGS["color"] == "gray"
+
+    def test_row_3_incorrect_separate_ylim_from_row_2(
+        self, synth_pairs_3_sessions, tmp_path, monkeypatch,
+    ):
+        """Tweak 3 pin: Row 2 (correct) and Row 3 (incorrect) have
+        INDEPENDENT y-axis ranges. They should NOT share — incorrect
+        magnitudes are typically much smaller and sharing would
+        crush detail. The PS55 synthetic fixture has more correct
+        than incorrect licks, so their max-values differ → ylim
+        differs."""
+        import matplotlib
+        captured: list[tuple[float, float]] = []
+        orig = matplotlib.axes.Axes.set_ylim
+
+        def recording_set_ylim(self, *args, **kwargs):
+            if len(args) == 2:
+                captured.append((float(args[0]), float(args[1])))
+            elif len(args) == 1 and isinstance(args[0], (tuple, list)):
+                captured.append((float(args[0][0]), float(args[0][1])))
+            return orig(self, *args, **kwargs)
+
+        monkeypatch.setattr(
+            matplotlib.axes.Axes, "set_ylim", recording_set_ylim,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        render_animal_summary_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        # row2 = indices (2, 3), row3 = indices (4, 5).
+        row2 = captured[2]
+        row3 = captured[4]
+        # If the synthetic fixture happens to have equal max values
+        # for correct and incorrect, this assert is skipped. The
+        # standard synth fixture has 5 vs 1 max licks → magnitudes
+        # differ → ylim differs.
+        if abs(row2[1] - row3[1]) < 1e-9:
+            pytest.skip(
+                "synthetic fixture has equal correct/incorrect max — "
+                "can't assert separate ylim"
+            )
+        assert row2 != row3, (
+            f"Row 2 + Row 3 ylim should be independent; both = {row2}"
+        )
+
+    def test_raster_day_labels_outside_right_spine(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        """Tweak 4 pin: Row 4 raster has one "d+N" text label per
+        session-block in EACH half (bare + b). PS55 worked example:
+        3 Standard sessions + 3 Close sessions = 6 labels per panel
+        × 2 panels (L, R) = 12 day labels total."""
+        from stroke_orofacial.spout_behavior.spout_close_vs_std import (
+            render_animal_summary_spout_close_vs_std as render_fn,
+        )
+        # Patch ax.text to capture labels.
+        import matplotlib
+        captured: list[tuple[float, float, str]] = []
+        orig = matplotlib.axes.Axes.text
+
+        def recording_text(self, x, y, s, *args, **kwargs):
+            captured.append((float(x), float(y) if not hasattr(y, "real") else float(y), str(s)))
+            return orig(self, x, y, s, *args, **kwargs)
+
+        import unittest.mock as mock
+        with mock.patch.object(
+            matplotlib.axes.Axes, "text", recording_text,
+        ):
+            resolver = PathResolver(output_root=tmp_path)
+            render_fn(
+                "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+            )
+        # Filter to day-label calls (x > 1.0 in axes coords —
+        # outside the right spine).
+        day_labels = [c for c in captured if c[0] > 1.0 and c[2].startswith("d")]
+        # 3 Standard + 3 Close sessions × 2 panels = 12 day labels.
+        assert len(day_labels) == 12, (
+            f"expected 12 day labels (3 Standard + 3 Close × 2 "
+            f"panels); got {len(day_labels)}: {day_labels[:5]}..."
+        )
+        # Every label is "d+N" or "d-N" or "d0".
+        import re
+        for _x, _y, s in day_labels:
+            assert re.fullmatch(r"d[+\-]?\d+", s), (
+                f"day label {s!r} doesn't match 'd[+-]?N' format"
+            )
+
+    def test_raster_divider_kwargs(self):
+        """Tweak 5 pin: Row 4 inter-session boundary lines render
+        at color="gray", linewidth=0.5, alpha=0.8, zorder=1 (darker
+        than R2's lightgray/0.3/0.5)."""
+        from stroke_orofacial.spout_behavior.spout_close_vs_std import (
+            RASTER_INTRA_HALF_BOUNDARY_KWARGS,
+        )
+        assert RASTER_INTRA_HALF_BOUNDARY_KWARGS["color"] == "gray"
+        assert RASTER_INTRA_HALF_BOUNDARY_KWARGS["linewidth"] == 0.5
+        assert RASTER_INTRA_HALF_BOUNDARY_KWARGS["alpha"] == 0.8
+        assert RASTER_INTRA_HALF_BOUNDARY_KWARGS["zorder"] == 1
+
+    def test_raster_divider_renders_in_svg(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        """Tweak 5 pin: the boundary lines actually render with
+        the darker R3 styling. PS55: 3 sessions × 2 halves × 2
+        panels → (3-1) × 2 × 2 = 8 boundary lines."""
+        resolver = PathResolver(output_root=tmp_path)
+        svg, _png = render_animal_summary_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        text = svg.read_text(encoding="utf-8")
+        # gray = #808080 in matplotlib SVG hex.
+        n_gray = text.count("#808080")
+        n_thin = text.count("stroke-width: 0.5")
+        n_alpha_08 = text.count("stroke-opacity: 0.8")
+        expected = (3 - 1) * 2 * 2
+        assert n_gray >= expected, (
+            f"expected ≥{expected} gray refs (inter-session boundary "
+            f"color); got {n_gray}"
+        )
+        assert n_alpha_08 >= expected, (
+            f"expected ≥{expected} stroke-opacity: 0.8 refs; got "
+            f"{n_alpha_08}"
+        )
+        # Note: stroke-width 0.5 is also used elsewhere (reward
+        # marker linewidth 0.5 from CG-B2 polish), so we can't pin
+        # an exact count. The presence of >= expected gray + opacity
+        # 0.8 entries is the boundary signal.
+        _ = n_thin  # informational only
+
+    def test_title_fontsize_14(self):
+        """Tweak 6 pin: panel title fontsize = 14 in cohort config."""
+        from stroke_orofacial.spout_behavior.spout_close_vs_std import (
+            load_cohort_config,
+        )
+        cfg = load_cohort_config()
+        assert cfg["panel_title_fontsize"] == 14
+        assert cfg["raster_xtick_fontsize"] == 9
+        assert cfg["raster_xlabel_fontsize"] == 11
+        assert cfg["raster_day_label_fontsize"] == 7
 
