@@ -190,6 +190,173 @@ class TestIterCohortASessions:
         assert sessions == sorted(sessions)
 
 
+class TestIterCohortASessionsPatternAAugmentation:
+    """Task 3 Round 2 fix: Pattern A multi-half sessions (e.g.
+    PS48/2025-03-14) have legacy report.json entries ``20250314a`` +
+    ``20250314b`` but no bare ``20250314`` key — the suffix filter
+    drops both, leaving the bare-date entry missing despite the
+    merged NPZ existing on disk. Augmentation reads the
+    ``multi_half_sessions:`` registry and adds the bare-date entry."""
+
+    def test_adds_bare_date_for_pattern_a_session(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        legacy_root = tmp_path / "legacy_analysis"
+        bba = legacy_root / "basic_behavior_analysis3" / "PS48"
+        bba.mkdir(parents=True, exist_ok=True)
+        # Legacy report.json: only per-half entries, no bare-date.
+        (bba / "report.json").write_text(
+            json.dumps({"latency_bySession": {
+                "20250313": {}, "20250314a": {}, "20250314b": {},
+                "20250315": {},
+            }}), encoding="utf-8",
+        )
+        # On-disk: merged licks NPZ at the bare-date path (Phase 7-pre-
+        # multi-half emission).
+        output_root = tmp_path / "pipeline_outputs"
+        sp = output_root / "spout_behavior" / "licks_and_rewards" / "PS48"
+        sp.mkdir(parents=True, exist_ok=True)
+        for date in ("20250313", "20250314", "20250315"):
+            np.savez(sp / f"{date}.npz",
+                     Lick_L=np.array([]), Lick_R=np.array([]),
+                     Reward_L=np.array([]), Reward_R=np.array([]))
+        paths_yaml = tmp_path / "paths.yaml"
+        paths_yaml.write_text(textwrap.dedent(f"""
+            logical_roots:
+              microscope_pipeline_outputs:
+                description: "out"
+                mounts:
+                  mac: "/Volumes/dummy/po"
+                  windows: "C:\\\\dummy\\\\po"
+              local_processed_spout:
+                description: "legacy"
+                mounts:
+                  {_HOST_KEY}:
+                    - "{legacy_root.as_posix()}"
+        """))
+        resolver = PathResolver(paths_yaml, output_root=output_root)
+        # Inject a synthetic registry entry for PS48/20250314.
+        overrides_config = {
+            "multi_half_sessions": {
+                "PS48": {
+                    "20250314": {
+                        "halves": [{"id": "a"}, {"id": "b"}],
+                    },
+                },
+            },
+        }
+        sessions = iter_cohort_a_sessions(
+            "PS48", resolver, overrides_config=overrides_config,
+        )
+        # 20250314 (Pattern A merged bare-date) now in the cohort.
+        assert sessions == ["20250313", "20250314", "20250315"]
+
+    def test_pattern_b_unaffected(self, fake_paths_yaml):
+        """Pattern B b-half entries still get filtered out (no Pattern A
+        augmentation triggers because the session isn't in the
+        multi_half_sessions registry)."""
+        cfg, legacy_root = fake_paths_yaml
+        _write_report_json(
+            legacy_root, "PS51",
+            ["20250430", "20250430b", "20250505", "20250505b"],
+        )
+        resolver = PathResolver(cfg)
+        sessions = iter_cohort_a_sessions(
+            "PS51", resolver,
+            require_on_disk=False,
+            overrides_config={"multi_half_sessions": {}},
+        )
+        assert sessions == ["20250430", "20250505"]
+
+
+class TestResolveSessionNpzPath:
+    """Task 3 Round 2 fix: _resolve_session_npz_path routes between
+    flat single-half / Pattern B paths and Pattern A nested per-half
+    paths based on the multi_half_sessions: registry."""
+
+    def test_bare_returns_flat_path(self, tmp_path):
+        from stroke_orofacial.spout_behavior.visual_gate import (
+            _resolve_session_npz_path,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        result = _resolve_session_npz_path(
+            "licks_and_rewards", "PS51", "20250430", "",
+            resolver=resolver, overrides_config={"multi_half_sessions": {}},
+        )
+        assert result == (
+            tmp_path / "spout_behavior" / "licks_and_rewards"
+            / "PS51" / "20250430.npz"
+        )
+
+    def test_pattern_a_half_a_returns_nested_path(self, tmp_path):
+        from stroke_orofacial.spout_behavior.visual_gate import (
+            _resolve_session_npz_path,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        result = _resolve_session_npz_path(
+            "licks_and_rewards", "PS48", "20250314", "a",
+            resolver=resolver,
+            overrides_config={"multi_half_sessions": {
+                "PS48": {"20250314": {
+                    "halves": [{"id": "a"}, {"id": "b"}],
+                }}}},
+        )
+        assert result == (
+            tmp_path / "spout_behavior" / "licks_and_rewards"
+            / "PS48" / "20250314ab" / "20250314a.npz"
+        )
+
+    def test_pattern_a_half_b_returns_nested_path(self, tmp_path):
+        from stroke_orofacial.spout_behavior.visual_gate import (
+            _resolve_session_npz_path,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        result = _resolve_session_npz_path(
+            "licks_and_rewards", "PS48", "20250314", "b",
+            resolver=resolver,
+            overrides_config={"multi_half_sessions": {
+                "PS48": {"20250314": {
+                    "halves": [{"id": "a"}, {"id": "b"}],
+                }}}},
+        )
+        assert result == (
+            tmp_path / "spout_behavior" / "licks_and_rewards"
+            / "PS48" / "20250314ab" / "20250314b.npz"
+        )
+
+    def test_pattern_b_b_half_returns_flat_path(self, tmp_path):
+        """Regression guard: Pattern B b-half (NOT in multi_half_sessions
+        registry) routes to flat ``<date><suffix>.npz`` path, not
+        nested. Mirrors PS51/2025-04-30 secondary-spout pattern."""
+        from stroke_orofacial.spout_behavior.visual_gate import (
+            _resolve_session_npz_path,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        result = _resolve_session_npz_path(
+            "licks_and_rewards", "PS51", "20250430", "b",
+            resolver=resolver,
+            overrides_config={"multi_half_sessions": {}},
+        )
+        assert result == (
+            tmp_path / "spout_behavior" / "licks_and_rewards"
+            / "PS51" / "20250430b.npz"
+        )
+
+    def test_works_with_non_licks_output_type(self, tmp_path):
+        """The output_type parameter routes to any Phase-2 subdir."""
+        from stroke_orofacial.spout_behavior.visual_gate import (
+            _resolve_session_npz_path,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        result = _resolve_session_npz_path(
+            "wavesurfer_signals_processed", "PS51", "20250430", "",
+            resolver=resolver, overrides_config={"multi_half_sessions": {}},
+        )
+        assert result == (
+            tmp_path / "spout_behavior" / "wavesurfer_signals_processed"
+            / "PS51" / "20250430.npz"
+        )
+
+
 class TestIterCohortASessionsOnDiskFilter:
     """CG-6 addition: require_on_disk=True (default) filters to sessions
     whose licks_and_rewards NPZ is actually on disk. Handles PR #109

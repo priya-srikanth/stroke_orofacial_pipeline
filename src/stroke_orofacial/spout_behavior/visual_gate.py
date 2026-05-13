@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from stroke_orofacial.animals import AnimalInfo, get_animal
-from stroke_orofacial.config_loader import load_defaults
+from stroke_orofacial.config_loader import load_defaults, load_session_overrides
 from stroke_orofacial.paths import PathResolver
 
 
@@ -77,6 +77,7 @@ def iter_cohort_a_sessions(
     *,
     include_b_half: bool = False,
     require_on_disk: bool = True,
+    overrides_config: dict[str, Any] | None = None,
 ) -> list[str]:
     """Return the animal's sorted Cohort A session labels.
 
@@ -85,6 +86,16 @@ def iter_cohort_a_sessions(
     ``basic_behavior_analysis3/<animal>/report.json``. This is what
     legacy actually emitted (more reliable than rebuilding from
     MOUSE_SPECS ``include_dates ∖ exclude_dates``).
+
+    Pattern A multi-half sessions are augmented from
+    ``multi_half_sessions:`` registry (Task 3 Round 2 fix): legacy
+    ``report.json`` lists per-half entries (e.g. ``20250314a`` +
+    ``20250314b``) but the new pipeline emits a single merged NPZ at
+    the bare-date path (e.g. ``PS48/20250314.npz``). Without this
+    augmentation the suffix filter drops both halves and the bare-
+    date entry is missing from the cohort → longitudinal-mean plots
+    show a gap day. The augmentation adds the bare-date entry when
+    the registry has the session.
 
     Parameters
     ----------
@@ -97,11 +108,10 @@ def iter_cohort_a_sessions(
         Longitudinal plots default. When ``False``, session labels
         ending in a single ``[a-z]`` suffix (e.g. ``20250430b``) are
         dropped — those are Pattern B b-half sessions and the bare-vs-b
-        comparison is a separate sub-deliverable. The PS48/2025-03-14
-        Pattern A multi-half session is naturally included because its
-        merged-licks NPZ lives at the bare-date path ``20250314.npz``
-        (Phase 7-pre-multi-half emission). Set ``True`` for bare-vs-b
-        scope.
+        comparison is a separate sub-deliverable. Pattern A multi-half
+        bare-date entries (e.g. PS48/2025-03-14) are augmented from
+        the ``multi_half_sessions:`` registry per the Task-3-round-2
+        fix.
     require_on_disk : bool, default ``True``
         Filter the cohort to sessions whose ``licks_and_rewards``
         Phase-2 NPZ is actually on disk at
@@ -111,6 +121,11 @@ def iter_cohort_a_sessions(
         emissions but still appear in legacy ``report.json``). Set
         ``False`` for tests / inspection scripts that want the raw
         report-json key set.
+    overrides_config : dict, optional
+        Pre-loaded ``session_overrides.yaml`` block. ``None`` calls
+        :func:`stroke_orofacial.config_loader.load_session_overrides`.
+        Used to read ``multi_half_sessions:`` for the Pattern A
+        bare-date augmentation.
     """
     report_path = (
         resolver.root("local_processed_spout")
@@ -128,8 +143,18 @@ def iter_cohort_a_sessions(
         # Keep labels that are exactly 8 digits (no suffix). Legacy
         # label format is YYYYMMDD[a-z]? per parse_base_date(); the
         # canonical Cohort-A longitudinal subset is the no-suffix
-        # entries. PS48/20250314 lands here automatically.
+        # entries.
         raw_keys = [k for k in raw_keys if re.fullmatch(r"\d{8}", k)]
+        # Pattern A multi-half bare-date augmentation. Registered
+        # multi-half (animal, date) pairs get a bare-date entry added
+        # IF the merged licks NPZ is on disk (or always, when the
+        # caller waived the on-disk filter).
+        if overrides_config is None:
+            overrides_config = load_session_overrides()
+        multi_half = overrides_config.get("multi_half_sessions", {}) or {}
+        for date_yyyymmdd in multi_half.get(animal, {}):
+            if date_yyyymmdd not in raw_keys:
+                raw_keys.append(date_yyyymmdd)
     if require_on_disk:
         sp_root = resolver.pipeline_outputs("spout_behavior")
         raw_keys = [
@@ -137,6 +162,84 @@ def iter_cohort_a_sessions(
             if (sp_root / "licks_and_rewards" / animal / f"{k}.npz").exists()
         ]
     return sorted(raw_keys)
+
+
+def _resolve_session_npz_path(
+    output_type: str,
+    animal: str,
+    date_str: str,
+    half_suffix: str,
+    resolver: PathResolver,
+    overrides_config: dict[str, Any] | None = None,
+) -> Path:
+    """Resolve the on-disk NPZ path for a session × output_type.
+
+    Routes between flat single-half/Pattern B layout and Pattern A
+    nested per-half layout based on the ``multi_half_sessions:``
+    registry.
+
+    Parameters
+    ----------
+    output_type : str
+        Phase-2 output subdirectory: ``"licks_and_rewards"``,
+        ``"wavesurfer_signals_processed"``, ``"running_bouts"``, etc.
+    animal : str
+        e.g. ``"PS48"``.
+    date_str : str
+        Bare ``YYYYMMDD`` label (no suffix).
+    half_suffix : str
+        ``""`` for bare/merged; ``"a"`` or ``"b"`` for per-half
+        Pattern A access.
+    resolver : PathResolver
+        For ``pipeline_outputs("spout_behavior")`` root.
+    overrides_config : dict, optional
+        Pre-loaded ``session_overrides.yaml`` block for the Pattern A
+        registry lookup. ``None`` loads via
+        :func:`stroke_orofacial.config_loader.load_session_overrides`.
+
+    Returns
+    -------
+    Path
+        Resolved NPZ path. **Caller verifies existence.**
+
+    Path conventions
+    ----------------
+    - Bare/single-half (``half_suffix=""``):
+      ``{licks_root}/<animal>/<date_str>.npz``.
+      Pattern A merged file lives here too (Phase 7-pre-multi-half
+      emission); no registry lookup needed.
+    - Pattern A per-half (``half_suffix`` in ``"a"``/``"b"`` AND
+      ``(animal, date_str)`` in ``multi_half_sessions:``):
+      ``{licks_root}/<animal>/<date_str><concat_label>/
+      <date_str><half_suffix>.npz``.
+      ``<concat_label>`` is the joined half ids (e.g. ``"ab"`` for
+      PS48/20250314).
+    - Pattern B b-half / non-registered suffix (``half_suffix`` in
+      ``"a"``/``"b"`` AND ``(animal, date_str)`` NOT in
+      ``multi_half_sessions:``):
+      ``{licks_root}/<animal>/<date_str><half_suffix>.npz`` (flat).
+    """
+    sp_root = resolver.pipeline_outputs("spout_behavior")
+    type_root = sp_root / output_type / animal
+    if half_suffix == "":
+        return type_root / f"{date_str}.npz"
+    # Determine routing: Pattern A nested vs Pattern B flat.
+    if overrides_config is None:
+        overrides_config = load_session_overrides()
+    multi_half = overrides_config.get("multi_half_sessions", {}) or {}
+    animal_entry = multi_half.get(animal, {})
+    if date_str in animal_entry:
+        # Pattern A: nested under <date_str><halves_concat_label>/.
+        spec = animal_entry[date_str] or {}
+        halves = spec.get("halves", [])
+        half_ids = [h["id"] for h in halves] if halves else ["a", "b"]
+        concat_label = "".join(half_ids)
+        return (
+            type_root / f"{date_str}{concat_label}"
+            / f"{date_str}{half_suffix}.npz"
+        )
+    # Pattern B b-half or non-registered: flat path.
+    return type_root / f"{date_str}{half_suffix}.npz"
 
 
 # ---- Longitudinal-axis helper (port of behavior_report_PS.py:346-370) ----
@@ -317,52 +420,93 @@ def load_session_plot_data(
     animal: str,
     date_label: str,
     resolver: PathResolver,
+    overrides_config: dict[str, Any] | None = None,
 ) -> SessionPlotData:
     """Load Phase-2 + Phase-1 inputs for one Cohort A session.
 
     Reads:
       - ``pipeline_outputs/spout_behavior/licks_and_rewards/<animal>/
         <date_label>.npz`` for ``Lick_{L,R}`` + ``Reward_{L,R}``.
-      - ``pipeline_outputs/spout_behavior/wavesurfer_signals_processed/
-        <animal>/<date_label>.npz`` for ``sample_rate_input``.
+      - Wavesurfer NPZ for ``sample_rate_input`` + total session
+        sample count (1D signal length).
 
-    The PS48/2025-03-14 Pattern A multi-half merge naturally lands at
-    the bare-date path ``20250314.npz`` (Phase 7-pre-multi-half
-    emission). No special-case here; the loader reads the same flat
-    path for every Cohort A entry.
+    Pattern A multi-half handling (Task 3 Round 2 fix): for
+    registered ``multi_half_sessions:`` entries (e.g. PS48/2025-03-14)
+    the licks NPZ is merged at the bare-date path, but the
+    wavesurfer NPZ stays per-half under ``<date_label><concat_label>/
+    <date_label><half_id>.npz``. The loader reads from per-half "a"
+    for sample_rate and SUMS the per-half session lengths (a + b)
+    for ``n_samples_session`` so downstream lickiness windows use
+    the full virtual-session length the merged licks indices
+    reference.
+
+    For Pattern B / single-half sessions (the common case): both
+    NPZs live at the flat bare-date path.
 
     Raises
     ------
     FileNotFoundError
         If either NPZ is missing on disk.
     """
-    sp_root = resolver.pipeline_outputs("spout_behavior")
-    licks_path = sp_root / "licks_and_rewards" / animal / f"{date_label}.npz"
-    ws_path = (
-        sp_root / "wavesurfer_signals_processed" / animal / f"{date_label}.npz"
+    if overrides_config is None:
+        overrides_config = load_session_overrides()
+    multi_half = overrides_config.get("multi_half_sessions", {}) or {}
+    is_pattern_a = (
+        animal in multi_half and date_label in (multi_half.get(animal) or {})
+    )
+
+    licks_path = _resolve_session_npz_path(
+        "licks_and_rewards", animal, date_label, "",
+        resolver=resolver, overrides_config=overrides_config,
     )
     if not licks_path.exists():
         raise FileNotFoundError(f"licks_and_rewards NPZ missing: {licks_path}")
-    if not ws_path.exists():
-        raise FileNotFoundError(
-            f"wavesurfer_signals_processed NPZ missing: {ws_path}"
-        )
     with np.load(licks_path, allow_pickle=True) as licks:
         lick_idx = {key: licks[key] for key in ("Lick_L", "Lick_R")}
         rewards_idx = {key: licks[key] for key in ("Reward_L", "Reward_R")}
-    n_samples_session = 0
-    with np.load(ws_path, allow_pickle=True) as ws:
-        sample_rate = float(ws["sample_rate_input"])
-        # First 1D signal's length = total session sample count. Phase
-        # 2 wavesurfer_signals_processed NPZs typically include
-        # ``Treadmill`` / ``Lick_L_signal`` etc.; any 1D entry works
-        # (they all share the session length). Scalars and 0-d arrays
-        # (e.g. ``sample_rate_input``) are skipped.
-        for key in ws.files:
-            arr = ws[key]
-            if arr.ndim == 1:
-                n_samples_session = int(arr.shape[0])
-                break
+
+    if is_pattern_a:
+        spec = multi_half[animal][date_label] or {}
+        halves = spec.get("halves") or [{"id": "a"}, {"id": "b"}]
+        sample_rate = 0.0
+        n_samples_session = 0
+        for half in halves:
+            half_id = half["id"]
+            ws_path = _resolve_session_npz_path(
+                "wavesurfer_signals_processed", animal, date_label, half_id,
+                resolver=resolver, overrides_config=overrides_config,
+            )
+            if not ws_path.exists():
+                raise FileNotFoundError(
+                    f"Pattern A per-half WS NPZ missing: {ws_path}"
+                )
+            with np.load(ws_path, allow_pickle=True) as ws:
+                if sample_rate == 0.0:
+                    sample_rate = float(ws["sample_rate_input"])
+                for key in ws.files:
+                    arr = ws[key]
+                    if arr.ndim == 1:
+                        n_samples_session += int(arr.shape[0])
+                        break
+    else:
+        ws_path = _resolve_session_npz_path(
+            "wavesurfer_signals_processed", animal, date_label, "",
+            resolver=resolver, overrides_config=overrides_config,
+        )
+        if not ws_path.exists():
+            raise FileNotFoundError(
+                f"wavesurfer_signals_processed NPZ missing: {ws_path}"
+            )
+        n_samples_session = 0
+        with np.load(ws_path, allow_pickle=True) as ws:
+            sample_rate = float(ws["sample_rate_input"])
+            # First 1D signal's length = total session sample count.
+            for key in ws.files:
+                arr = ws[key]
+                if arr.ndim == 1:
+                    n_samples_session = int(arr.shape[0])
+                    break
+
     return SessionPlotData(
         date_label=date_label,
         lick_idx=lick_idx,

@@ -190,7 +190,14 @@ BUCKET_3: list[tuple[str, datetime.date]] = [
 # Future: replace with a wavesurfer_file_overrides: block. See
 # DECISIONS forward-pointer.
 DUAL_H5_HACK_SESSIONS: dict[tuple[str, datetime.date], str] = {
-    ("PS55", datetime.date(2025, 6, 6)): "stroke_0001.h5",
+    # CHANGED 2026-05-13 (Task 3 Round 2): PR #109 picked stroke_0001.h5
+    # which is an aborted-resume calibration recording (0 licks, 0
+    # rewards, only 100 Tone_R). stroke_0002.h5 has 504+154 licks +
+    # 50+50 rewards and matches legacy session_processing3 NPZ event
+    # counts exactly (L↔R swap is the WS→mouse-frame translation per
+    # Phase 6.8 boundary-layer flip). See
+    # .scratch_phase_8a_10/ps55_20250606_dual_h5_diagnostic.md.
+    ("PS55", datetime.date(2025, 6, 6)): "stroke_0002.h5",
 }
 
 
