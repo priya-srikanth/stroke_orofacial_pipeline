@@ -110,162 +110,207 @@ def _write_report_json(
     (bba / "report.json").write_text(json.dumps(report), encoding="utf-8")
 
 
-class TestIterCohortASessions:
-    """These tests use synthetic report.json WITHOUT corresponding NPZs
-    on disk, so they pass ``require_on_disk=False`` to bypass the
-    PR #109 narrow-filter (added in CG-6). A separate CG-6 test class
-    covers the on-disk filter behavior."""
+def _make_animal_info(
+    session_start: datetime.date,
+    session_end: datetime.date,
+    *,
+    animal_id: str = "PS_TEST",
+    exclusions: list | None = None,
+):
+    """Build a synthetic AnimalInfo with controlled date range +
+    exclusions. Avoids touching the real configs/animals.yaml.
+    """
+    from stroke_orofacial.animals import AnimalInfo
+    stroke_date = session_start + datetime.timedelta(
+        days=(session_end - session_start).days // 2
+    )
+    return AnimalInfo(
+        animal_id=animal_id,
+        stroke_date=stroke_date,
+        session_start=session_start,
+        session_end=session_end,
+        exclusions=exclusions or [],
+    )
 
-    def test_excludes_b_half_by_default(self, fake_paths_yaml):
-        """Longitudinal-plot default: b-suffix sessions filtered out."""
-        cfg, legacy_root = fake_paths_yaml
-        # Mirror real PS51 report.json shape: bare 20250430/20250505 PLUS
-        # b-half 20250430b/20250505b entries.
-        _write_report_json(
-            legacy_root, "PS51",
-            ["20250416", "20250430", "20250430b", "20250505", "20250505b"],
-        )
-        resolver = PathResolver(cfg)
-        sessions = iter_cohort_a_sessions(
-            "PS51", resolver, require_on_disk=False,
-        )
-        assert sessions == ["20250416", "20250430", "20250505"]
 
-    def test_includes_b_half_when_flag_set(self, fake_paths_yaml):
-        """Bare-vs-b scope: include_b_half=True keeps all entries."""
-        cfg, legacy_root = fake_paths_yaml
-        _write_report_json(
-            legacy_root, "PS51",
-            ["20250430", "20250430b", "20250505", "20250505b"],
+class TestIterCohortASessionsYamlRange:
+    """Task 3 Round 2 continuation: cohort defined by AnimalInfo.session_start
+    ↔ session_end inclusive. Replaces the legacy-report.json source.
+    These tests pass ``animal_info=<synthetic>`` to avoid touching the
+    real configs/animals.yaml; ``require_on_disk=False`` bypasses the
+    on-disk filter so the range-walk logic can be tested in isolation."""
+
+    def test_iterates_session_range_inclusive(self, tmp_path):
+        resolver = PathResolver(output_root=tmp_path)
+        ai = _make_animal_info(
+            datetime.date(2025, 3, 7), datetime.date(2025, 3, 11),
         )
-        resolver = PathResolver(cfg)
         sessions = iter_cohort_a_sessions(
-            "PS51", resolver,
-            include_b_half=True, require_on_disk=False,
+            "PS_TEST", resolver, require_on_disk=False, animal_info=ai,
+            overrides_config={"multi_half_sessions": {}},
         )
         assert sessions == [
-            "20250430", "20250430b", "20250505", "20250505b",
+            "20250307", "20250308", "20250309", "20250310", "20250311",
         ]
 
-    def test_ps48_3_14_bare_included(self, fake_paths_yaml):
-        """PS48/2025-03-14 Pattern A multi-half: legacy report.json
-        had separate `20250314a` + `20250314b` keys, but the new
-        pipeline emits a merged NPZ at the bare-date path 20250314.npz.
-        Cohort A iteration should yield the bare-date entry — Task 1
-        audit confirmed merged-NPZ availability via Phase 7-pre-multi-
-        half emission. Synthetic test mirrors this by listing all 3
-        forms and asserting only the bare-date survives the b/a filter."""
-        cfg, legacy_root = fake_paths_yaml
-        _write_report_json(
-            legacy_root, "PS48",
-            ["20250313", "20250314", "20250314a", "20250314b", "20250315"],
+    def test_applies_spout_behavior_exclusions(self, tmp_path):
+        from stroke_orofacial.animals import Exclusion
+        resolver = PathResolver(output_root=tmp_path)
+        ai = _make_animal_info(
+            datetime.date(2025, 3, 7), datetime.date(2025, 3, 11),
+            exclusions=[
+                Exclusion(
+                    date=datetime.date(2025, 3, 9),
+                    applies_to=["spout_behavior"],
+                    reason="test exclusion",
+                ),
+            ],
         )
-        resolver = PathResolver(cfg)
         sessions = iter_cohort_a_sessions(
-            "PS48", resolver, require_on_disk=False,
+            "PS_TEST", resolver, require_on_disk=False, animal_info=ai,
+            overrides_config={"multi_half_sessions": {}},
         )
-        assert "20250314" in sessions
-        # The 'a' / 'b' raw labels filter out.
-        assert "20250314a" not in sessions
-        assert "20250314b" not in sessions
-        assert sessions == ["20250313", "20250314", "20250315"]
+        # 20250309 dropped via the spout_behavior-tagged exclusion.
+        assert sessions == ["20250307", "20250308", "20250310", "20250311"]
 
-    def test_missing_report_json_raises(self, fake_paths_yaml):
-        cfg, _ = fake_paths_yaml
-        resolver = PathResolver(cfg)
-        with pytest.raises(FileNotFoundError, match="Cohort A report.json missing"):
-            iter_cohort_a_sessions("PSNOPE", resolver, require_on_disk=False)
-
-    def test_sessions_are_sorted(self, fake_paths_yaml):
-        """Implementation contract: deterministic output ordering."""
-        cfg, legacy_root = fake_paths_yaml
-        _write_report_json(
-            legacy_root, "PS51",
-            ["20250505", "20250416", "20250430"],
+    def test_does_not_apply_other_context_exclusions(self, tmp_path):
+        """Exclusion tagged for ``dlc.kinematics`` only doesn't trim the
+        spout_behavior cohort."""
+        from stroke_orofacial.animals import Exclusion
+        resolver = PathResolver(output_root=tmp_path)
+        ai = _make_animal_info(
+            datetime.date(2025, 3, 7), datetime.date(2025, 3, 9),
+            exclusions=[
+                Exclusion(
+                    date=datetime.date(2025, 3, 8),
+                    applies_to=["dlc.kinematics"],
+                    reason="kinematics-only",
+                ),
+            ],
         )
-        resolver = PathResolver(cfg)
         sessions = iter_cohort_a_sessions(
-            "PS51", resolver, require_on_disk=False,
+            "PS_TEST", resolver, require_on_disk=False, animal_info=ai,
+            overrides_config={"multi_half_sessions": {}},
+        )
+        # 20250308 kept (exclusion didn't tag spout_behavior).
+        assert sessions == ["20250307", "20250308", "20250309"]
+
+    def test_b_half_filter_is_noop_for_range_walk(self, tmp_path):
+        """The walk produces bare-date entries only, so include_b_half
+        toggles are no-ops; verified by parity."""
+        resolver = PathResolver(output_root=tmp_path)
+        ai = _make_animal_info(
+            datetime.date(2025, 3, 7), datetime.date(2025, 3, 9),
+        )
+        s_default = iter_cohort_a_sessions(
+            "PS_TEST", resolver, require_on_disk=False, animal_info=ai,
+            overrides_config={"multi_half_sessions": {}},
+        )
+        s_with_b = iter_cohort_a_sessions(
+            "PS_TEST", resolver, require_on_disk=False, animal_info=ai,
+            include_b_half=True,
+            overrides_config={"multi_half_sessions": {}},
+        )
+        assert s_default == s_with_b == [
+            "20250307", "20250308", "20250309",
+        ]
+
+    def test_sessions_are_sorted(self, tmp_path):
+        resolver = PathResolver(output_root=tmp_path)
+        ai = _make_animal_info(
+            datetime.date(2025, 3, 9), datetime.date(2025, 3, 11),
+        )
+        sessions = iter_cohort_a_sessions(
+            "PS_TEST", resolver, require_on_disk=False, animal_info=ai,
+            overrides_config={"multi_half_sessions": {}},
         )
         assert sessions == sorted(sessions)
 
-
-class TestIterCohortASessionsPatternAAugmentation:
-    """Task 3 Round 2 fix: Pattern A multi-half sessions (e.g.
-    PS48/2025-03-14) have legacy report.json entries ``20250314a`` +
-    ``20250314b`` but no bare ``20250314`` key — the suffix filter
-    drops both, leaving the bare-date entry missing despite the
-    merged NPZ existing on disk. Augmentation reads the
-    ``multi_half_sessions:`` registry and adds the bare-date entry."""
-
-    def test_adds_bare_date_for_pattern_a_session(self, tmp_path, monkeypatch):
+    def test_animal_info_loaded_from_config_when_omitted(
+        self, tmp_path, monkeypatch
+    ):
+        """When ``animal_info`` kwarg is omitted, the iterator calls
+        get_animal(animal) which reads configs/animals.yaml. We use a
+        real Cohort-A animal (PS46) and just confirm the call doesn't
+        crash + returns a sorted list of YYYYMMDD strings within the
+        animal's session range."""
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
-        legacy_root = tmp_path / "legacy_analysis"
-        bba = legacy_root / "basic_behavior_analysis3" / "PS48"
-        bba.mkdir(parents=True, exist_ok=True)
-        # Legacy report.json: only per-half entries, no bare-date.
-        (bba / "report.json").write_text(
-            json.dumps({"latency_bySession": {
-                "20250313": {}, "20250314a": {}, "20250314b": {},
-                "20250315": {},
-            }}), encoding="utf-8",
-        )
-        # On-disk: merged licks NPZ at the bare-date path (Phase 7-pre-
-        # multi-half emission).
-        output_root = tmp_path / "pipeline_outputs"
-        sp = output_root / "spout_behavior" / "licks_and_rewards" / "PS48"
-        sp.mkdir(parents=True, exist_ok=True)
-        for date in ("20250313", "20250314", "20250315"):
-            np.savez(sp / f"{date}.npz",
-                     Lick_L=np.array([]), Lick_R=np.array([]),
-                     Reward_L=np.array([]), Reward_R=np.array([]))
-        paths_yaml = tmp_path / "paths.yaml"
-        paths_yaml.write_text(textwrap.dedent(f"""
-            logical_roots:
-              microscope_pipeline_outputs:
-                description: "out"
-                mounts:
-                  mac: "/Volumes/dummy/po"
-                  windows: "C:\\\\dummy\\\\po"
-              local_processed_spout:
-                description: "legacy"
-                mounts:
-                  {_HOST_KEY}:
-                    - "{legacy_root.as_posix()}"
-        """))
-        resolver = PathResolver(paths_yaml, output_root=output_root)
-        # Inject a synthetic registry entry for PS48/20250314.
-        overrides_config = {
-            "multi_half_sessions": {
-                "PS48": {
-                    "20250314": {
-                        "halves": [{"id": "a"}, {"id": "b"}],
-                    },
-                },
-            },
-        }
+        resolver = PathResolver(output_root=tmp_path)
         sessions = iter_cohort_a_sessions(
-            "PS48", resolver, overrides_config=overrides_config,
-        )
-        # 20250314 (Pattern A merged bare-date) now in the cohort.
-        assert sessions == ["20250313", "20250314", "20250315"]
-
-    def test_pattern_b_unaffected(self, fake_paths_yaml):
-        """Pattern B b-half entries still get filtered out (no Pattern A
-        augmentation triggers because the session isn't in the
-        multi_half_sessions registry)."""
-        cfg, legacy_root = fake_paths_yaml
-        _write_report_json(
-            legacy_root, "PS51",
-            ["20250430", "20250430b", "20250505", "20250505b"],
-        )
-        resolver = PathResolver(cfg)
-        sessions = iter_cohort_a_sessions(
-            "PS51", resolver,
-            require_on_disk=False,
+            "PS46", resolver, require_on_disk=False,
             overrides_config={"multi_half_sessions": {}},
         )
-        assert sessions == ["20250430", "20250505"]
+        # No on-disk filter → returns the full YAML date range; just
+        # verify ordering + format.
+        assert sessions == sorted(sessions)
+        import re as _re
+        for d in sessions:
+            assert _re.fullmatch(r"\d{8}", d), f"non-YYYYMMDD: {d}"
+
+
+class TestIterCohortASessionsPatternAAugmentation:
+    """Pattern A multi-half augmentation under the YAML-range iterator
+    (Task 3 Round 2 continuation). The bare-date entry for a registered
+    multi-half session is added IF it falls outside the YAML range
+    (defensive — the in-range case is already covered by the date walk).
+    The merged-NPZ-on-disk filter still applies."""
+
+    def test_in_range_pattern_a_already_in_cohort(self, tmp_path):
+        """When the Pattern A bare date falls within the AnimalInfo
+        session range, the date-walk includes it automatically; the
+        registry augmentation is a no-op."""
+        resolver = PathResolver(output_root=tmp_path)
+        ai = _make_animal_info(
+            datetime.date(2025, 3, 13), datetime.date(2025, 3, 15),
+            animal_id="PS48",
+        )
+        sessions = iter_cohort_a_sessions(
+            "PS48", resolver, require_on_disk=False, animal_info=ai,
+            overrides_config={"multi_half_sessions": {
+                "PS48": {"20250314": {
+                    "halves": [{"id": "a"}, {"id": "b"}],
+                }}}},
+        )
+        assert sessions == ["20250313", "20250314", "20250315"]
+
+    def test_out_of_range_pattern_a_added_by_augmentation(self, tmp_path):
+        """Defensive: a Pattern A date OUTSIDE the YAML range is still
+        added via the registry augmentation. Shouldn't happen in
+        practice but the safety net is tested."""
+        resolver = PathResolver(output_root=tmp_path)
+        ai = _make_animal_info(
+            datetime.date(2025, 3, 20), datetime.date(2025, 3, 22),
+            animal_id="PS48",
+        )
+        sessions = iter_cohort_a_sessions(
+            "PS48", resolver, require_on_disk=False, animal_info=ai,
+            overrides_config={"multi_half_sessions": {
+                "PS48": {"20250314": {
+                    "halves": [{"id": "a"}, {"id": "b"}],
+                }}}},
+        )
+        # 20250314 added by the augmentation despite being outside the
+        # 20250320-20250322 range.
+        assert "20250314" in sessions
+        assert sessions == ["20250314", "20250320", "20250321", "20250322"]
+
+    def test_pattern_b_does_not_trigger_augmentation(self, tmp_path):
+        """Pattern B b-half sessions are NOT in multi_half_sessions: —
+        so no Pattern A augmentation fires. Pure date-walk behavior."""
+        resolver = PathResolver(output_root=tmp_path)
+        ai = _make_animal_info(
+            datetime.date(2025, 4, 30), datetime.date(2025, 5, 5),
+            animal_id="PS51",
+        )
+        sessions = iter_cohort_a_sessions(
+            "PS51", resolver, require_on_disk=False, animal_info=ai,
+            overrides_config={"multi_half_sessions": {}},
+        )
+        # Bare dates only — no b-half labels (the walk never produces them).
+        assert sessions == [
+            "20250430", "20250501", "20250502",
+            "20250503", "20250504", "20250505",
+        ]
 
 
 class TestResolveSessionNpzPath:
@@ -358,55 +403,36 @@ class TestResolveSessionNpzPath:
 
 
 class TestIterCohortASessionsOnDiskFilter:
-    """CG-6 addition: require_on_disk=True (default) filters to sessions
-    whose licks_and_rewards NPZ is actually on disk. Handles PR #109
-    narrow-out (PS46/2025-02-26 + PS50/2025-03-18) which removed Phase 2
-    emissions but didn't update legacy report.json."""
+    """``require_on_disk=True`` (default) filters the YAML-range cohort
+    to sessions whose ``licks_and_rewards`` NPZ is actually on disk —
+    silently drops in-range dates without Phase-2 outputs (weekends,
+    equipment-down days, sessions not yet processed)."""
 
-    def test_filters_to_on_disk_sessions(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
-        legacy_root = tmp_path / "legacy_analysis"
-        legacy_root.mkdir()
-        bba = legacy_root / "basic_behavior_analysis3" / "PS46"
-        bba.mkdir(parents=True, exist_ok=True)
-        # Legacy report.json claims 3 sessions; only 2 NPZs on disk.
-        (bba / "report.json").write_text(
-            json.dumps({"latency_bySession": {
-                "20250225": {}, "20250226": {}, "20250227": {},
-            }}),
-            encoding="utf-8",
+    def test_filters_to_on_disk_sessions(self, tmp_path):
+        resolver = PathResolver(output_root=tmp_path)
+        ai = _make_animal_info(
+            datetime.date(2025, 3, 7), datetime.date(2025, 3, 9),
+            animal_id="PS_TEST",
         )
-        output_root = tmp_path / "pipeline_outputs"
-        sp = output_root / "spout_behavior" / "licks_and_rewards" / "PS46"
+        # Write NPZs only for 20250307 + 20250309; 20250308 missing.
+        sp = tmp_path / "spout_behavior" / "licks_and_rewards" / "PS_TEST"
         sp.mkdir(parents=True, exist_ok=True)
-        # Write NPZs only for 20250225 + 20250227 — 20250226 narrowed out
-        for date in ("20250225", "20250227"):
+        for date in ("20250307", "20250309"):
             np.savez(sp / f"{date}.npz",
                      Lick_L=np.array([]), Lick_R=np.array([]),
                      Reward_L=np.array([]), Reward_R=np.array([]))
-        paths_yaml = tmp_path / "paths.yaml"
-        paths_yaml.write_text(textwrap.dedent(f"""
-            logical_roots:
-              microscope_pipeline_outputs:
-                description: "out"
-                mounts:
-                  mac: "/Volumes/dummy/po"
-                  windows: "C:\\\\dummy\\\\po"
-              local_processed_spout:
-                description: "legacy"
-                mounts:
-                  {_HOST_KEY}:
-                    - "{legacy_root.as_posix()}"
-        """))
-        resolver = PathResolver(paths_yaml, output_root=output_root)
-        # Default require_on_disk=True → 20250226 dropped (no NPZ).
-        sessions = iter_cohort_a_sessions("PS46", resolver)
-        assert sessions == ["20250225", "20250227"]
+        # Default require_on_disk=True → 20250308 dropped (no NPZ).
+        sessions = iter_cohort_a_sessions(
+            "PS_TEST", resolver, animal_info=ai,
+            overrides_config={"multi_half_sessions": {}},
+        )
+        assert sessions == ["20250307", "20250309"]
         # require_on_disk=False → all 3 retained.
         sessions_all = iter_cohort_a_sessions(
-            "PS46", resolver, require_on_disk=False,
+            "PS_TEST", resolver, require_on_disk=False, animal_info=ai,
+            overrides_config={"multi_half_sessions": {}},
         )
-        assert sessions_all == ["20250225", "20250226", "20250227"]
+        assert sessions_all == ["20250307", "20250308", "20250309"]
 
 
 # ---- Longitudinal axis ----
@@ -644,7 +670,7 @@ class TestSaveVisualGateFigure:
             )
         finally:
             plt.close(fig)
-        assert svg_path.parent == resolver.visual_gate_dir("PS51")
+        assert svg_path.parent == resolver.spout_behavior_figures_dir("PS51")
 
     def test_overwrite_force(self, tmp_path):
         resolver = PathResolver(output_root=tmp_path)
@@ -1158,7 +1184,7 @@ class TestRenderersReturnPaths:
     ):
         resolver, _dates = cohort_for_renders
         svg_path, _ = render_fn("PS51", resolver, align_to_stroke=True)
-        assert svg_path.parent == resolver.visual_gate_dir("PS51")
+        assert svg_path.parent == resolver.spout_behavior_figures_dir("PS51")
 
     def test_absdate_suffix_when_unaligned(
         self, family_name, render_fn, cohort_for_renders,
@@ -1311,7 +1337,7 @@ class TestRenderLickRaster:
         svg_path, _ = render_lick_raster(
             "PS51", resolver, align_to_stroke=True,
         )
-        assert svg_path.parent == resolver.visual_gate_dir("PS51")
+        assert svg_path.parent == resolver.spout_behavior_figures_dir("PS51")
 
     def test_absdate_suffix_when_unaligned(self, cohort_for_renders):
         resolver, _ = cohort_for_renders

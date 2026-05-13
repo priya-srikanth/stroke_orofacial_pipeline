@@ -904,29 +904,42 @@ class PathResolver:
         """
         return self.root("local_processed_spout") / f"session_processing_{version}"
 
-    def visual_gate_dir(self, animal: str) -> Path:
-        """Return the per-mouse visual-gate output directory.
+    def spout_behavior_figures_dir(self, animal: str) -> Path:
+        """Return the per-mouse spout-behavior figures output directory.
 
-        Layout: ``{pipeline_outputs/spout_behavior}/visual_gate/{animal}/``.
+        Layout: ``{pipeline_outputs/spout_behavior}/spout_behavior_figures/{animal}/``.
         Phase 8a.10 sub-deliverable A renders the 11 per-mouse plot-
         family SVGs + PNGs here, mirroring the legacy
         ``basic_behavior_analysis3/<mouse>/`` layout (one SVG per
         ``(mouse, plot_family)`` pair).
-        """
-        return self.pipeline_outputs("spout_behavior") / "visual_gate" / animal
 
-    def visual_gate_summary_dir(self, name: str) -> Path:
+        **Task 3 Round 2 continuation rename (2026-05-13):** replaces
+        the prior ``visual_gate_dir``. The old layout at
+        ``spout_behavior/visual_gate/<animal>/`` is orphaned (manual
+        cleanup later).
+        """
+        return (
+            self.pipeline_outputs("spout_behavior")
+            / "spout_behavior_figures" / animal
+        )
+
+    def spout_behavior_figures_summary_dir(self) -> Path:
         """Return the cohort-summary tile-grid output directory.
 
-        Layout: ``{pipeline_outputs/spout_behavior}/{name}/``. Phase
-        8a.10 sub-deliverable A's cohort-tiler (commit-group 5) emits
-        N-animal × 1-figure-per-plot-family tile grids here. ``name``
-        is typically ``"summary_PS46_PS47_..._PS55"`` per
-        :func:`stroke_orofacial.spout_behavior.cohort_summary.make_summary_folder_name`
-        — but kept as a free parameter so callers can override (e.g.
-        per-cohort-subset summaries).
+        Layout: ``{pipeline_outputs/spout_behavior}/spout_behavior_figures/summary/``.
+        All cohort tile-grids live under a single shared ``summary/``
+        subdir; per-grid identity is encoded in the filename stem
+        (e.g. ``all_animals_grid``, ``stroke_mice_grid``,
+        ``ps46_only``) passed via :func:`make_summary_figures`'s
+        ``output_dir_name=`` (a misnomer now — it's a file-stem
+        prefix, not a directory name).
 
-        Honors the ``output_root`` test-override via
-        :meth:`pipeline_outputs`.
+        **Task 3 Round 2 continuation rename (2026-05-13):** replaces
+        the prior ``visual_gate_summary_dir(name)`` per-grid-dir
+        convention. The old layout at
+        ``spout_behavior/summary_<animals-joined>/`` is orphaned.
         """
-        return self.pipeline_outputs("spout_behavior") / name
+        return (
+            self.pipeline_outputs("spout_behavior")
+            / "spout_behavior_figures" / "summary"
+        )

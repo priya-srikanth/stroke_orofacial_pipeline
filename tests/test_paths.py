@@ -282,40 +282,51 @@ class TestNewConvenienceMethods:
             "/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/spout_behavior"
         )
 
-    def test_visual_gate_dir(self, monkeypatch, full_paths_yaml):
-        """Phase 8a.10 commit-group 1: per-mouse visual-gate output dir
-        nests under `pipeline_outputs("spout_behavior")/visual_gate/<animal>/`."""
+    def test_spout_behavior_figures_dir(self, monkeypatch, full_paths_yaml):
+        """Phase 8a.10 Task 3 Round 2 continuation rename: per-mouse
+        figures output nests under
+        `pipeline_outputs("spout_behavior")/spout_behavior_figures/<animal>/`.
+        Replaces the prior `visual_gate_dir`."""
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         resolver = PathResolver(full_paths_yaml)
-        result = resolver.visual_gate_dir("PS51")
+        result = resolver.spout_behavior_figures_dir("PS51")
         assert result.as_posix() == (
             "/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/"
-            "spout_behavior/visual_gate/PS51"
+            "spout_behavior/spout_behavior_figures/PS51"
         )
 
-    def test_visual_gate_dir_respects_output_root_override(self, tmp_path):
-        """Phase 8a.10 commit-group 1: PathResolver(output_root=tmp_path)
-        scopes visual_gate writes to tmp_path (test-hook contract from
-        docs/testing-conventions.md)."""
+    def test_spout_behavior_figures_dir_respects_output_root_override(self, tmp_path):
         resolver = PathResolver(output_root=tmp_path)
-        result = resolver.visual_gate_dir("PS46")
-        assert result == tmp_path / "spout_behavior" / "visual_gate" / "PS46"
+        result = resolver.spout_behavior_figures_dir("PS46")
+        assert result == (
+            tmp_path / "spout_behavior" / "spout_behavior_figures" / "PS46"
+        )
 
-    def test_visual_gate_summary_dir(self, monkeypatch, full_paths_yaml):
-        """Phase 8a.10 commit-group 5: cohort-summary dir nests under
-        pipeline_outputs("spout_behavior")/<name>/."""
+    def test_spout_behavior_figures_summary_dir(self, monkeypatch, full_paths_yaml):
+        """Phase 8a.10 Task 3 Round 2 continuation: cohort-summary
+        nests under a SINGLE shared
+        `spout_behavior_figures/summary/` (not per-grid subdirs)."""
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         resolver = PathResolver(full_paths_yaml)
-        result = resolver.visual_gate_summary_dir("summary_PS46_PS47")
+        result = resolver.spout_behavior_figures_summary_dir()
         assert result.as_posix() == (
             "/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/"
-            "spout_behavior/summary_PS46_PS47"
+            "spout_behavior/spout_behavior_figures/summary"
         )
 
-    def test_visual_gate_summary_dir_respects_output_root_override(self, tmp_path):
+    def test_spout_behavior_figures_summary_dir_respects_output_root_override(
+        self, tmp_path,
+    ):
         resolver = PathResolver(output_root=tmp_path)
-        result = resolver.visual_gate_summary_dir("summary_PS51_PS54_PS55")
-        assert result == tmp_path / "spout_behavior" / "summary_PS51_PS54_PS55"
+        result = resolver.spout_behavior_figures_summary_dir()
+        assert result == (
+            tmp_path / "spout_behavior" / "spout_behavior_figures" / "summary"
+        )
+
+    def test_visual_gate_dir_removed(self):
+        """Confirm the old method name was removed (no backward compat)."""
+        assert not hasattr(PathResolver, "visual_gate_dir")
+        assert not hasattr(PathResolver, "visual_gate_summary_dir")
 
     def test_wavesurfer_dir(self, monkeypatch, full_paths_yaml, tmp_path):
         # Uses the real on-disk tmp_path mount, so must run under host key.

@@ -2,7 +2,7 @@
 (``stroke_orofacial.spout_behavior.cohort_summary``).
 
 Covers ``make_summary_figures`` + ``make_summary_folder_name`` +
-``_grid``. Builds tiny per-mouse PNGs in tmp ``visual_gate_dir``, runs
+``_grid``. Builds tiny per-mouse PNGs in tmp ``spout_behavior_figures_dir``, runs
 the tiler, asserts output paths + tile dimensions + skip-set behavior +
 missing-PNG placeholder fallback.
 """
@@ -29,9 +29,10 @@ from stroke_orofacial.spout_behavior.cohort_summary import (  # noqa: E402
 def _write_per_animal_png(
     resolver: PathResolver, animal: str, family: str, suffix: str = "_relStroke",
 ) -> None:
-    """Write a tiny synthetic PNG at the resolver's visual_gate_dir(animal)
-    location to stand in for a CG-2/3/4-rendered per-mouse plot."""
-    out_dir = resolver.visual_gate_dir(animal)
+    """Write a tiny synthetic PNG at the resolver's
+    spout_behavior_figures_dir(animal) location to stand in for a
+    CG-2/3/4-rendered per-mouse plot."""
+    out_dir = resolver.spout_behavior_figures_dir(animal)
     out_dir.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(2, 1))
     ax.plot([0, 1, 2], [0, 1, 0])
@@ -85,27 +86,47 @@ def two_animal_cohort(tmp_path):
 
 
 class TestMakeSummaryFigures:
-    def test_returns_output_dir_path(self, two_animal_cohort):
+    """Task 3 Round 2 continuation: all cohort tile-grids land under
+    a single shared ``spout_behavior_figures/summary/`` dir; the
+    ``output_dir_name`` kwarg is a FILE-STEM PREFIX (not a subdir).
+    Filenames are ``<prefix>__<family>{suffix}.{svg,png}``."""
+
+    def test_returns_shared_summary_dir(self, two_animal_cohort):
         resolver, animals, families = two_animal_cohort
         out_dir = make_summary_figures(
             animals, resolver,
             plot_families=families, align_to_stroke=True,
         )
-        assert out_dir == resolver.visual_gate_summary_dir(
-            "summary_PS46_PS47",
-        )
+        assert out_dir == resolver.spout_behavior_figures_summary_dir()
         assert out_dir.exists() and out_dir.is_dir()
 
-    def test_emits_both_svg_and_png_per_family(self, two_animal_cohort):
+    def test_filename_uses_prefix__family_pattern(self, two_animal_cohort):
+        """Output filenames: ``<output_dir_name>__<family>{suffix}.{svg,png}``."""
+        resolver, animals, families = two_animal_cohort
+        out_dir = make_summary_figures(
+            animals, resolver, plot_families=families, align_to_stroke=True,
+            output_dir_name="my_cohort",
+        )
+        for family in families:
+            svg = out_dir / f"my_cohort__{family}_relStroke.svg"
+            png = out_dir / f"my_cohort__{family}_relStroke.png"
+            assert svg.exists() and svg.stat().st_size > 0, (
+                f"missing svg for {family}"
+            )
+            assert png.exists() and png.stat().st_size > 0, (
+                f"missing png for {family}"
+            )
+
+    def test_default_prefix_is_summary_animals_joined(self, two_animal_cohort):
         resolver, animals, families = two_animal_cohort
         out_dir = make_summary_figures(
             animals, resolver, plot_families=families, align_to_stroke=True,
         )
+        # Default prefix = make_summary_folder_name(animals) =
+        # "summary_" + "_".join(animals) = "summary_PS46_PS47"
         for family in families:
-            svg = out_dir / f"{family}_relStroke.svg"
-            png = out_dir / f"{family}_relStroke.png"
-            assert svg.exists() and svg.stat().st_size > 0, f"missing svg for {family}"
-            assert png.exists() and png.stat().st_size > 0, f"missing png for {family}"
+            svg = out_dir / f"summary_PS46_PS47__{family}_relStroke.svg"
+            assert svg.exists()
 
     def test_absdate_suffix_when_unaligned(self, tmp_path):
         resolver = PathResolver(output_root=tmp_path)
@@ -116,40 +137,35 @@ class TestMakeSummaryFigures:
             animals, resolver,
             plot_families=["criteria_performance"],
             align_to_stroke=False,
+            output_dir_name="cohort",
         )
-        assert (out_dir / "criteria_performance_absDate.svg").exists()
-        assert (out_dir / "criteria_performance_absDate.png").exists()
+        assert (out_dir / "cohort__criteria_performance_absDate.svg").exists()
+        assert (out_dir / "cohort__criteria_performance_absDate.png").exists()
 
     def test_respects_skip_set(self, two_animal_cohort):
-        """Even when caller passes a family in plot_families, the
-        skip_plots set wins (legacy DEFAULT_SKIP semantic)."""
         resolver, animals, _ = two_animal_cohort
         out_dir = make_summary_figures(
             animals, resolver,
             plot_families=["criteria_performance", "lick_raster"],
             skip_plots={"lick_raster"},
             align_to_stroke=True,
+            output_dir_name="cohort",
         )
-        assert (out_dir / "criteria_performance_relStroke.svg").exists()
-        assert not (out_dir / "lick_raster_relStroke.svg").exists()
+        assert (out_dir / "cohort__criteria_performance_relStroke.svg").exists()
+        assert not (out_dir / "cohort__lick_raster_relStroke.svg").exists()
 
     def test_default_skip_includes_lick_raster(self, two_animal_cohort):
-        """Legacy DEFAULT_SKIP = {"lick_raster"} carried into the new
-        pipeline via visual_gate.summary_skip_plots config."""
         resolver, animals, _ = two_animal_cohort
-        # Even with lick_raster in the explicit plot_families, skip_plots
-        # default from config should drop it.
         out_dir = make_summary_figures(
             animals, resolver,
             plot_families=["criteria_performance", "lick_raster"],
             align_to_stroke=True,
+            output_dir_name="cohort",
         )
-        assert (out_dir / "criteria_performance_relStroke.svg").exists()
-        assert not (out_dir / "lick_raster_relStroke.svg").exists()
+        assert (out_dir / "cohort__criteria_performance_relStroke.svg").exists()
+        assert not (out_dir / "cohort__lick_raster_relStroke.svg").exists()
 
     def test_handles_missing_png_via_placeholder(self, tmp_path):
-        """Missing per-animal PNG → tile cell shows MISSING text;
-        composite figure still emits."""
         resolver = PathResolver(output_root=tmp_path)
         animals = ["PS46", "PS47"]
         # Only write the PS46 PNG; PS47 missing.
@@ -158,20 +174,17 @@ class TestMakeSummaryFigures:
             animals, resolver,
             plot_families=["criteria_performance"],
             align_to_stroke=True,
+            output_dir_name="cohort",
         )
-        # The summary still emits (legacy: placeholder text, not skip).
-        svg = out_dir / "criteria_performance_relStroke.svg"
+        svg = out_dir / "cohort__criteria_performance_relStroke.svg"
         assert svg.exists()
         svg_text = svg.read_text(encoding="utf-8")
         assert "MISSING" in svg_text
         assert "PS47" in svg_text
 
     def test_default_plot_families_from_config(self, tmp_path):
-        """plot_families=None → reads from visual_gate.summary_default_plots."""
         resolver = PathResolver(output_root=tmp_path)
         animals = ["PS46"]
-        # Write a PNG for every default plot family so the tiler doesn't
-        # warn-per-family. Pull list from the real config.
         from stroke_orofacial.spout_behavior.visual_gate import load_visual_gate_config
         cfg = load_visual_gate_config()
         default_families = list(cfg["summary_default_plots"])
@@ -181,60 +194,42 @@ class TestMakeSummaryFigures:
             animals, resolver,
             plot_families=None,  # → defaults
             align_to_stroke=True,
+            output_dir_name="cohort",
         )
-        # All default families emitted (none of them in default skip
-        # set, by construction).
         for family in default_families:
-            assert (out_dir / f"{family}_relStroke.svg").exists(), (
+            assert (out_dir / f"cohort__{family}_relStroke.svg").exists(), (
                 f"default family {family} not emitted"
             )
 
-    def test_default_output_dir_name(self, two_animal_cohort):
-        """output_dir_name=None → make_summary_folder_name(animals)."""
-        resolver, animals, families = two_animal_cohort
-        out_dir = make_summary_figures(
-            animals, resolver,
-            plot_families=families, align_to_stroke=True,
-        )
-        assert out_dir.name == "summary_PS46_PS47"
-
-    def test_explicit_output_dir_name_override(self, two_animal_cohort):
-        resolver, animals, families = two_animal_cohort
-        out_dir = make_summary_figures(
-            animals, resolver,
-            plot_families=families,
-            output_dir_name="my_cohort_summary",
-            align_to_stroke=True,
-        )
-        assert out_dir.name == "my_cohort_summary"
-
     def test_overwrite_raise_blocks_existing(self, two_animal_cohort):
         resolver, animals, families = two_animal_cohort
-        # First call to populate.
         make_summary_figures(
             animals, resolver, plot_families=families[:1],
             align_to_stroke=True, overwrite="force",
+            output_dir_name="cohort",
         )
-        # Second call with raise → FileExistsError.
         with pytest.raises(FileExistsError, match="cohort-summary target exists"):
             make_summary_figures(
                 animals, resolver, plot_families=families[:1],
                 align_to_stroke=True, overwrite="raise",
+                output_dir_name="cohort",
             )
 
     def test_overwrite_force_default(self, two_animal_cohort):
         resolver, animals, families = two_animal_cohort
-        # Two consecutive calls under force → both succeed; final file
-        # exists with non-zero size.
         make_summary_figures(
             animals, resolver, plot_families=families[:1],
             align_to_stroke=True, overwrite="force",
+            output_dir_name="cohort",
         )
         out_dir = make_summary_figures(
             animals, resolver, plot_families=families[:1],
             align_to_stroke=True, overwrite="force",
+            output_dir_name="cohort",
         )
-        assert (out_dir / f"{families[0]}_relStroke.svg").stat().st_size > 0
+        assert (
+            out_dir / f"cohort__{families[0]}_relStroke.svg"
+        ).stat().st_size > 0
 
 
 class TestModuleExports:

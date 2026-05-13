@@ -24,7 +24,6 @@ those renderers consume.
 from __future__ import annotations
 
 import datetime
-import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -78,83 +77,79 @@ def iter_cohort_a_sessions(
     include_b_half: bool = False,
     require_on_disk: bool = True,
     overrides_config: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
 ) -> list[str]:
     """Return the animal's sorted Cohort A session labels.
 
-    Authoritative cohort definition per Task 0.5 extension audit: the
-    keys of ``latency_bySession`` in legacy
-    ``basic_behavior_analysis3/<animal>/report.json``. This is what
-    legacy actually emitted (more reliable than rebuilding from
-    MOUSE_SPECS ``include_dates ∖ exclude_dates``).
+    Cohort definition (Task 3 Round 2 continuation, 2026-05-13):
+    Walk every calendar date from ``AnimalInfo.session_start`` through
+    ``AnimalInfo.session_end`` inclusive. Drop dates with a matching
+    ``AnimalInfo.exclusions`` entry tagged for ``spout_behavior``.
+    The on-disk filter (``require_on_disk=True``) then trims to
+    sessions whose Phase-2 ``licks_and_rewards`` NPZ actually exists,
+    silently dropping dates that fall in the configured range but
+    have no real session (e.g. weekends, equipment-down days).
 
-    Pattern A multi-half sessions are augmented from
-    ``multi_half_sessions:`` registry (Task 3 Round 2 fix): legacy
-    ``report.json`` lists per-half entries (e.g. ``20250314a`` +
-    ``20250314b``) but the new pipeline emits a single merged NPZ at
-    the bare-date path (e.g. ``PS48/20250314.npz``). Without this
-    augmentation the suffix filter drops both halves and the bare-
-    date entry is missing from the cohort → longitudinal-mean plots
-    show a gap day. The augmentation adds the bare-date entry when
-    the registry has the session.
+    This replaces the prior legacy-``report.json``-based cohort
+    definition. The YAML range is the single source of truth; the
+    on-disk filter handles the "no Phase-2 output yet" case.
+
+    Pattern A multi-half augmentation (PS48/2025-03-14) is preserved:
+    if ``multi_half_sessions:`` registers the session AND the merged
+    NPZ exists at the bare-date path, the entry is kept. (Multi-half
+    sessions are NOT excluded by the AnimalInfo exclusion filter —
+    they're real session dates by construction.)
 
     Parameters
     ----------
     animal : str
         e.g. ``"PS51"``.
     resolver : PathResolver
-        Source: ``{local_processed_spout}/basic_behavior_analysis3/
-        <animal>/report.json``.
+        For ``pipeline_outputs("spout_behavior")`` on-disk filter.
     include_b_half : bool, default ``False``
-        Longitudinal plots default. When ``False``, session labels
-        ending in a single ``[a-z]`` suffix (e.g. ``20250430b``) are
-        dropped — those are Pattern B b-half sessions and the bare-vs-b
-        comparison is a separate sub-deliverable. Pattern A multi-half
-        bare-date entries (e.g. PS48/2025-03-14) are augmented from
-        the ``multi_half_sessions:`` registry per the Task-3-round-2
-        fix.
+        Longitudinal plots default — drops ``[a-z]``-suffixed entries.
+        Set ``True`` for bare-vs-b scope.
     require_on_disk : bool, default ``True``
-        Filter the cohort to sessions whose ``licks_and_rewards``
-        Phase-2 NPZ is actually on disk at
-        ``pipeline_outputs/spout_behavior/licks_and_rewards/<animal>/
-        <date>.npz``. This handles the PR #109 narrowing case
-        (PS46/2025-02-26 + PS50/2025-03-18 were dropped from Phase 2
-        emissions but still appear in legacy ``report.json``). Set
-        ``False`` for tests / inspection scripts that want the raw
-        report-json key set.
+        Filter to sessions with a ``licks_and_rewards`` NPZ on disk.
+        Set ``False`` for tests / inspection that want the raw YAML
+        range.
     overrides_config : dict, optional
-        Pre-loaded ``session_overrides.yaml`` block. ``None`` calls
-        :func:`stroke_orofacial.config_loader.load_session_overrides`.
-        Used to read ``multi_half_sessions:`` for the Pattern A
-        bare-date augmentation.
+        Pre-loaded ``session_overrides.yaml``. Used for
+        ``multi_half_sessions:`` (Pattern A bare-date augmentation).
+    animal_info : AnimalInfo, optional
+        Pre-loaded :class:`stroke_orofacial.animals.AnimalInfo`.
+        ``None`` calls :func:`stroke_orofacial.animals.get_animal`.
     """
-    report_path = (
-        resolver.root("local_processed_spout")
-        / "basic_behavior_analysis3"
-        / animal
-        / "report.json"
-    )
-    if not report_path.exists():
-        raise FileNotFoundError(
-            f"Cohort A report.json missing for {animal}: {report_path}"
-        )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
-    raw_keys = list(report.get("latency_bySession", {}).keys())
+    if animal_info is None:
+        animal_info = get_animal(animal)
+
+    # Walk session_start → session_end inclusive.
+    raw_keys: list[str] = []
+    current = animal_info.session_start
+    end = animal_info.session_end
+    one_day = datetime.timedelta(days=1)
+    while current <= end:
+        excluded, _ = animal_info.is_excluded(current, "spout_behavior")
+        if not excluded:
+            raw_keys.append(current.strftime("%Y%m%d"))
+        current += one_day
+
+    # b-suffix filter is a no-op when generating from a date range
+    # (no per-half entries are produced) — but keep the kwarg for API
+    # parity and Pattern A augmentation logic below.
     if not include_b_half:
-        # Keep labels that are exactly 8 digits (no suffix). Legacy
-        # label format is YYYYMMDD[a-z]? per parse_base_date(); the
-        # canonical Cohort-A longitudinal subset is the no-suffix
-        # entries.
-        raw_keys = [k for k in raw_keys if re.fullmatch(r"\d{8}", k)]
-        # Pattern A multi-half bare-date augmentation. Registered
-        # multi-half (animal, date) pairs get a bare-date entry added
-        # IF the merged licks NPZ is on disk (or always, when the
-        # caller waived the on-disk filter).
         if overrides_config is None:
             overrides_config = load_session_overrides()
         multi_half = overrides_config.get("multi_half_sessions", {}) or {}
+        # Multi-half augmentation: ensure each registered (animal, date)
+        # has its bare-date entry present. Date-range walk already
+        # includes bare dates within the range, so this is a no-op for
+        # the in-range case. Outside-range registered entries get added
+        # too (defensive — should never happen in practice).
         for date_yyyymmdd in multi_half.get(animal, {}):
             if date_yyyymmdd not in raw_keys:
                 raw_keys.append(date_yyyymmdd)
+
     if require_on_disk:
         sp_root = resolver.pipeline_outputs("spout_behavior")
         raw_keys = [
@@ -581,7 +576,7 @@ def save_visual_gate_figure(
     """Save a figure to the per-mouse visual-gate output directory.
 
     Writes SVG + PNG at
-    ``{resolver.visual_gate_dir(animal)}/{plot_family}{suffix}.{svg,png}``.
+    ``{resolver.spout_behavior_figures_dir(animal)}/{plot_family}{suffix}.{svg,png}``.
     The legacy emitter saved SVG + PNG via ``bnpm.plotting_helpers.
     Figure_Saver``; this is a slim equivalent (no bnpm dependency).
 
@@ -601,7 +596,7 @@ def save_visual_gate_figure(
     tuple[Path, Path]
         ``(svg_path, png_path)``.
     """
-    out_dir = resolver.visual_gate_dir(animal)
+    out_dir = resolver.spout_behavior_figures_dir(animal)
     svg_path = out_dir / f"{plot_family}{suffix}.svg"
     png_path = out_dir / f"{plot_family}{suffix}.png"
     out_dir.mkdir(parents=True, exist_ok=True)

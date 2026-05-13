@@ -1,7 +1,8 @@
 """Phase 8a.10 sub-deliverable A — cohort-summary tile grids.
 
 Port of legacy ``summary_PS.py`` (analysis/behavior_report/). Tiles
-per-mouse PNGs from :func:`stroke_orofacial.paths.PathResolver.visual_gate_dir`
+per-mouse PNGs from
+:func:`stroke_orofacial.paths.PathResolver.spout_behavior_figures_dir`
 into a near-square cohort grid (one tile-figure per plot family). Used
 by Phase 8a.10 sub-deliverable A's verdict Phase B for cross-animal
 spot-check (Priya 2026-05-13 verdict mechanism).
@@ -40,11 +41,14 @@ def _grid(n: int) -> tuple[int, int]:
 
 
 def make_summary_folder_name(animals: Sequence[str]) -> str:
-    """Default cohort-summary directory name.
+    """Default cohort-summary filename-stem prefix.
 
-    Mirrors legacy ``summary_PS.make_summary_folder_name``: returns
-    ``"summary_" + "_".join(animals)``. E.g. for the full Phase 8a.10
-    cohort: ``"summary_PS46_PS47_PS48_PS49_PS50_PS51_PS54_PS55"``.
+    Returns ``"summary_" + "_".join(animals)``. **Task 3 Round 2
+    continuation (2026-05-13):** this is now a FILE-STEM prefix
+    (not a subdir name) under the shared
+    :meth:`PathResolver.spout_behavior_figures_summary_dir`. E.g.
+    output paths become
+    ``spout_behavior_figures/summary/<this-prefix>__<family>{suffix}.{svg,png}``.
     """
     return "summary_" + "_".join(animals)
 
@@ -74,8 +78,9 @@ def make_summary_figures(
         order top-to-bottom, left-to-right.
     resolver : PathResolver
         Used for both reading per-animal PNG sources
-        (:meth:`PathResolver.visual_gate_dir`) and writing the
-        composite output (:meth:`PathResolver.visual_gate_summary_dir`).
+        (:meth:`PathResolver.spout_behavior_figures_dir`) and writing
+        the composite output
+        (:meth:`PathResolver.spout_behavior_figures_summary_dir`).
     plot_families : sequence of str, optional
         Plot families to tile. ``None`` reads
         ``visual_gate.summary_default_plots`` from
@@ -85,8 +90,10 @@ def make_summary_figures(
         Per-family suffix: ``_relStroke`` when ``True`` (the per-animal
         renderers emit at the same suffix), ``_absDate`` otherwise.
     output_dir_name : str, optional
-        Output subdirectory under ``pipeline_outputs/spout_behavior/``.
-        Defaults to :func:`make_summary_folder_name`.
+        **Filename-stem prefix** (NOT a subdir — historical kwarg name
+        retained for API compatibility). Defaults to
+        :func:`make_summary_folder_name`. Output paths become
+        ``<spout_behavior_figures_summary_dir>/<output_dir_name>__<family>{suffix}.{svg,png}``.
     skip_plots : set of str, optional
         Always-skipped families. ``None`` reads
         ``visual_gate.summary_skip_plots`` (legacy default ``{"lick_raster"}``).
@@ -100,10 +107,10 @@ def make_summary_figures(
     Returns
     -------
     Path
-        The cohort-summary output directory
-        (:meth:`PathResolver.visual_gate_summary_dir`). The dir
-        contains one ``{family}{suffix}.svg`` + ``{family}{suffix}.png``
-        pair per non-skipped plot family.
+        The shared cohort-summary output directory
+        (:meth:`PathResolver.spout_behavior_figures_summary_dir`). The
+        dir contains
+        ``<output_dir_name>__<family>{suffix}.{svg,png}`` pairs.
     """
     config = config or load_visual_gate_config()
     if plot_families is None:
@@ -117,7 +124,7 @@ def make_summary_figures(
 
     suffix = "_relStroke" if align_to_stroke else "_absDate"
 
-    out_dir = resolver.visual_gate_summary_dir(output_dir_name)
+    out_dir = resolver.spout_behavior_figures_summary_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     n_animals = len(animals)
@@ -138,7 +145,10 @@ def make_summary_figures(
 
         for i, animal in enumerate(animals):
             ax = axs_flat[i]
-            png_path = resolver.visual_gate_dir(animal) / f"{family}{suffix}.png"
+            png_path = (
+                resolver.spout_behavior_figures_dir(animal)
+                / f"{family}{suffix}.png"
+            )
             if not png_path.exists():
                 # Missing per-animal PNG → text placeholder per legacy
                 # line 105-107.
@@ -162,11 +172,11 @@ def make_summary_figures(
                     ha="center", va="center",
                 )
 
-        fig.suptitle(f"{family}{suffix}", y=0.995)
+        fig.suptitle(f"{output_dir_name}__{family}{suffix}", y=0.995)
         fig.tight_layout(rect=[0, 0, 1, 0.98])
 
         for ext in ("svg", "png"):
-            target = out_dir / f"{family}{suffix}.{ext}"
+            target = out_dir / f"{output_dir_name}__{family}{suffix}.{ext}"
             if target.exists():
                 if overwrite == "raise":
                     plt.close(fig)
