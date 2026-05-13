@@ -1310,3 +1310,42 @@ visual_gate:
   # phase but shape locked); multi-panel grids override per-renderer.
   figsize_longitudinal: [8, 4]
   figsize_raster_grid: [10, 5]
+
+# ---- Behavior report parameters (Phase 8a.10 visual-gate consumer) ----
+#
+# Cohort-wide criteria + window params consumed by the per-mouse plot
+# families in `src/stroke_orofacial/spout_behavior/visual_gate.py`.
+# Mirrors the legacy `params` dict written per-mouse by
+# `batch_process_behavior_report_20260116PS.ipynb` cell-3. Values were
+# identical across mice in the legacy cohort; lifted here as cohort
+# defaults so the new pipeline doesn't need a per-mouse `params.json`
+# read for visual-gate scope.
+
+behavior_report:
+  # Lick-detection window relative to each reward delivery (seconds).
+  # Tuple (before, after). All per-trial lick computes (lick rate,
+  # num licks, first-lick correctness) use this window.
+  window_around_rewards: [1.0, 8.0]
+
+  criteria_1:
+    # At least the last [num_consecutive_pass] sessions meet
+    # criteria_2 for both reward directions.
+    num_consecutive_pass: 3
+
+  criteria_2:
+    # At least [fraction_pass] of trials per session per reward
+    # direction meet criteria_3 and criteria_4.
+    fraction_pass: 0.6
+
+  criteria_3:
+    # After reward delivery onset, there is a correct lick within
+    # [window] seconds.
+    window: [0, 2.0]
+
+  criteria_4:
+    # After the first correct lick, there are at least
+    # num_licks_correct_min correct licks within [window] seconds
+    # and no more than num_licks_incorrect_max incorrect licks.
+    window: [0, 2.5]
+    num_licks_correct_min: 5
+    num_licks_incorrect_max: 0

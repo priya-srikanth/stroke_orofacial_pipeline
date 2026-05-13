@@ -30,8 +30,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+import matplotlib.pyplot as plt
 import numpy as np
 
+from stroke_orofacial.animals import AnimalInfo, get_animal
 from stroke_orofacial.config_loader import load_defaults
 from stroke_orofacial.paths import PathResolver
 
@@ -431,3 +433,864 @@ def save_visual_gate_figure(
     fig.savefig(svg_path, format="svg")
     fig.savefig(png_path, format="png", dpi=300)
     return svg_path, png_path
+
+
+# =====================================================================
+# Commit-group 2: per-trial compute helpers + longitudinal-mean renderers
+# =====================================================================
+#
+# Shared compute helpers ported from behavior_report_PS.py's main() body
+# (lines 390-850). The legacy emitter built these compute structures
+# inline and re-used them across plot calls; the new pipeline factors
+# them into testable helpers. Each helper operates on ONE
+# :class:`SessionPlotData` and returns the equivalent of the legacy
+# `sig_*` dicts.
+#
+# The 8 render functions (the longitudinal-mean subset of sub-deliverable
+# A) consume these helpers + the CG-1 longitudinal-axis infrastructure.
+# All renderers follow the same shape: iterate Cohort A → load
+# SessionPlotData → compute per-side per-session statistics → render
+# longitudinal plot → save via :func:`save_visual_gate_figure`.
+
+
+def load_behavior_report_params(
+    defaults_path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Return the ``behavior_report:`` block of ``configs/defaults.yaml``.
+
+    Cohort-wide criteria + window params (mirrors legacy
+    ``batch_process_behavior_report_20260116PS.ipynb`` cell-3 ``params``
+    dict). Raises :class:`KeyError` if the block is absent — loud
+    failure beats silent default-blowback.
+    """
+    defaults = load_defaults(defaults_path)
+    if "behavior_report" not in defaults:
+        raise KeyError(
+            "configs/defaults.yaml: 'behavior_report:' block missing — "
+            "Phase 8a.10 commit-group 2 should have added it"
+        )
+    return defaults["behavior_report"]
+
+
+# ---- Private compute primitives ----
+
+
+def _window_to_samples(
+    window_seconds: tuple[float, float] | list[float],
+    sample_rate: float,
+) -> tuple[int, int]:
+    """Convert a ``(before, after)`` seconds window to sample counts.
+
+    Mirrors legacy ``fn_convert_window_to_samples`` lambda.
+    """
+    return int(window_seconds[0] * sample_rate), int(window_seconds[1] * sample_rate)
+
+
+def _find_idx_within_window(
+    sample_indices: np.ndarray,
+    query_sample: int,
+    window_samples: tuple[int, int],
+) -> np.ndarray:
+    """Return positions in ``sample_indices`` within
+    ``[query - before, query + after]`` (inclusive).
+
+    Replaces legacy ``bnpm.indexing.find_idx_within_eps`` with
+    ``eps=(before, after)`` semantics. No bnpm dep.
+    """
+    lo = query_sample - window_samples[0]
+    hi = query_sample + window_samples[1]
+    return np.where(
+        (sample_indices >= lo) & (sample_indices <= hi)
+    )[0]
+
+
+# ---- Public compute helpers (per-session) ----
+
+
+def compute_trial_lick_delays(
+    session_data: SessionPlotData,
+    window_seconds: tuple[float, float] | list[float],
+) -> dict[str, dict[int, dict[str, np.ndarray]]]:
+    """Per-reward, per-side lick delays around each reward delivery.
+
+    Mirrors legacy ``sig_idxLickDelays__idx_idxLicks[date]`` (lines
+    390-408). Returns nested dict:
+    ``{"Reward_L": {reward_idx: {"Lick_L": delays, "Lick_R": delays}}, "Reward_R": {...}}``
+    where ``delays`` is an array of lick sample indices relative to the
+    reward sample (i.e. ``lick_sample - reward_sample``). Negative
+    values = lick before reward.
+    """
+    window_samples = _window_to_samples(window_seconds, session_data.sample_rate)
+    out: dict[str, dict[int, dict[str, np.ndarray]]] = {}
+    for side_reward in ("L", "R"):
+        rewards = session_data.rewards_idx[f"Reward_{side_reward}"]
+        per_reward: dict[int, dict[str, np.ndarray]] = {}
+        for idx_reward, reward_sample in enumerate(rewards):
+            per_side_licks: dict[str, np.ndarray] = {}
+            for side_lick in ("L", "R"):
+                licks = session_data.lick_idx[f"Lick_{side_lick}"]
+                positions = _find_idx_within_window(
+                    licks, int(reward_sample), window_samples,
+                )
+                per_side_licks[f"Lick_{side_lick}"] = (
+                    licks[positions] - int(reward_sample)
+                )
+            per_reward[idx_reward] = per_side_licks
+        out[f"Reward_{side_reward}"] = per_reward
+    return out
+
+
+def compute_first_correct_lick_sample_idx(
+    session_data: SessionPlotData,
+    criteria_3_window_seconds: tuple[float, float] | list[float],
+) -> dict[str, dict[int, int | None]]:
+    """First correct lick sample index per (side, trial), within
+    criteria_3 window after each reward. ``None`` if no correct lick.
+
+    Mirrors legacy ``sig_idxFirstCorrectLick__idx_idxLicks`` (lines
+    455-472). Note: this uses a TIGHTER window than
+    :func:`compute_trial_lick_delays` (criteria_3 window, typically
+    ``(0, 2.0)``).
+    """
+    window_samples = _window_to_samples(
+        criteria_3_window_seconds, session_data.sample_rate,
+    )
+    out: dict[str, dict[int, int | None]] = {}
+    for side in ("L", "R"):
+        rewards = session_data.rewards_idx[f"Reward_{side}"]
+        correct_licks = session_data.lick_idx[f"Lick_{side}"]
+        per_reward: dict[int, int | None] = {}
+        for idx_reward, reward_sample in enumerate(rewards):
+            positions = _find_idx_within_window(
+                correct_licks, int(reward_sample), window_samples,
+            )
+            if positions.size == 0:
+                per_reward[idx_reward] = None
+            else:
+                per_reward[idx_reward] = int(correct_licks[positions[0]])
+        out[side] = per_reward
+    return out
+
+
+def compute_criteria_3(
+    first_correct_lick_idx: dict[str, dict[int, int | None]],
+) -> dict[str, dict[int, bool]]:
+    """Criteria 3: a correct lick exists within criteria_3 window.
+
+    Mirrors legacy lines 474-480.
+    """
+    return {
+        side: {
+            idx: (fcl is not None)
+            for idx, fcl in per_reward.items()
+        }
+        for side, per_reward in first_correct_lick_idx.items()
+    }
+
+
+def compute_criteria_4(
+    session_data: SessionPlotData,
+    criteria_4_params: dict[str, Any],
+) -> dict[str, dict[int, bool]]:
+    """Criteria 4: ≥num_licks_correct_min correct licks AND
+    ≤num_licks_incorrect_max incorrect licks within criteria_4 window.
+
+    Mirrors legacy ``sig_ws__idx_LicksWithinEps`` (lines 484-503) +
+    criteria_4 evaluation (lines 505-518). Uses a SEPARATE window
+    from :func:`compute_trial_lick_delays`.
+    """
+    window_samples = _window_to_samples(
+        criteria_4_params["window"], session_data.sample_rate,
+    )
+    n_corr_min = int(criteria_4_params["num_licks_correct_min"])
+    n_incorr_max = int(criteria_4_params["num_licks_incorrect_max"])
+    out: dict[str, dict[int, bool]] = {}
+    for side_reward in ("L", "R"):
+        rewards = session_data.rewards_idx[f"Reward_{side_reward}"]
+        per_reward: dict[int, bool] = {}
+        for idx_reward, reward_sample in enumerate(rewards):
+            n_correct = _find_idx_within_window(
+                session_data.lick_idx[f"Lick_{side_reward}"],
+                int(reward_sample),
+                window_samples,
+            ).size
+            other_side = "R" if side_reward == "L" else "L"
+            n_incorrect = _find_idx_within_window(
+                session_data.lick_idx[f"Lick_{other_side}"],
+                int(reward_sample),
+                window_samples,
+            ).size
+            per_reward[idx_reward] = bool(
+                (n_correct >= n_corr_min) and (n_incorrect <= n_incorr_max)
+            )
+        out[side_reward] = per_reward
+    return out
+
+
+def compute_criteria_34(
+    criteria_3: dict[str, dict[int, bool]],
+    criteria_4: dict[str, dict[int, bool]],
+) -> dict[str, dict[int, bool]]:
+    """Per-trial AND of criteria 3 and 4. Mirrors legacy lines 520-529."""
+    return {
+        side: {
+            idx: bool(criteria_3[side][idx] and criteria_4[side][idx])
+            for idx in criteria_3[side]
+        }
+        for side in criteria_3
+    }
+
+
+def compute_first_lick_correct(
+    trial_lick_delays: dict[str, dict[int, dict[str, np.ndarray]]],
+) -> dict[str, dict[int, bool | None]]:
+    """First-lick correctness per trial.
+
+    Mirrors legacy ``sig_firstLickCorrect`` (lines 583-596). For each
+    reward, considers only post-reward licks (delay ≥ 0): correct =
+    first correct lick precedes any incorrect lick; ``None`` if no
+    post-reward licks on either side (no information to score).
+    """
+    out: dict[str, dict[int, bool | None]] = {}
+    for side_reward in ("L", "R"):
+        per_reward: dict[int, bool | None] = {}
+        for idx_reward, by_side in trial_lick_delays[f"Reward_{side_reward}"].items():
+            other_side = "R" if side_reward == "L" else "L"
+            correct_delays = by_side[f"Lick_{side_reward}"]
+            incorrect_delays = by_side[f"Lick_{other_side}"]
+            correct_post = correct_delays[correct_delays >= 0]
+            incorrect_post = incorrect_delays[incorrect_delays >= 0]
+            if len(correct_post) > 0:
+                if len(incorrect_post) > 0:
+                    per_reward[idx_reward] = bool(correct_post[0] < incorrect_post[0])
+                else:
+                    per_reward[idx_reward] = True
+            else:
+                if len(incorrect_post) > 0:
+                    per_reward[idx_reward] = False
+                else:
+                    per_reward[idx_reward] = None
+        out[side_reward] = per_reward
+    return out
+
+
+def compute_criteria_acc_bySession(
+    criteria_34: dict[str, dict[int, bool]],
+) -> dict[str, float]:
+    """Fraction of trials passing criteria 3 AND 4, per side."""
+    out: dict[str, float] = {}
+    for side, per_reward in criteria_34.items():
+        if len(per_reward) == 0:
+            out[side] = float("nan")
+        else:
+            out[side] = float(np.mean(list(per_reward.values())))
+    return out
+
+
+def compute_firstLickCorrect_bySession(
+    first_lick_correct: dict[str, dict[int, bool | None]],
+    *,
+    treat_none_as_zero: bool = False,
+) -> dict[str, float]:
+    """Mean first-lick-correct per side.
+
+    ``treat_none_as_zero=False`` (default) matches ``accuracy_firstCorrectLick``
+    semantics — None values excluded (nanmean over float-cast).
+    ``True`` matches ``accuracy_firstCorrectLickAll`` semantics — None
+    treated as 0 (incorrect / no-lick counts against accuracy).
+    """
+    out: dict[str, float] = {}
+    for side, per_reward in first_lick_correct.items():
+        if treat_none_as_zero:
+            arr = np.array(
+                [0.0 if v is None else float(v) for v in per_reward.values()],
+                dtype=float,
+            )
+            out[side] = float(arr.mean()) if arr.size > 0 else float("nan")
+        else:
+            arr = np.array(
+                [np.nan if v is None else float(v) for v in per_reward.values()],
+                dtype=float,
+            )
+            out[side] = float(np.nanmean(arr)) if arr.size > 0 else float("nan")
+    return out
+
+
+def compute_median_lick_rate_bySession(
+    trial_lick_delays: dict[str, dict[int, dict[str, np.ndarray]]],
+    sample_rate: float,
+) -> dict[str, dict[str, float]]:
+    """Per-side mean ± std of trial-median correct-lick rates (Hz).
+
+    Mirrors legacy ``sig_meanStd_MedianCorrectLickRate`` (lines 642-678).
+    """
+    per_side: dict[str, dict[str, float]] = {}
+    for side_reward in ("L", "R"):
+        rates: list[float] = []
+        for by_side in trial_lick_delays[f"Reward_{side_reward}"].values():
+            correct_delays = by_side[f"Lick_{side_reward}"]
+            ilis = np.diff(correct_delays)
+            if ilis.size == 0:
+                rates.append(0.0)
+            else:
+                med = float(np.median(ilis))
+                hz = 0.0 if med <= 0 else float(1.0 / (med / sample_rate))
+                rates.append(0.0 if not np.isfinite(hz) else hz)
+        if len(rates) == 0:
+            per_side[side_reward] = {"mean": float("nan"), "std": float("nan")}
+        else:
+            per_side[side_reward] = {
+                "mean": float(np.nanmean(rates)),
+                "std": float(np.nanstd(rates)),
+            }
+    return per_side
+
+
+def compute_num_licks_bySession(
+    trial_lick_delays: dict[str, dict[int, dict[str, np.ndarray]]],
+) -> dict[str, dict[str, dict[str, float]]]:
+    """Per-side mean ± std of per-trial lick counts.
+
+    Returns a 3-level dict:
+    ``{"correct": {"Reward_L": {"mean": x, "std": y}, "Reward_R": ...},
+       "all":     {"Reward_L": ..., "Reward_R": ...},
+       "incorrect": {"Reward_L": ..., "Reward_R": ...}}``
+
+    Mirrors legacy ``sig_meanStd_numCorrectLicksPerTrial`` /
+    ``sig_meanStd_numAllLicksPerTrial`` /
+    ``sig_meanStd_numIncorrectLicksPerTrial`` (lines 705-747).
+    """
+    out: dict[str, dict[str, dict[str, float]]] = {
+        "correct": {}, "all": {}, "incorrect": {},
+    }
+    for side_reward in ("L", "R"):
+        other = "R" if side_reward == "L" else "L"
+        n_correct: list[int] = []
+        n_all: list[int] = []
+        n_incorrect: list[int] = []
+        for by_side in trial_lick_delays[f"Reward_{side_reward}"].values():
+            n_correct.append(int(by_side[f"Lick_{side_reward}"].size))
+            n_all.append(int(by_side["Lick_L"].size + by_side["Lick_R"].size))
+            n_incorrect.append(int(by_side[f"Lick_{other}"].size))
+        for kind, values in (
+            ("correct", n_correct), ("all", n_all), ("incorrect", n_incorrect),
+        ):
+            if len(values) == 0:
+                out[kind][f"Reward_{side_reward}"] = {
+                    "mean": float("nan"), "std": float("nan"),
+                }
+            else:
+                out[kind][f"Reward_{side_reward}"] = {
+                    "mean": float(np.nanmean(values)),
+                    "std": float(np.nanstd(values)),
+                }
+    return out
+
+
+def compute_latency_bySession(
+    first_correct_lick_idx: dict[str, dict[int, int | None]],
+    rewards_idx: dict[str, np.ndarray],
+    sample_rate: float,
+) -> dict[str, dict[str, float]]:
+    """Per-side mean ± std of latency (seconds) to first correct lick.
+
+    Mirrors legacy ``latency_meanStd_bySide`` (lines 805-829).
+    ``None`` first-correct-lick entries become ``NaN`` and excluded
+    from the mean/std.
+    """
+    out: dict[str, dict[str, float]] = {}
+    for side in ("L", "R"):
+        rewards = rewards_idx[f"Reward_{side}"]
+        latencies: list[float] = []
+        for idx_reward, fcl in first_correct_lick_idx[side].items():
+            if fcl is None:
+                latencies.append(float("nan"))
+            else:
+                latencies.append(
+                    (fcl - int(rewards[idx_reward])) / sample_rate
+                )
+        arr = np.array(latencies, dtype=float)
+        if arr.size == 0:
+            out[side] = {"mean": float("nan"), "std": float("nan")}
+        else:
+            out[side] = {
+                "mean": float(np.nanmean(arr)),
+                "std": float(np.nanstd(arr)),
+            }
+    return out
+
+
+# ---- Renderer skeleton: per-session compute aggregation ----
+
+
+@dataclass
+class _PerSessionStats:
+    """Per-session compute outputs aggregated across Cohort A.
+
+    Internal-detail dataclass used by the longitudinal-mean renderers.
+    """
+    dates: list[str]
+    criteria_acc: dict[str, list[float]]
+    firstLickCorrect_excludeNone: dict[str, list[float]]
+    firstLickCorrect_treatNoneZero: dict[str, list[float]]
+    medianLickRate: dict[str, list[dict[str, float]]]
+    numLicks: dict[str, dict[str, list[dict[str, float]]]]
+    latency: dict[str, list[dict[str, float]]]
+
+
+def _compute_per_session_stats(
+    animal: str,
+    resolver: PathResolver,
+    behavior_params: dict[str, Any],
+) -> _PerSessionStats:
+    """Iterate Cohort A and compute every per-session statistic the
+    CG-2 renderers need. Single pass over the cohort to avoid
+    re-loading NPZs per renderer.
+    """
+    dates = iter_cohort_a_sessions(animal, resolver)
+    window_around = behavior_params["window_around_rewards"]
+    crit3_window = behavior_params["criteria_3"]["window"]
+
+    criteria_acc: dict[str, list[float]] = {"L": [], "R": []}
+    flc_excl: dict[str, list[float]] = {"L": [], "R": []}
+    flc_zero: dict[str, list[float]] = {"L": [], "R": []}
+    median_rate: dict[str, list[dict[str, float]]] = {"L": [], "R": []}
+    num_licks: dict[str, dict[str, list[dict[str, float]]]] = {
+        "correct": {"Reward_L": [], "Reward_R": []},
+        "all": {"Reward_L": [], "Reward_R": []},
+        "incorrect": {"Reward_L": [], "Reward_R": []},
+    }
+    latency: dict[str, list[dict[str, float]]] = {"L": [], "R": []}
+
+    for date in dates:
+        data = load_session_plot_data(animal, date, resolver)
+        delays = compute_trial_lick_delays(data, window_around)
+        fcl_idx = compute_first_correct_lick_sample_idx(data, crit3_window)
+        c3 = compute_criteria_3(fcl_idx)
+        c4 = compute_criteria_4(data, behavior_params["criteria_4"])
+        c34 = compute_criteria_34(c3, c4)
+        first_corr = compute_first_lick_correct(delays)
+
+        acc = compute_criteria_acc_bySession(c34)
+        flc_exclude = compute_firstLickCorrect_bySession(
+            first_corr, treat_none_as_zero=False,
+        )
+        flc_treat_zero = compute_firstLickCorrect_bySession(
+            first_corr, treat_none_as_zero=True,
+        )
+        ms_rate = compute_median_lick_rate_bySession(delays, data.sample_rate)
+        ms_num = compute_num_licks_bySession(delays)
+        ms_lat = compute_latency_bySession(
+            fcl_idx, data.rewards_idx, data.sample_rate,
+        )
+
+        for side in ("L", "R"):
+            criteria_acc[side].append(acc[side])
+            flc_excl[side].append(flc_exclude[side])
+            flc_zero[side].append(flc_treat_zero[side])
+            median_rate[side].append(ms_rate[side])
+            latency[side].append(ms_lat[side])
+        for kind in ("correct", "all", "incorrect"):
+            for side_reward in ("Reward_L", "Reward_R"):
+                num_licks[kind][side_reward].append(ms_num[kind][side_reward])
+
+    return _PerSessionStats(
+        dates=dates,
+        criteria_acc=criteria_acc,
+        firstLickCorrect_excludeNone=flc_excl,
+        firstLickCorrect_treatNoneZero=flc_zero,
+        medianLickRate=median_rate,
+        numLicks=num_licks,
+        latency=latency,
+    )
+
+
+def _resolve_d0(
+    animal_info: AnimalInfo | None, animal: str, align_to_stroke: bool,
+) -> datetime.date | None:
+    if not align_to_stroke:
+        return None
+    if animal_info is None:
+        animal_info = get_animal(animal)
+    return animal_info.stroke_date
+
+
+# ---- 8 longitudinal-mean renderers ----
+
+
+def render_criteria_performance(
+    animal: str,
+    resolver: PathResolver,
+    *,
+    align_to_stroke: bool = True,
+    config: dict[str, Any] | None = None,
+    behavior_params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["force", "skip", "raise"] = "force",
+    stats: _PerSessionStats | None = None,
+) -> tuple[Path, Path]:
+    """Render the per-mouse criteria-performance longitudinal plot.
+
+    Mirrors legacy ``criteria_performance`` (behavior_report_PS.py:556-565):
+    fraction of trials passing criteria 3 AND 4 per session, one line
+    per mouse-frame side.
+
+    Returns ``(svg_path, png_path)``.
+    """
+    config = config or load_visual_gate_config()
+    behavior_params = behavior_params or load_behavior_report_params()
+    stats = stats or _compute_per_session_stats(animal, resolver, behavior_params)
+    d0 = _resolve_d0(animal_info, animal, align_to_stroke)
+    axis = compute_longitudinal_axis(
+        stats.dates, align_to_stroke=align_to_stroke, d0=d0,
+        vline_x=config["stroke_vline_x"],
+    )
+    fig, ax = plt.subplots(figsize=tuple(config["figsize_longitudinal"]))
+    for side in ("L", "R"):
+        ax.plot(
+            axis.x_vals, stats.criteria_acc[side], "o-",
+            color=SIDE_COLORS[side], label=f"mouse {side}",
+        )
+    apply_longitudinal_axis(ax, axis, config)
+    ax.set_ylim(*config["accuracy_y_range"])
+    ax.set_ylabel("fraction of trials meeting criteria 3 and 4")
+    ax.set_title("Criteria performance by session")
+    ax.legend()
+    paths = save_visual_gate_figure(
+        fig, animal, "criteria_performance", axis.suffix, resolver,
+        overwrite=overwrite,
+    )
+    plt.close(fig)
+    return paths
+
+
+def render_accuracy_firstCorrectLick(
+    animal: str,
+    resolver: PathResolver,
+    *,
+    align_to_stroke: bool = True,
+    config: dict[str, Any] | None = None,
+    behavior_params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["force", "skip", "raise"] = "force",
+    stats: _PerSessionStats | None = None,
+) -> tuple[Path, Path]:
+    """Fraction of LICKING trials with correct first lick (None excluded).
+
+    Mirrors legacy ``accuracy_firstCorrectLick`` (behavior_report_PS.py:607-616).
+    """
+    config = config or load_visual_gate_config()
+    behavior_params = behavior_params or load_behavior_report_params()
+    stats = stats or _compute_per_session_stats(animal, resolver, behavior_params)
+    d0 = _resolve_d0(animal_info, animal, align_to_stroke)
+    axis = compute_longitudinal_axis(
+        stats.dates, align_to_stroke=align_to_stroke, d0=d0,
+        vline_x=config["stroke_vline_x"],
+    )
+    fig, ax = plt.subplots(figsize=tuple(config["figsize_longitudinal"]))
+    for side in ("L", "R"):
+        ax.plot(
+            axis.x_vals, stats.firstLickCorrect_excludeNone[side], "o-",
+            color=SIDE_COLORS[side], label=f"mouse {side}",
+        )
+    apply_longitudinal_axis(ax, axis, config)
+    ax.set_ylim(*config["accuracy_y_range"])
+    ax.set_ylabel("Fraction of trials with correct 1st lick")
+    ax.set_title("Fraction of licking trials with correct first lick, by session")
+    ax.legend()
+    paths = save_visual_gate_figure(
+        fig, animal, "accuracy_firstCorrectLick", axis.suffix, resolver,
+        overwrite=overwrite,
+    )
+    plt.close(fig)
+    return paths
+
+
+def render_accuracy_firstCorrectLickAll(
+    animal: str,
+    resolver: PathResolver,
+    *,
+    align_to_stroke: bool = True,
+    config: dict[str, Any] | None = None,
+    behavior_params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["force", "skip", "raise"] = "force",
+    stats: _PerSessionStats | None = None,
+) -> tuple[Path, Path]:
+    """Fraction of ALL trials with correct first lick (None treated as 0).
+
+    Mirrors legacy ``accuracy_firstCorrectLickAll`` (behavior_report_PS.py:628-637).
+    """
+    config = config or load_visual_gate_config()
+    behavior_params = behavior_params or load_behavior_report_params()
+    stats = stats or _compute_per_session_stats(animal, resolver, behavior_params)
+    d0 = _resolve_d0(animal_info, animal, align_to_stroke)
+    axis = compute_longitudinal_axis(
+        stats.dates, align_to_stroke=align_to_stroke, d0=d0,
+        vline_x=config["stroke_vline_x"],
+    )
+    fig, ax = plt.subplots(figsize=tuple(config["figsize_longitudinal"]))
+    for side in ("L", "R"):
+        ax.plot(
+            axis.x_vals, stats.firstLickCorrect_treatNoneZero[side], "o-",
+            color=SIDE_COLORS[side], label=f"mouse {side}",
+        )
+    apply_longitudinal_axis(ax, axis, config)
+    ax.set_ylim(*config["accuracy_y_range"])
+    ax.set_ylabel("Fraction of all trials with correct 1st lick")
+    ax.set_title("Fraction of all trials with correct first lick, by session")
+    ax.legend()
+    paths = save_visual_gate_figure(
+        fig, animal, "accuracy_firstCorrectLickAll", axis.suffix, resolver,
+        overwrite=overwrite,
+    )
+    plt.close(fig)
+    return paths
+
+
+def render_lickRate_bySession(
+    animal: str,
+    resolver: PathResolver,
+    *,
+    align_to_stroke: bool = True,
+    config: dict[str, Any] | None = None,
+    behavior_params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["force", "skip", "raise"] = "force",
+    stats: _PerSessionStats | None = None,
+) -> tuple[Path, Path]:
+    """Per-side mean ± std of trial-median correct lick rate (Hz).
+
+    Mirrors legacy ``lickRate_bySession`` (behavior_report_PS.py:681-700).
+    """
+    config = config or load_visual_gate_config()
+    behavior_params = behavior_params or load_behavior_report_params()
+    stats = stats or _compute_per_session_stats(animal, resolver, behavior_params)
+    d0 = _resolve_d0(animal_info, animal, align_to_stroke)
+    axis = compute_longitudinal_axis(
+        stats.dates, align_to_stroke=align_to_stroke, d0=d0,
+        vline_x=config["stroke_vline_x"],
+    )
+    fig, ax = plt.subplots(figsize=tuple(config["figsize_longitudinal"]))
+    for side in ("L", "R"):
+        means = [d["mean"] for d in stats.medianLickRate[side]]
+        stds = [d["std"] for d in stats.medianLickRate[side]]
+        offset = 0.1 if side == "R" else -0.1
+        ax.errorbar(
+            x=axis.x_vals + offset, y=means, yerr=stds,
+            color=SIDE_COLORS[side], label=f"mouse {side}",
+            marker="o", markersize=2,
+        )
+    apply_longitudinal_axis(ax, axis, config)
+    ax.set_ylim(0, config["lickrate_y_max"])
+    ax.set_ylabel("lick rate (Hz)  [avg ± std of trial median lick rates]")
+    ax.set_title("avg correct lick rate by session")
+    ax.legend()
+    paths = save_visual_gate_figure(
+        fig, animal, "lickRate_bySession", axis.suffix, resolver,
+        overwrite=overwrite,
+    )
+    plt.close(fig)
+    return paths
+
+
+def render_latency_bySession(
+    animal: str,
+    resolver: PathResolver,
+    *,
+    align_to_stroke: bool = True,
+    config: dict[str, Any] | None = None,
+    behavior_params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["force", "skip", "raise"] = "force",
+    stats: _PerSessionStats | None = None,
+) -> tuple[Path, Path]:
+    """Per-side mean ± std of latency (seconds) to first correct lick.
+
+    Mirrors legacy ``latency_bySession`` (behavior_report_PS.py:831-850).
+    """
+    config = config or load_visual_gate_config()
+    behavior_params = behavior_params or load_behavior_report_params()
+    stats = stats or _compute_per_session_stats(animal, resolver, behavior_params)
+    d0 = _resolve_d0(animal_info, animal, align_to_stroke)
+    axis = compute_longitudinal_axis(
+        stats.dates, align_to_stroke=align_to_stroke, d0=d0,
+        vline_x=config["stroke_vline_x"],
+    )
+    fig, ax = plt.subplots(figsize=tuple(config["figsize_longitudinal"]))
+    for side in ("L", "R"):
+        means = [d["mean"] for d in stats.latency[side]]
+        stds = [d["std"] for d in stats.latency[side]]
+        offset = 0.1 if side == "R" else -0.1
+        ax.errorbar(
+            x=axis.x_vals + offset, y=means, yerr=stds,
+            color=SIDE_COLORS[side], label=f"mouse {side}",
+            marker="o", markersize=2,
+        )
+    apply_longitudinal_axis(ax, axis, config)
+    ax.set_ylim(0, config["latency_y_max"])
+    ax.set_ylabel("avg latency (s)  [avg ± std]")
+    ax.set_title("avg latency to correct lick by session")
+    ax.legend()
+    paths = save_visual_gate_figure(
+        fig, animal, "latency_bySession", axis.suffix, resolver,
+        overwrite=overwrite,
+    )
+    plt.close(fig)
+    return paths
+
+
+def _render_numLicks_bySession_kind(
+    animal: str,
+    resolver: PathResolver,
+    kind: Literal["correct", "all"],
+    *,
+    align_to_stroke: bool,
+    config: dict[str, Any],
+    behavior_params: dict[str, Any],
+    animal_info: AnimalInfo | None,
+    overwrite: Literal["force", "skip", "raise"],
+    stats: _PerSessionStats | None,
+) -> tuple[Path, Path]:
+    """Shared body for the correct + all variants of numLicks_bySession.
+
+    Mirrors legacy lines 749-771 — the loop that emits both
+    ``numLicks_bySession_correct`` and ``numLicks_bySession_all``
+    from the same skeleton.
+    """
+    stats = stats or _compute_per_session_stats(animal, resolver, behavior_params)
+    d0 = _resolve_d0(animal_info, animal, align_to_stroke)
+    axis = compute_longitudinal_axis(
+        stats.dates, align_to_stroke=align_to_stroke, d0=d0,
+        vline_x=config["stroke_vline_x"],
+    )
+    fig, ax = plt.subplots(figsize=tuple(config["figsize_longitudinal"]))
+    for side in ("L", "R"):
+        means = [
+            d["mean"] for d in stats.numLicks[kind][f"Reward_{side}"]
+        ]
+        stds = [
+            d["std"] for d in stats.numLicks[kind][f"Reward_{side}"]
+        ]
+        offset = 0.1 if side == "R" else -0.1
+        ax.errorbar(
+            x=axis.x_vals + offset, y=means,
+            yerr=[[0] * len(stds), stds],  # upper-only error bar
+            label=f"Reward {side}",
+            marker="o", markersize=2,
+            color=SIDE_COLORS[side],
+        )
+    apply_longitudinal_axis(ax, axis, config)
+    ax.set_ylim(0, config["numlicks_y_max"])
+    ax.set_ylabel("Avg licks per trial  [avg + std]")
+    title = (
+        "Avg correct licks per trial by session" if kind == "correct"
+        else "Avg all licks per trial by session"
+    )
+    ax.set_title(title)
+    ax.legend()
+    paths = save_visual_gate_figure(
+        fig, animal, f"numLicks_bySession_{kind}", axis.suffix, resolver,
+        overwrite=overwrite,
+    )
+    plt.close(fig)
+    return paths
+
+
+def render_numLicks_bySession_correct(
+    animal: str,
+    resolver: PathResolver,
+    *,
+    align_to_stroke: bool = True,
+    config: dict[str, Any] | None = None,
+    behavior_params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["force", "skip", "raise"] = "force",
+    stats: _PerSessionStats | None = None,
+) -> tuple[Path, Path]:
+    """Per-side mean correct-licks per trial. Legacy lines 749-771 (correct)."""
+    config = config or load_visual_gate_config()
+    behavior_params = behavior_params or load_behavior_report_params()
+    return _render_numLicks_bySession_kind(
+        animal, resolver, "correct",
+        align_to_stroke=align_to_stroke, config=config,
+        behavior_params=behavior_params, animal_info=animal_info,
+        overwrite=overwrite, stats=stats,
+    )
+
+
+def render_numLicks_bySession_all(
+    animal: str,
+    resolver: PathResolver,
+    *,
+    align_to_stroke: bool = True,
+    config: dict[str, Any] | None = None,
+    behavior_params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["force", "skip", "raise"] = "force",
+    stats: _PerSessionStats | None = None,
+) -> tuple[Path, Path]:
+    """Per-side mean all-licks per trial. Legacy lines 749-771 (all)."""
+    config = config or load_visual_gate_config()
+    behavior_params = behavior_params or load_behavior_report_params()
+    return _render_numLicks_bySession_kind(
+        animal, resolver, "all",
+        align_to_stroke=align_to_stroke, config=config,
+        behavior_params=behavior_params, animal_info=animal_info,
+        overwrite=overwrite, stats=stats,
+    )
+
+
+def render_numLicks_bySession_correct_and_incorrect(
+    animal: str,
+    resolver: PathResolver,
+    *,
+    align_to_stroke: bool = True,
+    config: dict[str, Any] | None = None,
+    behavior_params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["force", "skip", "raise"] = "force",
+    stats: _PerSessionStats | None = None,
+) -> tuple[Path, Path]:
+    """4-line plot: correct (solid) + incorrect (dashed) × L/R sides.
+
+    Mirrors legacy ``numLicks_bySession_correct_and_incorrect``
+    (behavior_report_PS.py:773-800).
+    """
+    config = config or load_visual_gate_config()
+    behavior_params = behavior_params or load_behavior_report_params()
+    stats = stats or _compute_per_session_stats(animal, resolver, behavior_params)
+    d0 = _resolve_d0(animal_info, animal, align_to_stroke)
+    axis = compute_longitudinal_axis(
+        stats.dates, align_to_stroke=align_to_stroke, d0=d0,
+        vline_x=config["stroke_vline_x"],
+    )
+    fig, ax = plt.subplots(figsize=tuple(config["figsize_longitudinal"]))
+    for side_reward, linestyle, kind in [
+        ("Reward_R", "-", "correct"),
+        ("Reward_L", "-", "correct"),
+        ("Reward_R", "--", "incorrect"),
+        ("Reward_L", "--", "incorrect"),
+    ]:
+        side = side_reward.split("_")[1]
+        means = [d["mean"] for d in stats.numLicks[kind][side_reward]]
+        stds = [d["std"] for d in stats.numLicks[kind][side_reward]]
+        offset = 0.1 if side == "R" else -0.1
+        ax.errorbar(
+            x=axis.x_vals + offset, y=means,
+            yerr=[[0] * len(stds), stds],
+            linestyle=linestyle, marker="o", markersize=2,
+            color=SIDE_COLORS[side],
+            label=f"Reward {side} {kind}",
+        )
+    apply_longitudinal_axis(ax, axis, config)
+    ax.set_ylim(0, config["numlicks_y_max"])
+    ax.set_ylabel("Avg licks per trial  [avg + std]")
+    ax.set_title("Avg correct & incorrect licks per trial by session")
+    ax.legend(loc="upper right", ncol=2)
+    paths = save_visual_gate_figure(
+        fig, animal, "numLicks_bySession_correct_and_incorrect",
+        axis.suffix, resolver, overwrite=overwrite,
+    )
+    plt.close(fig)
+    return paths

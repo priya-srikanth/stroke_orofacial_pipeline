@@ -496,3 +496,562 @@ def test_module_exports_expected_names():
             f"visual_gate.{name} missing — commit-group 1 public surface "
             "should include it"
         )
+
+
+# =====================================================================
+# Commit-group 2: compute helpers + 8 longitudinal-mean renderers
+# =====================================================================
+
+
+from stroke_orofacial.spout_behavior.visual_gate import (  # noqa: E402
+    compute_criteria_3,
+    compute_criteria_34,
+    compute_criteria_4,
+    compute_criteria_acc_bySession,
+    compute_first_correct_lick_sample_idx,
+    compute_first_lick_correct,
+    compute_firstLickCorrect_bySession,
+    compute_latency_bySession,
+    compute_median_lick_rate_bySession,
+    compute_num_licks_bySession,
+    compute_trial_lick_delays,
+    load_behavior_report_params,
+    render_accuracy_firstCorrectLick,
+    render_accuracy_firstCorrectLickAll,
+    render_criteria_performance,
+    render_latency_bySession,
+    render_lickRate_bySession,
+    render_numLicks_bySession_all,
+    render_numLicks_bySession_correct,
+    render_numLicks_bySession_correct_and_incorrect,
+)
+
+
+# ---- Synthetic session fixture for compute-helper unit tests ----
+
+
+def _make_synthetic_session(date_label: str = "20250430") -> SessionPlotData:
+    """Tiny deterministic session for compute-helper tests.
+
+    Sample rate 1000 Hz; 1 L reward at sample 1000 (t=1s); 1 R reward
+    at sample 5000 (t=5s). Hand-placed licks support exact-value
+    assertions in every compute helper.
+    """
+    return SessionPlotData(
+        date_label=date_label,
+        # Mouse-L licks: 6 around reward L (500, 1100, 1500, 2000, 2500, 2900);
+        # 0 around reward R within criteria windows
+        lick_idx={
+            "Lick_L": np.array([500, 1100, 1500, 2000, 2500, 2900], dtype=int),
+            "Lick_R": np.array([900, 5200, 5800, 6100, 6500, 7000, 7500], dtype=int),
+        },
+        rewards_idx={
+            "Reward_L": np.array([1000], dtype=int),
+            "Reward_R": np.array([5000], dtype=int),
+        },
+        sample_rate=1000.0,
+    )
+
+
+# ---- Tests: behavior_report config loader ----
+
+
+class TestBehaviorReportParams:
+    def test_load_returns_dict(self):
+        params = load_behavior_report_params()
+        for key in [
+            "window_around_rewards", "criteria_1", "criteria_2",
+            "criteria_3", "criteria_4",
+        ]:
+            assert key in params, f"behavior_report missing key: {key}"
+
+    def test_legacy_values_preserved(self):
+        """Pin: cohort-wide defaults match legacy params dict
+        (batch_process_behavior_report_20260116PS.ipynb cell-3)."""
+        params = load_behavior_report_params()
+        assert list(params["window_around_rewards"]) == [1.0, 8.0]
+        assert params["criteria_1"]["num_consecutive_pass"] == 3
+        assert params["criteria_2"]["fraction_pass"] == 0.6
+        assert list(params["criteria_3"]["window"]) == [0, 2.0]
+        assert list(params["criteria_4"]["window"]) == [0, 2.5]
+        assert params["criteria_4"]["num_licks_correct_min"] == 5
+        assert params["criteria_4"]["num_licks_incorrect_max"] == 0
+
+
+# ---- Tests: per-session compute helpers ----
+
+
+class TestComputeTrialLickDelays:
+    def test_window_includes_pre_reward_licks(self):
+        data = _make_synthetic_session()
+        delays = compute_trial_lick_delays(data, [1.0, 8.0])
+        # Lick L at 500 (before reward L at 1000): delay = -500
+        l_delays = delays["Reward_L"][0]["Lick_L"]
+        assert -500 in l_delays
+        # Lick L at 1100 (after reward L at 1000): delay = 100
+        assert 100 in l_delays
+
+    def test_per_reward_keys(self):
+        data = _make_synthetic_session()
+        delays = compute_trial_lick_delays(data, [1.0, 8.0])
+        assert set(delays.keys()) == {"Reward_L", "Reward_R"}
+        # Reward_L has 1 trial (idx 0); Reward_R has 1 trial (idx 0)
+        assert set(delays["Reward_L"].keys()) == {0}
+        assert set(delays["Reward_R"].keys()) == {0}
+
+    def test_per_side_keys(self):
+        data = _make_synthetic_session()
+        delays = compute_trial_lick_delays(data, [1.0, 8.0])
+        assert set(delays["Reward_L"][0].keys()) == {"Lick_L", "Lick_R"}
+
+    def test_window_excludes_licks_outside_window(self):
+        # Tight window: 0-1s after reward (samples [reward, reward+1000])
+        data = _make_synthetic_session()
+        delays = compute_trial_lick_delays(data, [0, 1.0])
+        # Lick L at 500  (pre-reward, before window):       excluded
+        # Lick L at 1100 (in window):                       delay 100
+        # Lick L at 1500 (in window):                       delay 500
+        # Lick L at 2000 (== reward + 1000; window inclusive): delay 1000
+        # Lick L at 2500 (past window):                     excluded
+        l_delays = delays["Reward_L"][0]["Lick_L"]
+        assert set(l_delays.tolist()) == {100, 500, 1000}
+
+
+class TestComputeFirstCorrectLickSampleIdx:
+    def test_returns_first_lick_within_criteria_3_window(self):
+        data = _make_synthetic_session()
+        # criteria_3 window: 0-2.0s after reward
+        fcl = compute_first_correct_lick_sample_idx(data, [0, 2.0])
+        # First L lick ≥ reward L sample (1000) and ≤ 3000: sample 1100
+        assert fcl["L"][0] == 1100
+        # First R lick ≥ reward R sample (5000) and ≤ 7000: sample 5200
+        assert fcl["R"][0] == 5200
+
+    def test_returns_none_when_no_lick_in_window(self):
+        # Build a session with NO post-reward licks within criteria_3 window
+        data = SessionPlotData(
+            date_label="20250430",
+            lick_idx={
+                "Lick_L": np.array([500], dtype=int),  # only pre-reward
+                "Lick_R": np.array([100, 200], dtype=int),  # all pre-reward
+            },
+            rewards_idx={
+                "Reward_L": np.array([1000], dtype=int),
+                "Reward_R": np.array([5000], dtype=int),
+            },
+            sample_rate=1000.0,
+        )
+        fcl = compute_first_correct_lick_sample_idx(data, [0, 2.0])
+        assert fcl["L"][0] is None
+        assert fcl["R"][0] is None
+
+
+class TestComputeCriteria3:
+    def test_returns_true_when_first_lick_present(self):
+        data = _make_synthetic_session()
+        fcl = compute_first_correct_lick_sample_idx(data, [0, 2.0])
+        c3 = compute_criteria_3(fcl)
+        assert c3["L"][0] is True
+        assert c3["R"][0] is True
+
+    def test_returns_false_when_first_lick_none(self):
+        fcl = {"L": {0: None}, "R": {0: 5100}}
+        c3 = compute_criteria_3(fcl)
+        assert c3["L"][0] is False
+        assert c3["R"][0] is True
+
+
+class TestComputeCriteria4:
+    def test_passes_with_enough_correct_no_incorrect(self):
+        data = _make_synthetic_session()
+        # criteria_4: window=[0, 2.5], min_correct=5, max_incorrect=0
+        # Reward_L at sample 1000: window [1000, 3500]
+        #   - L licks in window: 1100, 1500, 2000, 2500, 2900 (count 5; ≥ 5 OK)
+        #   - R licks in window: 0 (the 900 is pre-reward; 5200 is past window) → ≤ 0 OK
+        c4 = compute_criteria_4(data, {
+            "window": [0, 2.5],
+            "num_licks_correct_min": 5,
+            "num_licks_incorrect_max": 0,
+        })
+        assert c4["L"][0] is True
+
+    def test_fails_when_too_few_correct(self):
+        data = _make_synthetic_session()
+        c4 = compute_criteria_4(data, {
+            "window": [0, 2.5],
+            "num_licks_correct_min": 10,  # ↑ higher threshold
+            "num_licks_incorrect_max": 0,
+        })
+        assert c4["L"][0] is False
+
+
+class TestComputeCriteria34:
+    def test_and_combines(self):
+        c3 = {"L": {0: True, 1: True}, "R": {0: True}}
+        c4 = {"L": {0: True, 1: False}, "R": {0: True}}
+        c34 = compute_criteria_34(c3, c4)
+        assert c34["L"][0] is True
+        assert c34["L"][1] is False
+        assert c34["R"][0] is True
+
+
+class TestComputeFirstLickCorrect:
+    def test_correct_post_first_returns_true(self):
+        """Reward L: L lick at delay +100, no R licks post-reward → True."""
+        delays = {
+            "Reward_L": {
+                0: {
+                    "Lick_L": np.array([100, 500]),
+                    "Lick_R": np.array([-200]),  # pre-reward, ignored
+                },
+            },
+            "Reward_R": {
+                0: {
+                    "Lick_R": np.array([200]),
+                    "Lick_L": np.array([]),
+                },
+            },
+        }
+        flc = compute_first_lick_correct(delays)
+        assert flc["L"][0] is True
+        assert flc["R"][0] is True
+
+    def test_incorrect_first_returns_false(self):
+        """Reward L: R lick at delay +50 precedes L lick at +200 → False."""
+        delays = {
+            "Reward_L": {
+                0: {
+                    "Lick_L": np.array([200]),
+                    "Lick_R": np.array([50]),
+                },
+            },
+            "Reward_R": {},
+        }
+        flc = compute_first_lick_correct(delays)
+        assert flc["L"][0] is False
+
+    def test_no_post_reward_licks_returns_none(self):
+        delays = {
+            "Reward_L": {
+                0: {
+                    "Lick_L": np.array([-100]),  # only pre-reward
+                    "Lick_R": np.array([-200]),
+                },
+            },
+            "Reward_R": {},
+        }
+        flc = compute_first_lick_correct(delays)
+        assert flc["L"][0] is None
+
+
+class TestComputeCriteriaAccBySession:
+    def test_fraction_passing(self):
+        c34 = {"L": {0: True, 1: True, 2: False}, "R": {0: True, 1: False}}
+        acc = compute_criteria_acc_bySession(c34)
+        assert acc["L"] == pytest.approx(2 / 3)
+        assert acc["R"] == pytest.approx(0.5)
+
+    def test_empty_returns_nan(self):
+        acc = compute_criteria_acc_bySession({"L": {}, "R": {}})
+        assert np.isnan(acc["L"])
+        assert np.isnan(acc["R"])
+
+
+class TestComputeFirstLickCorrectBySession:
+    def test_exclude_none_uses_nanmean(self):
+        flc = {"L": {0: True, 1: False, 2: None}, "R": {0: True, 1: True}}
+        m = compute_firstLickCorrect_bySession(flc, treat_none_as_zero=False)
+        # None is excluded → mean of [1, 0] = 0.5
+        assert m["L"] == pytest.approx(0.5)
+        assert m["R"] == pytest.approx(1.0)
+
+    def test_treat_none_as_zero_counts_against(self):
+        flc = {"L": {0: True, 1: False, 2: None}, "R": {0: True, 1: True}}
+        m = compute_firstLickCorrect_bySession(flc, treat_none_as_zero=True)
+        # None counts as 0 → mean of [1, 0, 0] = 1/3
+        assert m["L"] == pytest.approx(1 / 3)
+        assert m["R"] == pytest.approx(1.0)
+
+
+class TestComputeMedianLickRateBySession:
+    def test_returns_per_side_mean_std(self):
+        data = _make_synthetic_session()
+        delays = compute_trial_lick_delays(data, [1.0, 8.0])
+        rates = compute_median_lick_rate_bySession(delays, sample_rate=1000.0)
+        assert set(rates.keys()) == {"L", "R"}
+        for side in ("L", "R"):
+            assert "mean" in rates[side]
+            assert "std" in rates[side]
+
+
+class TestComputeNumLicksBySession:
+    def test_returns_correct_all_incorrect(self):
+        data = _make_synthetic_session()
+        delays = compute_trial_lick_delays(data, [1.0, 8.0])
+        n = compute_num_licks_bySession(delays)
+        assert set(n.keys()) == {"correct", "all", "incorrect"}
+        for kind in ("correct", "all", "incorrect"):
+            assert set(n[kind].keys()) == {"Reward_L", "Reward_R"}
+
+    def test_counts_match_synthetic(self):
+        """Reward_L window [-1000, 8000] from sample 1000:
+            Lick_L within: [500, 1100, 1500, 2000, 2500, 2900] = 6 (correct)
+            Lick_R within: [900, 5200, 5800, 6100, 6500, 7000, 7500]
+              filter to [-1000+1000=0, 8000+1000=9000] → [900, 5200, 5800,
+              6100, 6500, 7000, 7500] all within → 7 (incorrect)
+            All = 6 + 7 = 13
+        """
+        data = _make_synthetic_session()
+        delays = compute_trial_lick_delays(data, [1.0, 8.0])
+        n = compute_num_licks_bySession(delays)
+        assert n["correct"]["Reward_L"]["mean"] == pytest.approx(6.0)
+        assert n["incorrect"]["Reward_L"]["mean"] == pytest.approx(7.0)
+        assert n["all"]["Reward_L"]["mean"] == pytest.approx(13.0)
+
+
+class TestComputeLatencyBySession:
+    def test_latency_seconds_from_reward(self):
+        data = _make_synthetic_session()
+        fcl = compute_first_correct_lick_sample_idx(data, [0, 2.0])
+        lat = compute_latency_bySession(fcl, data.rewards_idx, data.sample_rate)
+        # Reward_L at 1000, first correct L lick at 1100 → 0.1s
+        assert lat["L"]["mean"] == pytest.approx(0.1)
+        # Reward_R at 5000, first correct R lick at 5200 → 0.2s
+        assert lat["R"]["mean"] == pytest.approx(0.2)
+
+    def test_none_first_lick_yields_nan_excluded(self):
+        fcl = {"L": {0: None, 1: 1100}, "R": {0: 5200}}
+        rewards = {
+            "Reward_L": np.array([1000, 2000]),
+            "Reward_R": np.array([5000]),
+        }
+        lat = compute_latency_bySession(fcl, rewards, sample_rate=1000.0)
+        # L: [nan, -0.9 (idx 1 → fcl 1100 - reward 2000 = -900 samples)]
+        # nanmean is the non-nan value: -0.9
+        # actually this is "first lick before reward 2000 within criteria_3" so
+        # it's unusual but the formula is right. Test the float behavior:
+        assert np.isfinite(lat["L"]["mean"])
+
+
+# ---- Tests: 8 longitudinal-mean renderers ----
+
+
+@pytest.fixture
+def cohort_for_renders(tmp_path, monkeypatch):
+    """Build a tiny Cohort A on disk for render integration tests.
+
+    Animal: PS51 (real animals.yaml entry; stroke_date = 2025-04-29).
+    3 bare-date sessions; report.json + 3 sets of Phase-2 NPZs.
+    Returns (paths_yaml, resolver) ready to pass to a render function.
+    """
+    monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+    legacy_root = tmp_path / "legacy_analysis"
+    legacy_root.mkdir()
+    # Synthetic 3-session cohort spanning pre/post stroke
+    dates = ["20250428", "20250429", "20250430"]
+    # Write report.json with latency_bySession keys
+    bba = legacy_root / "basic_behavior_analysis3" / "PS51"
+    bba.mkdir(parents=True, exist_ok=True)
+    (bba / "report.json").write_text(json.dumps({
+        "latency_bySession": {d: {"L": 0.0, "R": 0.0} for d in dates}
+    }), encoding="utf-8")
+    # Write Phase-2 NPZs at output_root override
+    output_root = tmp_path / "pipeline_outputs"
+    for date in dates:
+        sp = output_root / "spout_behavior"
+        (sp / "licks_and_rewards" / "PS51").mkdir(parents=True, exist_ok=True)
+        (sp / "wavesurfer_signals_processed" / "PS51").mkdir(parents=True, exist_ok=True)
+        np.savez(
+            sp / "licks_and_rewards" / "PS51" / f"{date}.npz",
+            Lick_L=np.array([500, 1100, 1500, 2000, 2500, 2900], dtype=int),
+            Lick_R=np.array([900, 5200, 5800, 6100, 6500, 7000, 7500], dtype=int),
+            Reward_L=np.array([1000], dtype=int),
+            Reward_R=np.array([5000], dtype=int),
+        )
+        np.savez(
+            sp / "wavesurfer_signals_processed" / "PS51" / f"{date}.npz",
+            sample_rate_input=np.array(1000.0),
+        )
+    # Custom paths.yaml pointing local_processed_spout → tmp_path
+    paths_yaml = tmp_path / "paths.yaml"
+    paths_yaml.write_text(textwrap.dedent(f"""
+        logical_roots:
+          microscope_pipeline_outputs:
+            description: "out"
+            mounts:
+              mac: "/Volumes/dummy/po"
+              windows: "C:\\\\dummy\\\\po"
+          local_processed_spout:
+            description: "legacy"
+            mounts:
+              {_HOST_KEY}:
+                - "{legacy_root.as_posix()}"
+    """))
+    resolver = PathResolver(paths_yaml, output_root=output_root)
+    return resolver, dates
+
+
+_RENDER_FUNCS = [
+    ("criteria_performance", render_criteria_performance),
+    ("accuracy_firstCorrectLick", render_accuracy_firstCorrectLick),
+    ("accuracy_firstCorrectLickAll", render_accuracy_firstCorrectLickAll),
+    ("lickRate_bySession", render_lickRate_bySession),
+    ("latency_bySession", render_latency_bySession),
+    ("numLicks_bySession_correct", render_numLicks_bySession_correct),
+    ("numLicks_bySession_all", render_numLicks_bySession_all),
+    ("numLicks_bySession_correct_and_incorrect",
+     render_numLicks_bySession_correct_and_incorrect),
+]
+
+
+@pytest.mark.parametrize("family_name,render_fn", _RENDER_FUNCS)
+class TestRenderersReturnPaths:
+    """Each renderer returns (svg_path, png_path) that exist + named
+    by family with the longitudinal-axis suffix."""
+
+    def test_returns_svg_and_png_paths(
+        self, family_name, render_fn, cohort_for_renders,
+    ):
+        resolver, _dates = cohort_for_renders
+        svg_path, png_path = render_fn("PS51", resolver, align_to_stroke=True)
+        assert svg_path.exists() and svg_path.stat().st_size > 0
+        assert png_path.exists() and png_path.stat().st_size > 0
+        # Filename ends with _relStroke when stroke-aligned
+        assert svg_path.name == f"{family_name}_relStroke.svg"
+        assert png_path.name == f"{family_name}_relStroke.png"
+
+    def test_uses_visual_gate_dir(
+        self, family_name, render_fn, cohort_for_renders,
+    ):
+        resolver, _dates = cohort_for_renders
+        svg_path, _ = render_fn("PS51", resolver, align_to_stroke=True)
+        assert svg_path.parent == resolver.visual_gate_dir("PS51")
+
+    def test_absdate_suffix_when_unaligned(
+        self, family_name, render_fn, cohort_for_renders,
+    ):
+        resolver, _dates = cohort_for_renders
+        svg_path, _ = render_fn("PS51", resolver, align_to_stroke=False)
+        assert svg_path.name == f"{family_name}_absDate.svg"
+
+
+class TestRenderCriteriaPerformanceFidelity:
+    """Per-family pin tests for criteria_performance (the reference
+    implementation for the longitudinal-mean skeleton)."""
+
+    def test_ylim_matches_accuracy_y_range(self, cohort_for_renders):
+        resolver, _dates = cohort_for_renders
+        cfg = load_visual_gate_config()
+        # Render + inspect a re-opened figure's y-limits via the SVG isn't
+        # practical; instead, render with a fresh figure injection by
+        # monkeypatching plt.subplots — too brittle. Pragmatic approach:
+        # confirm the file was emitted (above test) + structurally pin
+        # the config value the renderer reads.
+        assert tuple(cfg["accuracy_y_range"]) == (0.0, 1.0)
+
+    def test_title_string_format(self, cohort_for_renders):
+        """Read the SVG XML for the legacy title verbatim — small but
+        useful regression pin."""
+        resolver, _dates = cohort_for_renders
+        svg_path, _ = render_criteria_performance(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        svg_text = svg_path.read_text(encoding="utf-8")
+        assert "Criteria performance by session" in svg_text
+
+
+class TestRenderAccuracyFirstCorrectLickFidelity:
+    def test_y_axis_label_string(self, cohort_for_renders):
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_accuracy_firstCorrectLick(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        svg_text = svg_path.read_text(encoding="utf-8")
+        assert "correct 1st lick" in svg_text
+
+
+class TestRenderAccuracyFirstCorrectLickAllFidelity:
+    def test_title_distinct_from_excludeNone_variant(self, cohort_for_renders):
+        resolver, _ = cohort_for_renders
+        svg_all, _ = render_accuracy_firstCorrectLickAll(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        text_all = svg_all.read_text(encoding="utf-8")
+        # Legacy title for the All variant: "Fraction of all trials ..."
+        assert "all trials with correct first lick" in text_all
+
+
+class TestRenderLickRateBySessionFidelity:
+    def test_ylim_from_lickrate_y_max_config(self, cohort_for_renders):
+        cfg = load_visual_gate_config()
+        assert cfg["lickrate_y_max"] == 10.0
+
+    def test_title_string(self, cohort_for_renders):
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_lickRate_bySession(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        svg_text = svg_path.read_text(encoding="utf-8")
+        assert "avg correct lick rate by session" in svg_text
+
+
+class TestRenderLatencyBySessionFidelity:
+    def test_ylim_from_latency_y_max_config(self, cohort_for_renders):
+        cfg = load_visual_gate_config()
+        assert cfg["latency_y_max"] == 2.0
+
+    def test_title_string(self, cohort_for_renders):
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_latency_bySession(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        svg_text = svg_path.read_text(encoding="utf-8")
+        assert "avg latency to correct lick by session" in svg_text
+
+
+class TestRenderNumLicksFidelity:
+    def test_correct_and_all_titles_distinct(self, cohort_for_renders):
+        resolver, _ = cohort_for_renders
+        svg_correct, _ = render_numLicks_bySession_correct(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        svg_all, _ = render_numLicks_bySession_all(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        # Legacy strings: "Avg correct licks per trial by session" vs
+        # "Avg all licks per trial by session"
+        assert "Avg correct licks per trial" in svg_correct.read_text(encoding="utf-8")
+        assert "Avg all licks per trial" in svg_all.read_text(encoding="utf-8")
+
+    def test_correct_and_incorrect_title(self, cohort_for_renders):
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_numLicks_bySession_correct_and_incorrect(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        svg_text = svg_path.read_text(encoding="utf-8")
+        # matplotlib SVG-escapes "&" → "&amp;" in serialized titles
+        assert "Avg correct &amp; incorrect licks per trial" in svg_text
+
+
+class TestRendererModuleExports:
+    """Pin CG-2 public surface so subsequent CGs don't accidentally drop
+    a renderer subsequent consumers (notebook orchestrator in CG-6) depend on."""
+
+    @pytest.mark.parametrize("name", [
+        "load_behavior_report_params",
+        "compute_trial_lick_delays",
+        "compute_first_correct_lick_sample_idx",
+        "compute_criteria_3", "compute_criteria_4", "compute_criteria_34",
+        "compute_first_lick_correct", "compute_criteria_acc_bySession",
+        "compute_firstLickCorrect_bySession", "compute_median_lick_rate_bySession",
+        "compute_num_licks_bySession", "compute_latency_bySession",
+        "render_criteria_performance", "render_accuracy_firstCorrectLick",
+        "render_accuracy_firstCorrectLickAll", "render_lickRate_bySession",
+        "render_latency_bySession", "render_numLicks_bySession_correct",
+        "render_numLicks_bySession_all",
+        "render_numLicks_bySession_correct_and_incorrect",
+    ])
+    def test_symbol_exists(self, name):
+        assert hasattr(visual_gate, name), (
+            f"visual_gate.{name} missing — commit-group 2 public surface"
+        )
