@@ -64,17 +64,17 @@ Render every non-stat visualization produced by the canonical legacy behavior-re
 - **`analysis/behavior_report/summary_PS.py`** — cohort-summary visualizations. Task 1 audit confirms whether this is a visualization module or stats-only.
 - **`analysis/behavior_report/playground_analyze_behavior_report_PS20250610.ipynb` cells 56-65** — cross-session aggregation visualizations. Visualization-subset only; cells with stat-inferential output (paired t-tests, MixedLM, mean ± SD with significance overlays) get classified as **Phase 9 forward-pointer**, not 8a.10 scope.
 
-Per Priya: the endpoint families known to be in scope include (non-exhaustive — Task 1 audit enumerates):
+**SCOPE LOCKED 2026-05-13 (Q1 Option 2):** 11 canonical families from `behavior_report_PS.py`. The 7 trimmed families (`anyLick_accuracy_{L,R}_byCategory`, `firstLick_accuracy_{L,R}_byCategory`, `latency_hist`, `lickRate_byTrial`, `numLicks_byTrial`) deferred to Phase 9+ forward-pointer. Per Priya: the endpoint families in scope are:
 
-- First lick accuracy
-- Correct + incorrect licks per side
-- Lick raster
-- First-lick latency
-- Lick rate
-- Lickiness
-- Switchiness
-- (others — Task 1 audit completes the list)
-- Recovery trajectories (Phase 8a.8 functionality; covered here as the cohort-summary recovery visualization)
+- First lick accuracy (`accuracy_firstCorrectLick`, `accuracy_firstCorrectLickAll`)
+- Correct + incorrect licks per side (`numLicks_bySession_{correct,all,correct_and_incorrect}`)
+- Lick raster (`lick_raster`)
+- First-lick latency (`latency_bySession`)
+- Lick rate (`lickRate_bySession`)
+- Lickiness (`lickiness_bySession`)
+- Switchiness (`switchiness_bySession`)
+- Criteria performance (`criteria_performance`)
+- ~~Recovery trajectories~~ — **DEFERRED to Phase 9+** per Priya 2026-05-13 decision (alongside the 7 trimmed families above). Forward-pointer captured in the final CG-6-wrap DECISIONS entry.
 
 ### Verdict mechanism
 

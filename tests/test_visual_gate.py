@@ -111,6 +111,11 @@ def _write_report_json(
 
 
 class TestIterCohortASessions:
+    """These tests use synthetic report.json WITHOUT corresponding NPZs
+    on disk, so they pass ``require_on_disk=False`` to bypass the
+    PR #109 narrow-filter (added in CG-6). A separate CG-6 test class
+    covers the on-disk filter behavior."""
+
     def test_excludes_b_half_by_default(self, fake_paths_yaml):
         """Longitudinal-plot default: b-suffix sessions filtered out."""
         cfg, legacy_root = fake_paths_yaml
@@ -121,7 +126,9 @@ class TestIterCohortASessions:
             ["20250416", "20250430", "20250430b", "20250505", "20250505b"],
         )
         resolver = PathResolver(cfg)
-        sessions = iter_cohort_a_sessions("PS51", resolver)
+        sessions = iter_cohort_a_sessions(
+            "PS51", resolver, require_on_disk=False,
+        )
         assert sessions == ["20250416", "20250430", "20250505"]
 
     def test_includes_b_half_when_flag_set(self, fake_paths_yaml):
@@ -133,7 +140,8 @@ class TestIterCohortASessions:
         )
         resolver = PathResolver(cfg)
         sessions = iter_cohort_a_sessions(
-            "PS51", resolver, include_b_half=True,
+            "PS51", resolver,
+            include_b_half=True, require_on_disk=False,
         )
         assert sessions == [
             "20250430", "20250430b", "20250505", "20250505b",
@@ -153,7 +161,9 @@ class TestIterCohortASessions:
             ["20250313", "20250314", "20250314a", "20250314b", "20250315"],
         )
         resolver = PathResolver(cfg)
-        sessions = iter_cohort_a_sessions("PS48", resolver)
+        sessions = iter_cohort_a_sessions(
+            "PS48", resolver, require_on_disk=False,
+        )
         assert "20250314" in sessions
         # The 'a' / 'b' raw labels filter out.
         assert "20250314a" not in sessions
@@ -164,7 +174,7 @@ class TestIterCohortASessions:
         cfg, _ = fake_paths_yaml
         resolver = PathResolver(cfg)
         with pytest.raises(FileNotFoundError, match="Cohort A report.json missing"):
-            iter_cohort_a_sessions("PSNOPE", resolver)
+            iter_cohort_a_sessions("PSNOPE", resolver, require_on_disk=False)
 
     def test_sessions_are_sorted(self, fake_paths_yaml):
         """Implementation contract: deterministic output ordering."""
@@ -174,8 +184,62 @@ class TestIterCohortASessions:
             ["20250505", "20250416", "20250430"],
         )
         resolver = PathResolver(cfg)
-        sessions = iter_cohort_a_sessions("PS51", resolver)
+        sessions = iter_cohort_a_sessions(
+            "PS51", resolver, require_on_disk=False,
+        )
         assert sessions == sorted(sessions)
+
+
+class TestIterCohortASessionsOnDiskFilter:
+    """CG-6 addition: require_on_disk=True (default) filters to sessions
+    whose licks_and_rewards NPZ is actually on disk. Handles PR #109
+    narrow-out (PS46/2025-02-26 + PS50/2025-03-18) which removed Phase 2
+    emissions but didn't update legacy report.json."""
+
+    def test_filters_to_on_disk_sessions(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        legacy_root = tmp_path / "legacy_analysis"
+        legacy_root.mkdir()
+        bba = legacy_root / "basic_behavior_analysis3" / "PS46"
+        bba.mkdir(parents=True, exist_ok=True)
+        # Legacy report.json claims 3 sessions; only 2 NPZs on disk.
+        (bba / "report.json").write_text(
+            json.dumps({"latency_bySession": {
+                "20250225": {}, "20250226": {}, "20250227": {},
+            }}),
+            encoding="utf-8",
+        )
+        output_root = tmp_path / "pipeline_outputs"
+        sp = output_root / "spout_behavior" / "licks_and_rewards" / "PS46"
+        sp.mkdir(parents=True, exist_ok=True)
+        # Write NPZs only for 20250225 + 20250227 — 20250226 narrowed out
+        for date in ("20250225", "20250227"):
+            np.savez(sp / f"{date}.npz",
+                     Lick_L=np.array([]), Lick_R=np.array([]),
+                     Reward_L=np.array([]), Reward_R=np.array([]))
+        paths_yaml = tmp_path / "paths.yaml"
+        paths_yaml.write_text(textwrap.dedent(f"""
+            logical_roots:
+              microscope_pipeline_outputs:
+                description: "out"
+                mounts:
+                  mac: "/Volumes/dummy/po"
+                  windows: "C:\\\\dummy\\\\po"
+              local_processed_spout:
+                description: "legacy"
+                mounts:
+                  {_HOST_KEY}:
+                    - "{legacy_root.as_posix()}"
+        """))
+        resolver = PathResolver(paths_yaml, output_root=output_root)
+        # Default require_on_disk=True → 20250226 dropped (no NPZ).
+        sessions = iter_cohort_a_sessions("PS46", resolver)
+        assert sessions == ["20250225", "20250227"]
+        # require_on_disk=False → all 3 retained.
+        sessions_all = iter_cohort_a_sessions(
+            "PS46", resolver, require_on_disk=False,
+        )
+        assert sessions_all == ["20250225", "20250226", "20250227"]
 
 
 # ---- Longitudinal axis ----

@@ -76,6 +76,7 @@ def iter_cohort_a_sessions(
     resolver: PathResolver,
     *,
     include_b_half: bool = False,
+    require_on_disk: bool = True,
 ) -> list[str]:
     """Return the animal's sorted Cohort A session labels.
 
@@ -101,6 +102,15 @@ def iter_cohort_a_sessions(
         merged-licks NPZ lives at the bare-date path ``20250314.npz``
         (Phase 7-pre-multi-half emission). Set ``True`` for bare-vs-b
         scope.
+    require_on_disk : bool, default ``True``
+        Filter the cohort to sessions whose ``licks_and_rewards``
+        Phase-2 NPZ is actually on disk at
+        ``pipeline_outputs/spout_behavior/licks_and_rewards/<animal>/
+        <date>.npz``. This handles the PR #109 narrowing case
+        (PS46/2025-02-26 + PS50/2025-03-18 were dropped from Phase 2
+        emissions but still appear in legacy ``report.json``). Set
+        ``False`` for tests / inspection scripts that want the raw
+        report-json key set.
     """
     report_path = (
         resolver.root("local_processed_spout")
@@ -120,6 +130,12 @@ def iter_cohort_a_sessions(
         # canonical Cohort-A longitudinal subset is the no-suffix
         # entries. PS48/20250314 lands here automatically.
         raw_keys = [k for k in raw_keys if re.fullmatch(r"\d{8}", k)]
+    if require_on_disk:
+        sp_root = resolver.pipeline_outputs("spout_behavior")
+        raw_keys = [
+            k for k in raw_keys
+            if (sp_root / "licks_and_rewards" / animal / f"{k}.npz").exists()
+        ]
     return sorted(raw_keys)
 
 
