@@ -943,3 +943,25 @@ class PathResolver:
             self.pipeline_outputs("spout_behavior")
             / "spout_behavior_figures" / "summary"
         )
+
+    def bare_vs_b_dir(self, animal: str | None = None) -> Path:
+        """Return the bare-vs-b comparison figures output directory.
+
+        Phase 8a.10 sub-deliverable B output root (Priya 2026-05-13).
+
+        Layout:
+          - ``animal=None`` →
+            ``{pipeline_outputs/spout_behavior}/spout_behavior_figures/bare_vs_b/``
+            (the parent dir; CG-B3 cohort recovery curves land in
+            ``bare_vs_b/cohort/``).
+          - ``animal="PS55"`` →
+            ``{pipeline_outputs/spout_behavior}/spout_behavior_figures/bare_vs_b/PS55/``
+            (per-animal nesting for CG-B2 per-session paired panels).
+        """
+        base = (
+            self.pipeline_outputs("spout_behavior")
+            / "spout_behavior_figures" / "bare_vs_b"
+        )
+        if animal is None:
+            return base
+        return base / animal

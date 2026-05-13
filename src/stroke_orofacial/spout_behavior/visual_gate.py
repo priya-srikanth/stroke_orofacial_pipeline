@@ -421,27 +421,38 @@ def load_session_plot_data(
     date_label: str,
     resolver: PathResolver,
     overrides_config: dict[str, Any] | None = None,
+    *,
+    half_suffix: str = "",
 ) -> SessionPlotData:
-    """Load Phase-2 + Phase-1 inputs for one Cohort A session.
+    """Load Phase-2 + Phase-1 inputs for one session.
 
     Reads:
       - ``pipeline_outputs/spout_behavior/licks_and_rewards/<animal>/
-        <date_label>.npz`` for ``Lick_{L,R}`` + ``Reward_{L,R}``.
+        <date_label>{half_suffix}.npz`` for ``Lick_{L,R}`` +
+        ``Reward_{L,R}``.
       - Wavesurfer NPZ for ``sample_rate_input`` + total session
         sample count (1D signal length).
 
-    Pattern A multi-half handling (Task 3 Round 2 fix): for
-    registered ``multi_half_sessions:`` entries (e.g. PS48/2025-03-14)
-    the licks NPZ is merged at the bare-date path, but the
-    wavesurfer NPZ stays per-half under ``<date_label><concat_label>/
-    <date_label><half_id>.npz``. The loader reads from per-half "a"
-    for sample_rate and SUMS the per-half session lengths (a + b)
-    for ``n_samples_session`` so downstream lickiness windows use
-    the full virtual-session length the merged licks indices
-    reference.
+    Pattern A multi-half handling (Task 3 Round 2 fix; applies when
+    ``half_suffix=""``): for registered ``multi_half_sessions:``
+    entries (e.g. PS48/2025-03-14) the licks NPZ is merged at the
+    bare-date path, but the wavesurfer NPZ stays per-half under
+    ``<date_label><concat_label>/<date_label><half_id>.npz``. The
+    loader reads from per-half "a" for sample_rate and SUMS the
+    per-half session lengths (a + b) for ``n_samples_session`` so
+    downstream lickiness windows use the full virtual-session length
+    the merged licks indices reference.
 
     For Pattern B / single-half sessions (the common case): both
     NPZs live at the flat bare-date path.
+
+    Per-half access (``half_suffix="a"`` or ``"b"``, added Phase
+    8a.10 sub-deliverable B): bypasses the multi-half merge logic
+    and reads BOTH licks and WS from the per-half path. For Pattern
+    A this resolves to the nested ``<date_label><concat_label>/
+    <date_label><half_suffix>.npz`` location; for Pattern B b-half
+    it's the flat ``<date_label>b.npz`` path.
+    ``n_samples_session`` is the per-half length (NOT summed).
 
     Raises
     ------
@@ -454,6 +465,48 @@ def load_session_plot_data(
     is_pattern_a = (
         animal in multi_half and date_label in (multi_half.get(animal) or {})
     )
+
+    # Per-half access bypasses Pattern A merge logic: both licks and
+    # WS load from the per-half path, n_samples is per-half (not
+    # summed). Pattern B b-half + Pattern A per-half both flow here.
+    if half_suffix:
+        licks_path = _resolve_session_npz_path(
+            "licks_and_rewards", animal, date_label, half_suffix,
+            resolver=resolver, overrides_config=overrides_config,
+        )
+        if not licks_path.exists():
+            raise FileNotFoundError(
+                f"licks_and_rewards NPZ missing: {licks_path}"
+            )
+        with np.load(licks_path, allow_pickle=True) as licks:
+            lick_idx = {key: licks[key] for key in ("Lick_L", "Lick_R")}
+            rewards_idx = {
+                key: licks[key] for key in ("Reward_L", "Reward_R")
+            }
+        ws_path = _resolve_session_npz_path(
+            "wavesurfer_signals_processed", animal, date_label,
+            half_suffix, resolver=resolver,
+            overrides_config=overrides_config,
+        )
+        if not ws_path.exists():
+            raise FileNotFoundError(
+                f"wavesurfer_signals_processed NPZ missing: {ws_path}"
+            )
+        n_samples_session = 0
+        with np.load(ws_path, allow_pickle=True) as ws:
+            sample_rate = float(ws["sample_rate_input"])
+            for key in ws.files:
+                arr = ws[key]
+                if arr.ndim == 1:
+                    n_samples_session = int(arr.shape[0])
+                    break
+        return SessionPlotData(
+            date_label=date_label,
+            lick_idx=lick_idx,
+            rewards_idx=rewards_idx,
+            sample_rate=sample_rate,
+            n_samples_session=n_samples_session,
+        )
 
     licks_path = _resolve_session_npz_path(
         "licks_and_rewards", animal, date_label, "",
