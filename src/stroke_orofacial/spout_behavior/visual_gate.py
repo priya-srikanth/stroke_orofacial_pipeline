@@ -1294,3 +1294,186 @@ def render_numLicks_bySession_correct_and_incorrect(
     )
     plt.close(fig)
     return paths
+
+
+# =====================================================================
+# Commit-group 3: lick raster (per-trial × per-session multi-panel grid)
+# =====================================================================
+#
+# Standalone renderer — does NOT share the longitudinal-mean skeleton
+# (CG-2's _PerSessionStats aggregation). The raster is a 2 × N_sessions
+# grid where rows = reward side and columns = sessions; each cell shows
+# per-trial post-reward licks as a scatter (correct vs incorrect color-
+# coded) with a criteria_34 pass/fail horizontal line overlay per trial.
+#
+# Reuses CG-2 helpers:
+#   - compute_trial_lick_delays — per-trial lick timing relative to reward
+#   - compute_first_correct_lick_sample_idx → compute_criteria_3
+#   - compute_criteria_4
+#   - compute_criteria_34 — combined pass/fail for the line overlay
+#
+# Mirrors legacy ``plot_raster`` (behavior_report_PS.py:415-448) +
+# emission (line 531-533). Faithful port: side-naming convention is the
+# only deviation — legacy uses ``fn_flip_lr(side_reward)`` on the ylabel
+# because legacy operates WS-frame internally; the new pipeline reads
+# side_reward as mouse-frame directly.
+
+
+def render_lick_raster(
+    animal: str,
+    resolver: PathResolver,
+    *,
+    align_to_stroke: bool = True,
+    config: dict[str, Any] | None = None,
+    behavior_params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["force", "skip", "raise"] = "force",
+) -> tuple[Path, Path]:
+    """Render the per-mouse lick raster: 2 × N_sessions panel grid.
+
+    Rows = reward side (top: Reward L; bottom: Reward R).
+    Columns = sessions in Cohort A bare-date order.
+
+    Per-cell content (legacy lines 417-442):
+      - For each trial × side_lick, scatter lick delays (seconds
+        relative to reward) at y=trial_idx, dot size from
+        ``visual_gate.raster_dot_size`` config. Color
+        ``raster_dot_correct_color`` (green) when ``side_lick ==
+        side_reward``; ``raster_dot_incorrect_color`` (magenta)
+        otherwise.
+      - Per trial, a horizontal line at y=trial_idx spanning
+        ``raster_criteria_xrange``, colored
+        ``raster_criteria_pass_color`` (green) when criteria_34
+        passes for that trial, ``raster_criteria_fail_color`` (red)
+        otherwise. Alpha from ``raster_criteria_alpha``.
+      - Vertical reward-marker line at x=0, color
+        ``raster_reward_marker_color``, alpha
+        ``raster_reward_marker_alpha``.
+      - X-axis limit ``raster_xlim``.
+      - Top-row only: per-cell title (rotated 90°) = session label
+        formatted via :func:`legend_label_for_date`.
+      - Bottom-row only: xlabel "Time (s)" (rotated 90°).
+      - Left-column only: ylabel "Trials   (side: mouse {side_reward})".
+
+    Suptitle (legacy line 444-447):
+      ``"Licks after rewards. Dots: (green=corr, magenta=incorr).
+      Lines: (green=pass, red=fail)"``
+
+    Raises
+    ------
+    ValueError
+        If Cohort A is empty for ``animal`` (no sessions → cannot
+        build the 2 × 0 panel grid).
+    """
+    config = config or load_visual_gate_config()
+    behavior_params = behavior_params or load_behavior_report_params()
+    dates = iter_cohort_a_sessions(animal, resolver)
+    if len(dates) == 0:
+        raise ValueError(
+            f"render_lick_raster: no Cohort A sessions for {animal} — "
+            "cannot build the 2 × N_sessions panel grid"
+        )
+    d0 = _resolve_d0(animal_info, animal, align_to_stroke)
+    # Reuse CG-1's longitudinal-axis helper purely for the suffix +
+    # legend-label formatting. The raster doesn't plot on a longitudinal
+    # x-axis but the per-cell column title shares the same date-label
+    # rendering with the longitudinal-mean renderers.
+    axis = compute_longitudinal_axis(
+        dates, align_to_stroke=align_to_stroke, d0=d0,
+        vline_x=config["stroke_vline_x"],
+    )
+
+    window_around = behavior_params["window_around_rewards"]
+    crit3_window = behavior_params["criteria_3"]["window"]
+    crit_xrange = config["raster_criteria_xrange"]
+
+    # Compute per-session lick delays + criteria_34 in one pass.
+    per_date_delays: dict[str, dict[str, dict[int, dict[str, np.ndarray]]]] = {}
+    per_date_crit34: dict[str, dict[str, dict[int, bool]]] = {}
+    for date in dates:
+        data = load_session_plot_data(animal, date, resolver)
+        per_date_delays[date] = compute_trial_lick_delays(
+            data, window_around,
+        )
+        fcl_idx = compute_first_correct_lick_sample_idx(data, crit3_window)
+        c3 = compute_criteria_3(fcl_idx)
+        c4 = compute_criteria_4(data, behavior_params["criteria_4"])
+        per_date_crit34[date] = compute_criteria_34(c3, c4)
+
+    fig, axs = plt.subplots(
+        nrows=2, ncols=len(dates),
+        figsize=tuple(config["figsize_raster_grid"]),
+        squeeze=False,
+    )
+    for ii, side_reward in enumerate(("L", "R")):
+        for jj, date in enumerate(dates):
+            ax = axs[ii, jj]
+            delays_by_reward = per_date_delays[date][f"Reward_{side_reward}"]
+            crit34_by_reward = per_date_crit34[date][side_reward]
+            # Load sample_rate from the same SessionPlotData? We need it
+            # for the lick-delay → seconds conversion. Reload here to
+            # avoid keeping all SessionPlotData live; lookup is cheap.
+            data = load_session_plot_data(animal, date, resolver)
+            for idx_reward, by_side in delays_by_reward.items():
+                for side_lick in ("L", "R"):
+                    lick_delays = by_side[f"Lick_{side_lick}"]
+                    if lick_delays.size == 0:
+                        continue
+                    is_correct = (side_lick == side_reward)
+                    color = (
+                        config["raster_dot_correct_color"] if is_correct
+                        else config["raster_dot_incorrect_color"]
+                    )
+                    ax.scatter(
+                        lick_delays / data.sample_rate,
+                        np.full_like(lick_delays, idx_reward, dtype=float),
+                        s=config["raster_dot_size"],
+                        color=color,
+                    )
+            # Criteria_34 pass/fail overlay (per trial).
+            for idx_reward, passed in crit34_by_reward.items():
+                line_color = (
+                    config["raster_criteria_pass_color"] if passed
+                    else config["raster_criteria_fail_color"]
+                )
+                ax.plot(
+                    crit_xrange, [idx_reward, idx_reward],
+                    line_color, alpha=config["raster_criteria_alpha"],
+                )
+            # Reward marker (vertical line at x=0).
+            n_trials = len(delays_by_reward)
+            ax.plot(
+                [0, 0], [0, n_trials],
+                config["raster_reward_marker_color"],
+                alpha=config["raster_reward_marker_alpha"],
+            )
+            ax.set_xlim(*config["raster_xlim"])
+            # Top-row title (column header).
+            if ii == 0:
+                title = legend_label_for_date(
+                    date, align_to_stroke=align_to_stroke, d0=d0,
+                )
+                ax.set_title(title, rotation=90, fontsize="x-small")
+                ax.set_xticklabels([])
+            # Bottom-row xlabel.
+            if ii == 1:
+                ax.set_xlabel("Time (s)", rotation=90)
+                ax.tick_params(axis="x", labelsize=config["xtick_fontsize"])
+            # Left-column ylabel. New-pipeline side convention: read
+            # mouse-frame directly (no fn_flip_lr).
+            if jj == 0:
+                ax.set_ylabel(f"Trials   (side: mouse {side_reward})")
+            else:
+                ax.set_yticklabels([])
+
+    fig.suptitle(
+        "Licks after rewards. Dots: (green=corr, magenta=incorr). "
+        "Lines: (green=pass, red=fail)",
+        y=-0.075,
+    )
+    paths = save_visual_gate_figure(
+        fig, animal, "lick_raster", axis.suffix, resolver,
+        overwrite=overwrite,
+    )
+    plt.close(fig)
+    return paths

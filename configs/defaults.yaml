@@ -1303,6 +1303,24 @@ visual_gate:
   raster_xlim: [-1, 5]
   raster_dot_size: 0.5
   raster_criteria_alpha: 0.3
+  # Lick-raster dot colors. Semantic (correct vs incorrect lick relative
+  # to reward side); NOT mouse-side-coded, so not inverted vs legacy.
+  # Legacy hardcodes (behavior_report_PS.py:425): correct = "g" green;
+  # incorrect = "m" magenta.
+  raster_dot_correct_color: "g"
+  raster_dot_incorrect_color: "m"
+  # Criteria-34 pass/fail horizontal-line colors per trial
+  # (behavior_report_PS.py:430). Legacy hardcodes: pass = "g" green;
+  # fail = "r" red.
+  raster_criteria_pass_color: "g"
+  raster_criteria_fail_color: "r"
+  # Reward-marker vertical line at x=0 (behavior_report_PS.py:432)
+  raster_reward_marker_color: "k"
+  raster_reward_marker_alpha: 0.3
+  # Criteria-line x extent (behavior_report_PS.py:430) — note legacy
+  # uses [-1, 4] while raster_xlim is [-1, 5]; mild legacy quirk
+  # preserved.
+  raster_criteria_xrange: [-1, 4]
 
   # Figure dimensions (behavior_report_PS.py:416 + multiple plt.subplots
   # calls). Single-axis longitudinal default chosen to match the

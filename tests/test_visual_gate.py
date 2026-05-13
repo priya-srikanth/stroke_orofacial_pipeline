@@ -520,6 +520,7 @@ from stroke_orofacial.spout_behavior.visual_gate import (  # noqa: E402
     render_accuracy_firstCorrectLickAll,
     render_criteria_performance,
     render_latency_bySession,
+    render_lick_raster,
     render_lickRate_bySession,
     render_numLicks_bySession_all,
     render_numLicks_bySession_correct,
@@ -1055,3 +1056,110 @@ class TestRendererModuleExports:
         assert hasattr(visual_gate, name), (
             f"visual_gate.{name} missing — commit-group 2 public surface"
         )
+
+
+# =====================================================================
+# Commit-group 3: lick raster renderer
+# =====================================================================
+
+
+class TestRenderLickRaster:
+    def test_returns_svg_and_png_paths(self, cohort_for_renders):
+        resolver, _dates = cohort_for_renders
+        svg_path, png_path = render_lick_raster(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        assert svg_path.exists() and svg_path.stat().st_size > 0
+        assert png_path.exists() and png_path.stat().st_size > 0
+        assert svg_path.name == "lick_raster_relStroke.svg"
+        assert png_path.name == "lick_raster_relStroke.png"
+
+    def test_lands_in_visual_gate_dir(self, cohort_for_renders):
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_lick_raster(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        assert svg_path.parent == resolver.visual_gate_dir("PS51")
+
+    def test_absdate_suffix_when_unaligned(self, cohort_for_renders):
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_lick_raster(
+            "PS51", resolver, align_to_stroke=False,
+        )
+        assert svg_path.name == "lick_raster_absDate.svg"
+
+    def test_raises_when_no_sessions(self, tmp_path, monkeypatch):
+        """Empty Cohort A → ValueError (can't build 2×0 panel grid)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        legacy_root = tmp_path / "legacy_analysis"
+        bba = legacy_root / "basic_behavior_analysis3" / "PS51"
+        bba.mkdir(parents=True, exist_ok=True)
+        (bba / "report.json").write_text(
+            json.dumps({"latency_bySession": {}}), encoding="utf-8",
+        )
+        paths_yaml = tmp_path / "paths.yaml"
+        paths_yaml.write_text(textwrap.dedent(f"""
+            logical_roots:
+              microscope_pipeline_outputs:
+                description: "out"
+                mounts:
+                  mac: "/Volumes/dummy/po"
+                  windows: "C:\\\\dummy\\\\po"
+              local_processed_spout:
+                description: "legacy"
+                mounts:
+                  {_HOST_KEY}:
+                    - "{legacy_root.as_posix()}"
+        """))
+        resolver = PathResolver(paths_yaml, output_root=tmp_path)
+        with pytest.raises(ValueError, match="no Cohort A sessions"):
+            render_lick_raster("PS51", resolver, align_to_stroke=True)
+
+    def test_suptitle_legend_string(self, cohort_for_renders):
+        """Pin: legacy suptitle verbatim (Phase 8a.10 audit-spec)."""
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_lick_raster(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        svg_text = svg_path.read_text(encoding="utf-8")
+        # matplotlib SVG-escapes "(" / ")" / "=" verbatim; the literal
+        # words are unchanged. Pin two segments separately for
+        # readability + robust to whitespace variation.
+        assert "Licks after rewards" in svg_text
+        assert "Dots:" in svg_text
+        assert "green=corr" in svg_text
+        assert "magenta=incorr" in svg_text
+        assert "Lines:" in svg_text
+        assert "green=pass" in svg_text
+        assert "red=fail" in svg_text
+
+    def test_ylabel_uses_mouse_frame_directly_no_fn_flip(
+        self, cohort_for_renders,
+    ):
+        """New pipeline reads side_reward as mouse-frame directly.
+        Legacy ylabel was ``"Trials   (side: mouse {fn_flip_lr(side_reward)})"``
+        — the flip was a WS-frame compensation. New pipeline:
+        ``"Trials   (side: mouse {side_reward})"`` — direct."""
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_lick_raster(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        svg_text = svg_path.read_text(encoding="utf-8")
+        # Both side labels appear in the SVG: row 0 = Reward L → ylabel
+        # "side: mouse L" (left column only); row 1 = Reward R → "side: mouse R".
+        assert "side: mouse L" in svg_text
+        assert "side: mouse R" in svg_text
+
+    def test_raster_color_config_consumed(self):
+        """Pin: raster dot + criteria colors loaded from
+        ``visual_gate:`` block, not hardcoded."""
+        cfg = load_visual_gate_config()
+        assert cfg["raster_dot_correct_color"] == "g"
+        assert cfg["raster_dot_incorrect_color"] == "m"
+        assert cfg["raster_criteria_pass_color"] == "g"
+        assert cfg["raster_criteria_fail_color"] == "r"
+        assert cfg["raster_reward_marker_color"] == "k"
+        assert tuple(cfg["raster_criteria_xrange"]) == (-1, 4)
+
+    def test_module_export(self):
+        assert hasattr(visual_gate, "render_lick_raster")
