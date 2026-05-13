@@ -918,13 +918,203 @@ class TestCgB3R3Polish:
         _ = n_thin  # informational only
 
     def test_title_fontsize_14(self):
-        """Tweak 6 pin: panel title fontsize = 14 in cohort config."""
+        """Tweak 6 pin: panel title fontsize = 14 in cohort config.
+
+        Addendum #4 Tweak 1 bumped raster_xtick 9→11 and
+        raster_xlabel 11→13; Addendum #4 Tweak 3 added two new
+        licking-block knobs."""
         from stroke_orofacial.spout_behavior.spout_close_vs_std import (
             load_cohort_config,
         )
         cfg = load_cohort_config()
+        # R3 carries:
         assert cfg["panel_title_fontsize"] == 14
-        assert cfg["raster_xtick_fontsize"] == 9
-        assert cfg["raster_xlabel_fontsize"] == 11
         assert cfg["raster_day_label_fontsize"] == 7
+        # R4 Tweak 1 bumps + new labelpad knob:
+        assert cfg["raster_xtick_fontsize"] == 11
+        assert cfg["raster_xlabel_fontsize"] == 13
+        assert cfg["raster_xlabel_labelpad"] == 2
+        # R4 Tweak 3 new licking-block knobs:
+        assert cfg["licking_xtick_fontsize"] == 12
+        assert cfg["spout_distance_xlabel_fontsize"] == 13
+
+
+class TestCgB3R4Polish:
+    """Pins for Addendum #4 Round 4 tweaks.
+
+    Tweak 1 — bigger raster xtick/xlabel + tighter labelpad.
+    Tweak 2 — day labels rotate 90° → 270° (character bottoms
+              plot-adjacent).
+    Tweak 3 — bigger licking xtick + Spout Distance xlabel."""
+
+    def test_tweak_1_time_xlabel_is_per_panel_not_supxlabel(
+        self, synth_pairs_3_sessions, tmp_path, monkeypatch,
+    ):
+        """Pin: 'Time (s)' moved from fig.supxlabel to per-panel
+        ax.set_xlabel on Row 4 (so labelpad applies). Verify
+        supxlabel was NOT called with 'Time (s)' and per-axis
+        set_xlabel WAS called with 'Time (s)' twice (L, R panels
+        of Row 4)."""
+        import matplotlib
+        supx_calls: list[tuple] = []
+        setx_calls: list[tuple] = []
+        orig_supx = matplotlib.figure.Figure.supxlabel
+        orig_setx = matplotlib.axes.Axes.set_xlabel
+
+        def recording_supx(self, *args, **kwargs):
+            supx_calls.append((args, dict(kwargs)))
+            return orig_supx(self, *args, **kwargs)
+
+        def recording_setx(self, *args, **kwargs):
+            setx_calls.append((args, dict(kwargs)))
+            return orig_setx(self, *args, **kwargs)
+
+        monkeypatch.setattr(
+            matplotlib.figure.Figure, "supxlabel", recording_supx,
+        )
+        monkeypatch.setattr(
+            matplotlib.axes.Axes, "set_xlabel", recording_setx,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        render_animal_summary_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        time_supx = [
+            c for c in supx_calls
+            if c[0] and c[0][0] == "Time (s)"
+        ]
+        assert len(time_supx) == 0, (
+            f"Time (s) should NOT be a fig.supxlabel anymore; "
+            f"got {len(time_supx)} supxlabel calls"
+        )
+        time_setx = [
+            c for c in setx_calls
+            if c[0] and c[0][0] == "Time (s)"
+        ]
+        assert len(time_setx) == 2, (
+            f"Time (s) should be set as per-panel xlabel on Row 4 "
+            f"L+R (2 calls); got {len(time_setx)}"
+        )
+        # Each Time (s) xlabel call carries labelpad from config.
+        from stroke_orofacial.spout_behavior.spout_close_vs_std import (
+            load_cohort_config,
+        )
+        expected_pad = load_cohort_config()["raster_xlabel_labelpad"]
+        for _args, kwargs in time_setx:
+            assert kwargs.get("labelpad") == expected_pad, (
+                f"Time (s) xlabel missing labelpad={expected_pad}; "
+                f"got kwargs={kwargs}"
+            )
+
+    def test_tweak_2_day_labels_rotate_270(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        """Pin: day labels use rotation=270 (was 90 in R3). Capture
+        ax.text calls via mock-patch."""
+        import matplotlib
+        import unittest.mock as mock
+        captured: list[dict] = []
+        orig = matplotlib.axes.Axes.text
+
+        def recording_text(self, x, y, s, *args, **kwargs):
+            captured.append({
+                "x": float(x),
+                "s": str(s),
+                "rotation": kwargs.get("rotation"),
+            })
+            return orig(self, x, y, s, *args, **kwargs)
+
+        with mock.patch.object(
+            matplotlib.axes.Axes, "text", recording_text,
+        ):
+            resolver = PathResolver(output_root=tmp_path)
+            render_animal_summary_spout_close_vs_std(
+                "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+            )
+        day_calls = [c for c in captured if c["x"] > 1.0 and c["s"].startswith("d")]
+        assert len(day_calls) > 0, "no day-label ax.text calls captured"
+        for c in day_calls:
+            assert c["rotation"] == 270, (
+                f"day label rotation should be 270 (R4 flip), got "
+                f"{c['rotation']} on label {c['s']!r}"
+            )
+
+    def test_tweak_3_licking_xtick_fontsize_applied(
+        self, synth_pairs_3_sessions, tmp_path, monkeypatch,
+    ):
+        """Pin: licking-plot panels (Rows 1-3) call
+        ax.tick_params(axis='x', labelsize=12) per the new
+        licking_xtick_fontsize=12 knob."""
+        import matplotlib
+        captured: list[dict] = []
+        orig = matplotlib.axes.Axes.tick_params
+
+        def recording_tick_params(self, *args, **kwargs):
+            captured.append({
+                "axis": kwargs.get("axis") or (args[0] if args else None),
+                "labelsize": kwargs.get("labelsize"),
+            })
+            return orig(self, *args, **kwargs)
+
+        monkeypatch.setattr(
+            matplotlib.axes.Axes, "tick_params", recording_tick_params,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        render_animal_summary_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        # Rows 1, 2, 3 panels (6 total) call tick_params with
+        # axis='x', labelsize=12. Row 4 raster panels call
+        # tick_params with axis='x', labelsize=11 (per R4 Tweak 1).
+        licking_calls = [
+            c for c in captured
+            if c["axis"] == "x" and c["labelsize"] == 12
+        ]
+        assert len(licking_calls) == 6, (
+            f"expected 6 licking-block tick_params calls "
+            f"(Rows 1-3 × 2 cols, labelsize=12); got "
+            f"{len(licking_calls)}: all captured={captured!r}"
+        )
+        raster_calls = [
+            c for c in captured
+            if c["axis"] == "x" and c["labelsize"] == 11
+        ]
+        assert len(raster_calls) == 2, (
+            f"expected 2 raster tick_params calls (Row 4 × 2 cols, "
+            f"labelsize=11); got {len(raster_calls)}"
+        )
+
+    def test_tweak_3_spout_distance_xlabel_fontsize_13(
+        self, synth_pairs_3_sessions, tmp_path, monkeypatch,
+    ):
+        """Pin: 'Spout Distance' xlabel on Row 3 panels gets
+        fontsize=13."""
+        import matplotlib
+        captured: list[tuple] = []
+        orig = matplotlib.axes.Axes.set_xlabel
+
+        def recording_set_xlabel(self, *args, **kwargs):
+            captured.append((args, dict(kwargs)))
+            return orig(self, *args, **kwargs)
+
+        monkeypatch.setattr(
+            matplotlib.axes.Axes, "set_xlabel", recording_set_xlabel,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        render_animal_summary_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        sd_calls = [
+            c for c in captured
+            if c[0] and c[0][0] == "Spout Distance"
+        ]
+        assert len(sd_calls) == 2, (
+            f"expected 2 'Spout Distance' xlabel calls (Row 3 L+R); "
+            f"got {len(sd_calls)}"
+        )
+        for _args, kwargs in sd_calls:
+            assert kwargs.get("fontsize") == 13, (
+                f"'Spout Distance' fontsize should be 13; got "
+                f"{kwargs.get('fontsize')}"
+            )
 

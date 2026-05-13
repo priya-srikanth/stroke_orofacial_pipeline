@@ -388,6 +388,7 @@ def _plot_row_per_session_dots_and_means(
     *,
     bare_vals: list[float],
     b_vals: list[float],
+    licking_xtick_fontsize: int | float | None = None,
 ) -> None:
     """Generic dot-plot helper for Rows 1, 2, 3.
 
@@ -400,6 +401,11 @@ def _plot_row_per_session_dots_and_means(
                                      markeredgecolor=mouse_side_color).
     Mean line color = mouse_side_color (same for both Standard and
     Close mean within a panel; differentiation comes from x-position).
+
+    Addendum #4 Tweak 3: ``licking_xtick_fontsize`` controls the
+    "Standard"/"Close" xtick label size. ``None`` keeps the
+    matplotlib default (~10).
+
     Caller sets y-axis limits, labels, titles.
     """
     n_sessions = len(bare_vals)
@@ -448,14 +454,16 @@ def _plot_row_per_session_dots_and_means(
             color=mouse_side_color,
             linewidth=COHORT_MEAN_BAR_LINEWIDTH, zorder=3,
         )
-    # X-axis ticks for the categorical pair. Tweak 1: rendered
-    # labels are "Standard" / "Close"; underlying code identifiers
-    # stay "bare" / "b".
+    # X-axis ticks for the categorical pair. Addendum #2 Tweak 1:
+    # rendered labels are "Standard" / "Close"; underlying code
+    # identifiers stay "bare" / "b".
     ax.set_xticks([_X_BARE, _X_B])
     ax.set_xticklabels([
         SPOUT_DISTANCE_DISPLAY_LABELS["bare"],
         SPOUT_DISTANCE_DISPLAY_LABELS["b"],
     ])
+    if licking_xtick_fontsize is not None:
+        ax.tick_params(axis="x", labelsize=licking_xtick_fontsize)
     ax.set_xlim(-0.5, 1.5)
 
 
@@ -591,7 +599,8 @@ def _plot_row_lick_raster(
         ax.text(
             1.02, center_y, f"d{rel_day:+d}",
             transform=ax.get_yaxis_transform(),
-            rotation=90,
+            rotation=270,
+            rotation_mode="anchor",
             ha="left", va="center",
             fontsize=day_label_fontsize,
         )
@@ -607,7 +616,8 @@ def _plot_row_lick_raster(
         ax.text(
             1.02, center_y, f"d{rel_day:+d}",
             transform=ax.get_yaxis_transform(),
-            rotation=90,
+            rotation=270,
+            rotation_mode="anchor",
             ha="left", va="center",
             fontsize=day_label_fontsize,
         )
@@ -823,6 +833,12 @@ def render_animal_summary_spout_close_vs_std(
         nrows=4, ncols=2, figsize=figsize, squeeze=False,
     )
     panel_title_fontsize = cohort_config["panel_title_fontsize"]
+    licking_xtick_fontsize = cohort_config["licking_xtick_fontsize"]
+    spout_distance_xlabel_fontsize = cohort_config[
+        "spout_distance_xlabel_fontsize"
+    ]
+    raster_xlabel_fontsize = cohort_config["raster_xlabel_fontsize"]
+    raster_xlabel_labelpad = cohort_config["raster_xlabel_labelpad"]
 
     # Row 1: accuracy_firstCorrectLickAll
     for jj, side in enumerate(("L", "R")):
@@ -831,6 +847,7 @@ def render_animal_summary_spout_close_vs_std(
             ax, side,
             bare_vals=bare_acc[side],
             b_vals=b_acc[side],
+            licking_xtick_fontsize=licking_xtick_fontsize,
         )
         ax.set_ylim(*row1_ylim)
         ax.set_title(
@@ -847,6 +864,7 @@ def render_animal_summary_spout_close_vs_std(
             ax, side,
             bare_vals=bare_n_correct[side],
             b_vals=b_n_correct[side],
+            licking_xtick_fontsize=licking_xtick_fontsize,
         )
         ax.set_ylim(*row2_ylim)
         ax.set_title(
@@ -863,15 +881,20 @@ def render_animal_summary_spout_close_vs_std(
             ax, side,
             bare_vals=bare_n_incorrect[side],
             b_vals=b_n_incorrect[side],
+            licking_xtick_fontsize=licking_xtick_fontsize,
         )
         ax.set_ylim(*row3_ylim)
         ax.set_title(
             f"Reward {side}: mean incorrect licks/trial",
             fontsize=panel_title_fontsize,
         )
-        # Tweak 1: "Spout Distance" xlabel on Row 3 (the bottom-most
-        # categorical-x row in the new 4-row layout).
-        ax.set_xlabel(SPOUT_DISTANCE_XAXIS_TITLE)
+        # Addendum #2 Tweak 1: "Spout Distance" xlabel on Row 3
+        # (bottom of the licking block). Addendum #4 Tweak 3: bumped
+        # fontsize from matplotlib default to spout_distance_xlabel_fontsize.
+        ax.set_xlabel(
+            SPOUT_DISTANCE_XAXIS_TITLE,
+            fontsize=spout_distance_xlabel_fontsize,
+        )
         if jj == 0:
             ax.set_ylabel("Mean incorrect licks per trial")
 
@@ -899,14 +922,17 @@ def render_animal_summary_spout_close_vs_std(
             animal_info=animal_info,
             y_range=row4_ylim,
         )
+        # Addendum #4 Tweak 1: per-panel "Time (s)" xlabel
+        # (replaces the prior figure-level supxlabel so labelpad
+        # applies). Smaller labelpad pulls the label closer to the
+        # tick labels.
+        ax.set_xlabel(
+            "Time (s)",
+            fontsize=raster_xlabel_fontsize,
+            labelpad=raster_xlabel_labelpad,
+        )
         if jj == 0:
             ax.set_ylabel("Trials (Standard top / Close bottom)")
-
-    # Figure-level "Time (s)" supxlabel for Row 4. Categorical
-    # Spout-Distance xlabel sits on Row 3 per ax.set_xlabel above.
-    fig.supxlabel(
-        "Time (s)", fontsize=cohort_config["raster_xlabel_fontsize"],
-    )
     fig.suptitle(
         f"{animal}  spout close vs standard  "
         f"(n={len(sessions)} post-stroke sessions)",
