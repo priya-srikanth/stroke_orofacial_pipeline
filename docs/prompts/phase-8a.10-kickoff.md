@@ -78,15 +78,22 @@ Per Priya: the endpoint families known to be in scope include (non-exhaustive �
 
 ### Verdict mechanism
 
-Per-mouse-aggregate parity verdict. Legacy PNGs at `basic_behavior_analysis3/<mouse>/<plot_family>.svg` are PER-MOUSE aggregates (one PNG per plot family per mouse, aggregating across all sessions in that mouse's cohort), NOT per-session. Per-session info lives in `report.json` (consumed by aggregate plots but never rendered individually). Total parity-gate target: 8 animals × ~10-15 plot families = ~80-120 PNGs to eyeball-PASS.
+Two-tier verdict, layered.
 
-For each plot family × each mouse, the parity gate renders:
+**Tier 1 — Programmatic structural pins** (`tests/test_visual_gate.py`). Cohort-wide; no eyeball cost. Per-family pins on axes labels, title format, color palette, NPZ keys consumed, plot dimensions, expected output filename pattern. Catches structural regressions (broken rendering code, wrong axis labels, missing data series). Runs in CI / pre-PR.
+
+**Tier 2 — Selective eyeball comparison** (Priya). Structured two-phase verdict, mirrors 7a.5-mismatch / 7a.6 C-round patterns:
+
+- **Phase A (primary signoff) — one representative animal: PS51** (locked 2026-05-13). Render all ~10-15 plot families for PS51 only. Eyeball-compare legacy SVG ↔ new PNG per family. Iterate C-rounds until every family PASSes. ~10-15 pairs total. Once Phase A converges, the rendering code is signed-off as faithful — animal-agnostic logic verified.
+- **Phase B (cohort confirmation) — spot-check across the other 7 animals.** For each plot family, sample 1-2 other animals (mix of pre-stroke-heavy PS46-50 and post-stroke-heavy PS54/PS55). ~10-20 additional pairs total. Goal: catch animal-specific data edge cases (n_sessions=30 vs 64; pre-stroke-only vs full timeline). NOT re-verify rendering correctness — that's Phase A's job.
+
+**Total eyeball cost: ~20-35 pairs across Phases A+B**, not the cohort-wide 80-120.
+
+For each Phase A / Phase B pair, the parity gate renders:
 
 - Legacy SVG (left) — sourced from Task 0.75 baseline capture.
 - New pipeline rendering (right) — sourced from `visual_gate.py`.
 - (Optional) diff or annotation panel.
-
-Priya signs off per (mouse, plot_family) pair. Multiple iterative C-rounds expected (mirrors 7a.5-mismatch / 7a.6 patterns).
 
 Per-session rendering (if any plot family produces per-session output) is a separate sub-scope locked at Task 1 audit.
 
