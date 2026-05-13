@@ -2,7 +2,7 @@
 
 **Branch:** `phase/8a.10-spout-visual-gate` off latest `origin/main`.
 **Tag on phase-close merge:** `v8a.10-spout-visual-gate`.
-**Prerequisites:** MICROSCOPE mount; conda env `stroke_orofacial` active; `main` HEAD at the post-Phase-7-pre-secondary-spout-chore + close-out-polish merges (b-half data durably on disk for the 19 Pattern B sessions).
+**Prerequisites:** MICROSCOPE mount; conda env `stroke_orofacial` active; `main` HEAD post chore PR #109 (Cohort A inputs durably on disk for 341 sessions; uniformly stamped).
 **Estimated scope:** mid-to-large. Comparable to Phase 7a.5-mismatch (substantial per-family port) + bare-vs-b additive scope. Likely 15-25 source/test files + 3 docs files + this kickoff.
 
 ---
@@ -12,6 +12,8 @@
 Phase 8a.10 was originally scoped (per `docs/COWORK_SESSION_STATE.md` Next-phase candidates list) as a "spout-behavior visual gate" — render comparison grids for the canonical `batch_process_behavior_report_20260116PS.ipynb` against the new pipeline's outputs, eyeball-verdict by Priya. Scope was **expanded 2026-05-12** per [Phase 7-pre-secondary-spout DECISIONS](../DECISIONS.md) fold-in decision: this phase also covers bare-vs-b spout-behavior outcome comparison for the 19 Pattern B sessions across PS51/PS54/PS55. The b-half data is now durably on disk in `pipeline_outputs/` (via the Phase 7-pre-secondary-spout chore re-emit PR).
 
 **Audit-first** per the multi-half / secondary-spout / 7a.5-mismatch / 7a.6 pattern: Task 1 walks the legacy code and produces a per-plot-family port plan that Priya signs off on before any implementation commits land.
+
+Task 0.5 ran 2026-05-13 (per status banner below); chore PR #109 landed the recovery. Task 0.75 + Task 1 onward are the active work scope when this phase resumes.
 
 The phase has **two sub-deliverables in one PR**:
 
@@ -26,9 +28,18 @@ The two sub-deliverables share rendering code (sub-deliverable B reuses A's rend
 
 ### Cohort A — Legacy-parity gates
 
-The full set of (animal, date) pairs covered by the legacy notebook's resolved `include_dates ∖ exclude_sessions` for PS46-PS55. Task 0.5 confirms inputs (Phase 2 outputs at `pipeline_outputs/spout_behavior/`) are durably on disk; Task 1 audit extracts the authoritative cohort definition from legacy code.
+The 341 (animal, date) pairs in Cohort A, defined by walking legacy `basic_behavior_analysis3/<mouse>/report.json`'s `latency_bySession` keys (per Task 0.5 extension audit). Spans 8 animals: PS46/47/48/49/50/51/54/55. Date ranges per animal:
 
-Approximate size: 100-200 sessions across 8 animals. Exact size locked at Task 1 STOP-and-report.
+- PS46: 30 sessions (20250225 → 20250327; 2025-02-26 narrowed per DECISIONS — dual-h5)
+- PS47: 30 sessions (20250225 → 20250327; 2025-03-02 phase-2-only, no cam data)
+- PS48: 31 sessions (20250225 → 20250327; includes Pattern A multi-half 2025-03-14)
+- PS49: 34 sessions (20250225 → 20250331; 2025-03-03 phase-2-only, no cam data)
+- PS50: 38 sessions (20250227 → 20250406; 2025-03-18 narrowed per DECISIONS — nested cam subdir)
+- PS51: 55 sessions (20250416 → 20250626)
+- PS54: 64 sessions (20250416 → 20250626)
+- PS55: 59 sessions (20250416 → 20250626; 2025-06-06 phase-3-skip, dual-h5)
+
+Sub-deliverable A's parity gate runs against this cohort. All inputs (Phase 2 outputs + Phase 3 alignment templates where available) durably present at `pipeline_outputs/spout_behavior/` and `pipeline_outputs/dlc_analysis/alignment_templates/` after chore PR #109.
 
 ### Cohort B — Bare-vs-b comparison
 
@@ -67,13 +78,17 @@ Per Priya: the endpoint families known to be in scope include (non-exhaustive �
 
 ### Verdict mechanism
 
-Per-family eyeball verdict. For each plot family, the parity gate renders:
+Per-mouse-aggregate parity verdict. Legacy PNGs at `basic_behavior_analysis3/<mouse>/<plot_family>.svg` are PER-MOUSE aggregates (one PNG per plot family per mouse, aggregating across all sessions in that mouse's cohort), NOT per-session. Per-session info lives in `report.json` (consumed by aggregate plots but never rendered individually). Total parity-gate target: 8 animals × ~10-15 plot families = ~80-120 PNGs to eyeball-PASS.
 
-- Legacy PNG (left) — sourced from Task 0.75 baseline capture.
-- New pipeline rendering (right) — sourced from `visual_gate.py` ports.
-- (Optional) diff or annotation panel below — only if pixel-level diff is informative for the family.
+For each plot family × each mouse, the parity gate renders:
 
-Priya signs off per family. Multiple iterative C-rounds expected (mirrors Phase 7a.5-mismatch C6.x / Phase 7a.6 C7.x iterative-visual-fix patterns).
+- Legacy SVG (left) — sourced from Task 0.75 baseline capture.
+- New pipeline rendering (right) — sourced from `visual_gate.py`.
+- (Optional) diff or annotation panel.
+
+Priya signs off per (mouse, plot_family) pair. Multiple iterative C-rounds expected (mirrors 7a.5-mismatch / 7a.6 patterns).
+
+Per-session rendering (if any plot family produces per-session output) is a separate sub-scope locked at Task 1 audit.
 
 ### Implementation surface
 
@@ -149,6 +164,8 @@ Do NOT create the feature branch yet — Task 0.5 first.
 
 ### Task 0.5 — Cohort-on-disk audit
 
+**STATUS: DONE 2026-05-13.** Audit at `.scratch_phase_8a_10/cohort_a_audit.md` + `cohort_a_audit_part_b.md` enumerated Cohort A at 343 sessions across 8 animals. Recovery landed via chore PR #109 — 68 sessions re-emitted (Bucket-1 + 5 Pattern B representational-mismatch + 1 PS48 Pattern A + 1 PS55/2025-06-06 dual-h5 special-case), 2 sessions narrowed (PS46/2-26 + PS50/3-18), 2 sessions phase-2-only (PS47/3-2 + PS49/3-3), 1 session phase-3-skip (PS55/6-06). Final Cohort A coverage: 341 sessions. All licks NPZs uniformly stamped (Path-2 audit confirmed K=0 pre-Phase-6.8 unstamped emissions). Task can be skipped on future warm-starts; preserved here for historical reference.
+
 **Goal:** confirm sub-deliverable A's inputs (Phase 2 outputs) are durably present at `pipeline_outputs/spout_behavior/` for every (animal, date) in Cohort A.
 
 **Steps:**
@@ -180,13 +197,13 @@ Do NOT create the feature branch yet — Task 0.5 first.
 
 **Steps:**
 
-1. Locate legacy's per-mouse output dir: per Phase 7-pre-secondary-spout Task 1 audit, this is `basic_behavior_analysis3/` (the legacy `batch_process_behavior_report_20260116PS.ipynb` writes here). Confirm path under MICROSCOPE.
+1. Canonical legacy-PNG directory CONFIRMED (Task 0.5 extension audit): `analysis/basic_behavior_analysis3/<mouse>/<plot_family>.svg`. Per-mouse aggregate plots; ~10-15 plot families × 8 mice = ~80-120 SVGs total. mtimes 2025-06-13 (PS46-50) + 2025-06-26 (PS51/54/55). These are real legacy outputs from production runs; sub-deliverable A's parity gate uses them as the canonical baseline.
 
-2. **If the legacy outputs are already on disk in `basic_behavior_analysis3/`** (from prior production runs), copy/snapshot them to `tests/scripts/_baselines/phase_8a_10/legacy_pngs/` for durable reference. Capture the snapshot's timestamp + a SHA256 manifest.
+   Task 0.75 captures these SVGs to `tests/scripts/_baselines/phase_8a_10/legacy_svgs/<mouse>/<plot_family>.svg` via a small chore PR (mirroring PR #104 baseline-capture pattern from Phase 7-pre-secondary-spout). NO re-execution of the legacy notebook needed — the SVGs already exist on MICROSCOPE from Priya's prior production runs.
 
-3. **If the legacy outputs need re-rendering** (e.g., notebook updated since last run, or Priya wants a fresh baseline): run the legacy notebook on MICROSCOPE via the `frsb` env (legacy-compatible) per Phase 7-pre-multi-half's `bnpm` dependency convention. Capture outputs to the baseline directory.
+2. Copy/snapshot to `tests/scripts/_baselines/phase_8a_10/legacy_svgs/` for durable reference. Capture the snapshot's timestamp + a SHA256 manifest.
 
-4. STOP-and-report: list the captured PNG count + per-mouse breakdown. Verify reasonable (one PNG per (mouse, plot-family) at minimum).
+3. STOP-and-report: list the captured SVG count + per-mouse breakdown. Verify reasonable (one SVG per (mouse, plot-family) at minimum).
 
 **No commits in Tasks 0.5/0.75 to the feature branch — these are pre-branch state-establishment.** Baseline PNGs land under `tests/scripts/_baselines/phase_8a_10/legacy_pngs/` as a chore-PR mirroring `tests/scripts/_baselines/phase_7_pre_secondary_spout/sha256.json` from Phase 7-pre-secondary-spout's Task 0.5. The baselines commit happens on `main` directly (small chore PR, like PR #104 for Phase 7-pre-secondary-spout).
 
@@ -383,6 +400,9 @@ Before the phase-close PR:
 4. **8a.7 + 8a.7.5 broader coverage** — implicitly deferred per Priya 2026-05-12 narrowing.
 5. **PS51/2025-04-29 + PS54/2025-05-08 weak candidates** — carried forward from Phase 7-pre-secondary-spout. Out of scope.
 6. **bnpm dep + orphan cam{1,3,4} housekeeping** — carried forward from Phase 7-pre-multi-half. Orthogonal.
+7. **`wavesurfer_file_overrides:` block in `session_overrides.yaml`.** Generalizes the PR #109 PS55/2025-06-06 dual-h5 one-off hack. Maps `(animal, date)` → specific filename when `find_wavesurfer_file` can't disambiguate multiple `.h5`s. Lands when a 2nd dual-h5 case surfaces.
+8. **`wavesurfer_subdir_overrides:` block in `session_overrides.yaml`.** Cleans up the 5 PR #109 representational-mismatch entries in `secondary_spout_sessions:` (PS51/2025-04-24 + 4-25, PS54/2025-04-24 + 4-25, PS55/2025-04-25) which are bare-only sessions borrowing the Pattern B override mechanism. Single-half manifest with WS subdir override; no Pattern B compare-intent claimed. Lands when Pattern B test semantics start to bite or a 6th similar case surfaces.
+9. **Parallel dual-h5 hack for Phase 3 alignment recompute.** PR #109's PS55/2025-06-06 special-case only handled Phase 2 (`process_session` direct). Phase 3 alignment template for that session is currently a documented-skip. Lands when (7) or (8) generalizes the override mechanism.
 
 ---
 
