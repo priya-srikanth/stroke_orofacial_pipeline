@@ -382,6 +382,37 @@ def _half_mean_licks_per_trial_per_side(
     return out
 
 
+def _half_per_trial_lick_counts_per_side(
+    session: SessionPlotData,
+    window_around_rewards: tuple[float, float] | list[float],
+) -> dict[str, dict[str, list[int]]]:
+    """Per-trial lick counts (NOT averaged) split by (reward_side,
+    correctness). Returns
+    ``{"L": {"correct": [n_per_trial...], "incorrect": [n_per_trial...]},
+       "R": {...}}``.
+
+    Each list has length = number of trials of that reward side in
+    this session half. Used by render_animal_per_trial_spout_close_vs_std
+    (post-R7 follow-on) to scatter individual trials rather than
+    per-session means.
+    """
+    delays = compute_trial_lick_delays(session, window_around_rewards)
+    out: dict[str, dict[str, list[int]]] = {"L": {}, "R": {}}
+    for side_reward in ("L", "R"):
+        per_reward = delays[f"Reward_{side_reward}"]
+        correct_counts: list[int] = []
+        incorrect_counts: list[int] = []
+        for _idx, by_side in per_reward.items():
+            correct_counts.append(int(by_side[f"Lick_{side_reward}"].size))
+            other = "R" if side_reward == "L" else "L"
+            incorrect_counts.append(int(by_side[f"Lick_{other}"].size))
+        out[side_reward] = {
+            "correct": correct_counts,
+            "incorrect": incorrect_counts,
+        }
+    return out
+
+
 def _plot_row_per_session_dots_and_means(
     ax,
     side_reward: Literal["L", "R"],
@@ -1016,6 +1047,236 @@ def render_animal_summary_spout_close_vs_std(
     return svg_path, png_path
 
 
+# =====================================================================
+# Per-trial cohort renderer (post-R7 follow-on, 2026-05-13).
+# Companion to render_animal_summary_spout_close_vs_std: same 2×2
+# (correct/incorrect × L/R) shape but plots INDIVIDUAL trial dots
+# pooled across sessions, instead of per-session means.
+# =====================================================================
+
+
+def _plot_panel_per_trial_scatter(
+    ax,
+    side_reward: Literal["L", "R"],
+    *,
+    bare_per_trial: list[int],
+    b_per_trial: list[int],
+    licking_xtick_fontsize: int | float,
+) -> None:
+    """Pooled per-trial scatter: each session contributes one dot
+    per trial.
+
+    Layout per panel:
+      - x ∈ {0 (Standard / bare), 1 (Close / b)}; jittered ±0.18.
+      - y = per-trial lick count.
+      - Color = mouse-side (SIDE_COLORS[side_reward]).
+      - Fill style: Standard filled, Close open (mirrors the
+        per-session summary's Addendum #3 Tweak 2 convention).
+      - Mean horizontal bars per condition (mouse-side color,
+        COHORT_MEAN_BAR_LINEWIDTH).
+    """
+    mouse_side_color = SIDE_COLORS[side_reward]
+    rng = np.random.RandomState(42)
+    for x, vals, condition in (
+        (_X_BARE, bare_per_trial, "bare"),
+        (_X_B, b_per_trial, "b"),
+    ):
+        if len(vals) == 0:
+            continue
+        jitter = (rng.rand(len(vals)) - 0.5) * 0.36
+        xs = np.full(len(vals), x, dtype=float) + jitter
+        is_filled = SPOUT_DISTANCE_DOT_FILL[condition] == "filled"
+        facecolor = mouse_side_color if is_filled else "none"
+        ax.scatter(
+            xs, vals,
+            s=8, marker="o",
+            facecolor=facecolor, edgecolor=mouse_side_color,
+            linewidth=0.5, alpha=0.5,
+            zorder=2,
+        )
+    # Mean bars — color = mouse_side_color (same convention as
+    # render_animal_summary).
+    for x, vals in (
+        (_X_BARE, bare_per_trial),
+        (_X_B, b_per_trial),
+    ):
+        if len(vals) == 0:
+            continue
+        arr = np.array(vals, dtype=float)
+        m = float(np.nanmean(arr))
+        ax.hlines(
+            m, x - 0.3, x + 0.3,
+            color=mouse_side_color,
+            linewidth=COHORT_MEAN_BAR_LINEWIDTH, zorder=3,
+        )
+    ax.set_xticks([_X_BARE, _X_B])
+    ax.set_xticklabels([
+        SPOUT_DISTANCE_DISPLAY_LABELS["bare"],
+        SPOUT_DISTANCE_DISPLAY_LABELS["b"],
+    ])
+    ax.tick_params(axis="x", labelsize=licking_xtick_fontsize)
+    ax.set_xlim(-0.5, 1.5)
+
+
+def render_animal_per_trial_spout_close_vs_std(
+    animal: str,
+    *,
+    sessions: list[SessionPairData] | None = None,
+    resolver: PathResolver,
+    config: dict[str, Any] | None = None,
+    cohort_config: dict[str, Any] | None = None,
+    behavior_params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["force", "skip", "raise"] = "force",
+) -> tuple[Path, Path]:
+    """Render the per-trial 2×2 cohort scatter for one animal.
+
+    Output:
+    ``{resolver.spout_close_vs_std_dir(animal=None)}/<animal>_per_trial.{svg,png}``.
+
+    Layout (2 rows × 2 cols):
+      - Row 1: per-trial CORRECT lick counts (cols: Reward L, Reward R).
+      - Row 2: per-trial INCORRECT lick counts (cols: Reward L, Reward R).
+    Each panel pools every trial across sessions; one dot per
+    (trial, condition). Standard (bare) filled; Close (b) open.
+    Per-condition mean bars overlay in mouse-side color.
+
+    Y-axis is shared within each row across L/R panels (empirical
+    max + 10% pad). Rows do NOT share — incorrect magnitudes are
+    typically smaller; row-specific scaling preserves detail.
+
+    Parameters mirror :func:`render_animal_summary_spout_close_vs_std`.
+    """
+    config = config or load_visual_gate_config()
+    cohort_config = cohort_config or load_cohort_config()
+    behavior_params = behavior_params or load_behavior_report_params()
+    window = behavior_params["window_around_rewards"]
+    if animal_info is None:
+        animal_info = get_animal(animal)
+
+    if sessions is None:
+        sessions = list(iter_cohort_b_sessions(
+            resolver, animals=[animal],
+        ))
+    if len(sessions) == 0:
+        raise ValueError(
+            f"render_animal_per_trial_spout_close_vs_std: no post-"
+            f"stroke Cohort B sessions for {animal!r} — cannot build "
+            f"the 2×2 per-trial scatter"
+        )
+
+    # ---- Pool per-trial counts across sessions ----
+    bare_correct: dict[str, list[int]] = {"L": [], "R": []}
+    bare_incorrect: dict[str, list[int]] = {"L": [], "R": []}
+    b_correct: dict[str, list[int]] = {"L": [], "R": []}
+    b_incorrect: dict[str, list[int]] = {"L": [], "R": []}
+    for pair in sessions:
+        bare_counts = _half_per_trial_lick_counts_per_side(pair.bare, window)
+        b_counts = _half_per_trial_lick_counts_per_side(pair.b, window)
+        for side in ("L", "R"):
+            bare_correct[side].extend(bare_counts[side]["correct"])
+            bare_incorrect[side].extend(bare_counts[side]["incorrect"])
+            b_correct[side].extend(b_counts[side]["correct"])
+            b_incorrect[side].extend(b_counts[side]["incorrect"])
+
+    # ---- Compute shared y-limits per row (Tweak 4 convention) ----
+    def _empirical_ymax(*lists: list[int]) -> float:
+        flat = np.concatenate([np.asarray(L, dtype=float) for L in lists])
+        if flat.size == 0:
+            return 0.0
+        return float(np.nanmax(flat))
+    row1_max = _empirical_ymax(
+        bare_correct["L"], b_correct["L"],
+        bare_correct["R"], b_correct["R"],
+    )
+    row1_ylim = (0.0, max(1.0, row1_max * 1.1))
+    row2_max = _empirical_ymax(
+        bare_incorrect["L"], b_incorrect["L"],
+        bare_incorrect["R"], b_incorrect["R"],
+    )
+    row2_ylim = (0.0, max(1.0, row2_max * 1.1))
+
+    # ---- Build figure ----
+    figsize = (10.0, 8.0)
+    fig, axs = plt.subplots(
+        nrows=2, ncols=2, figsize=figsize, squeeze=False,
+    )
+    panel_title_fontsize = cohort_config["panel_title_fontsize"]
+    licking_xtick_fontsize = cohort_config["licking_xtick_fontsize"]
+    spout_distance_xlabel_fontsize = cohort_config[
+        "spout_distance_xlabel_fontsize"
+    ]
+
+    # Row 1: per-trial CORRECT licks
+    for jj, side in enumerate(("L", "R")):
+        ax = axs[0, jj]
+        _plot_panel_per_trial_scatter(
+            ax, side,
+            bare_per_trial=bare_correct[side],
+            b_per_trial=b_correct[side],
+            licking_xtick_fontsize=licking_xtick_fontsize,
+        )
+        ax.set_ylim(*row1_ylim)
+        ax.set_title(
+            f"Reward {side}: per-trial correct licks",
+            fontsize=panel_title_fontsize,
+        )
+        if jj == 0:
+            ax.set_ylabel("Correct licks per trial")
+
+    # Row 2: per-trial INCORRECT licks
+    for jj, side in enumerate(("L", "R")):
+        ax = axs[1, jj]
+        _plot_panel_per_trial_scatter(
+            ax, side,
+            bare_per_trial=bare_incorrect[side],
+            b_per_trial=b_incorrect[side],
+            licking_xtick_fontsize=licking_xtick_fontsize,
+        )
+        ax.set_ylim(*row2_ylim)
+        ax.set_title(
+            f"Reward {side}: per-trial incorrect licks",
+            fontsize=panel_title_fontsize,
+        )
+        ax.set_xlabel(
+            SPOUT_DISTANCE_XAXIS_TITLE,
+            fontsize=spout_distance_xlabel_fontsize,
+        )
+        if jj == 0:
+            ax.set_ylabel("Incorrect licks per trial")
+
+    n_trials_L = len(bare_correct["L"]) + len(b_correct["L"])
+    n_trials_R = len(bare_correct["R"]) + len(b_correct["R"])
+    fig.suptitle(
+        f"{animal}  per-trial spout close vs standard  "
+        f"(n_sessions={len(sessions)}; "
+        f"L_trials={n_trials_L}, R_trials={n_trials_R})",
+        fontsize=panel_title_fontsize,
+    )
+    fig.tight_layout(rect=[0, 0.02, 1, 0.97])
+
+    # Save.
+    out_dir = resolver.spout_close_vs_std_dir(animal=None)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    svg_path = out_dir / f"{animal}_per_trial.svg"
+    png_path = out_dir / f"{animal}_per_trial.png"
+    for target in (svg_path, png_path):
+        if not target.exists():
+            continue
+        if overwrite == "raise":
+            plt.close(fig)
+            raise FileExistsError(
+                f"spout_close_vs_std cohort target exists: {target}"
+            )
+        if overwrite == "skip":
+            plt.close(fig)
+            return svg_path, png_path
+    fig.savefig(svg_path, format="svg")
+    fig.savefig(png_path, format="png", dpi=300)
+    plt.close(fig)
+    return svg_path, png_path
+
+
 __all__ = [
     "COHORT_B_REL_DAY_MIN",
     "RASTER_INTRA_HALF_BOUNDARY_KWARGS",
@@ -1027,6 +1288,7 @@ __all__ = [
     "iter_cohort_b_sessions",
     "list_cohort_b_animals",
     "load_cohort_config",
+    "render_animal_per_trial_spout_close_vs_std",
     "render_animal_summary_spout_close_vs_std",
 ]
 

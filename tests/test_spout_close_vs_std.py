@@ -31,6 +31,7 @@ from stroke_orofacial.spout_behavior.spout_close_vs_std import (
     iter_cohort_b_session_keys,
     iter_cohort_b_sessions,
     list_cohort_b_animals,
+    render_animal_per_trial_spout_close_vs_std,
     render_animal_summary_spout_close_vs_std,
 )
 from stroke_orofacial.spout_behavior.visual_gate import SessionPlotData
@@ -1360,4 +1361,119 @@ class TestCgB3R5Polish:
         assert cfg["raster_ylabel_fontsize"] == 13
         assert cfg["raster_half_label_fontsize"] == 11
         assert cfg["raster_ylabel_labelpad"] == 20
+
+
+# ---- Per-trial renderer (post-R7 follow-on, 2026-05-13) ----
+
+
+class TestRenderAnimalPerTrial:
+    """Pins for the companion per-trial renderer
+    :func:`render_animal_per_trial_spout_close_vs_std`. Same 2x2
+    layout shape as Rows 2+3 of the summary but plots INDIVIDUAL
+    trial dots pooled across sessions, instead of per-session means."""
+
+    def test_returns_expected_per_trial_paths(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        """Pin: outputs land at
+        ``spout_close_vs_std/cohort/<animal>_per_trial.{svg,png}``."""
+        resolver = PathResolver(output_root=tmp_path)
+        svg, png = render_animal_per_trial_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        assert svg.exists() and svg.stat().st_size > 0
+        assert png.exists() and png.stat().st_size > 0
+        assert svg.name == "PS55_per_trial.svg"
+        assert png.name == "PS55_per_trial.png"
+        assert svg.parent.name == "cohort"
+        assert svg.parent.parent.name == "spout_close_vs_std"
+
+    def test_raises_when_no_sessions(self, tmp_path):
+        resolver = PathResolver(output_root=tmp_path)
+        with pytest.raises(ValueError, match="no post-stroke Cohort B"):
+            render_animal_per_trial_spout_close_vs_std(
+                "PS55", sessions=[], resolver=resolver,
+            )
+
+    def test_layout_is_2_rows_2_cols(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        """Pin: 4 axes_groups (2 rows correct/incorrect × 2 cols L/R)."""
+        import re
+        resolver = PathResolver(output_root=tmp_path)
+        svg, _png = render_animal_per_trial_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        text = svg.read_text(encoding="utf-8")
+        axes_groups = re.findall(r'<g id="axes_\d+">', text)
+        assert len(axes_groups) == 4, (
+            f"per-trial 2×2 grid should produce 4 axes; got "
+            f"{len(axes_groups)}"
+        )
+
+    def test_per_trial_dot_count_pools_across_sessions(
+        self, synth_pairs_3_sessions, tmp_path, monkeypatch,
+    ):
+        """Pin: each scatter call receives one dot per trial pooled
+        across sessions (NOT one dot per session-mean). For the synth
+        fixture the L-correct count per panel ≈ sum of L trials across
+        Standard + Close sessions × {correct, incorrect} × {L, R}."""
+        import matplotlib
+        captured_scatter_lens: list[int] = []
+        orig = matplotlib.axes.Axes.scatter
+
+        def recording_scatter(self, *args, **kwargs):
+            # First positional arg is x (array-like).
+            if args:
+                try:
+                    captured_scatter_lens.append(len(args[0]))
+                except TypeError:
+                    pass
+            return orig(self, *args, **kwargs)
+
+        monkeypatch.setattr(
+            matplotlib.axes.Axes, "scatter", recording_scatter,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        render_animal_per_trial_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        # Synth fixture: 3 pairs × 2 reward trials per side per pair =
+        # 6 trials per side per condition. So per panel × per condition
+        # there are 6 dots. Per panel = 2 conditions × 6 = 12 dots
+        # across 2 scatter calls (Standard + Close). 4 panels × 2 calls
+        # = 8 scatter calls each with len=6.
+        per_condition = [n for n in captured_scatter_lens if n == 6]
+        assert len(per_condition) >= 8, (
+            f"expected ≥8 scatter calls with len=6 (per-trial pooled "
+            f"across 3 sessions × 2 trials/side); got: "
+            f"{captured_scatter_lens}"
+        )
+
+    def test_per_trial_uses_dot_fill_convention(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        """Pin: per-trial scatter respects R3 dot-fill convention
+        (Standard filled, Close open). Same as summary's Rows 2-3
+        — pools per-trial dots, doesn't drop the convention."""
+        from stroke_orofacial.spout_behavior.spout_close_vs_std import (
+            SPOUT_DISTANCE_DOT_FILL,
+        )
+        assert SPOUT_DISTANCE_DOT_FILL["bare"] == "filled"
+        assert SPOUT_DISTANCE_DOT_FILL["b"] == "open"
+
+        resolver = PathResolver(output_root=tmp_path)
+        svg, _png = render_animal_per_trial_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        text = svg.read_text(encoding="utf-8")
+        # Open-fill (Close) dots → CSS-style fill: none.
+        assert "fill: none" in text, (
+            "per-trial Close dots should render with fill: none; "
+            "missing from SVG"
+        )
+        # Mouse-side colors (dodgerblue + mediumvioletred) appear
+        # as stroke/fill.
+        assert "#1e90ff" in text, "L-panel mouse-side color missing"
+        assert "#c71585" in text, "R-panel mouse-side color missing"
 
