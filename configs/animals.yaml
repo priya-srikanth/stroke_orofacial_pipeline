@@ -71,6 +71,10 @@ PS46:
   date_of_birth: 2024-12-03
   genotype: "C57BL/6J"
   stroke_laser_power_mW: 2.2
+  # stroke_laterality added 2026-05-13 (Task 3 Round 2.8 scaffolding
+  # for the future pub-figures phase). All 8 current cohort animals
+  # are "L"; the loader accepts {"L", "R"} only.
+  stroke_laterality: "L"
   wavesurfer_sides_match_mouse_sides: false
   bin_days: 2
   analysis_params:
@@ -95,6 +99,7 @@ PS47:
   date_of_birth: 2024-12-03
   genotype: "C57BL/6J"
   stroke_laser_power_mW: 2.2
+  stroke_laterality: "L"
   wavesurfer_sides_match_mouse_sides: false
   bin_days: 2
   analysis_params:
@@ -119,6 +124,7 @@ PS48:
   date_of_birth: 2024-12-03
   genotype: "C57BL/6J"
   stroke_laser_power_mW: 2.2
+  stroke_laterality: "L"
   wavesurfer_sides_match_mouse_sides: false
   bin_days: 2
   analysis_params:
@@ -143,6 +149,7 @@ PS49:
   date_of_birth: 2024-12-12
   genotype: "C57BL/6J (negative littermate)"
   stroke_laser_power_mW: 2.5
+  stroke_laterality: "L"
   wavesurfer_sides_match_mouse_sides: false
   bin_days: 2
   analysis_params:
@@ -167,6 +174,7 @@ PS50:
   date_of_birth: 2024-12-12
   genotype: "C57BL/6J (negative littermate)"
   stroke_laser_power_mW: 2.5
+  stroke_laterality: "L"
   wavesurfer_sides_match_mouse_sides: false
   bin_days: 2
   analysis_params:
@@ -197,6 +205,7 @@ PS51:
   date_of_birth: 2025-01-23
   genotype: "C57BL/6J"
   stroke_laser_power_mW: 3.0
+  stroke_laterality: "L"
   wavesurfer_sides_match_mouse_sides: false
   bin_days: 7
   analysis_params:
@@ -224,6 +233,7 @@ PS54:
   date_of_birth: 2025-01-23
   genotype: "C57BL/6J"
   stroke_laser_power_mW: 3.0
+  stroke_laterality: "L"
   wavesurfer_sides_match_mouse_sides: false
   bin_days: 7
   analysis_params:
@@ -254,6 +264,7 @@ PS55:
   date_of_birth: 2025-01-23
   genotype: "C57BL/6J"
   stroke_laser_power_mW: 5.0
+  stroke_laterality: "L"
   wavesurfer_sides_match_mouse_sides: false
   bin_days: 7
   analysis_params:

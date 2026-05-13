@@ -118,6 +118,14 @@ class AnimalInfo:
         Laser power used for the photothrombotic stroke induction, in
         milliwatts. None for animals without recorded stroke laser power
         (including future sham/no-stroke controls).
+    stroke_laterality : {"L", "R"}
+        Mouse-frame hemisphere where the stroke was induced. Default
+        ``"L"`` matches all 8 current cohort animals (PS46–PS50, PS51,
+        PS54, PS55). Scaffolding for the future pub-figures phase: pairs
+        with :meth:`mouse_side_to_ipsi_contra` to map mouse-frame side
+        labels ("L"/"R") to ipsi/contra labeling on per-mouse plots.
+        Loader rejects values outside ``{"L", "R"}``. Added 2026-05-13
+        (Task 3 Round 2.8) per Priya.
     wavesurfer_sides_match_mouse_sides : bool
         Whether the wavesurfer acquisition's ``Lick_L``/``Lick_R``/
         ``Reward_L``/``Reward_R`` channel labels correspond directly to
@@ -175,6 +183,11 @@ class AnimalInfo:
     date_of_birth: datetime.date | None = None
     genotype: str | None = None
     stroke_laser_power_mW: float | None = None
+    # Stroke hemisphere in mouse frame (added 2026-05-13 per Task 3
+    # Round 2.8). Default "L" matches all 8 current cohort animals;
+    # future animals with right-side strokes will set "R" and trigger
+    # the inverted ipsi/contra mapping in mouse_side_to_ipsi_contra.
+    stroke_laterality: Literal["L", "R"] = "L"
     # L/R rig convention (added 2026-04-20 per task #17). Default False
     # is fail-conservative: current PS46–PS55 cohort is wavesurfer=mirror.
     wavesurfer_sides_match_mouse_sides: bool = False
@@ -243,6 +256,21 @@ class AnimalInfo:
         Returns None if ``date_of_birth`` is unset.
         """
         return self.age_at_date(self.stroke_date)
+
+    def mouse_side_to_ipsi_contra(
+        self, mouse_side: Literal["L", "R"]
+    ) -> Literal["ipsi", "contra"]:
+        """Map a mouse-frame side ("L" or "R") to "ipsi" or "contra".
+
+        The mapping is relative to this animal's :attr:`stroke_laterality`.
+        Used by the future pub-figures phase for ipsi/contra labeling on
+        per-mouse plots. All 8 current cohort animals (PS46–PS50, PS51,
+        PS54, PS55) have ``stroke_laterality="L"`` → mouse-L is ipsi,
+        mouse-R is contra. Future animals with right-side strokes invert.
+        """
+        if mouse_side == self.stroke_laterality:
+            return "ipsi"
+        return "contra"
 
     def get_kinematics_baseline(self, bodypart: str) -> dict[str, float]:
         """Return ``{'x0': float, 'y0': float}`` for the given bodypart.
@@ -446,6 +474,17 @@ def load_animals(config_path: Path | str | None = None) -> dict[str, AnimalInfo]
                 f"got {sex_raw!r}"
             )
 
+        # Stroke hemisphere (Task 3 Round 2.8, added 2026-05-13).
+        # Absent key defaults to "L" — fail-conservative for the
+        # current PS46–PS55 cohort (all L-hemisphere strokes). Loader
+        # rejects anything outside {"L", "R"} to catch typos at load.
+        stroke_laterality_raw = spec.get("stroke_laterality", "L")
+        if stroke_laterality_raw not in ("L", "R"):
+            raise ValueError(
+                f"Animal {animal_id!r}: stroke_laterality must be 'L' "
+                f"or 'R'; got {stroke_laterality_raw!r}"
+            )
+
         # L/R rig convention (task #17). Absent key defaults to False
         # (fail-conservative — current cohort is mirrored). YAML booleans
         # arrive as Python bools; reject anything else to catch typos
@@ -487,6 +526,7 @@ def load_animals(config_path: Path | str | None = None) -> dict[str, AnimalInfo]
             date_of_birth=dob,
             genotype=spec.get("genotype"),
             stroke_laser_power_mW=spec.get("stroke_laser_power_mW"),
+            stroke_laterality=stroke_laterality_raw,
             wavesurfer_sides_match_mouse_sides=ws_match_raw,
             kinematics_baselines=_parse_kinematics_baselines(
                 spec.get("kinematics_baselines"), animal_id
