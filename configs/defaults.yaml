@@ -1322,6 +1322,35 @@ visual_gate:
   # preserved.
   raster_criteria_xrange: [-1, 4]
 
+  # ---- Cohort-summary tiler (CG-5; cohort_summary.py) ----
+  # Default plot families to tile across animals when no explicit list
+  # is passed to make_summary_figures. Mirrors legacy summary_PS.py
+  # DEFAULT_PLOTS list — the 11 canonical families minus lick_raster
+  # (which is auto-skipped because its 2 × N_sessions panel grid is
+  # already too dense to tile across animals).
+  summary_default_plots:
+    - criteria_performance
+    - accuracy_firstCorrectLick
+    - accuracy_firstCorrectLickAll
+    - lickRate_bySession
+    - numLicks_bySession_correct
+    - numLicks_bySession_all
+    - numLicks_bySession_correct_and_incorrect
+    - latency_bySession
+    - lickiness_bySession
+    - switchiness_bySession
+  # Always-skipped plot families (applied even when caller passes an
+  # explicit plot_families list that includes them). Legacy
+  # summary_PS.py DEFAULT_SKIP.
+  summary_skip_plots:
+    - lick_raster
+  # Per-cell figure dimensions in inches (legacy line 94: figsize=(4 *
+  # ncols, 3 * nrows)). Multiplied by (ncols, nrows) at figure-build time.
+  summary_figsize_per_cell: [4, 3]
+  # Dots-per-inch for PNG raster export (legacy line 122 uses 300 for
+  # PNG; None for SVG — vector-native).
+  summary_dpi: 300
+
   # Figure dimensions (behavior_report_PS.py:416 + multiple plt.subplots
   # calls). Single-axis longitudinal default chosen to match the
   # playground cell-56 recovery-trajectory render style (deferred this

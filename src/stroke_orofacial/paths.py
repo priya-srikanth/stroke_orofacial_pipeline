@@ -914,3 +914,19 @@ class PathResolver:
         ``(mouse, plot_family)`` pair).
         """
         return self.pipeline_outputs("spout_behavior") / "visual_gate" / animal
+
+    def visual_gate_summary_dir(self, name: str) -> Path:
+        """Return the cohort-summary tile-grid output directory.
+
+        Layout: ``{pipeline_outputs/spout_behavior}/{name}/``. Phase
+        8a.10 sub-deliverable A's cohort-tiler (commit-group 5) emits
+        N-animal × 1-figure-per-plot-family tile grids here. ``name``
+        is typically ``"summary_PS46_PS47_..._PS55"`` per
+        :func:`stroke_orofacial.spout_behavior.cohort_summary.make_summary_folder_name`
+        — but kept as a free parameter so callers can override (e.g.
+        per-cohort-subset summaries).
+
+        Honors the ``output_root`` test-override via
+        :meth:`pipeline_outputs`.
+        """
+        return self.pipeline_outputs("spout_behavior") / name
