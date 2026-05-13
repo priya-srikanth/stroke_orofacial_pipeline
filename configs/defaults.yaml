@@ -1467,3 +1467,17 @@ spout_close_vs_std:
   # Matches raster_xlabel_fontsize=13 for cross-block visual
   # consistency.
   spout_distance_xlabel_fontsize: 13
+  # Row 4 raster xticks (Addendum #5 Tweak 1). Cohort raster shows
+  # every integer second across the visible window;
+  # visual_gate.raster_xticks=[0, 5] (single-session, sparser) is
+  # unchanged.
+  raster_xticks: [0, 1, 2, 3, 4, 5]
+  # Row 4 raster y-axis typography (Addendum #5 Tweak 3). Numeric
+  # trial-count yticks replace the R3-R4 Standard/Close half text
+  # ticks. Half labels relocate outside the LEFT spine.
+  raster_ytick_fontsize: 11
+  raster_ylabel_fontsize: 13
+  # "Standard"/"Close" half labels outside the LEFT spine, rotated
+  # 90° CCW (bottom-to-top reading; mirrors the day labels'
+  # rotated-270° right-spine convention).
+  raster_half_label_fontsize: 11

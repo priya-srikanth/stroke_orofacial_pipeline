@@ -1118,3 +1118,211 @@ class TestCgB3R4Polish:
                 f"{kwargs.get('fontsize')}"
             )
 
+
+class TestCgB3R5Polish:
+    """Pins for Addendum #5 Round 5 raster polish.
+
+    Tweak 1 — raster xticks every integer second [0..5].
+    Tweak 2 — day-label vertical centering (rotation_mode="default").
+    Tweak 3 — y-axis overhaul (Trials ylabel + numeric yticks +
+              earlier-trials-at-bottom + half-labels relocated to
+              left spine)."""
+
+    def test_tweak_1_raster_xticks_full_integer_range(self):
+        """Pin: cohort raster xticks are at every integer second
+        across [0, 5] (was R3-R4 inheriting visual_gate's
+        [0, 5] endpoint-only ticks). At least 6 tick values."""
+        from stroke_orofacial.spout_behavior.spout_close_vs_std import (
+            load_cohort_config,
+        )
+        cfg = load_cohort_config()
+        xticks = cfg["raster_xticks"]
+        assert len(xticks) >= 6, (
+            f"cohort raster_xticks should have ≥6 entries (every "
+            f"integer second in window); got {len(xticks)}: {xticks}"
+        )
+        assert xticks == [0, 1, 2, 3, 4, 5], (
+            f"expected [0,1,2,3,4,5]; got {xticks}"
+        )
+
+    def test_tweak_2_day_label_rotation_mode_default(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        """Pin: day labels use rotation_mode='default' (R5 Tweak 2
+        centering fix). Earlier R4 used rotation_mode='anchor'
+        which mis-aligned the anchor at the visual top of the
+        rotated text."""
+        import matplotlib
+        import unittest.mock as mock
+        captured: list[dict] = []
+        orig = matplotlib.axes.Axes.text
+
+        def recording_text(self, x, y, s, *args, **kwargs):
+            captured.append({
+                "x": float(x),
+                "s": str(s),
+                "rotation": kwargs.get("rotation"),
+                "rotation_mode": kwargs.get("rotation_mode"),
+            })
+            return orig(self, x, y, s, *args, **kwargs)
+
+        with mock.patch.object(
+            matplotlib.axes.Axes, "text", recording_text,
+        ):
+            resolver = PathResolver(output_root=tmp_path)
+            render_animal_summary_spout_close_vs_std(
+                "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+            )
+        day_calls = [
+            c for c in captured
+            if c["x"] > 1.0 and c["s"].startswith("d")
+        ]
+        assert len(day_calls) > 0
+        for c in day_calls:
+            assert c["rotation_mode"] == "default", (
+                f"day label rotation_mode should be 'default' "
+                f"(R5 fix); got {c['rotation_mode']!r}"
+            )
+
+    def test_tweak_3a_row_4_ylabel_is_trials(
+        self, synth_pairs_3_sessions, tmp_path, monkeypatch,
+    ):
+        """Pin: Row 4 ylabel = 'Trials' (R3-R4 used 'Trials
+        (Standard top / Close bottom)' before half labels moved
+        to the left spine)."""
+        import matplotlib
+        captured: list[tuple] = []
+        orig = matplotlib.axes.Axes.set_ylabel
+
+        def recording_set_ylabel(self, *args, **kwargs):
+            captured.append((args, dict(kwargs)))
+            return orig(self, *args, **kwargs)
+
+        monkeypatch.setattr(
+            matplotlib.axes.Axes, "set_ylabel", recording_set_ylabel,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        render_animal_summary_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        trials_calls = [
+            c for c in captured if c[0] and c[0][0] == "Trials"
+        ]
+        assert len(trials_calls) >= 1, (
+            f"expected at least 1 'Trials' ylabel call (Row 4 L); "
+            f"got {len(trials_calls)}; all={captured}"
+        )
+        # No stale "Standard top / Close bottom" wording.
+        stale_calls = [
+            c for c in captured
+            if c[0] and "Standard top" in c[0][0]
+        ]
+        assert len(stale_calls) == 0, (
+            f"R3/R4 wording 'Standard top / Close bottom' should be "
+            f"gone; got {len(stale_calls)} calls"
+        )
+
+    def test_tweak_3b_numeric_yticks_and_3c_not_inverted(
+        self, synth_pairs_3_sessions, tmp_path, monkeypatch,
+    ):
+        """Pin: Row 4 panels have numeric y-tick labels ('0' +
+        total trial count) and the y-axis is NOT inverted
+        (get_ylim()[0] < get_ylim()[1]).
+
+        Captures ax.set_yticklabels via monkeypatch and verifies
+        ['0', '<n_total>'] format. Captures ax.set_ylim to verify
+        bottom < top."""
+        import matplotlib
+        captured_ticklabels: list[list] = []
+        orig_setyticks = matplotlib.axes.Axes.set_yticklabels
+
+        def recording_set_yticklabels(self, labels, *args, **kwargs):
+            captured_ticklabels.append(
+                [str(L) for L in labels] if labels else []
+            )
+            return orig_setyticks(self, labels, *args, **kwargs)
+
+        monkeypatch.setattr(
+            matplotlib.axes.Axes, "set_yticklabels",
+            recording_set_yticklabels,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        render_animal_summary_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        # Numeric trial-count tick labels: ['0', '<n_total>'].
+        numeric_calls = [
+            labels for labels in captured_ticklabels
+            if len(labels) == 2 and labels[0] == "0" and labels[1].isdigit()
+        ]
+        assert len(numeric_calls) >= 1, (
+            f"expected ≥1 numeric ['0', '<N>'] yticklabel call; "
+            f"got: {captured_ticklabels}"
+        )
+        # No "Standard"/"Close" yticklabel calls (they relocated
+        # to the left-spine ax.text outside the axes).
+        stale = [
+            labels for labels in captured_ticklabels
+            if "Standard" in labels or "Close" in labels
+        ]
+        assert len(stale) == 0, (
+            f"Standard/Close should no longer be yticklabels; got "
+            f"{stale}"
+        )
+
+    def test_tweak_3_half_labels_outside_left_spine(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        """Pin: Standard/Close half labels relocated to the LEFT
+        side outside the spine (x < 0 in axes coords). One label
+        per half per Row 4 panel → 2 halves × 2 panels = 4 labels
+        with rotation=90 and text in {Standard, Close}."""
+        import matplotlib
+        import unittest.mock as mock
+        captured: list[dict] = []
+        orig = matplotlib.axes.Axes.text
+
+        def recording_text(self, x, y, s, *args, **kwargs):
+            captured.append({
+                "x": float(x),
+                "s": str(s),
+                "rotation": kwargs.get("rotation"),
+            })
+            return orig(self, x, y, s, *args, **kwargs)
+
+        with mock.patch.object(
+            matplotlib.axes.Axes, "text", recording_text,
+        ):
+            resolver = PathResolver(output_root=tmp_path)
+            render_animal_summary_spout_close_vs_std(
+                "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+            )
+        # Half-label calls: x<0 (outside left spine), text=
+        # "Standard" or "Close".
+        half_label_calls = [
+            c for c in captured
+            if c["x"] < 0 and c["s"] in ("Standard", "Close")
+        ]
+        assert len(half_label_calls) == 4, (
+            f"expected 4 half-label calls (2 halves × 2 panels); "
+            f"got {len(half_label_calls)}: {half_label_calls}"
+        )
+        # All rotated 90° CCW (mirrors the day-label rotated-270°
+        # right-spine convention).
+        for c in half_label_calls:
+            assert c["rotation"] == 90, (
+                f"half label rotation should be 90 (CCW; bottom-to-"
+                f"top reading); got {c['rotation']} on label "
+                f"{c['s']!r}"
+            )
+
+    def test_tweak_3_new_config_knobs(self):
+        """Pin: 4 new config knobs from R5."""
+        from stroke_orofacial.spout_behavior.spout_close_vs_std import (
+            load_cohort_config,
+        )
+        cfg = load_cohort_config()
+        assert cfg["raster_ytick_fontsize"] == 11
+        assert cfg["raster_ylabel_fontsize"] == 13
+        assert cfg["raster_half_label_fontsize"] == 11
+

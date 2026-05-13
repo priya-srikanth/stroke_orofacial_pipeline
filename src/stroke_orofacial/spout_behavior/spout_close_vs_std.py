@@ -600,8 +600,8 @@ def _plot_row_lick_raster(
             1.02, center_y, f"d{rel_day:+d}",
             transform=ax.get_yaxis_transform(),
             rotation=270,
-            rotation_mode="anchor",
-            ha="left", va="center",
+            rotation_mode="default",
+            ha="center", va="center",
             fontsize=day_label_fontsize,
         )
         bare_y_running += n_session
@@ -617,8 +617,8 @@ def _plot_row_lick_raster(
             1.02, center_y, f"d{rel_day:+d}",
             transform=ax.get_yaxis_transform(),
             rotation=270,
-            rotation_mode="anchor",
-            ha="left", va="center",
+            rotation_mode="default",
+            ha="center", va="center",
             fontsize=day_label_fontsize,
         )
         b_y_running += n_session
@@ -638,27 +638,61 @@ def _plot_row_lick_raster(
         color="black", linewidth=0.8, linestyle="-", zorder=4,
     )
     ax.set_xlim(xmin, xmax)
-    ax.set_xticks(config["raster_xticks"])
-    # Addendum #3 Tweak 6: cohort raster gets larger xticks than
-    # visual_gate's single-session raster.
+    # Addendum #5 Tweak 1: cohort raster shows xticks at every
+    # integer second (visual_gate single-session raster keeps its
+    # sparser [0, 5] endpoint-only ticks; cohort overrides via the
+    # spout_close_vs_std-scoped knob).
+    ax.set_xticks(cohort_config["raster_xticks"])
+    # Cohort raster gets larger xticks than visual_gate's
+    # single-session raster (Addendum #3 Tweak 6 / Addendum #4
+    # Tweak 1).
     ax.tick_params(
         axis="x", labelsize=cohort_config["raster_xtick_fontsize"],
     )
-    # Y-axis: label the two halves at their midpoints using the
-    # Standard/Close display labels (Tweak 1).
-    if n_bare > 0 and n_b > 0:
-        ax.set_yticks([n_bare / 2, n_bare + 0.5 + n_b / 2])
-        ax.set_yticklabels([
-            SPOUT_DISTANCE_DISPLAY_LABELS["bare"],
-            SPOUT_DISTANCE_DISPLAY_LABELS["b"],
-        ])
+    # Addendum #5 Tweak 3: numeric trial-count y-ticks (was R3/R4's
+    # Standard/Close text ticks). Y-axis NOT inverted — y=0 at
+    # bottom, max-trial-count at top (matches visual_gate single-
+    # session raster convention; "earlier trials at bottom").
+    n_total = n_bare + n_b
+    ax.set_yticks([0, n_total])
+    ax.set_yticklabels(["0", str(n_total)])
+    ax.tick_params(
+        axis="y", labelsize=cohort_config["raster_ytick_fontsize"],
+    )
     # Y-limit: per-panel snug by default; caller can pass y_range
     # to enforce a shared limit across L/R panels (Tweak 4).
     if y_range is None:
-        ax.set_ylim(-0.5, n_bare + n_b + 1.5)
+        ax.set_ylim(-0.5, n_total + 1.5)
     else:
         ax.set_ylim(*y_range)
-    ax.invert_yaxis()  # row 0 at top
+    # NOTE: ax.invert_yaxis() removed in R5 Tweak 3c. With the
+    # natural y-axis orientation (0 at bottom), first Standard
+    # trial sits at bottom; last Close trial at top.
+    # Half labels: "Standard" / "Close" outside the LEFT spine
+    # (Addendum #5 Tweak 3 Option α). Rotated 90° CCW: bottom-to-
+    # top reading; mirrors the day-labels' rotated-270° right-spine
+    # convention.
+    half_label_fs = cohort_config["raster_half_label_fontsize"]
+    if n_bare > 0:
+        ax.text(
+            -0.08, n_bare / 2,
+            SPOUT_DISTANCE_DISPLAY_LABELS["bare"],
+            transform=ax.get_yaxis_transform(),
+            rotation=90,
+            rotation_mode="default",
+            ha="center", va="center",
+            fontsize=half_label_fs,
+        )
+    if n_b > 0:
+        ax.text(
+            -0.08, n_bare + 0.5 + n_b / 2,
+            SPOUT_DISTANCE_DISPLAY_LABELS["b"],
+            transform=ax.get_yaxis_transform(),
+            rotation=90,
+            rotation_mode="default",
+            ha="center", va="center",
+            fontsize=half_label_fs,
+        )
     ax.set_title(
         f"Reward {side_reward}",
         fontsize=cohort_config["panel_title_fontsize"],
@@ -931,8 +965,14 @@ def render_animal_summary_spout_close_vs_std(
             fontsize=raster_xlabel_fontsize,
             labelpad=raster_xlabel_labelpad,
         )
+        # Addendum #5 Tweak 3a: Row 4 ylabel = "Trials" (replaces
+        # R3-R4's "(Standard top / Close bottom)"; the half labels
+        # now sit outside the left spine).
         if jj == 0:
-            ax.set_ylabel("Trials (Standard top / Close bottom)")
+            ax.set_ylabel(
+                "Trials",
+                fontsize=cohort_config["raster_ylabel_fontsize"],
+            )
     fig.suptitle(
         f"{animal}  spout close vs standard  "
         f"(n={len(sessions)} post-stroke sessions)",
