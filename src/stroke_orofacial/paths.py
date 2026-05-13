@@ -903,3 +903,14 @@ class PathResolver:
         Use ``pipeline_outputs(subdir='spout_behavior')`` instead.
         """
         return self.root("local_processed_spout") / f"session_processing_{version}"
+
+    def visual_gate_dir(self, animal: str) -> Path:
+        """Return the per-mouse visual-gate output directory.
+
+        Layout: ``{pipeline_outputs/spout_behavior}/visual_gate/{animal}/``.
+        Phase 8a.10 sub-deliverable A renders the 11 per-mouse plot-
+        family SVGs + PNGs here, mirroring the legacy
+        ``basic_behavior_analysis3/<mouse>/`` layout (one SVG per
+        ``(mouse, plot_family)`` pair).
+        """
+        return self.pipeline_outputs("spout_behavior") / "visual_gate" / animal

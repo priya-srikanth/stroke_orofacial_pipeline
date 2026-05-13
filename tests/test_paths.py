@@ -282,6 +282,25 @@ class TestNewConvenienceMethods:
             "/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/spout_behavior"
         )
 
+    def test_visual_gate_dir(self, monkeypatch, full_paths_yaml):
+        """Phase 8a.10 commit-group 1: per-mouse visual-gate output dir
+        nests under `pipeline_outputs("spout_behavior")/visual_gate/<animal>/`."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
+        resolver = PathResolver(full_paths_yaml)
+        result = resolver.visual_gate_dir("PS51")
+        assert result.as_posix() == (
+            "/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/"
+            "spout_behavior/visual_gate/PS51"
+        )
+
+    def test_visual_gate_dir_respects_output_root_override(self, tmp_path):
+        """Phase 8a.10 commit-group 1: PathResolver(output_root=tmp_path)
+        scopes visual_gate writes to tmp_path (test-hook contract from
+        docs/testing-conventions.md)."""
+        resolver = PathResolver(output_root=tmp_path)
+        result = resolver.visual_gate_dir("PS46")
+        assert result == tmp_path / "spout_behavior" / "visual_gate" / "PS46"
+
     def test_wavesurfer_dir(self, monkeypatch, full_paths_yaml, tmp_path):
         # Uses the real on-disk tmp_path mount, so must run under host key.
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)

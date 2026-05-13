@@ -1256,3 +1256,57 @@ dlc_inference_o2:
   snapshot_renames:
     "snapshot-best-60": "snapshot_060"
     "snapshot_best-60": "snapshot_060"
+
+# ---- Phase 8a.10 sub-deliverable A: visual gate ----
+#
+# Per-mouse plot rendering parameters for the legacy-parity visual
+# gate. Values ported from the legacy `behavior_report_PS.py` module
+# (Phase 8a.10 Task 1 audit Section D). Per-animal styling is
+# intentionally absent — the legacy code locks all aesthetics cohort-
+# wide (an XTICK_FONTSIZE comment about "6 for PS51-55, 10-12 for
+# PS46-50" was never applied; locked to 10).
+
+visual_gate:
+  # Side colors — INVERTED vs legacy. Legacy had
+  # `side_colors = {"L": "mediumvioletred", "R": "dodgerblue"}`
+  # because the legacy renderer operated in wavesurfer-frame
+  # internally and re-labeled at plot output via `fn_flip_lr()`. The
+  # new pipeline operates in mouse-frame throughout post-Phase-6.8
+  # (DECISIONS 2026-04-20), so the color↔mouse-side mapping is direct:
+  # mouse-L → dodgerblue, mouse-R → mediumvioletred. See visual_gate.py
+  # SIDE_COLORS docstring + the side_colors_inverted_vs_legacy pin test.
+  side_colors:
+    L: "dodgerblue"
+    R: "mediumvioletred"
+
+  # Longitudinal-axis styling (behavior_report_PS.py:36-37)
+  xtick_fontsize: 10
+  stroke_linewidth: 2.5
+
+  # Stroke-day vertical marker (behavior_report_PS.py:352, 364)
+  stroke_vline_x: 0.5
+  stroke_vline_color: "red"
+  stroke_vline_linestyle: ":"
+  stroke_vline_alpha: 0.9
+
+  # Per-family y-axis bounds (behavior_report_PS.py:560, 611, 695, 766,
+  # 795, 845; _20250528.py:718 notes Priya bumped latency from 0.8 to 2)
+  accuracy_y_range: [0.0, 1.0]
+  latency_y_max: 2.0
+  lickrate_y_max: 10.0
+  numlicks_y_max: 40.0
+
+  # Late-lick window (behavior_report_PS.py:861)
+  lickiness_window_seconds: 60
+
+  # Raster styling (behavior_report_PS.py:425, 430, 433)
+  raster_xlim: [-1, 5]
+  raster_dot_size: 0.5
+  raster_criteria_alpha: 0.3
+
+  # Figure dimensions (behavior_report_PS.py:416 + multiple plt.subplots
+  # calls). Single-axis longitudinal default chosen to match the
+  # playground cell-56 recovery-trajectory render style (deferred this
+  # phase but shape locked); multi-panel grids override per-renderer.
+  figsize_longitudinal: [8, 4]
+  figsize_raster_grid: [10, 5]
