@@ -1,0 +1,1809 @@
+{
+  "metadata": {
+    "captured_at_iso": "2026-05-13T00:01:07.790622+00:00",
+    "captured_against_git_sha": "02a3d9e4d21a533836c12cf26cca5884901070bb",
+    "captured_against_branch": "chore/phase-8a.10-cohort-phase-2-reemit",
+    "script_path": "scripts/phase_8a_10/cohort_reemit_phase_2.py",
+    "cohort_size": 68,
+    "legacy_keys_resolved": 69,
+    "narrows": [
+      "PS46/2025-02-26",
+      "PS50/2025-03-18"
+    ],
+    "phase_2_only": [
+      "PS47/2025-03-02",
+      "PS49/2025-03-03"
+    ],
+    "stamp_audit_unstamped": 0,
+    "stamp_audit_log": ".scratch_phase_8a_10/stamp_audit.md",
+    "dual_h5_hack_sessions": [
+      {
+        "key": "PS55/20250606",
+        "h5_filename": "stroke_0001.h5"
+      }
+    ],
+    "phase_2_successes": 68,
+    "phase_2_partial_successes": 0,
+    "phase_2_errors": 0,
+    "phase_3_successes": 65,
+    "phase_3_partial_successes": 0,
+    "phase_3_errors": 3
+  },
+  "per_session": {
+    "PS46/20250225": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS46\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS46\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS46\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS46\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS46\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS46\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS46\\20250225.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS46/20250227": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS46\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS46\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS46\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS46\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS46\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS46\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS46\\20250227.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS46/20250228": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS46\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS46\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS46\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS46\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS46\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS46\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS46\\20250228.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS46/20250301": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS46\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS46\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS46\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS46\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS46\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS46\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS46\\20250301.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS46/20250302": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS46\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS46\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS46\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS46\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS46\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS46\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS46\\20250302.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS46/20250303": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS46\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS46\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS46\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS46\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS46\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS46\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS46\\20250303.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS46/20250304": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS46\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS46\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS46\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS46\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS46\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS46\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS46\\20250304.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS46/20250305": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS46\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS46\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS46\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS46\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS46\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS46\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS46\\20250305.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS46/20250306": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS46\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS46\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS46\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS46\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS46\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS46\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS46\\20250306.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS47/20250225": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS47\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS47\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS47\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS47\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS47\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS47\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS47\\20250225.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS47/20250227": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS47\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS47\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS47\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS47\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS47\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS47\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS47\\20250227.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS47/20250228": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS47\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS47\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS47\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS47\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS47\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS47\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS47\\20250228.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS47/20250301": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS47\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS47\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS47\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS47\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS47\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS47\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS47\\20250301.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS47/20250302": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS47\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS47\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS47\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS47\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS47\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS47\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS47\\20250302.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [],
+        "bare_result_source": null,
+        "b_result_source": null,
+        "errors": [
+          "FileNotFoundError: No timestamp CSV found for cam2 in \\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Rich\\data\\2pRAM\\facerhythm_stroke_biomarker_exp\\camera\\20250302\\PS47. Looked for: timestamp2_*.csv"
+        ]
+      }
+    },
+    "PS47/20250303": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS47\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS47\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS47\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS47\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS47\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS47\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS47\\20250303.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS47/20250304": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS47\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS47\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS47\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS47\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS47\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS47\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS47\\20250304.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS47/20250305": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS47\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS47\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS47\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS47\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS47\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS47\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS47\\20250305.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS47/20250306": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS47\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS47\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS47\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS47\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS47\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS47\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS47\\20250306.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS48/20250225": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS48\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS48\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS48\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS48\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS48\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS48\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS48\\20250225.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS48/20250227": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS48\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS48\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS48\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS48\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS48\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS48\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS48\\20250227.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS48/20250228": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS48\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS48\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS48\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS48\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS48\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS48\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS48\\20250228.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS48/20250301": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS48\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS48\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS48\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS48\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS48\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS48\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS48\\20250301.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS48/20250302": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS48\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS48\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS48\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS48\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS48\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS48\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS48\\20250302.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS48/20250303": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS48\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS48\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS48\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS48\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS48\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS48\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS48\\20250303.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS48/20250304": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS48\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS48\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS48\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS48\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS48\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS48\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS48\\20250304.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS48/20250305": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS48\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS48\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS48\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS48\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS48\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS48\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS48\\20250305.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS48/20250306": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS48\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS48\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS48\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS48\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS48\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS48\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS48\\20250306.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS48/20250314": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS48\\20250314ab\\20250314a.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS48\\20250314ab\\20250314b.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS48\\20250314ab\\20250314a.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS48\\20250314ab\\20250314b.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS48\\20250314ab\\20250314a.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS48\\20250314ab\\20250314b.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS48\\20250314ab\\20250314a.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS48\\20250314ab\\20250314b.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS48\\20250314ab\\20250314a.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS48\\20250314ab\\20250314b.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS48\\20250314ab\\20250314a.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS48\\20250314ab\\20250314b.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS48\\20250314ab\\20250314a.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS48\\20250314ab\\20250314b.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "merged_multi_half",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS49/20250225": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS49\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS49\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS49\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS49\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS49\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS49\\20250225.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS49\\20250225.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS49/20250227": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS49\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS49\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS49\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS49\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS49\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS49\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS49\\20250227.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS49/20250228": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS49\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS49\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS49\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS49\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS49\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS49\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS49\\20250228.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS49/20250301": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS49\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS49\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS49\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS49\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS49\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS49\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS49\\20250301.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS49/20250302": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS49\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS49\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS49\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS49\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS49\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS49\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS49\\20250302.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS49/20250303": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS49\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS49\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS49\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS49\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS49\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS49\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS49\\20250303.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [],
+        "bare_result_source": null,
+        "b_result_source": null,
+        "errors": [
+          "FileNotFoundError: No timestamp CSV found for cam2 in \\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Rich\\data\\2pRAM\\facerhythm_stroke_biomarker_exp\\camera\\20250303\\PS49. Looked for: timestamp2_*.csv"
+        ]
+      }
+    },
+    "PS49/20250304": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS49\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS49\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS49\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS49\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS49\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS49\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS49\\20250304.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS49/20250305": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS49\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS49\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS49\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS49\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS49\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS49\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS49\\20250305.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS49/20250306": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS49\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS49\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS49\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS49\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS49\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS49\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS49\\20250306.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS49/20250307": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS49\\20250307.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS49\\20250307.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS49\\20250307.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS49\\20250307.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS49\\20250307.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS49\\20250307.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS49\\20250307.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS49/20250308": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS49\\20250308.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS49\\20250308.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS49\\20250308.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS49\\20250308.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS49\\20250308.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS49\\20250308.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS49\\20250308.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS49/20250309": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS49\\20250309.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS49\\20250309.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS49\\20250309.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS49\\20250309.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS49\\20250309.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS49\\20250309.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS49\\20250309.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250227": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250227.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250227.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250228": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250228.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250228.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250301": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250301.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250301.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250302": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250302.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250302.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250303": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250303.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250303.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250304": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250304.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250304.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250305": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250305.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250305.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250306": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250306.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250306.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250307": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250307.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250307.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250307.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250307.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250307.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250307.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250307.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250308": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250308.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250308.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250308.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250308.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250308.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250308.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250308.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250309": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250309.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250309.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250309.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250309.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250309.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250309.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250309.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250310": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250310.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250310.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250310.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250310.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250310.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250310.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250310.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250311": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250311.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250311.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250311.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250311.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250311.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250311.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250311.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250312": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250312.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250312.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250312.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250312.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250312.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250312.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250312.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250313": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250313.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250313.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250313.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250313.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250313.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250313.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250313.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250314": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250314.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250314.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250314.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250314.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250314.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250314.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250314.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250315": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250315.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250315.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250315.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250315.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250315.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250315.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250315.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250316": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250316.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250316.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250316.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250316.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250316.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250316.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250316.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS50/20250317": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS50\\20250317.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS50\\20250317.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS50\\20250317.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS50\\20250317.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS50\\20250317.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS50\\20250317.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS50\\20250317.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS51/20250424": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS51\\20250424.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS51\\20250424.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS51\\20250424.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS51\\20250424.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS51\\20250424.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS51\\20250424.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS51\\20250424.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS51/20250425": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS51\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS51\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS51\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS51\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS51\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS51\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS51\\20250425.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS51/20250426": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS51\\20250426.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS51\\20250426.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS51\\20250426.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS51\\20250426.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS51\\20250426.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS51\\20250426.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS51\\20250426.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS54/20250424": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS54\\20250424.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS54\\20250424.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS54\\20250424.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS54\\20250424.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS54\\20250424.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS54\\20250424.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS54\\20250424.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS54/20250425": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS54\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS54\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS54\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS54\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS54\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS54\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS54\\20250425.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS54/20250426": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS54\\20250426.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS54\\20250426.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS54\\20250426.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS54\\20250426.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS54\\20250426.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS54\\20250426.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS54\\20250426.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS55/20250425": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS55\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS55\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS55\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS55\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS55\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS55\\20250425.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS55\\20250425.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS55/20250427": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS55\\20250427.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS55\\20250427.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS55\\20250427.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS55\\20250427.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS55\\20250427.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS55\\20250427.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS55\\20250427.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_result_source": "computed",
+        "b_result_source": null,
+        "errors": []
+      }
+    },
+    "PS55/20250606": {
+      "phase_2": {
+        "suffixes_produced": [
+          "bare"
+        ],
+        "bare_paths": [
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\grooming_bouts\\PS55\\20250606.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\licks_and_rewards\\PS55\\20250606.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\peri_reward_periods\\PS55\\20250606.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\quiet_bouts\\PS55\\20250606.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\running_bouts\\PS55\\20250606.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\treadmill_signals_preprocessed\\PS55\\20250606.npz",
+          "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs\\spout_behavior\\wavesurfer_signals_processed\\PS55\\20250606.npz"
+        ],
+        "b_paths": [],
+        "errors": []
+      },
+      "phase_3": {
+        "suffixes_produced": [],
+        "bare_result_source": null,
+        "b_result_source": null,
+        "errors": [
+          "skipped: dual-h5 hack only covers Phase 2; Phase 3 alignment recompute would need a parallel hack (or wavesurfer_file_overrides: block in session_overrides.yaml). Forward-pointer logged in DECISIONS."
+        ]
+      }
+    }
+  }
+}

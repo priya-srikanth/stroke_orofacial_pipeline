@@ -30,19 +30,32 @@ from stroke_orofacial.manifest import (
 )
 
 
-# The 19 Pattern B sessions locked by the Phase 7-pre-secondary-spout
-# Task 1 audit. Mirrors the YAML block and the Task 0.5 baseline cohort.
+# The secondary-spout cohort. Grew from 19 → 24 in Phase 8a.10 cohort
+# re-emit (added PS51/2025-04-24, PS51/2025-04-25, PS54/2025-04-24,
+# PS54/2025-04-25, PS55/2025-04-25 — a-suffix bare-WS-override entries
+# mirroring the existing PS55/2025-04-24 pattern).
 EXPECTED_COHORT: dict[str, list[str]] = {
-    "PS51": ["2025-04-30", "2025-05-05"],
+    "PS51": ["2025-04-24", "2025-04-25", "2025-04-30", "2025-05-05"],
     "PS54": [
-        "2025-04-30", "2025-05-30", "2025-06-16", "2025-06-18", "2025-06-19",
-        "2025-06-20", "2025-06-21", "2025-06-23", "2025-06-24", "2025-06-25",
-        "2025-06-26",
+        "2025-04-24", "2025-04-25", "2025-04-30", "2025-05-30", "2025-06-16",
+        "2025-06-18", "2025-06-19", "2025-06-20", "2025-06-21", "2025-06-23",
+        "2025-06-24", "2025-06-25", "2025-06-26",
     ],
     "PS55": [
-        "2025-04-24", "2025-04-28", "2025-04-30", "2025-05-30", "2025-06-01",
-        "2025-06-05",
+        "2025-04-24", "2025-04-25", "2025-04-28", "2025-04-30", "2025-05-30",
+        "2025-06-01", "2025-06-05",
     ],
+}
+
+# (animal, date) pairs that carry a non-empty override entry. The other
+# entries in EXPECTED_COHORT are empty dicts (default convention).
+EXPECTED_OVERRIDE_ENTRIES: dict[tuple[str, str], dict] = {
+    ("PS51", "2025-04-24"): {"bare_ws_subdir_override": "20250424a"},
+    ("PS51", "2025-04-25"): {"bare_ws_subdir_override": "20250425a"},
+    ("PS54", "2025-04-24"): {"bare_ws_subdir_override": "20250424a"},
+    ("PS54", "2025-04-25"): {"bare_ws_subdir_override": "20250425a"},
+    ("PS55", "2025-04-24"): {"bare_ws_subdir_override": "20250424a"},
+    ("PS55", "2025-04-25"): {"bare_ws_subdir_override": "20250425a"},
 }
 
 
@@ -78,7 +91,7 @@ class TestRealConfigLoad:
         assert set(registry.keys()) == set(EXPECTED_COHORT.keys())
 
     def test_full_cohort_present(self, overrides_config):
-        """All 19 (animal, date) pairs land in the loaded registry."""
+        """All (animal, date) pairs land in the loaded registry."""
         registry = load_secondary_spout_sessions(overrides_config)
         for animal, dates in EXPECTED_COHORT.items():
             assert set(registry[animal].keys()) == set(dates), (
@@ -87,29 +100,36 @@ class TestRealConfigLoad:
             )
 
     def test_total_cohort_size(self, overrides_config):
-        """Cohort totals exactly 19 sessions across PS51/PS54/PS55."""
+        """Cohort totals 24 sessions (19 Phase-7-pre + 5 Phase-8a.10
+        a-suffix entries) across PS51/PS54/PS55."""
         registry = load_secondary_spout_sessions(overrides_config)
         total = sum(len(d) for d in registry.values())
-        assert total == 19, (
-            f"expected 19 Pattern B sessions, registry has {total}"
+        expected_total = sum(len(d) for d in EXPECTED_COHORT.values())
+        assert total == expected_total, (
+            f"expected {expected_total} Pattern B sessions, registry has {total}"
         )
 
-    def test_ps55_20250424_has_override(self, overrides_config):
-        """PS55/2025-04-24 carries ``bare_ws_subdir_override="20250424a"``
-        per Task 1 audit recommendation (f) for the a-suffix edge case."""
+    def test_a_suffix_overrides_present(self, overrides_config):
+        """All 6 a-suffix override entries (PS51/2025-04-24,
+        PS51/2025-04-25, PS54/2025-04-24, PS54/2025-04-25,
+        PS55/2025-04-24, PS55/2025-04-25) carry the expected
+        ``bare_ws_subdir_override`` matching the YYYYMMDDa convention."""
         registry = load_secondary_spout_sessions(overrides_config)
-        entry = registry["PS55"]["2025-04-24"]
-        assert entry == {"bare_ws_subdir_override": "20250424a"}
+        for (animal, date_str), expected in EXPECTED_OVERRIDE_ENTRIES.items():
+            assert registry[animal][date_str] == expected, (
+                f"{animal}/{date_str}: got {registry[animal][date_str]} "
+                f"expected {expected}"
+            )
 
-    def test_other_18_entries_use_default_convention(self, overrides_config):
-        """All 18 non-PS55/2025-04-24 entries are empty dicts (default
-        ``{DATE}``/``{DATE}b`` discovery convention)."""
+    def test_non_override_entries_use_default_convention(self, overrides_config):
+        """Entries not in EXPECTED_OVERRIDE_ENTRIES are empty dicts
+        (default ``{DATE}``/``{DATE}b`` discovery convention)."""
         registry = load_secondary_spout_sessions(overrides_config)
         non_default_keys: list[tuple[str, str]] = []
         for animal, dates in registry.items():
             for date_str, entry in dates.items():
-                if (animal, date_str) == ("PS55", "2025-04-24"):
-                    continue  # the one expected override
+                if (animal, date_str) in EXPECTED_OVERRIDE_ENTRIES:
+                    continue
                 if entry:
                     non_default_keys.append((animal, date_str))
         assert not non_default_keys, (

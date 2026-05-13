@@ -118,9 +118,17 @@ multi_half_sessions:
 #       "<YYYY-MM-DD>": {}            # default convention
 secondary_spout_sessions:
   PS51:
+    "2025-04-24":
+      bare_ws_subdir_override: "20250424a"   # added Phase 8a.10 cohort re-emit; legacy include_dates lists "20250424a"
+    "2025-04-25":
+      bare_ws_subdir_override: "20250425a"   # added Phase 8a.10 cohort re-emit; legacy include_dates lists "20250425a"
     "2025-04-30": {}
     "2025-05-05": {}
   PS54:
+    "2025-04-24":
+      bare_ws_subdir_override: "20250424a"   # added Phase 8a.10 cohort re-emit; legacy include_dates lists "20250424a"
+    "2025-04-25":
+      bare_ws_subdir_override: "20250425a"   # added Phase 8a.10 cohort re-emit; legacy include_dates lists "20250425a"
     "2025-04-30": {}
     "2025-05-30": {}
     "2025-06-16": {}
@@ -135,6 +143,8 @@ secondary_spout_sessions:
   PS55:
     "2025-04-24":
       bare_ws_subdir_override: "20250424a"   # bare cam dir IS "20250424"; only WS is asymmetric
+    "2025-04-25":
+      bare_ws_subdir_override: "20250425a"   # added Phase 8a.10 cohort re-emit; legacy include_dates lists "20250425a"
     "2025-04-28": {}                          # n_dlc=0 OK — Phase 2/3 are DLC-free
     "2025-04-30": {}
     "2025-05-30": {}
