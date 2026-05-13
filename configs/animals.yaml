@@ -191,7 +191,7 @@ PS50:
 PS51:
   stroke_date: 2025-04-29
   sessions:
-    start: 2025-04-16
+    start: 2025-04-21
     end: 2025-07-09
   exclusions:
     - date: 2025-04-26
@@ -222,7 +222,7 @@ PS51:
 PS54:
   stroke_date: 2025-04-30
   sessions:
-    start: 2025-04-16
+    start: 2025-04-21
     end: 2025-07-09
   exclusions:
     - date: 2025-04-26
@@ -250,7 +250,7 @@ PS54:
 PS55:
   stroke_date: 2025-04-30
   sessions:
-    start: 2025-04-16
+    start: 2025-04-21
     end: 2025-07-09
   exclusions:
     - date: 2025-04-27
