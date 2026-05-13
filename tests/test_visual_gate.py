@@ -288,6 +288,7 @@ def _write_phase2_npzs(
     lick_l: np.ndarray, lick_r: np.ndarray,
     reward_l: np.ndarray, reward_r: np.ndarray,
     sample_rate: float,
+    n_samples: int | None = None,
 ) -> None:
     sp = output_root / "spout_behavior"
     licks_dir = sp / "licks_and_rewards" / animal
@@ -299,10 +300,11 @@ def _write_phase2_npzs(
         Lick_L=lick_l, Lick_R=lick_r,
         Reward_L=reward_l, Reward_R=reward_r,
     )
-    np.savez(
-        ws_dir / f"{date_label}.npz",
-        sample_rate_input=np.array(sample_rate),
-    )
+    ws_kwargs: dict[str, np.ndarray] = {"sample_rate_input": np.array(sample_rate)}
+    if n_samples is not None:
+        # 1D signal so load_session_plot_data populates n_samples_session
+        ws_kwargs["Treadmill"] = np.zeros(n_samples, dtype=np.float32)
+    np.savez(ws_dir / f"{date_label}.npz", **ws_kwargs)
 
 
 class TestLoadSessionPlotData:
@@ -512,8 +514,10 @@ from stroke_orofacial.spout_behavior.visual_gate import (  # noqa: E402
     compute_first_lick_correct,
     compute_firstLickCorrect_bySession,
     compute_latency_bySession,
+    compute_lickiness_bySession,
     compute_median_lick_rate_bySession,
     compute_num_licks_bySession,
+    compute_switchiness_bySession,
     compute_trial_lick_delays,
     load_behavior_report_params,
     render_accuracy_firstCorrectLick,
@@ -521,10 +525,12 @@ from stroke_orofacial.spout_behavior.visual_gate import (  # noqa: E402
     render_criteria_performance,
     render_latency_bySession,
     render_lick_raster,
+    render_lickiness_bySession,
     render_lickRate_bySession,
     render_numLicks_bySession_all,
     render_numLicks_bySession_correct,
     render_numLicks_bySession_correct_and_incorrect,
+    render_switchiness_bySession,
 )
 
 
@@ -859,19 +865,14 @@ def cohort_for_renders(tmp_path, monkeypatch):
     # Write Phase-2 NPZs at output_root override
     output_root = tmp_path / "pipeline_outputs"
     for date in dates:
-        sp = output_root / "spout_behavior"
-        (sp / "licks_and_rewards" / "PS51").mkdir(parents=True, exist_ok=True)
-        (sp / "wavesurfer_signals_processed" / "PS51").mkdir(parents=True, exist_ok=True)
-        np.savez(
-            sp / "licks_and_rewards" / "PS51" / f"{date}.npz",
-            Lick_L=np.array([500, 1100, 1500, 2000, 2500, 2900], dtype=int),
-            Lick_R=np.array([900, 5200, 5800, 6100, 6500, 7000, 7500], dtype=int),
-            Reward_L=np.array([1000], dtype=int),
-            Reward_R=np.array([5000], dtype=int),
-        )
-        np.savez(
-            sp / "wavesurfer_signals_processed" / "PS51" / f"{date}.npz",
-            sample_rate_input=np.array(1000.0),
+        _write_phase2_npzs(
+            output_root, "PS51", date,
+            lick_l=np.array([500, 1100, 1500, 2000, 2500, 2900], dtype=int),
+            lick_r=np.array([900, 5200, 5800, 6100, 6500, 7000, 7500], dtype=int),
+            reward_l=np.array([1000], dtype=int),
+            reward_r=np.array([5000], dtype=int),
+            sample_rate=1000.0,
+            n_samples=60000,  # 60 sec at 1000 Hz; populates n_samples_session
         )
     # Custom paths.yaml pointing local_processed_spout → tmp_path
     paths_yaml = tmp_path / "paths.yaml"
@@ -1163,3 +1164,351 @@ class TestRenderLickRaster:
 
     def test_module_export(self):
         assert hasattr(visual_gate, "render_lick_raster")
+
+
+# =====================================================================
+# Commit-group 4: lickiness + switchiness
+# =====================================================================
+
+
+class TestComputeLickinessBySession:
+    def test_counts_licks_in_inter_reward_window(self):
+        """2 rewards 10 seconds apart; licks between them in the
+        late-window range get counted."""
+        data = SessionPlotData(
+            date_label="20250430",
+            lick_idx={
+                # 2 L licks at t=9s and 10s (within late window of reward at t=0)
+                "Lick_L": np.array([9000, 10000], dtype=int),
+                "Lick_R": np.array([], dtype=int),
+            },
+            rewards_idx={
+                "Reward_L": np.array([0], dtype=int),
+                "Reward_R": np.array([20000], dtype=int),
+            },
+            sample_rate=1000.0,
+            n_samples_session=30000,
+        )
+        # late_window_start=8s → licks at 9s/10s past 8000 sample start
+        # late_window_end=60s → window end = min(20000 next reward, 0+60000) = 20000
+        counts = compute_lickiness_bySession(
+            data,
+            late_window_start_seconds=8.0,
+            late_window_end_seconds=60.0,
+        )
+        assert counts["L"] == 2
+        assert counts["R"] == 0
+
+    def test_dense_rewards_next_reward_caps_window(self):
+        """When next_reward is closer than the 60s cap, the next-reward
+        boundary trims the late-window (mirrors legacy line 870)."""
+        data = SessionPlotData(
+            date_label="20250430",
+            # Reward at 0; next reward at sample 12000 (12 sec).
+            # Late window: [8000 (8s), min(12000, 60000)=12000].
+            # Lick at 11000 (in window); lick at 13000 (past next reward, excluded)
+            lick_idx={
+                "Lick_L": np.array([11000, 13000], dtype=int),
+                "Lick_R": np.array([], dtype=int),
+            },
+            rewards_idx={
+                "Reward_L": np.array([0], dtype=int),
+                "Reward_R": np.array([12000], dtype=int),
+            },
+            sample_rate=1000.0,
+            n_samples_session=30000,
+        )
+        counts = compute_lickiness_bySession(
+            data,
+            late_window_start_seconds=8.0,
+            late_window_end_seconds=60.0,
+        )
+        assert counts["L"] == 1  # only 11000; 13000 past next-reward cap
+
+    def test_handles_empty_rewards(self):
+        data = SessionPlotData(
+            date_label="20250430",
+            lick_idx={"Lick_L": np.array([], dtype=int),
+                      "Lick_R": np.array([], dtype=int)},
+            rewards_idx={"Reward_L": np.array([], dtype=int),
+                         "Reward_R": np.array([], dtype=int)},
+            sample_rate=1000.0,
+            n_samples_session=30000,
+        )
+        counts = compute_lickiness_bySession(
+            data,
+            late_window_start_seconds=8.0,
+            late_window_end_seconds=60.0,
+        )
+        assert counts == {"L": 0, "R": 0}
+
+    def test_last_reward_uses_n_samples_cap(self):
+        """For the last reward, the window closes at min(rew + end,
+        n_samples_session) — n_samples_session=15000 trims a 0+60s=60000
+        sample window down to 15000."""
+        data = SessionPlotData(
+            date_label="20250430",
+            lick_idx={
+                # Lick at 14000 (within trimmed window), lick at 16000 (past)
+                "Lick_L": np.array([14000, 16000], dtype=int),
+                "Lick_R": np.array([], dtype=int),
+            },
+            rewards_idx={
+                "Reward_L": np.array([0], dtype=int),
+                "Reward_R": np.array([], dtype=int),
+            },
+            sample_rate=1000.0,
+            n_samples_session=15000,
+        )
+        counts = compute_lickiness_bySession(
+            data,
+            late_window_start_seconds=8.0,
+            late_window_end_seconds=60.0,
+        )
+        assert counts["L"] == 1
+
+
+class TestComputeSwitchinessBySession:
+    def test_no_licks_yields_nan(self):
+        """Empty trials → no count contributions → NaN means."""
+        delays: dict[str, dict[int, dict[str, np.ndarray]]] = {
+            "Reward_L": {}, "Reward_R": {},
+        }
+        sw = compute_switchiness_bySession(delays)
+        assert np.isnan(sw["L->R"])
+        assert np.isnan(sw["R->L"])
+
+    def test_single_event_yields_zero_transitions(self):
+        delays = {
+            "Reward_L": {
+                0: {
+                    "Lick_L": np.array([100]),
+                    "Lick_R": np.array([], dtype=int),
+                },
+            },
+            "Reward_R": {},
+        }
+        sw = compute_switchiness_bySession(delays)
+        # 1 event → 0 transitions
+        assert sw["L->R"] == pytest.approx(0.0)
+        assert sw["R->L"] == pytest.approx(0.0)
+
+    def test_alternating_LRLR_counts_transitions(self):
+        """4-event LRLR sequence within one trial = 3 transitions
+        (L→R, R→L, L→R). So c_LR=2, c_RL=1."""
+        delays = {
+            "Reward_L": {
+                0: {
+                    "Lick_L": np.array([100, 300], dtype=int),
+                    "Lick_R": np.array([200, 400], dtype=int),
+                },
+            },
+            "Reward_R": {},
+        }
+        sw = compute_switchiness_bySession(delays)
+        assert sw["L->R"] == pytest.approx(2.0)
+        assert sw["R->L"] == pytest.approx(1.0)
+
+    def test_mouse_frame_no_ws_flip(self):
+        """compute_switchiness_bySession operates mouse-frame directly
+        on the input lick_delays (which are mouse-frame post-Phase-6.8).
+        Legacy did a WS-frame compute + plot-time flip; new pipeline
+        does NEITHER — input is already mouse-frame and output keys are
+        labeled in mouse-frame."""
+        delays = {
+            "Reward_L": {
+                0: {
+                    "Lick_L": np.array([100, 300]),
+                    "Lick_R": np.array([200], dtype=int),
+                },
+            },
+            "Reward_R": {},
+        }
+        sw = compute_switchiness_bySession(delays)
+        # L→R (100→200): 1; R→L (200→300): 1
+        assert sw["L->R"] == pytest.approx(1.0)
+        assert sw["R->L"] == pytest.approx(1.0)
+
+
+class TestRenderLickinessBySession:
+    def test_returns_svg_and_png_paths(self, cohort_for_renders):
+        resolver, _ = cohort_for_renders
+        svg_path, png_path = render_lickiness_bySession(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        assert svg_path.exists() and svg_path.stat().st_size > 0
+        assert png_path.exists() and png_path.stat().st_size > 0
+        assert svg_path.name == "lickiness_bySession_relStroke.svg"
+        assert png_path.name == "lickiness_bySession_relStroke.png"
+
+    def test_absdate_suffix_when_unaligned(self, cohort_for_renders):
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_lickiness_bySession(
+            "PS51", resolver, align_to_stroke=False,
+        )
+        assert svg_path.name == "lickiness_bySession_absDate.svg"
+
+    def test_raises_when_no_sessions(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        legacy_root = tmp_path / "legacy_analysis"
+        bba = legacy_root / "basic_behavior_analysis3" / "PS51"
+        bba.mkdir(parents=True, exist_ok=True)
+        (bba / "report.json").write_text(
+            json.dumps({"latency_bySession": {}}), encoding="utf-8",
+        )
+        paths_yaml = tmp_path / "paths.yaml"
+        paths_yaml.write_text(textwrap.dedent(f"""
+            logical_roots:
+              microscope_pipeline_outputs:
+                description: "out"
+                mounts:
+                  mac: "/Volumes/dummy/po"
+                  windows: "C:\\\\dummy\\\\po"
+              local_processed_spout:
+                description: "legacy"
+                mounts:
+                  {_HOST_KEY}:
+                    - "{legacy_root.as_posix()}"
+        """))
+        resolver = PathResolver(paths_yaml, output_root=tmp_path)
+        with pytest.raises(ValueError, match="no Cohort A sessions"):
+            render_lickiness_bySession("PS51", resolver, align_to_stroke=True)
+
+    def test_title_and_ylabel_strings(self, cohort_for_renders):
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_lickiness_bySession(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        svg_text = svg_path.read_text(encoding="utf-8")
+        assert "Lickiness by session" in svg_text
+        assert "Late licks per session" in svg_text
+
+    def test_mouse_frame_ylabel_no_fn_flip(self, cohort_for_renders):
+        """Legend labels say "mouse L" / "mouse R" directly (no flip).
+        Pin to catch regression to legacy fn_flip_lr."""
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_lickiness_bySession(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        svg_text = svg_path.read_text(encoding="utf-8")
+        assert "mouse L" in svg_text
+        assert "mouse R" in svg_text
+
+
+class TestRenderSwitchinessBySession:
+    def test_returns_svg_and_png_paths(self, cohort_for_renders):
+        resolver, _ = cohort_for_renders
+        svg_path, png_path = render_switchiness_bySession(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        assert svg_path.exists() and svg_path.stat().st_size > 0
+        assert png_path.exists() and png_path.stat().st_size > 0
+        assert svg_path.name == "switchiness_bySession_relStroke.svg"
+
+    def test_absdate_suffix_when_unaligned(self, cohort_for_renders):
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_switchiness_bySession(
+            "PS51", resolver, align_to_stroke=False,
+        )
+        assert svg_path.name == "switchiness_bySession_absDate.svg"
+
+    def test_raises_when_no_sessions(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        legacy_root = tmp_path / "legacy_analysis"
+        bba = legacy_root / "basic_behavior_analysis3" / "PS51"
+        bba.mkdir(parents=True, exist_ok=True)
+        (bba / "report.json").write_text(
+            json.dumps({"latency_bySession": {}}), encoding="utf-8",
+        )
+        paths_yaml = tmp_path / "paths.yaml"
+        paths_yaml.write_text(textwrap.dedent(f"""
+            logical_roots:
+              microscope_pipeline_outputs:
+                description: "out"
+                mounts:
+                  mac: "/Volumes/dummy/po"
+                  windows: "C:\\\\dummy\\\\po"
+              local_processed_spout:
+                description: "legacy"
+                mounts:
+                  {_HOST_KEY}:
+                    - "{legacy_root.as_posix()}"
+        """))
+        resolver = PathResolver(paths_yaml, output_root=tmp_path)
+        with pytest.raises(ValueError, match="no Cohort A sessions"):
+            render_switchiness_bySession("PS51", resolver, align_to_stroke=True)
+
+    def test_title_and_ylabel_strings(self, cohort_for_renders):
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_switchiness_bySession(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        svg_text = svg_path.read_text(encoding="utf-8")
+        assert "Switchiness by session" in svg_text
+        assert "Avg switches per trial" in svg_text
+
+    def test_legend_labels_use_arrow_notation(self, cohort_for_renders):
+        """Pin: legacy plot uses "L→R" / "R→L" label strings (with arrow
+        character, not "->")."""
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_switchiness_bySession(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        svg_text = svg_path.read_text(encoding="utf-8")
+        # matplotlib SVG-escapes "→" as the literal Unicode arrow char
+        assert "L→R" in svg_text
+        assert "R→L" in svg_text
+
+
+class TestSessionPlotDataNSamplesExtension:
+    """CG-4 extended SessionPlotData with n_samples_session. CG-1 tests
+    that don't set the field still pass (default 0); load_session_plot_data
+    reads it from the first 1D WS signal when present."""
+
+    def test_default_zero(self):
+        data = SessionPlotData(
+            date_label="20250430",
+            lick_idx={"Lick_L": np.array([]), "Lick_R": np.array([])},
+            rewards_idx={"Reward_L": np.array([]), "Reward_R": np.array([])},
+            sample_rate=1000.0,
+        )
+        assert data.n_samples_session == 0
+
+    def test_load_populates_from_1d_signal(self, tmp_path):
+        _write_phase2_npzs(
+            tmp_path, "PS51", "20250430",
+            lick_l=np.array([100]),
+            lick_r=np.array([150]),
+            reward_l=np.array([50]),
+            reward_r=np.array([175]),
+            sample_rate=1000.0,
+            n_samples=42_000,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        data = load_session_plot_data("PS51", "20250430", resolver)
+        assert data.n_samples_session == 42_000
+
+    def test_load_defaults_to_zero_when_no_1d_signal(self, tmp_path):
+        _write_phase2_npzs(
+            tmp_path, "PS51", "20250430",
+            lick_l=np.array([100]),
+            lick_r=np.array([150]),
+            reward_l=np.array([50]),
+            reward_r=np.array([175]),
+            sample_rate=1000.0,
+            # n_samples=None → no 1D signal in WS NPZ
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        data = load_session_plot_data("PS51", "20250430", resolver)
+        assert data.n_samples_session == 0
+
+
+class TestCG4ModuleExports:
+    @pytest.mark.parametrize("name", [
+        "compute_lickiness_bySession", "compute_switchiness_bySession",
+        "render_lickiness_bySession", "render_switchiness_bySession",
+    ])
+    def test_symbol_exists(self, name):
+        assert hasattr(visual_gate, name), (
+            f"visual_gate.{name} missing — commit-group 4 public surface"
+        )

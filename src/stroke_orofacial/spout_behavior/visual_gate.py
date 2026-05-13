@@ -279,12 +279,22 @@ class SessionPlotData:
         Wavesurfer sample rate (Hz). Pulled from the Phase 1
         ``wavesurfer_signals_processed`` NPZ's ``sample_rate_input``
         scalar.
+    n_samples_session : int
+        Total wavesurfer-signal length in samples for this session.
+        Read from the first 1D signal in the
+        ``wavesurfer_signals_processed`` NPZ (e.g. ``Treadmill``).
+        ``0`` falls back when the NPZ has no 1D signal — downstream
+        consumers (lickiness window cap) treat 0 as "no cap available"
+        and silently skip the post-last-reward window. Mirrors legacy
+        ``n_samps = data_ws[date][next(iter(data_ws[date]))].shape[0]``
+        (behavior_report_PS.py:862).
     """
 
     date_label: str
     lick_idx: dict[str, np.ndarray]
     rewards_idx: dict[str, np.ndarray]
     sample_rate: float
+    n_samples_session: int = 0
 
 
 def load_session_plot_data(
@@ -324,13 +334,25 @@ def load_session_plot_data(
     with np.load(licks_path, allow_pickle=True) as licks:
         lick_idx = {key: licks[key] for key in ("Lick_L", "Lick_R")}
         rewards_idx = {key: licks[key] for key in ("Reward_L", "Reward_R")}
+    n_samples_session = 0
     with np.load(ws_path, allow_pickle=True) as ws:
         sample_rate = float(ws["sample_rate_input"])
+        # First 1D signal's length = total session sample count. Phase
+        # 2 wavesurfer_signals_processed NPZs typically include
+        # ``Treadmill`` / ``Lick_L_signal`` etc.; any 1D entry works
+        # (they all share the session length). Scalars and 0-d arrays
+        # (e.g. ``sample_rate_input``) are skipped.
+        for key in ws.files:
+            arr = ws[key]
+            if arr.ndim == 1:
+                n_samples_session = int(arr.shape[0])
+                break
     return SessionPlotData(
         date_label=date_label,
         lick_idx=lick_idx,
         rewards_idx=rewards_idx,
         sample_rate=sample_rate,
+        n_samples_session=n_samples_session,
     )
 
 
@@ -1473,6 +1495,266 @@ def render_lick_raster(
     )
     paths = save_visual_gate_figure(
         fig, animal, "lick_raster", axis.suffix, resolver,
+        overwrite=overwrite,
+    )
+    plt.close(fig)
+    return paths
+
+
+# =====================================================================
+# Commit-group 4: lickiness + switchiness
+# =====================================================================
+#
+# Two engagement-quality plot families ported from canonical
+# behavior_report_PS.py (lines 852-935). Both follow CG-2's
+# longitudinal-mean style; one new compute helper per family.
+#
+# Lickiness: per-session count of "late licks" — licks within the
+# inter-reward window after the standard post-reward window expires
+# but before the next reward (or 60s, whichever is shorter). High
+# lickiness = the mouse is licking even when not cued by a recent
+# reward.
+#
+# Switchiness: per-trial mean count of L↔R lick transitions within
+# the standard post-reward window. High switchiness = the mouse is
+# rapidly switching sides during a single trial.
+
+
+def compute_lickiness_bySession(
+    session_data: SessionPlotData,
+    *,
+    late_window_start_seconds: float,
+    late_window_end_seconds: float,
+) -> dict[str, int]:
+    """Per-side count of "late licks" within the inter-reward window.
+
+    Mirrors legacy ``lickiness`` (behavior_report_PS.py:855-883). For
+    each consecutive reward pair (rew, next_rew):
+      - Late-lick window opens at ``rew + late_window_start_seconds``.
+      - Window closes at ``min(next_rew, rew + late_window_end_seconds)``.
+      - Licks STRICTLY between window start and end (exclusive on
+        both ends, per legacy ``>`` and ``<``).
+    For the LAST reward: closes at ``min(rew + end, n_samples_session)``
+    when ``n_samples_session > 0``; falls back to ``rew + end``
+    otherwise (no session-length cap available).
+
+    Returns ``{"L": <count>, "R": <count>}``.
+    """
+    sr = session_data.sample_rate
+    upper = int(late_window_start_seconds * sr)
+    mx = int(late_window_end_seconds * sr)
+    n_samps = session_data.n_samples_session
+
+    out: dict[str, int] = {"L": 0, "R": 0}
+    all_rews = np.sort(np.concatenate([
+        session_data.rewards_idx["Reward_L"],
+        session_data.rewards_idx["Reward_R"],
+    ]))
+    if all_rews.size == 0:
+        return out
+
+    # Inter-reward windows.
+    for rew, next_rew in zip(all_rews[:-1], all_rews[1:]):
+        start = int(rew) + upper
+        end = min(int(next_rew), int(rew) + mx)
+        if end <= start:
+            continue
+        for side in ("L", "R"):
+            ls = session_data.lick_idx[f"Lick_{side}"]
+            out[side] += int(np.sum((ls > start) & (ls < end)))
+
+    # Post-last-reward window. Capped at n_samples_session when known;
+    # uncapped otherwise (fallback when WS NPZ had no 1D signal).
+    last = int(all_rews[-1])
+    start = last + upper
+    end = last + mx
+    if n_samps > 0:
+        end = min(end, n_samps)
+    if end > start:
+        for side in ("L", "R"):
+            ls = session_data.lick_idx[f"Lick_{side}"]
+            out[side] += int(np.sum((ls > start) & (ls < end)))
+    return out
+
+
+def compute_switchiness_bySession(
+    trial_lick_delays: dict[str, dict[int, dict[str, np.ndarray]]],
+) -> dict[str, float]:
+    """Average per-trial L→R + R→L lick-side transition counts.
+
+    Mirrors legacy ``switchiness`` compute (behavior_report_PS.py:895-920).
+    For each trial (across both reward sides), interleave the per-side
+    lick events (timestamp + side), sort chronologically, count
+    consecutive-event transitions where ``prev != current``. ``L→R``
+    counts L-then-R transitions; ``R→L`` counts R-then-L. Returned
+    values are the cohort-wide mean across all trials in the session.
+
+    Input is mouse-frame post-Phase-6.8 (``trial_lick_delays`` from
+    :func:`compute_trial_lick_delays` with mouse-frame side keys), so
+    no WS-frame flip is applied to the output.
+    """
+    lr_counts: list[int] = []
+    rl_counts: list[int] = []
+    for side_reward in ("L", "R"):
+        trials = trial_lick_delays[f"Reward_{side_reward}"]
+        for trial_lick_dict in trials.values():
+            events = (
+                [(int(t), "L") for t in trial_lick_dict["Lick_L"]]
+                + [(int(t), "R") for t in trial_lick_dict["Lick_R"]]
+            )
+            events.sort(key=lambda x: x[0])
+            c_LR = c_RL = 0
+            if len(events) > 1:
+                prev = events[0][1]
+                for _, side in events[1:]:
+                    if prev == "L" and side == "R":
+                        c_LR += 1
+                    elif prev == "R" and side == "L":
+                        c_RL += 1
+                    prev = side
+            lr_counts.append(c_LR)
+            rl_counts.append(c_RL)
+    return {
+        "L->R": float(np.mean(lr_counts)) if lr_counts else float("nan"),
+        "R->L": float(np.mean(rl_counts)) if rl_counts else float("nan"),
+    }
+
+
+# ---- Renderers ----
+
+
+def render_lickiness_bySession(
+    animal: str,
+    resolver: PathResolver,
+    *,
+    align_to_stroke: bool = True,
+    config: dict[str, Any] | None = None,
+    behavior_params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["force", "skip", "raise"] = "force",
+) -> tuple[Path, Path]:
+    """Per-mouse late-lick count per side, longitudinal.
+
+    Mirrors legacy ``lickiness_bySession`` (behavior_report_PS.py:885-893).
+    Y-axis intentionally NOT bounded (legacy auto-scales — high
+    lickiness = behavioral disengagement; the absolute range varies
+    by animal). Late-window start = ``behavior_report.window_around_rewards[1]``
+    (post-reward window end); end = ``visual_gate.lickiness_window_seconds``
+    (60s cap by default).
+    """
+    config = config or load_visual_gate_config()
+    behavior_params = behavior_params or load_behavior_report_params()
+    dates = iter_cohort_a_sessions(animal, resolver)
+    if len(dates) == 0:
+        raise ValueError(
+            f"render_lickiness_bySession: no Cohort A sessions for {animal}"
+        )
+    d0 = _resolve_d0(animal_info, animal, align_to_stroke)
+    axis = compute_longitudinal_axis(
+        dates, align_to_stroke=align_to_stroke, d0=d0,
+        vline_x=config["stroke_vline_x"],
+    )
+
+    late_start = float(behavior_params["window_around_rewards"][1])
+    late_end = float(config["lickiness_window_seconds"])
+
+    per_side: dict[str, list[int]] = {"L": [], "R": []}
+    for date in dates:
+        data = load_session_plot_data(animal, date, resolver)
+        counts = compute_lickiness_bySession(
+            data,
+            late_window_start_seconds=late_start,
+            late_window_end_seconds=late_end,
+        )
+        for side in ("L", "R"):
+            per_side[side].append(counts[side])
+
+    fig, ax = plt.subplots(figsize=tuple(config["figsize_longitudinal"]))
+    for side in ("L", "R"):
+        ax.plot(
+            axis.x_vals, per_side[side], "-o",
+            color=SIDE_COLORS[side], markersize=4,
+            label=f"mouse {side}",
+        )
+    apply_longitudinal_axis(ax, axis, config)
+    # Legacy ylabel uses literal "≤60 s" — preserve the exact string
+    # since visual_gate.lickiness_window_seconds is 60 by default. If a
+    # downstream caller overrides the config to a different value, the
+    # ylabel string lies — acceptable for chase-fidelity-with-legacy.
+    ax.set_ylabel("Late licks per session\n(> window_after_reward & ≤60 s)")
+    ax.set_title("Lickiness by session")
+    ax.legend()
+    paths = save_visual_gate_figure(
+        fig, animal, "lickiness_bySession", axis.suffix, resolver,
+        overwrite=overwrite,
+    )
+    plt.close(fig)
+    return paths
+
+
+def render_switchiness_bySession(
+    animal: str,
+    resolver: PathResolver,
+    *,
+    align_to_stroke: bool = True,
+    config: dict[str, Any] | None = None,
+    behavior_params: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["force", "skip", "raise"] = "force",
+) -> tuple[Path, Path]:
+    """Per-mouse mean L↔R transition count per trial, longitudinal.
+
+    Mirrors legacy ``switchiness_bySession`` (behavior_report_PS.py:914-935).
+
+    **Color-to-label mapping**: legacy assigns ``side_colors["L"]``
+    (WS-L = mouse-R color = mediumvioletred) to the ``"L→R"`` label
+    line, and ``side_colors["R"]`` (WS-R = mouse-L = dodgerblue) to
+    the ``"R→L"`` label line. This produces a visual where the
+    transition label color matches the DESTINATION side in mouse-
+    frame. Faithful-port preserves the visual: new pipeline assigns
+    ``SIDE_COLORS["R"]`` to ``"L→R"`` (mouse-R color for L→R) and
+    ``SIDE_COLORS["L"]`` to ``"R→L"`` (mouse-L color for R→L). This
+    is the ONE CG-4 deviation beyond CG-1's locked SIDE_COLORS
+    inversion — documented for the DECISIONS entry.
+    """
+    config = config or load_visual_gate_config()
+    behavior_params = behavior_params or load_behavior_report_params()
+    dates = iter_cohort_a_sessions(animal, resolver)
+    if len(dates) == 0:
+        raise ValueError(
+            f"render_switchiness_bySession: no Cohort A sessions for {animal}"
+        )
+    d0 = _resolve_d0(animal_info, animal, align_to_stroke)
+    axis = compute_longitudinal_axis(
+        dates, align_to_stroke=align_to_stroke, d0=d0,
+        vline_x=config["stroke_vline_x"],
+    )
+
+    window_around = behavior_params["window_around_rewards"]
+    per_direction: dict[str, list[float]] = {"L->R": [], "R->L": []}
+    for date in dates:
+        data = load_session_plot_data(animal, date, resolver)
+        delays = compute_trial_lick_delays(data, window_around)
+        sw = compute_switchiness_bySession(delays)
+        per_direction["L->R"].append(sw["L->R"])
+        per_direction["R->L"].append(sw["R->L"])
+
+    fig, ax = plt.subplots(figsize=tuple(config["figsize_longitudinal"]))
+    # Color-by-destination per the docstring deviation note.
+    ax.plot(
+        axis.x_vals, per_direction["L->R"], "-o",
+        color=SIDE_COLORS["R"], markersize=4, label="L→R",
+    )
+    ax.plot(
+        axis.x_vals, per_direction["R->L"], "-o",
+        color=SIDE_COLORS["L"], markersize=4, label="R→L",
+    )
+    apply_longitudinal_axis(ax, axis, config)
+    ax.set_ylabel("Avg switches per trial")
+    ax.set_title("Switchiness by session")
+    ax.legend()
+    paths = save_visual_gate_figure(
+        fig, animal, "switchiness_bySession", axis.suffix, resolver,
         overwrite=overwrite,
     )
     plt.close(fig)
