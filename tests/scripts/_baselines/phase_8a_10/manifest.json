@@ -1,0 +1,1327 @@
+{
+  "metadata": {
+    "captured_at_iso": "2026-05-13T00:14:03.867807+00:00",
+    "captured_against_git_sha": "d0cc60d1ee392d18e1b39b84d8f318402f5d455e",
+    "script_path": "scripts/phase_8a_10/capture_legacy_svg_baselines.py",
+    "source_directory_microscope": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3",
+    "animals": [
+      "PS46",
+      "PS47",
+      "PS48",
+      "PS49",
+      "PS50",
+      "PS51",
+      "PS54",
+      "PS55"
+    ],
+    "total_svgs_captured": 144,
+    "per_animal_counts": {
+      "PS46": 18,
+      "PS47": 18,
+      "PS48": 18,
+      "PS49": 18,
+      "PS50": 18,
+      "PS51": 18,
+      "PS54": 18,
+      "PS55": 18
+    }
+  },
+  "svgs": [
+    {
+      "animal": "PS46",
+      "plot_family": "accuracy_firstCorrectLick",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\accuracy_firstCorrectLick.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/accuracy_firstCorrectLick.svg",
+      "sha256": "600ff276a059c111c524068317744840a3fe995b066300d094742b43bdb4c4e5",
+      "source_mtime_iso": "2025-06-13T15:57:25.054400+00:00",
+      "size_bytes": 68505
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "accuracy_firstCorrectLickAll",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\accuracy_firstCorrectLickAll.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/accuracy_firstCorrectLickAll.svg",
+      "sha256": "d94fb61cd6a788946e26c3a0b1229d4fb919dfaa484d1c9c39e069ef2fbdbef7",
+      "source_mtime_iso": "2025-06-13T15:57:25.177990+00:00",
+      "size_bytes": 67819
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "anyLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\anyLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/anyLick_accuracy_L_byCategory.svg",
+      "sha256": "6d34fe51e53587dd1b0ddb60fd4a35c2f7124531b3d7ef6540f3aaf0e739bb58",
+      "source_mtime_iso": "2025-06-13T15:57:30.668202+00:00",
+      "size_bytes": 79898
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "anyLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\anyLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/anyLick_accuracy_R_byCategory.svg",
+      "sha256": "17172ba44066c18aef26325227f9e033a69ef43b5805d3baa416158a7b41b33a",
+      "source_mtime_iso": "2025-06-13T15:57:30.520580+00:00",
+      "size_bytes": 79793
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "criteria_performance",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\criteria_performance.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/criteria_performance.svg",
+      "sha256": "c897b217ac5592a226b0b818ca356734c582d16190ebcfa8a03ccd9efb68085b",
+      "source_mtime_iso": "2025-06-13T15:57:24.885147+00:00",
+      "size_bytes": 66634
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "firstLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\firstLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/firstLick_accuracy_L_byCategory.svg",
+      "sha256": "60128cc410f1430f6cc57457c49684691095b05558dfd6fb231a44133562bb02",
+      "source_mtime_iso": "2025-06-13T15:57:30.354195+00:00",
+      "size_bytes": 78230
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "firstLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\firstLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/firstLick_accuracy_R_byCategory.svg",
+      "sha256": "86dc5f25d4a4597cad633274932d349ad15b5909dc1f6df9fe830d6d88acd64c",
+      "source_mtime_iso": "2025-06-13T15:57:30.192813+00:00",
+      "size_bytes": 78086
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "latency_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\latency_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/latency_bySession.svg",
+      "sha256": "91ddbdc7c371537ab29b7786a4bd7ee444aea1e6b38c1743a0a69f24490bf716",
+      "source_mtime_iso": "2025-06-13T15:57:29.713238+00:00",
+      "size_bytes": 78293
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "latency_hist",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\latency_hist.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/latency_hist.svg",
+      "sha256": "d2d09d2030ddc2e20a429bca45dbdbea37802e9c63bdd59cac229e8e918ad2d0",
+      "source_mtime_iso": "2025-06-13T15:57:29.580806+00:00",
+      "size_bytes": 104094
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "lickRate_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\lickRate_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/lickRate_bySession.svg",
+      "sha256": "cd89b64dc5a674344f2e600651a4a4e3b20d4f7a6e76f000b0c69d1d0a7e620a",
+      "source_mtime_iso": "2025-06-13T15:57:27.239190+00:00",
+      "size_bytes": 77551
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "lickRate_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\lickRate_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/lickRate_byTrial.svg",
+      "sha256": "03ecf02b9a409b35c39738d091aa3f4638e56cb02a457d8375ef1e00f1d97b32",
+      "source_mtime_iso": "2025-06-13T15:57:27.108021+00:00",
+      "size_bytes": 665369
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "lick_raster",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\lick_raster.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/lick_raster.svg",
+      "sha256": "63cd8ec62bf721bfd19f3317c600ed22b9e0083fb05cc67a0e09b60eee9aa426",
+      "source_mtime_iso": "2025-06-13T15:57:24.750559+00:00",
+      "size_bytes": 7831519
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "lickiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\lickiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/lickiness_bySession.svg",
+      "sha256": "3b3d08f835737c9df7b7d6d275ac65135be91d911f6fb8d5c9f87b0a1756b947",
+      "source_mtime_iso": "2025-06-13T15:57:29.891188+00:00",
+      "size_bytes": 67646
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "numLicks_bySession_all",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\numLicks_bySession_all.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/numLicks_bySession_all.svg",
+      "sha256": "aceae328b25456f23736b03013d2d657612b18ba83c6b155ce4ef94282665a0e",
+      "source_mtime_iso": "2025-06-13T15:57:29.192472+00:00",
+      "size_bytes": 76312
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "numLicks_bySession_correct",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\numLicks_bySession_correct.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/numLicks_bySession_correct.svg",
+      "sha256": "342109af44b2f3735c8e9d83123403d8652412377a42a1b1ad6ace6baf10a4d5",
+      "source_mtime_iso": "2025-06-13T15:57:29.060190+00:00",
+      "size_bytes": 76638
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "numLicks_bySession_correct_and_incorrect",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\numLicks_bySession_correct_and_incorrect.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/numLicks_bySession_correct_and_incorrect.svg",
+      "sha256": "553ccfe6c887140dc7a03b41a3094c801a1611775408c0acacf22b1260eb090e",
+      "source_mtime_iso": "2025-06-13T15:57:29.344233+00:00",
+      "size_bytes": 101691
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "numLicks_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\numLicks_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/numLicks_byTrial.svg",
+      "sha256": "80ac0f0d1239f0d6499708a5465a38310643d2d11462f1a0d16937f2baf3ab5f",
+      "source_mtime_iso": "2025-06-13T15:57:28.925766+00:00",
+      "size_bytes": 414411
+    },
+    {
+      "animal": "PS46",
+      "plot_family": "switchiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS46\\switchiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS46/switchiness_bySession.svg",
+      "sha256": "ba98d3a7f3ddb1fcfde96146080f8f6408c7034a8de2dd4ea57b6709a4c8ea14",
+      "source_mtime_iso": "2025-06-13T15:57:30.028527+00:00",
+      "size_bytes": 63320
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "accuracy_firstCorrectLick",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\accuracy_firstCorrectLick.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/accuracy_firstCorrectLick.svg",
+      "sha256": "2b7d3c8fadf5e8271ff2fdc2d2a5f45c19a6faed6b748817d0df493d04f88583",
+      "source_mtime_iso": "2025-06-13T15:58:03.054380+00:00",
+      "size_bytes": 67296
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "accuracy_firstCorrectLickAll",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\accuracy_firstCorrectLickAll.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/accuracy_firstCorrectLickAll.svg",
+      "sha256": "1f4627f270307e9529d96bfebc9b9ad61ca3719a620ec2d37b571262fbbe1a2e",
+      "source_mtime_iso": "2025-06-13T15:58:03.177366+00:00",
+      "size_bytes": 66618
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "anyLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\anyLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/anyLick_accuracy_L_byCategory.svg",
+      "sha256": "b45c56214b1c37da2d9ebb613bc1becd58c2abeed624cf0998613250dbe3d162",
+      "source_mtime_iso": "2025-06-13T15:58:08.558002+00:00",
+      "size_bytes": 78443
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "anyLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\anyLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/anyLick_accuracy_R_byCategory.svg",
+      "sha256": "3b988e5605f64b087e082578a928401bd7ff9e02ccecda9666f5020c32b7a946",
+      "source_mtime_iso": "2025-06-13T15:58:08.411068+00:00",
+      "size_bytes": 78300
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "criteria_performance",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\criteria_performance.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/criteria_performance.svg",
+      "sha256": "45273068bc67f7573a8a145f20e60380d0e386dcbe1b06ec69bc9abab19bc8fa",
+      "source_mtime_iso": "2025-06-13T15:58:02.926343+00:00",
+      "size_bytes": 65441
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "firstLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\firstLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/firstLick_accuracy_L_byCategory.svg",
+      "sha256": "8b98bd2884b960c4ff630371889f1331065d7130b47611f3a83e6cc3ed3a46ac",
+      "source_mtime_iso": "2025-06-13T15:58:08.253986+00:00",
+      "size_bytes": 76751
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "firstLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\firstLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/firstLick_accuracy_R_byCategory.svg",
+      "sha256": "e9514cd15d527f405f287e4565fc28d610f29220f9e3aa0c973ee0f245dc33e1",
+      "source_mtime_iso": "2025-06-13T15:58:08.109284+00:00",
+      "size_bytes": 76615
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "latency_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\latency_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/latency_bySession.svg",
+      "sha256": "888ddbc9c869ef313094851960d28bc10dd25035f017034ad27469d5be2b1cd8",
+      "source_mtime_iso": "2025-06-13T15:58:07.632583+00:00",
+      "size_bytes": 76975
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "latency_hist",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\latency_hist.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/latency_hist.svg",
+      "sha256": "78ae54d2b13a8ba1fd7419ffcd8211e4f193537aa742104c384efee7678a7ea7",
+      "source_mtime_iso": "2025-06-13T15:58:07.503596+00:00",
+      "size_bytes": 101653
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "lickRate_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\lickRate_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/lickRate_bySession.svg",
+      "sha256": "8273d2c2890aedd03b77348c17b8a3ba01c4e3acd2d223bdb77f23aa5fee6018",
+      "source_mtime_iso": "2025-06-13T15:58:05.250784+00:00",
+      "size_bytes": 76041
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "lickRate_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\lickRate_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/lickRate_byTrial.svg",
+      "sha256": "1b93bffd2d0e9e3e89711fbeecc2f25ae211f334af197ebfe3d45f950ad1615f",
+      "source_mtime_iso": "2025-06-13T15:58:05.110728+00:00",
+      "size_bytes": 646302
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "lick_raster",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\lick_raster.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/lick_raster.svg",
+      "sha256": "c4f637058b3227fc11caeefc92a5b1b4be652b99f06cab07f0d01521a03140ee",
+      "source_mtime_iso": "2025-06-13T15:58:02.788254+00:00",
+      "size_bytes": 6517749
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "lickiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\lickiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/lickiness_bySession.svg",
+      "sha256": "276af355addb7431dd0d62d8dd905546f7169cb54a24afeaa26c794a08bfb1d9",
+      "source_mtime_iso": "2025-06-13T15:58:07.813313+00:00",
+      "size_bytes": 67975
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "numLicks_bySession_all",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\numLicks_bySession_all.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/numLicks_bySession_all.svg",
+      "sha256": "f9acae39b66374907b05b82ba39a5fa9b23ae155a36b2c494ad9c2ae5c91e230",
+      "source_mtime_iso": "2025-06-13T15:58:07.127904+00:00",
+      "size_bytes": 74827
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "numLicks_bySession_correct",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\numLicks_bySession_correct.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/numLicks_bySession_correct.svg",
+      "sha256": "996adb4407fecaeba33c7021c429a8e98623faa3d6882f06ff47c0ae1cb65f70",
+      "source_mtime_iso": "2025-06-13T15:58:06.997460+00:00",
+      "size_bytes": 75148
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "numLicks_bySession_correct_and_incorrect",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\numLicks_bySession_correct_and_incorrect.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/numLicks_bySession_correct_and_incorrect.svg",
+      "sha256": "b59bad30d35998902453bc86af1fc06892a06ae53416f033b82a2cee821f261f",
+      "source_mtime_iso": "2025-06-13T15:58:07.274448+00:00",
+      "size_bytes": 99628
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "numLicks_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\numLicks_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/numLicks_byTrial.svg",
+      "sha256": "aaf9c4f428615b9d013c5aca8c0af156b11c6d746e3d184583b6841a8c08de0c",
+      "source_mtime_iso": "2025-06-13T15:58:06.859838+00:00",
+      "size_bytes": 402542
+    },
+    {
+      "animal": "PS47",
+      "plot_family": "switchiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS47\\switchiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS47/switchiness_bySession.svg",
+      "sha256": "71ac3432ef32b2a4f978ab72a0e9d0ea8bb40b0d4b88e2fda2c32297b86ad458",
+      "source_mtime_iso": "2025-06-13T15:58:07.952981+00:00",
+      "size_bytes": 63792
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "accuracy_firstCorrectLick",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\accuracy_firstCorrectLick.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/accuracy_firstCorrectLick.svg",
+      "sha256": "d9b54ef329962f8538d61b0c5ba439f40137f7616f2b688ff341310d3345833d",
+      "source_mtime_iso": "2025-06-13T15:58:47.039222+00:00",
+      "size_bytes": 68713
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "accuracy_firstCorrectLickAll",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\accuracy_firstCorrectLickAll.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/accuracy_firstCorrectLickAll.svg",
+      "sha256": "aafa4fbb6bda8320964f307b0add42c4eebdcb734835b78d689f29530b2b692c",
+      "source_mtime_iso": "2025-06-13T15:58:47.160479+00:00",
+      "size_bytes": 68031
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "anyLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\anyLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/anyLick_accuracy_L_byCategory.svg",
+      "sha256": "50be176bdcccec26ab68d7e062596b471999c32b268d113d16adf9c304f35e07",
+      "source_mtime_iso": "2025-06-13T15:58:52.409243+00:00",
+      "size_bytes": 80112
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "anyLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\anyLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/anyLick_accuracy_R_byCategory.svg",
+      "sha256": "70451cb57749e6b09368dc0e13f3e5659ca97b7bd7a03e2f416c091f4217701c",
+      "source_mtime_iso": "2025-06-13T15:58:52.257715+00:00",
+      "size_bytes": 79973
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "criteria_performance",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\criteria_performance.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/criteria_performance.svg",
+      "sha256": "18042c5e5005a00c6be50db0ff8108b0382f96a2ee90ae4188ef8aa2188f5407",
+      "source_mtime_iso": "2025-06-13T15:58:46.911609+00:00",
+      "size_bytes": 66881
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "firstLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\firstLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/firstLick_accuracy_L_byCategory.svg",
+      "sha256": "8d5382179738f704d1f898c63b338f5f1c8f26de4c168a898754d67ddbd34997",
+      "source_mtime_iso": "2025-06-13T15:58:52.094302+00:00",
+      "size_bytes": 78415
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "firstLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\firstLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/firstLick_accuracy_R_byCategory.svg",
+      "sha256": "8feb69b5592347433c0140a82818a196c71acd1ed5fed6d8cb37f5e8dc62828b",
+      "source_mtime_iso": "2025-06-13T15:58:51.937812+00:00",
+      "size_bytes": 78247
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "latency_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\latency_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/latency_bySession.svg",
+      "sha256": "96f4070a76553e6c019e39f6609a8946a74c816c0d448da5e351994a9e4c0031",
+      "source_mtime_iso": "2025-06-13T15:58:51.476501+00:00",
+      "size_bytes": 78691
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "latency_hist",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\latency_hist.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/latency_hist.svg",
+      "sha256": "4213a9cdb56834ea93214a494655ee22d130a26bc3b15d33702e13ec8213f6e8",
+      "source_mtime_iso": "2025-06-13T15:58:51.355002+00:00",
+      "size_bytes": 103961
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "lickRate_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\lickRate_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/lickRate_bySession.svg",
+      "sha256": "30559a74d3be0b08abdfa8681c913452467a7a5da5bea8caf290f9f41f34d5db",
+      "source_mtime_iso": "2025-06-13T15:58:49.105957+00:00",
+      "size_bytes": 77775
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "lickRate_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\lickRate_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/lickRate_byTrial.svg",
+      "sha256": "921489de5c595c592fb7a93b77e59bb3751f01a02ba13d70068e4dcbd18ffc44",
+      "source_mtime_iso": "2025-06-13T15:58:48.973841+00:00",
+      "size_bytes": 654275
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "lick_raster",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\lick_raster.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/lick_raster.svg",
+      "sha256": "bd29bf929d379f3ae657125d7c10201af8aeb73fa9e2511bda2ff9a1384c17ce",
+      "source_mtime_iso": "2025-06-13T15:58:46.775249+00:00",
+      "size_bytes": 8170059
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "lickiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\lickiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/lickiness_bySession.svg",
+      "sha256": "9fed3c5eecc21e5e23b5d7d652391f6117d14e9300f64a45c0cafc318289278e",
+      "source_mtime_iso": "2025-06-13T15:58:51.648976+00:00",
+      "size_bytes": 68858
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "numLicks_bySession_all",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\numLicks_bySession_all.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/numLicks_bySession_all.svg",
+      "sha256": "718d708c324bc31c4e5b4240a3d5d422c8c79a15d32336f8b25b28b333461203",
+      "source_mtime_iso": "2025-06-13T15:58:50.989717+00:00",
+      "size_bytes": 76498
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "numLicks_bySession_correct",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\numLicks_bySession_correct.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/numLicks_bySession_correct.svg",
+      "sha256": "da770b79656bbc39304f8ff5858c9bf812da06250619a2fb38ee574d530e3bdd",
+      "source_mtime_iso": "2025-06-13T15:58:50.861804+00:00",
+      "size_bytes": 76827
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "numLicks_bySession_correct_and_incorrect",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\numLicks_bySession_correct_and_incorrect.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/numLicks_bySession_correct_and_incorrect.svg",
+      "sha256": "a78b128035af6cb6e0b19ec0cdd64f24b1b93187b946b8f4f234e7f5f14e3cf0",
+      "source_mtime_iso": "2025-06-13T15:58:51.137815+00:00",
+      "size_bytes": 101882
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "numLicks_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\numLicks_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/numLicks_byTrial.svg",
+      "sha256": "e3f844b0947f1701c418f99892d1cde970224583f8628d0483894871c3fca739",
+      "source_mtime_iso": "2025-06-13T15:58:50.724113+00:00",
+      "size_bytes": 398015
+    },
+    {
+      "animal": "PS48",
+      "plot_family": "switchiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS48\\switchiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS48/switchiness_bySession.svg",
+      "sha256": "d4fe7c4313ba70b481c02f75b17969448a3862e614be6b2e526e932696ab9f42",
+      "source_mtime_iso": "2025-06-13T15:58:51.783184+00:00",
+      "size_bytes": 63542
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "accuracy_firstCorrectLick",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\accuracy_firstCorrectLick.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/accuracy_firstCorrectLick.svg",
+      "sha256": "f7fc5dc6328d9c8ad01500bc9a9754b7816ca2c9bef1a64142d1fc0f202451c2",
+      "source_mtime_iso": "2025-06-13T15:59:29.047950+00:00",
+      "size_bytes": 72042
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "accuracy_firstCorrectLickAll",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\accuracy_firstCorrectLickAll.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/accuracy_firstCorrectLickAll.svg",
+      "sha256": "25d67ab1c47b0d3702d042622e5dc06f62a2b484422c1bdaf37b445e1ff65ac2",
+      "source_mtime_iso": "2025-06-13T15:59:29.171857+00:00",
+      "size_bytes": 71368
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "anyLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\anyLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/anyLick_accuracy_L_byCategory.svg",
+      "sha256": "263f0b3b76a7f339b4028d91b763b2a27ecec37c01e89fe4330cd58eac4caaf9",
+      "source_mtime_iso": "2025-06-13T15:59:35.011625+00:00",
+      "size_bytes": 84276
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "anyLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\anyLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/anyLick_accuracy_R_byCategory.svg",
+      "sha256": "ae31411a333ad2755afcc2bb674608fb1a56b6f2f1b336f2a37ed139bccfc300",
+      "source_mtime_iso": "2025-06-13T15:59:34.859514+00:00",
+      "size_bytes": 84137
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "criteria_performance",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\criteria_performance.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/criteria_performance.svg",
+      "sha256": "2c9e764724fdf05394c24586f78228203763b41f3a6b123b92888fda86c3e577",
+      "source_mtime_iso": "2025-06-13T15:59:28.912640+00:00",
+      "size_bytes": 70201
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "firstLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\firstLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/firstLick_accuracy_L_byCategory.svg",
+      "sha256": "a1ec52739421cb3b19c3fbedc3d563b285aed5768775f33eea4e59ffad08d727",
+      "source_mtime_iso": "2025-06-13T15:59:34.686370+00:00",
+      "size_bytes": 82604
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "firstLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\firstLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/firstLick_accuracy_R_byCategory.svg",
+      "sha256": "983f4bf386694eff4982ea7c89560310ded23453cb94eb90491ee1382e7f3f5a",
+      "source_mtime_iso": "2025-06-13T15:59:34.539142+00:00",
+      "size_bytes": 82408
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "latency_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\latency_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/latency_bySession.svg",
+      "sha256": "5886acb0b0e4b88574d0c2bb53298e85360751e2042fe6ab45ccbe0399b3e3e5",
+      "source_mtime_iso": "2025-06-13T15:59:34.046063+00:00",
+      "size_bytes": 82973
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "latency_hist",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\latency_hist.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/latency_hist.svg",
+      "sha256": "38f2c48688e62abc9804046885352ae0039d18f0411dc25800f92d94282c2e28",
+      "source_mtime_iso": "2025-06-13T15:59:33.916763+00:00",
+      "size_bytes": 109808
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "lickRate_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\lickRate_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/lickRate_bySession.svg",
+      "sha256": "683a325194c668b55fbe9f4404901200dfbea35ca3241662fe36bbf5ffaece7d",
+      "source_mtime_iso": "2025-06-13T15:59:31.397938+00:00",
+      "size_bytes": 82033
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "lickRate_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\lickRate_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/lickRate_byTrial.svg",
+      "sha256": "d6ef12e602a3b92719fa26b76d2f4101e6da400ea44b20ec12ad79f0b0f781e6",
+      "source_mtime_iso": "2025-06-13T15:59:31.264507+00:00",
+      "size_bytes": 725607
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "lick_raster",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\lick_raster.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/lick_raster.svg",
+      "sha256": "63759ab6b2811d63c8eea95e9d2c433f2ae41adf9832052a2c7d5bde08eba91d",
+      "source_mtime_iso": "2025-06-13T15:59:28.767375+00:00",
+      "size_bytes": 5870770
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "lickiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\lickiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/lickiness_bySession.svg",
+      "sha256": "07a61a69a05b91de5e3f28ea96c3584a5f88e0cb1f681af98d0e853611144b58",
+      "source_mtime_iso": "2025-06-13T15:59:34.232042+00:00",
+      "size_bytes": 71252
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "numLicks_bySession_all",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\numLicks_bySession_all.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/numLicks_bySession_all.svg",
+      "sha256": "436683f78e28cd9f3f7f487d870d23166742b162da679e0e393e7a594bc2dda0",
+      "source_mtime_iso": "2025-06-13T15:59:33.505636+00:00",
+      "size_bytes": 80844
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "numLicks_bySession_correct",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\numLicks_bySession_correct.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/numLicks_bySession_correct.svg",
+      "sha256": "11082d3a23bb6dc8d9b66da4b1dd7ad4353d686ec3222bae47ede66074fa9bc5",
+      "source_mtime_iso": "2025-06-13T15:59:33.375674+00:00",
+      "size_bytes": 81170
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "numLicks_bySession_correct_and_incorrect",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\numLicks_bySession_correct_and_incorrect.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/numLicks_bySession_correct_and_incorrect.svg",
+      "sha256": "3a31f58d81c69d4fb259d7d0827dd74bfb8db78aaa41fd247818cfe9696a5a1d",
+      "source_mtime_iso": "2025-06-13T15:59:33.654290+00:00",
+      "size_bytes": 107911
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "numLicks_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\numLicks_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/numLicks_byTrial.svg",
+      "sha256": "6ebdc0672d3e68c9e20649868347e3429f9c7af255d9b6bc17e377a749154623",
+      "source_mtime_iso": "2025-06-13T15:59:33.238212+00:00",
+      "size_bytes": 451803
+    },
+    {
+      "animal": "PS49",
+      "plot_family": "switchiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS49\\switchiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS49/switchiness_bySession.svg",
+      "sha256": "8783df5f6d155eeaccd7d8c8e9b3027252f9338aaf26c01e91a867b84bdb0f20",
+      "source_mtime_iso": "2025-06-13T15:59:34.372733+00:00",
+      "size_bytes": 66883
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "accuracy_firstCorrectLick",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\accuracy_firstCorrectLick.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/accuracy_firstCorrectLick.svg",
+      "sha256": "9d32b40787ec5e5998f4b30822e5bc8aa5cb201870421ff237e4db45732e7cca",
+      "source_mtime_iso": "2025-06-13T16:00:24.593725+00:00",
+      "size_bytes": 78033
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "accuracy_firstCorrectLickAll",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\accuracy_firstCorrectLickAll.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/accuracy_firstCorrectLickAll.svg",
+      "sha256": "bc63281116e179d6e164cd3f035e9f4bfd37f7ffce37942f2a520f4b5a3af20f",
+      "source_mtime_iso": "2025-06-13T16:00:24.734241+00:00",
+      "size_bytes": 77353
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "anyLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\anyLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/anyLick_accuracy_L_byCategory.svg",
+      "sha256": "d581c0aaf5088289229c8fd67c5724e54a76a6c2db39e8c5aed7bd507f99ab75",
+      "source_mtime_iso": "2025-06-13T16:00:31.337799+00:00",
+      "size_bytes": 91504
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "anyLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\anyLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/anyLick_accuracy_R_byCategory.svg",
+      "sha256": "ba3f998c6384b468510cc1ce44d9404eaf2bd2953fef8f5061a1ccb9a27d5c18",
+      "source_mtime_iso": "2025-06-13T16:00:31.166877+00:00",
+      "size_bytes": 91365
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "criteria_performance",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\criteria_performance.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/criteria_performance.svg",
+      "sha256": "6b6deb2b9465a12625d039be39fbbb4c46dcdc6bfff2c7fbdb20ca2987e70d80",
+      "source_mtime_iso": "2025-06-13T16:00:24.443706+00:00",
+      "size_bytes": 76231
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "firstLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\firstLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/firstLick_accuracy_L_byCategory.svg",
+      "sha256": "76f9549402829564b3f4130f37b4a3be9f0f1c60e932e82f743f98f2d06f2f0d",
+      "source_mtime_iso": "2025-06-13T16:00:30.983011+00:00",
+      "size_bytes": 89838
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "firstLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\firstLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/firstLick_accuracy_R_byCategory.svg",
+      "sha256": "ccd2fbd4c54a9566a5035b3fb4b4d3785ef310c9377ccf582cd5c975a85c0a2e",
+      "source_mtime_iso": "2025-06-13T16:00:30.810030+00:00",
+      "size_bytes": 89634
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "latency_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\latency_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/latency_bySession.svg",
+      "sha256": "cf44826a315f55a7f8682519a9ecefc0a83eec8d661a929d5cfdd81e84284ed3",
+      "source_mtime_iso": "2025-06-13T16:00:30.257573+00:00",
+      "size_bytes": 90393
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "latency_hist",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\latency_hist.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/latency_hist.svg",
+      "sha256": "a484b3789c3b54f67fa056b45d61f7ea9be19c0f042f632490db3af8455c5e41",
+      "source_mtime_iso": "2025-06-13T16:00:30.106906+00:00",
+      "size_bytes": 119558
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "lickRate_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\lickRate_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/lickRate_bySession.svg",
+      "sha256": "950ecb21ff26f5c35bc8a442d6e7bde12f3499dfc3d29423a86f74a1df5e7c09",
+      "source_mtime_iso": "2025-06-13T16:00:27.192098+00:00",
+      "size_bytes": 89571
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "lickRate_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\lickRate_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/lickRate_byTrial.svg",
+      "sha256": "31a95a540f023b60a82860131a12de4f60c3e715fba4107ef3ed42d798cef3ac",
+      "source_mtime_iso": "2025-06-13T16:00:27.040254+00:00",
+      "size_bytes": 830397
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "lick_raster",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\lick_raster.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/lick_raster.svg",
+      "sha256": "7fddc0a4633caf516f3e4c0bbfacd8b763f4e4114d25c58e1406f39ec011afc3",
+      "source_mtime_iso": "2025-06-13T16:00:24.284741+00:00",
+      "size_bytes": 8510169
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "lickiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\lickiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/lickiness_bySession.svg",
+      "sha256": "09ece711f41b00bd9dc1bc54b006fae28d09b8717302835631a722f61b87f8af",
+      "source_mtime_iso": "2025-06-13T16:00:30.469254+00:00",
+      "size_bytes": 77755
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "numLicks_bySession_all",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\numLicks_bySession_all.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/numLicks_bySession_all.svg",
+      "sha256": "3841ace3d82403d73c4b8b96d5708bb35dd41025c649064eb5e99cf437a3bd6d",
+      "source_mtime_iso": "2025-06-13T16:00:29.661016+00:00",
+      "size_bytes": 88339
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "numLicks_bySession_correct",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\numLicks_bySession_correct.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/numLicks_bySession_correct.svg",
+      "sha256": "d44ea274ea3772d4af1d01fc9034c2c478abc01595dfcc5ef88c32f4b1258c4f",
+      "source_mtime_iso": "2025-06-13T16:00:29.510347+00:00",
+      "size_bytes": 88665
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "numLicks_bySession_correct_and_incorrect",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\numLicks_bySession_correct_and_incorrect.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/numLicks_bySession_correct_and_incorrect.svg",
+      "sha256": "4eba38f6a2d84230ce40b5c2c0df886728e230cf80d33b6b557a7df35cd7eb27",
+      "source_mtime_iso": "2025-06-13T16:00:29.844495+00:00",
+      "size_bytes": 118268
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "numLicks_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\numLicks_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/numLicks_byTrial.svg",
+      "sha256": "7b3014fdc04a8be2a12b6cd34086c405e0ffc1b445efb0e3f5ca51f5f0d36ae5",
+      "source_mtime_iso": "2025-06-13T16:00:29.354186+00:00",
+      "size_bytes": 515366
+    },
+    {
+      "animal": "PS50",
+      "plot_family": "switchiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS50\\switchiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS50/switchiness_bySession.svg",
+      "sha256": "5f8ccb1c7da654b72d0164fc1f784aa0a5031bc44d7cfa18ea2e764b4f582643",
+      "source_mtime_iso": "2025-06-13T16:00:30.629072+00:00",
+      "size_bytes": 72358
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "accuracy_firstCorrectLick",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\accuracy_firstCorrectLick.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/accuracy_firstCorrectLick.svg",
+      "sha256": "2f434711f493f17b78c8b7cf787295551b2f9821ff1f4ec591faf8032ec430f4",
+      "source_mtime_iso": "2025-06-27T03:15:56.950308+00:00",
+      "size_bytes": 96917
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "accuracy_firstCorrectLickAll",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\accuracy_firstCorrectLickAll.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/accuracy_firstCorrectLickAll.svg",
+      "sha256": "9aa3748e25ed171024e4179ea02f7fa40dfc78f3a1769ff29ce287252d531da9",
+      "source_mtime_iso": "2025-06-27T03:15:57.137069+00:00",
+      "size_bytes": 97169
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "anyLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\anyLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/anyLick_accuracy_L_byCategory.svg",
+      "sha256": "df9fe9ded58e3508e8997c027f82c50fee5708ace9cf22645113e2be5ccfe8af",
+      "source_mtime_iso": "2025-06-27T03:16:05.971333+00:00",
+      "size_bytes": 115399
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "anyLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\anyLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/anyLick_accuracy_R_byCategory.svg",
+      "sha256": "f6628f1b9d264a45af21409c0c41860d6d4de6781be1a4eab32703c25f0ea69d",
+      "source_mtime_iso": "2025-06-27T03:16:05.759300+00:00",
+      "size_bytes": 115302
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "criteria_performance",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\criteria_performance.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/criteria_performance.svg",
+      "sha256": "20e72c150be8b484d38ae3cdc3ac12d57149490a4bab1905d5ad45a777d48bae",
+      "source_mtime_iso": "2025-06-27T03:15:56.755501+00:00",
+      "size_bytes": 96063
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "firstLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\firstLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/firstLick_accuracy_L_byCategory.svg",
+      "sha256": "392d887fc593a1aa91069132f8603457ed23db28f1bef5cd37aeed3b7ad1e05a",
+      "source_mtime_iso": "2025-06-27T03:16:05.530792+00:00",
+      "size_bytes": 113716
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "firstLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\firstLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/firstLick_accuracy_R_byCategory.svg",
+      "sha256": "cab5dfd1ad6b44788a3b1735507692557177e14d3a1f2de2c067f6a04c3e39d5",
+      "source_mtime_iso": "2025-06-27T03:16:05.320363+00:00",
+      "size_bytes": 113630
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "latency_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\latency_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/latency_bySession.svg",
+      "sha256": "09de4f62fc1cd82bfacfd71ea314bbbd2dbc93a30fea2afa0b53726f43320b6e",
+      "source_mtime_iso": "2025-06-27T03:16:04.617883+00:00",
+      "size_bytes": 112501
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "latency_hist",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\latency_hist.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/latency_hist.svg",
+      "sha256": "a8ee1848a8f1c04d528ccfa37d4f8fc5e9744406b1c4b608e3003adc70e3c6a7",
+      "source_mtime_iso": "2025-06-27T03:16:04.431898+00:00",
+      "size_bytes": 155796
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "lickRate_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\lickRate_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/lickRate_bySession.svg",
+      "sha256": "35d161bcff0e887f2afbb625cd6bdccbe033c51c8537efbfbb41dd0bdf23dece",
+      "source_mtime_iso": "2025-06-27T03:16:00.612644+00:00",
+      "size_bytes": 114144
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "lickRate_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\lickRate_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/lickRate_byTrial.svg",
+      "sha256": "87f2d1d8d279b2e0727f3b9674e08ed561c759b9654da26828126f55f7c8f34a",
+      "source_mtime_iso": "2025-06-27T03:16:00.423425+00:00",
+      "size_bytes": 1167826
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "lick_raster",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\lick_raster.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/lick_raster.svg",
+      "sha256": "7e41768913be77b021ad8fee6504f8268da22f99cfd3fdfeea8d8df81f364f71",
+      "source_mtime_iso": "2025-06-27T03:18:09.264732+00:00",
+      "size_bytes": 20517919
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "lickiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\lickiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/lickiness_bySession.svg",
+      "sha256": "d46108b20b62d78deff16efdf6258f456c5d371b8d9062598b9b9ef5a04ccda6",
+      "source_mtime_iso": "2025-06-27T03:16:04.891771+00:00",
+      "size_bytes": 98573
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "numLicks_bySession_all",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\numLicks_bySession_all.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/numLicks_bySession_all.svg",
+      "sha256": "212ac0954ef5d58b6b2f690ddb2690085a751722781b219c11f5420d899fbaa2",
+      "source_mtime_iso": "2025-06-27T03:16:03.900315+00:00",
+      "size_bytes": 112967
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "numLicks_bySession_correct",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\numLicks_bySession_correct.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/numLicks_bySession_correct.svg",
+      "sha256": "3e1b886ad91b7481de4cbae042d99988dd96b4d9acf7106dc11060dc348b0356",
+      "source_mtime_iso": "2025-06-27T03:16:03.711818+00:00",
+      "size_bytes": 113301
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "numLicks_bySession_correct_and_incorrect",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\numLicks_bySession_correct_and_incorrect.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/numLicks_bySession_correct_and_incorrect.svg",
+      "sha256": "b946e3e066c5e59ffbbd5f38cba6d526a4a7ad9f9a49fdc52fd7c0bdb0e81f23",
+      "source_mtime_iso": "2025-06-27T03:16:04.105448+00:00",
+      "size_bytes": 151907
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "numLicks_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\numLicks_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/numLicks_byTrial.svg",
+      "sha256": "298729ea4177c63e03a2d211b51f9e859a9d48afc38b427dfe61c27d2a86fa23",
+      "source_mtime_iso": "2025-06-27T03:16:03.517859+00:00",
+      "size_bytes": 660237
+    },
+    {
+      "animal": "PS51",
+      "plot_family": "switchiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS51\\switchiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS51/switchiness_bySession.svg",
+      "sha256": "1620b60657808f896ddbe16de810d6d2e54515208dae37d39b0e4c94a00c499b",
+      "source_mtime_iso": "2025-06-27T03:16:05.092084+00:00",
+      "size_bytes": 92695
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "accuracy_firstCorrectLick",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\accuracy_firstCorrectLick.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/accuracy_firstCorrectLick.svg",
+      "sha256": "1916e74d6f212041457772c4438bccd375d9bf6b5bdcf8f42c6a359c26d1a759",
+      "source_mtime_iso": "2025-06-27T03:08:14.539043+00:00",
+      "size_bytes": 107456
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "accuracy_firstCorrectLickAll",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\accuracy_firstCorrectLickAll.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/accuracy_firstCorrectLickAll.svg",
+      "sha256": "41d067ce9a08ca836d43a88587a2fa44560d911e29bccc08bf5513be1355d01b",
+      "source_mtime_iso": "2025-06-27T03:08:14.746907+00:00",
+      "size_bytes": 108762
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "anyLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\anyLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/anyLick_accuracy_L_byCategory.svg",
+      "sha256": "465c983b8957047e848f234765c1e82ae200397d6d1417bfcebbf9cd530fa476",
+      "source_mtime_iso": "2025-06-27T03:08:25.148062+00:00",
+      "size_bytes": 129319
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "anyLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\anyLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/anyLick_accuracy_R_byCategory.svg",
+      "sha256": "1d661c5f8723410d58c01440abccb2c31359b4fc1367e098e5d52f0f35315b15",
+      "source_mtime_iso": "2025-06-27T03:08:24.902502+00:00",
+      "size_bytes": 129394
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "criteria_performance",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\criteria_performance.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/criteria_performance.svg",
+      "sha256": "dde2bd8820a9522326e719d442fa0fe6edde2920fd55db7b5371498dd4410bc7",
+      "source_mtime_iso": "2025-06-27T03:08:14.314759+00:00",
+      "size_bytes": 107637
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "firstLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\firstLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/firstLick_accuracy_L_byCategory.svg",
+      "sha256": "560ecdc2efc8544faac93a6bb2a041c0950b03845b8163d8722e88d3dd6b63c7",
+      "source_mtime_iso": "2025-06-27T03:08:24.637099+00:00",
+      "size_bytes": 127630
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "firstLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\firstLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/firstLick_accuracy_R_byCategory.svg",
+      "sha256": "697342ba23c38353a098601deb1ba75386d24fa8012b7a41eab8909a162d5315",
+      "source_mtime_iso": "2025-06-27T03:08:24.397529+00:00",
+      "size_bytes": 127734
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "latency_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\latency_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/latency_bySession.svg",
+      "sha256": "f251f9ee2fa191681dac9777be9890c42c4ca0f828321add590412b56366e51b",
+      "source_mtime_iso": "2025-06-27T03:08:23.605199+00:00",
+      "size_bytes": 123603
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "latency_hist",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\latency_hist.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/latency_hist.svg",
+      "sha256": "f2324cfe8e460b02b96417cfb092a614d8562a2f36f7cb789d729efd65b07f34",
+      "source_mtime_iso": "2025-06-27T03:08:23.394437+00:00",
+      "size_bytes": 176673
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "lickRate_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\lickRate_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/lickRate_bySession.svg",
+      "sha256": "3e60a9a6af44cc3bb81f41223973e7531fc8e8fd8a59e5f75ef051946cd37d3b",
+      "source_mtime_iso": "2025-06-27T03:08:18.950060+00:00",
+      "size_bytes": 128418
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "lickRate_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\lickRate_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/lickRate_byTrial.svg",
+      "sha256": "0166f1eda01e6e94afea297babe06a8634ddbf33da08309c9c0515927c1efc3b",
+      "source_mtime_iso": "2025-06-27T03:08:18.734529+00:00",
+      "size_bytes": 1359936
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "lick_raster",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\lick_raster.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/lick_raster.svg",
+      "sha256": "5df7ea1b6205335cafd87d66cd3940d7470986dc3bccf4a515b284c1c400741e",
+      "source_mtime_iso": "2025-06-27T03:08:14.084186+00:00",
+      "size_bytes": 8504950
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "lickiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\lickiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/lickiness_bySession.svg",
+      "sha256": "0889b79ebf1c506027ce412a7d58e97d16f1cc2304ee159b76bcb51e38da8371",
+      "source_mtime_iso": "2025-06-27T03:08:23.910851+00:00",
+      "size_bytes": 108606
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "numLicks_bySession_all",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\numLicks_bySession_all.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/numLicks_bySession_all.svg",
+      "sha256": "f83498a53b3eeb07bb53c9f493abf2e3c514dc2f346c3b0a67ec36923b4b4e0f",
+      "source_mtime_iso": "2025-06-27T03:08:22.782813+00:00",
+      "size_bytes": 127282
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "numLicks_bySession_correct",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\numLicks_bySession_correct.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/numLicks_bySession_correct.svg",
+      "sha256": "c13ba24d560e908671982f46a40049779f59a88acffb5e227d10e61718db6d79",
+      "source_mtime_iso": "2025-06-27T03:08:22.572686+00:00",
+      "size_bytes": 127604
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "numLicks_bySession_correct_and_incorrect",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\numLicks_bySession_correct_and_incorrect.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/numLicks_bySession_correct_and_incorrect.svg",
+      "sha256": "354eade02a31904361b41a57eebba37a5e56b522879cfd1326d557423d44e312",
+      "source_mtime_iso": "2025-06-27T03:08:23.017707+00:00",
+      "size_bytes": 171314
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "numLicks_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\numLicks_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/numLicks_byTrial.svg",
+      "sha256": "91bff111c68962a7cd4867c28696e4d32b48ce850a6b2981d80ec1b40f98d0c9",
+      "source_mtime_iso": "2025-06-27T03:08:22.348445+00:00",
+      "size_bytes": 765253
+    },
+    {
+      "animal": "PS54",
+      "plot_family": "switchiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS54\\switchiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS54/switchiness_bySession.svg",
+      "sha256": "51ed3e255c65fc60bc97bf24bcc0612493f004bdbcc848a8ec3075b8230446ba",
+      "source_mtime_iso": "2025-06-27T03:08:24.140070+00:00",
+      "size_bytes": 105955
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "accuracy_firstCorrectLick",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\accuracy_firstCorrectLick.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/accuracy_firstCorrectLick.svg",
+      "sha256": "3ce5367883203f1e740618c0520095b6039d6621aa48a6a0aa881bef1448d6ef",
+      "source_mtime_iso": "2025-06-27T03:10:32.388198+00:00",
+      "size_bytes": 101195
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "accuracy_firstCorrectLickAll",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\accuracy_firstCorrectLickAll.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/accuracy_firstCorrectLickAll.svg",
+      "sha256": "4752b5a704ba898b111bd4b24f96d0df5487594bd2ccce454168f8b87d5433a1",
+      "source_mtime_iso": "2025-06-27T03:10:32.580728+00:00",
+      "size_bytes": 102389
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "anyLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\anyLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/anyLick_accuracy_L_byCategory.svg",
+      "sha256": "7dd8142c51bb880125902da2e1884723122167f264ad351e08edcecf57340a4f",
+      "source_mtime_iso": "2025-06-27T03:10:42.252088+00:00",
+      "size_bytes": 121705
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "anyLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\anyLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/anyLick_accuracy_R_byCategory.svg",
+      "sha256": "16e5a5811b7bed131359113b895c2b411d7f62ca9d651f731776c1b0171c0059",
+      "source_mtime_iso": "2025-06-27T03:10:42.028799+00:00",
+      "size_bytes": 121624
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "criteria_performance",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\criteria_performance.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/criteria_performance.svg",
+      "sha256": "5bb2e7db2ffd072faa34b618ebe3ec5ec80bf31f5d792c0ceff9d156e1e8ba49",
+      "source_mtime_iso": "2025-06-27T03:10:32.179088+00:00",
+      "size_bytes": 101264
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "firstLick_accuracy_L_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\firstLick_accuracy_L_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/firstLick_accuracy_L_byCategory.svg",
+      "sha256": "08f4bc50616e568b9243661dc005bf380b72d39b0b911c7abf860fef6ff10b61",
+      "source_mtime_iso": "2025-06-27T03:10:41.786308+00:00",
+      "size_bytes": 120028
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "firstLick_accuracy_R_byCategory",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\firstLick_accuracy_R_byCategory.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/firstLick_accuracy_R_byCategory.svg",
+      "sha256": "6745f192ef003b31822501316181ec05d88e7f3ef2a9fcb4df00731c44cb7a7d",
+      "source_mtime_iso": "2025-06-27T03:10:41.557294+00:00",
+      "size_bytes": 119994
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "latency_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\latency_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/latency_bySession.svg",
+      "sha256": "48512ee73d1505415ec948f731312240bfbd77661182f8aa9e6fbe59dca10096",
+      "source_mtime_iso": "2025-06-27T03:10:40.794968+00:00",
+      "size_bytes": 115894
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "latency_hist",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\latency_hist.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/latency_hist.svg",
+      "sha256": "f3c945105a08cebe1ae42a214fab789126c30bcfe627f2d22a49d51eddf36f9d",
+      "source_mtime_iso": "2025-06-27T03:10:40.604095+00:00",
+      "size_bytes": 165378
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "lickRate_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\lickRate_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/lickRate_bySession.svg",
+      "sha256": "4f245e3cb2ed0aa63efccc82965833788d9dc459b3005f1a0520c246a660252e",
+      "source_mtime_iso": "2025-06-27T03:10:36.389734+00:00",
+      "size_bytes": 120561
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "lickRate_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\lickRate_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/lickRate_byTrial.svg",
+      "sha256": "9b8ee5507b1b9c721355d2bf93976b60d43176d63e73935b2830cc94e7278c48",
+      "source_mtime_iso": "2025-06-27T03:10:36.186614+00:00",
+      "size_bytes": 1242039
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "lick_raster",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\lick_raster.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/lick_raster.svg",
+      "sha256": "f98ebb535ee2321783e36ea2db55ce56a8aa05c4a20004414b656071d3c9badb",
+      "source_mtime_iso": "2025-06-27T03:10:31.960961+00:00",
+      "size_bytes": 6433744
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "lickiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\lickiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/lickiness_bySession.svg",
+      "sha256": "760eeb38b7a7af53bfc9498f93e4dfbe3d56042fb75260e03a43d0d2eb91ecb5",
+      "source_mtime_iso": "2025-06-27T03:10:41.072568+00:00",
+      "size_bytes": 101677
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "numLicks_bySession_all",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\numLicks_bySession_all.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/numLicks_bySession_all.svg",
+      "sha256": "a0e3efe1132d3cbc4e8d880a7c51262fec69081bb83e6764da6208e2169faffe",
+      "source_mtime_iso": "2025-06-27T03:10:40.031206+00:00",
+      "size_bytes": 119359
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "numLicks_bySession_correct",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\numLicks_bySession_correct.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/numLicks_bySession_correct.svg",
+      "sha256": "efc862480381427170c3a801905ce3bd2ea119f6fa8976ebcb1749edb3990bbc",
+      "source_mtime_iso": "2025-06-27T03:10:39.834810+00:00",
+      "size_bytes": 119676
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "numLicks_bySession_correct_and_incorrect",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\numLicks_bySession_correct_and_incorrect.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/numLicks_bySession_correct_and_incorrect.svg",
+      "sha256": "eafb3e0320b6f295b321e065c0ecddeb785831ceebdb876a47ec6e4d0f2bd157",
+      "source_mtime_iso": "2025-06-27T03:10:40.251457+00:00",
+      "size_bytes": 160563
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "numLicks_byTrial",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\numLicks_byTrial.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/numLicks_byTrial.svg",
+      "sha256": "d03ddb0dbce2c50f564c1f6338045488de3aa4183234cad43b1ea25d1467769c",
+      "source_mtime_iso": "2025-06-27T03:10:39.621116+00:00",
+      "size_bytes": 702067
+    },
+    {
+      "animal": "PS55",
+      "plot_family": "switchiness_bySession",
+      "source_path": "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\analysis\\basic_behavior_analysis3\\PS55\\switchiness_bySession.svg",
+      "dest_path": "tests/scripts/_baselines/phase_8a_10/legacy_svgs/PS55/switchiness_bySession.svg",
+      "sha256": "29d856cd569d08968654f9dbe9bd9244e964c7d6c7ee3e201bff887e80a34467",
+      "source_mtime_iso": "2025-06-27T03:10:41.279785+00:00",
+      "size_bytes": 97860
+    }
+  ]
+}
