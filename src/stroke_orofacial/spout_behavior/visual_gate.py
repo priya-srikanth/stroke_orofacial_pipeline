@@ -326,16 +326,21 @@ def apply_longitudinal_axis(
 ) -> None:
     """Set xticks, xticklabels, and the stroke-day vertical marker.
 
-    Reads ``xtick_fontsize``, ``stroke_linewidth``, ``stroke_vline_color``,
-    ``stroke_vline_linestyle``, ``stroke_vline_alpha`` from
-    ``visual_gate_config`` (the ``visual_gate:`` block of
-    ``configs/defaults.yaml``).
+    Reads ``longitudinal_xtick_fontsize``, ``stroke_linewidth``,
+    ``stroke_vline_color``, ``stroke_vline_linestyle``,
+    ``stroke_vline_alpha`` from ``visual_gate_config`` (the
+    ``visual_gate:`` block of ``configs/defaults.yaml``).
+
+    Note: ``longitudinal_xtick_fontsize`` is distinct from the
+    raster-only ``xtick_fontsize`` knob. The longitudinal-family
+    knob is sized for dense cohorts where adjacent day labels
+    (e.g. d+31 / d+32) would otherwise overlap.
     """
     ax.set_xticks(longitudinal_axis.x_vals)
     ax.set_xticklabels(
         longitudinal_axis.x_ticklabels,
         rotation=90,
-        fontsize=visual_gate_config["xtick_fontsize"],
+        fontsize=visual_gate_config["longitudinal_xtick_fontsize"],
     )
     if longitudinal_axis.vline_x is not None:
         ax.axvline(
@@ -1487,7 +1492,7 @@ def render_numLicks_bySession_correct_and_incorrect(
 #   - compute_trial_lick_delays — per-trial lick timing relative to reward
 #
 # Mirrors legacy ``plot_raster`` (behavior_report_PS.py:415-448) +
-# emission (line 531-533). Three intentional deviations from legacy:
+# emission (line 531-533). Intentional deviations from legacy:
 #   1. Side-naming convention — legacy uses ``fn_flip_lr(side_reward)``
 #      on the ylabel because legacy operates WS-frame internally; the
 #      new pipeline reads side_reward as mouse-frame directly.
@@ -1501,6 +1506,16 @@ def render_numLicks_bySession_correct_and_incorrect(
 #      dot pattern reads cleanly. Legacy lines 428-430 (the
 #      ``axs[ii, jj].plot([-1, 4], [idx, idx], "g" if crit else "r",
 #      alpha=0.3)`` block) intentionally not ported.
+#   4. Explicit zorder on dots (Priya 2026-05-13 Round 2.7) —
+#      incorrect (magenta) drawn on top of correct (green) so errors
+#      are always visible regardless of subplot. Legacy used
+#      insertion-order, so visibility depended on per-cell lick counts.
+#   5. Figure-level ``Time (s)`` xlabel via fig.supxlabel (Round 2.7)
+#      replaces the per-axis xlabel × N_sessions of legacy.
+#   6. Smaller xtick labels (raster_dot_alpha-paired): xtick_fontsize
+#      reduced 10→6 + explicit raster_xticks + thinner reward marker
+#      (Round 2.7). Resolves the "0 tick perceptually merged into
+#      reward marker" issue Priya flagged 2026-05-13.
 
 
 def render_lick_raster(
@@ -1528,11 +1543,19 @@ def render_lick_raster(
         (intentional deviation; see module-level note 2).
       - Vertical reward-marker line at x=0, color
         ``raster_reward_marker_color``, alpha
-        ``raster_reward_marker_alpha``.
-      - X-axis limit ``raster_xlim``.
+        ``raster_reward_marker_alpha``, linewidth
+        ``raster_reward_marker_linewidth`` (intentional deviation;
+        thinner than legacy default to avoid merging with the "0"
+        xtick label).
+      - X-axis limit ``raster_xlim`` + explicit
+        ``raster_xticks`` (intentional deviation; matplotlib's
+        auto-locator placed -1 which crowded the reward marker).
       - Top-row only: per-cell title (rotated 90°) = session label
         formatted via :func:`legend_label_for_date`.
-      - Bottom-row only: xlabel "Time (s)" (rotated 90°).
+      - Bottom-row only: xtick label sizing via
+        ``xtick_fontsize`` (the "Time (s)" xlabel itself is now a
+        figure-level supxlabel; intentional deviation from legacy's
+        per-axis xlabel × N_sessions repetition).
       - Left-column only: ylabel "Trials   (side: mouse {side_reward})".
 
     The legacy criteria_34 pass/fail horizontal-line overlay
@@ -1599,12 +1622,17 @@ def render_lick_raster(
                         config["raster_dot_correct_color"] if is_correct
                         else config["raster_dot_incorrect_color"]
                     )
+                    dot_zorder = (
+                        config["raster_dot_correct_zorder"] if is_correct
+                        else config["raster_dot_incorrect_zorder"]
+                    )
                     ax.scatter(
                         lick_delays / data.sample_rate,
                         np.full_like(lick_delays, idx_reward, dtype=float),
                         s=config["raster_dot_size"],
                         color=color,
                         alpha=config["raster_dot_alpha"],
+                        zorder=dot_zorder,
                     )
             # Reward marker (vertical line at x=0).
             n_trials = len(delays_by_reward)
@@ -1612,8 +1640,10 @@ def render_lick_raster(
                 [0, 0], [0, n_trials],
                 config["raster_reward_marker_color"],
                 alpha=config["raster_reward_marker_alpha"],
+                linewidth=config["raster_reward_marker_linewidth"],
             )
             ax.set_xlim(*config["raster_xlim"])
+            ax.set_xticks(config["raster_xticks"])
             # Top-row title (column header).
             if ii == 0:
                 title = legend_label_for_date(
@@ -1621,9 +1651,9 @@ def render_lick_raster(
                 )
                 ax.set_title(title, rotation=90, fontsize="x-small")
                 ax.set_xticklabels([])
-            # Bottom-row xlabel.
+            # Bottom-row xtick label sizing (the "Time (s)" xlabel is
+            # set figure-level via fig.supxlabel below).
             if ii == 1:
-                ax.set_xlabel("Time (s)", rotation=90)
                 ax.tick_params(axis="x", labelsize=config["xtick_fontsize"])
             # Left-column ylabel. New-pipeline side convention: read
             # mouse-frame directly (no fn_flip_lr).
@@ -1632,6 +1662,9 @@ def render_lick_raster(
             else:
                 ax.set_yticklabels([])
 
+    fig.supxlabel(
+        "Time (s)", fontsize=config["raster_xlabel_fontsize"],
+    )
     fig.suptitle(
         "Licks after rewards. Dots: (green=corr, magenta=incorr).",
         y=-0.075,

@@ -1279,8 +1279,21 @@ visual_gate:
     L: "dodgerblue"
     R: "mediumvioletred"
 
-  # Longitudinal-axis styling (behavior_report_PS.py:36-37)
-  xtick_fontsize: 10
+  # Longitudinal-axis styling (behavior_report_PS.py:36-37). The
+  # `xtick_fontsize` knob is now scoped to the lick raster only;
+  # longitudinal plot families use `longitudinal_xtick_fontsize`
+  # below. Reduced from legacy 10 → 6 per Priya 2026-05-13 (Task 3
+  # Round 2.7: previous "0" tick visually merged into the reward
+  # marker; smaller xticks + thinner marker resolve the perceptual
+  # ambiguity).
+  xtick_fontsize: 6
+  # Day-label xtick fontsize for longitudinal plot families
+  # (lickiness, switchiness, numLicks_*, latency, lickRate,
+  # criteria_performance, accuracy_first*). Dense cohorts like
+  # PS54 (64 sessions in 85 days) had adjacent labels overlapping
+  # at the matplotlib default ~10pt; 6pt resolves the overlap.
+  # Priya 2026-05-13 (Task 3 Round 2.7).
+  longitudinal_xtick_fontsize: 6
   stroke_linewidth: 2.5
 
   # Stroke-day vertical marker (behavior_report_PS.py:352, 364)
@@ -1315,9 +1328,30 @@ visual_gate:
   # incorrect = "m" magenta.
   raster_dot_correct_color: "g"
   raster_dot_incorrect_color: "m"
-  # Reward-marker vertical line at x=0 (behavior_report_PS.py:432)
+  # Per-dot z-order (intentional deviation from legacy; Priya
+  # 2026-05-13 Task 3 Round 2.7). Legacy used insertion-order
+  # (L drawn first, R drawn second on top), so the visible
+  # asymmetry depended on which side had more licks. Drawing
+  # incorrect-magenta on top of correct-green makes errors
+  # always visible regardless of subplot. DECISIONS-entry queued.
+  raster_dot_correct_zorder: 2
+  raster_dot_incorrect_zorder: 3
+  # Reward-marker vertical line at x=0 (behavior_report_PS.py:432).
+  # Linewidth reduced from matplotlib default (~1.5pt) to 0.5pt per
+  # Priya 2026-05-13 — the previous thick marker visually merged
+  # with the "0" xtick label.
   raster_reward_marker_color: "k"
   raster_reward_marker_alpha: 0.3
+  raster_reward_marker_linewidth: 0.5
+  # Explicit xticks for the lick raster (Priya 2026-05-13 Task 3
+  # Round 2.7). matplotlib's auto-locator placed [-1, 0, 1, 2, 3,
+  # 4, 5] which crowded against the reward marker at 0; the
+  # explicit list drops the -1 tick so "0" stands alone.
+  raster_xticks: [0, 1, 2, 3, 4, 5]
+  # Figure-level "Time (s)" xlabel fontsize (Priya 2026-05-13 Task 3
+  # Round 2.7). Was per-axis on every column; now a single fig
+  # supxlabel at the bottom.
+  raster_xlabel_fontsize: 8
 
   # ---- Cohort-summary tiler (CG-5; cohort_summary.py) ----
   # Default plot families to tile across animals when no explicit list

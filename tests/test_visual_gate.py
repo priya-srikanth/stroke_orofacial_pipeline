@@ -1472,8 +1472,194 @@ class TestRenderLickRaster:
             "overlay may still be rendering"
         )
 
+    def test_raster_incorrect_zorder_above_correct(
+        self, cohort_for_renders, monkeypatch,
+    ):
+        """Round 2.7 pin: incorrect (magenta) dots drawn ON TOP of
+        correct (green) dots so errors are always visible regardless
+        of subplot. Capture every ax.scatter call and verify zorder
+        kwarg matches config (correct=2, incorrect=3)."""
+        resolver, _ = cohort_for_renders
+        captured: list[dict] = []
+        original = matplotlib.axes.Axes.scatter
+
+        def recording_scatter(self, *args, **kwargs):
+            captured.append(dict(kwargs))
+            return original(self, *args, **kwargs)
+
+        monkeypatch.setattr(matplotlib.axes.Axes, "scatter", recording_scatter)
+        render_lick_raster("PS51", resolver, align_to_stroke=True)
+        assert len(captured) > 0, "no ax.scatter calls captured"
+        correct_color = visual_gate.load_visual_gate_config()[
+            "raster_dot_correct_color"
+        ]
+        incorrect_color = visual_gate.load_visual_gate_config()[
+            "raster_dot_incorrect_color"
+        ]
+        # Each scatter carries an explicit zorder, and it matches the
+        # color-implied is_correct branch.
+        for call_kwargs in captured:
+            assert "zorder" in call_kwargs, (
+                f"ax.scatter missing zorder kwarg: {call_kwargs}"
+            )
+            if call_kwargs.get("color") == correct_color:
+                assert call_kwargs["zorder"] == 2, (
+                    f"correct (green) dots should have zorder=2, got "
+                    f"{call_kwargs['zorder']}"
+                )
+            elif call_kwargs.get("color") == incorrect_color:
+                assert call_kwargs["zorder"] == 3, (
+                    f"incorrect (magenta) dots should have zorder=3, got "
+                    f"{call_kwargs['zorder']}"
+                )
+
+    def test_raster_xlabel_is_figure_level(
+        self, cohort_for_renders, monkeypatch,
+    ):
+        """Round 2.7 pin: "Time (s)" is set ONCE as a fig.supxlabel,
+        not as per-axis ax.set_xlabel × N_sessions. Capture both
+        method-call sets to verify."""
+        resolver, _ = cohort_for_renders
+        supxlabel_calls: list[tuple] = []
+        set_xlabel_calls: list[tuple] = []
+        orig_supxlabel = matplotlib.figure.Figure.supxlabel
+        orig_set_xlabel = matplotlib.axes.Axes.set_xlabel
+
+        def recording_supxlabel(self, *args, **kwargs):
+            supxlabel_calls.append((args, dict(kwargs)))
+            return orig_supxlabel(self, *args, **kwargs)
+
+        def recording_set_xlabel(self, *args, **kwargs):
+            set_xlabel_calls.append((args, dict(kwargs)))
+            return orig_set_xlabel(self, *args, **kwargs)
+
+        monkeypatch.setattr(
+            matplotlib.figure.Figure, "supxlabel", recording_supxlabel,
+        )
+        monkeypatch.setattr(
+            matplotlib.axes.Axes, "set_xlabel", recording_set_xlabel,
+        )
+        render_lick_raster("PS51", resolver, align_to_stroke=True)
+        # supxlabel called exactly once with "Time (s)".
+        time_supx_calls = [
+            c for c in supxlabel_calls
+            if c[0] and c[0][0] == "Time (s)"
+        ]
+        assert len(time_supx_calls) == 1, (
+            f"expected exactly one fig.supxlabel('Time (s)', ...) call, "
+            f"got {len(time_supx_calls)}: {supxlabel_calls}"
+        )
+        # No per-axis ax.set_xlabel("Time (s)", ...) calls.
+        time_axlabel_calls = [
+            c for c in set_xlabel_calls
+            if c[0] and c[0][0] == "Time (s)"
+        ]
+        assert len(time_axlabel_calls) == 0, (
+            f"expected zero per-axis ax.set_xlabel('Time (s)', ...) "
+            f"calls; got {len(time_axlabel_calls)}: {time_axlabel_calls}"
+        )
+
+    def test_raster_xticks_explicit(
+        self, cohort_for_renders, monkeypatch,
+    ):
+        """Round 2.7 pin: render_lick_raster sets explicit xticks
+        from config so the auto-locator doesn't crowd a -1 tick
+        against the reward marker at 0."""
+        resolver, _ = cohort_for_renders
+        captured_xticks: list[list] = []
+        orig = matplotlib.axes.Axes.set_xticks
+
+        def recording_set_xticks(self, ticks, *args, **kwargs):
+            captured_xticks.append(list(ticks) if hasattr(ticks, "__iter__") else ticks)
+            return orig(self, ticks, *args, **kwargs)
+
+        monkeypatch.setattr(
+            matplotlib.axes.Axes, "set_xticks", recording_set_xticks,
+        )
+        render_lick_raster("PS51", resolver, align_to_stroke=True)
+        expected = visual_gate.load_visual_gate_config()["raster_xticks"]
+        # Every raster ax gets the explicit xticks set.
+        matching = [t for t in captured_xticks if t == expected]
+        assert len(matching) > 0, (
+            f"no ax.set_xticks call matched raster_xticks={expected}; "
+            f"all captured: {captured_xticks}"
+        )
+
+    def test_raster_reward_marker_thinner(
+        self, cohort_for_renders, monkeypatch,
+    ):
+        """Round 2.7 pin: reward marker (vertical line at x=0) uses
+        linewidth from config, not matplotlib's default ~1.5pt."""
+        resolver, _ = cohort_for_renders
+        captured: list[dict] = []
+        original = matplotlib.axes.Axes.plot
+
+        def recording_plot(self, *args, **kwargs):
+            captured.append((args, dict(kwargs)))
+            return original(self, *args, **kwargs)
+
+        monkeypatch.setattr(matplotlib.axes.Axes, "plot", recording_plot)
+        render_lick_raster("PS51", resolver, align_to_stroke=True)
+        cfg = visual_gate.load_visual_gate_config()
+        expected_lw = cfg["raster_reward_marker_linewidth"]
+        # Reward-marker plot calls: positional args [[0,0], [0, n_trials], color].
+        reward_calls = [
+            (a, k) for (a, k) in captured
+            if len(a) >= 2 and list(a[0]) == [0, 0]
+        ]
+        assert len(reward_calls) > 0, (
+            f"no reward-marker ax.plot([0,0],...) calls captured; "
+            f"got {len(captured)} total plot calls"
+        )
+        for (_args, kwargs) in reward_calls:
+            assert kwargs.get("linewidth") == expected_lw, (
+                f"reward-marker linewidth={kwargs.get('linewidth')} "
+                f"!= config {expected_lw}"
+            )
+
     def test_module_export(self):
         assert hasattr(visual_gate, "render_lick_raster")
+
+
+class TestLongitudinalXtickFontsize:
+    """Round 2.7 pin: longitudinal plot families (criteria_performance,
+    accuracy_first*, lickiness, switchiness, numLicks_*, latency,
+    lickRate) share apply_longitudinal_axis. The day-label tick
+    fontsize must come from the new visual_gate.longitudinal_xtick_fontsize
+    knob (NOT the raster-scoped xtick_fontsize)."""
+
+    def test_longitudinal_xtick_fontsize_default(self):
+        cfg = load_visual_gate_config()
+        assert "longitudinal_xtick_fontsize" in cfg
+        assert cfg["longitudinal_xtick_fontsize"] == 6
+
+    def test_longitudinal_xtick_fontsize_applied(self):
+        """apply_longitudinal_axis reads longitudinal_xtick_fontsize
+        and passes it to ax.set_xticklabels. Pin both: (a) the
+        config-default value and (b) a synthetic override (proves
+        plumbing — not a hardcoded constant)."""
+        for synthetic_size in (6, 12):
+            fig, ax = plt.subplots()
+            try:
+                axis = LongitudinalAxis(
+                    x_vals=np.array([0, 1, 2]),
+                    x_ticklabels=["d-1", "d0", "d+1"],
+                    vline_x=0.5,
+                    suffix="_relStroke",
+                )
+                cfg = dict(load_visual_gate_config())
+                cfg["longitudinal_xtick_fontsize"] = synthetic_size
+                apply_longitudinal_axis(ax, axis, cfg)
+                # Read back the fontsize matplotlib applied to xtick labels.
+                xticklabels = ax.get_xticklabels()
+                assert len(xticklabels) == 3
+                for tl in xticklabels:
+                    assert tl.get_fontsize() == synthetic_size, (
+                        f"xtick label fontsize {tl.get_fontsize()} "
+                        f"!= synthetic override {synthetic_size}"
+                    )
+            finally:
+                plt.close(fig)
 
 
 # =====================================================================
