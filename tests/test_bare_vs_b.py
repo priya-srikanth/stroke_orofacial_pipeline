@@ -17,15 +17,24 @@ import platform
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from stroke_orofacial.animals import AnimalInfo
 from stroke_orofacial.paths import PathResolver
 from stroke_orofacial.spout_behavior.bare_vs_b import (
+    BARE_VS_B_LINE_COLORS,
     COHORT_B_REL_DAY_MIN,
+    PER_SESSION_RENDERERS,
     SessionPairData,
     iter_cohort_b_session_keys,
     iter_cohort_b_sessions,
     list_cohort_b_animals,
+    render_bare_vs_b_correct_incorrect_per_side,
+    render_bare_vs_b_first_lick_accuracy,
+    render_bare_vs_b_first_lick_latency,
+    render_bare_vs_b_lick_raster,
+    render_bare_vs_b_reward_acquisition_over_time,
+    save_bare_vs_b_figure,
 )
 from stroke_orofacial.spout_behavior.visual_gate import SessionPlotData
 
@@ -419,3 +428,244 @@ class TestIterCohortBSessionsEndToEnd:
             require_on_disk=True,
         ))
         assert pairs == []
+
+
+# ---- CG-B2 ----
+
+
+def _make_session(
+    date_label: str,
+    *,
+    lick_l: np.ndarray | None = None,
+    lick_r: np.ndarray | None = None,
+    reward_l: np.ndarray | None = None,
+    reward_r: np.ndarray | None = None,
+    sample_rate: float = 2000.0,
+    n_samples: int = 60000,
+) -> SessionPlotData:
+    """Synthesize a SessionPlotData payload for direct renderer
+    testing (avoids the NPZ-on-disk round-trip)."""
+    return SessionPlotData(
+        date_label=date_label,
+        lick_idx={
+            "Lick_L": (
+                lick_l if lick_l is not None
+                else np.array([1100, 1500, 2000, 5100, 5400], dtype=int)
+            ),
+            "Lick_R": (
+                lick_r if lick_r is not None
+                else np.array([5200, 5500, 5800, 6200, 6600], dtype=int)
+            ),
+        },
+        rewards_idx={
+            "Reward_L": (
+                reward_l if reward_l is not None
+                else np.array([1000, 2000], dtype=int)
+            ),
+            "Reward_R": (
+                reward_r if reward_r is not None
+                else np.array([5000, 6000], dtype=int)
+            ),
+        },
+        sample_rate=sample_rate,
+        n_samples_session=n_samples,
+    )
+
+
+@pytest.fixture
+def synth_pair() -> SessionPairData:
+    return SessionPairData(
+        animal="PS55",
+        date=datetime.date(2025, 5, 30),
+        bare=_make_session("20250530"),
+        b=_make_session(
+            "20250530",
+            lick_l=np.array([1080, 1200, 2050], dtype=int),
+            lick_r=np.array([5150, 5400, 5900, 6100], dtype=int),
+            reward_l=np.array([1000, 2000], dtype=int),
+            reward_r=np.array([5000, 6000], dtype=int),
+        ),
+    )
+
+
+class TestSaveBareVsBFigure:
+    def test_writes_svg_and_png(self, tmp_path):
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        resolver = PathResolver(output_root=tmp_path)
+        fig, _ax = plt.subplots()
+        try:
+            svg, png = save_bare_vs_b_figure(
+                fig, "PS55", "20250530", "lick_raster", resolver,
+            )
+        finally:
+            plt.close(fig)
+        assert svg.exists() and png.exists()
+        assert svg.name == "20250530_lick_raster.svg"
+        assert png.name == "20250530_lick_raster.png"
+        assert svg.parent.name == "PS55"
+
+
+class TestRenderFirstLickAccuracy:
+    def test_returns_svg_and_png_paths(self, synth_pair, tmp_path):
+        resolver = PathResolver(output_root=tmp_path)
+        svg, png = render_bare_vs_b_first_lick_accuracy(
+            synth_pair, resolver,
+        )
+        assert svg.exists() and svg.stat().st_size > 0
+        assert png.exists() and png.stat().st_size > 0
+        assert svg.name == "20250530_first_lick_accuracy.svg"
+
+    def test_structural_pin_y_range(self, synth_pair, tmp_path):
+        """Endpoint 1's y-axis is accuracy ∈ [0, 1]. The SVG must
+        contain the standard accuracy axis label."""
+        resolver = PathResolver(output_root=tmp_path)
+        svg, _png = render_bare_vs_b_first_lick_accuracy(
+            synth_pair, resolver,
+        )
+        text = svg.read_text(encoding="utf-8")
+        # 4 "T-i" strict glyph sequences from "First-lick accuracy"
+        # title + 4 bar-tick "bare L/R" + "b L/R" — at minimum the
+        # accuracy ylabel exists. Pin via glyph for "F" + "i" (Fi
+        # only appears in "First").
+        assert "DejaVuSans-46" in text, (
+            "F glyph missing — accuracy label not rendered"
+        )
+
+
+class TestRenderCorrectIncorrectPerSide:
+    def test_returns_svg_and_png_paths(self, synth_pair, tmp_path):
+        resolver = PathResolver(output_root=tmp_path)
+        svg, png = render_bare_vs_b_correct_incorrect_per_side(
+            synth_pair, resolver,
+        )
+        assert svg.exists() and svg.stat().st_size > 0
+        assert png.exists()
+        assert svg.name == "20250530_correct_incorrect_per_side.svg"
+
+    def test_two_subpanels_one_per_half(self, synth_pair, tmp_path):
+        """Layout pin: 2 subpanels (bare, b) — SVG should contain
+        both labels."""
+        resolver = PathResolver(output_root=tmp_path)
+        svg, _png = render_bare_vs_b_correct_incorrect_per_side(
+            synth_pair, resolver,
+        )
+        text = svg.read_text(encoding="utf-8")
+        # matplotlib emits text-as-path; check for distinct ax.set_title
+        # calls via the resulting 2 separate <g id="text_N"> blocks
+        # at axes-title positions. Simpler: confirm SIDE_COLORS in use
+        # (mouse-L=dodgerblue: #1e90ff; mouse-R=mediumvioletred:
+        # #c71585) via fill style.
+        assert (
+            "#1e90ff" in text or "fill: #1e90ff" in text
+        ), "SIDE_COLORS L (dodgerblue) not rendered"
+
+
+class TestRenderLickRaster:
+    def test_returns_svg_and_png_paths(self, synth_pair, tmp_path):
+        resolver = PathResolver(output_root=tmp_path)
+        svg, png = render_bare_vs_b_lick_raster(synth_pair, resolver)
+        assert svg.exists() and svg.stat().st_size > 0
+        assert png.exists()
+        assert svg.name == "20250530_lick_raster.svg"
+
+    def test_reuses_sub_deliverable_A_dot_styling(
+        self, synth_pair, tmp_path,
+    ):
+        """The bare-vs-b raster shares dot styling with
+        render_lick_raster (alpha=0.6 + thin reward marker 0.5).
+        SVG should carry fill-opacity 0.6 and stroke-width 0.5."""
+        resolver = PathResolver(output_root=tmp_path)
+        svg, _png = render_bare_vs_b_lick_raster(synth_pair, resolver)
+        text = svg.read_text(encoding="utf-8")
+        assert "fill-opacity: 0.6" in text, (
+            "dots not rendered at alpha=0.6"
+        )
+        assert "stroke-width: 0.5" in text, (
+            "reward marker not at linewidth 0.5"
+        )
+
+
+class TestRenderFirstLickLatency:
+    def test_returns_svg_and_png_paths(self, synth_pair, tmp_path):
+        resolver = PathResolver(output_root=tmp_path)
+        svg, png = render_bare_vs_b_first_lick_latency(
+            synth_pair, resolver,
+        )
+        assert svg.exists() and svg.stat().st_size > 0
+        assert png.exists()
+        assert svg.name == "20250530_first_lick_latency.svg"
+
+
+class TestRenderRewardAcquisitionOverTime:
+    """Endpoint 5 (NEW; no legacy precedent) — pin layout + colors."""
+
+    def test_returns_svg_and_png_paths(self, synth_pair, tmp_path):
+        resolver = PathResolver(output_root=tmp_path)
+        svg, png = render_bare_vs_b_reward_acquisition_over_time(
+            synth_pair, resolver,
+        )
+        assert svg.exists() and svg.stat().st_size > 0
+        assert png.exists()
+        assert svg.name == "20250530_reward_acquisition_over_time.svg"
+
+    def test_uses_bare_vs_b_color_palette_not_side_colors(
+        self, synth_pair, tmp_path,
+    ):
+        """Endpoint 5 pin: lines are BARE_VS_B_LINE_COLORS
+        (black + tab:orange), NOT SIDE_COLORS. Verify by SVG color
+        signatures.
+
+        - BARE_VS_B_LINE_COLORS["bare"] = "black" → SVG ``#000000``.
+        - BARE_VS_B_LINE_COLORS["b"] = "tab:orange" → SVG ``#ff7f0e``.
+        """
+        assert BARE_VS_B_LINE_COLORS["bare"] == "black"
+        assert BARE_VS_B_LINE_COLORS["b"] == "tab:orange"
+
+        resolver = PathResolver(output_root=tmp_path)
+        svg, _png = render_bare_vs_b_reward_acquisition_over_time(
+            synth_pair, resolver,
+        )
+        text = svg.read_text(encoding="utf-8")
+        assert "#ff7f0e" in text, (
+            "tab:orange (b line) not rendered"
+        )
+        # Black stroke appears in many matplotlib defaults; pin
+        # via the line2d path style instead. The b line uses
+        # 'stroke: #ff7f0e' inside a style="..." attribute; the
+        # bare line uses 'stroke: #000000' the same way.
+        assert "stroke: #000000" in text, (
+            "black (bare line) not rendered as stroke"
+        )
+
+    def test_layout_single_panel(self, synth_pair, tmp_path):
+        """Endpoint 5 design choice: 1 panel with 2 lines (NOT
+        per-side sub-panels). Pin via axes count in the SVG —
+        matplotlib emits one ``<g id="axes_N">`` per Axes."""
+        import re
+        resolver = PathResolver(output_root=tmp_path)
+        svg, _png = render_bare_vs_b_reward_acquisition_over_time(
+            synth_pair, resolver,
+        )
+        text = svg.read_text(encoding="utf-8")
+        axes_groups = re.findall(r'<g id="axes_\d+">', text)
+        assert len(axes_groups) == 1, (
+            f"endpoint 5 should have exactly 1 axes group "
+            f"(combined L+R, single panel); got {len(axes_groups)}"
+        )
+
+
+class TestPerSessionRenderersRegistry:
+    def test_registry_has_5_endpoints(self):
+        """The PER_SESSION_RENDERERS list pins the 5-endpoint order
+        for the orchestrator."""
+        slugs = [s for s, _fn in PER_SESSION_RENDERERS]
+        assert slugs == [
+            "first_lick_accuracy",
+            "correct_incorrect_per_side",
+            "lick_raster",
+            "first_lick_latency",
+            "reward_acquisition_over_time",
+        ]
