@@ -626,6 +626,14 @@ class TestVisualGateConfig:
         ]:
             assert key in cfg, f"visual_gate config missing key: {key}"
 
+    def test_xtick_fontsize_value(self):
+        """Round 2.8 pin: lick-raster-scoped xtick_fontsize=5
+        (Priya 2026-05-13). Previously 6 (Round 2.7), legacy was 10.
+        The longitudinal xtick fontsize is a separate knob
+        (longitudinal_xtick_fontsize); see TestLongitudinalXtickFontsize."""
+        cfg = load_visual_gate_config()
+        assert cfg["xtick_fontsize"] == 5
+
     def test_side_colors_inverted_vs_legacy(self):
         """Phase 8a.10 DECISIONS pin: mouse-frame palette is inverted
         from legacy. Legacy `side_colors` (behavior_report_PS.py:250)
@@ -1564,7 +1572,8 @@ class TestRenderLickRaster:
     ):
         """Round 2.7 pin: render_lick_raster sets explicit xticks
         from config so the auto-locator doesn't crowd a -1 tick
-        against the reward marker at 0."""
+        against the reward marker at 0. Round 2.8 reduces to the
+        axis-limit endpoints [0, 5] (Priya 2026-05-13)."""
         resolver, _ = cohort_for_renders
         captured_xticks: list[list] = []
         orig = matplotlib.axes.Axes.set_xticks
@@ -1577,7 +1586,10 @@ class TestRenderLickRaster:
             matplotlib.axes.Axes, "set_xticks", recording_set_xticks,
         )
         render_lick_raster("PS51", resolver, align_to_stroke=True)
-        expected = visual_gate.load_visual_gate_config()["raster_xticks"]
+        cfg = visual_gate.load_visual_gate_config()
+        # Round 2.8 value pin.
+        assert cfg["raster_xticks"] == [0, 5]
+        expected = cfg["raster_xticks"]
         # Every raster ax gets the explicit xticks set.
         matching = [t for t in captured_xticks if t == expected]
         assert len(matching) > 0, (

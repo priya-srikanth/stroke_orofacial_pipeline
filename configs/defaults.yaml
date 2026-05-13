@@ -1282,11 +1282,11 @@ visual_gate:
   # Longitudinal-axis styling (behavior_report_PS.py:36-37). The
   # `xtick_fontsize` knob is now scoped to the lick raster only;
   # longitudinal plot families use `longitudinal_xtick_fontsize`
-  # below. Reduced from legacy 10 → 6 per Priya 2026-05-13 (Task 3
-  # Round 2.7: previous "0" tick visually merged into the reward
-  # marker; smaller xticks + thinner marker resolve the perceptual
-  # ambiguity).
-  xtick_fontsize: 6
+  # below. Reduced from legacy 10 → 6 (Round 2.7) → 5 (Round 2.8,
+  # Priya 2026-05-13). Round 2.8 also drops raster_xticks to the
+  # minimal pair [0, 5] (one tick per axis-limit endpoint) for the
+  # cleanest possible raster panels.
+  xtick_fontsize: 5
   # Day-label xtick fontsize for longitudinal plot families
   # (lickiness, switchiness, numLicks_*, latency, lickRate,
   # criteria_performance, accuracy_first*). Dense cohorts like
@@ -1344,10 +1344,11 @@ visual_gate:
   raster_reward_marker_alpha: 0.3
   raster_reward_marker_linewidth: 0.5
   # Explicit xticks for the lick raster (Priya 2026-05-13 Task 3
-  # Round 2.7). matplotlib's auto-locator placed [-1, 0, 1, 2, 3,
-  # 4, 5] which crowded against the reward marker at 0; the
-  # explicit list drops the -1 tick so "0" stands alone.
-  raster_xticks: [0, 1, 2, 3, 4, 5]
+  # Round 2.7 → Round 2.8). matplotlib's auto-locator placed [-1,
+  # 0, 1, 2, 3, 4, 5] which crowded against the reward marker at
+  # 0. Round 2.7 dropped to [0..5]; Round 2.8 reduces further to
+  # the axis-limit endpoints [0, 5] for the cleanest panel.
+  raster_xticks: [0, 5]
   # Figure-level "Time (s)" xlabel fontsize (Priya 2026-05-13 Task 3
   # Round 2.7). Was per-axis on every column; now a single fig
   # supxlabel at the bottom.
