@@ -1299,28 +1299,25 @@ visual_gate:
   # Late-lick window (behavior_report_PS.py:861)
   lickiness_window_seconds: 60
 
-  # Raster styling (behavior_report_PS.py:425, 430, 433)
+  # Raster styling (behavior_report_PS.py:425, 433)
   raster_xlim: [-1, 5]
   raster_dot_size: 0.5
-  raster_criteria_alpha: 0.3
+  # Per-dot transparency (intentional deviation from legacy; Priya
+  # 2026-05-13). Legacy default was 1.0 (fully opaque). 0.6 lets the
+  # under-layer R-on-top-of-L (or vice versa per mouse-frame row
+  # swap) peek through — mitigates label-side-dependent occlusion
+  # in lick rasters where one side has many more licks than the
+  # other. DECISIONS-entry queued for the phase-close commit.
+  raster_dot_alpha: 0.6
   # Lick-raster dot colors. Semantic (correct vs incorrect lick relative
   # to reward side); NOT mouse-side-coded, so not inverted vs legacy.
   # Legacy hardcodes (behavior_report_PS.py:425): correct = "g" green;
   # incorrect = "m" magenta.
   raster_dot_correct_color: "g"
   raster_dot_incorrect_color: "m"
-  # Criteria-34 pass/fail horizontal-line colors per trial
-  # (behavior_report_PS.py:430). Legacy hardcodes: pass = "g" green;
-  # fail = "r" red.
-  raster_criteria_pass_color: "g"
-  raster_criteria_fail_color: "r"
   # Reward-marker vertical line at x=0 (behavior_report_PS.py:432)
   raster_reward_marker_color: "k"
   raster_reward_marker_alpha: 0.3
-  # Criteria-line x extent (behavior_report_PS.py:430) — note legacy
-  # uses [-1, 4] while raster_xlim is [-1, 5]; mild legacy quirk
-  # preserved.
-  raster_criteria_xrange: [-1, 4]
 
   # ---- Cohort-summary tiler (CG-5; cohort_summary.py) ----
   # Default plot families to tile across animals when no explicit list

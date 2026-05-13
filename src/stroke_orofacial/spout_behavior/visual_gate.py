@@ -1481,19 +1481,26 @@ def render_numLicks_bySession_correct_and_incorrect(
 # (CG-2's _PerSessionStats aggregation). The raster is a 2 × N_sessions
 # grid where rows = reward side and columns = sessions; each cell shows
 # per-trial post-reward licks as a scatter (correct vs incorrect color-
-# coded) with a criteria_34 pass/fail horizontal line overlay per trial.
+# coded).
 #
 # Reuses CG-2 helpers:
 #   - compute_trial_lick_delays — per-trial lick timing relative to reward
-#   - compute_first_correct_lick_sample_idx → compute_criteria_3
-#   - compute_criteria_4
-#   - compute_criteria_34 — combined pass/fail for the line overlay
 #
 # Mirrors legacy ``plot_raster`` (behavior_report_PS.py:415-448) +
-# emission (line 531-533). Faithful port: side-naming convention is the
-# only deviation — legacy uses ``fn_flip_lr(side_reward)`` on the ylabel
-# because legacy operates WS-frame internally; the new pipeline reads
-# side_reward as mouse-frame directly.
+# emission (line 531-533). Three intentional deviations from legacy:
+#   1. Side-naming convention — legacy uses ``fn_flip_lr(side_reward)``
+#      on the ylabel because legacy operates WS-frame internally; the
+#      new pipeline reads side_reward as mouse-frame directly.
+#   2. ``raster_dot_alpha`` (Priya 2026-05-13) — dots use
+#      ``alpha=0.6`` (config-driven) instead of legacy's opaque 1.0.
+#      Lets the under-layer peek through; mitigates label-side-
+#      dependent occlusion (R-on-top of L) when lick counts are
+#      asymmetric across sides.
+#   3. ``criteria_34`` pass/fail horizontal-bar overlay REMOVED
+#      (Priya 2026-05-13). Eliminates row-level color clutter so the
+#      dot pattern reads cleanly. Legacy lines 428-430 (the
+#      ``axs[ii, jj].plot([-1, 4], [idx, idx], "g" if crit else "r",
+#      alpha=0.3)`` block) intentionally not ported.
 
 
 def render_lick_raster(
@@ -1517,12 +1524,8 @@ def render_lick_raster(
         ``visual_gate.raster_dot_size`` config. Color
         ``raster_dot_correct_color`` (green) when ``side_lick ==
         side_reward``; ``raster_dot_incorrect_color`` (magenta)
-        otherwise.
-      - Per trial, a horizontal line at y=trial_idx spanning
-        ``raster_criteria_xrange``, colored
-        ``raster_criteria_pass_color`` (green) when criteria_34
-        passes for that trial, ``raster_criteria_fail_color`` (red)
-        otherwise. Alpha from ``raster_criteria_alpha``.
+        otherwise. Per-dot ``alpha=visual_gate.raster_dot_alpha``
+        (intentional deviation; see module-level note 2).
       - Vertical reward-marker line at x=0, color
         ``raster_reward_marker_color``, alpha
         ``raster_reward_marker_alpha``.
@@ -1532,9 +1535,12 @@ def render_lick_raster(
       - Bottom-row only: xlabel "Time (s)" (rotated 90°).
       - Left-column only: ylabel "Trials   (side: mouse {side_reward})".
 
-    Suptitle (legacy line 444-447):
-      ``"Licks after rewards. Dots: (green=corr, magenta=incorr).
-      Lines: (green=pass, red=fail)"``
+    The legacy criteria_34 pass/fail horizontal-line overlay
+    (behavior_report_PS.py:428-430) is intentionally NOT ported —
+    see module-level note 3.
+
+    Suptitle:
+      ``"Licks after rewards. Dots: (green=corr, magenta=incorr)."``
 
     Raises
     ------
@@ -1561,21 +1567,14 @@ def render_lick_raster(
     )
 
     window_around = behavior_params["window_around_rewards"]
-    crit3_window = behavior_params["criteria_3"]["window"]
-    crit_xrange = config["raster_criteria_xrange"]
 
-    # Compute per-session lick delays + criteria_34 in one pass.
+    # Compute per-session lick delays in one pass.
     per_date_delays: dict[str, dict[str, dict[int, dict[str, np.ndarray]]]] = {}
-    per_date_crit34: dict[str, dict[str, dict[int, bool]]] = {}
     for date in dates:
         data = load_session_plot_data(animal, date, resolver)
         per_date_delays[date] = compute_trial_lick_delays(
             data, window_around,
         )
-        fcl_idx = compute_first_correct_lick_sample_idx(data, crit3_window)
-        c3 = compute_criteria_3(fcl_idx)
-        c4 = compute_criteria_4(data, behavior_params["criteria_4"])
-        per_date_crit34[date] = compute_criteria_34(c3, c4)
 
     fig, axs = plt.subplots(
         nrows=2, ncols=len(dates),
@@ -1586,7 +1585,6 @@ def render_lick_raster(
         for jj, date in enumerate(dates):
             ax = axs[ii, jj]
             delays_by_reward = per_date_delays[date][f"Reward_{side_reward}"]
-            crit34_by_reward = per_date_crit34[date][side_reward]
             # Load sample_rate from the same SessionPlotData? We need it
             # for the lick-delay → seconds conversion. Reload here to
             # avoid keeping all SessionPlotData live; lookup is cheap.
@@ -1606,17 +1604,8 @@ def render_lick_raster(
                         np.full_like(lick_delays, idx_reward, dtype=float),
                         s=config["raster_dot_size"],
                         color=color,
+                        alpha=config["raster_dot_alpha"],
                     )
-            # Criteria_34 pass/fail overlay (per trial).
-            for idx_reward, passed in crit34_by_reward.items():
-                line_color = (
-                    config["raster_criteria_pass_color"] if passed
-                    else config["raster_criteria_fail_color"]
-                )
-                ax.plot(
-                    crit_xrange, [idx_reward, idx_reward],
-                    line_color, alpha=config["raster_criteria_alpha"],
-                )
             # Reward marker (vertical line at x=0).
             n_trials = len(delays_by_reward)
             ax.plot(
@@ -1644,8 +1633,7 @@ def render_lick_raster(
                 ax.set_yticklabels([])
 
     fig.suptitle(
-        "Licks after rewards. Dots: (green=corr, magenta=incorr). "
-        "Lines: (green=pass, red=fail)",
+        "Licks after rewards. Dots: (green=corr, magenta=incorr).",
         y=-0.075,
     )
     paths = save_visual_gate_figure(

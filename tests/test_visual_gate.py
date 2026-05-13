@@ -621,7 +621,7 @@ class TestVisualGateConfig:
             "stroke_vline_x", "stroke_vline_color", "stroke_vline_linestyle",
             "stroke_vline_alpha", "accuracy_y_range", "latency_y_max",
             "lickrate_y_max", "numlicks_y_max", "lickiness_window_seconds",
-            "raster_xlim", "raster_dot_size", "raster_criteria_alpha",
+            "raster_xlim", "raster_dot_size", "raster_dot_alpha",
             "figsize_longitudinal", "figsize_raster_grid",
         ]:
             assert key in cfg, f"visual_gate config missing key: {key}"
@@ -1374,22 +1374,23 @@ class TestRenderLickRaster:
             render_lick_raster("PS51", resolver, align_to_stroke=True)
 
     def test_suptitle_legend_string(self, cohort_for_renders):
-        """Pin: legacy suptitle verbatim (Phase 8a.10 audit-spec)."""
+        """Pin: suptitle includes the dots-legend; the legacy
+        "Lines: (green=pass, red=fail)" segment was REMOVED per Round
+        2.6 (criteria_34 overlay deleted)."""
         resolver, _ = cohort_for_renders
         svg_path, _ = render_lick_raster(
             "PS51", resolver, align_to_stroke=True,
         )
         svg_text = svg_path.read_text(encoding="utf-8")
-        # matplotlib SVG-escapes "(" / ")" / "=" verbatim; the literal
-        # words are unchanged. Pin two segments separately for
-        # readability + robust to whitespace variation.
         assert "Licks after rewards" in svg_text
         assert "Dots:" in svg_text
         assert "green=corr" in svg_text
         assert "magenta=incorr" in svg_text
-        assert "Lines:" in svg_text
-        assert "green=pass" in svg_text
-        assert "red=fail" in svg_text
+        # Round 2.6: criteria_34 horizontal-bar overlay removed →
+        # Lines:/pass/fail strings must be ABSENT from the suptitle.
+        assert "Lines:" not in svg_text
+        assert "green=pass" not in svg_text
+        assert "red=fail" not in svg_text
 
     def test_ylabel_uses_mouse_frame_directly_no_fn_flip(
         self, cohort_for_renders,
@@ -1409,15 +1410,67 @@ class TestRenderLickRaster:
         assert "side: mouse R" in svg_text
 
     def test_raster_color_config_consumed(self):
-        """Pin: raster dot + criteria colors loaded from
-        ``visual_gate:`` block, not hardcoded."""
+        """Pin: raster dot + reward-marker colors loaded from
+        ``visual_gate:`` block, not hardcoded. Criteria-overlay knobs
+        REMOVED per Round 2.6 (overlay deleted)."""
         cfg = load_visual_gate_config()
         assert cfg["raster_dot_correct_color"] == "g"
         assert cfg["raster_dot_incorrect_color"] == "m"
-        assert cfg["raster_criteria_pass_color"] == "g"
-        assert cfg["raster_criteria_fail_color"] == "r"
         assert cfg["raster_reward_marker_color"] == "k"
-        assert tuple(cfg["raster_criteria_xrange"]) == (-1, 4)
+        # Round 2.6 deprecations: these knobs must be ABSENT from
+        # the config block now that the criteria_34 overlay is gone.
+        assert "raster_criteria_pass_color" not in cfg
+        assert "raster_criteria_fail_color" not in cfg
+        assert "raster_criteria_alpha" not in cfg
+        assert "raster_criteria_xrange" not in cfg
+
+    def test_dot_alpha_config(self):
+        """Round 2.6 addition: per-dot alpha config knob.
+        Legacy default was 1.0 (opaque, no alpha kwarg). New default
+        0.6 lets the under-layer peek through; intentional deviation
+        for visual usability."""
+        cfg = load_visual_gate_config()
+        assert cfg["raster_dot_alpha"] == 0.6
+
+    def test_render_lick_raster_passes_alpha_to_scatter(self, cohort_for_renders):
+        """Round 2.6 pin: render_lick_raster passes the config-driven
+        alpha to every ax.scatter call. matplotlib serializes
+        alpha=0.6 as 'fill-opacity: 0.6' (and 'stroke-opacity: 0.6')
+        on the scatter PathCollection <use> elements."""
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_lick_raster(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        svg_text = svg_path.read_text(encoding="utf-8")
+        assert "fill-opacity: 0.6" in svg_text, (
+            "fill-opacity: 0.6 missing from SVG; "
+            "raster_dot_alpha=0.6 not propagated to ax.scatter"
+        )
+
+    def test_no_criteria_overlay_lines(self, cohort_for_renders):
+        """Round 2.6 pin: criteria_34 pass/fail horizontal-bar overlay
+        was removed. The overlay used green (#008000) for pass and
+        red (#ff0000) for fail at alpha=0.3, drawn as line segments
+        spanning x∈[-1,4]. Without the overlay, no green-or-red
+        path should appear at stroke-opacity 0.3 in the SVG."""
+        resolver, _ = cohort_for_renders
+        svg_path, _ = render_lick_raster(
+            "PS51", resolver, align_to_stroke=True,
+        )
+        svg_text = svg_path.read_text(encoding="utf-8")
+        # matplotlib serializes line2d alpha as
+        # 'stroke: #rrggbb; stroke-opacity: 0.3' inside style="...".
+        # Criteria overlay would produce green/red entries at 0.3.
+        green_at_03 = "stroke: #008000; stroke-opacity: 0.3" in svg_text
+        red_at_03 = "stroke: #ff0000; stroke-opacity: 0.3" in svg_text
+        assert not green_at_03, (
+            "found green stroke at opacity 0.3 — criteria_34 pass "
+            "overlay may still be rendering"
+        )
+        assert not red_at_03, (
+            "found red stroke at opacity 0.3 — criteria_34 fail "
+            "overlay may still be rendering"
+        )
 
     def test_module_export(self):
         assert hasattr(visual_gate, "render_lick_raster")
