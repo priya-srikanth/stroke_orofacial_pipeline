@@ -6,6 +6,23 @@
 # Authoritative source: params dict from legacy canonical notebook
 # batch_process_20260410PS.ipynb (Rule 1: latest YYYYMMDD).
 
+# ---- Wavesurfer read-time behavior ----
+# Phase 8a.10.1 (2026-05-14): the raw .h5 channel labels emitted by the
+# rig are inverted cohort-wide — what's labeled `Reward_*` carries ~200 ms
+# pulses (auditory tone TTL); what's labeled `Tone_*` carries ~26 ms
+# pulses (reward solenoid drive). Cohort-wide confirmed by Task 0.5
+# pulse-width audit (271/271 sessions; see
+# `.scratch_phase_8a_10_1/task_0_5_audit_report.md` and
+# `docs/prompts/phase-8a.10.1-tone-reward-swap-fix-kickoff.md`).
+#
+# `tone_reward_swap_enabled: true` (default) applies an in-loader swap
+# of the `Reward_<side>` ↔ `Tone_<side>` dict keys post-read in
+# `load_wavesurfer_signals` so downstream code sees semantically-correct
+# content under the canonical labels. Set to `false` only as a
+# kill-switch for hypothetical future correctly-labeled cohorts.
+wavesurfer:
+  tone_reward_swap_enabled: true
+
 # ---- Spout behavior processing ----
 
 process_treadmill_signal:

@@ -18,21 +18,65 @@ import pywavesurfer.ws
 from stroke_orofacial._utils.bool_indexing import gaussian_smooth_1d
 
 
-def load_wavesurfer_signals(path_ws: Path | str) -> dict[str, np.ndarray]:
+def _apply_tone_reward_swap(signals: dict[str, np.ndarray]) -> None:
+    """In-place pairwise swap of ``Reward_<side>`` ↔ ``Tone_<side>`` content.
+
+    Phase 8a.10.1 Tone↔Reward channel-label fix. The raw `.h5` channel
+    labels emitted by the rig are inverted cohort-wide: the digital
+    channel labeled ``Reward_*`` carries ~200 ms pulses (auditory tone
+    TTL); the channel labeled ``Tone_*`` carries ~26 ms pulses (reward
+    solenoid drive). Cohort-wide confirmed by Task 0.5 pulse-width audit
+    (271/271 sessions — see
+    ``.scratch_phase_8a_10_1/task_0_5_audit_report.md`` and
+    ``.scratch_phase_8a_10_1/reward_tone_swap_extended_diagnostic.md``).
+
+    Swap is per-side: ``Reward_L`` ↔ ``Tone_L`` and ``Reward_R`` ↔
+    ``Tone_R`` independently. Silent no-op when only one side of a pair
+    is present (defensive: never mutates a partially-populated signals
+    dict). Mutates ``signals`` in place; returns nothing.
+    """
+    for side in ("L", "R"):
+        r_key = f"Reward_{side}"
+        t_key = f"Tone_{side}"
+        if r_key in signals and t_key in signals:
+            signals[r_key], signals[t_key] = signals[t_key], signals[r_key]
+
+
+def load_wavesurfer_signals(
+    path_ws: Path | str,
+    *,
+    tone_reward_swap_enabled: bool = True,
+) -> dict[str, np.ndarray]:
     """Load analog and digital channel signals from a WaveSurfer .h5 file.
 
     Faithfully ports ``process_ws_signals.load_wavesurfer_signals``.
+
+    Phase 8a.10.1: gated post-read swap of ``Reward_<side>`` ↔
+    ``Tone_<side>`` digital channels corrects a cohort-wide acquisition-
+    layer label inversion. See :func:`_apply_tone_reward_swap` for the
+    semantic rationale + Task 0.5 audit pointer. Default ``True`` —
+    swap is applied for the current cohort. Set ``False`` only as a
+    kill-switch for hypothetical future correctly-labeled cohorts (or
+    in unit tests of the un-swapped loader path).
 
     Parameters
     ----------
     path_ws : Path or str
         Path to the WaveSurfer .h5 file.
+    tone_reward_swap_enabled : bool, keyword-only, default True
+        When True (default), applies the Tone↔Reward dict-key swap fix
+        after loading raw channels. Controls the
+        ``wavesurfer.tone_reward_swap_enabled`` flag in
+        ``configs/defaults.yaml``.
 
     Returns
     -------
     dict[str, np.ndarray]
         Channel names mapped to 1-D arrays. Includes ``sample_rate_input``
-        (float) as a special key.
+        (float) as a special key. Post-fix (``tone_reward_swap_enabled
+        =True``) the ``Reward_*`` keys hold actual reward-delivery sample
+        indices and the ``Tone_*`` keys hold actual tone-onset sample
+        indices.
     """
     path_ws = Path(path_ws)
     data_ws = pywavesurfer.ws.loadDataFile(str(path_ws))
@@ -87,6 +131,9 @@ def load_wavesurfer_signals(path_ws: Path | str) -> dict[str, np.ndarray]:
     # numpy 2.x removed the implicit float(1d-array) coercion, so normalize
     # via .item() — works for both 0-D scalars and single-element arrays.
     signals["sample_rate_input"] = float(np.asarray(Fs_in).item())
+
+    if tone_reward_swap_enabled:
+        _apply_tone_reward_swap(signals)
     return signals
 
 
