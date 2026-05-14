@@ -1,7 +1,54 @@
 # Cowork Session State
 
-**Latest local refresh:** 2026-05-12 — **Phase 7-pre-secondary-spout
-CLOSED** on `phase/7-pre-secondary-spout` after Task 6 live MICROSCOPE
+**Latest local refresh:** 2026-05-13 — **Phase 8a.10 CLOSED** on
+`phase/8a.10-spout-visual-gate` after cohort-wide visual verdict
+PASS on all 88 Sub-A per-mouse plot family SVGs (8 animals × 11
+plot families) + 10 Sub-A cohort tile-grids + 12 Sub-B cohort
+output files (3 animals × {summary.svg/png, per_trial.svg/png}).
+PR #FILL merged 2026-05-13 as merge-commit `<FILL>`, tagged
+`v8a.10-spout-visual-gate`. **Outcome A** faithful-port for
+Sub-deliverable A (11 plot families ported; 5 trimmed legacy
+families deferred to Phase 9 forward-pointer per Q1 Option 2
+2026-05-13 SCOPE LOCK; 1 family family — `recovery_trajectories`
+— deferred to Phase 9 alongside the 5). Sub-deliverable B
+reshaped mid-phase from 5-endpoint per-session-and-cohort to
+3-endpoint cohort-only (per Addendum #1); CG-B2's per-session
+implementation preserved in git history at commit `d757294`.
+Sub-B Cohort B = 14 post-stroke sessions (PS51×1, PS54×10,
+PS55×3) under `rel_day >= 2` filter; output dir
+`spout_close_vs_std/cohort/<animal>_{summary,per_trial}.{svg,png}`.
+Phase reshape happened across **9 visual-iteration rounds**
+documented in 8 Addenda (commit `eb0cd5a` captures the Addenda
+prose post-hoc). 8 intentional deviations from legacy locked
+under DECISIONS Decision 3 (SIDE_COLORS mouse-frame palette
+inversion, raster_dot_alpha=0.6, criteria_34 overlay REMOVED,
+zorder layering, supxlabel, raster_xticks=[0,5] + thin reward
+marker + smaller xticks, longitudinal_xtick_fontsize=6,
+AnimalInfo.stroke_laterality scaffolding for pub-figures phase).
+Forward-pointer discharged: Phase 7-pre-secondary-spout Finding
+#3 ("Bare-vs-b spout-behavior comparison folded into Phase 8a.10
+scope" per Priya 2026-05-12) — discharged as Sub-deliverable B
+of this phase. Forward-pointers carried forward to future phases:
+**Phase 8a.10.1** (cohort-wide Tone↔Reward swap re-emit affecting
+Row 4 raster's "reward marker" semantic label only — lick-raster
+reads correctly regardless because tone+reward fire simultaneously
+at trial start), **126-session YAML-cohort gap chore-PR**, **Phase
+9 stats** (statistical-overlay cells + 5 deferred plot families +
+recovery_trajectories), **Phase 7-pre-secondary-spout-compare-DLC**
+(blocked on Priya's out-of-band DLC inference on Pattern B b
+halves), **pub-figures phase** (consumer of
+`AnimalInfo.stroke_laterality` + `mouse_side_to_ipsi_contra()`
+scaffolding). Test suite (Phase 8a.10 modules): **262 passed, 1
+skipped** (53 animals + 165 visual_gate + 44 spout_close_vs_std).
+Test suite (whole repo): **1423 collected** by `pytest
+--collect-only` post-rename; no collection errors. See "Recent
+session log — 2026-05-13 (Phase 8a.10)" below.
+
+---
+
+**Earlier refresh — 2026-05-12 (Phase 7-pre-secondary-spout
+close)** — Phase 7-pre-secondary-spout CLOSED on
+`phase/7-pre-secondary-spout` after Task 6 live MICROSCOPE
 parity verdict (Layer 1: 18 PASS + 1 SPECIAL; Layer 2: 19/19 PASS;
 Layer 3: 5/5 PASS). **Outcome A** (infrastructure-only, no legacy
 bare-vs-b comparison code to port — Task 1 audit confirmed). 19
@@ -18,8 +65,9 @@ Phase 2/3/4 manifest-opaque output separation) is **fully
 discharged**. Bare-vs-b spout-behavior outcome comparison **folded
 into Phase 8a.10 scope** per Priya 2026-05-12 (see DECISIONS
 2026-05-12 Findings #3 + MIGRATION_LOG forward-pointer #3) — NOT
-a separate Phase 7-pre-secondary-spout-compare phase. DLC-side
-comparison remains a separate forward-pointer
+a separate Phase 7-pre-secondary-spout-compare phase, NOW
+DISCHARGED as Sub-deliverable B of the Phase 8a.10 close above.
+DLC-side comparison remains a separate forward-pointer
 (**Phase 7-pre-secondary-spout-compare-DLC**), blocked on b-half
 DLC inference. Most architecturally significant decision this
 phase: **the module-level free function path-suffix pattern**
@@ -30,8 +78,7 @@ or "")` for free-function helpers that bypass the resolver
 `load_or_compute_alignment` + `manifest.build_manifest` alignment-
 template discovery). Test suite 1164 passed / 38 skipped (+15 from
 the parity-harness comparator unit tests). Pattern A regression:
-152/152. See "Recent session log — 2026-05-12 (Phase 7-pre-secondary-
-spout)" below.
+152/152.
 
 ---
 
@@ -476,21 +523,131 @@ merged 2026-05-03 as PR #91 merge-commit `bb4b505`, tagged
 kickoff V3 retrospective rewrite (~1,794-line historical-narrative
 pass).
 
-**In flight:** *None.* Phase 7-pre-secondary-spout closed 2026-05-12 as
-PR #105, tagged `v7-pre-secondary-spout`. `main` at merge-commit
-`29324eb` (the Phase 7-pre-secondary-spout merge; supersedes the
-2026-05-12 PR #100 wiring follow-up that left `main` at `35708e7`).
-No active feature branch. Next-phase candidate pick pending Priya
-from the list below — Phase 7-pre-secondary-spout deletion from
-the candidates list means Phase 7a.7 (DLC heatmaps) is now top of
-the queue; Phase 8a.10 (spout-behavior visual gate) gained scope
-expansion to cover the bare-vs-b spout-behavior comparison per
-Priya 2026-05-12 fold-in decision.
+**In flight:** *None.* Phase 8a.10 closed 2026-05-13 as PR #FILL,
+tagged `v8a.10-spout-visual-gate`. `main` at merge-commit `<FILL>`
+post-merge. No active feature branch. Phase 7-pre-secondary-spout
+closed 2026-05-12 as PR #105, tagged `v7-pre-secondary-spout`
+(supersedes the 2026-05-12 PR #100 wiring follow-up that left
+`main` at `35708e7`). Next-phase candidate pick pending Priya
+from the list below — Phase 8a.10 deletion from the candidates
+list means Phase 7a.7 (DLC heatmaps) is now top of the queue,
+with the queued forward-pointers (Phase 8a.10.1, 126-session
+YAML-cohort gap chore, Phase 9 stats, Phase 7-pre-secondary-spout-
+compare-DLC, pub-figures) all available as candidates depending
+on what Priya wants to pick up next.
 
-**Recent session log — 2026-05-12 (Phase 7-pre-secondary-spout closed;
-Pattern B 19-session cohort + 4 architectural commitments
+**Recent session log — 2026-05-13 (Phase 8a.10 closed; spout-
+behavior visual gate + spout-close-vs-standard cohort comparison;
+Outcome A faithful-port + 8 intentional deviations + 9 visual-
+iteration rounds across 8 Addenda):**
+
+PR #FILL merged 2026-05-13 as merge-commit `<FILL>`, tagged
+`v8a.10-spout-visual-gate`. **24+ commits** on
+`phase/8a.10-spout-visual-gate`. Two sub-deliverables in one PR:
+
+**Sub-deliverable A — Legacy-parity gates (11 plot families × 8
+animals = 88 per-mouse SVGs + 10 cohort tile-grids).** Outcome A
+faithful-port verdict. CG-1 through CG-6 ship the 11 production
+plot families (`criteria_performance`, `accuracy_firstCorrectLick`,
+`accuracy_firstCorrectLickAll`, `lickRate_bySession`,
+`latency_bySession`, `numLicks_bySession_{correct,all,correct_and_incorrect}`,
+`lick_raster`, `lickiness_bySession`, `switchiness_bySession`) +
+cohort tile-grids (`cohort_summary.py`) + orchestrator notebook
+(`notebooks/15_spout_behavior_visual_gate.ipynb`). Task 3 Rounds
+2.5-2.8 polish on `lick_raster` (commits `a19d00b`, `d0843f9`,
+`d2f80f7`, `5c3d25b`) converged on the final form: 2×N grid,
+mouse-frame ylabel, `raster_dot_alpha=0.6`, `zorder=2/3` layering,
+`fig.supxlabel("Time (s)")`, thin reward marker, explicit xticks
+`[0, 5]`, criteria_34 overlay removed. **5 trimmed legacy plot
+families + recovery_trajectories deferred to Phase 9 forward-
+pointer per Q1 Option 2 SCOPE LOCK** (statistical-overlay cells
+require Phase 9 stats machinery).
+
+**Sub-deliverable B — Spout-close-vs-standard cohort comparison
+(3 animals × 2 cohort output kinds = 12 files).** Reshaped
+mid-phase from 5-endpoint per-session-and-cohort to **3-endpoint
+cohort-only** (Addendum #1; CG-B2 per-session implementation
+preserved in git history at commit `d757294`). Cohort B = 14
+post-stroke sessions (PS51×1, PS54×10, PS55×3) under `rel_day >=
+2` filter (`COHORT_B_REL_DAY_MIN=2`; tightened from spec's `>=1`
+per Priya 2026-05-13 clarification). Two cohort renderers per
+animal: `render_animal_summary_spout_close_vs_std` (4×2 story
+strip — accuracy / correct licks / incorrect licks / lick raster
+× L/R cue) + `render_animal_per_trial_spout_close_vs_std` (2×2
+per-trial pooled scatter — correct/incorrect × L/R). 9 visual-
+iteration rounds (Addenda #1-#8): Sub-B underwent CG-B3 R1
+(scope replacement) → R2 (Standard/Close labels + per-condition
+palette → reverted in R3) → R3 (rename `bare_vs_b` →
+`spout_close_vs_std` + per-mouse-side palette + 4-row split + day
+labels + darker dividers + typography) → R4 (typography polish)
+→ R5 (raster xticks + y-axis overhaul + expand to all 3 animals)
+→ R7 (per-session "0" y-tick markers, supersedes R5 cumulative
+form) → R7 follow-on (day labels horizontal — Addendum #6
+retroactively applied — + smaller raster yticks + Trials label
+labelpad) → per-trial renderer (Addendum #8 verbal). Scientific
+message — "excursion limitation relieved by proximity" —
+confirmed via Addendum #1 PS55 scientific-message check: L-side
+accuracy 0.098 (Standard) → 0.611 (Close) = 6×; mean correct
+licks/trial 0.60 → 5.22 = 8.7×.
+
+**8 intentional deviations from legacy** (DECISIONS 2026-05-13
+Decision 3): SIDE_COLORS mouse-frame palette inversion (legacy
+WS-frame + `fn_flip_lr()` at output); `raster_dot_alpha=0.6`;
+`criteria_34` pass/fail horizontal-bar overlay REMOVED; lick-
+raster `zorder=2/3` layering; `fig.supxlabel("Time (s)")`
+replaces per-axis xlabel; `raster_xticks=[0, 5]` +
+`raster_reward_marker_linewidth=0.5` + `xtick_fontsize=5`;
+`longitudinal_xtick_fontsize=6` (dense Cohort A like PS54);
+`AnimalInfo.stroke_laterality` field + `mouse_side_to_ipsi_contra()`
+helper added for future pub-figures phase consumer.
+
+Test suite for Phase 8a.10 modules: **262 passed, 1 skipped**
+(53 animals + 165 visual_gate + 44 spout_close_vs_std). Repo-
+wide `pytest --collect-only` post-rename: 1423 tests collected,
+0 errors. Ruff clean. Forward-pointer Phase 7-pre-secondary-spout
+Finding #3 ("Bare-vs-b spout-behavior comparison folded into
+Phase 8a.10 scope") discharged. See DECISIONS 2026-05-13 +
+MIGRATION_LOG Phase 8a.10 entries for full breakdown.
+
+**Forward-pointers queued for future phases** (carried forward
+from DECISIONS Findings):
+
+1. **Phase 8a.10.1 — cohort-wide Tone↔Reward swap re-emit.**
+   `Reward_{L,R}` NPZ channels carry tone-cue indices (not reward
+   indices) cohort-wide per a separately diagnosed labeling swap.
+   Sub-B Row 4 raster's "reward marker" line currently marks tone
+   onset, not reward delivery; lick-raster reads correctly
+   regardless because tone+reward fire simultaneously at trial
+   start (Pavlovian; same-sample chronological-order check).
+   Semantic labels will retroactively match data after 8a.10.1's
+   re-emit + re-render.
+2. **126-session YAML-cohort gap chore-PR.** Cohort A
+   `configs/animals.yaml` `sessions.start/end` vs legacy
+   `report.json[latency_bySession]` keys diverge across 126
+   sessions cohort-wide. Most gap-sessions are pre-cohort-launch
+   acquisition (low scientific signal). Queue as separate chore.
+3. **Phase 9 stats** — frequentist/Bayesian model selection +
+   multiple-comparison correction + effect-size machinery.
+   Blocks `playground_analyze_behavior_report_PS20250610.ipynb`
+   cells 56-65 + `behavior_report_PS.py::compute_stats_p_values_*`.
+   5 trimmed Sub-A plot families (`anyLick_accuracy_*_byCategory`,
+   `firstLick_accuracy_*_byCategory`, `latency_hist`,
+   `lickRate_byTrial`, `numLicks_byTrial`) + `recovery_trajectories`
+   also queued.
+4. **Phase 7-pre-secondary-spout-compare-DLC.** DLC inference on
+   Pattern B b halves (Phase 7-pre-secondary-spout DECISIONS
+   Finding #1-#2). Blocked on Priya running DLC out-of-band. When
+   unblocked, Sub-B output dir can grow a parallel `dlc_compare/`
+   subdir.
+5. **Pub-figures phase.** Consumer of `AnimalInfo.stroke_laterality`
+   + `mouse_side_to_ipsi_contra()` (Decision 3 deviation #8
+   scaffolding). Ipsi/contra labels on per-mouse plots.
+
+---
+
+**Earlier refresh — 2026-05-12 (Phase 7-pre-secondary-spout): Pattern B 19-session cohort + 4 architectural commitments
 discharged + Outcome A infrastructure-only + module-level free
-function path-suffix pattern + bare-vs-b → 8a.10 fold-in):**
+function path-suffix pattern + bare-vs-b → 8a.10 fold-in.**
 
 PR #105 merged 2026-05-12 as merge-commit `29324eb`, tagged
 `v7-pre-secondary-spout`. 13-commit subtask breakdown on
@@ -1785,6 +1942,7 @@ section; most likely Phase 7 — DLC kinematics — via the existing
 
 **Completed since last state refresh:**
 
+- **Phase 8a.10 — Spout-behavior visual gate (Sub-deliverable A: 11 per-mouse plot families × 8 animals) + spout-close-vs-standard cohort comparison (Sub-deliverable B: 4-row story strip + per-trial 2×2 scatter, 3 animals, 14 post-stroke sessions) — Outcome A faithful-port + 8 intentional deviations + 9 visual-iteration rounds.** 24+ commits on `phase/8a.10-spout-visual-gate`. **Sub-A**: CG-1 → CG-6 ship the 11 production plot families (criteria_performance, accuracy_firstCorrectLick{,All}, lickRate_bySession, latency_bySession, numLicks_bySession_{correct,all,correct_and_incorrect}, lick_raster, lickiness_bySession, switchiness_bySession) + cohort tile-grid renderer (`cohort_summary.py`) + orchestrator notebook. Task 3 Rounds 2.5-2.8 polish on `lick_raster` (4 commits) converged on the final form. **Sub-B**: reshaped mid-phase from 5-endpoint per-session-and-cohort to 3-endpoint cohort-only (Addendum #1; CG-B2 per-session implementation at `d757294` preserved in history). Cohort B = 14 post-stroke sessions (PS51×1, PS54×10, PS55×3) under `rel_day >= 2` filter (`COHORT_B_REL_DAY_MIN=2`). Two cohort renderers per animal: `render_animal_summary_spout_close_vs_std` (4×2 story strip) + `render_animal_per_trial_spout_close_vs_std` (2×2 per-trial pooled scatter; Addendum #8 verbal). 9 visual-iteration rounds (Addenda #1-#8): CG-B3 R1 (scope replacement) → R2 (Standard/Close labels + per-condition palette → reverted in R3) → R3 (rename `bare_vs_b` → `spout_close_vs_std` + per-mouse-side palette + 4-row split + day labels + darker dividers + typography) → R4 (typography polish) → R5 (raster xticks + y-axis overhaul + all 3 animals) → R7 (per-session "0" y-tick markers) → R7 follow-on (day labels horizontal — Addendum #6 retroactively applied — + smaller raster yticks + Trials labelpad) → per-trial renderer (Addendum #8). Scientific message — "excursion limitation relieved by proximity" — confirmed via PS55 scientific-message check: L-side accuracy 0.098 → 0.611 = 6×; mean correct licks/trial 0.60 → 5.22 = 8.7×. **8 intentional deviations from legacy** (DECISIONS Decision 3): SIDE_COLORS mouse-frame palette inversion (legacy WS-frame + `fn_flip_lr()` at output); `raster_dot_alpha=0.6`; `criteria_34` overlay REMOVED; `zorder=2/3` layering; `fig.supxlabel("Time (s)")`; `raster_xticks=[0, 5]` + thin reward marker + smaller xticks; `longitudinal_xtick_fontsize=6` (dense Cohort A like PS54); `AnimalInfo.stroke_laterality` scaffolding for pub-figures phase consumer. **5 trimmed legacy plot families + recovery_trajectories** deferred to Phase 9 forward-pointer per Q1 Option 2 SCOPE LOCK. **Forward-pointer Phase 7-pre-secondary-spout Finding #3 ("Bare-vs-b spout-behavior comparison folded into Phase 8a.10 scope") discharged.** Test suite (Phase 8a.10 modules): 262 passed / 1 skipped (53 animals + 165 visual_gate + 44 spout_close_vs_std). Repo-wide `pytest --collect-only`: 1423 tests collected, 0 errors post-rename. Ruff clean. PR #FILL merged 2026-05-13 as merge-commit `<FILL>`, tagged `v8a.10-spout-visual-gate`. See DECISIONS 2026-05-13 + MIGRATION_LOG Phase 8a.10 entries for full breakdown.
 - **Phase 7-pre-secondary-spout — Pattern B closer-spout 2nd-acquisition handling for PS51/PS54/PS55 (19 sessions; Outcome A infrastructure-only).** 13 commits on `phase/7-pre-secondary-spout` (Task 2 `f13d789` registry + Task 3a `b24c704` / 3b `ededaf5` / 3c `43cde64` / 3d `c8e29cf` session_suffix threading + Task 4 `b738dc1` Phase 2 driver + Task 5 `eabcecf` Phase 3 driver + Task 6a `34df83a` / 6b `ee1aba1` / 6c `5acdecc` / 6d `ce6e3cf` / 6e `5f9a327` 3-layer parity gate + Task 8 amended `8ac6983` DECISIONS+MIGRATION_LOG + bare-vs-b → 8a.10 fold-in + Task 9 `<NEW SHA>` state-doc). Task 6 live MICROSCOPE verdict: Layer 1 PASS (18 byte-equal + 1 PS55/2025-04-24 expected-divergence via `bare_ws_subdir_override`), Layer 2 PASS (19/19 b-half structural — required keys + Fs + side-convention stamps + session_id-suffix), Layer 3 PASS (5/5 synthetic defensive-check scenarios). Task 1 audit confirmed Outcome A — legacy notebooks (`playground_analyze_behavior_report_PS20250610.ipynb` + `batch_process_behavior_report_20260116PS.ipynb`) omit `*b` dates from `include_dates`, no bare-vs-b comparison code to port. **4 architectural commitments from 7-pre-multi-half Decision 5 honored**: `multi_half_sessions:` merge-intent only; session-id schema allows letter suffixes via `session_suffix` field; `MultiHalfNotDeclaredError` gains Pattern-B branch (suppresses when `secondary_spout_sessions:` covers `(animal, date)`); Phase 2/3/4 manifest-opaque output separation by session-id. Most architecturally significant decision this phase: the **module-level free function path-suffix pattern** (Decision 5 of the 7-pre-secondary-spout DECISIONS entry) — caller-side `date_str_suffixed = date_str + (manifest.session_suffix or "")` for free-function helpers that bypass PathResolver methods. **Bare-vs-b spout-behavior outcome comparison folded into Phase 8a.10 scope** per Priya 2026-05-12 (NOT a separate Phase 7-pre-secondary-spout-compare phase); DLC-side bare-vs-b comparison remains a separate forward-pointer (Phase 7-pre-secondary-spout-compare-DLC), blocked on b-half DLC inference. Test suite 1164 passed / 38 skipped (+15 from harness comparator tests). Pattern A regression: 152/152. PR #105 merged 2026-05-12 as merge-commit `29324eb`, tagged `v7-pre-secondary-spout`. See DECISIONS 2026-05-12 Phase 7-pre-secondary-spout + MIGRATION_LOG Phase 7-pre-secondary-spout.
 - **Task #41 — Phase 7a.4-orientation-fix (state-doc retrocapture; shipped 2026-05-03 + 2026-05-04).** Comprehensive grep audit of `src/stroke_orofacial/dlc_kinematics/` confirms cam-view convention (R-trials on figure-LEFT, L-trials on figure-RIGHT) is universally applied across every L/R subplot site: `tongue_visual.py::_plot_xy_by_phase` (PR #93 merge-commit `c34c51d`, tagged `v7a.4-orientation-fix-cam-view-flip`); `tongue_visual.py::_plot_first_vs_second_peak_scatter` and all 6+ plot families in `tongue_angle_cohort.py` via `_setup_cam_view_axes(...)` helper (PR #95 7a.4-cross-session-angle, merge-commit `718bbca`); `mean_sem_visual.py` (7a.6 C7.2). No remaining L-on-LEFT instances. Other rendering functions (`_plot_per_trial_qc_traces`, `_plot_first_peak_aligned`, `_plot_reward_aligned`, `_plot_phase_aligned_angle`) don't use L/R subplots — they overlay sides on a single axes by color, so there's no orientation to flip. State-doc Next-phase candidates list and Pending-open queue both carried stale references through the 7-pre-multi-half close-out polish; this entry retroactively captures closure.
 - **Phase 7-pre-multi-half follow-up — wire `merge_licks_and_rewards` into `_process_session_multi_half` (PR #100, merge-commit `35708e7`, 2026-05-12).** Wire `merge_licks_and_rewards` into `_process_session_multi_half` so multi-half sessions emit the parent-level merged licks NPZ as part of normal Phase-2 processing (deferred from Task 4 of Phase 7-pre-multi-half). After the per-half loop, the per-half NPZs are merged via `index_space="ws_sample"` and land at the canonical parent-level path `{output_root}/licks_and_rewards/{animal}/{date}.npz`; single-half code path unchanged. +1 unit test (`TestMergeWiring::test_merged_licks_npz_written_alongside_per_half`) verifies per-half + merged NPZs on disk with correct ws_sample offset semantics. Full pytest suite 1072 passed / 38 skipped (+1 vs branch base). No tag — captured as `Forward-pointer resolved` note in `docs/MIGRATION_LOG.md` below the Phase 7-pre-multi-half entry, per the small-post-merge-follow-up convention.
@@ -1878,6 +2036,10 @@ section; most likely Phase 7 — DLC kinematics — via the existing
 - **#8** — Audit branch `audit-item-6-phase5-details` merged to `main` and tagged `v0.6.5-audit-complete`. Branch preserved as permanent reference per CLAUDE.md rule 8.
 
 **Pending — queued phases and mini-phases**, in rough execution order (dependencies noted):
+- **Phase 8a.10.1 — cohort-wide Tone↔Reward swap re-emit (new 2026-05-13).** `Reward_{L,R}` NPZ channels carry tone-cue indices (not reward indices) cohort-wide per a separately diagnosed labeling swap. Affects Sub-deliverable B Row 4 raster's "reward marker" semantic label only — lick-raster reads correctly regardless because tone+reward fire simultaneously at trial start (Pavlovian; same-sample chronological-order check in `.scratch_phase_8a_10/ps51_d45_diag.py`). One-time cohort re-emit of Phase-2 `Reward_*` / `Tone_*` channel labels + Sub-B re-render. Forward-pointer from Phase 8a.10 DECISIONS 2026-05-13 Finding #1.
+- **126-session YAML-cohort gap chore-PR (new 2026-05-13).** Cohort A `configs/animals.yaml` `sessions.start/end` vs legacy `report.json[latency_bySession]` keys diverge across 126 sessions cohort-wide. Most gap-sessions are pre-cohort-launch acquisition (low scientific signal). Queue as a separate chore-PR; not blocking any open phase. Forward-pointer from Phase 8a.10 DECISIONS 2026-05-13 Finding #2.
+- **Phase 7-pre-secondary-spout-compare-DLC (queued from Phase 7-pre-secondary-spout 2026-05-12; still blocked 2026-05-13).** DLC inference on Pattern B b halves. Blocked on Priya running DLC out-of-band on the 19 Pattern B sessions. When unblocked, Sub-deliverable B output dir can grow a parallel `dlc_compare/` subdir with DLC-side bare-vs-b comparisons.
+- **Pub-figures phase (new 2026-05-13).** Consumer of `AnimalInfo.stroke_laterality` + `mouse_side_to_ipsi_contra()` scaffolding shipped in Phase 8a.10 (Decision 3 deviation #8). Ipsi/contra labels on per-mouse plots — all 8 current cohort animals are `stroke_laterality="L"` → mouse-L is ipsi, mouse-R is contra. Future R-stroke animals invert the mapping naturally via the helper.
 - **Phase 5/6 kickoff (new, unblocked 2026-04-20 by clamp-fix).** Reward-aligned kinematics / DLC peri-reward window ports (including 8-s-post-reward windows). No kickoff prompt yet; first task of next Cowork session may be drafting it. Overlaps with task #11 (Phase 7 DLC kinematic extension) — scoping clarification needed at kickoff. Ungated except by drafting effort.
 - **#10 (subtask) — Phase 8a.8 recovery-trajectory visualization + phenotype-classification prototype.** Unblocked now that 8a.7.5 is merged. Kickoff prompt drafted at `docs/prompts/phase-8a.8-recovery-trajectory-visualization-kickoff.md` with explicit same-machine Windows workflow constraints, sandbox-git boundary reminders, and a branch/file-touch allowlist to avoid conflicts with in-flight Phase 7 work. Orthogonal to Phase 7; can run in parallel on a dedicated feature branch.
 - **#10 (subtask) — Phase 8a.9 close-out** (legacy behavior-report systematic walkthrough per Audit Item 10 Q9; surface additional worth-keeping endpoints; discard stale ones). Current docs-only coordination branch adds the compact rollup at `docs/phase-8a/legacy-behavior-report-rollup.md`; no implementation scope.

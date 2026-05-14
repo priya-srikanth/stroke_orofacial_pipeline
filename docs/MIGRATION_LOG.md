@@ -5733,3 +5733,109 @@ Verdict log archived at `.scratch_phase_7_pre/parity_run_secondary_spout_rerun_2
 6. **One-time cohort-wide re-emit.** Phase 2 + Phase 3 now produce b-half outputs for the 19 Pattern B sessions, but the canonical `pipeline_outputs/` tree still lacks them. The cohort-emit runners need a re-run to populate the b-half paths. Decision: bundle as a manual post-merge step in Task 9's PR description, OR carve out as a separate small chore-PR mirroring the Task 0.5 baseline-capture pattern. Pick at Task 9 time.
 
 **Tag:** `v7-pre-secondary-spout` on the merge commit.
+
+---
+
+## Phase 8a.10 — Spout-behavior visual gate + spout-close-vs-standard cohort comparison
+
+**Date:** 2026-05-13
+**PR:** #FILL (merge-commit `<FILL>`)
+**Tag on merge:** `v8a.10-spout-visual-gate`
+**Branch:** `phase/8a.10-spout-visual-gate`
+
+**Scope.** Two sub-deliverables in one PR. **Sub-deliverable A** ports the legacy `analysis/behavior_report/` per-mouse visualizations — 11 canonical plot families × 8 animals (Q1 Option 2 SCOPE LOCK 2026-05-13; 7 deferred families queued as Phase 9+ forward-pointer). Outcome A faithful-port with 8 intentional deviations from legacy (SIDE_COLORS mouse-frame palette inversion, raster_dot_alpha=0.6, criteria_34 overlay removed, zorder layering, supxlabel, raster_xticks=[0,5], thinner reward marker, longitudinal_xtick_fontsize=6). **Sub-deliverable B** implements the bare-vs-b comparison forwarded from Phase 7-pre-secondary-spout (DECISIONS 2026-05-12, Finding #3) — Cohort B = 14 post-stroke sessions across PS51/PS54/PS55 (filter `rel_day >= 2`); cohort-only design (no per-session paired panels per Addendum #1) with two cohort-renderer outputs per animal: 4-row × 2-col story strip (`<animal>_summary.{svg,png}`) + 2×2 per-trial pooled scatter (`<animal>_per_trial.{svg,png}`). Sub-B underwent 9 visual-iteration rounds (Addenda #1–#8 documented post-hoc in commit `eb0cd5a`).
+
+Sub-deliverable B reshaped mid-phase from 5-endpoint per-session-and-cohort to 3-endpoint cohort-only (per Addendum #1).
+
+**What landed.** ~10 source files, 3 config blocks, 4 tests files, 1 notebook, 3 docs. Detailed file inventory:
+
+1. [`src/stroke_orofacial/spout_behavior/visual_gate.py`](../src/stroke_orofacial/spout_behavior/visual_gate.py) — Sub-A core (~1,900 lines). 11 render functions (`render_criteria_performance`, `render_accuracy_firstCorrectLick`, `render_accuracy_firstCorrectLickAll`, `render_lickRate_bySession`, `render_latency_bySession`, `render_numLicks_bySession_{correct,all,correct_and_incorrect}`, `render_lick_raster`, `render_lickiness_bySession`, `render_switchiness_bySession`), Cohort A iteration helpers (`iter_cohort_a_sessions` with on-disk filter + Pattern A multi-half augmentation), `SessionPlotData` dataclass + `load_session_plot_data` (extended with `half_suffix` kwarg in Sub-B), `LongitudinalAxis` + `compute_longitudinal_axis` + `apply_longitudinal_axis`, shared compute helpers, `save_visual_gate_figure`, `SIDE_COLORS` mouse-frame palette.
+
+2. [`src/stroke_orofacial/spout_behavior/cohort_summary.py`](../src/stroke_orofacial/spout_behavior/cohort_summary.py) — Sub-A tiler. `make_summary_figures(animals, resolver, *, plot_families=None, align_to_stroke=True, ...)`. Reads per-mouse PNGs; emits cohort tile-grids at `spout_behavior/spout_behavior_figures/summary/`; `lick_raster` auto-skipped (too dense for tiling).
+
+3. [`src/stroke_orofacial/spout_behavior/spout_close_vs_std.py`](../src/stroke_orofacial/spout_behavior/spout_close_vs_std.py) — Sub-B core (renamed from `bare_vs_b.py` via pure-rename commit `b79a7c5` per Addendum #3 Tweak 1). `SessionPairData` dataclass; `iter_cohort_b_session_keys` + `iter_cohort_b_sessions` (rel_day filter via `COHORT_B_REL_DAY_MIN=2`); two cohort renderers (`render_animal_summary_spout_close_vs_std` 4×2 story strip + `render_animal_per_trial_spout_close_vs_std` 2×2 per-trial scatter); typography knobs threaded from `spout_close_vs_std:` config block.
+
+4. [`src/stroke_orofacial/animals.py`](../src/stroke_orofacial/animals.py) — `AnimalInfo.stroke_laterality: Literal["L", "R"] = "L"` field + `mouse_side_to_ipsi_contra(mouse_side)` helper; loader validation rejects values outside `{"L", "R"}`. Scaffolding for the future pub-figures phase consumer.
+
+5. [`src/stroke_orofacial/paths.py`](../src/stroke_orofacial/paths.py) — `PathResolver.spout_behavior_figures_dir(animal)` (Sub-A per-mouse output dir); `spout_behavior_figures_summary_dir()` (cohort tile-grid dir); `spout_close_vs_std_dir(animal=None)` (Sub-B output dir; `animal=None` returns `cohort/` subdir per Addendum #1).
+
+6. [`configs/defaults.yaml`](../configs/defaults.yaml) — three new YAML blocks:
+   - `visual_gate:` — palette, accuracy/latency/lickrate/numlicks y-bounds, raster styling (`raster_xlim`, `raster_dot_size`, `raster_dot_alpha`, `raster_dot_correct_color`, `raster_dot_incorrect_color`, `raster_dot_correct_zorder`, `raster_dot_incorrect_zorder`, `raster_reward_marker_color`, `raster_reward_marker_alpha`, `raster_reward_marker_linewidth`, `raster_xticks=[0, 5]`, `raster_xlabel_fontsize`), longitudinal-axis styling (`xtick_fontsize=5`, `longitudinal_xtick_fontsize=6`, `stroke_linewidth`, `stroke_vline_*`), figsize defaults, cohort-summary tiler defaults (`summary_default_plots`, `summary_skip_plots`, `summary_figsize_per_cell`, `summary_dpi`).
+   - `spout_close_vs_std:` — cohort-renderer-specific typography (`panel_title_fontsize=14`, `raster_xtick_fontsize=11`, `raster_xlabel_fontsize=13`, `raster_xlabel_labelpad=2`, `raster_day_label_fontsize=7`, `licking_xtick_fontsize=12`, `spout_distance_xlabel_fontsize=13`, `raster_xticks=[0,1,2,3,4,5]`, `raster_ytick_fontsize=8`, `raster_ylabel_fontsize=13`, `raster_ylabel_labelpad=20`, `raster_half_label_fontsize=11`).
+   - `behavior_report:` — cohort-wide criteria + window params (window_around_rewards, criteria_3.window, criteria_4.window + num_licks_correct_min + num_licks_incorrect_max). Mirrors legacy `batch_process_behavior_report_20260116PS.ipynb` cell-3 params dict.
+
+7. [`configs/animals.yaml`](../configs/animals.yaml) — `stroke_laterality: "L"` populated for all 8 active animals (Round 2.8 scaffolding); PS51/PS54/PS55 `sessions.start` bumped to 2025-04-21 (commit `6070266`) to drop pre-cohort-launch acquisition days.
+
+8. [`tests/test_visual_gate.py`](../tests/test_visual_gate.py) — 165 tests covering Sub-A. Per-family renderer pins, Cohort A iteration semantics, side-convention inversion, raster polish pins (alpha, zorder, xticks, labelpad, reward marker linewidth), longitudinal-axis helper, longitudinal_xtick_fontsize plumbing, save_visual_gate_figure.
+
+9. [`tests/test_spout_close_vs_std.py`](../tests/test_spout_close_vs_std.py) — 44 tests + 1 skip covering Sub-B. CG-B1 (registry filter, animals subset, n_dlc=0 handling, dataclass shape, path resolver), CG-B3 summary renderer (denominator semantics, 4×2 layout, raster polish), per-trial renderer (2×2 layout, dot fill convention, pooled per-trial counts), and one polish-pin class per addendum (`TestCgB3R2Polish`, `TestCgB3R3Polish`, `TestCgB3R4Polish`, `TestCgB3R5Polish`, `TestRenderAnimalPerTrial`).
+
+10. [`tests/test_animals.py`](../tests/test_animals.py) — `TestStrokeLaterality` class (6 tests covering default `"L"`, explicit `"R"`, invalid-value `ValueError`, helper method behavior, real YAML load).
+
+11. [`notebooks/15_spout_behavior_visual_gate.ipynb`](../notebooks/15_spout_behavior_visual_gate.ipynb) — orchestrator. USER INPUTS: `ANIMALS` (Sub-A cohort), `OVERWRITE`, `INCLUDE_PER_MOUSE_RENDERS`, `INCLUDE_COHORT_SUMMARY`, `PLOT_FAMILIES` (None = all 11), `ALIGN_TO_STROKE`, plus Sub-B INPUTS (`ANIMALS_SPOUT_CLOSE_VS_STD`, `CLEAN_ORPHANED_PER_SESSION_OUTPUTS`, `INCLUDE_SPOUT_CLOSE_VS_STD`). Renders Sub-A per-mouse (11 families × N animals) + Sub-A cohort tile-grids + Sub-B summary + Sub-B per_trial in a single execution.
+
+12. [`docs/DECISIONS.md`](DECISIONS.md) — 2026-05-13 entry (this commit's sibling): 9 decisions covering module structure (Decision 1), Outcome A verdict + cohort scope (Decision 2), 8 intentional deviations (Decision 3), Phase 9 stats forward-pointer (Decision 4), bare-vs-b scope-replacement context (Decision 5 — pointer to Decision 8), Task 0.5 cohort gaps (Decision 6), per-family verdict table (Decision 7), Sub-B scope replacement (Decision 8 — Addendum #1), per-trial renderer (Decision 9 — Addendum #8).
+
+13. [`docs/COWORK_SESSION_STATE.md`](COWORK_SESSION_STATE.md) — refreshed at phase close.
+
+14. [`docs/prompts/phase-8a.10-kickoff.md`](prompts/phase-8a.10-kickoff.md) — canonical execution spec. Addenda #1–#8 captured post-hoc in commit `eb0cd5a` (kickoff doc edits = Priya's authorship; committed separately at phase close).
+
+**Sub-deliverable A verdict (per-family, 8 animals × 11 families).** All 88 (animal, family) cells visually PASS as of 2026-05-13 cohort sign-off. The `lick_raster` family went through 9 polish rounds (Task 3 Rounds 2.5–2.8 across commits `a19d00b`, `d0843f9`, `d2f80f7`, `5c3d25b`) to converge on the final form: 2×N panel grid, mouse-frame ylabel, `raster_dot_alpha=0.6`, `zorder=2/3` layering, `fig.supxlabel("Time (s)")`, thin reward marker, explicit xticks `[0, 5]`, criteria_34 overlay removed. The other 10 families ported cleanly with no per-family C-rounds.
+
+**Sub-deliverable B verdict (per-animal, 3 animals).** All 6 cohort summary files + 6 per-trial files PASS as of 2026-05-13 sign-off after the 9-round Addendum #1–#8 visual-iteration loop. PS51 (1 post-stroke session, 2 dots per Standard/Close pair per panel), PS54 (10 post-stroke sessions, densest cohort, 3.0 MB SVG), PS55 (3 post-stroke sessions, the pilot). Scientific message — "excursion limitation relieved by proximity" — confirmed via Addendum #1 PS55 scientific-message check: L-side accuracy 0.098 (Standard) → 0.611 (Close) = 6× improvement; mean correct licks/trial 0.60 → 5.22 = 8.7× improvement.
+
+**Intentional behavior differences vs legacy.**
+
+- **`SIDE_COLORS` mouse-frame palette inversion** (legacy `{"L": "mediumvioletred", "R": "dodgerblue"}` → new `{"L": "dodgerblue", "R": "mediumvioletred"}`). Legacy operated in WS-frame internally + `fn_flip_lr()` at output; Phase 6.8 established mouse-frame as the boundary convention. Cite DECISIONS Decision 3 (1).
+- **`raster_dot_alpha=0.6`** (legacy 1.0). Mitigates WS↔mouse-frame label-side layering asymmetry in the lick raster (a real consequence of CG-1's mouse-frame ylabel convention; documented in `.scratch_phase_8a_10/ps51_lick_raster_d45_diagnostic.md`). DECISIONS Decision 3 (2).
+- **`criteria_34` pass/fail horizontal-bar overlay REMOVED** (legacy plotted per-trial green-pass / red-fail bars on the raster). Eliminates row-level color clutter; the longitudinal `criteria_performance` family carries the same information cleanly. DECISIONS Decision 3 (3).
+- **Lick-raster `zorder=2/3` layering** (legacy used insertion-order). Incorrect (magenta) dots drawn on top of correct (green) so errors are always visible regardless of subplot. DECISIONS Decision 3 (4).
+- **`fig.supxlabel("Time (s)")` lick raster** (legacy emitted per-axis xlabel × N_sessions). Single bottom-centered label. DECISIONS Decision 3 (5).
+- **`raster_xticks=[0, 5]`** (legacy auto-locator produced `[-1, 0, 1, 2, 3, 4, 5]` for the same xlim). Two endpoint ticks. Paired with `raster_reward_marker_linewidth=0.5` (legacy default ~1.5) and `xtick_fontsize=5` (legacy ~10) so the "0" tick label doesn't visually merge into the reward marker bar. DECISIONS Decision 3 (6).
+- **`longitudinal_xtick_fontsize=6`** (legacy ~10). Resolves d+31/d+32 day-label overlap on dense Cohort A cohorts like PS54 (64 sessions in 85 days). DECISIONS Decision 3 (7).
+- **`AnimalInfo.stroke_laterality` field + `mouse_side_to_ipsi_contra()` helper** added (no legacy equivalent). Pure-additive scaffolding for the future pub-figures phase. All 8 current animals are `stroke_laterality="L"`; helper inverts mouse-side → ipsi/contra mapping naturally for future R-stroke animals. DECISIONS Decision 3 (8).
+- **Sub-deliverable B** has no faithful-port baseline (no legacy bare-vs-b comparison code per Phase 7-pre-secondary-spout's Outcome A audit). Each visual decision (4-row layout, mouse-side palette + Standard/Close fill convention, half labels outside spine, per-session "0" y-tick markers, day labels horizontal on right spine) locked through the Addendum #1-#8 visual-iteration rounds. DECISIONS Decision 8 + 9.
+
+**Exit criteria met.**
+
+- [x] Sub-A verdict: 88/88 (animal, family) cells visually PASS.
+- [x] Sub-B verdict: 12/12 cohort output files (6 summary + 6 per_trial) visually PASS for all 3 animals.
+- [x] Full pytest suite green for the touched modules: **262 passed, 1 skipped** (53 animals + 165 visual_gate + 44 spout_close_vs_std).
+- [x] ruff clean on all touched source + test files.
+- [x] DECISIONS 2026-05-13 entry (above this MIGRATION_LOG section) + this MIGRATION_LOG entry + COWORK_SESSION_STATE refresh.
+- [x] Cohort-wide re-render executed before close: 8 animals × 11 Sub-A families (88 SVG+PNG pairs) + Sub-A cohort tile-grids (10 SVG+PNG) + Sub-B summary (3 × {svg, png}) + Sub-B per_trial (3 × {svg, png}) all on disk at `pipeline_outputs/spout_behavior/spout_behavior_figures/`.
+
+**Visual-iteration timeline (mapped to Addenda).**
+
+| Round | Date | Addendum | Commit | Scope |
+|---|---|---|---|---|
+| Sub-A initial | 2026-05-13 | — | b55c7b8 → 64bd1ea (CG-1 through CG-6) | 11 plot families + cohort tiler + orchestrator notebook. |
+| Sub-A Task 3 R2 | 2026-05-13 | — | 382606c, 147fdbb | PS55 dual-h5 fix, YAML cohort iterator, output dir restructure (`visual_gate/` → `spout_behavior_figures/`). |
+| Sub-A R2.5 (audit) | 2026-05-13 | — | (no commit; verdict A in `.scratch_phase_8a_10/ps51_lick_raster_d45_diagnostic.md`) | PS51 d+45+ lick raster R-trial occlusion audit. |
+| Sub-A R2.6 | 2026-05-13 | — | a19d00b | raster_dot_alpha=0.6 + criteria_34 overlay removed. |
+| Sub-A R2.7 | 2026-05-13 | — | d0843f9 | zorder + supxlabel + smaller xticks + thinner reward marker + longitudinal_xtick_fontsize. |
+| Sub-A R2.8 | 2026-05-13 | — | d2f80f7 + 5c3d25b + 6070266 | raster_xticks=[0,5] + xtick_fontsize=5; stroke_laterality scaffolding; baseline-date bump. |
+| Cohort A full re-render | 2026-05-13 | — | (no commit; render-only) | 8 animals × 11 families = 88 PASS. |
+| Sub-B CG-B1 | 2026-05-13 | — | dd0e0a8 | bare_vs_b shared infrastructure. |
+| Sub-B CG-B2 (superseded) | 2026-05-13 | — | d757294 | Per-session paired panels (5 endpoints); preserved in git history. |
+| Sub-B CG-B3 R1 | 2026-05-13 | #1 | 055ef53 | Scope replacement → cohort-only 3-endpoint design. |
+| Sub-B CG-B3 R2 | 2026-05-13 | #2 | 5fc9a1b | Standard/Close labels + per-condition palette + raster session dividers + shared y-lims. |
+| Sub-B CG-B3 R3 | 2026-05-13 | #3 | b79a7c5 + a1de5cd | Rename + per-mouse-side palette + 4-row split + day labels + darker dividers + typography. |
+| Sub-B CG-B3 R4 | 2026-05-13 | #4 | 227052b | Typography + label-rotation polish. |
+| Sub-B CG-B3 R5 | 2026-05-13 | #5 | db829b6 | Raster xticks/centering/y-axis overhaul + expand to all 3 animals. |
+| Sub-B CG-B3 R7 | 2026-05-13 | #7 | 294d10d | Per-session "0" y-tick markers (supersedes R5 cumulative form). |
+| Sub-B R7 follow-on (Addendum #6 retroactively applied) | 2026-05-13 | #6 | e3b5b15 | Day labels horizontal + smaller raster yticks + Trials label labelpad. |
+| Sub-B per-trial renderer | 2026-05-13 | #8 | 02be4b0 | Companion 2×2 per-trial pooled scatter. |
+| Cohort B full re-render | 2026-05-13 | — | (no commit; render-only) | All 3 animals × {summary, per_trial} = 12 PASS. |
+| Phase close — kickoff addenda + audit cleanup | 2026-05-13 | — | eb0cd5a | Post-hoc Addenda #1-#8 prose committed; `.audit_inspect_licks_npz.py` moved to scratch. |
+
+**Forward-pointers queued for future phases.**
+
+1. **Phase 8a.10.1 — cohort-wide Tone↔Reward swap re-emit.** `Reward_{L,R}` NPZ channels carry tone-cue indices (not reward indices) cohort-wide per a separately diagnosed labeling swap. Renderer code is faithful — the Row 4 raster's "reward marker" line currently marks tone onset, not reward delivery. Lick-raster reads correctly regardless because tone + reward fire simultaneously at trial start (Pavlovian; same-sample chronological-order check from `.scratch_phase_8a_10/ps51_d45_diag.py`). Semantic labels will retroactively match data after 8a.10.1's re-emit + re-render.
+2. **126-session YAML-cohort gap chore-PR.** DECISIONS Decision 6: Cohort A `configs/animals.yaml` `sessions.start`/`end` vs legacy `report.json[latency_bySession]` keys diverge across 126 sessions cohort-wide. Most gap-sessions are pre-cohort-launch acquisition (low scientific signal). Queue as a separate chore-PR.
+3. **Phase 9 stats.** Frequentist/Bayesian model selection + multiple-comparison correction + effect-size machinery. Blocks `playground_analyze_behavior_report_PS20250610.ipynb` cells 56-65 + `behavior_report_PS.py::compute_stats_p_values_*`. 5 trimmed Sub-A plot families also queued.
+4. **Phase 7-pre-secondary-spout-compare-DLC.** DLC inference on Pattern B b halves (Phase 7-pre-secondary-spout DECISIONS Finding #1-#2). Blocked on Priya running DLC out-of-band. When unblocked, Sub-B output dir can grow a parallel `dlc_compare/` subdir.
+5. **Pub-figures phase.** Consumer of `AnimalInfo.stroke_laterality` + `mouse_side_to_ipsi_contra()` (Decision 3 deviation #8 scaffolding). Ipsi/contra labels on per-mouse plots.
+6. **CG-B2 per-session paired-panel renderers (preserved in git history at `d757294`).** Superseded by CG-B3 R1's cohort-only design (Decision 8). If a future phase needs per-session per-endpoint visualizations, the CG-B2 implementation can be cherry-picked back from history.
+
+**Tag:** `v8a.10-spout-visual-gate` on the merge commit.
