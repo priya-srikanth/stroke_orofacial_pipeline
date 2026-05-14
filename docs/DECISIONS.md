@@ -15,6 +15,174 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-14 — Phase 8a.10.1 close — Cohort-wide Tone↔Reward channel-label swap fix at wavesurfer read time + Phase 2 re-emit (276 NPZs) + Phase 8a.10 figure re-render (404 figures) + DLC cascade-safety spot-check + stale-NPZ cleanup (512 files, 14.5 GB)
+
+**Supersedes:** None. Discharges the 2026-05-13 Phase 8a.10 close forward-pointer #1 ("Phase 8a.10.1 — cohort-wide Tone↔Reward swap re-emit"), eliminating the Decision 8 Sub-B Row 4 raster's "reward marker" semantic-label drift. Builds on the 2026-04-20 Phase 6.8 mouse-frame side-convention boundary-layer translation (the swap fix is independent of L/R framing; the stamped `side_convention_version=1` invariant is preserved across the re-emit) and on the Phase 6.7 SessionManifest contract (every re-emit consumer takes a manifest + resolver pair, so swapping the raw .h5 channel-read mapping at one boundary propagates cohort-wide without touching call sites).
+
+**Phase metadata.** Branch `phase/8a.10.1-tone-reward-swap-fix`, opened 2026-05-14 off `main` at `5cc1a9e` (PR #115 docs-kickoff merge). Tag-on-merge `v8a.10.1-tone-reward-swap-fix`; merge SHA + PR# recoverable post-merge via `git rev-list -n 1 v8a.10.1-tone-reward-swap-fix` and `gh pr list --search 'v8a.10.1'`. Kickoff [`docs/prompts/phase-8a.10.1-tone-reward-swap-fix-kickoff.md`](prompts/phase-8a.10.1-tone-reward-swap-fix-kickoff.md) (Addenda #1-#3 captured inline in kickoff per Path Y format).
+
+**Context.** Phase 8a.10's Sub-B Row 4 raster surfaced semantic mislabeling: the "Reward_*" wavesurfer channel actually carries ~200 ms tone TTLs (cue onset), while "Tone_*" carries the ~26 ms reward solenoid pulses. The channel labels were inverted cohort-wide in the raw .h5 files (pre-existing acquisition-side mislabeling, not a regression). Because tone + reward fire synchronously at trial start on bilateral-reward sessions (Pavlovian protocol), the labels were scientifically invariant under the swap on most cohort sessions — the Phase 8a.10 lick-raster reads correctly regardless of which event the "reward marker" line marks. **The visible consequence is restricted to withhold trials** (sessions where the reward solenoid does NOT fire for some tones — e.g., probe trials, post-stroke disengaged sessions): under the pre-fix labels, withhold trials disappear from cohort-wide analyses (counted as Reward = 0); under the post-fix labels, withhold tones contribute to denominators (accuracy, lick-rate, baseline pool size for DLC). 76 of 276 cohort sessions carry ≥1 withhold; the remaining 200 are byte-identical pre/post-fix at the Phase 2 NPZ level.
+
+### Decision 1 — Fix location: wavesurfer_io.py channel-read mapping, gated by `tone_reward_swap_enabled: true` opt-in flag
+
+The swap correction lives at one site — [`src/stroke_orofacial/spout_behavior/wavesurfer_io.py`](../src/stroke_orofacial/spout_behavior/wavesurfer_io.py) in the channel-name → array-key mapping that loads the raw .h5 into the canonical `signals` dict. When the gate flag in [`configs/defaults.yaml`](../configs/defaults.yaml) is `tone_reward_swap_enabled: true`, the loader maps `"Reward_*" → tone array` and `"Tone_*" → reward array` at read time — every downstream consumer (Phase 2 lick/reward extraction, Phase 7a tongue per-trial, Phase 6 DLC reward-aligned spatial, behavior_report endpoints) sees the corrected semantics with zero code changes. When the flag is `false`, the legacy mislabel is preserved (byte-identity preserved against pre-PR baselines for regression tests + emergency rollback).
+
+Rationale: The swap is a **labeling error**, not a computation error. Fixing it at the raw read boundary means every internal symbol (`Tone_L`, `Reward_R`, function names like `compute_first_correct_lick_sample_idx`) refers to the scientifically-correct event from the moment it enters the codebase. The opt-in gate (default-on once merged) gives reversible rollout and lets the test suite exercise both flag values without re-emitting NPZs.
+
+### Decision 2 — Re-emit cohort scope Q4.B: Cohort A + Cohort B = 276 sessions (Pattern A nested + Pattern B b-half handled in place)
+
+Q4 audit (kickoff §Q4) compared three candidate scopes: Q4.A (Cohort A only = 257 sessions), Q4.B (Cohort A + Cohort B b-halves = 276 sessions), Q4.C (whole-tree pre-fix audit = ~340+ sessions including out-of-cohort dates). **LOCKED Q4.B 2026-05-14** as the canonical scope: every session that participates in the Phase 8a.10 cohort or the Phase 7-pre-secondary-spout `secondary_spout_sessions:` registry. Pattern A multi-half (PS48/2025-03-14) re-emits the merged `20250314.npz` in place + retains per-half `20250314ab/20250314a.npz` + `20250314ab/20250314b.npz` at the existing convention. Pattern B b-halves (PS51/PS54/PS55, 19 sessions) re-emit at `licks_and_rewards/<animal>/<date>b.npz` per the 2026-05-12 Phase 7-pre-secondary-spout `session_suffix` plumbing.
+
+**Re-emit manifest:** [`scripts/phase_8a_10_1/reemit_manifest.csv`](../scripts/phase_8a_10_1/reemit_manifest.csv) — 276 rows × `(animal, date, half_suffix, status, pre_fix_sha256, post_fix_sha256, wall_time_sec)`. Final tally: **276 OK / 0 ERROR / 200 byte-identical / 76 differing.** All 76 differing sessions match the Q4 audit's withhold-bearing prediction. Driver: [`scripts/phase_8a_10_1/reemit_phase_2_post_swap_fix.py`](../scripts/phase_8a_10_1/reemit_phase_2_post_swap_fix.py).
+
+PS55/2025-06-06 dual-h5 case (one of the legacy artifacts where two .h5 files exist for one session date) handled via `DUAL_H5_HACK_SESSIONS = {("PS55", date(2025,6,6)): "stroke_0002.h5"}` mirroring Phase 8a.10's precedent. PS55/2025-04-28 (yaml-excluded `applies_to: [dlc, spout_behavior]`) was skipped by the manifest filter but verified post-hoc via supplementary tmp twin-emit (Task 3 Check 4) to confirm the swap fix works on that session as well — its production NPZ stays pre-fix on disk under the "exclusion respected" invariant.
+
+### Decision 3 — Output safety Option α: in-place overwrite of Phase 2 NPZs
+
+Three candidate output strategies evaluated (kickoff §Output Safety): Option α in-place overwrite, Option β shadow-tree write + atomic move, Option γ new-tree write + dual-read shim. **LOCKED Option α 2026-05-14.** Rationale:
+
+- The Phase 2 NPZ tree at `pipeline_outputs/spout_behavior/licks_and_rewards/` is a **derived output**, not source data per CLAUDE.md ground rule 1; in-place overwrite is permitted.
+- Pre-fix and post-fix NPZs both carry the `side_convention_version=1` stamp + `wavesurfer_sides_match_mouse_sides` flag; the consumer-side stamp validation (`load_tone_events`, `_load_reward_centers_cam`) does not change, so post-fix NPZs are drop-in replacements with no schema or contract drift.
+- Re-emit is idempotent: re-running the driver against an already-post-fix NPZ produces a byte-identical output (verified during Task 3 sample-comparison).
+- Pre-emit sha256 capture happens in the driver before the overwrite, so rollback (revert the gate flag + re-emit) is bit-perfect.
+
+### Decision 4 — Phase 3 alignment-template re-emit Q1.A REVERSED per Addendum #3 (negative finding) + Phase 7-pre-alignment-templates F-P-7 surfaced (positive forward-direction)
+
+This decision captures **two distinct findings** from CC's Task 5 pre-flight audit. They are NOT the same finding rephrased — one is a self-correction of a kickoff lock made on a misconception; the other is a scoping discovery about real future work the consolidation will need.
+
+**Finding A — Negative (immediate): Q1.A LOCKED re-emit was unnecessary as a swap-fix consequence; Task 5 SKIPPED.**
+
+Q1.A in the kickoff (`Q1.A LOCKED`) provisionally scheduled a 276-session Phase 3 alignment-template re-emit as Task 5 under the premise that the swap fix would propagate through Phase 3 outputs. CC's pre-flight audit ([`src/stroke_orofacial/alignment/frame_sync.py:143`](../src/stroke_orofacial/alignment/frame_sync.py#L143) `make_alignment_template`) confirmed that Phase 3's alignment is **Sync-anchored, not Tone-anchored**: the builder consumes only the `Sync_signal` wavesurfer channel (key `"Sync_signal"` per `params["key_sync"]`) + the raw camera CSV. The swap fix touches the `Tone_*` / `Reward_*` channel-name → array-key mapping at `wavesurfer_io.py`; `Sync_signal` was never part of the inverted channel pair. Re-emit would produce byte-identical templates (modulo sub-0.1% library-drift Tier-A tolerance documented in Phase 7-pre-multi-half) and validate nothing the Q1.A "withhold sessions surface differences" prediction expected.
+
+**Data-flow chain (the load-bearing reason Q1.A's premise was wrong):**
+
+```
+raw .h5  →  Phase 1 process_ws_signals  →  wavesurfer_signals_processed/  →  Phase 3 alignment template
+                                                  │
+                                                  ↓  (separately, only here)
+                                          Phase 2 find_licks_and_rewards  →  licks_and_rewards/
+                                          (this is where Tone_*/Reward_* live; the swap fix applies here)
+```
+
+Phase 3 reads `Sync_signal` from the Phase 1 NPZ; Phase 1's `Sync_signal` was never part of the swap and is unchanged. Phase 2 reads `Tone_in` / `Reward_in` from the raw .h5 via the channel-name mapping that the swap fix corrects; **only** Phase 2 outputs and downstream consumers of Phase 2's Tone_*/Reward_* keys are affected. Task 5 reversed per kickoff Addendum #3 2026-05-14.
+
+**Finding B — Positive (forward-direction): Separate consolidation gap surfaced; tracked as F-P-7 dedicated mini-phase.**
+
+The Task 5 pre-flight also surfaced a **distinct, real gap** in the consolidation that is NOT a Phase 8a.10.1 deliverable: the new pipeline tree at `pipeline_outputs/dlc_analysis/alignment_templates/cam2/` currently contains only **3 templates** (from the Phase 7-pre-multi-half 2026-05-05 incident-response PS48/2025-03-14 restore), while the legacy tree at `MICROSCOPE/Priya/DeepLabCut/O2_analysis/alignment_templates/cam2/` contains **345 templates** across all 8 cohort animals. Every production DLC consumer (`build_reward_aligned_analysis`, `_load_reward_centers_cam`, `_derive_trial_events_from_spout_behavior`, `_derive_reward_events_for_bodypart`) reads via [`PathResolver.alignment_template_legacy_read()`](../src/stroke_orofacial/paths.py) — the new tree is structurally orphan.
+
+This is a **separate consolidation chore** — the new pipeline isn't self-sufficient on the alignment-template layer. Tracked as **F-P-7 (Phase 7-pre-alignment-templates)** below: dedicated mini-phase to cohort-wide emit alignment templates into the new tree + cut DLC consumers over from `alignment_template_legacy_read()` to `alignment_template_new()` / `alignment_template_per_half_new()`. Sibling to Phase 7-pre-multi-half, Phase 7-pre-secondary-spout, and the queued Phase 7-pre-multi-half-dlc (F-P-5). Either order with Phase 7-pre-multi-half-dlc; lands AFTER Phase 7b-light so cutover code is built on cleaned DLC source. Estimated ~6-12 commits.
+
+**Do not conflate the two findings.** Finding A is a self-correction: we locked Q1.A based on a misconception about how the swap fix propagates. Finding B is a positive scoping decision: the alignment-template consolidation IS real work, just not Phase 8a.10.1's work — and we'd have missed scoping it had Task 5 run silently. STOP-and-report on the Finding A premise gap was the mechanism that surfaced Finding B.
+
+### Decision 5 — Phase 8a.10 figure re-render Q2.A scope: 404 figures across 3 families on post-fix data
+
+Q2.A (kickoff §Q2) scoped the figure re-render to the 3 visualization families that consume Phase 2's Tone_*/Reward_* keys for axis labels or aggregate stats: Sub-A `visual_gate.py` (8 animals × 11 plot families × {absDate, relStroke} × {svg, png} variants), Sub-A `cohort_summary.py` tile-grids (10 families × 2 formats), Sub-B `spout_close_vs_std.py` (3 Cohort B animals × 2 renderers × 2 formats). **Locked total = 404 figures** (manifest: [`scripts/phase_8a_10_1/rerender_manifest.csv`](../scripts/phase_8a_10_1/rerender_manifest.csv); driver: [`scripts/phase_8a_10_1/rerender_phase_8a_10_figures.py`](../scripts/phase_8a_10_1/rerender_phase_8a_10_figures.py)).
+
+**Visual verdict (Task 4 + Task 4 cosmetic follow-ons + Task 4 follow-on Changes 1+2+3):** All 404 figures re-rendered + eyeball-verified PASS. Δ=0 (byte-identical) on the bilateral-reward majority (200 sessions); withhold-side differences appear as predicted on the 76 withhold-bearing sessions (visible as denominator changes in accuracy renders + baseline-pool growth in DLC consumer plots). 5 secondary fixes folded into Task 4: Sub-B cohort dot size bump (16 → 80; commit `037a8bc`); absDate longitudinal xtick rotation 45° + ha="right" to prevent leftmost-label clipping (commit `758155a`); "mouse L/R" + "Reward L/R" legend renames → "Tone L/R" semantic correction (commit `e912eb2`); y-axis typography bump (`cohort_ytick_fontsize=11`, `cohort_ylabel_fontsize=13`; commit `b7f171b`); Sub-B per_trial 2×2 → 4×2 layout adding Rows 3-4 (`fraction of trials with ≥1 correct/incorrect lick`; same commit); integer y-tick locator (`MaxNLocator(integer=True)`) on lick-count rows under `lick_count_integer_yticks: true` flag (same commit).
+
+### Decision 6 — Phase 7/7a full re-run Q3.B DEFERRED to Phase 7b-light
+
+Q3.B (kickoff §Q3) audited whether to fold Phase 7 (centering) + Phase 7a (interpolation + tongue/jaw kinematics) + Phase 6 (DLC reward-aligned spatial) re-runs into Phase 8a.10.1's scope. **LOCKED DEFERRED 2026-05-14.** Three considerations:
+
+1. **DLC pipeline is byte-stable across this swap fix on synchronous-event sessions** (Task 4.5 verification: PS46/2025-03-07 baseline pool size = 96 pre and post; trial-event counts unchanged on bilateral sessions).
+2. **Withhold-bearing sessions show predicted DLC consumer differences** — PS54/2025-05-03 baseline pool grew by exactly 86 events (= 45 L-withholds + 41 R-withholds), matching `count(Tone_L) + count(Tone_R) − count(Reward_L) − count(Reward_R)` to the unit. This is the **correct** scientific behavior and would propagate through Phase 6/7/7a re-emit if performed.
+3. **A full re-run is large (~341 sessions × multiple bodyparts/center-modes × 10-30s each = several hours wall time)** and is best executed under a dedicated Phase 7b-light phase with its own parity strategy, alignment-template-tree cutover decision, and notebook re-run discipline. Folding it here would balloon the PR + delay the swap-fix landing.
+
+**X1-β surgical fold-in:** the 4 indirect DLC callers of `load_reward_events` were renamed to `load_tone_events` at the function-call boundary as part of Commit B per Decision 7 below — a 4-site cosmetic rename that keeps consumer-side semantics scientifically correct in this phase. The deeper local-variable + module-name + docstring narrative cleanup of those 4 callers is queued as Phase 7b-light scope.
+
+### Decision 7 — Case-2-universal rename verdict Q-A.β / Q-B.α / Q-C / X1-β: consumer renames + function/dataclass renames + dict-key renames cohort-wide
+
+The kickoff §Case-2 audit categorized every consumer-side reference to "reward" by whether the underlying event is **scientifically tone-anchored** (Case-2) or **scientifically reward-anchored** (Case-1). Audit verdict: **every consumer in this codebase is Case-2** — the tone is the temporal anchor for every downstream computation (lick-delay window, DLC frame window, trial accuracy denominator). The reward solenoid is a per-trial *outcome* (fired or withheld), not a temporal anchor. Renames LOCKED 2026-05-14:
+
+- **Q-A.β** — Two-anchor `TrialRecord` model: `tone_idx: int` always-present anchor + `reward_idx: int | None` optional outcome. Replaces the legacy single `reward_idx` anchor. Withhold trials carry `reward_idx=None`. [`src/stroke_orofacial/spout_behavior/trial_segmentation.py`](../src/stroke_orofacial/spout_behavior/trial_segmentation.py).
+- **Q-B.α** — `reward_side` → `tone_side` field rename on `TrialRecord` and downstream consumers. Same reasoning: side is determined at cue presentation (tone onset), not at reward delivery.
+- **Q-C Case-2** — Function/method renames cohort-wide: `tone_trial_count_per_session()` replaces `reward_trial_count_per_session()`; `_TONE_REWARD_PAIRING_WINDOW_MS` constant replaces `_REWARD_TONE_PAIRING_WINDOW_MS` with docstring clarifying the tone-anchored pairing semantics (commit `8db285c`); `SessionPlotData.tones_idx` replaces `SessionPlotData.rewards_idx`. Endpoints writer + endpoints_engagement renames flow through. [`src/stroke_orofacial/spout_behavior/`](../src/stroke_orofacial/spout_behavior/).
+- **X1-β** — DLC surgical fold-in: `load_reward_events` → `load_tone_events` at [`src/stroke_orofacial/dlc_spatial/reward_aligned.py`](../src/stroke_orofacial/dlc_spatial/reward_aligned.py) (the source function) + the 3 indirect callers in [`dlc_kinematics/interpolation.py::_load_reward_centers_cam`](../src/stroke_orofacial/dlc_kinematics/interpolation.py), [`dlc_kinematics/tongue_pertrial.py::_derive_trial_events_from_spout_behavior`](../src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py), [`dlc_kinematics/mean_sem_visual.py::_derive_reward_events_for_bodypart`](../src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py). NPZ-key reads in `load_tone_events` swap `Reward_<side> → Tone_<side>`. Local-variable names (`reward_ws`, `ws_idx`) + module name `reward_aligned.py` + comment narrative kept as-is; their cleanup is Phase 7b-light per Decision 6.
+
+Verification: pytest 1417 passed after the renames. Test sync (Commit C) covers all 4 categories.
+
+### Decision 8 — Pass-2 `peri_reward_periods/` audit + Commit E partial-rename (E.A.2-β / E.B.1 / E.C-partial)
+
+While Task 2 re-emit was in flight, a Pass-2 Case-2 audit examined the `peri_reward_*` window family ([`src/stroke_orofacial/spout_behavior/peri_reward.py`](../src/stroke_orofacial/spout_behavior/peri_reward.py) consumers + the `peri_reward_periods/{animal}/{date}.npz` emit). Three sub-decisions LOCKED 2026-05-14:
+
+- **E.A.2-β LOCKED:** No schema widening. The `peri_reward_periods/*.npz` files contain `peri_reward_bool` (consolidated bool array across both sides) + per-side / per-tone variants (`peri_reward_L/R`, `peri_tone_L/R`). The semantic mismatch (the consolidated `peri_reward_bool` is constructed from `reward_idx`, which under Case-2 universal SHOULD be tone-anchored) is **vestigial**: the audit confirmed `peri_reward_periods/*.npz` is **stored-but-unused** in production (no consumer currently reads from these files). Schema widening to add tone-anchored variants would be premature scope expansion.
+- **E.B.1 LOCKED:** Directory name `peri_reward_periods/` kept as-is. Renaming would invalidate every existing on-disk file path + force a follow-up cleanup pass; keeping the legacy name preserves the "stored-but-unused" status without introducing a rename-cost-without-benefit cycle.
+- **E.C-partial LOCKED (Commit E):** Rename only the production-consumed configuration knob: `behavior_report.window_around_rewards` → `behavior_report.window_around_tones` in [`configs/defaults.yaml`](../configs/defaults.yaml) + every consumer that reads it (commit `54a203a`). This is the one Case-2 rename in the peri_reward family that affects on-disk behavior (cohort-wide first-lick latency window).
+
+Forward-pointers F-P-1 + F-P-2 carry the deferred parts of this audit.
+
+### Decision 9 — Stale-NPZ cleanup (Commit F): 512 orphan NPZs / 14.5 GB removed from `pipeline_outputs/spout_behavior/`
+
+Task 3.5 audit walked `pipeline_outputs/spout_behavior/` and cross-referenced every on-disk NPZ against the canonical 276-session cohort scope. **512 orphan NPZs (14.5 GB total)** were enumerated outside the canonical scope — carried over from prior chore-emit cycles, pre-Cohort-A-launch acquisition, abandoned legacy notebook exploratory output, etc. Driver: [`scripts/phase_8a_10_1/audit_stale_npzs.py`](../scripts/phase_8a_10_1/audit_stale_npzs.py) + [`scripts/phase_8a_10_1/delete_stale_npzs.py`](../scripts/phase_8a_10_1/delete_stale_npzs.py); manifest of deletions: [`scripts/phase_8a_10_1/deletion_manifest.json`](../scripts/phase_8a_10_1/deletion_manifest.json) (7189 lines).
+
+**Invariant established:** post-Commit F, every NPZ on disk under `pipeline_outputs/spout_behavior/` corresponds to a session in the canonical 276-session cohort scope. Future re-emits that change the cohort scope must update the stale-audit driver in lockstep.
+
+Priya pre-approval received 2026-05-14 ("OK to delete all") after enumeration. The 4 yaml-excluded sessions (`applies_to: [dlc, spout_behavior]` — PS51/2025-04-26, PS54/2025-04-26, PS55/2025-04-27, PS55/2025-04-28) remain stale pre-fix on disk under the "exclusion respected" invariant; harmless under current scope per the Task 2 manifest filter logic.
+
+### Decision 10 — Verification mechanism: 4-stage gate (Task 0.5 audit + Task 3 sample-comparison + Task 4 visual verdict + Task 4.5 DLC spot-check)
+
+Phase 8a.10.1 used a 4-stage verification protocol with explicit PASS gates between Task 1 (the swap-fix landing commit) and Task 5/6 (close):
+
+1. **Task 0.5 — Pulse-width audit (pre-fix).** Iterated all 271 raw .h5 files across the cohort and measured pulse-width on the `"Reward_*"` and `"Tone_*"` channels. Confirmed cohort-wide inversion: `"Reward_*"` carries ~200 ms TTLs (tone duration); `"Tone_*"` carries ~26 ms solenoid pulses (reward duration). Result: PASS — the swap is real, cohort-wide, and one-directional (no animal-specific exceptions).
+2. **Task 3 — Sample-comparison + downstream-shift sanity (post-fix re-emit).** Four sub-checks:
+   - Check 1: Bit-perfect swap on a paired sample (PS46/2025-03-07 selected; pre-fix `Tone_L` array byte-identical to post-fix `Reward_L` and vice-versa).
+   - Check 2: Pulse-width re-check on post-fix data (now `"Tone_*"` carries ~200 ms, `"Reward_*"` carries ~26 ms).
+   - Check 3: Per-session count diff `count(Tone_L) − count(Reward_L)` across all 276 NPZs (= 0 on bilateral sessions, = withhold_L count on withhold sessions).
+   - Check 4: Withhold-count diagnostic across all 276 sessions. 76 / 276 sessions carry ≥1 withhold; PS55/2025-04-28 R-side withhold sanity-checked via supplementary tmp twin-emit. Result: PASS — Δ=0 on synchronous-event majority, predicted-magnitude shifts on withhold sessions.
+3. **Task 4 — Visual verdict on 404 figures (post-fix re-render).** All 3 figure families (Sub-A visual_gate, Sub-A cohort_summary tile-grids, Sub-B spout_close_vs_std) eyeball-verified PASS across all 8 cohort animals + the 5 cosmetic polish rounds (Decision 5).
+4. **Task 4.5 — DLC cascade-safety spot-check (Addendum #2).** Exercised the 4 X1-β indirect callers + `build_reward_aligned_analysis` on 3 representative sessions (PS46/20250307 bilateral baseline, PS54/20250503 high-withhold watch-item, PS48/20250314 Pattern A multi-half partial). PS54 watch-item: baseline pool grew by exactly 86 events (= 45 L + 41 R withholds). PS46 watch-item: bilateral session, pool unchanged. PS48 partial: 2 of 5 sites runnable, the other 3 fail on pre-existing upstream Phase 7a gaps unrelated to the swap fix. Result: PASS.
+
+All 4 gates PASS. No hot-fix required at any stage; no Q3.B revoke / Phase 7b cascading required.
+
+### Findings carried forward
+
+- **F-P-1.** `peri_reward_periods/*.npz` is **stored-but-unused** on disk under `pipeline_outputs/spout_behavior/peri_reward_periods/`. Future cleanup candidate: either wire it into a downstream consumer that benefits from the consolidated `peri_reward_bool` (e.g., baseline-vs-engagement state classification), or delete the emit step + drop the directory. Decision 8 E.B.1 kept the dir name as-is; this forward-pointer covers the eventual disposition.
+- **F-P-2.** PS46-bilateral-reward parity tests in [`tests/test_criteria.py`](../tests/test_criteria.py) + other test files survive the swap fix byte-identical (because tone + reward fire synchronously on bilateral sessions, the swap is a no-op at the test-vector level). Future withhold-session parity tests (when added — currently no test exercises the withhold-trial branch end-to-end) will diverge by design; new test fixtures must use a withhold-bearing session and assert the post-fix accuracy denominator includes withhold tones.
+- **F-P-4 (new from Task 4.5).** PS48/2025-03-14 (Pattern A multi-half) has pre-existing infrastructure gaps unrelated to the swap fix: (a) `interpolated_traces/tongue/PS48/20250314.parquet` is missing (`build_interpolated_trace` was never run on this multi-half session); (b) `SessionManifest.dlc_h5_files` is empty for this date (manifest builder does not currently populate dlc h5 files for the multi-half merge pattern). Phase 7b-light fodder.
+- **F-P-5 (Phase 7-pre-multi-half-dlc).** Pattern A DLC merge wiring — `dlc_io/parquet.py` + `_load_reward_centers_cam` use single-half manifest shapes that don't pick up the `20250314ab/` per-half DLC outputs. Priya's legacy code handles PS48/2025-03-14 in the interim via the standalone Phase 7-pre-multi-half restore script ([`scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py`](../scripts/phase_7_pre/restore_PS48_20250314_alignment_templates.py)).
+- **F-P-6.** 111-session YAML-cohort gap chore — superset of Phase 8a.10 Decision 6's 126-session chore (broader: spans Cohort A + Cohort B yaml ranges vs legacy `report.json` session keys). Queued as a separate small chore-PR; not blocking any in-flight phase.
+- **F-P-7 (new from Decision 4 Finding B — Phase 7-pre-alignment-templates).** Dedicated mini-phase for cohort-wide alignment template emit + consumer cutover from legacy `O2_analysis/alignment_templates/cam2/` tree (currently 345 templates, read-only per CLAUDE.md ground rule 1) to new `pipeline_outputs/dlc_analysis/alignment_templates/cam2/` tree (currently 3 templates from the 2026-05-05 PS48 incident-response restore). Every production DLC consumer reads via `PathResolver.alignment_template_legacy_read()`; the cutover phase populates the new tree via cohort-wide emit + swaps consumer resolver calls to `alignment_template_new()` / `alignment_template_per_half_new()`. Sibling to Phase 7-pre-multi-half, Phase 7-pre-secondary-spout, and Phase 7-pre-multi-half-dlc (F-P-5). Lands AFTER Phase 7b-light so cutover code is built on cleaned DLC source. Either order with Phase 7-pre-multi-half-dlc. Estimated ~6-12 commits. **Important:** F-P-7 is structurally independent of the swap fix — it would have been needed regardless of Phase 8a.10.1; CC's Task 5 pre-flight audit surfaced it as a side-effect of investigating Q1.A. Captured in CC memory as `project_phase_7_pre_alignment_templates_forward_pointer.md`.
+
+### Enforced at
+
+**Source.**
+- [`src/stroke_orofacial/spout_behavior/wavesurfer_io.py`](../src/stroke_orofacial/spout_behavior/wavesurfer_io.py) — channel-read mapping with `tone_reward_swap_enabled` gate (Commit A).
+- [`src/stroke_orofacial/spout_behavior/trial_segmentation.py`](../src/stroke_orofacial/spout_behavior/trial_segmentation.py) — two-anchor `TrialRecord` (Q-A.β) + `tone_side` field (Q-B.α).
+- [`src/stroke_orofacial/spout_behavior/criteria.py`](../src/stroke_orofacial/spout_behavior/criteria.py), [`endpoints_engagement.py`](../src/stroke_orofacial/spout_behavior/endpoints_engagement.py), [`endpoints_per_trial.py`](../src/stroke_orofacial/spout_behavior/endpoints_per_trial.py), [`endpoints_writer.py`](../src/stroke_orofacial/spout_behavior/endpoints_writer.py), [`session_processing.py`](../src/stroke_orofacial/spout_behavior/session_processing.py), [`visual_gate.py`](../src/stroke_orofacial/spout_behavior/visual_gate.py), [`spout_close_vs_std.py`](../src/stroke_orofacial/spout_behavior/spout_close_vs_std.py), [`criteria_slugs.py`](../src/stroke_orofacial/spout_behavior/criteria_slugs.py) — Q-C Case-2 renames (Commit B).
+- [`src/stroke_orofacial/dlc_spatial/reward_aligned.py`](../src/stroke_orofacial/dlc_spatial/reward_aligned.py) — `load_reward_events` → `load_tone_events` source rename + Tone_*/Reward_* NPZ-key swap (X1-β).
+- [`src/stroke_orofacial/dlc_kinematics/interpolation.py`](../src/stroke_orofacial/dlc_kinematics/interpolation.py), [`tongue_pertrial.py`](../src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py), [`mean_sem_visual.py`](../src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py) — 3 indirect-caller renames (X1-β).
+
+**Config.**
+- [`configs/defaults.yaml`](../configs/defaults.yaml) — `tone_reward_swap_enabled: true` gate; `behavior_report.window_around_tones` (renamed from `window_around_rewards`); `visual_gate.lick_count_integer_yticks: true`; `spout_close_vs_std.cohort_dot_size: 80`, `cohort_ytick_fontsize: 11`, `cohort_ylabel_fontsize: 13`, `lick_count_integer_yticks: true`.
+
+**Tests.**
+- [`tests/test_wavesurfer_io.py`](../tests/test_wavesurfer_io.py) — 196 lines of new tests pinning both flag values + the channel-name → array-key mapping invariants.
+- [`tests/test_criteria.py`](../tests/test_criteria.py), [`test_endpoints_per_trial.py`](../tests/test_endpoints_per_trial.py), [`test_endpoints_engagement.py`](../tests/test_endpoints_engagement.py), [`test_trial_segmentation.py`](../tests/test_trial_segmentation.py), [`test_visual_gate.py`](../tests/test_visual_gate.py), [`test_spout_close_vs_std.py`](../tests/test_spout_close_vs_std.py), [`test_reward_aligned.py`](../tests/test_reward_aligned.py), [`test_dlc_spatial_side_convention.py`](../tests/test_dlc_spatial_side_convention.py), [`test_tongue_pertrial.py`](../tests/test_tongue_pertrial.py), [`test_dlc_interpolation.py`](../tests/test_dlc_interpolation.py), [`test_endpoints_writer.py`](../tests/test_endpoints_writer.py), [`test_endpoints_within_session.py`](../tests/test_endpoints_within_session.py), [`test_recovery_trajectories.py`](../tests/test_recovery_trajectories.py) — Commit C test sync per Q-A.β / Q-B.α / Q-C / X1-β.
+- Combined: 1417 pass.
+
+**Scripts.**
+- [`scripts/phase_8a_10_1/reemit_phase_2_post_swap_fix.py`](../scripts/phase_8a_10_1/reemit_phase_2_post_swap_fix.py) — 276-session driver.
+- [`scripts/phase_8a_10_1/reemit_manifest.csv`](../scripts/phase_8a_10_1/reemit_manifest.csv) — re-emit manifest with pre/post sha256 + status.
+- [`scripts/phase_8a_10_1/audit_stale_npzs.py`](../scripts/phase_8a_10_1/audit_stale_npzs.py), [`delete_stale_npzs.py`](../scripts/phase_8a_10_1/delete_stale_npzs.py), [`deletion_manifest.json`](../scripts/phase_8a_10_1/deletion_manifest.json) — Commit F cleanup harness.
+- [`scripts/phase_8a_10_1/rerender_phase_8a_10_figures.py`](../scripts/phase_8a_10_1/rerender_phase_8a_10_figures.py) + [`rerender_manifest.csv`](../scripts/phase_8a_10_1/rerender_manifest.csv) — 404-figure driver.
+
+**Docs.**
+- [`docs/MIGRATION_LOG.md`](MIGRATION_LOG.md) — Phase 8a.10.1 section (this commit's sibling).
+- [`docs/COWORK_SESSION_STATE.md`](COWORK_SESSION_STATE.md) — refreshed at phase close.
+- [`docs/prompts/phase-8a.10.1-tone-reward-swap-fix-kickoff.md`](prompts/phase-8a.10.1-tone-reward-swap-fix-kickoff.md) — canonical execution spec + Addenda #1-#3 captured inline.
+
+### Process lessons
+
+**Surgical fix at one boundary beats N call-site changes.** The swap correction at `wavesurfer_io.py`'s channel-name → array-key mapping (Decision 1) propagates cohort-wide with zero touches to consumer code (Phase 2 lick/reward extraction, Phase 7a tongue per-trial, Phase 6 DLC reward-aligned, behavior_report). Compare to the X1-β consumer-side rename (which touches 4 sites): the boundary fix is the load-bearing change; the renames are post-hoc cosmetic alignment of names with the now-corrected semantics. **Forward rule:** when a labeling error is uniform across the codebase, fix at the read boundary first + rename downstream second (not the inverse).
+
+**Synchronous-event property reduces verification surface from N to (N − M).** Of 276 cohort sessions, only 76 carry ≥1 withhold trial; the remaining 200 are byte-identical pre/post-fix at every layer (Phase 2 NPZs, Phase 6 heatmaps, Phase 7a trial events). Task 3 Check 3's per-session count diff was the right cheap-verification: scan all 276 NPZs for `count(Tone_L) − count(Reward_L) ≠ 0` and triage there. **Forward rule:** when fixing a swap or rename, identify the invariant set (here: synchronous-event sessions) early + use it as the cheap-verification axis before paying for full per-session re-emission audits.
+
+**Premise audit before kickoff lock prevented a vacuous 30-90 min run + surfaced a separate forward-direction finding.** Task 5 (Phase 3 alignment re-emit, originally Q1.A LOCKED in the kickoff) was reversed mid-phase after CC's pre-flight audit surfaced (Finding A) that Phase 3 is Sync-anchored not Tone-anchored — the swap fix doesn't propagate to alignment templates. The same audit ALSO surfaced (Finding B) that the new pipeline tree at `pipeline_outputs/dlc_analysis/alignment_templates/` is essentially empty (3 templates) while all production consumers read from the legacy tree (345 templates) — a separate consolidation gap captured as F-P-7. **Forward rule:** STOP-and-report is the right move whenever a downstream task's scientific premise depends on a chain that the implementer can verify cheaply. The side-effect benefit — surfacing forward-direction findings that would have been missed if the long run completed silently — is often as valuable as the original premise correction.
+
+**Pre-approval mechanism for serial dependent tasks.** Priya gave pre-approval for: legend rename + test sync + cohort dot bump + integer ticks. The pre-approval pattern let CC chain Task 4 cosmetic follow-ons in a single cycle instead of STOP-and-reporting after each sub-task. Works when the next-task scope is well-bounded + Priya has high confidence in the diff direction. **Forward rule:** offer pre-approval explicitly for serial sub-tasks where the next-task scope is committed (no design-decision pending) + the diff direction is obvious from the prior task.
+
+---
+
 ## 2026-05-13 — Phase 8a.10 close — Spout-behavior visual gate (Sub-deliverable A: 11 per-mouse plot families × 8 animals) + spout-close-vs-standard cohort comparison (Sub-deliverable B: 4-row story strip + per-trial 2×2 scatter, 3 animals, 14 post-stroke sessions) — Outcome A faithful-port + 8 intentional deviations + 9 visual-iteration rounds
 
 **Supersedes:** None. Builds on the 2026-05-12 Phase 7-pre-secondary-spout DECISIONS (folds in its "Bare-vs-b spout-behavior comparison folded into Phase 8a.10 scope" forward-pointer, Finding #3) and the 2026-04-20 Phase 6.8 DECISIONS (mouse-frame side-convention boundary-layer translation, consumed via `SIDE_COLORS` palette inversion in this phase).

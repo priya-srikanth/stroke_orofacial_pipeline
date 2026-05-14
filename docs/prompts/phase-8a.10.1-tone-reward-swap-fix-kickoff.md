@@ -365,3 +365,295 @@ Before the phase-close PR:
 **Next step: open the kickoff-doc PR** (`docs(phase-8a.10.1): kickoff doc`) targeting `main`. Mirrors the Phase 8a.10 PR #100 pattern (kickoff-doc PR merges first, then feature branch opens off the post-merge `main`).
 
 After kickoff-doc PR merges: create feature branch `phase/8a.10.1-tone-reward-swap-fix`, start Task 0.5 (cohort-wide pulse-width audit on Cohort A + B — STOP-and-report).
+
+---
+
+## Addendum #1 — Task 0.5 PASS + Case-2-universal verdict + insert Task 0.75 consumer audit
+
+**Date:** 2026-05-14.
+**Trigger:** Task 0.5 PASS verdict + Priya 2026-05-14 confirmation that **Case 2 holds universally** — every legacy consumer of `rewards_idx` intended tone alignment, not reward-delivery alignment. The swap fix at WS read time will break every downstream consumer unless paired with coordinated consumer-side renames.
+
+### Task 0.5 result (CLOSED, PASS)
+
+- **Scope:** 271 raw `.h5` files on disk (255 Cohort A bare + 1 Pattern A half-a + 1 Pattern A half-b + 14 Cohort B b-half). Smaller than the kickoff's ~355 estimate because `iter_cohort_a_sessions` is filtered by on-disk Phase-2 NPZ existence (the 71-missing audit narrowed several sessions out).
+- **Verdict:** 271/271 swap-confirmed. Zero Kind 1 (inverted-swap), zero Kind 2 (anomalous). Per-animal histograms are cleanly bimodal — every animal shows N pulses in `[20,30)` ms (rewards) and N pulses in `[180,220)` ms (tones), nothing in between.
+- **Implication:** safe to apply unconditional single-point swap fix at WS read time. No exclusion list, no per-session config overrides required.
+- **Artifacts** (gitignored, scratch): `.scratch_phase_8a_10_1/task_0_5_audit_report.md`, `.scratch_phase_8a_10_1/audit_pulse_widths.py`, `.scratch_phase_8a_10_1/per_file_results.json`.
+
+### Scientific clarification: Case 2 holds universally (Priya 2026-05-14)
+
+Every legacy consumer of `rewards_idx` was scientifically intended as tone-alignment. The variable name `rewards_idx` was chosen because the wavesurfer channel was *labeled* "Reward" — the original author trusted the label without verifying the pulse-width semantics. Cross-codebase:
+
+- Trial alignment is to the **auditory cue (tone onset)** — animals respond to the tone; trial-window math is anchored there.
+- "L / R reward trials" is a misnomer; the correct semantic is "L / R tone trials" (i.e., trials where the cue tone was on the L or R side).
+- Criteria 3 window ("first lick within X seconds post-reward") is actually "first lick within X seconds **post-tone-onset**".
+- Latency-bySession measures latency from tone-onset, not from reward delivery.
+- Lick raster x-axis is tone-onset, not reward-delivery.
+
+The new `rewards_idx` (which post-fix actually holds reward-delivery timestamps) is **currently not consumed by any analysis**. Reward delivery is a downstream consequence of correct licking, not an alignment anchor.
+
+### Scope impact: consumer-side renames REQUIRED throughout
+
+The Option 1 single-point fix claim ("Downstream code (Phase 3, Phase 7, Phase 8a) consumes `rewards_idx`/`tones_idx` by name and doesn't need to change") **is wrong** under Case 2. Every consumer of `rewards_idx` must rename to `tones_idx` to preserve scientific intent. Without the rename, post-fix code consumes actual reward delivery timestamps where it should be consuming tone-onset — silently producing incorrect downstream outputs.
+
+**Estimated scope expansion:** kickoff originally estimated "small-to-mid" (~5-10 source/test/script files). With consumer renames, expand to **mid-to-large** (likely 15-40 source/test files touched). Consumer renames + WS swap fix ship together as a single coordinated PR for atomic semantic update.
+
+### Insert Task 0.75 — Consumer audit (STOP-and-report)
+
+Inserts between Task 0.5 (closed) and Task 1 (WS swap fix). Required to identify every Case-2 site before Task 1 implementation lands.
+
+**Steps:**
+
+1. Grep the codebase for every consumer of `rewards_idx`, `tones_idx`, and related access patterns:
+   ```
+   grep -rn "rewards_idx\|tones_idx\|Reward_L\|Reward_R\|Tone_L\|Tone_R\|reward.*idx\|tone.*idx" src/ tests/ scripts/ notebooks/
+   ```
+   Also check NPZ-key access patterns: `data\["rewards"\]`, `npz_data\[..."Reward"...\]`, etc.
+
+2. For each consumer site, classify:
+   - **Case-1 (rare):** code is correctly named for its scientific intent. Variable name matches what the code intends to do (e.g., a hypothetical "time-from-reward-delivery-to-next-trial-start" analysis using `rewards_idx` would be correctly named). **No rename needed.**
+   - **Case-2 (expected default):** variable name diverges from scientific intent. Code uses `rewards_idx` but intends tone alignment. **Rename: `rewards_idx` → `tones_idx`** (and any related downstream variable / key / docstring / comment).
+
+3. Special attention to:
+   - `src/stroke_orofacial/spout_behavior/visual_gate.py` — `compute_first_lick_correct`, `compute_trial_lick_delays`, `compute_first_correct_lick_sample_idx`, `compute_criteria_3`, `compute_criteria_4`, `compute_criteria_34`, `compute_criteria_acc_bySession`, `compute_firstLickCorrect_bySession`, `compute_median_lick_rate_bySession`, `compute_num_licks_bySession`, `compute_latency_bySession`. The "post-reward" window definitions are the highest-density Case-2 sites.
+   - `src/stroke_orofacial/spout_behavior/session_processing.py`, `session_manifest.py`, `endpoints_writer.py`.
+   - `src/stroke_orofacial/spout_behavior/criteria.py`.
+   - `src/stroke_orofacial/dlc_analysis/alignment_templates*.py` — Phase 3 alignment is to the auditory cue.
+   - `src/stroke_orofacial/io/wavesurfer_io.py` itself — variable names in the reader may be misleading.
+   - `notebooks/15_spout_behavior_visual_gate.ipynb` — USER INPUTS + orchestration.
+   - All NPZ schema documentation in `docs/`.
+   - All tests under `tests/` that pin the field names.
+
+4. Also check for downstream variable names derived from `rewards_idx`/`tones_idx`:
+   - `data.rewards_idx`, `SessionPlotData.rewards_idx` field name in dataclass — needs rename
+   - `trial_lick_delays["Reward_L"]`, `trial_lick_delays["Reward_R"]` dict keys — needs rename to `"Tone_L"`, `"Tone_R"`
+   - `Lick_L`, `Lick_R` — these reference lick-side, not reward-side; leave as-is
+   - `side_reward` loop variable names — semantically about which cue side; rename to `side_tone` if it tracks the cue side
+
+5. NPZ-on-disk key rename considerations:
+   - The Phase 2 emitter writes NPZ files with `rewards_idx`, `tones_idx` keys. After Task 1, the emitter swaps content correctly (rewards_idx holds reward-delivery; tones_idx holds tone-onset).
+   - If consumer code is also renamed (rewards_idx → tones_idx in source), the NPZ-on-disk schema must align: the on-disk key consumed by tone-alignment code must be `tones_idx`. Post-fix Phase 2 emission writes the on-disk `tones_idx` key with the (newly correct) tone content. Consumer reads `tones_idx`. ✓
+   - The new `rewards_idx` on-disk key (holding actual reward-delivery) has no current consumer but is preserved for future use (Phase 9 stats may want it; pub-figures may want it for "time-to-reward" plots).
+
+**STOP-and-report deliverable** to `.scratch_phase_8a_10_1/task_0_75_consumer_audit.md`:
+
+- Per-consumer-site classification: Case 1 vs Case 2.
+- Recommended remediation per Case 2 site (rename target).
+- Estimated total source-file touch count.
+- Any sites where Case 1 vs Case 2 classification is ambiguous → STOP-and-ask Priya (per CLAUDE.md ground rule 5).
+- Highest-risk sites called out explicitly (criteria definitions, alignment generation, NPZ schema).
+- Recommended ordering for Task 1 implementation (e.g., "rename in `visual_gate.py` first, then propagate to tests, then notebooks").
+
+Task 0.75 produces zero commits on the feature branch. The audit report lives under `.scratch_phase_8a_10_1/` (matches Task 0.5 convention).
+
+### Task 1 scope expansion (per Task 0.75 verdict)
+
+Task 1 (originally "WS read-time swap fix + unit tests") expands to include consumer-side renames as coordinated commits in the same PR. New scope:
+
+1. **Commit A — WS swap fix.** `src/stroke_orofacial/io/wavesurfer_io.py` single-point swap + `configs/defaults.yaml` opt-in flag + `tests/test_wavesurfer_io.py` regression pins. ~30-50 LoC.
+2. **Commit B — Consumer renames per Task 0.75 audit.** Mass rename across `src/stroke_orofacial/`, `tests/`, `notebooks/`. ~15-40 files. Use a checklist from Task 0.75 to ensure no consumer is missed.
+3. **Commit C — Test sync.** Update test pins that reference the old field names. Update mock/fixture data NPZ schema if applicable.
+4. **Commit D — Docstring + comment sync.** Update inline comments referencing "post-reward" → "post-tone" wherever scientific intent is tone alignment. Update DESIGN.md / module docstrings.
+
+Per-commit commit pattern allows clean review + easy revert of individual layers if Task 4 verdict surfaces issues.
+
+### Task 4 watch-item: threshold tuning
+
+Even with consumer renames correctly preserving scientific intent (tone alignment), some endpoint **thresholds** may have been empirically tuned to swapped data. Example:
+- Criteria 3 time-window `X` was tuned for "first lick within X seconds post-`rewards_idx`" — but pre-fix `rewards_idx` was tone-onset, so X was tuned for tone-anchored behavior.
+- Post-fix with consumer rename: code says "first lick within X seconds post-`tones_idx`" — still tone-anchored, same intent. **Threshold X transfers correctly.** ✓
+
+No threshold re-tuning expected if Case 2 is universal — the rename + swap together preserve the original tone-anchored semantics. Task 4 figure re-render should reproduce Phase 8a.10's results closely (modulo any small content-change effects from the new actual-reward channel being available, which no current consumer uses).
+
+If Task 4 surfaces large unexpected metric shifts: that's a signal something was Case 1 (not Case 2) and got incorrectly renamed. STOP-and-report.
+
+### Updated file-touch allowlist (Phase 8a.10.1 with Task 0.75 + expanded Task 1)
+
+Per Task 0.75 verdict, the allowlist expands to encompass all Case-2 consumer sites. The original allowlist (lines under §"File-touch allowlist") becomes a *minimum* set; Task 0.75's audit report defines the *actual* set. Explicit allow-list addition for the consumer renames:
+
+```
+src/stroke_orofacial/spout_behavior/visual_gate.py         (consumer renames; field rename in SessionPlotData)
+src/stroke_orofacial/spout_behavior/criteria.py            (criteria_3, criteria_4 semantics)
+src/stroke_orofacial/spout_behavior/endpoints_writer.py    (endpoint name + content sync)
+src/stroke_orofacial/spout_behavior/session_processing.py  (Phase 2 emitter; rewards_idx vs tones_idx on-disk keys)
+src/stroke_orofacial/spout_behavior/session_manifest.py    (any reward/tone references)
+src/stroke_orofacial/spout_behavior/spout_close_vs_std.py  (Cohort B renderer; consumers of trial-lick delays)
+src/stroke_orofacial/spout_behavior/cohort_summary.py      (sub-A cohort tiler)
+src/stroke_orofacial/dlc_analysis/alignment_templates*.py  (Phase 3 alignment generation)
+notebooks/15_spout_behavior_visual_gate.ipynb              (orchestration + USER INPUTS naming)
+tests/test_visual_gate.py, test_spout_close_vs_std.py, test_criteria.py, test_endpoints_writer.py  (test pins)
+```
+
+Per Task 0.75 audit, additional files surface — those land in the same PR per coordinated atomic update.
+
+### Updated estimated scope
+
+| Item | Pre-Addendum-#1 estimate | Post-Addendum-#1 estimate |
+|---|---|---|
+| Source/test/script files touched | ~5-10 | ~15-40 |
+| LoC delta | ~100-300 | ~500-1500 |
+| Wall time | 1-3 days CC + verification | 3-5 days CC + verification |
+| Verdict mechanism | Task 4 figure re-render | Same; figure re-render now also doubles as Case-2-remediation verification |
+
+### Addendum #1 ALL OTHER LOCKS UNCHANGED
+
+All 8 prior decisions hold: Q1.A (Phase 3 re-emit), Q2.A (figure re-render), Q3.B (Phase 7/7a defer), Q4.B (~355 sessions narrowed to 271 on-disk), Path Y (no `<FILL>`), Option α (in-place overwrite), opt-in flag default true, A1+A2 anomaly defaults (moot post-Task-0.5).
+
+---
+
+## Addendum #2 — DLC consumer spot-check + cascade-safety gate
+
+**Date:** 2026-05-14.
+**Trigger:** Q3.B locks Phase 7/7a re-run as deferred to a sibling phase, BUT the Phase 2 NPZ key rename in Task 1 Commit B will silently change what DLC consumers read. If `dlc_spatial/reward_aligned.py`, `dlc_kinematics/reward_aligned.py`, `dlc_kinematics/tongue_pertrial.py`, or `dlc_kinematics/interpolation.py` touch the renamed NPZ keys (`Reward_L` / `Reward_R`), they'll silently switch from consuming tone events to consuming actual reward-delivery events. The file names alone (`*reward_aligned*`) strongly suggest Case 2 — DLC trial alignment was intended to be tone-anchored (auditory cue → DLC frame windows) but named after the bug-labeled channel.
+
+### Risk model
+
+Two cascade-failure scenarios:
+
+- **Scenario A (acute):** DLC code reads Phase 2 NPZ key `Reward_L`/`Reward_R` (or `rewards_idx`-derived data) directly. Post-Task-2 re-emit, those keys hold actual reward-delivery timestamps. DLC silently consumes wrong content. Next Phase 7 run produces incorrect outputs. **Q3.B doesn't protect against this — the deferral is about Phase 7 *re-run*, not about future Phase 7 runs picking up a corrupted Phase 2 schema.**
+
+- **Scenario B (less acute):** DLC code consumes Phase 3 alignment templates. After Q1.A Task 5 re-emit, templates anchor to corrected tone-onset (was: reward-anchored via the bug). The alignment shifts ~150-300 ms cohort-wide. DLC code itself doesn't break syntactically; its OUTPUTS shift. This is the alignment-shift effect Q3.B explicitly defers.
+
+### Insert Task 0.85 — DLC consumer spot-check (STOP-and-report)
+
+Inserts between Task 0.75 (consumer audit, complete) and Task 1 (WS swap fix). Determines whether Q3.B's deferral interacts with the Phase 2 NPZ schema rename in a way that requires scoping decisions before Task 1 starts.
+
+**Steps:**
+
+1. Grep DLC code for NPZ-key access patterns AND Phase 2 derived data consumption:
+   ```
+   grep -rn "Reward_L\|Reward_R\|Tone_L\|Tone_R\|rewards_idx\|tones_idx\|reward.*indices\|tone.*indices" \
+     src/stroke_orofacial/dlc_*/ \
+     tests/test_dlc_*.py
+   ```
+   Also check whether DLC code calls into `spout_behavior` functions that derive from these keys (e.g., `compute_trial_lick_delays`, `compute_first_correct_lick_sample_idx`).
+
+2. For each DLC consumer site, classify:
+   - **Pure Phase-3 consumer:** reads `alignment_templates/` only; doesn't touch Phase 2 NPZ keys. Scenario B applies; Q3.B-deferred behavior.
+   - **Phase-2 NPZ-key consumer:** reads `Reward_L`/`Reward_R` or `rewards_idx`/`tones_idx` directly. Scenario A applies — silent-break risk.
+   - **Indirect Phase-2 consumer:** calls into `spout_behavior` functions that derive from these keys. Scenario A applies via dependency chain.
+
+3. For each Scenario-A site, classify Case 1 vs Case 2 (same convention as Task 0.75 — does the variable/key access pattern match scientific intent?).
+
+**STOP-and-report deliverable** to `.scratch_phase_8a_10_1/task_0_85_dlc_consumer_audit.md`:
+
+- Per-DLC-file enumeration of consumer sites + classification.
+- Count of Scenario-A vs Scenario-B sites.
+- For each Scenario-A + Case-2 site: recommended remediation.
+- Scoping recommendation: which of the options below fits best given the audit.
+
+### Scoping options (Priya decides at Task 0.85 STOP-and-report)
+
+- **Option X1 — Selective Q3.B revoke.** Fold the affected DLC files into Phase 8a.10.1 Task 1 Commit B as additional renames. Pros: completes the Case-2 cleanup atomically; no backward-compat schema needed. Cons: contradicts Q3.B; expands scope mid-phase.
+- **Option X2 — Backward-compat NPZ schema.** Phase 2 emitter writes both renamed-canonical keys (`Tone_L`/`Tone_R` for tone events; `Reward_L`/`Reward_R` for actual reward delivery) AND legacy-alias keys that point to the correct content under the old names (e.g., `Reward_L_TONE_LEGACY_ALIAS` pointing to the tone events that DLC code currently reads via `Reward_L`). DLC code keeps reading the legacy alias until Phase 7b. Pros: preserves Q3.B literally. Cons: schema pollution; legacy aliases ossify; needs explicit cleanup in Phase 7b.
+- **Option X3 — DLC feature flag.** Add `dlc_analysis.enabled: false` (or similar) to `defaults.yaml`; Phase 8a.10.1 sets it false. DLC code stays untouched but is gated off until Phase 7b explicitly re-enables. Pros: lowest scope-creep risk. Cons: any active DLC consumer (notebook, downstream code) needs to explicitly opt out / handle the gate.
+- **Option X4 — Defer Task 2 re-emit narrowing.** Only re-emit the Phase 2 NPZs that aren't read by current DLC consumers; leave the rest as pre-fix. Pros: minimal blast radius. Cons: pipeline now has heterogeneous Phase 2 NPZs across the cohort. Highly problematic for any cohort-wide analysis.
+
+I lean **X1 (selective Q3.B revoke)** if the Scenario-A + Case-2 site count is small (say, ≤ 4 files — which matches the deferred list in Q3.B exactly). The Q3.B deferral was about avoiding the Phase 7 *re-run* (which involves re-baselining 7a parity gates), not about leaving the DLC source code in a broken state. Renaming DLC consumers to match the new NPZ schema is a small surgical fix that doesn't trigger 7a parity re-baselining — that's a separate concern, deferred to Phase 7b.
+
+If the audit surfaces > 4 Scenario-A files, X2 (backward-compat schema) becomes more attractive.
+
+### Insert Task 4.5 — DLC spot-check on post-fix data (between Tasks 4 and 5)
+
+After Phase 8a.10 figures re-render (Task 4) and before Phase 3 alignment template re-emit (Task 5), sanity-run the DLC code on 1-3 sessions using post-fix Phase 2 NPZs:
+
+1. Pick 1-3 sessions across animals (e.g., one PS46 + one PS50 + one PS55).
+2. Run whatever DLC analysis is currently runnable (per Q3.B, no FULL re-run — just spot-check that the code executes without crashing on post-fix NPZs + plots render and look qualitatively reasonable).
+3. Compare to pre-fix DLC outputs for the same sessions. The outputs SHOULD differ (alignment shifted), but the code should not crash, NaN out, or produce wildly anomalous values.
+
+**STOP-and-report:** post-spot-check verdict. If DLC outputs look sensible → proceed to Task 5 (Phase 3 alignment template re-emit). If anything looks broken → diagnose and decide whether to (a) hot-fix the DLC consumer in 8a.10.1 (further Q3.B revoke), (b) gate the broken DLC paths with a feature flag, (c) STOP-and-report wider for Priya scope-decision.
+
+Task 4.5 deliverable lives at `.scratch_phase_8a_10_1/task_4_5_dlc_spot_check.md`.
+
+### Updated execute flow
+
+```
+Task 0    (Setup)
+Task 0.5  (Pulse-width audit) — CLOSED
+Task 0.75 (Consumer audit) — CLOSED
+Task 0.85 (DLC consumer spot-check audit) — INSERT, STOP-and-report
+Task 1    (WS swap fix + spout_behavior consumer renames)
+  Commit A    WS swap fix + flag + verification on 5-10 NPZs
+  Commit B    Consumer renames per Task 0.75 + Task 0.85 verdict
+  Commit C    Test sync
+  Commit D    Docstring + docs/ polish
+Task 2    (Phase 2 cohort-wide re-emit, ~271 sessions)
+Task 3    (Verification — spot-check + downstream-shift)
+Task 4    (Phase 8a.10 figure re-render — Q2.A)
+Task 4.5  (DLC spot-check on post-fix data) — INSERT, STOP-and-report
+Task 5    (Phase 3 alignment template re-emit — Q1.A)
+Task 6    (DECISIONS + MIGRATION_LOG)
+Task 7    (State-doc refresh + PR)
+```
+
+### Addendum #2 ALL OTHER LOCKS UNCHANGED
+
+All Addendum #1 outcomes preserved. The DLC consumer spot-check is a scope-CLARIFY at the Q3.B / Task 2 interface, not a scope-CHANGE. If Task 0.85 audit surfaces no Scenario-A + Case-2 sites, the cascade-safety gate is satisfied trivially and Q3.B holds verbatim.
+
+---
+
+## Addendum #3 — Q1.A reversal: Phase 3 alignment is Sync-anchored, not Tone-anchored
+
+**Date:** 2026-05-14.
+**Trigger:** CC's Task 5 scope/premise audit before kicking off the Phase 3 alignment template re-emit. The audit surfaced that the Q1.A re-emit lock was based on a wrong premise about Phase 3's data dependency.
+
+### Finding
+
+The Phase 3 alignment template builder (`src/stroke_orofacial/alignment/frame_sync.py:143 make_alignment_template`) reads:
+- `ws_signals["Sync_signal"]` (camera-frame TTL from the Phase 1 `wavesurfer_signals_processed` NPZ tree)
+- Raw camera CSV from Rich's read-only tree
+
+Neither input is touched by the Tone↔Reward swap fix. The alignment template is a frame-to-sample mapping derived purely from the sync TTL; it does NOT consume the `Tone_L`/`Tone_R`/`Reward_L`/`Reward_R` keys whose semantics changed in Task 2.
+
+### Data-flow chain (corrected)
+
+- **Phase 1** (`wavesurfer_signals_processed` containing `Sync_signal`) → unchanged by swap fix (not re-emitted by Task 2; pre-dates the swap fix).
+- **Phase 3 alignment templates** (built from Phase 1 `Sync_signal`) → **unchanged by swap fix**. Byte-identical pre/post-fix on all 276 sessions.
+- **Phase 2** (`Tone_L`/`Reward_L` etc. in `licks_and_rewards` NPZ) → changed by swap fix (Task 2 re-emit handled this).
+- **Phase 7 DLC analyses** (read Phase 2 Tone events via Phase 3 alignment templates as a frame-lookup) → potentially changed on withhold sessions. Task 4.5 DLC spot-check already verified this layer.
+
+The swap-fix propagation stops at Phase 2. Phase 3 sits upstream of the tone/reward axis entirely.
+
+### Q1.A re-emit was unnecessary
+
+The original Q1.A justification ("Phase 3 templates feed Phase 7 DLC kinematics + any downstream alignment-dependent analysis; carrying swapped templates forward bakes the swap into more outputs") was wrong. Phase 3 templates are sync-anchored frame mappings, not tone-anchored event windows. The swap doesn't propagate through them.
+
+Additional findings:
+- The on-disk new-tree (`pipeline_outputs/dlc_analysis/alignment_templates/cam2/`) has only 3 templates (from the 2026-05-05 incident-response restore for PS48). Every production DLC consumer reads from the legacy tree (`O2_analysis/alignment_templates/cam2/`, 345 templates) via `alignment_template_legacy_read()`. The new-tree cutover is out of scope per Q3.B (Phase 7b-light).
+- Re-emitting 276 templates would produce byte-identical orphan outputs in a tree no production code reads.
+
+### Decision: SKIP Task 5
+
+Task 5 is reversed from execute to skip. Q1.A as locked in the kickoff body is overridden by this addendum. Rationale:
+
+- Phase 3 alignment templates are unchanged by the swap fix (sync-anchored, not tone-anchored).
+- Re-emit produces orphan outputs (no production consumer reads the new tree).
+- Wall time saved: ~30-90 min.
+- No scientific loss: byte-identical outputs aren't scientifically meaningful re-validation.
+
+### Updated execute flow (post-Addendum-#3)
+
+```
+Task 0    (Setup) — CLOSED
+Task 0.5  (Pulse-width audit) — CLOSED
+Task 0.75 (Consumer audit) — CLOSED
+Task 0.85 (DLC consumer spot-check audit) — CLOSED
+Task 1    (WS swap fix + spout_behavior consumer renames) — CLOSED
+Task 2    (Phase 2 cohort-wide re-emit, 276 sessions) — CLOSED
+Task 3    (Verification — sample-comparison + raw-data + downstream-shift) — CLOSED
+Task 4    (Phase 8a.10 figure re-render — Q2.A) — CLOSED
+Task 4.5  (DLC spot-check on post-fix data) — CLOSED
+Task 5    (Phase 3 alignment template re-emit — Q1.A) — SKIPPED per Addendum #3
+Task 6    (DECISIONS + MIGRATION_LOG)
+Task 7    (State-doc refresh + PR open)
+```
+
+### Implication for Phase 7b-light forward-pointer
+
+If Phase 7b-light or a later phase cuts DLC consumers over from the legacy alignment-templates tree to the new tree, that future phase will need to populate the new tree at that time. The Phase 3 builder is ready (the 3 incident-response templates and CC's Task 5 audit confirm the builder runs end-to-end); only the cohort-wide population would need to happen.
+
+This is captured as a forward-pointer in the Phase 8a.10.1 close-out DECISIONS entry — sibling to the existing Phase 7b-light + Phase 7-pre-multi-half-dlc forward-pointers.
+
+### Addendum #3 ALL OTHER LOCKS UNCHANGED
+
+All Addendum #1 and #2 outcomes preserved. The Q1.A re-emit decision is the only lock reversed; everything else (consumer renames, Phase 2 re-emit, Phase 8a.10 figure re-render, DLC spot-check) holds.
