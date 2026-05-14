@@ -1418,10 +1418,15 @@ visual_gate:
 # read for visual-gate scope.
 
 behavior_report:
-  # Lick-detection window relative to each reward delivery (seconds).
-  # Tuple (before, after). All per-trial lick computes (lick rate,
-  # num licks, first-lick correctness) use this window.
-  window_around_rewards: [1.0, 8.0]
+  # Lick-detection window relative to each trial-cue tone onset
+  # (seconds). Tuple (before, after). All per-trial lick computes
+  # (lick rate, num licks, first-lick correctness) use this window,
+  # anchored at TrialRecord.tone_idx (Q-A.β post-2026-05-14).
+  # Pass-2 Case-2 partial remediation: renamed window_around_rewards
+  # → window_around_tones (singular knob retained at
+  # find_peri_reward_periods.window_around_reward — that one IS
+  # reward-anchored per Q-C.E.C lock).
+  window_around_tones: [1.0, 8.0]
 
   criteria_1:
     # At least the last [num_consecutive_pass] sessions meet

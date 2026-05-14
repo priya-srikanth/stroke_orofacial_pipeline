@@ -318,7 +318,7 @@ def list_cohort_b_animals(
 
 def _half_accuracy_firstCorrectLickAll_per_side(
     session: SessionPlotData,
-    window_around_rewards: tuple[float, float] | list[float],
+    window_around_tones: tuple[float, float] | list[float],
 ) -> dict[str, float]:
     """Mean first-lick-correct per side for one half, ALL-trials
     denominator (treat_none_as_zero=True semantics).
@@ -331,7 +331,7 @@ def _half_accuracy_firstCorrectLickAll_per_side(
     Worked example (from addendum): 2 first-correct-licks across 48
     cue trials → 0.042 (NOT 2/2 = 1.0).
     """
-    delays = compute_trial_lick_delays(session, window_around_rewards)
+    delays = compute_trial_lick_delays(session, window_around_tones)
     flc = compute_first_lick_correct(delays)
     out: dict[str, float] = {}
     for side in ("L", "R"):
@@ -348,7 +348,7 @@ def _half_accuracy_firstCorrectLickAll_per_side(
 
 def _half_mean_licks_per_trial_per_side(
     session: SessionPlotData,
-    window_around_rewards: tuple[float, float] | list[float],
+    window_around_tones: tuple[float, float] | list[float],
 ) -> dict[str, dict[str, float]]:
     """Mean licks per trial within window, split by (tone_side,
     correctness). Returns
@@ -362,7 +362,7 @@ def _half_mean_licks_per_trial_per_side(
     tone side. Correct = lick on same side as tone; incorrect =
     lick on other side.
     """
-    delays = compute_trial_lick_delays(session, window_around_rewards)
+    delays = compute_trial_lick_delays(session, window_around_tones)
     out: dict[str, dict[str, float]] = {"L": {}, "R": {}}
     for side_tone in ("L", "R"):
         per_trial = delays[f"Tone_{side_tone}"]
@@ -387,7 +387,7 @@ def _half_mean_licks_per_trial_per_side(
 
 def _half_per_trial_lick_counts_per_side(
     session: SessionPlotData,
-    window_around_rewards: tuple[float, float] | list[float],
+    window_around_tones: tuple[float, float] | list[float],
 ) -> dict[str, dict[str, list[int]]]:
     """Per-trial lick counts (NOT averaged) split by (tone_side,
     correctness). Returns
@@ -399,7 +399,7 @@ def _half_per_trial_lick_counts_per_side(
     (post-R7 follow-on) to scatter individual trials rather than
     per-session means.
     """
-    delays = compute_trial_lick_delays(session, window_around_rewards)
+    delays = compute_trial_lick_delays(session, window_around_tones)
     out: dict[str, dict[str, list[int]]] = {"L": {}, "R": {}}
     for side_tone in ("L", "R"):
         per_trial = delays[f"Tone_{side_tone}"]
@@ -845,7 +845,7 @@ def render_animal_summary_spout_close_vs_std(
     config = config or load_visual_gate_config()
     cohort_config = cohort_config or load_cohort_config()
     behavior_params = behavior_params or load_behavior_report_params()
-    window = behavior_params["window_around_rewards"]
+    window = behavior_params["window_around_tones"]
     if animal_info is None:
         animal_info = get_animal(animal)
 
@@ -1153,7 +1153,7 @@ def render_animal_per_trial_spout_close_vs_std(
     config = config or load_visual_gate_config()
     cohort_config = cohort_config or load_cohort_config()
     behavior_params = behavior_params or load_behavior_report_params()
-    window = behavior_params["window_around_rewards"]
+    window = behavior_params["window_around_tones"]
     if animal_info is None:
         animal_info = get_animal(animal)
 

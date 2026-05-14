@@ -832,7 +832,7 @@ class TestBehaviorReportParams:
     def test_load_returns_dict(self):
         params = load_behavior_report_params()
         for key in [
-            "window_around_rewards", "criteria_1", "criteria_2",
+            "window_around_tones", "criteria_1", "criteria_2",
             "criteria_3", "criteria_4",
         ]:
             assert key in params, f"behavior_report missing key: {key}"
@@ -841,7 +841,7 @@ class TestBehaviorReportParams:
         """Pin: cohort-wide defaults match legacy params dict
         (batch_process_behavior_report_20260116PS.ipynb cell-3)."""
         params = load_behavior_report_params()
-        assert list(params["window_around_rewards"]) == [1.0, 8.0]
+        assert list(params["window_around_tones"]) == [1.0, 8.0]
         assert params["criteria_1"]["num_consecutive_pass"] == 3
         assert params["criteria_2"]["fraction_pass"] == 0.6
         assert list(params["criteria_3"]["window"]) == [0, 2.0]

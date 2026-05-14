@@ -1104,7 +1104,7 @@ def _compute_per_session_stats(
     re-loading NPZs per renderer.
     """
     dates = iter_cohort_a_sessions(animal, resolver)
-    window_around = behavior_params["window_around_rewards"]
+    window_around = behavior_params["window_around_tones"]
     crit3_window = behavior_params["criteria_3"]["window"]
 
     criteria_acc: dict[str, list[float]] = {"L": [], "R": []}
@@ -1664,7 +1664,7 @@ def render_lick_raster(
         vline_x=config["stroke_vline_x"],
     )
 
-    window_around = behavior_params["window_around_rewards"]
+    window_around = behavior_params["window_around_tones"]
 
     # Compute per-session lick delays in one pass.
     per_date_delays: dict[str, dict[str, dict[int, dict[str, np.ndarray]]]] = {}
@@ -1897,7 +1897,7 @@ def render_lickiness_bySession(
     Mirrors legacy ``lickiness_bySession`` (behavior_report_PS.py:885-893).
     Y-axis intentionally NOT bounded (legacy auto-scales — high
     lickiness = behavioral disengagement; the absolute range varies
-    by animal). Late-window start = ``behavior_report.window_around_rewards[1]``
+    by animal). Late-window start = ``behavior_report.window_around_tones[1]``
     (post-tone window end, Q-A.β post-2026-05-14); end =
     ``visual_gate.lickiness_window_seconds`` (60s cap by default).
     """
@@ -1914,7 +1914,7 @@ def render_lickiness_bySession(
         vline_x=config["stroke_vline_x"],
     )
 
-    late_start = float(behavior_params["window_around_rewards"][1])
+    late_start = float(behavior_params["window_around_tones"][1])
     late_end = float(config["lickiness_window_seconds"])
 
     per_side: dict[str, list[int]] = {"L": [], "R": []}
@@ -1989,7 +1989,7 @@ def render_switchiness_bySession(
         vline_x=config["stroke_vline_x"],
     )
 
-    window_around = behavior_params["window_around_rewards"]
+    window_around = behavior_params["window_around_tones"]
     per_direction: dict[str, list[float]] = {"L->R": [], "R->L": []}
     for date in dates:
         data = load_session_plot_data(animal, date, resolver)
