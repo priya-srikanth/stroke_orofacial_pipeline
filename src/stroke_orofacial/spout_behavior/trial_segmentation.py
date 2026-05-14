@@ -37,13 +37,18 @@ from typing import Literal
 
 import numpy as np
 
-# Defensive ε-window for tone→reward pairing inside
-# :func:`build_per_trial_records`. Per the prior diagnostic
-# (.scratch_phase_8a_10/reward_tone_swap_extended_diagnostic.md §C) tone
-# and reward TTLs fire synchronously — all sample-delta values across
-# the cohort verified at 0. The 50 ms window is defensive against
-# hypothetical future acquisition jitter; in the current cohort every
-# pairing hits at delta = 0 samples.
+# ε-window for tone→reward pairing in :func:`build_per_trial_records`.
+# Experimental design: tone and reward TTLs fire concurrently at trial
+# onset (Δ = 0 verified in 818/818 paired events across 9 Commit-A
+# verification sessions; see .scratch_phase_8a_10_1/
+# tone_reward_latency_dist.py and .scratch_phase_8a_10/
+# reward_tone_swap_extended_diagnostic.md §C). When reward is
+# experimenter-withheld (e.g., PS55/20250428 R-side, 48 tones / 0
+# rewards), no Reward event lands inside the ε-window and the tone
+# trial yields ``reward_idx=None``. 50 ms is a hand-picked defensive
+# margin (~50× the observed max Δ = 0 ms), NOT a tone→reward latency
+# expectation; tighten if/when a future task design intentionally
+# introduces a real tone-to-reward delay.
 _TONE_REWARD_PAIRING_WINDOW_MS = 50.0
 
 
