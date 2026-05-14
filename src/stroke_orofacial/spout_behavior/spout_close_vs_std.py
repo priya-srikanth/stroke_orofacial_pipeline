@@ -930,7 +930,7 @@ def render_animal_summary_spout_close_vs_std(
         )
         ax.set_ylim(*row1_ylim)
         ax.set_title(
-            f"Reward {side}: first-lick correct (all trials)",
+            f"Tone {side}: first-lick correct (all trials)",
             fontsize=panel_title_fontsize,
         )
         if jj == 0:
@@ -947,7 +947,7 @@ def render_animal_summary_spout_close_vs_std(
         )
         ax.set_ylim(*row2_ylim)
         ax.set_title(
-            f"Reward {side}: mean correct licks/trial",
+            f"Tone {side}: mean correct licks/trial",
             fontsize=panel_title_fontsize,
         )
         if jj == 0:
@@ -964,7 +964,7 @@ def render_animal_summary_spout_close_vs_std(
         )
         ax.set_ylim(*row3_ylim)
         ax.set_title(
-            f"Reward {side}: mean incorrect licks/trial",
+            f"Tone {side}: mean incorrect licks/trial",
             fontsize=panel_title_fontsize,
         )
         # Addendum #2 Tweak 1: "Spout Distance" xlabel on Row 3
@@ -1221,7 +1221,7 @@ def render_animal_per_trial_spout_close_vs_std(
         )
         ax.set_ylim(*row1_ylim)
         ax.set_title(
-            f"Reward {side}: per-trial correct licks",
+            f"Tone {side}: per-trial correct licks",
             fontsize=panel_title_fontsize,
         )
         if jj == 0:
@@ -1238,7 +1238,7 @@ def render_animal_per_trial_spout_close_vs_std(
         )
         ax.set_ylim(*row2_ylim)
         ax.set_title(
-            f"Reward {side}: per-trial incorrect licks",
+            f"Tone {side}: per-trial incorrect licks",
             fontsize=panel_title_fontsize,
         )
         ax.set_xlabel(

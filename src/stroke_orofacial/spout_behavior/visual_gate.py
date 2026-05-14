@@ -1205,7 +1205,7 @@ def render_criteria_performance(
     for side in ("L", "R"):
         ax.plot(
             axis.x_vals, stats.criteria_acc[side], "o-",
-            color=SIDE_COLORS[side], label=f"mouse {side}",
+            color=SIDE_COLORS[side], label=f"Tone {side}",
         )
     apply_longitudinal_axis(ax, axis, config)
     ax.set_ylim(*config["accuracy_y_range"])
@@ -1247,7 +1247,7 @@ def render_accuracy_firstCorrectLick(
     for side in ("L", "R"):
         ax.plot(
             axis.x_vals, stats.firstLickCorrect_excludeNone[side], "o-",
-            color=SIDE_COLORS[side], label=f"mouse {side}",
+            color=SIDE_COLORS[side], label=f"Tone {side}",
         )
     apply_longitudinal_axis(ax, axis, config)
     ax.set_ylim(*config["accuracy_y_range"])
@@ -1289,7 +1289,7 @@ def render_accuracy_firstCorrectLickAll(
     for side in ("L", "R"):
         ax.plot(
             axis.x_vals, stats.firstLickCorrect_treatNoneZero[side], "o-",
-            color=SIDE_COLORS[side], label=f"mouse {side}",
+            color=SIDE_COLORS[side], label=f"Tone {side}",
         )
     apply_longitudinal_axis(ax, axis, config)
     ax.set_ylim(*config["accuracy_y_range"])
@@ -1334,7 +1334,7 @@ def render_lickRate_bySession(
         offset = 0.1 if side == "R" else -0.1
         ax.errorbar(
             x=axis.x_vals + offset, y=means, yerr=stds,
-            color=SIDE_COLORS[side], label=f"mouse {side}",
+            color=SIDE_COLORS[side], label=f"Tone {side}",
             marker="o", markersize=2,
         )
     apply_longitudinal_axis(ax, axis, config)
@@ -1380,7 +1380,7 @@ def render_latency_bySession(
         offset = 0.1 if side == "R" else -0.1
         ax.errorbar(
             x=axis.x_vals + offset, y=means, yerr=stds,
-            color=SIDE_COLORS[side], label=f"mouse {side}",
+            color=SIDE_COLORS[side], label=f"Tone {side}",
             marker="o", markersize=2,
         )
     apply_longitudinal_axis(ax, axis, config)
@@ -1631,7 +1631,7 @@ def render_lick_raster(
         ``xtick_fontsize`` (the "Time (s)" xlabel itself is now a
         figure-level supxlabel; intentional deviation from legacy's
         per-axis xlabel × N_sessions repetition).
-      - Left-column only: ylabel "Trials   (side: mouse {side_tone})".
+      - Left-column only: ylabel "Trials   (side: Tone {side_tone})".
 
     The legacy criteria_34 pass/fail horizontal-line overlay
     (behavior_report_PS.py:428-430) is intentionally NOT ported —
@@ -1733,7 +1733,7 @@ def render_lick_raster(
             # Left-column ylabel. New-pipeline side convention: read
             # mouse-frame directly (no fn_flip_lr).
             if jj == 0:
-                ax.set_ylabel(f"Trials   (side: mouse {side_tone})")
+                ax.set_ylabel(f"Trials   (side: Tone {side_tone})")
             else:
                 ax.set_yticklabels([])
 
@@ -1933,7 +1933,7 @@ def render_lickiness_bySession(
         ax.plot(
             axis.x_vals, per_side[side], "-o",
             color=SIDE_COLORS[side], markersize=4,
-            label=f"mouse {side}",
+            label=f"Tone {side}",
         )
     apply_longitudinal_axis(ax, axis, config)
     # Legacy ylabel uses literal "≤60 s" — preserve the exact string

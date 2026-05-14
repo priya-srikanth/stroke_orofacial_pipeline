@@ -1406,16 +1406,18 @@ class TestRenderLickRaster:
         """New pipeline reads side_tone as mouse-frame directly.
         Legacy ylabel was ``"Trials   (side: mouse {fn_flip_lr(side_tone)})"``
         — the flip was a WS-frame compensation. New pipeline:
-        ``"Trials   (side: mouse {side_tone})"`` — direct."""
+        ``"Trials   (side: Tone {side_tone})"`` — direct. Phase 8a.10.1
+        post-Commit-G legend rename: "mouse L/R" → "Tone L/R" for
+        scientific clarity (the side identity is set at tone onset)."""
         resolver, _ = cohort_for_renders
         svg_path, _ = render_lick_raster(
             "PS51", resolver, align_to_stroke=True,
         )
         svg_text = svg_path.read_text(encoding="utf-8")
-        # Both side labels appear in the SVG: row 0 = Reward L → ylabel
-        # "side: mouse L" (left column only); row 1 = Reward R → "side: mouse R".
-        assert "side: mouse L" in svg_text
-        assert "side: mouse R" in svg_text
+        # Both side labels appear in the SVG: row 0 = Tone L → ylabel
+        # "side: Tone L" (left column only); row 1 = Tone R → "side: Tone R".
+        assert "side: Tone L" in svg_text
+        assert "side: Tone R" in svg_text
 
     def test_raster_color_config_consumed(self):
         """Pin: raster dot + reward-marker colors loaded from
@@ -1892,15 +1894,17 @@ class TestRenderLickinessBySession:
         assert "Late licks per session" in svg_text
 
     def test_mouse_frame_ylabel_no_fn_flip(self, cohort_for_renders):
-        """Legend labels say "mouse L" / "mouse R" directly (no flip).
-        Pin to catch regression to legacy fn_flip_lr."""
+        """Legend labels say "Tone L" / "Tone R" directly (no flip).
+        Pin to catch regression to legacy fn_flip_lr. Phase 8a.10.1
+        post-Commit-G legend rename: previously "mouse L/R"; renamed
+        to "Tone L/R" to identify the trial-cue side."""
         resolver, _ = cohort_for_renders
         svg_path, _ = render_lickiness_bySession(
             "PS51", resolver, align_to_stroke=True,
         )
         svg_text = svg_path.read_text(encoding="utf-8")
-        assert "mouse L" in svg_text
-        assert "mouse R" in svg_text
+        assert "Tone L" in svg_text
+        assert "Tone R" in svg_text
 
 
 class TestRenderSwitchinessBySession:
