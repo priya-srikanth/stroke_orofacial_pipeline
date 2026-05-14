@@ -29,9 +29,9 @@ def _make_trials(n: int, metric_values: list[float]) -> list[TrialRecord]:
     return [
         TrialRecord(
             trial_idx=i,
-            reward_side="L",
-            reward_idx=i * 1000,
-            tone_idx=None,
+            tone_side="L",
+            tone_idx=i * 1000,
+            reward_idx=i * 1000,  # Q-A.β: synchronous-paired reward
             trial_type="rewarded",
             licks_L_indices_in_window=np.array([], dtype=int),
             licks_R_indices_in_window=np.array([], dtype=int),

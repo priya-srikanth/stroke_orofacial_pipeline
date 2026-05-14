@@ -269,14 +269,14 @@ class TestSessionPairData:
         bare = SessionPlotData(
             date_label="20250530",
             lick_idx={"Lick_L": np.array([1]), "Lick_R": np.array([2])},
-            rewards_idx={"Reward_L": np.array([3]), "Reward_R": np.array([4])},
+            tones_idx={"Tone_L": np.array([3]), "Tone_R": np.array([4])},
             sample_rate=2000.0,
             n_samples_session=60000,
         )
         b = SessionPlotData(
             date_label="20250530",
             lick_idx={"Lick_L": np.array([5]), "Lick_R": np.array([6])},
-            rewards_idx={"Reward_L": np.array([7]), "Reward_R": np.array([8])},
+            tones_idx={"Tone_L": np.array([7]), "Tone_R": np.array([8])},
             sample_rate=2000.0,
             n_samples_session=40000,
         )
@@ -341,8 +341,8 @@ class TestIterCohortBSessionsEndToEnd:
             licks_dir / f"{date_str}.npz",
             Lick_L=np.arange(bare_n_licks, dtype=int),
             Lick_R=np.arange(bare_n_licks, dtype=int),
-            Reward_L=np.array([100], dtype=int),
-            Reward_R=np.array([200], dtype=int),
+            Tone_L=np.array([100], dtype=int),
+            Tone_R=np.array([200], dtype=int),
         )
         np.savez(
             ws_dir / f"{date_str}.npz",
@@ -354,8 +354,8 @@ class TestIterCohortBSessionsEndToEnd:
             licks_dir / f"{date_str}b.npz",
             Lick_L=np.arange(b_n_licks, dtype=int),
             Lick_R=np.arange(b_n_licks, dtype=int),
-            Reward_L=np.array([300], dtype=int),
-            Reward_R=np.array([400], dtype=int),
+            Tone_L=np.array([300], dtype=int),
+            Tone_R=np.array([400], dtype=int),
         )
         np.savez(
             ws_dir / f"{date_str}b.npz",
@@ -408,7 +408,7 @@ class TestIterCohortBSessionsEndToEnd:
         np.savez(
             sp / "licks_and_rewards" / animal / f"{date_str}.npz",
             Lick_L=np.array([1]), Lick_R=np.array([2]),
-            Reward_L=np.array([3]), Reward_R=np.array([4]),
+            Tone_L=np.array([3]), Tone_R=np.array([4]),
         )
         np.savez(
             sp / "wavesurfer_signals_processed" / animal / f"{date_str}.npz",
@@ -440,8 +440,8 @@ def _make_session(
     *,
     lick_l: np.ndarray | None = None,
     lick_r: np.ndarray | None = None,
-    reward_l: np.ndarray | None = None,
-    reward_r: np.ndarray | None = None,
+    tone_l: np.ndarray | None = None,
+    tone_r: np.ndarray | None = None,
     sample_rate: float = 2000.0,
     n_samples: int = 60000,
 ) -> SessionPlotData:
@@ -459,13 +459,13 @@ def _make_session(
                 else np.array([5200, 5500, 5800, 6200, 6600], dtype=int)
             ),
         },
-        rewards_idx={
-            "Reward_L": (
-                reward_l if reward_l is not None
+        tones_idx={
+            "Tone_L": (
+                tone_l if tone_l is not None
                 else np.array([1000, 2000], dtype=int)
             ),
-            "Reward_R": (
-                reward_r if reward_r is not None
+            "Tone_R": (
+                tone_r if tone_r is not None
                 else np.array([5000, 6000], dtype=int)
             ),
         },
@@ -562,8 +562,8 @@ class TestRenderAnimalSummarySpoutCloseVsStd:
             "20250530",
             lick_l=np.array([1100], dtype=int),  # only post-reward of trial 0
             lick_r=np.array([], dtype=int),
-            reward_l=np.array([1000, 5000, 9000, 13000], dtype=int),
-            reward_r=np.array([], dtype=int),
+            tone_l=np.array([1000, 5000, 9000, 13000], dtype=int),
+            tone_r=np.array([], dtype=int),
         )
         acc = _half_accuracy_firstCorrectLickAll_per_side(
             session, [1.0, 8.0],

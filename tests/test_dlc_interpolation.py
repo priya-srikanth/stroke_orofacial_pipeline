@@ -174,8 +174,8 @@ def _write_synthetic_licks_npz(
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
         path,
-        Reward_L=reward_L,
-        Reward_R=reward_R,
+        Tone_L=reward_L,
+        Tone_R=reward_R,
         **{
             SIDE_CONVENTION_MATCH_KEY: np.bool_(wavesurfer_matches),
             SIDE_CONVENTION_VERSION_KEY: np.int64(SIDE_CONVENTION_VERSION),

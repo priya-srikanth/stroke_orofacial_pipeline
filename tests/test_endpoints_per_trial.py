@@ -26,16 +26,22 @@ FS = 1000.0
 def _trial(
     trial_idx: int,
     side: str,
-    reward_idx: int = 0,
+    tone_idx: int = 0,
     licks_L: list[int] | None = None,
     licks_R: list[int] | None = None,
 ) -> TrialRecord:
-    """Build a synthetic TrialRecord; licks default empty."""
+    """Build a synthetic TrialRecord; licks default empty.
+
+    Phase 8a.10.1 Q-A.β + Q-B.α (2026-05-14): helper accepts ``tone_idx``
+    (the always-present trial anchor) and ``side`` (= ``tone_side``).
+    ``reward_idx`` is paired synchronously at ``tone_idx`` to model the
+    cohort's actual synchronous-event property.
+    """
     return TrialRecord(
         trial_idx=trial_idx,
-        reward_side=side,  # type: ignore[arg-type]
-        reward_idx=reward_idx,
-        tone_idx=None,
+        tone_side=side,  # type: ignore[arg-type]
+        tone_idx=tone_idx,
+        reward_idx=tone_idx,  # synchronous-paired reward
         trial_type="rewarded",
         licks_L_indices_in_window=np.asarray(licks_L or [], dtype=int),
         licks_R_indices_in_window=np.asarray(licks_R or [], dtype=int),
@@ -60,7 +66,7 @@ class TestFirstLickLatencyPerTrial:
 
     def test_single_L_trial_with_correct_lick(self):
         # Reward at 0; first L lick at sample 200 → latency = 0.2 s @ Fs=1000.
-        trials = [_trial(0, "L", reward_idx=0, licks_L=[200, 500])]
+        trials = [_trial(0, "L", tone_idx=0, licks_L=[200, 500])]
         r = first_lick_latency_per_trial(trials, endpoints_params=ENDPOINTS_PARAMS)
         np.testing.assert_allclose(r.per_trial_array, [0.2])
         assert math.isclose(r.per_session_aggregate["mean"], 0.2)
@@ -71,16 +77,16 @@ class TestFirstLickLatencyPerTrial:
 
     def test_no_correct_lick_in_window_yields_nan(self):
         # L reward trial, but only R lick present → no correct-side lick.
-        trials = [_trial(0, "L", reward_idx=0, licks_R=[100])]
+        trials = [_trial(0, "L", tone_idx=0, licks_R=[100])]
         r = first_lick_latency_per_trial(trials, endpoints_params=ENDPOINTS_PARAMS)
         assert math.isnan(r.per_trial_array[0])
         assert r.per_session_aggregate["n"] == 0
 
     def test_multi_trial_per_side_split(self):
         trials = [
-            _trial(0, "L", reward_idx=0, licks_L=[100]),      # 0.1 s
-            _trial(1, "L", reward_idx=1_000, licks_L=[1_300]),  # 0.3 s
-            _trial(2, "R", reward_idx=5_000, licks_R=[5_500]),  # 0.5 s
+            _trial(0, "L", tone_idx=0, licks_L=[100]),      # 0.1 s
+            _trial(1, "L", tone_idx=1_000, licks_L=[1_300]),  # 0.3 s
+            _trial(2, "R", tone_idx=5_000, licks_R=[5_500]),  # 0.5 s
         ]
         r = first_lick_latency_per_trial(trials, endpoints_params=ENDPOINTS_PARAMS)
         np.testing.assert_allclose(r.per_trial_array, [0.1, 0.3, 0.5])
@@ -169,9 +175,9 @@ class TestSwitchCost:
     def test_all_same_side_trials(self):
         # LLL: trials 1, 2 are same-side; no switches.
         trials = [
-            _trial(0, "L", reward_idx=0, licks_L=[100]),       # lat 0.1
-            _trial(1, "L", reward_idx=1_000, licks_L=[1_200]), # lat 0.2
-            _trial(2, "L", reward_idx=2_000, licks_L=[2_300]), # lat 0.3
+            _trial(0, "L", tone_idx=0, licks_L=[100]),       # lat 0.1
+            _trial(1, "L", tone_idx=1_000, licks_L=[1_200]), # lat 0.2
+            _trial(2, "L", tone_idx=2_000, licks_L=[2_300]), # lat 0.3
         ]
         r = switch_cost_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         agg = r.per_session_aggregate
@@ -185,10 +191,10 @@ class TestSwitchCost:
     def test_all_alternating_trials(self):
         # LRLR: every non-first trial is a switch.
         trials = [
-            _trial(0, "L", reward_idx=0, licks_L=[100]),
-            _trial(1, "R", reward_idx=1_000, licks_R=[1_200]),
-            _trial(2, "L", reward_idx=2_000, licks_L=[2_300]),
-            _trial(3, "R", reward_idx=3_000, licks_R=[3_400]),
+            _trial(0, "L", tone_idx=0, licks_L=[100]),
+            _trial(1, "R", tone_idx=1_000, licks_R=[1_200]),
+            _trial(2, "L", tone_idx=2_000, licks_L=[2_300]),
+            _trial(3, "R", tone_idx=3_000, licks_R=[3_400]),
         ]
         r = switch_cost_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         agg = r.per_session_aggregate
@@ -200,10 +206,10 @@ class TestSwitchCost:
         # Sequence: LL RL (trial1 same-side lat 0.2; trial2 switch lat 0.3;
         # trial3 switch lat 0.4). Cost = mean([0.3, 0.4]) - mean([0.2]) = 0.15.
         trials = [
-            _trial(0, "L", reward_idx=0, licks_L=[100]),
-            _trial(1, "L", reward_idx=1_000, licks_L=[1_200]),
-            _trial(2, "R", reward_idx=2_000, licks_R=[2_300]),
-            _trial(3, "L", reward_idx=3_000, licks_L=[3_400]),
+            _trial(0, "L", tone_idx=0, licks_L=[100]),
+            _trial(1, "L", tone_idx=1_000, licks_L=[1_200]),
+            _trial(2, "R", tone_idx=2_000, licks_R=[2_300]),
+            _trial(3, "L", tone_idx=3_000, licks_L=[3_400]),
         ]
         r = switch_cost_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         agg = r.per_session_aggregate
@@ -214,9 +220,9 @@ class TestSwitchCost:
     def test_nan_latency_excluded(self):
         # Trial 1 (switch) has no correct-side lick → NaN latency → excluded.
         trials = [
-            _trial(0, "L", reward_idx=0, licks_L=[100]),
-            _trial(1, "R", reward_idx=1_000, licks_R=[]),  # NaN
-            _trial(2, "R", reward_idx=2_000, licks_R=[2_300]),
+            _trial(0, "L", tone_idx=0, licks_L=[100]),
+            _trial(1, "R", tone_idx=1_000, licks_R=[]),  # NaN
+            _trial(2, "R", tone_idx=2_000, licks_R=[2_300]),
         ]
         r = switch_cost_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         # Trial 1 (switch) excluded; trial 2 (same-side-continuation) kept.
@@ -245,9 +251,9 @@ class TestLatencyVariability:
 
     def test_constant_latencies(self):
         trials = [
-            _trial(0, "L", reward_idx=0, licks_L=[500]),
-            _trial(1, "L", reward_idx=1_000, licks_L=[1_500]),
-            _trial(2, "L", reward_idx=2_000, licks_L=[2_500]),
+            _trial(0, "L", tone_idx=0, licks_L=[500]),
+            _trial(1, "L", tone_idx=1_000, licks_L=[1_500]),
+            _trial(2, "L", tone_idx=2_000, licks_L=[2_500]),
         ]
         # All latencies 0.5 → std 0, CV 0, IQR 0.
         r = latency_variability_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
@@ -261,7 +267,7 @@ class TestLatencyVariability:
         # Latencies [0.1, 0.2, 0.3, 0.4, 0.5] → mean 0.3, std sqrt(0.02) ≈ 0.1414,
         # CV ≈ 0.4714, IQR (Q75-Q25) = 0.4-0.2 = 0.2.
         trials = [
-            _trial(i, "L", reward_idx=i * 1_000, licks_L=[i * 1_000 + (i + 1) * 100])
+            _trial(i, "L", tone_idx=i * 1_000, licks_L=[i * 1_000 + (i + 1) * 100])
             for i in range(5)
         ]
         r = latency_variability_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
@@ -272,7 +278,7 @@ class TestLatencyVariability:
         assert agg["n"] == 5
 
     def test_single_trial_iqr_is_nan(self):
-        trials = [_trial(0, "L", reward_idx=0, licks_L=[100])]
+        trials = [_trial(0, "L", tone_idx=0, licks_L=[100])]
         r = latency_variability_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         agg = r.per_session_aggregate
         # n=1 → std=0, CV defined (std/mean=0), IQR=NaN (n<2).
@@ -283,9 +289,9 @@ class TestLatencyVariability:
 
     def test_per_side_split_counts(self):
         trials = [
-            _trial(0, "L", reward_idx=0, licks_L=[100]),
-            _trial(1, "R", reward_idx=1_000, licks_R=[1_200]),
-            _trial(2, "R", reward_idx=2_000, licks_R=[2_400]),
+            _trial(0, "L", tone_idx=0, licks_L=[100]),
+            _trial(1, "R", tone_idx=1_000, licks_R=[1_200]),
+            _trial(2, "R", tone_idx=2_000, licks_R=[2_400]),
         ]
         r = latency_variability_per_session(trials, endpoints_params=ENDPOINTS_PARAMS)
         assert r.per_trial_type_split["L"]["n"] == 1

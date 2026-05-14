@@ -74,26 +74,36 @@ DEFAULTS_STUB: dict[str, Any] = {
 def _trial(
     trial_idx: int,
     *,
-    reward_idx: int,
-    reward_side: str,
+    tone_idx: int,
+    tone_side: str,
     licks_L: np.ndarray,
     licks_R: np.ndarray,
     window_seconds: tuple[float, float] = (0.0, 2.5),
 ) -> TrialRecord:
-    """Build a synthetic TrialRecord pre-filtered to ``window_seconds``."""
+    """Build a synthetic TrialRecord pre-filtered to ``window_seconds``.
+
+    Phase 8a.10.1 Q-A.β + Q-B.α rename (2026-05-14): the helper now
+    accepts ``tone_idx`` (the always-present trial anchor) + ``tone_side``
+    (was ``reward_side``). Synthesizes a "rewarded" trial with
+    ``reward_idx`` paired synchronously at ``tone_idx`` — matches the
+    cohort's actual synchronous-event property per the prior
+    diagnostic. Withhold-trial tests can override ``reward_idx`` to None
+    via a direct TrialRecord constructor (see test_trial_segmentation.py
+    for the dedicated withhold-case coverage).
+    """
     start = int(round(window_seconds[0] * Fs))
     end = int(round(window_seconds[1] * Fs))
     licks_L_in = licks_L[
-        (licks_L >= reward_idx + start) & (licks_L < reward_idx + end)
+        (licks_L >= tone_idx + start) & (licks_L < tone_idx + end)
     ]
     licks_R_in = licks_R[
-        (licks_R >= reward_idx + start) & (licks_R < reward_idx + end)
+        (licks_R >= tone_idx + start) & (licks_R < tone_idx + end)
     ]
     return TrialRecord(
         trial_idx=trial_idx,
-        reward_side=reward_side,  # type: ignore[arg-type]
-        reward_idx=reward_idx,
-        tone_idx=None,
+        tone_side=tone_side,  # type: ignore[arg-type]
+        tone_idx=tone_idx,
+        reward_idx=tone_idx,  # Q-A.β: synchronous-event paired reward
         trial_type="rewarded",
         licks_L_indices_in_window=licks_L_in,
         licks_R_indices_in_window=licks_R_in,
@@ -118,8 +128,8 @@ class TestComputeC3:
         # Reward at 1000; C3 window = [1000, 3000); lick on L at 1500.
         trial = _trial(
             0,
-            reward_idx=1000,
-            reward_side="L",
+            tone_idx=1000,
+            tone_side="L",
             licks_L=np.array([1500], dtype=int),
             licks_R=np.array([], dtype=int),
         )
@@ -131,8 +141,8 @@ class TestComputeC3:
         # Reward on L but all licks on R — C3 fails (no correct-side lick).
         trial = _trial(
             0,
-            reward_idx=1000,
-            reward_side="L",
+            tone_idx=1000,
+            tone_side="L",
             licks_L=np.array([], dtype=int),
             licks_R=np.array([1200, 1400, 1600], dtype=int),
         )
@@ -143,8 +153,8 @@ class TestComputeC3:
         # Half-open: lick at reward + 2000 samples (= 2.0 s end) is excluded.
         trial = _trial(
             0,
-            reward_idx=1000,
-            reward_side="L",
+            tone_idx=1000,
+            tone_side="L",
             licks_L=np.array([3000], dtype=int),  # at window end (excluded)
             licks_R=np.array([], dtype=int),
             window_seconds=(0.0, 2.5),  # record covers wider, so lick IS in record
@@ -155,8 +165,8 @@ class TestComputeC3:
     def test_lick_just_inside_c3_window_passes(self):
         trial = _trial(
             0,
-            reward_idx=1000,
-            reward_side="L",
+            tone_idx=1000,
+            tone_side="L",
             licks_L=np.array([2999], dtype=int),  # last sample inside window
             licks_R=np.array([], dtype=int),
         )
@@ -166,17 +176,17 @@ class TestComputeC3:
     def test_per_side_order_preserved_chronologically(self):
         # L rewards at 0, 4000; R reward at 2000. Per-side chronological order.
         t_L0 = _trial(
-            0, reward_idx=0, reward_side="L",
+            0, tone_idx=0, tone_side="L",
             licks_L=np.array([500], dtype=int),
             licks_R=np.array([], dtype=int),
         )
         t_R0 = _trial(
-            1, reward_idx=2000, reward_side="R",
+            1, tone_idx=2000, tone_side="R",
             licks_L=np.array([], dtype=int),
             licks_R=np.array([2500], dtype=int),
         )
         t_L1 = _trial(
-            2, reward_idx=4000, reward_side="L",
+            2, tone_idx=4000, tone_side="L",
             licks_L=np.array([], dtype=int),  # fails
             licks_R=np.array([], dtype=int),
         )
@@ -197,8 +207,8 @@ class TestComputeC4:
         # Exactly 5 correct, exactly 0 incorrect → pass.
         trial = _trial(
             0,
-            reward_idx=1000,
-            reward_side="L",
+            tone_idx=1000,
+            tone_side="L",
             licks_L=np.array([1100, 1200, 1300, 1400, 1500], dtype=int),
             licks_R=np.array([], dtype=int),
         )
@@ -208,8 +218,8 @@ class TestComputeC4:
     def test_one_too_few_correct_fails(self):
         trial = _trial(
             0,
-            reward_idx=1000,
-            reward_side="L",
+            tone_idx=1000,
+            tone_side="L",
             licks_L=np.array([1100, 1200, 1300, 1400], dtype=int),  # 4 correct
             licks_R=np.array([], dtype=int),
         )
@@ -220,8 +230,8 @@ class TestComputeC4:
         # 5 correct, 1 incorrect (>0) → C4 fails because max_incorrect=0.
         trial = _trial(
             0,
-            reward_idx=1000,
-            reward_side="L",
+            tone_idx=1000,
+            tone_side="L",
             licks_L=np.array([1100, 1200, 1300, 1400, 1500], dtype=int),
             licks_R=np.array([1250], dtype=int),
         )
@@ -232,8 +242,8 @@ class TestComputeC4:
         # TrialRecord built with (0, 2.0) — narrower than C4's (0, 2.5).
         trial = _trial(
             0,
-            reward_idx=1000,
-            reward_side="L",
+            tone_idx=1000,
+            tone_side="L",
             licks_L=np.array([1100, 1200, 1300, 1400, 1500], dtype=int),
             licks_R=np.array([], dtype=int),
             window_seconds=(0.0, 2.0),
@@ -317,8 +327,8 @@ def _reference_criteria_block(
     *,
     lick_L: np.ndarray,
     lick_R: np.ndarray,
-    reward_L: np.ndarray,
-    reward_R: np.ndarray,
+    tone_L: np.ndarray,
+    tone_R: np.ndarray,
     Fs: float,
     defaults: dict[str, Any],
 ) -> dict[str, dict[str, Any]]:
@@ -350,8 +360,8 @@ def _reference_criteria_block(
 
     licks_by_side = {"L": np.asarray(lick_L, dtype=int), "R": np.asarray(lick_R, dtype=int)}
     rewards_by_side = {
-        "L": np.asarray(reward_L, dtype=int),
-        "R": np.asarray(reward_R, dtype=int),
+        "L": np.asarray(tone_L, dtype=int),
+        "R": np.asarray(tone_R, dtype=int),
     }
 
     c3_per_side: dict[str, list[bool]] = {}
@@ -441,10 +451,10 @@ class TestSyntheticParity:
     def test_12_trial_session_matches_reference(self):
         """Hand-built 12-trial session exercises boundary + NaN + threshold cases."""
         # Rewards: L at 0, 4000, 8000, 12000, 16000, 20000, 24000; R at 2000, 6000, 10000, 14000, 18000.
-        reward_L = np.array(
+        tone_L = np.array(
             [0, 4000, 8000, 12000, 16000, 20000, 24000], dtype=int,
         )
-        reward_R = np.array([2000, 6000, 10000, 14000, 18000], dtype=int)
+        tone_R = np.array([2000, 6000, 10000, 14000, 18000], dtype=int)
         # L-side licks: many around each L reward to exercise C3/C4 variations.
         lick_L_parts = [
             # Reward 0: 5 correct, 0 incorrect → both C3, C4 pass.
@@ -478,52 +488,66 @@ class TestSyntheticParity:
         # Add one L-side lick at 6100 — this would be INCORRECT for R reward at 6000.
         lick_L = np.sort(np.concatenate([lick_L, np.array([6100], dtype=int)]))
         # Build TrialRecords via the canonical builder (widest window = C4's 2.5 s).
+        # Q-A.β: post-Commit-B, build_per_trial_records walks Tone_L/Tone_R
+        # for the trial anchor and pairs Reward_L/Reward_R within ε. For
+        # the synthetic parity tests we use synchronous events (per the
+        # cohort's synchronous-event property — all sample-deltas land at
+        # 0), so tone and reward keys point to the same array.
         lr = {
             "Lick_L": lick_L,
             "Lick_R": lick_R,
-            "Reward_L": reward_L,
-            "Reward_R": reward_R,
+            "Tone_L": tone_L,
+            "Tone_R": tone_R,
+            "Reward_L": tone_L,
+            "Reward_R": tone_R,
             "Fs": Fs,
         }
         trials = build_per_trial_records(lr, window_seconds=(0.0, 2.5))
         produced = build_criteria_block(trials, defaults=DEFAULTS_STUB)
         reference = _reference_criteria_block(
-            lick_L=lick_L, lick_R=lick_R, reward_L=reward_L, reward_R=reward_R,
+            lick_L=lick_L, lick_R=lick_R, tone_L=tone_L, tone_R=tone_R,
             Fs=Fs, defaults=DEFAULTS_STUB,
         )
         _assert_blocks_equal(produced, reference)
 
     def test_empty_session_matches_reference(self):
+        empty = np.array([], dtype=int)
         lr = {
-            "Lick_L": np.array([], dtype=int),
-            "Lick_R": np.array([], dtype=int),
-            "Reward_L": np.array([], dtype=int),
-            "Reward_R": np.array([], dtype=int),
+            "Lick_L": empty,
+            "Lick_R": empty,
+            "Tone_L": empty,
+            "Tone_R": empty,
+            "Reward_L": empty,
+            "Reward_R": empty,
             "Fs": Fs,
         }
         trials = build_per_trial_records(lr, window_seconds=(0.0, 2.5))
         produced = build_criteria_block(trials, defaults=DEFAULTS_STUB)
         reference = _reference_criteria_block(
             lick_L=lr["Lick_L"], lick_R=lr["Lick_R"],
-            reward_L=lr["Reward_L"], reward_R=lr["Reward_R"],
+            tone_L=lr["Tone_L"], tone_R=lr["Tone_R"],
             Fs=Fs, defaults=DEFAULTS_STUB,
         )
         _assert_blocks_equal(produced, reference)
 
     def test_single_side_only_session_matches_reference(self):
-        # All rewards on L. R side fraction should be NaN in both outputs.
+        # All tones on L. R side fraction should be NaN in both outputs.
+        single_L = np.array([0], dtype=int)
+        empty = np.array([], dtype=int)
         lr = {
             "Lick_L": np.array([100, 200, 300, 400, 500], dtype=int),
-            "Lick_R": np.array([], dtype=int),
-            "Reward_L": np.array([0], dtype=int),
-            "Reward_R": np.array([], dtype=int),
+            "Lick_R": empty,
+            "Tone_L": single_L,
+            "Tone_R": empty,
+            "Reward_L": single_L,  # synchronous-paired reward
+            "Reward_R": empty,
             "Fs": Fs,
         }
         trials = build_per_trial_records(lr, window_seconds=(0.0, 2.5))
         produced = build_criteria_block(trials, defaults=DEFAULTS_STUB)
         reference = _reference_criteria_block(
             lick_L=lr["Lick_L"], lick_R=lr["Lick_R"],
-            reward_L=lr["Reward_L"], reward_R=lr["Reward_R"],
+            tone_L=lr["Tone_L"], tone_R=lr["Tone_R"],
             Fs=Fs, defaults=DEFAULTS_STUB,
         )
         _assert_blocks_equal(produced, reference)
@@ -627,9 +651,13 @@ class TestRealDataParityPS46_20250307:
         # Build TrialRecords with the widest C4 window (0, 2.5).
         trials = build_per_trial_records(lr, window_seconds=(0.0, 2.5))
         produced = build_criteria_block(trials, defaults=DEFAULTS_STUB)
+        # Real-data parity: post-Commit-A swap-fix, lr["Tone_L"] /
+        # lr["Tone_R"] hold the trial-cue events (~200 ms TTL channel
+        # post-swap). The reference function takes them as the per-side
+        # anchor arrays.
         reference = _reference_criteria_block(
             lick_L=lr["Lick_L"], lick_R=lr["Lick_R"],
-            reward_L=lr["Reward_L"], reward_R=lr["Reward_R"],
+            tone_L=lr["Tone_L"], tone_R=lr["Tone_R"],
             Fs=Fs_real, defaults=DEFAULTS_STUB,
         )
         _assert_blocks_equal(produced, reference)
@@ -667,8 +695,8 @@ class TestClampBugRegressionGuards:
         """
         trial = _trial(
             trial_idx=0,
-            reward_idx=1000,
-            reward_side="L",
+            tone_idx=1000,
+            tone_side="L",
             licks_L=np.array([1100, 1200, 1300, 1400, 1500], dtype=int),
             licks_R=np.array([], dtype=int),
             window_seconds=(0.0, 2.5),

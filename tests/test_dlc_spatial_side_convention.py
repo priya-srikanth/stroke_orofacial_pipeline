@@ -223,7 +223,7 @@ class TestSaveRewardAlignedNpz:
 
 class TestBuildRewardAlignedAnalysisFlagPlumbing:
     """The primary entry point must forward the caller's flag through
-    load_reward_events AND echo it on the return dict. We mock the heavy
+    load_tone_events AND echo it on the return dict. We mock the heavy
     dependencies (parquet read, histogram build, alignment) and assert
     just the flag propagation."""
 
@@ -244,8 +244,8 @@ class TestBuildRewardAlignedAnalysisFlagPlumbing:
         licks_dir.mkdir(parents=True)
         path = licks_dir / f"{date_str}.npz"
         payload: dict = {
-            "Reward_L": np.array([100, 200, 300], dtype=int),
-            "Reward_R": np.array([150, 250, 350], dtype=int),
+            "Tone_L": np.array([100, 200, 300], dtype=int),
+            "Tone_R": np.array([150, 250, 350], dtype=int),
         }
         stamp_side_convention(payload, wavesurfer_matches)
         np.savez(path, **payload)
@@ -279,7 +279,7 @@ class TestBuildRewardAlignedAnalysisFlagPlumbing:
 
         # Short-circuit the centered-parquet read to a minimal DF, and
         # the histogram build to a minimal dict. The flag propagation
-        # happens at load_reward_events → build_reward_aligned_analysis
+        # happens at load_tone_events → build_reward_aligned_analysis
         # return dict — the histogram values are irrelevant here.
         import pandas as pd
 
@@ -298,12 +298,12 @@ class TestBuildRewardAlignedAnalysisFlagPlumbing:
             "stroke_orofacial.dlc_spatial.pixel_bins.build_histogram",
             return_value=_fake_histogram(),
         ):
-            # numpy.load is called twice: once by load_reward_events for
+            # numpy.load is called twice: once by load_tone_events for
             # the licks NPZ, once by build_reward_aligned_analysis for the
             # alignment template. Side-effect dispatches by call order.
             stamped_licks = {
-                "Reward_L": np.array([100, 200, 300], dtype=int),
-                "Reward_R": np.array([150, 250, 350], dtype=int),
+                "Tone_L": np.array([100, 200, 300], dtype=int),
+                "Tone_R": np.array([150, 250, 350], dtype=int),
                 SIDE_CONVENTION_VERSION_KEY: np.int32(SIDE_CONVENTION_VERSION),
                 SIDE_CONVENTION_MATCH_KEY: np.bool_(matches),
             }
@@ -319,7 +319,7 @@ class TestBuildRewardAlignedAnalysisFlagPlumbing:
                     return self._d.get(k, default)
 
             mock_load.side_effect = [
-                _FakeNpz(stamped_licks),   # 1st: load_reward_events (single load — stamp check + Reward_L/R share the same NpzFile)
+                _FakeNpz(stamped_licks),   # 1st: load_tone_events (single load — stamp check + Tone_L/R share the same NpzFile)
                 _FakeNpz(fake_align),      # 2nd: alignment template
             ]
 
@@ -379,7 +379,7 @@ class TestBuildRewardAlignedAnalysisByAnimalDate:
     def test_explicit_kwarg_wins_over_animal_info(self):
         """Explicit kwarg must override AnimalInfo. Used by tests that
         deliberately pass a mismatched value to exercise the stamp
-        verification path inside load_reward_events."""
+        verification path inside load_tone_events."""
         info = self._mock_animal_info(wavesurfer_matches=False)
         captured: dict = {}
 

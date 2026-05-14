@@ -426,13 +426,18 @@ class TestNanPreservation:
 # ---------------------------------------------------------------------------
 
 
-def _trial(idx: int, reward_idx: int, *, Fs: float = 1000.0) -> TrialRecord:
-    """Build a minimal TrialRecord with a 0–2.5 s scoring window."""
+def _trial(idx: int, tone_idx: int, *, Fs: float = 1000.0) -> TrialRecord:
+    """Build a minimal TrialRecord with a 0–2.5 s scoring window.
+
+    Phase 8a.10.1 Q-A.β + Q-B.α (2026-05-14): trial anchor renamed
+    ``reward_idx → tone_idx`` and side field ``reward_side → tone_side``.
+    Reward paired synchronously at tone_idx (cohort's actual property).
+    """
     return TrialRecord(
         trial_idx=idx,
-        reward_side="L",
-        reward_idx=reward_idx,
-        tone_idx=None,
+        tone_side="L",
+        tone_idx=tone_idx,
+        reward_idx=tone_idx,
         trial_type="rewarded",
         licks_L_indices_in_window=np.array([], dtype=int),
         licks_R_indices_in_window=np.array([], dtype=int),
