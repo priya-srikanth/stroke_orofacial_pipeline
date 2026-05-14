@@ -8,12 +8,16 @@ compute entry points that the per-session JSON writer consumes.
 Hierarchy (see :mod:`stroke_orofacial.spout_behavior.criteria_slugs` for slugs):
 
 - **C3** (``criteria_first_correct_lick_present``): per-trial boolean — at
-  least one correct-side (rewarded) lick inside the C3 window
-  (legacy default ``[0.0, 2.0]`` s post-reward).
+  least one correct-side lick inside the C3 window
+  (legacy default ``[0.0, 2.0]`` s post-tone). Q-A.β post-2026-05-14:
+  window math relative to ``trial.tone_idx`` (the auditory cue anchor);
+  pre-fix this was labeled "post-reward" but the underlying anchor was
+  tone-onset all along under Case-2 universal.
 - **C4** (``criteria_correct_lick_count_threshold``): per-trial boolean —
   ``n_correct ≥ num_licks_correct_min`` AND
   ``n_incorrect ≤ num_licks_incorrect_max`` inside the C4 window
-  (legacy default ``[0.0, 2.5]`` s post-reward).
+  (legacy default ``[0.0, 2.5]`` s post-tone; Q-A.β semantics, same
+  rationale as C3 above).
 - **C34** (internal): per-trial ``C3 AND C4``; not exposed in the JSON.
 - **C2** (``criteria_session_trial_pass_fraction_above_threshold``):
   per-session per-side boolean — fraction of C34-passing trials

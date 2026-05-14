@@ -339,7 +339,7 @@ def _half_accuracy_firstCorrectLickAll_per_side(
         if len(per_trial) == 0:
             out[side] = float("nan")
             continue
-        # treat_none_as_zero=True: None (no post-reward licks at all)
+        # treat_none_as_zero=True: None (no post-tone licks at all)
         # counted as 0 (incorrect). Denominator = ALL trials.
         vals = [0.0 if v is None else float(v) for v in per_trial.values()]
         out[side] = float(np.mean(vals))

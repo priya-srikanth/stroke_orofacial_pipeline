@@ -2,6 +2,22 @@
 
 Cataloged on 2026-04-19 as the output of Audit Item 10 (mid-consolidation audit).
 
+> **Phase 8a.10.1 note (2026-05-14).** Endpoint descriptions below use
+> the legacy "post-reward" / "reward trial" terminology because that's
+> what the legacy code believed. Under Case-2 universal (locked
+> 2026-05-14 per Phase 8a.10.1 audit), every legacy "post-reward
+> window" was actually a "post-tone window" — the raw WS channel
+> labeled `Reward_*` carried tone-onset content under the cohort-wide
+> channel-label swap. Post-Commit-A (`b86acfa`) the on-disk NPZ
+> `Tone_*` / `Reward_*` keys hold their semantically-correct content.
+> Post-Commit-B (`f4f96f8`) consumers consume the renamed `tones_idx`
+> field with windows anchored at `tone_idx` (the auditory cue). Numeric
+> output of every Category-A endpoint is unchanged (windows were
+> always tone-anchored under the swap); only the variable / dict-key
+> / docstring names are corrected. See
+> `docs/prompts/phase-8a.10.1-tone-reward-swap-fix-kickoff.md` for the
+> full rationale.
+
 ## Purpose
 
 This doc enumerates every **scientific endpoint** (quantitative measurement that lands in a figure or statistical test) found in the two legacy repos:

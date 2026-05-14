@@ -897,9 +897,11 @@ def compute_first_lick_correct(
     """First-lick correctness per trial.
 
     Mirrors legacy ``sig_firstLickCorrect`` (lines 583-596). For each
-    reward, considers only post-reward licks (delay ≥ 0): correct =
-    first correct lick precedes any incorrect lick; ``None`` if no
-    post-reward licks on either side (no information to score).
+    tone-anchored trial, considers only post-tone licks (delay ≥ 0):
+    correct = first correct lick precedes any incorrect lick; ``None``
+    if no post-tone licks on either side (no information to score).
+    Q-A.β post-2026-05-14: "post-reward" semantics in pre-fix legacy
+    was always "post-tone" under Case-2 universal.
     """
     out: dict[str, dict[int, bool | None]] = {}
     for side_tone in ("L", "R"):
@@ -1556,12 +1558,13 @@ def render_numLicks_bySession_correct_and_incorrect(
 #
 # Standalone renderer — does NOT share the longitudinal-mean skeleton
 # (CG-2's _PerSessionStats aggregation). The raster is a 2 × N_sessions
-# grid where rows = reward side and columns = sessions; each cell shows
-# per-trial post-reward licks as a scatter (correct vs incorrect color-
-# coded).
+# grid where rows = tone side (Q-B.α — was "reward side"; same spout
+# identity, named for the trial-cue event class) and columns =
+# sessions; each cell shows per-trial post-tone licks as a scatter
+# (correct vs incorrect color-coded).
 #
 # Reuses CG-2 helpers:
-#   - compute_trial_lick_delays — per-trial lick timing relative to reward
+#   - compute_trial_lick_delays — per-trial lick timing relative to tone
 #
 # Mirrors legacy ``plot_raster`` (behavior_report_PS.py:415-448) +
 # emission (line 531-533). Intentional deviations from legacy:
@@ -1758,13 +1761,15 @@ def render_lick_raster(
 # longitudinal-mean style; one new compute helper per family.
 #
 # Lickiness: per-session count of "late licks" — licks within the
-# inter-reward window after the standard post-reward window expires
-# but before the next reward (or 60s, whichever is shorter). High
-# lickiness = the mouse is licking even when not cued by a recent
-# reward.
+# inter-tone window after the standard post-tone window expires but
+# before the next tone (or 60s, whichever is shorter). High lickiness
+# = the mouse is licking even when not cued by a recent tone. Q-A.β
+# post-2026-05-14: the synchronous-event property means inter-tone
+# and inter-reward windows are numerically identical in this cohort;
+# the rename is semantic-cleanup, not behavior change.
 #
 # Switchiness: per-trial mean count of L↔R lick transitions within
-# the standard post-reward window. High switchiness = the mouse is
+# the standard post-tone window. High switchiness = the mouse is
 # rapidly switching sides during a single trial.
 
 
@@ -1774,7 +1779,7 @@ def compute_lickiness_bySession(
     late_window_start_seconds: float,
     late_window_end_seconds: float,
 ) -> dict[str, int]:
-    """Per-side count of "late licks" within the inter-reward window.
+    """Per-side count of "late licks" within the inter-tone window.
 
     Mirrors legacy ``lickiness`` (behavior_report_PS.py:855-883). For
     each consecutive reward pair (rew, next_rew):
@@ -1893,8 +1898,8 @@ def render_lickiness_bySession(
     Y-axis intentionally NOT bounded (legacy auto-scales — high
     lickiness = behavioral disengagement; the absolute range varies
     by animal). Late-window start = ``behavior_report.window_around_rewards[1]``
-    (post-reward window end); end = ``visual_gate.lickiness_window_seconds``
-    (60s cap by default).
+    (post-tone window end, Q-A.β post-2026-05-14); end =
+    ``visual_gate.lickiness_window_seconds`` (60s cap by default).
     """
     config = config or load_visual_gate_config()
     behavior_params = behavior_params or load_behavior_report_params()

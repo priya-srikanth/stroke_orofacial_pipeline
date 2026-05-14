@@ -76,8 +76,12 @@ quantities.
 
 The archaeology surfaced four worth-keeping items beyond the original Q9 list:
 
-- `reward_trial_count_per_session` - promoted as a Phase 8a engagement extra in
-  `endpoints_engagement.py`.
+- `tone_trial_count_per_session` (Phase 8a.10.1 Q-C rename 2026-05-14;
+  was `reward_trial_count_per_session`) - promoted as a Phase 8a
+  engagement extra in `endpoints_engagement.py`. Counts trial-cue
+  exposures (tone events presented), not rewards earned — under
+  Case-2 universal the legacy `Reward_*` channel was the tone-cue
+  channel, so the original "reward trial count" name was a misnomer.
 - `inter_trial_interval_distribution` - promoted as a Phase 8a engagement extra
   in `endpoints_engagement.py`, with summary statistics stored rather than raw
   ITI arrays.
