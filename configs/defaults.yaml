@@ -120,7 +120,7 @@ spout_behavior:
       same_side_baseline_definition: immediately_prior_trial
     # Engagement extras (Phase 8a §8a.6): not in the Q9 list but cheap + useful.
     engagement:
-      compute_reward_trial_count_per_session: true
+      compute_tone_trial_count_per_session: true
       compute_inter_trial_interval_distribution: true
     # Legacy A11 window promoted from hardcode to config (Q4, 2026-04-20).
     late_lickiness:

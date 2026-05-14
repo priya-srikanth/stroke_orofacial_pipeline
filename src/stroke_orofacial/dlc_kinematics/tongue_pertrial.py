@@ -1416,18 +1416,21 @@ def _derive_trial_events_from_spout_behavior(
 
     from stroke_orofacial.alignment.templates import load_alignment_template
     from stroke_orofacial.dlc_spatial.reward_aligned import (
-        load_reward_events,
+        load_tone_events,
         ws_samples_to_frame_indices,
     )
 
     aln = load_alignment_template(align_path)
     sig_camIdx__idx_ws = aln["sig_camIdx__idx_ws"]
 
-    # 4-5. Per-side: load WS reward indices (with side-stamp validation),
-    #      translate to cam frames, drop invalid (-1).
+    # 4-5. Per-side: load WS tone-onset indices (X1-β rename
+    # 2026-05-14; semantically tone-anchored under Case-2 universal,
+    # with side-stamp validation), translate to cam frames, drop
+    # invalid (-1). Local variable `ws_idx` carries tone-onset
+    # samples; legacy name kept under Phase 7b deferral.
     events: list[tuple[int, str]] = []  # (reward_frame_idx, side)
     for side in ("L", "R"):
-        ws_idx = load_reward_events(
+        ws_idx = load_tone_events(
             licks_path, trial_group=side,
             wavesurfer_sides_match_mouse_sides=(
                 manifest.wavesurfer_sides_match_mouse_sides

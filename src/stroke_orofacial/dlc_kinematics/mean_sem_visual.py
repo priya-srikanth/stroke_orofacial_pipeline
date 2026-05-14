@@ -577,16 +577,18 @@ def _derive_reward_events_for_bodypart(
 
     from stroke_orofacial.alignment.templates import load_alignment_template
     from stroke_orofacial.dlc_spatial.reward_aligned import (
-        load_reward_events,
+        load_tone_events,
         ws_samples_to_frame_indices,
     )
 
     aln = load_alignment_template(align_path)
     sig_camIdx__idx_ws = aln["sig_camIdx__idx_ws"]
 
+    # X1-β: function rename to load_tone_events. Local-variable +
+    # docstring cleanup deferred to Phase 7b per Q3.B.
     centers: dict[str, list[int]] = {"L": [], "R": []}
     for side in ("L", "R"):
-        ws_idx = load_reward_events(
+        ws_idx = load_tone_events(
             licks_path, trial_group=side,
             wavesurfer_sides_match_mouse_sides=(
                 manifest.wavesurfer_sides_match_mouse_sides

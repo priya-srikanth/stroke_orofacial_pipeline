@@ -41,19 +41,23 @@ from stroke_orofacial.spout_behavior.trial_segmentation import TrialRecord
 
 
 def _first_correct_lick_latency_s(trial: TrialRecord) -> float:
-    """Return seconds from reward onset to first correct-side lick in window.
+    """Return seconds from tone onset to first correct-side lick in window.
 
-    "Correct side" = ``trial.reward_side``. ``NaN`` if no correct-side lick
-    falls in the scoring window.
+    "Correct side" = ``trial.tone_side`` (Q-B.α post-2026-05-14, was
+    ``reward_side``). Latency is computed relative to ``trial.tone_idx``
+    (Q-A.β post-2026-05-14: tone-onset is the always-present trial
+    anchor; pre-fix this was named ``reward_idx`` but the underlying
+    anchor was tone-onset all along under Case-2 universal). ``NaN`` if
+    no correct-side lick falls in the scoring window.
     """
     correct_licks = (
         trial.licks_L_indices_in_window
-        if trial.reward_side == "L"
+        if trial.tone_side == "L"
         else trial.licks_R_indices_in_window
     )
     if correct_licks.size == 0:
         return float("nan")
-    return float((correct_licks[0] - trial.reward_idx) / trial.Fs)
+    return float((correct_licks[0] - trial.tone_idx) / trial.Fs)
 
 
 def _per_trial_latencies(trials: Sequence[TrialRecord]) -> np.ndarray:
@@ -101,7 +105,7 @@ def first_lick_latency_per_trial(
         - ``per_trial_type_split``: per-side dict of the same summary.
     """
     latencies = _per_trial_latencies(trials)
-    sides = np.array([t.reward_side for t in trials], dtype=object)
+    sides = np.array([t.tone_side for t in trials], dtype=object)
 
     per_side = {
         side: _mean_std(latencies[sides == side] if latencies.size else latencies)
@@ -152,12 +156,19 @@ def directional_lick_accuracy_per_session(
         - ``per_trial_type_split``: per-side dict with ``counts_correct`` (list),
           ``counts_incorrect`` (list), ``n_trials`` (int).
     """
-    sides = np.array([t.reward_side for t in trials], dtype=object)
+    sides = np.array([t.tone_side for t in trials], dtype=object)
 
     def _pair_counts(t: TrialRecord) -> tuple[int, int]:
-        if t.reward_side == "L":
+        if t.tone_side == "L":
             return int(t.licks_L_indices_in_window.size), int(t.licks_R_indices_in_window.size)
         return int(t.licks_R_indices_in_window.size), int(t.licks_L_indices_in_window.size)
+
+    # Note: the per-session aggregate keys still read
+    # "fraction_correct_on_{L,R}_trials" — these refer to the SPOUT-SIDE
+    # of the trial cue (== the trial's tone_side), which is what every
+    # downstream report consumer expects. The "_trials" suffix is
+    # spout-side-anchored not event-class-anchored, so it survives
+    # Q-B.α unchanged.
 
     pair_counts = np.array([_pair_counts(t) for t in trials], dtype=int) if trials else np.zeros((0, 2), dtype=int)
 
@@ -243,7 +254,7 @@ def switch_cost_per_session(
         )
 
     latencies = _per_trial_latencies(trials)
-    sides = [t.reward_side for t in trials]
+    sides = [t.tone_side for t in trials]
     n_trials = len(trials)
 
     same_latencies: list[float] = []
@@ -307,7 +318,7 @@ def latency_variability_per_session(
         - ``per_trial_type_split``: per-side dict of the same fields.
     """
     latencies = _per_trial_latencies(trials)
-    sides = np.array([t.reward_side for t in trials], dtype=object)
+    sides = np.array([t.tone_side for t in trials], dtype=object)
 
     def _dispersion(vals: np.ndarray) -> dict[str, Any]:
         mask = ~np.isnan(vals)

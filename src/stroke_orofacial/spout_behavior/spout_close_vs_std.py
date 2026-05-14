@@ -335,13 +335,13 @@ def _half_accuracy_firstCorrectLickAll_per_side(
     flc = compute_first_lick_correct(delays)
     out: dict[str, float] = {}
     for side in ("L", "R"):
-        per_reward = flc[side]
-        if len(per_reward) == 0:
+        per_trial = flc[side]
+        if len(per_trial) == 0:
             out[side] = float("nan")
             continue
         # treat_none_as_zero=True: None (no post-reward licks at all)
         # counted as 0 (incorrect). Denominator = ALL trials.
-        vals = [0.0 if v is None else float(v) for v in per_reward.values()]
+        vals = [0.0 if v is None else float(v) for v in per_trial.values()]
         out[side] = float(np.mean(vals))
     return out
 
@@ -350,32 +350,35 @@ def _half_mean_licks_per_trial_per_side(
     session: SessionPlotData,
     window_around_rewards: tuple[float, float] | list[float],
 ) -> dict[str, dict[str, float]]:
-    """Mean licks per trial within window, split by (reward_side,
+    """Mean licks per trial within window, split by (tone_side,
     correctness). Returns
     ``{"L": {"correct": float, "incorrect": float}, "R": {...}}``.
 
-    Replicates visual_gate's ``numLicks_bySession_correct_and_incorrect``
+    Q-B.α rename (2026-05-14): split by ``tone_side`` (the spout-side
+    identity set at trial cue onset); under Q-A.β's two-anchor model
+    this is well-defined even on withhold trials. Replicates
+    visual_gate's ``numLicks_bySession_correct_and_incorrect``
     convention: per-trial counts averaged across trials of that
-    reward side. Correct = lick on same side as reward; incorrect =
+    tone side. Correct = lick on same side as tone; incorrect =
     lick on other side.
     """
     delays = compute_trial_lick_delays(session, window_around_rewards)
     out: dict[str, dict[str, float]] = {"L": {}, "R": {}}
-    for side_reward in ("L", "R"):
-        per_reward = delays[f"Reward_{side_reward}"]
-        n_trials = len(per_reward)
+    for side_tone in ("L", "R"):
+        per_trial = delays[f"Tone_{side_tone}"]
+        n_trials = len(per_trial)
         if n_trials == 0:
-            out[side_reward] = {
+            out[side_tone] = {
                 "correct": float("nan"), "incorrect": float("nan"),
             }
             continue
         correct_counts: list[int] = []
         incorrect_counts: list[int] = []
-        for _idx, by_side in per_reward.items():
-            correct_counts.append(int(by_side[f"Lick_{side_reward}"].size))
-            other = "R" if side_reward == "L" else "L"
+        for _idx, by_side in per_trial.items():
+            correct_counts.append(int(by_side[f"Lick_{side_tone}"].size))
+            other = "R" if side_tone == "L" else "L"
             incorrect_counts.append(int(by_side[f"Lick_{other}"].size))
-        out[side_reward] = {
+        out[side_tone] = {
             "correct": float(np.mean(correct_counts)),
             "incorrect": float(np.mean(incorrect_counts)),
         }
@@ -386,27 +389,27 @@ def _half_per_trial_lick_counts_per_side(
     session: SessionPlotData,
     window_around_rewards: tuple[float, float] | list[float],
 ) -> dict[str, dict[str, list[int]]]:
-    """Per-trial lick counts (NOT averaged) split by (reward_side,
+    """Per-trial lick counts (NOT averaged) split by (tone_side,
     correctness). Returns
     ``{"L": {"correct": [n_per_trial...], "incorrect": [n_per_trial...]},
        "R": {...}}``.
 
-    Each list has length = number of trials of that reward side in
+    Each list has length = number of trials of that tone side in
     this session half. Used by render_animal_per_trial_spout_close_vs_std
     (post-R7 follow-on) to scatter individual trials rather than
     per-session means.
     """
     delays = compute_trial_lick_delays(session, window_around_rewards)
     out: dict[str, dict[str, list[int]]] = {"L": {}, "R": {}}
-    for side_reward in ("L", "R"):
-        per_reward = delays[f"Reward_{side_reward}"]
+    for side_tone in ("L", "R"):
+        per_trial = delays[f"Tone_{side_tone}"]
         correct_counts: list[int] = []
         incorrect_counts: list[int] = []
-        for _idx, by_side in per_reward.items():
-            correct_counts.append(int(by_side[f"Lick_{side_reward}"].size))
-            other = "R" if side_reward == "L" else "L"
+        for _idx, by_side in per_trial.items():
+            correct_counts.append(int(by_side[f"Lick_{side_tone}"].size))
+            other = "R" if side_tone == "L" else "L"
             incorrect_counts.append(int(by_side[f"Lick_{other}"].size))
-        out[side_reward] = {
+        out[side_tone] = {
             "correct": correct_counts,
             "incorrect": incorrect_counts,
         }
@@ -415,7 +418,7 @@ def _half_per_trial_lick_counts_per_side(
 
 def _plot_row_per_session_dots_and_means(
     ax,
-    side_reward: Literal["L", "R"],
+    side_tone: Literal["L", "R"],
     *,
     bare_vals: list[float],
     b_vals: list[float],
@@ -445,7 +448,7 @@ def _plot_row_per_session_dots_and_means(
             f"per-session value mismatch: bare={n_sessions}, "
             f"b={len(b_vals)}"
         )
-    mouse_side_color = SIDE_COLORS[side_reward]
+    mouse_side_color = SIDE_COLORS[side_tone]
     # Same-date connectors (one line per session; gray; spans both
     # conditions — neutrality is intentional).
     for v_bare, v_b in zip(bare_vals, b_vals, strict=True):
@@ -500,7 +503,7 @@ def _plot_row_per_session_dots_and_means(
 
 def _plot_row_lick_raster(
     ax,
-    side_reward: Literal["L", "R"],
+    side_tone: Literal["L", "R"],
     sessions: list[SessionPairData],
     *,
     window: tuple[float, float] | list[float],
@@ -513,7 +516,7 @@ def _plot_row_lick_raster(
 
     Trials are pooled across sessions in date order:
       - rows ``0 .. n_bare-1`` (top): bare-half trials of cue
-        ``side_reward``, concatenated chronologically across
+        ``side_tone``, concatenated chronologically across
         sessions.
       - horizontal divider line at y = n_bare.
       - rows ``n_bare .. n_bare + n_b - 1`` (bottom): b-half trials,
@@ -547,8 +550,8 @@ def _plot_row_lick_raster(
     bare_trials_per_session: list[int] = []
     b_trials_per_session: list[int] = []
     for pair in sessions:
-        bare_n = len(pair.bare.rewards_idx[f"Reward_{side_reward}"])
-        b_n = len(pair.b.rewards_idx[f"Reward_{side_reward}"])
+        bare_n = len(pair.bare.tones_idx[f"Tone_{side_tone}"])
+        b_n = len(pair.b.tones_idx[f"Tone_{side_tone}"])
         bare_trials_per_session.append(bare_n)
         b_trials_per_session.append(b_n)
     n_bare = sum(bare_trials_per_session)
@@ -565,14 +568,14 @@ def _plot_row_lick_raster(
             ("b", pair.b, b_y_offset),
         ):
             delays_full = compute_trial_lick_delays(session, window)
-            delays_by_reward = delays_full[f"Reward_{side_reward}"]
-            for idx_reward, by_side in delays_by_reward.items():
-                trial_y = y_base + idx_reward
+            delays_by_trial = delays_full[f"Tone_{side_tone}"]
+            for idx_tone, by_side in delays_by_trial.items():
+                trial_y = y_base + idx_tone
                 for side_lick in ("L", "R"):
                     lick_delays = by_side[f"Lick_{side_lick}"]
                     if lick_delays.size == 0:
                         continue
-                    is_correct = (side_lick == side_reward)
+                    is_correct = (side_lick == side_tone)
                     color = (
                         config["raster_dot_correct_color"] if is_correct
                         else config["raster_dot_incorrect_color"]
@@ -736,7 +739,7 @@ def _plot_row_lick_raster(
             fontsize=half_label_fs,
         )
     ax.set_title(
-        f"Reward {side_reward}",
+        f"Tone {side_tone}",
         fontsize=cohort_config["panel_title_fontsize"],
     )
     return n_bare, n_b
@@ -978,10 +981,10 @@ def render_animal_summary_spout_close_vs_std(
     row4_totals: dict[str, tuple[int, int]] = {}
     for side in ("L", "R"):
         n_bare_side = sum(
-            len(p.bare.rewards_idx[f"Reward_{side}"]) for p in sessions
+            len(p.bare.tones_idx[f"Tone_{side}"]) for p in sessions
         )
         n_b_side = sum(
-            len(p.b.rewards_idx[f"Reward_{side}"]) for p in sessions
+            len(p.b.tones_idx[f"Tone_{side}"]) for p in sessions
         )
         row4_totals[side] = (n_bare_side, n_b_side)
     row4_max_total = max(
@@ -1057,7 +1060,7 @@ def render_animal_summary_spout_close_vs_std(
 
 def _plot_panel_per_trial_scatter(
     ax,
-    side_reward: Literal["L", "R"],
+    side_tone: Literal["L", "R"],
     *,
     bare_per_trial: list[int],
     b_per_trial: list[int],
@@ -1069,13 +1072,13 @@ def _plot_panel_per_trial_scatter(
     Layout per panel:
       - x ∈ {0 (Standard / bare), 1 (Close / b)}; jittered ±0.18.
       - y = per-trial lick count.
-      - Color = mouse-side (SIDE_COLORS[side_reward]).
+      - Color = mouse-side (SIDE_COLORS[side_tone]).
       - Fill style: Standard filled, Close open (mirrors the
         per-session summary's Addendum #3 Tweak 2 convention).
       - Mean horizontal bars per condition (mouse-side color,
         COHORT_MEAN_BAR_LINEWIDTH).
     """
-    mouse_side_color = SIDE_COLORS[side_reward]
+    mouse_side_color = SIDE_COLORS[side_tone]
     rng = np.random.RandomState(42)
     for x, vals, condition in (
         (_X_BARE, bare_per_trial, "bare"),

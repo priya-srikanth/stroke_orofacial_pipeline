@@ -383,6 +383,15 @@ def legend_label_for_date(
 class SessionPlotData:
     """Per-session inputs for one Cohort A entry.
 
+    Phase 8a.10.1 Q-A.β rename (2026-05-14): the trial-anchor field
+    ``rewards_idx`` renamed to ``tones_idx``. Under Case-2 universal,
+    every legacy consumer of the old ``rewards_idx`` was scientifically
+    intended as tone-onset alignment; the pre-fix name reflected the
+    swapped WS channel label, not the actual content. Post-Commit-A
+    swap-fix, the on-disk NPZ's ``Tone_L``/``Tone_R`` keys hold the
+    actual tone-onset sample indices — exactly what every "post-reward"
+    window math in this module has always meant.
+
     Attributes
     ----------
     date_label : str
@@ -391,9 +400,11 @@ class SessionPlotData:
         Mouse-frame lick sample indices: ``{"Lick_L": ..., "Lick_R": ...}``.
         Post-Phase-6.8 the labels are mouse-frame directly (no further
         translation needed).
-    rewards_idx : dict[str, np.ndarray]
-        Mouse-frame reward sample indices: ``{"Reward_L": ...,
-        "Reward_R": ...}``.
+    tones_idx : dict[str, np.ndarray]
+        Mouse-frame tone-onset sample indices: ``{"Tone_L": ...,
+        "Tone_R": ...}``. Q-A.β rename from ``rewards_idx`` — content
+        unchanged (it was tone-onset all along under Case-2 universal);
+        dict keys updated to match the on-disk NPZ schema post-Commit-A.
     sample_rate : float
         Wavesurfer sample rate (Hz). Pulled from the Phase 1
         ``wavesurfer_signals_processed`` NPZ's ``sample_rate_input``
@@ -404,14 +415,14 @@ class SessionPlotData:
         ``wavesurfer_signals_processed`` NPZ (e.g. ``Treadmill``).
         ``0`` falls back when the NPZ has no 1D signal — downstream
         consumers (lickiness window cap) treat 0 as "no cap available"
-        and silently skip the post-last-reward window. Mirrors legacy
+        and silently skip the post-last-tone window. Mirrors legacy
         ``n_samps = data_ws[date][next(iter(data_ws[date]))].shape[0]``
         (behavior_report_PS.py:862).
     """
 
     date_label: str
     lick_idx: dict[str, np.ndarray]
-    rewards_idx: dict[str, np.ndarray]
+    tones_idx: dict[str, np.ndarray]
     sample_rate: float
     n_samples_session: int = 0
 
@@ -429,7 +440,11 @@ def load_session_plot_data(
     Reads:
       - ``pipeline_outputs/spout_behavior/licks_and_rewards/<animal>/
         <date_label>{half_suffix}.npz`` for ``Lick_{L,R}`` +
-        ``Reward_{L,R}``.
+        ``Tone_{L,R}`` (Q-A.β post-2026-05-14: tone-onset is the
+        always-present trial anchor; pre-Commit-A this read ``Reward_{L,R}``
+        keys, which held tone-onset content under the WS channel-label
+        swap. Post-Commit-A the on-disk ``Tone_{L,R}`` keys hold the
+        same content semantically-correctly).
       - Wavesurfer NPZ for ``sample_rate_input`` + total session
         sample count (1D signal length).
 
@@ -480,8 +495,8 @@ def load_session_plot_data(
             )
         with np.load(licks_path, allow_pickle=True) as licks:
             lick_idx = {key: licks[key] for key in ("Lick_L", "Lick_R")}
-            rewards_idx = {
-                key: licks[key] for key in ("Reward_L", "Reward_R")
+            tones_idx = {
+                key: licks[key] for key in ("Tone_L", "Tone_R")
             }
         ws_path = _resolve_session_npz_path(
             "wavesurfer_signals_processed", animal, date_label,
@@ -503,7 +518,7 @@ def load_session_plot_data(
         return SessionPlotData(
             date_label=date_label,
             lick_idx=lick_idx,
-            rewards_idx=rewards_idx,
+            tones_idx=tones_idx,
             sample_rate=sample_rate,
             n_samples_session=n_samples_session,
         )
@@ -516,7 +531,7 @@ def load_session_plot_data(
         raise FileNotFoundError(f"licks_and_rewards NPZ missing: {licks_path}")
     with np.load(licks_path, allow_pickle=True) as licks:
         lick_idx = {key: licks[key] for key in ("Lick_L", "Lick_R")}
-        rewards_idx = {key: licks[key] for key in ("Reward_L", "Reward_R")}
+        tones_idx = {key: licks[key] for key in ("Tone_L", "Tone_R")}
 
     if is_pattern_a:
         spec = multi_half[animal][date_label] or {}
@@ -563,7 +578,7 @@ def load_session_plot_data(
     return SessionPlotData(
         date_label=date_label,
         lick_idx=lick_idx,
-        rewards_idx=rewards_idx,
+        tones_idx=tones_idx,
         sample_rate=sample_rate,
         n_samples_session=n_samples_session,
     )
@@ -750,28 +765,28 @@ def compute_trial_lick_delays(
 
     Mirrors legacy ``sig_idxLickDelays__idx_idxLicks[date]`` (lines
     390-408). Returns nested dict:
-    ``{"Reward_L": {reward_idx: {"Lick_L": delays, "Lick_R": delays}}, "Reward_R": {...}}``
+    ``{"Tone_L": {reward_idx: {"Lick_L": delays, "Lick_R": delays}}, "Tone_R": {...}}``
     where ``delays`` is an array of lick sample indices relative to the
-    reward sample (i.e. ``lick_sample - reward_sample``). Negative
+    reward sample (i.e. ``lick_sample - tone_sample``). Negative
     values = lick before reward.
     """
     window_samples = _window_to_samples(window_seconds, session_data.sample_rate)
     out: dict[str, dict[int, dict[str, np.ndarray]]] = {}
-    for side_reward in ("L", "R"):
-        rewards = session_data.rewards_idx[f"Reward_{side_reward}"]
-        per_reward: dict[int, dict[str, np.ndarray]] = {}
-        for idx_reward, reward_sample in enumerate(rewards):
+    for side_tone in ("L", "R"):
+        tones = session_data.tones_idx[f"Tone_{side_tone}"]
+        per_trial: dict[int, dict[str, np.ndarray]] = {}
+        for idx_tone, tone_sample in enumerate(tones):
             per_side_licks: dict[str, np.ndarray] = {}
             for side_lick in ("L", "R"):
                 licks = session_data.lick_idx[f"Lick_{side_lick}"]
                 positions = _find_idx_within_window(
-                    licks, int(reward_sample), window_samples,
+                    licks, int(tone_sample), window_samples,
                 )
                 per_side_licks[f"Lick_{side_lick}"] = (
-                    licks[positions] - int(reward_sample)
+                    licks[positions] - int(tone_sample)
                 )
-            per_reward[idx_reward] = per_side_licks
-        out[f"Reward_{side_reward}"] = per_reward
+            per_trial[idx_tone] = per_side_licks
+        out[f"Tone_{side_tone}"] = per_trial
     return out
 
 
@@ -792,18 +807,18 @@ def compute_first_correct_lick_sample_idx(
     )
     out: dict[str, dict[int, int | None]] = {}
     for side in ("L", "R"):
-        rewards = session_data.rewards_idx[f"Reward_{side}"]
+        tones = session_data.tones_idx[f"Tone_{side}"]
         correct_licks = session_data.lick_idx[f"Lick_{side}"]
-        per_reward: dict[int, int | None] = {}
-        for idx_reward, reward_sample in enumerate(rewards):
+        per_trial: dict[int, int | None] = {}
+        for idx_tone, tone_sample in enumerate(tones):
             positions = _find_idx_within_window(
-                correct_licks, int(reward_sample), window_samples,
+                correct_licks, int(tone_sample), window_samples,
             )
             if positions.size == 0:
-                per_reward[idx_reward] = None
+                per_trial[idx_tone] = None
             else:
-                per_reward[idx_reward] = int(correct_licks[positions[0]])
-        out[side] = per_reward
+                per_trial[idx_tone] = int(correct_licks[positions[0]])
+        out[side] = per_trial
     return out
 
 
@@ -817,9 +832,9 @@ def compute_criteria_3(
     return {
         side: {
             idx: (fcl is not None)
-            for idx, fcl in per_reward.items()
+            for idx, fcl in per_trial.items()
         }
-        for side, per_reward in first_correct_lick_idx.items()
+        for side, per_trial in first_correct_lick_idx.items()
     }
 
 
@@ -840,25 +855,25 @@ def compute_criteria_4(
     n_corr_min = int(criteria_4_params["num_licks_correct_min"])
     n_incorr_max = int(criteria_4_params["num_licks_incorrect_max"])
     out: dict[str, dict[int, bool]] = {}
-    for side_reward in ("L", "R"):
-        rewards = session_data.rewards_idx[f"Reward_{side_reward}"]
-        per_reward: dict[int, bool] = {}
-        for idx_reward, reward_sample in enumerate(rewards):
+    for side_tone in ("L", "R"):
+        tones = session_data.tones_idx[f"Tone_{side_tone}"]
+        per_trial: dict[int, bool] = {}
+        for idx_tone, tone_sample in enumerate(tones):
             n_correct = _find_idx_within_window(
-                session_data.lick_idx[f"Lick_{side_reward}"],
-                int(reward_sample),
+                session_data.lick_idx[f"Lick_{side_tone}"],
+                int(tone_sample),
                 window_samples,
             ).size
-            other_side = "R" if side_reward == "L" else "L"
+            other_side = "R" if side_tone == "L" else "L"
             n_incorrect = _find_idx_within_window(
                 session_data.lick_idx[f"Lick_{other_side}"],
-                int(reward_sample),
+                int(tone_sample),
                 window_samples,
             ).size
-            per_reward[idx_reward] = bool(
+            per_trial[idx_tone] = bool(
                 (n_correct >= n_corr_min) and (n_incorrect <= n_incorr_max)
             )
-        out[side_reward] = per_reward
+        out[side_tone] = per_trial
     return out
 
 
@@ -887,25 +902,25 @@ def compute_first_lick_correct(
     post-reward licks on either side (no information to score).
     """
     out: dict[str, dict[int, bool | None]] = {}
-    for side_reward in ("L", "R"):
-        per_reward: dict[int, bool | None] = {}
-        for idx_reward, by_side in trial_lick_delays[f"Reward_{side_reward}"].items():
-            other_side = "R" if side_reward == "L" else "L"
-            correct_delays = by_side[f"Lick_{side_reward}"]
+    for side_tone in ("L", "R"):
+        per_trial: dict[int, bool | None] = {}
+        for idx_tone, by_side in trial_lick_delays[f"Tone_{side_tone}"].items():
+            other_side = "R" if side_tone == "L" else "L"
+            correct_delays = by_side[f"Lick_{side_tone}"]
             incorrect_delays = by_side[f"Lick_{other_side}"]
             correct_post = correct_delays[correct_delays >= 0]
             incorrect_post = incorrect_delays[incorrect_delays >= 0]
             if len(correct_post) > 0:
                 if len(incorrect_post) > 0:
-                    per_reward[idx_reward] = bool(correct_post[0] < incorrect_post[0])
+                    per_trial[idx_tone] = bool(correct_post[0] < incorrect_post[0])
                 else:
-                    per_reward[idx_reward] = True
+                    per_trial[idx_tone] = True
             else:
                 if len(incorrect_post) > 0:
-                    per_reward[idx_reward] = False
+                    per_trial[idx_tone] = False
                 else:
-                    per_reward[idx_reward] = None
-        out[side_reward] = per_reward
+                    per_trial[idx_tone] = None
+        out[side_tone] = per_trial
     return out
 
 
@@ -914,11 +929,11 @@ def compute_criteria_acc_bySession(
 ) -> dict[str, float]:
     """Fraction of trials passing criteria 3 AND 4, per side."""
     out: dict[str, float] = {}
-    for side, per_reward in criteria_34.items():
-        if len(per_reward) == 0:
+    for side, per_trial in criteria_34.items():
+        if len(per_trial) == 0:
             out[side] = float("nan")
         else:
-            out[side] = float(np.mean(list(per_reward.values())))
+            out[side] = float(np.mean(list(per_trial.values())))
     return out
 
 
@@ -935,16 +950,16 @@ def compute_firstLickCorrect_bySession(
     treated as 0 (incorrect / no-lick counts against accuracy).
     """
     out: dict[str, float] = {}
-    for side, per_reward in first_lick_correct.items():
+    for side, per_trial in first_lick_correct.items():
         if treat_none_as_zero:
             arr = np.array(
-                [0.0 if v is None else float(v) for v in per_reward.values()],
+                [0.0 if v is None else float(v) for v in per_trial.values()],
                 dtype=float,
             )
             out[side] = float(arr.mean()) if arr.size > 0 else float("nan")
         else:
             arr = np.array(
-                [np.nan if v is None else float(v) for v in per_reward.values()],
+                [np.nan if v is None else float(v) for v in per_trial.values()],
                 dtype=float,
             )
             out[side] = float(np.nanmean(arr)) if arr.size > 0 else float("nan")
@@ -960,10 +975,10 @@ def compute_median_lick_rate_bySession(
     Mirrors legacy ``sig_meanStd_MedianCorrectLickRate`` (lines 642-678).
     """
     per_side: dict[str, dict[str, float]] = {}
-    for side_reward in ("L", "R"):
+    for side_tone in ("L", "R"):
         rates: list[float] = []
-        for by_side in trial_lick_delays[f"Reward_{side_reward}"].values():
-            correct_delays = by_side[f"Lick_{side_reward}"]
+        for by_side in trial_lick_delays[f"Tone_{side_tone}"].values():
+            correct_delays = by_side[f"Lick_{side_tone}"]
             ilis = np.diff(correct_delays)
             if ilis.size == 0:
                 rates.append(0.0)
@@ -972,9 +987,9 @@ def compute_median_lick_rate_bySession(
                 hz = 0.0 if med <= 0 else float(1.0 / (med / sample_rate))
                 rates.append(0.0 if not np.isfinite(hz) else hz)
         if len(rates) == 0:
-            per_side[side_reward] = {"mean": float("nan"), "std": float("nan")}
+            per_side[side_tone] = {"mean": float("nan"), "std": float("nan")}
         else:
-            per_side[side_reward] = {
+            per_side[side_tone] = {
                 "mean": float(np.nanmean(rates)),
                 "std": float(np.nanstd(rates)),
             }
@@ -987,9 +1002,9 @@ def compute_num_licks_bySession(
     """Per-side mean ± std of per-trial lick counts.
 
     Returns a 3-level dict:
-    ``{"correct": {"Reward_L": {"mean": x, "std": y}, "Reward_R": ...},
-       "all":     {"Reward_L": ..., "Reward_R": ...},
-       "incorrect": {"Reward_L": ..., "Reward_R": ...}}``
+    ``{"correct": {"Tone_L": {"mean": x, "std": y}, "Tone_R": ...},
+       "all":     {"Tone_L": ..., "Tone_R": ...},
+       "incorrect": {"Tone_L": ..., "Tone_R": ...}}``
 
     Mirrors legacy ``sig_meanStd_numCorrectLicksPerTrial`` /
     ``sig_meanStd_numAllLicksPerTrial`` /
@@ -998,24 +1013,24 @@ def compute_num_licks_bySession(
     out: dict[str, dict[str, dict[str, float]]] = {
         "correct": {}, "all": {}, "incorrect": {},
     }
-    for side_reward in ("L", "R"):
-        other = "R" if side_reward == "L" else "L"
+    for side_tone in ("L", "R"):
+        other = "R" if side_tone == "L" else "L"
         n_correct: list[int] = []
         n_all: list[int] = []
         n_incorrect: list[int] = []
-        for by_side in trial_lick_delays[f"Reward_{side_reward}"].values():
-            n_correct.append(int(by_side[f"Lick_{side_reward}"].size))
+        for by_side in trial_lick_delays[f"Tone_{side_tone}"].values():
+            n_correct.append(int(by_side[f"Lick_{side_tone}"].size))
             n_all.append(int(by_side["Lick_L"].size + by_side["Lick_R"].size))
             n_incorrect.append(int(by_side[f"Lick_{other}"].size))
         for kind, values in (
             ("correct", n_correct), ("all", n_all), ("incorrect", n_incorrect),
         ):
             if len(values) == 0:
-                out[kind][f"Reward_{side_reward}"] = {
+                out[kind][f"Tone_{side_tone}"] = {
                     "mean": float("nan"), "std": float("nan"),
                 }
             else:
-                out[kind][f"Reward_{side_reward}"] = {
+                out[kind][f"Tone_{side_tone}"] = {
                     "mean": float(np.nanmean(values)),
                     "std": float(np.nanstd(values)),
                 }
@@ -1024,25 +1039,29 @@ def compute_num_licks_bySession(
 
 def compute_latency_bySession(
     first_correct_lick_idx: dict[str, dict[int, int | None]],
-    rewards_idx: dict[str, np.ndarray],
+    tones_idx: dict[str, np.ndarray],
     sample_rate: float,
 ) -> dict[str, dict[str, float]]:
     """Per-side mean ± std of latency (seconds) to first correct lick.
 
-    Mirrors legacy ``latency_meanStd_bySide`` (lines 805-829).
+    Q-A.β rename (2026-05-14): parameter ``rewards_idx → tones_idx``;
+    latency is measured from tone-onset to first correct-side lick.
+    Pre-fix the parameter was named for the swapped channel label, but
+    the underlying anchor was tone-onset all along under Case-2
+    universal. Mirrors legacy ``latency_meanStd_bySide`` (lines 805-829).
     ``None`` first-correct-lick entries become ``NaN`` and excluded
     from the mean/std.
     """
     out: dict[str, dict[str, float]] = {}
     for side in ("L", "R"):
-        rewards = rewards_idx[f"Reward_{side}"]
+        tones = tones_idx[f"Tone_{side}"]
         latencies: list[float] = []
-        for idx_reward, fcl in first_correct_lick_idx[side].items():
+        for idx_tone, fcl in first_correct_lick_idx[side].items():
             if fcl is None:
                 latencies.append(float("nan"))
             else:
                 latencies.append(
-                    (fcl - int(rewards[idx_reward])) / sample_rate
+                    (fcl - int(tones[idx_tone])) / sample_rate
                 )
         arr = np.array(latencies, dtype=float)
         if arr.size == 0:
@@ -1091,9 +1110,9 @@ def _compute_per_session_stats(
     flc_zero: dict[str, list[float]] = {"L": [], "R": []}
     median_rate: dict[str, list[dict[str, float]]] = {"L": [], "R": []}
     num_licks: dict[str, dict[str, list[dict[str, float]]]] = {
-        "correct": {"Reward_L": [], "Reward_R": []},
-        "all": {"Reward_L": [], "Reward_R": []},
-        "incorrect": {"Reward_L": [], "Reward_R": []},
+        "correct": {"Tone_L": [], "Tone_R": []},
+        "all": {"Tone_L": [], "Tone_R": []},
+        "incorrect": {"Tone_L": [], "Tone_R": []},
     }
     latency: dict[str, list[dict[str, float]]] = {"L": [], "R": []}
 
@@ -1116,7 +1135,7 @@ def _compute_per_session_stats(
         ms_rate = compute_median_lick_rate_bySession(delays, data.sample_rate)
         ms_num = compute_num_licks_bySession(delays)
         ms_lat = compute_latency_bySession(
-            fcl_idx, data.rewards_idx, data.sample_rate,
+            fcl_idx, data.tones_idx, data.sample_rate,
         )
 
         for side in ("L", "R"):
@@ -1126,8 +1145,8 @@ def _compute_per_session_stats(
             median_rate[side].append(ms_rate[side])
             latency[side].append(ms_lat[side])
         for kind in ("correct", "all", "incorrect"):
-            for side_reward in ("Reward_L", "Reward_R"):
-                num_licks[kind][side_reward].append(ms_num[kind][side_reward])
+            for side_tone in ("Tone_L", "Tone_R"):
+                num_licks[kind][side_tone].append(ms_num[kind][side_tone])
 
     return _PerSessionStats(
         dates=dates,
@@ -1402,16 +1421,16 @@ def _render_numLicks_bySession_kind(
     fig, ax = plt.subplots(figsize=tuple(config["figsize_longitudinal"]))
     for side in ("L", "R"):
         means = [
-            d["mean"] for d in stats.numLicks[kind][f"Reward_{side}"]
+            d["mean"] for d in stats.numLicks[kind][f"Tone_{side}"]
         ]
         stds = [
-            d["std"] for d in stats.numLicks[kind][f"Reward_{side}"]
+            d["std"] for d in stats.numLicks[kind][f"Tone_{side}"]
         ]
         offset = 0.1 if side == "R" else -0.1
         ax.errorbar(
             x=axis.x_vals + offset, y=means,
             yerr=[[0] * len(stds), stds],  # upper-only error bar
-            label=f"Reward {side}",
+            label=f"Tone {side}",
             marker="o", markersize=2,
             color=SIDE_COLORS[side],
         )
@@ -1501,22 +1520,22 @@ def render_numLicks_bySession_correct_and_incorrect(
         vline_x=config["stroke_vline_x"],
     )
     fig, ax = plt.subplots(figsize=tuple(config["figsize_longitudinal"]))
-    for side_reward, linestyle, kind in [
-        ("Reward_R", "-", "correct"),
-        ("Reward_L", "-", "correct"),
-        ("Reward_R", "--", "incorrect"),
-        ("Reward_L", "--", "incorrect"),
+    for side_tone, linestyle, kind in [
+        ("Tone_R", "-", "correct"),
+        ("Tone_L", "-", "correct"),
+        ("Tone_R", "--", "incorrect"),
+        ("Tone_L", "--", "incorrect"),
     ]:
-        side = side_reward.split("_")[1]
-        means = [d["mean"] for d in stats.numLicks[kind][side_reward]]
-        stds = [d["std"] for d in stats.numLicks[kind][side_reward]]
+        side = side_tone.split("_")[1]
+        means = [d["mean"] for d in stats.numLicks[kind][side_tone]]
+        stds = [d["std"] for d in stats.numLicks[kind][side_tone]]
         offset = 0.1 if side == "R" else -0.1
         ax.errorbar(
             x=axis.x_vals + offset, y=means,
             yerr=[[0] * len(stds), stds],
             linestyle=linestyle, marker="o", markersize=2,
             color=SIDE_COLORS[side],
-            label=f"Reward {side} {kind}",
+            label=f"Tone {side} {kind}",
         )
     apply_longitudinal_axis(ax, axis, config)
     ax.set_ylim(0, config["numlicks_y_max"])
@@ -1546,9 +1565,9 @@ def render_numLicks_bySession_correct_and_incorrect(
 #
 # Mirrors legacy ``plot_raster`` (behavior_report_PS.py:415-448) +
 # emission (line 531-533). Intentional deviations from legacy:
-#   1. Side-naming convention — legacy uses ``fn_flip_lr(side_reward)``
+#   1. Side-naming convention — legacy uses ``fn_flip_lr(side_tone)``
 #      on the ylabel because legacy operates WS-frame internally; the
-#      new pipeline reads side_reward as mouse-frame directly.
+#      new pipeline reads side_tone as mouse-frame directly.
 #   2. ``raster_dot_alpha`` (Priya 2026-05-13) — dots use
 #      ``alpha=0.6`` (config-driven) instead of legacy's opaque 1.0.
 #      Lets the under-layer peek through; mitigates label-side-
@@ -1591,7 +1610,7 @@ def render_lick_raster(
         relative to reward) at y=trial_idx, dot size from
         ``visual_gate.raster_dot_size`` config. Color
         ``raster_dot_correct_color`` (green) when ``side_lick ==
-        side_reward``; ``raster_dot_incorrect_color`` (magenta)
+        side_tone``; ``raster_dot_incorrect_color`` (magenta)
         otherwise. Per-dot ``alpha=visual_gate.raster_dot_alpha``
         (intentional deviation; see module-level note 2).
       - Vertical reward-marker line at x=0, color
@@ -1609,7 +1628,7 @@ def render_lick_raster(
         ``xtick_fontsize`` (the "Time (s)" xlabel itself is now a
         figure-level supxlabel; intentional deviation from legacy's
         per-axis xlabel × N_sessions repetition).
-      - Left-column only: ylabel "Trials   (side: mouse {side_reward})".
+      - Left-column only: ylabel "Trials   (side: mouse {side_tone})".
 
     The legacy criteria_34 pass/fail horizontal-line overlay
     (behavior_report_PS.py:428-430) is intentionally NOT ported —
@@ -1657,20 +1676,20 @@ def render_lick_raster(
         figsize=tuple(config["figsize_raster_grid"]),
         squeeze=False,
     )
-    for ii, side_reward in enumerate(("L", "R")):
+    for ii, side_tone in enumerate(("L", "R")):
         for jj, date in enumerate(dates):
             ax = axs[ii, jj]
-            delays_by_reward = per_date_delays[date][f"Reward_{side_reward}"]
+            delays_by_trial = per_date_delays[date][f"Tone_{side_tone}"]
             # Load sample_rate from the same SessionPlotData? We need it
             # for the lick-delay → seconds conversion. Reload here to
             # avoid keeping all SessionPlotData live; lookup is cheap.
             data = load_session_plot_data(animal, date, resolver)
-            for idx_reward, by_side in delays_by_reward.items():
+            for idx_tone, by_side in delays_by_trial.items():
                 for side_lick in ("L", "R"):
                     lick_delays = by_side[f"Lick_{side_lick}"]
                     if lick_delays.size == 0:
                         continue
-                    is_correct = (side_lick == side_reward)
+                    is_correct = (side_lick == side_tone)
                     color = (
                         config["raster_dot_correct_color"] if is_correct
                         else config["raster_dot_incorrect_color"]
@@ -1681,14 +1700,14 @@ def render_lick_raster(
                     )
                     ax.scatter(
                         lick_delays / data.sample_rate,
-                        np.full_like(lick_delays, idx_reward, dtype=float),
+                        np.full_like(lick_delays, idx_tone, dtype=float),
                         s=config["raster_dot_size"],
                         color=color,
                         alpha=config["raster_dot_alpha"],
                         zorder=dot_zorder,
                     )
             # Reward marker (vertical line at x=0).
-            n_trials = len(delays_by_reward)
+            n_trials = len(delays_by_trial)
             ax.plot(
                 [0, 0], [0, n_trials],
                 config["raster_reward_marker_color"],
@@ -1711,7 +1730,7 @@ def render_lick_raster(
             # Left-column ylabel. New-pipeline side convention: read
             # mouse-frame directly (no fn_flip_lr).
             if jj == 0:
-                ax.set_ylabel(f"Trials   (side: mouse {side_reward})")
+                ax.set_ylabel(f"Trials   (side: mouse {side_tone})")
             else:
                 ax.set_yticklabels([])
 
@@ -1775,26 +1794,32 @@ def compute_lickiness_bySession(
     n_samps = session_data.n_samples_session
 
     out: dict[str, int] = {"L": 0, "R": 0}
-    all_rews = np.sort(np.concatenate([
-        session_data.rewards_idx["Reward_L"],
-        session_data.rewards_idx["Reward_R"],
+    # Q-A.β: anchor consolidation is over tone-onset events (the
+    # always-present trial cue). The synchronous-event property
+    # (per .scratch_phase_8a_10/reward_tone_swap_extended_diagnostic.md
+    # §C) means pre-fix "inter-reward windows" computed over the
+    # swapped-labeled channel were already inter-tone windows
+    # numerically.
+    all_tones = np.sort(np.concatenate([
+        session_data.tones_idx["Tone_L"],
+        session_data.tones_idx["Tone_R"],
     ]))
-    if all_rews.size == 0:
+    if all_tones.size == 0:
         return out
 
-    # Inter-reward windows.
-    for rew, next_rew in zip(all_rews[:-1], all_rews[1:]):
-        start = int(rew) + upper
-        end = min(int(next_rew), int(rew) + mx)
+    # Inter-tone windows.
+    for tone, next_tone in zip(all_tones[:-1], all_tones[1:]):
+        start = int(tone) + upper
+        end = min(int(next_tone), int(tone) + mx)
         if end <= start:
             continue
         for side in ("L", "R"):
             ls = session_data.lick_idx[f"Lick_{side}"]
             out[side] += int(np.sum((ls > start) & (ls < end)))
 
-    # Post-last-reward window. Capped at n_samples_session when known;
+    # Post-last-tone window. Capped at n_samples_session when known;
     # uncapped otherwise (fallback when WS NPZ had no 1D signal).
-    last = int(all_rews[-1])
+    last = int(all_tones[-1])
     start = last + upper
     end = last + mx
     if n_samps > 0:
@@ -1824,8 +1849,8 @@ def compute_switchiness_bySession(
     """
     lr_counts: list[int] = []
     rl_counts: list[int] = []
-    for side_reward in ("L", "R"):
-        trials = trial_lick_delays[f"Reward_{side_reward}"]
+    for side_tone in ("L", "R"):
+        trials = trial_lick_delays[f"Tone_{side_tone}"]
         for trial_lick_dict in trials.values():
             events = (
                 [(int(t), "L") for t in trial_lick_dict["Lick_L"]]
