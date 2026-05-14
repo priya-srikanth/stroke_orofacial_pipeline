@@ -1507,3 +1507,14 @@ spout_close_vs_std:
   # 90° CCW (bottom-to-top reading; mirrors the day labels'
   # rotated-270° right-spine convention).
   raster_half_label_fontsize: 11
+  # Phase 8a.10.1 Task 4 cosmetic (2026-05-14): cohort_dot_size
+  # controls the marker area (matplotlib `s=` in pts²) for the
+  # paired-scatter dots in Sub-B Rows 1-3 (summary) and Rows 1-2
+  # (per_trial). Pre-rename defaults were s=24 (summary) and s=8
+  # (per_trial); both bumped to 80 for cohort-level legibility on
+  # post-fix figures. cohort_dot_edge_width controls the
+  # open-marker (Close-condition) edge linewidth proportional to
+  # the larger dot. Row 4 raster dot styling is independent
+  # (raster_dot_size in the visual_gate: block).
+  cohort_dot_size: 80
+  cohort_dot_edge_width: 1.0

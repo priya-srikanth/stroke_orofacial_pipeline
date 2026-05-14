@@ -423,6 +423,8 @@ def _plot_row_per_session_dots_and_means(
     bare_vals: list[float],
     b_vals: list[float],
     licking_xtick_fontsize: int | float | None = None,
+    dot_size: float = 24.0,
+    dot_edge_width: float = 0.8,
 ) -> None:
     """Generic dot-plot helper for Rows 1, 2, 3.
 
@@ -439,6 +441,15 @@ def _plot_row_per_session_dots_and_means(
     Addendum #4 Tweak 3: ``licking_xtick_fontsize`` controls the
     "Standard"/"Close" xtick label size. ``None`` keeps the
     matplotlib default (~10).
+
+    Phase 8a.10.1 Task 4 cosmetic (2026-05-14): ``dot_size`` (in pts²)
+    + ``dot_edge_width`` made configurable so the cohort-level
+    paired-scatter dots can be enlarged. Renderer passes
+    ``cohort_config["cohort_dot_size"]`` /
+    ``cohort_config["cohort_dot_edge_width"]`` from defaults.yaml
+    (current defaults: 80 / 1.0). Pre-rename hard-coded values
+    (24 / 0.8) preserved as the kwarg defaults so test fixtures that
+    don't pass through cohort_config still render.
 
     Caller sets y-axis limits, labels, titles.
     """
@@ -470,9 +481,9 @@ def _plot_row_per_session_dots_and_means(
             if np.isnan(v):
                 continue
             ax.scatter(
-                x, v, s=24, marker="o",
+                x, v, s=dot_size, marker="o",
                 facecolor=facecolor, edgecolor=mouse_side_color,
-                linewidth=0.8, zorder=2,
+                linewidth=dot_edge_width, zorder=2,
             )
     # Mean bars — color = mouse_side_color (same for Standard and
     # Close). Differentiation = x-position only.
@@ -918,6 +929,11 @@ def render_animal_summary_spout_close_vs_std(
     ]
     raster_xlabel_fontsize = cohort_config["raster_xlabel_fontsize"]
     raster_xlabel_labelpad = cohort_config["raster_xlabel_labelpad"]
+    # Phase 8a.10.1 Task 4 cosmetic: dot-size knobs threaded to the
+    # row helpers. Defaults at 80 / 1.0 in spout_close_vs_std:; Priya
+    # can iterate via the cohort_dot_size config knob alone.
+    cohort_dot_size = float(cohort_config["cohort_dot_size"])
+    cohort_dot_edge_width = float(cohort_config["cohort_dot_edge_width"])
 
     # Row 1: accuracy_firstCorrectLickAll
     for jj, side in enumerate(("L", "R")):
@@ -927,6 +943,8 @@ def render_animal_summary_spout_close_vs_std(
             bare_vals=bare_acc[side],
             b_vals=b_acc[side],
             licking_xtick_fontsize=licking_xtick_fontsize,
+            dot_size=cohort_dot_size,
+            dot_edge_width=cohort_dot_edge_width,
         )
         ax.set_ylim(*row1_ylim)
         ax.set_title(
@@ -944,6 +962,8 @@ def render_animal_summary_spout_close_vs_std(
             bare_vals=bare_n_correct[side],
             b_vals=b_n_correct[side],
             licking_xtick_fontsize=licking_xtick_fontsize,
+            dot_size=cohort_dot_size,
+            dot_edge_width=cohort_dot_edge_width,
         )
         ax.set_ylim(*row2_ylim)
         ax.set_title(
@@ -961,6 +981,8 @@ def render_animal_summary_spout_close_vs_std(
             bare_vals=bare_n_incorrect[side],
             b_vals=b_n_incorrect[side],
             licking_xtick_fontsize=licking_xtick_fontsize,
+            dot_size=cohort_dot_size,
+            dot_edge_width=cohort_dot_edge_width,
         )
         ax.set_ylim(*row3_ylim)
         ax.set_title(
@@ -1065,6 +1087,8 @@ def _plot_panel_per_trial_scatter(
     bare_per_trial: list[int],
     b_per_trial: list[int],
     licking_xtick_fontsize: int | float,
+    dot_size: float = 8.0,
+    dot_edge_width: float = 0.5,
 ) -> None:
     """Pooled per-trial scatter: each session contributes one dot
     per trial.
@@ -1077,6 +1101,15 @@ def _plot_panel_per_trial_scatter(
         per-session summary's Addendum #3 Tweak 2 convention).
       - Mean horizontal bars per condition (mouse-side color,
         COHORT_MEAN_BAR_LINEWIDTH).
+
+    Phase 8a.10.1 Task 4 cosmetic (2026-05-14): ``dot_size`` (in pts²)
+    + ``dot_edge_width`` made configurable. Renderer passes
+    ``cohort_config["cohort_dot_size"]`` /
+    ``cohort_config["cohort_dot_edge_width"]`` from defaults.yaml.
+    Pre-rename hard-coded values (8 / 0.5) preserved as kwarg
+    defaults — much smaller than summary defaults because the
+    per-trial panel pools all trials × sessions (PS54 = ~672 dots
+    per panel; legibility requires sparser marker area).
     """
     mouse_side_color = SIDE_COLORS[side_tone]
     rng = np.random.RandomState(42)
@@ -1092,9 +1125,9 @@ def _plot_panel_per_trial_scatter(
         facecolor = mouse_side_color if is_filled else "none"
         ax.scatter(
             xs, vals,
-            s=8, marker="o",
+            s=dot_size, marker="o",
             facecolor=facecolor, edgecolor=mouse_side_color,
-            linewidth=0.5, alpha=0.5,
+            linewidth=dot_edge_width, alpha=0.5,
             zorder=2,
         )
     # Mean bars — color = mouse_side_color (same convention as
@@ -1209,6 +1242,8 @@ def render_animal_per_trial_spout_close_vs_std(
     spout_distance_xlabel_fontsize = cohort_config[
         "spout_distance_xlabel_fontsize"
     ]
+    cohort_dot_size = float(cohort_config["cohort_dot_size"])
+    cohort_dot_edge_width = float(cohort_config["cohort_dot_edge_width"])
 
     # Row 1: per-trial CORRECT licks
     for jj, side in enumerate(("L", "R")):
@@ -1218,6 +1253,8 @@ def render_animal_per_trial_spout_close_vs_std(
             bare_per_trial=bare_correct[side],
             b_per_trial=b_correct[side],
             licking_xtick_fontsize=licking_xtick_fontsize,
+            dot_size=cohort_dot_size,
+            dot_edge_width=cohort_dot_edge_width,
         )
         ax.set_ylim(*row1_ylim)
         ax.set_title(
@@ -1235,6 +1272,8 @@ def render_animal_per_trial_spout_close_vs_std(
             bare_per_trial=bare_incorrect[side],
             b_per_trial=b_incorrect[side],
             licking_xtick_fontsize=licking_xtick_fontsize,
+            dot_size=cohort_dot_size,
+            dot_edge_width=cohort_dot_edge_width,
         )
         ax.set_ylim(*row2_ylim)
         ax.set_title(
