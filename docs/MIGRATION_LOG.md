@@ -5839,3 +5839,129 @@ Sub-deliverable B reshaped mid-phase from 5-endpoint per-session-and-cohort to 3
 6. **CG-B2 per-session paired-panel renderers (preserved in git history at `d757294`).** Superseded by CG-B3 R1's cohort-only design (Decision 8). If a future phase needs per-session per-endpoint visualizations, the CG-B2 implementation can be cherry-picked back from history.
 
 **Tag:** `v8a.10-spout-visual-gate` on the merge commit.
+
+---
+
+## Phase 8a.10.1 — Cohort-wide Tone↔Reward channel-label swap fix at wavesurfer read time
+
+**Date:** 2026-05-14
+
+**Branch / tag.** Branch `phase/8a.10.1-tone-reward-swap-fix` opened 2026-05-14 off `main` at `5cc1a9e` (PR #115 docs-kickoff merge). Tag-on-merge `v8a.10.1-tone-reward-swap-fix`; merge SHA + PR# recoverable post-merge via `git rev-list -n 1 v8a.10.1-tone-reward-swap-fix` and `gh pr list --search 'v8a.10.1'`.
+
+**Kickoff:** [`docs/prompts/phase-8a.10.1-tone-reward-swap-fix-kickoff.md`](prompts/phase-8a.10.1-tone-reward-swap-fix-kickoff.md). Addenda #1-#3 captured inline (Path Y format).
+
+**Sibling DECISIONS entry:** 2026-05-14 (10 decisions; see Decisions 1-10 above this MIGRATION_LOG section).
+
+### Context
+
+Phase 8a.10 Sub-B Row 4 raster surfaced semantic mislabeling cohort-wide: the raw `.h5` files' "Reward_*" channel actually carries ~200 ms tone TTLs (cue onset), while "Tone_*" carries ~26 ms reward solenoid pulses. The labels were inverted at acquisition (pre-existing; not a regression). Phase 8a.10.1 fixes the labeling at the wavesurfer read boundary so downstream symbols reference scientifically-correct events.
+
+Because tone + reward fire synchronously at trial start on bilateral-reward sessions (Pavlovian), the swap is invariant at the test-vector level on 200 of 276 cohort sessions; the remaining 76 sessions carry ≥1 withhold trial where the reward solenoid does not fire, and these sessions show predicted denominator changes in accuracy renders + baseline-pool growth in DLC consumer plots.
+
+### What landed
+
+**Source (8 changed source modules + 1 new test module):**
+
+- [`src/stroke_orofacial/spout_behavior/wavesurfer_io.py`](../src/stroke_orofacial/spout_behavior/wavesurfer_io.py) — Commit A. Channel-name → array-key mapping reads under `tone_reward_swap_enabled: true` gate (`configs/defaults.yaml`). When the flag is true, "Reward_*" loads into the tone slot and "Tone_*" loads into the reward slot. Flag-false branch preserves legacy mislabel for byte-identity regression tests + emergency rollback.
+- [`src/stroke_orofacial/spout_behavior/trial_segmentation.py`](../src/stroke_orofacial/spout_behavior/trial_segmentation.py) — Commit B. `TrialRecord` switches to two-anchor model: `tone_idx: int` (always present, the cue temporal anchor) + `reward_idx: int | None` (optional outcome; `None` for withhold trials). `reward_side` field renamed to `tone_side` (side is determined at cue presentation, not at reward delivery).
+- [`src/stroke_orofacial/spout_behavior/criteria.py`](../src/stroke_orofacial/spout_behavior/criteria.py), [`endpoints_engagement.py`](../src/stroke_orofacial/spout_behavior/endpoints_engagement.py), [`endpoints_per_trial.py`](../src/stroke_orofacial/spout_behavior/endpoints_per_trial.py), [`endpoints_writer.py`](../src/stroke_orofacial/spout_behavior/endpoints_writer.py), [`session_processing.py`](../src/stroke_orofacial/spout_behavior/session_processing.py), [`visual_gate.py`](../src/stroke_orofacial/spout_behavior/visual_gate.py), [`spout_close_vs_std.py`](../src/stroke_orofacial/spout_behavior/spout_close_vs_std.py), [`criteria_slugs.py`](../src/stroke_orofacial/spout_behavior/criteria_slugs.py) — Commit B (Q-C Case-2 renames). Function/method renames: `tone_trial_count_per_session()` replaces `reward_trial_count_per_session()`; `_TONE_REWARD_PAIRING_WINDOW_MS` constant replaces `_REWARD_TONE_PAIRING_WINDOW_MS` (docstring polish in commit `8db285c`); `SessionPlotData.tones_idx` replaces `SessionPlotData.rewards_idx`.
+- [`src/stroke_orofacial/dlc_spatial/reward_aligned.py`](../src/stroke_orofacial/dlc_spatial/reward_aligned.py) — Commit B (X1-β source). `load_reward_events` → `load_tone_events` rename. NPZ-key reads swap `Reward_<side> → Tone_<side>`. Local variable `reward_ws` + module name `reward_aligned.py` kept as-is; their cleanup is Phase 7b-light per DECISIONS Decision 6.
+- [`src/stroke_orofacial/dlc_kinematics/interpolation.py`](../src/stroke_orofacial/dlc_kinematics/interpolation.py), [`tongue_pertrial.py`](../src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py), [`mean_sem_visual.py`](../src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py) — Commit B (X1-β indirect callers). 3 sites updated to call `load_tone_events` in place of `load_reward_events`.
+
+**Config:**
+
+- [`configs/defaults.yaml`](../configs/defaults.yaml):
+  - New: `tone_reward_swap_enabled: true` opt-in flag (top-level).
+  - Renamed: `behavior_report.window_around_rewards` → `behavior_report.window_around_tones` (Commit E partial-rename — only the production-consumed knob).
+  - New: `visual_gate.lick_count_integer_yticks: true`; `spout_close_vs_std.cohort_dot_size: 80`, `cohort_ytick_fontsize: 11`, `cohort_ylabel_fontsize: 13`, `lick_count_integer_yticks: true` (Task 4 follow-on figure cosmetics).
+
+**Tests (1417 pass; 14 test files touched; new test module + 13 sync'd):**
+
+- [`tests/test_wavesurfer_io.py`](../tests/test_wavesurfer_io.py) — **NEW** 196 lines. Pins both `tone_reward_swap_enabled` flag values + channel-name → array-key mapping invariants + multi-channel correctness on a synthetic .h5 fixture.
+- Test sync (Commit C) across 13 test files for Q-A.β / Q-B.α / Q-C / X1-β: [`test_criteria.py`](../tests/test_criteria.py), [`test_endpoints_per_trial.py`](../tests/test_endpoints_per_trial.py), [`test_endpoints_engagement.py`](../tests/test_endpoints_engagement.py), [`test_trial_segmentation.py`](../tests/test_trial_segmentation.py), [`test_visual_gate.py`](../tests/test_visual_gate.py), [`test_spout_close_vs_std.py`](../tests/test_spout_close_vs_std.py), [`test_reward_aligned.py`](../tests/test_reward_aligned.py), [`test_dlc_spatial_side_convention.py`](../tests/test_dlc_spatial_side_convention.py), [`test_tongue_pertrial.py`](../tests/test_tongue_pertrial.py), [`test_dlc_interpolation.py`](../tests/test_dlc_interpolation.py), [`test_endpoints_writer.py`](../tests/test_endpoints_writer.py), [`test_endpoints_within_session.py`](../tests/test_endpoints_within_session.py), [`test_recovery_trajectories.py`](../tests/test_recovery_trajectories.py).
+
+**Scripts (5 new under `scripts/phase_8a_10_1/`):**
+
+- [`scripts/phase_8a_10_1/reemit_phase_2_post_swap_fix.py`](../scripts/phase_8a_10_1/reemit_phase_2_post_swap_fix.py) — 276-session driver for Task 2 Phase 2 re-emit. Pre/post sha256 capture, per-session error handling, manifest output.
+- [`scripts/phase_8a_10_1/reemit_manifest.csv`](../scripts/phase_8a_10_1/reemit_manifest.csv) — 276 rows × `(animal, date, half_suffix, status, pre_fix_sha256, post_fix_sha256, wall_time_sec)`. Tally: **276 OK / 0 ERROR / 200 byte-identical / 76 differing**.
+- [`scripts/phase_8a_10_1/audit_stale_npzs.py`](../scripts/phase_8a_10_1/audit_stale_npzs.py) + [`delete_stale_npzs.py`](../scripts/phase_8a_10_1/delete_stale_npzs.py) + [`deletion_manifest.json`](../scripts/phase_8a_10_1/deletion_manifest.json) — Commit F cleanup harness. 512 orphan NPZs (14.5 GB) removed from `pipeline_outputs/spout_behavior/` outside the canonical 276-session cohort scope. Manifest is 7189 lines (one entry per deleted file with rel-path + size).
+- [`scripts/phase_8a_10_1/rerender_phase_8a_10_figures.py`](../scripts/phase_8a_10_1/rerender_phase_8a_10_figures.py) + [`rerender_manifest.csv`](../scripts/phase_8a_10_1/rerender_manifest.csv) — Task 4 driver + 405-row manifest. 404 figures re-rendered across 3 families (Sub-A `visual_gate.py` per-mouse plots, Sub-A `cohort_summary.py` tile-grids, Sub-B `spout_close_vs_std.py` summary + per-trial), on post-fix Phase 2 NPZs.
+
+**Docs:**
+
+- [`docs/DECISIONS.md`](DECISIONS.md) — 2026-05-14 top entry (this commit's sibling): 10 decisions (Decisions 1-10) covering fix location + gate flag (Decision 1), Q4.B cohort scope = 276 sessions (Decision 2), Option α in-place overwrite (Decision 3), Q1.A reversal + F-P-7 surfaced (Decision 4), Q2.A 404-figure re-render (Decision 5), Q3.B deferral to Phase 7b-light (Decision 6), Case-2 universal rename verdict (Decision 7), peri_reward partial-rename E.C (Decision 8), 512-NPZ stale cleanup (Decision 9), 4-stage verification gate (Decision 10).
+- [`docs/COWORK_SESSION_STATE.md`](COWORK_SESSION_STATE.md) — refreshed at phase close.
+- [`docs/prompts/phase-8a.10.1-tone-reward-swap-fix-kickoff.md`](prompts/phase-8a.10.1-tone-reward-swap-fix-kickoff.md) — canonical execution spec + Addenda #1-#3 captured inline (Path Y format).
+- [`docs/PHASE_8A_LEGACY_ENDPOINT_MAPPING.md`](PHASE_8A_LEGACY_ENDPOINT_MAPPING.md), [`docs/SCIENTIFIC_ENDPOINTS.md`](SCIENTIFIC_ENDPOINTS.md), [`docs/phase-8a/legacy-behavior-report-rollup.md`](phase-8a/legacy-behavior-report-rollup.md) — minor terminology updates following Q-C renames.
+
+### Commit-by-commit timeline
+
+| # | SHA | Commit | Scope |
+|---|---|---|---|
+| 1 | `b86acfa` | fix(phase-8a.10.1 commit-A): swap Tone↔Reward channels at wavesurfer read time | The load-bearing change. `wavesurfer_io.py` channel-name mapping under `tone_reward_swap_enabled: true` gate. |
+| 2 | `f4f96f8` | refactor(phase-8a.10.1 commit-B): consumer renames per Q-A.β / Q-B.α / Q-C / X1-β | Two-anchor TrialRecord (Q-A.β), `reward_side` → `tone_side` (Q-B.α), function/dataclass renames (Q-C Case-2), DLC X1-β source + 3 indirect callers. |
+| 3 | `5e6259b` | test(phase-8a.10.1 commit-C): test sync per Q-A.β / Q-B.α / Q-C / X1-β | 13 test files updated + new `test_wavesurfer_io.py` (196 lines). pytest 1417 pass. |
+| 4 | `ce9ab85` | docs(phase-8a.10.1 commit-D): post-tone / tone-anchored docstring polish | Docstring narrative + scientific-endpoints doc terminology alignment. |
+| 5 | `8db285c` | docs(phase-8a.10.1): clarify _TONE_REWARD_PAIRING_WINDOW_MS rationale | Constant docstring clarifies tone-anchored pairing semantics. |
+| 6 | `ece0fb8` | chore(phase-8a.10.1 task-2): Phase 2 cohort-wide re-emit post-swap-fix (276 NPZs) | Driver script + 276-row manifest committed; NPZs re-emitted in place (Option α). PS55/2025-06-06 dual-h5 handled via `DUAL_H5_HACK_SESSIONS`. |
+| 7 | `54a203a` | refactor(phase-8a.10.1 commit-E): rename behavior_report.window_around_rewards → window_around_tones | Commit E partial-rename per Pass-2 peri_reward audit (E.C-partial); the one production-consumed knob in the peri_reward family. |
+| 8 | `267b5d3` | chore(phase-8a.10.1 commit-F): cleanup 512 stale pre-fix Phase-2 NPZs outside canonical cohort scope | 512 orphan NPZs / 14.5 GB removed from `pipeline_outputs/spout_behavior/`. Driver + audit + deletion manifest committed. |
+| 9 | `e912eb2` | refactor(phase-8a.10.1 commit-G): figure legends — "mouse L/R" + "Reward L/R" → "Tone L/R" (trial-cue side semantic) | Figure-legend rename across visual_gate + spout_close_vs_std; aligns visible labels with tone-cue side semantic. |
+| 10 | `758155a` | fix(phase-8a.10.1 commit-H): absDate longitudinal xtick rotation 45° to prevent leftmost-label clipping | `apply_longitudinal_axis` xtick rotation 45° + `ha="right"`; `bbox_inches="tight"` on `save_visual_gate_figure`. |
+| 11 | `61db775` | chore(phase-8a.10.1 task-4): Phase 8a.10 figure re-render on post-fix data (404 figures across 3 families) | 404-figure driver + 405-row manifest; all 3 visualization families re-rendered on post-fix Phase 2 NPZs. |
+| 12 | `037a8bc` | fix(phase-8a.10.1): increase cohort dot size in spout_close_vs_std summary + per_trial figures | Sub-B cohort dot size bump (16 → 80) per Priya's eyeball verdict. |
+| 13 | `b7f171b` | feat(phase-8a.10.1): spout_close_vs_std — y-axis typography bump + add Rows 3-4 (fraction trials with ≥1 correct/incorrect lick) + integer y-ticks on lick-count rows | Task 4 follow-on Changes 1+2+3: y-axis fontsize knobs threaded; Sub-B per_trial extended from 2×2 → 4×2 with new Rows 3-4 fraction-of-trials renderers; `MaxNLocator(integer=True)` on all lick-count rows gated by `lick_count_integer_yticks`. |
+| 14 | (this commit) | docs(phase-8a.10.1): DECISIONS Decision 1-10 + MIGRATION_LOG entry + state-doc refresh | Phase-close docs commit (Tasks 6 + 7). |
+
+### Verification — 4-stage gate (all PASS)
+
+1. **Task 0.5 — Pulse-width audit (pre-fix).** All 271 raw .h5 files across the cohort measured. Cohort-wide channel-label inversion confirmed: `"Reward_*"` carries ~200 ms TTLs (tone duration); `"Tone_*"` carries ~26 ms solenoid pulses (reward duration). One-directional swap, no animal-specific exceptions.
+2. **Task 3 — Sample-comparison + downstream-shift sanity (post-fix re-emit).** Four sub-checks:
+   - Check 1: Bit-perfect swap on PS46/2025-03-07 (pre-fix `Tone_L` array byte-identical to post-fix `Reward_L` and vice-versa).
+   - Check 2: Post-fix pulse-width re-check (now `"Tone_*"` carries ~200 ms, `"Reward_*"` carries ~26 ms).
+   - Check 3: Per-session count diff `count(Tone_L) − count(Reward_L)` across all 276 NPZs (= 0 on bilateral sessions, = withhold_L count on withhold sessions).
+   - Check 4: Withhold-count diagnostic. 76 of 276 sessions carry ≥1 withhold; PS55/2025-04-28 R-side withhold sanity-checked via supplementary tmp twin-emit. Result: PASS — Δ=0 on synchronous-event majority, predicted-magnitude shifts on withhold sessions.
+3. **Task 4 — Visual verdict on 404 figures (post-fix re-render).** All 3 visualization families (Sub-A `visual_gate.py`, Sub-A `cohort_summary.py`, Sub-B `spout_close_vs_std.py`) eyeball-verified PASS across all 8 cohort animals.
+4. **Task 4.5 — DLC cascade-safety spot-check (Addendum #2).** Exercised the 4 X1-β indirect callers + `build_reward_aligned_analysis` on 3 representative sessions:
+   - PS46/2025-03-07 (bilateral baseline): baseline pool unchanged (96 = 48 + 48). ✓
+   - PS54/2025-05-03 (high-withhold watch-item): baseline pool grew by exactly 86 events (= 45 L-withholds + 41 R-withholds). ✓
+   - PS48/2025-03-14 (Pattern A multi-half partial): 2 of 5 X1-β sites runnable; 3 fail on pre-existing upstream Phase 7a gaps unrelated to the swap fix (tongue interp parquet missing, `dlc_h5_files` empty in manifest). Result: PASS.
+
+All 4 gates PASS. No hot-fix required; no Q3.B revoke / Phase 7b cascading required during the phase.
+
+### Intentional behavior differences vs legacy
+
+- **Two-anchor `TrialRecord` model (Q-A.β).** Legacy used a single `reward_idx` anchor that conflated cue onset and outcome. New: `tone_idx: int` (always present, cue temporal anchor) + `reward_idx: int | None` (optional outcome; `None` for withhold trials). Withhold trials now appear in trial-record streams; pre-fix code silently dropped them at the `reward_idx is None` filter. DECISIONS Decision 7.
+- **`reward_side` → `tone_side` field rename (Q-B.α).** Side is determined at cue presentation, not at reward delivery. Renamed cohort-wide (TrialRecord, downstream consumers). DECISIONS Decision 7.
+- **`Sub-B per_trial` figure extended from 2×2 → 4×2 layout.** Task 4 follow-on Change 2 (commit `b7f171b`). New Rows 3-4 render fraction-of-trials-with-≥1-{correct,incorrect}-lick per session. No legacy equivalent — pure-additive scientific message. y ∈ [0, 1.05]. DECISIONS Decision 5.
+- **Integer y-tick locator on lick-count rows.** Task 4 follow-on Change 3 (commit `b7f171b`). `MaxNLocator(integer=True)` gated by `lick_count_integer_yticks: true` flag. Applied to Sub-A `numLicks_bySession_*` renderers + Sub-B summary Rows 2-3 + Sub-B per_trial Rows 1-2. Legacy used matplotlib's default float ticks producing 1.5, 2.5, etc. on integer count data.
+- **Figure-legend "Tone L/R" semantic (Commit G).** Replaces legacy "mouse L/R" + "Reward L/R" labels. Aligns visible legend with the tone-cue temporal anchor semantics. DECISIONS Decision 5.
+- **absDate longitudinal xtick rotation 45° + ha="right" (Commit H).** Prevents leftmost-label clipping on absDate-mode renders. Legacy used horizontal ticks. `bbox_inches="tight"` on figure save complements the rotation.
+- **`peri_reward_periods/` directory name kept as-is (Decision 8 E.B.1).** Stored-but-unused on disk; renaming would invalidate every existing on-disk file path without functional benefit. The semantic mismatch is documented; cleanup is F-P-1.
+- **`reward_aligned.py` module name + local-variable `reward_ws` kept as-is.** Q3.B Phase 7b-light deferral. The X1-β surgical rename touches only the function call boundary (`load_reward_events` → `load_tone_events`); deeper local-variable + module-name + comment narrative cleanup is queued for Phase 7b-light.
+
+### Forward-pointers queued for future phases
+
+(See DECISIONS 2026-05-14 entry "Findings carried forward" for full prose; numbering aligned with that entry.)
+
+- **F-P-1** — `peri_reward_periods/*.npz` stored-but-unused; future cleanup candidate (wire into consumer or delete emit step).
+- **F-P-2** — PS46-bilateral-reward parity tests survive byte-identical; future withhold-session parity tests will diverge by design (require withhold-bearing test fixture).
+- **F-P-4** — PS48/2025-03-14 Pattern A multi-half infrastructure gaps unrelated to swap fix (missing tongue interp parquet; empty `dlc_h5_files`). Phase 7b-light fodder.
+- **F-P-5** — Phase 7-pre-multi-half-dlc: Pattern A DLC merge wiring (Priya's legacy code handles PS48 in the interim).
+- **F-P-6** — 111-session YAML-cohort gap chore (superset of Phase 8a.10 Decision 6's 126-session chore).
+- **F-P-7** — Phase 7-pre-alignment-templates: dedicated mini-phase for cohort-wide alignment template emit into the new pipeline tree + consumer cutover from `alignment_template_legacy_read()` to `alignment_template_new()`. Estimated ~6-12 commits. Surfaced by Task 5 pre-flight audit; structurally independent of the swap fix.
+
+### Exit criteria met
+
+- [x] All 4 verification gates PASS (Task 0.5 + Task 3 4-check + Task 4 visual + Task 4.5 DLC cascade).
+- [x] 276/276 Phase 2 NPZ re-emit OK; 0 errors; 200 byte-identical / 76 differing as predicted.
+- [x] 404/404 figures re-rendered + eyeball-verified PASS.
+- [x] 512 stale NPZs cleaned; on-disk == canonical-cohort invariant established.
+- [x] pytest 1417 pass (including new `test_wavesurfer_io.py` and 13 sync'd test files).
+- [x] ruff clean on all touched source + test files.
+- [x] DECISIONS 2026-05-14 entry + this MIGRATION_LOG entry + COWORK_SESSION_STATE refresh.
+
+**Tag:** `v8a.10.1-tone-reward-swap-fix` on the merge commit.
+
+---
+

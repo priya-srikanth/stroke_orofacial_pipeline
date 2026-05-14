@@ -257,8 +257,10 @@ def _make_synthetic_licks_npz(
 
     Mirrors the writer in
     ``src/stroke_orofacial/spout_behavior/session_processing.py:354-366``.
-    Only the fields :func:`load_reward_events` consumes are populated;
-    Lick_*/Tone_* are empty for these tests.
+    Only the fields :func:`load_tone_events` consumes are populated;
+    Lick_*/Reward_* are empty for these tests. Phase 8a.10.1 X1-β
+    (2026-05-14): fixture key rename Reward_L/R → Tone_L/R — the
+    DLC loader reads Tone_L/Tone_R post-swap-fix.
     """
     if reward_L_ws is None:
         reward_L_ws = np.array([1000, 3000, 5000], dtype=np.int64)
@@ -267,8 +269,8 @@ def _make_synthetic_licks_npz(
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
         path,
-        Reward_L=reward_L_ws.astype(np.int64),
-        Reward_R=reward_R_ws.astype(np.int64),
+        Tone_L=reward_L_ws.astype(np.int64),
+        Tone_R=reward_R_ws.astype(np.int64),
         **{
             SIDE_CONVENTION_MATCH_KEY: np.bool_(wavesurfer_sides_match_mouse_sides),
             SIDE_CONVENTION_VERSION_KEY: np.int64(SIDE_CONVENTION_VERSION),
@@ -1518,8 +1520,8 @@ class TestTrialEventsAutoDerive:
         self, monkeypatch, tmp_path,
     ):
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
-        # Match=True case: NPZ stamped True, manifest=True. Reward_L key →
-        # side "L".
+        # Match=True case: NPZ stamped True, manifest=True. Tone_L key
+        # (post X1-β fixture rename) → side "L".
         resolver, manifest, date, animal, _ = self._setup(
             tmp_path,
             wavesurfer_sides_match_mouse_sides=True,

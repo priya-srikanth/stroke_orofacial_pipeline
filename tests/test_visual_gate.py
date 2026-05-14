@@ -420,7 +420,7 @@ class TestIterCohortASessionsOnDiskFilter:
         for date in ("20250307", "20250309"):
             np.savez(sp / f"{date}.npz",
                      Lick_L=np.array([]), Lick_R=np.array([]),
-                     Reward_L=np.array([]), Reward_R=np.array([]))
+                     Tone_L=np.array([]), Tone_R=np.array([]))
         # Default require_on_disk=True → 20250308 dropped (no NPZ).
         sessions = iter_cohort_a_sessions(
             "PS_TEST", resolver, animal_info=ai,
@@ -543,7 +543,7 @@ class TestLongitudinalAxis:
 def _write_phase2_npzs(
     output_root: Path, animal: str, date_label: str,
     lick_l: np.ndarray, lick_r: np.ndarray,
-    reward_l: np.ndarray, reward_r: np.ndarray,
+    tone_l: np.ndarray, tone_r: np.ndarray,
     sample_rate: float,
     n_samples: int | None = None,
 ) -> None:
@@ -555,7 +555,7 @@ def _write_phase2_npzs(
     np.savez(
         licks_dir / f"{date_label}.npz",
         Lick_L=lick_l, Lick_R=lick_r,
-        Reward_L=reward_l, Reward_R=reward_r,
+        Tone_L=tone_l, Tone_R=tone_r,
     )
     ws_kwargs: dict[str, np.ndarray] = {"sample_rate_input": np.array(sample_rate)}
     if n_samples is not None:
@@ -570,8 +570,8 @@ class TestLoadSessionPlotData:
             tmp_path, "PS51", "20250430",
             lick_l=np.array([100, 200]),
             lick_r=np.array([150, 250]),
-            reward_l=np.array([50]),
-            reward_r=np.array([175]),
+            tone_l=np.array([50]),
+            tone_r=np.array([175]),
             sample_rate=2000.0,
         )
         resolver = PathResolver(output_root=tmp_path)
@@ -580,8 +580,8 @@ class TestLoadSessionPlotData:
         assert data.date_label == "20250430"
         assert np.array_equal(data.lick_idx["Lick_L"], [100, 200])
         assert np.array_equal(data.lick_idx["Lick_R"], [150, 250])
-        assert np.array_equal(data.rewards_idx["Reward_L"], [50])
-        assert np.array_equal(data.rewards_idx["Reward_R"], [175])
+        assert np.array_equal(data.tones_idx["Tone_L"], [50])
+        assert np.array_equal(data.tones_idx["Tone_R"], [175])
         assert data.sample_rate == 2000.0
 
     def test_missing_licks_npz_raises(self, tmp_path):
@@ -598,8 +598,8 @@ class TestLoadSessionPlotData:
             licks_dir / "20250430.npz",
             Lick_L=np.array([100]),
             Lick_R=np.array([150]),
-            Reward_L=np.array([50]),
-            Reward_R=np.array([175]),
+            Tone_L=np.array([50]),
+            Tone_R=np.array([175]),
         )
         resolver = PathResolver(output_root=tmp_path)
         with pytest.raises(
@@ -817,9 +817,9 @@ def _make_synthetic_session(date_label: str = "20250430") -> SessionPlotData:
             "Lick_L": np.array([500, 1100, 1500, 2000, 2500, 2900], dtype=int),
             "Lick_R": np.array([900, 5200, 5800, 6100, 6500, 7000, 7500], dtype=int),
         },
-        rewards_idx={
-            "Reward_L": np.array([1000], dtype=int),
-            "Reward_R": np.array([5000], dtype=int),
+        tones_idx={
+            "Tone_L": np.array([1000], dtype=int),
+            "Tone_R": np.array([5000], dtype=int),
         },
         sample_rate=1000.0,
     )
@@ -832,7 +832,7 @@ class TestBehaviorReportParams:
     def test_load_returns_dict(self):
         params = load_behavior_report_params()
         for key in [
-            "window_around_rewards", "criteria_1", "criteria_2",
+            "window_around_tones", "criteria_1", "criteria_2",
             "criteria_3", "criteria_4",
         ]:
             assert key in params, f"behavior_report missing key: {key}"
@@ -841,7 +841,7 @@ class TestBehaviorReportParams:
         """Pin: cohort-wide defaults match legacy params dict
         (batch_process_behavior_report_20260116PS.ipynb cell-3)."""
         params = load_behavior_report_params()
-        assert list(params["window_around_rewards"]) == [1.0, 8.0]
+        assert list(params["window_around_tones"]) == [1.0, 8.0]
         assert params["criteria_1"]["num_consecutive_pass"] == 3
         assert params["criteria_2"]["fraction_pass"] == 0.6
         assert list(params["criteria_3"]["window"]) == [0, 2.0]
@@ -854,11 +854,11 @@ class TestBehaviorReportParams:
 
 
 class TestComputeTrialLickDelays:
-    def test_window_includes_pre_reward_licks(self):
+    def test_window_includes_pre_tone_licks(self):
         data = _make_synthetic_session()
         delays = compute_trial_lick_delays(data, [1.0, 8.0])
         # Lick L at 500 (before reward L at 1000): delay = -500
-        l_delays = delays["Reward_L"][0]["Lick_L"]
+        l_delays = delays["Tone_L"][0]["Lick_L"]
         assert -500 in l_delays
         # Lick L at 1100 (after reward L at 1000): delay = 100
         assert 100 in l_delays
@@ -866,15 +866,15 @@ class TestComputeTrialLickDelays:
     def test_per_reward_keys(self):
         data = _make_synthetic_session()
         delays = compute_trial_lick_delays(data, [1.0, 8.0])
-        assert set(delays.keys()) == {"Reward_L", "Reward_R"}
-        # Reward_L has 1 trial (idx 0); Reward_R has 1 trial (idx 0)
-        assert set(delays["Reward_L"].keys()) == {0}
-        assert set(delays["Reward_R"].keys()) == {0}
+        assert set(delays.keys()) == {"Tone_L", "Tone_R"}
+        # Tone_L has 1 trial (idx 0); Tone_R has 1 trial (idx 0)
+        assert set(delays["Tone_L"].keys()) == {0}
+        assert set(delays["Tone_R"].keys()) == {0}
 
     def test_per_side_keys(self):
         data = _make_synthetic_session()
         delays = compute_trial_lick_delays(data, [1.0, 8.0])
-        assert set(delays["Reward_L"][0].keys()) == {"Lick_L", "Lick_R"}
+        assert set(delays["Tone_L"][0].keys()) == {"Lick_L", "Lick_R"}
 
     def test_window_excludes_licks_outside_window(self):
         # Tight window: 0-1s after reward (samples [reward, reward+1000])
@@ -885,7 +885,7 @@ class TestComputeTrialLickDelays:
         # Lick L at 1500 (in window):                       delay 500
         # Lick L at 2000 (== reward + 1000; window inclusive): delay 1000
         # Lick L at 2500 (past window):                     excluded
-        l_delays = delays["Reward_L"][0]["Lick_L"]
+        l_delays = delays["Tone_L"][0]["Lick_L"]
         assert set(l_delays.tolist()) == {100, 500, 1000}
 
 
@@ -907,9 +907,9 @@ class TestComputeFirstCorrectLickSampleIdx:
                 "Lick_L": np.array([500], dtype=int),  # only pre-reward
                 "Lick_R": np.array([100, 200], dtype=int),  # all pre-reward
             },
-            rewards_idx={
-                "Reward_L": np.array([1000], dtype=int),
-                "Reward_R": np.array([5000], dtype=int),
+            tones_idx={
+                "Tone_L": np.array([1000], dtype=int),
+                "Tone_R": np.array([5000], dtype=int),
             },
             sample_rate=1000.0,
         )
@@ -937,7 +937,7 @@ class TestComputeCriteria4:
     def test_passes_with_enough_correct_no_incorrect(self):
         data = _make_synthetic_session()
         # criteria_4: window=[0, 2.5], min_correct=5, max_incorrect=0
-        # Reward_L at sample 1000: window [1000, 3500]
+        # Tone_L at sample 1000: window [1000, 3500]
         #   - L licks in window: 1100, 1500, 2000, 2500, 2900 (count 5; ≥ 5 OK)
         #   - R licks in window: 0 (the 900 is pre-reward; 5200 is past window) → ≤ 0 OK
         c4 = compute_criteria_4(data, {
@@ -971,13 +971,13 @@ class TestComputeFirstLickCorrect:
     def test_correct_post_first_returns_true(self):
         """Reward L: L lick at delay +100, no R licks post-reward → True."""
         delays = {
-            "Reward_L": {
+            "Tone_L": {
                 0: {
                     "Lick_L": np.array([100, 500]),
                     "Lick_R": np.array([-200]),  # pre-reward, ignored
                 },
             },
-            "Reward_R": {
+            "Tone_R": {
                 0: {
                     "Lick_R": np.array([200]),
                     "Lick_L": np.array([]),
@@ -991,26 +991,26 @@ class TestComputeFirstLickCorrect:
     def test_incorrect_first_returns_false(self):
         """Reward L: R lick at delay +50 precedes L lick at +200 → False."""
         delays = {
-            "Reward_L": {
+            "Tone_L": {
                 0: {
                     "Lick_L": np.array([200]),
                     "Lick_R": np.array([50]),
                 },
             },
-            "Reward_R": {},
+            "Tone_R": {},
         }
         flc = compute_first_lick_correct(delays)
         assert flc["L"][0] is False
 
-    def test_no_post_reward_licks_returns_none(self):
+    def test_no_post_tone_licks_returns_none(self):
         delays = {
-            "Reward_L": {
+            "Tone_L": {
                 0: {
                     "Lick_L": np.array([-100]),  # only pre-reward
                     "Lick_R": np.array([-200]),
                 },
             },
-            "Reward_R": {},
+            "Tone_R": {},
         }
         flc = compute_first_lick_correct(delays)
         assert flc["L"][0] is None
@@ -1063,10 +1063,10 @@ class TestComputeNumLicksBySession:
         n = compute_num_licks_bySession(delays)
         assert set(n.keys()) == {"correct", "all", "incorrect"}
         for kind in ("correct", "all", "incorrect"):
-            assert set(n[kind].keys()) == {"Reward_L", "Reward_R"}
+            assert set(n[kind].keys()) == {"Tone_L", "Tone_R"}
 
     def test_counts_match_synthetic(self):
-        """Reward_L window [-1000, 8000] from sample 1000:
+        """Tone_L window [-1000, 8000] from sample 1000:
             Lick_L within: [500, 1100, 1500, 2000, 2500, 2900] = 6 (correct)
             Lick_R within: [900, 5200, 5800, 6100, 6500, 7000, 7500]
               filter to [-1000+1000=0, 8000+1000=9000] → [900, 5200, 5800,
@@ -1076,26 +1076,26 @@ class TestComputeNumLicksBySession:
         data = _make_synthetic_session()
         delays = compute_trial_lick_delays(data, [1.0, 8.0])
         n = compute_num_licks_bySession(delays)
-        assert n["correct"]["Reward_L"]["mean"] == pytest.approx(6.0)
-        assert n["incorrect"]["Reward_L"]["mean"] == pytest.approx(7.0)
-        assert n["all"]["Reward_L"]["mean"] == pytest.approx(13.0)
+        assert n["correct"]["Tone_L"]["mean"] == pytest.approx(6.0)
+        assert n["incorrect"]["Tone_L"]["mean"] == pytest.approx(7.0)
+        assert n["all"]["Tone_L"]["mean"] == pytest.approx(13.0)
 
 
 class TestComputeLatencyBySession:
     def test_latency_seconds_from_reward(self):
         data = _make_synthetic_session()
         fcl = compute_first_correct_lick_sample_idx(data, [0, 2.0])
-        lat = compute_latency_bySession(fcl, data.rewards_idx, data.sample_rate)
-        # Reward_L at 1000, first correct L lick at 1100 → 0.1s
+        lat = compute_latency_bySession(fcl, data.tones_idx, data.sample_rate)
+        # Tone_L at 1000, first correct L lick at 1100 → 0.1s
         assert lat["L"]["mean"] == pytest.approx(0.1)
-        # Reward_R at 5000, first correct R lick at 5200 → 0.2s
+        # Tone_R at 5000, first correct R lick at 5200 → 0.2s
         assert lat["R"]["mean"] == pytest.approx(0.2)
 
     def test_none_first_lick_yields_nan_excluded(self):
         fcl = {"L": {0: None, 1: 1100}, "R": {0: 5200}}
         rewards = {
-            "Reward_L": np.array([1000, 2000]),
-            "Reward_R": np.array([5000]),
+            "Tone_L": np.array([1000, 2000]),
+            "Tone_R": np.array([5000]),
         }
         lat = compute_latency_bySession(fcl, rewards, sample_rate=1000.0)
         # L: [nan, -0.9 (idx 1 → fcl 1100 - reward 2000 = -900 samples)]
@@ -1134,8 +1134,8 @@ def cohort_for_renders(tmp_path, monkeypatch):
             output_root, "PS51", date,
             lick_l=np.array([500, 1100, 1500, 2000, 2500, 2900], dtype=int),
             lick_r=np.array([900, 5200, 5800, 6100, 6500, 7000, 7500], dtype=int),
-            reward_l=np.array([1000], dtype=int),
-            reward_r=np.array([5000], dtype=int),
+            tone_l=np.array([1000], dtype=int),
+            tone_r=np.array([5000], dtype=int),
             sample_rate=1000.0,
             n_samples=60000,  # 60 sec at 1000 Hz; populates n_samples_session
         )
@@ -1403,19 +1403,21 @@ class TestRenderLickRaster:
     def test_ylabel_uses_mouse_frame_directly_no_fn_flip(
         self, cohort_for_renders,
     ):
-        """New pipeline reads side_reward as mouse-frame directly.
-        Legacy ylabel was ``"Trials   (side: mouse {fn_flip_lr(side_reward)})"``
+        """New pipeline reads side_tone as mouse-frame directly.
+        Legacy ylabel was ``"Trials   (side: mouse {fn_flip_lr(side_tone)})"``
         — the flip was a WS-frame compensation. New pipeline:
-        ``"Trials   (side: mouse {side_reward})"`` — direct."""
+        ``"Trials   (side: Tone {side_tone})"`` — direct. Phase 8a.10.1
+        post-Commit-G legend rename: "mouse L/R" → "Tone L/R" for
+        scientific clarity (the side identity is set at tone onset)."""
         resolver, _ = cohort_for_renders
         svg_path, _ = render_lick_raster(
             "PS51", resolver, align_to_stroke=True,
         )
         svg_text = svg_path.read_text(encoding="utf-8")
-        # Both side labels appear in the SVG: row 0 = Reward L → ylabel
-        # "side: mouse L" (left column only); row 1 = Reward R → "side: mouse R".
-        assert "side: mouse L" in svg_text
-        assert "side: mouse R" in svg_text
+        # Both side labels appear in the SVG: row 0 = Tone L → ylabel
+        # "side: Tone L" (left column only); row 1 = Tone R → "side: Tone R".
+        assert "side: Tone L" in svg_text
+        assert "side: Tone R" in svg_text
 
     def test_raster_color_config_consumed(self):
         """Pin: raster dot + reward-marker colors loaded from
@@ -1690,9 +1692,9 @@ class TestComputeLickinessBySession:
                 "Lick_L": np.array([9000, 10000], dtype=int),
                 "Lick_R": np.array([], dtype=int),
             },
-            rewards_idx={
-                "Reward_L": np.array([0], dtype=int),
-                "Reward_R": np.array([20000], dtype=int),
+            tones_idx={
+                "Tone_L": np.array([0], dtype=int),
+                "Tone_R": np.array([20000], dtype=int),
             },
             sample_rate=1000.0,
             n_samples_session=30000,
@@ -1719,9 +1721,9 @@ class TestComputeLickinessBySession:
                 "Lick_L": np.array([11000, 13000], dtype=int),
                 "Lick_R": np.array([], dtype=int),
             },
-            rewards_idx={
-                "Reward_L": np.array([0], dtype=int),
-                "Reward_R": np.array([12000], dtype=int),
+            tones_idx={
+                "Tone_L": np.array([0], dtype=int),
+                "Tone_R": np.array([12000], dtype=int),
             },
             sample_rate=1000.0,
             n_samples_session=30000,
@@ -1738,8 +1740,8 @@ class TestComputeLickinessBySession:
             date_label="20250430",
             lick_idx={"Lick_L": np.array([], dtype=int),
                       "Lick_R": np.array([], dtype=int)},
-            rewards_idx={"Reward_L": np.array([], dtype=int),
-                         "Reward_R": np.array([], dtype=int)},
+            tones_idx={"Tone_L": np.array([], dtype=int),
+                         "Tone_R": np.array([], dtype=int)},
             sample_rate=1000.0,
             n_samples_session=30000,
         )
@@ -1761,9 +1763,9 @@ class TestComputeLickinessBySession:
                 "Lick_L": np.array([14000, 16000], dtype=int),
                 "Lick_R": np.array([], dtype=int),
             },
-            rewards_idx={
-                "Reward_L": np.array([0], dtype=int),
-                "Reward_R": np.array([], dtype=int),
+            tones_idx={
+                "Tone_L": np.array([0], dtype=int),
+                "Tone_R": np.array([], dtype=int),
             },
             sample_rate=1000.0,
             n_samples_session=15000,
@@ -1780,7 +1782,7 @@ class TestComputeSwitchinessBySession:
     def test_no_licks_yields_nan(self):
         """Empty trials → no count contributions → NaN means."""
         delays: dict[str, dict[int, dict[str, np.ndarray]]] = {
-            "Reward_L": {}, "Reward_R": {},
+            "Tone_L": {}, "Tone_R": {},
         }
         sw = compute_switchiness_bySession(delays)
         assert np.isnan(sw["L->R"])
@@ -1788,13 +1790,13 @@ class TestComputeSwitchinessBySession:
 
     def test_single_event_yields_zero_transitions(self):
         delays = {
-            "Reward_L": {
+            "Tone_L": {
                 0: {
                     "Lick_L": np.array([100]),
                     "Lick_R": np.array([], dtype=int),
                 },
             },
-            "Reward_R": {},
+            "Tone_R": {},
         }
         sw = compute_switchiness_bySession(delays)
         # 1 event → 0 transitions
@@ -1805,13 +1807,13 @@ class TestComputeSwitchinessBySession:
         """4-event LRLR sequence within one trial = 3 transitions
         (L→R, R→L, L→R). So c_LR=2, c_RL=1."""
         delays = {
-            "Reward_L": {
+            "Tone_L": {
                 0: {
                     "Lick_L": np.array([100, 300], dtype=int),
                     "Lick_R": np.array([200, 400], dtype=int),
                 },
             },
-            "Reward_R": {},
+            "Tone_R": {},
         }
         sw = compute_switchiness_bySession(delays)
         assert sw["L->R"] == pytest.approx(2.0)
@@ -1824,13 +1826,13 @@ class TestComputeSwitchinessBySession:
         does NEITHER — input is already mouse-frame and output keys are
         labeled in mouse-frame."""
         delays = {
-            "Reward_L": {
+            "Tone_L": {
                 0: {
                     "Lick_L": np.array([100, 300]),
                     "Lick_R": np.array([200], dtype=int),
                 },
             },
-            "Reward_R": {},
+            "Tone_R": {},
         }
         sw = compute_switchiness_bySession(delays)
         # L→R (100→200): 1; R→L (200→300): 1
@@ -1892,15 +1894,17 @@ class TestRenderLickinessBySession:
         assert "Late licks per session" in svg_text
 
     def test_mouse_frame_ylabel_no_fn_flip(self, cohort_for_renders):
-        """Legend labels say "mouse L" / "mouse R" directly (no flip).
-        Pin to catch regression to legacy fn_flip_lr."""
+        """Legend labels say "Tone L" / "Tone R" directly (no flip).
+        Pin to catch regression to legacy fn_flip_lr. Phase 8a.10.1
+        post-Commit-G legend rename: previously "mouse L/R"; renamed
+        to "Tone L/R" to identify the trial-cue side."""
         resolver, _ = cohort_for_renders
         svg_path, _ = render_lickiness_bySession(
             "PS51", resolver, align_to_stroke=True,
         )
         svg_text = svg_path.read_text(encoding="utf-8")
-        assert "mouse L" in svg_text
-        assert "mouse R" in svg_text
+        assert "Tone L" in svg_text
+        assert "Tone R" in svg_text
 
 
 class TestRenderSwitchinessBySession:
@@ -1977,7 +1981,7 @@ class TestSessionPlotDataNSamplesExtension:
         data = SessionPlotData(
             date_label="20250430",
             lick_idx={"Lick_L": np.array([]), "Lick_R": np.array([])},
-            rewards_idx={"Reward_L": np.array([]), "Reward_R": np.array([])},
+            tones_idx={"Tone_L": np.array([]), "Tone_R": np.array([])},
             sample_rate=1000.0,
         )
         assert data.n_samples_session == 0
@@ -1987,8 +1991,8 @@ class TestSessionPlotDataNSamplesExtension:
             tmp_path, "PS51", "20250430",
             lick_l=np.array([100]),
             lick_r=np.array([150]),
-            reward_l=np.array([50]),
-            reward_r=np.array([175]),
+            tone_l=np.array([50]),
+            tone_r=np.array([175]),
             sample_rate=1000.0,
             n_samples=42_000,
         )
@@ -2001,8 +2005,8 @@ class TestSessionPlotDataNSamplesExtension:
             tmp_path, "PS51", "20250430",
             lick_l=np.array([100]),
             lick_r=np.array([150]),
-            reward_l=np.array([50]),
-            reward_r=np.array([175]),
+            tone_l=np.array([50]),
+            tone_r=np.array([175]),
             sample_rate=1000.0,
             # n_samples=None → no 1D signal in WS NPZ
         )

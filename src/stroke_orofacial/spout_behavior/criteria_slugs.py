@@ -10,9 +10,14 @@ self-document the actual computation:
 - ``criteria_2`` → ``criteria_session_trial_pass_fraction_above_threshold``
   (per-session per-side aggregator over C3∩C4)
 - ``criteria_3`` → ``criteria_first_correct_lick_present`` (per-trial,
-  first-correct-lick within post-reward window)
+  first-correct-lick within post-tone window)
 - ``criteria_4`` → ``criteria_correct_lick_count_threshold`` (per-trial,
-  correct/incorrect lick-count thresholds in post-reward window)
+  correct/incorrect lick-count thresholds in post-tone window)
+
+Q-A.β rename (2026-05-14): C3/C4 windows are tone-anchored
+(``trial.tone_idx``). Pre-fix the docstrings labeled them "post-reward"
+to mirror the swapped WS channel label, but the underlying anchor was
+tone-onset all along under Case-2 universal.
 
 The legacy ``report.json`` stays byte-stable; this mapping is consumed only
 by the Phase 8a report writer and by parity tests. Loaded from

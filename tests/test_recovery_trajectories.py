@@ -56,11 +56,11 @@ def _payload(
                 },
                 "provenance": {"endpoint_name": "first_lick_latency_per_trial"},
             },
-            "reward_trial_count_per_session": {
+            "tone_trial_count_per_session": {
                 "per_session_aggregate": {"L": 4, "R": 6, "total": 10},
                 "per_trial_array": None,
                 "per_trial_type_split": None,
-                "provenance": {"endpoint_name": "reward_trial_count_per_session"},
+                "provenance": {"endpoint_name": "tone_trial_count_per_session"},
             },
             "inter_session_persistence": {
                 "status": "requires_cohort_aggregation",
@@ -85,7 +85,7 @@ class TestMetricExtraction:
         payload = _payload("PS46", -3, 0.25)
         value = extract_endpoint_metric(
             payload,
-            "reward_trial_count_per_session",
+            "tone_trial_count_per_session",
             "per_session_aggregate.total",
         )
         assert value == 10.0

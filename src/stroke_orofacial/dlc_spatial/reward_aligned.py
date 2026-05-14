@@ -15,7 +15,7 @@ sanity-check-only defaults.
 **Phase 6.8a (mouse-frame trial_group):** Phase 2 NPZs carry mouse-frame
 ``Reward_L`` / ``Reward_R`` keys post-task-#17 re-emit, stamped with
 ``wavesurfer_sides_match_mouse_sides`` + ``side_convention_version``
-scalars. :func:`load_reward_events` now verifies that stamp is present
+scalars. :func:`load_tone_events` now verifies that stamp is present
 and, if the caller supplies ``wavesurfer_sides_match_mouse_sides``, that
 it agrees with what Phase 2 wrote — guarding against silently reading a
 pre-re-emit NPZ as if it were mouse-frame. Callers pass
@@ -48,20 +48,30 @@ from stroke_orofacial.manifest import SessionManifest, build_manifest
 from stroke_orofacial.paths import PathResolver
 
 
-def load_reward_events(
+def load_tone_events(
     licks_npz_path: Path | str,
     trial_group: str = "all",
     *,
     wavesurfer_sides_match_mouse_sides: bool | None = None,
 ) -> np.ndarray:
-    """Load reward onset indices from a licks_and_rewards NPZ.
+    """Load tone-onset indices from a licks_and_rewards NPZ.
+
+    Phase 8a.10.1 X1-β surgical rename (locked 2026-05-14): function
+    renamed ``load_reward_events → load_tone_events``; NPZ-key reads
+    swapped ``Reward_<side> → Tone_<side>``. Under Case-2 universal,
+    every DLC reward-aligned analysis was scientifically tone-anchored
+    (the auditory cue is the temporal anchor for DLC frame windows);
+    the pre-fix name was a Case-2 misnomer mirroring the swapped WS
+    channel label. Module name ``reward_aligned.py``, local variables
+    in the indirect callers, and docstring narrative cleanup stay
+    deferred to Phase 7b's atomic Phase-7 rename pass per Q3.B.
 
     Per Phase 6.8a, ``trial_group`` is interpreted in the **mouse frame**:
-    ``"L"`` means mouse-left reward trials, ``"R"`` means mouse-right.
+    ``"L"`` means mouse-left tone trials, ``"R"`` means mouse-right.
     Phase 2's licks NPZ must carry the :mod:`stroke_orofacial.lr_convention`
     stamp so this function can verify it was emitted in the mouse frame
     (via task #17's re-emit). A pre-re-emit NPZ without the stamp would
-    still have ``Reward_L`` / ``Reward_R`` keys — but interpreted as
+    still have ``Tone_L`` / ``Tone_R`` keys — but interpreted as
     experimenter-frame — and reading it as mouse-frame would silently
     swap L and R on the mirrored rig. We raise instead.
 
@@ -69,10 +79,11 @@ def load_reward_events(
     ----------
     licks_npz_path : Path or str
         Path to the ``licks_and_rewards/{animal}/{YYYYMMDD}.npz`` file
-        from Phase 2 (mouse-frame post task #17).
+        from Phase 2 (mouse-frame post task #17; tone-correct labels
+        post Phase 8a.10.1 swap-fix).
     trial_group : str
-        ``"all"`` (both sides), ``"L"`` (mouse-left rewards only), or
-        ``"R"`` (mouse-right rewards only).
+        ``"all"`` (both sides), ``"L"`` (mouse-left tone trials only),
+        or ``"R"`` (mouse-right tone trials only).
     wavesurfer_sides_match_mouse_sides : bool, optional
         When provided, verifies the Phase 2 NPZ's stamped value equals
         this boolean. Mismatch → :class:`ValueError` (typically means
@@ -84,7 +95,7 @@ def load_reward_events(
     Returns
     -------
     np.ndarray
-        Sorted array of reward onset indices in wavesurfer sample space.
+        Sorted array of tone-onset indices in wavesurfer sample space.
         (L/R is mouse-frame; the *array values* are WS sample indices
         — those are frame-neutral, since the alignment LUT is
         per-session and cares only about WS↔camera, not L↔R.)
@@ -101,7 +112,7 @@ def load_reward_events(
     data = np.load(str(licks_npz_path), allow_pickle=True)
 
     # Phase 6.8a: require the Phase 2 side-convention stamp (task #17
-    # re-emit). Without it we can't tell whether Reward_L in this file
+    # re-emit). Without it we can't tell whether Tone_L in this file
     # is experimenter-L (pre-re-emit) or mouse-L (post-re-emit), and
     # silently picking the wrong interpretation on the mirrored rig
     # swaps the stratification.
@@ -109,10 +120,10 @@ def load_reward_events(
         raise ValueError(
             f"{licks_npz_path}: Phase 2 NPZ is missing "
             f"{SIDE_CONVENTION_VERSION_KEY!r} — this is a pre-task-#17 "
-            f"emission and its Reward_L/Reward_R keys are in the "
+            f"emission and its Tone_L/Tone_R keys are in the "
             f"wavesurfer frame, not the mouse frame. Re-emit Phase 2 "
             f"(see docs/runbooks/reemit-phase-5-6-after-lr-fix.md §4) "
-            f"before running reward-aligned Phase 6 analyses."
+            f"before running tone-aligned Phase 6 analyses."
         )
     if SIDE_CONVENTION_MATCH_KEY not in data.files:
         raise ValueError(
@@ -145,13 +156,13 @@ def load_reward_events(
         )
 
     if trial_group == "L":
-        return np.sort(data["Reward_L"].astype(int))
+        return np.sort(data["Tone_L"].astype(int))
     elif trial_group == "R":
-        return np.sort(data["Reward_R"].astype(int))
+        return np.sort(data["Tone_R"].astype(int))
     else:
         return np.sort(np.concatenate([
-            data.get("Reward_L", np.array([], dtype=int)).astype(int),
-            data.get("Reward_R", np.array([], dtype=int)).astype(int),
+            data.get("Tone_L", np.array([], dtype=int)).astype(int),
+            data.get("Tone_R", np.array([], dtype=int)).astype(int),
         ]))
 
 
@@ -303,7 +314,7 @@ def build_reward_aligned_analysis(
         the exact missing artefact so log triage points at the right
         upstream stage.
     ValueError
-        Propagated from :func:`load_reward_events` if the Phase 2 NPZ
+        Propagated from :func:`load_tone_events` if the Phase 2 NPZ
         is un-stamped (pre-task-#17) or its stamp disagrees with
         ``wavesurfer_sides_match_mouse_sides``.
     """
@@ -350,7 +361,10 @@ def build_reward_aligned_analysis(
             f"for this session before Phase 6.8a."
         )
 
-    reward_ws = load_reward_events(
+    # X1-β: function rename to load_tone_events. Local variable
+    # `reward_ws` left as-is — its rename to `tone_ws` is part of
+    # Phase 7b's local-variable + module-name cleanup pass per Q3.B.
+    reward_ws = load_tone_events(
         licks_path, trial_group,
         wavesurfer_sides_match_mouse_sides=wavesurfer_sides_match_mouse_sides,
     )

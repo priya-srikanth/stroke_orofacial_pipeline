@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from stroke_orofacial.dlc_spatial.reward_aligned import (
-    load_reward_events,
+    load_tone_events,
     ws_samples_to_frame_indices,
 )
 from stroke_orofacial.lr_convention import (
@@ -19,68 +19,68 @@ from stroke_orofacial.lr_convention import (
 )
 
 
-def _write_stamped_rewards_npz(
+def _write_stamped_tones_npz(
     path: Path,
     *,
-    reward_L: np.ndarray,
-    reward_R: np.ndarray,
+    tone_L: np.ndarray,
+    tone_R: np.ndarray,
     wavesurfer_matches: bool = False,
 ) -> None:
     """Test helper: write a minimal Phase-2-shaped rewards NPZ with the
     mouse-frame side-convention stamp. Mirrors what
     ``_save_npz_with_side_convention`` writes in production, but only the
-    fields ``load_reward_events`` reads.
+    fields ``load_tone_events`` reads.
     """
     payload: dict = {
-        "Reward_L": np.asarray(reward_L),
-        "Reward_R": np.asarray(reward_R),
+        "Tone_L": np.asarray(tone_L),
+        "Tone_R": np.asarray(tone_R),
     }
     stamp_side_convention(payload, wavesurfer_matches)
     np.savez(path, **payload)
 
 
-class TestLoadRewardEvents:
+class TestLoadToneEvents:
     """Phase 6.8a: the Phase 2 NPZ must carry the side-convention stamp
-    or load_reward_events raises. The four "happy path" tests below use
-    stamped fixtures; the rejection paths are in TestLoadRewardEventsStamp
+    or load_tone_events raises. The four "happy path" tests below use
+    stamped fixtures; the rejection paths are in TestLoadToneEventsStamp
     below."""
 
     def test_all_group(self, tmp_path):
         path = tmp_path / "test.npz"
-        _write_stamped_rewards_npz(
-            path, reward_L=[10, 30], reward_R=[20, 40],
+        _write_stamped_tones_npz(
+            path, tone_L=[10, 30], tone_R=[20, 40],
         )
-        result = load_reward_events(path, "all")
+        result = load_tone_events(path, "all")
         np.testing.assert_array_equal(result, [10, 20, 30, 40])
 
     def test_l_group(self, tmp_path):
         path = tmp_path / "test.npz"
-        _write_stamped_rewards_npz(
-            path, reward_L=[10, 30], reward_R=[20, 40],
+        _write_stamped_tones_npz(
+            path, tone_L=[10, 30], tone_R=[20, 40],
         )
-        result = load_reward_events(path, "L")
+        result = load_tone_events(path, "L")
         np.testing.assert_array_equal(result, [10, 30])
 
     def test_r_group(self, tmp_path):
         path = tmp_path / "test.npz"
-        _write_stamped_rewards_npz(
-            path, reward_L=[10, 30], reward_R=[20, 40],
+        _write_stamped_tones_npz(
+            path, tone_L=[10, 30], tone_R=[20, 40],
         )
-        result = load_reward_events(path, "R")
+        result = load_tone_events(path, "R")
         np.testing.assert_array_equal(result, [20, 40])
 
     def test_empty_side(self, tmp_path):
         path = tmp_path / "test.npz"
-        _write_stamped_rewards_npz(
+        _write_stamped_tones_npz(
             path,
-            reward_L=np.array([10]),
-            reward_R=np.array([], dtype=int),
+            tone_L=np.array([10]),
+            tone_R=np.array([], dtype=int),
         )
-        result = load_reward_events(path, "all")
+        result = load_tone_events(path, "all")
         np.testing.assert_array_equal(result, [10])
 
 
-class TestLoadRewardEventsStamp:
+class TestLoadToneEventsStamp:
     """Phase 6.8a stamp-verification paths — each exercises one specific
     rejection branch so a regression that silently drops the check (e.g.
     during a refactor) fails loudly."""
@@ -91,23 +91,23 @@ class TestLoadRewardEventsStamp:
         path = tmp_path / "unstamped.npz"
         np.savez(
             path,
-            Reward_L=np.array([10, 30]),
-            Reward_R=np.array([20, 40]),
+            Tone_L=np.array([10, 30]),
+            Tone_R=np.array([20, 40]),
         )
         with pytest.raises(ValueError, match=SIDE_CONVENTION_VERSION_KEY):
-            load_reward_events(path, "all")
+            load_tone_events(path, "all")
 
     def test_rejects_missing_match_key(self, tmp_path):
         """Version key present but match key absent = malformed stamp."""
         path = tmp_path / "half_stamped.npz"
         np.savez(
             path,
-            Reward_L=np.array([10]),
-            Reward_R=np.array([20]),
+            Tone_L=np.array([10]),
+            Tone_R=np.array([20]),
             **{SIDE_CONVENTION_VERSION_KEY: np.int32(SIDE_CONVENTION_VERSION)},
         )
         with pytest.raises(ValueError, match=SIDE_CONVENTION_MATCH_KEY):
-            load_reward_events(path, "all")
+            load_tone_events(path, "all")
 
     def test_rejects_version_mismatch(self, tmp_path):
         """A stamp with an older version must be rejected so a convention
@@ -116,27 +116,27 @@ class TestLoadRewardEventsStamp:
         bad_version = SIDE_CONVENTION_VERSION - 1
         np.savez(
             path,
-            Reward_L=np.array([10]),
-            Reward_R=np.array([20]),
+            Tone_L=np.array([10]),
+            Tone_R=np.array([20]),
             **{
                 SIDE_CONVENTION_VERSION_KEY: np.int32(bad_version),
                 SIDE_CONVENTION_MATCH_KEY: np.bool_(False),
             },
         )
         with pytest.raises(ValueError, match="side_convention_version"):
-            load_reward_events(path, "all")
+            load_tone_events(path, "all")
 
     def test_rejects_flag_mismatch(self, tmp_path):
         """Caller passes a rig-match value that disagrees with the NPZ's
         stamp — typically means the yaml was edited after the NPZ was
         emitted. Must raise rather than silently pick one or the other."""
         path = tmp_path / "matches_true.npz"
-        _write_stamped_rewards_npz(
-            path, reward_L=[10], reward_R=[20],
+        _write_stamped_tones_npz(
+            path, tone_L=[10], tone_R=[20],
             wavesurfer_matches=True,
         )
         with pytest.raises(ValueError, match="wavesurfer_sides_match_mouse_sides"):
-            load_reward_events(
+            load_tone_events(
                 path, "all", wavesurfer_sides_match_mouse_sides=False,
             )
 
@@ -144,11 +144,11 @@ class TestLoadRewardEventsStamp:
         """Caller's flag matches the NPZ's stamp → no raise, returns
         the expected reward indices."""
         path = tmp_path / "matches_false.npz"
-        _write_stamped_rewards_npz(
-            path, reward_L=[10, 30], reward_R=[20, 40],
+        _write_stamped_tones_npz(
+            path, tone_L=[10, 30], tone_R=[20, 40],
             wavesurfer_matches=False,
         )
-        result = load_reward_events(
+        result = load_tone_events(
             path, "all", wavesurfer_sides_match_mouse_sides=False,
         )
         np.testing.assert_array_equal(result, [10, 20, 30, 40])
@@ -158,12 +158,12 @@ class TestLoadRewardEventsStamp:
         bool value is not cross-checked. The legacy happy-path tests
         above rely on this behavior."""
         path = tmp_path / "stamped_true.npz"
-        _write_stamped_rewards_npz(
-            path, reward_L=[10], reward_R=[20],
+        _write_stamped_tones_npz(
+            path, tone_L=[10], tone_R=[20],
             wavesurfer_matches=True,
         )
         # Does not raise even though the NPZ is stamped True and we pass None.
-        result = load_reward_events(path, "all")
+        result = load_tone_events(path, "all")
         np.testing.assert_array_equal(result, [10, 20])
 
 
@@ -319,7 +319,7 @@ class TestBuildRewardAlignedAnalysisRaisesOnMissingPrerequisites:
     The licks-NPZ and alignment-template paths share the raise pattern
     and are pinned by the docstring + inline code; separate tests would
     require monkeypatching past read_centered_parquet and
-    load_reward_events with no commensurate diagnostic value."""
+    load_tone_events with no commensurate diagnostic value."""
 
     def test_raises_when_centered_parquet_missing(self, tmp_path):
         import datetime

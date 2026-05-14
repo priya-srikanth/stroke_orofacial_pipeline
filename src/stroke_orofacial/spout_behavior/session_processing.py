@@ -323,7 +323,16 @@ def _run_phase2_pipeline(
         overwrite gating is the caller's responsibility.
     """
     # ---- Step 1: Load wavesurfer signals ----
-    signals = load_wavesurfer_signals(ws_file)
+    # Phase 8a.10.1: pull the Tone↔Reward swap-fix flag from the params
+    # dict; defaults.yaml ships with `wavesurfer.tone_reward_swap_enabled:
+    # true` (default applied for the current cohort, kill-switchable for
+    # hypothetical future correctly-labeled cohorts).
+    ws_swap_enabled = bool(
+        params.get("wavesurfer", {}).get("tone_reward_swap_enabled", True)
+    )
+    signals = load_wavesurfer_signals(
+        ws_file, tone_reward_swap_enabled=ws_swap_enabled,
+    )
     Fs = float(signals["sample_rate_input"])
 
     # Save wavesurfer_signals_processed — raw channel names include

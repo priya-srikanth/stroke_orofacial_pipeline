@@ -6,6 +6,23 @@
 # Authoritative source: params dict from legacy canonical notebook
 # batch_process_20260410PS.ipynb (Rule 1: latest YYYYMMDD).
 
+# ---- Wavesurfer read-time behavior ----
+# Phase 8a.10.1 (2026-05-14): the raw .h5 channel labels emitted by the
+# rig are inverted cohort-wide — what's labeled `Reward_*` carries ~200 ms
+# pulses (auditory tone TTL); what's labeled `Tone_*` carries ~26 ms
+# pulses (reward solenoid drive). Cohort-wide confirmed by Task 0.5
+# pulse-width audit (271/271 sessions; see
+# `.scratch_phase_8a_10_1/task_0_5_audit_report.md` and
+# `docs/prompts/phase-8a.10.1-tone-reward-swap-fix-kickoff.md`).
+#
+# `tone_reward_swap_enabled: true` (default) applies an in-loader swap
+# of the `Reward_<side>` ↔ `Tone_<side>` dict keys post-read in
+# `load_wavesurfer_signals` so downstream code sees semantically-correct
+# content under the canonical labels. Set to `false` only as a
+# kill-switch for hypothetical future correctly-labeled cohorts.
+wavesurfer:
+  tone_reward_swap_enabled: true
+
 # ---- Spout behavior processing ----
 
 process_treadmill_signal:
@@ -103,7 +120,7 @@ spout_behavior:
       same_side_baseline_definition: immediately_prior_trial
     # Engagement extras (Phase 8a §8a.6): not in the Q9 list but cheap + useful.
     engagement:
-      compute_reward_trial_count_per_session: true
+      compute_tone_trial_count_per_session: true
       compute_inter_trial_interval_distribution: true
     # Legacy A11 window promoted from hardcode to config (Q4, 2026-04-20).
     late_lickiness:
@@ -1294,6 +1311,18 @@ visual_gate:
   # at the matplotlib default ~10pt; 6pt resolves the overlap.
   # Priya 2026-05-13 (Task 3 Round 2.7).
   longitudinal_xtick_fontsize: 6
+  # Phase 8a.10.1 Task 4 follow-on (2026-05-14): integer-only
+  # y-tick locator for lick-count axes (mean correct / incorrect
+  # licks per trial). Drops the ".0" suffix matplotlib emits on
+  # integer-valued tick positions. Applies to Sub-A
+  # numLicks_bySession_correct + numLicks_bySession_all +
+  # numLicks_bySession_correct_and_incorrect AND Sub-B summary
+  # Rows 2-3 + per_trial Rows 1-2 (Sub-B reads the same flag via
+  # its `config` param, which IS the visual_gate block). Rows
+  # showing fractional [0, 1] values (Sub-B summary Row 1,
+  # per_trial Rows 3-4) bypass this knob. Set false for unit
+  # tests that expect the legacy ".0" tick formatting.
+  lick_count_integer_yticks: true
   stroke_linewidth: 2.5
 
   # Stroke-day vertical marker (behavior_report_PS.py:352, 364)
@@ -1401,10 +1430,15 @@ visual_gate:
 # read for visual-gate scope.
 
 behavior_report:
-  # Lick-detection window relative to each reward delivery (seconds).
-  # Tuple (before, after). All per-trial lick computes (lick rate,
-  # num licks, first-lick correctness) use this window.
-  window_around_rewards: [1.0, 8.0]
+  # Lick-detection window relative to each trial-cue tone onset
+  # (seconds). Tuple (before, after). All per-trial lick computes
+  # (lick rate, num licks, first-lick correctness) use this window,
+  # anchored at TrialRecord.tone_idx (Q-A.β post-2026-05-14).
+  # Pass-2 Case-2 partial remediation: renamed window_around_rewards
+  # → window_around_tones (singular knob retained at
+  # find_peri_reward_periods.window_around_reward — that one IS
+  # reward-anchored per Q-C.E.C lock).
+  window_around_tones: [1.0, 8.0]
 
   criteria_1:
     # At least the last [num_consecutive_pass] sessions meet
@@ -1485,3 +1519,24 @@ spout_close_vs_std:
   # 90° CCW (bottom-to-top reading; mirrors the day labels'
   # rotated-270° right-spine convention).
   raster_half_label_fontsize: 11
+  # Phase 8a.10.1 Task 4 cosmetic (2026-05-14): cohort_dot_size
+  # controls the marker area (matplotlib `s=` in pts²) for the
+  # paired-scatter dots in Sub-B Rows 1-3 (summary) and Rows 1-2
+  # (per_trial). Pre-rename defaults were s=24 (summary) and s=8
+  # (per_trial); both bumped to 80 for cohort-level legibility on
+  # post-fix figures. cohort_dot_edge_width controls the
+  # open-marker (Close-condition) edge linewidth proportional to
+  # the larger dot. Row 4 raster dot styling is independent
+  # (raster_dot_size in the visual_gate: block).
+  cohort_dot_size: 80
+  cohort_dot_edge_width: 1.0
+  # Y-axis typography on Sub-B paired-scatter panels (Rows 1-3
+  # summary + Rows 1-4 per_trial). Pre-rename used matplotlib
+  # default (~10) for both. Row 4 raster keeps its own
+  # raster_ytick_fontsize / raster_ylabel_fontsize knobs.
+  cohort_ytick_fontsize: 11
+  cohort_ylabel_fontsize: 13
+  # Integer-only y-tick locator for the spout_close_vs_std lick-count
+  # axes. See visual_gate.lick_count_integer_yticks for the shared
+  # config flag — same semantic + default.
+  lick_count_integer_yticks: true

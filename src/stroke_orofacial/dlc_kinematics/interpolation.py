@@ -512,7 +512,7 @@ def _load_reward_centers_cam(
     baseline pool only needs the SET of reward centers, and that set is
     invariant to the wavesurfer↔mouse-frame flip applied to labels.
     """
-    from stroke_orofacial.dlc_spatial.reward_aligned import load_reward_events
+    from stroke_orofacial.dlc_spatial.reward_aligned import load_tone_events
 
     date_str = manifest.date.strftime("%Y%m%d")
     licks_path = (
@@ -535,7 +535,10 @@ def _load_reward_centers_cam(
     # v6.8, mouse-frame) concatenates mouse-L + mouse-R. The UNION is
     # set-identical across the L/R flip — baseline pool-mask is
     # bit-identical regardless of which side each label sits on.
-    reward_ws = load_reward_events(
+    # X1-β: function rename to load_tone_events. Local variable
+    # `reward_ws` left as-is — its rename + the "concatenate Reward_R
+    # + Reward_L" comment cleanup belong to Phase 7b's pass per Q3.B.
+    reward_ws = load_tone_events(
         licks_path, trial_group="all",
         wavesurfer_sides_match_mouse_sides=manifest.wavesurfer_sides_match_mouse_sides,
     )

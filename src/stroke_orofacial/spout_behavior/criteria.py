@@ -8,12 +8,16 @@ compute entry points that the per-session JSON writer consumes.
 Hierarchy (see :mod:`stroke_orofacial.spout_behavior.criteria_slugs` for slugs):
 
 - **C3** (``criteria_first_correct_lick_present``): per-trial boolean — at
-  least one correct-side (rewarded) lick inside the C3 window
-  (legacy default ``[0.0, 2.0]`` s post-reward).
+  least one correct-side lick inside the C3 window
+  (legacy default ``[0.0, 2.0]`` s post-tone). Q-A.β post-2026-05-14:
+  window math relative to ``trial.tone_idx`` (the auditory cue anchor);
+  pre-fix this was labeled "post-reward" but the underlying anchor was
+  tone-onset all along under Case-2 universal.
 - **C4** (``criteria_correct_lick_count_threshold``): per-trial boolean —
   ``n_correct ≥ num_licks_correct_min`` AND
   ``n_incorrect ≤ num_licks_incorrect_max`` inside the C4 window
-  (legacy default ``[0.0, 2.5]`` s post-reward).
+  (legacy default ``[0.0, 2.5]`` s post-tone; Q-A.β semantics, same
+  rationale as C3 above).
 - **C34** (internal): per-trial ``C3 AND C4``; not exposed in the JSON.
 - **C2** (``criteria_session_trial_pass_fraction_above_threshold``):
   per-session per-side boolean — fraction of C34-passing trials
@@ -36,11 +40,13 @@ Every computed slot returns a dict shaped::
     }
 
 Per-side arrays (``"L"`` / ``"R"``) hold per-trial booleans in the
-reward-index chronological order within side. Because
+tone-index chronological order within side. Because
 :func:`stroke_orofacial.spout_behavior.trial_segmentation.build_per_trial_records`
-sorts trials by ``reward_idx`` with a stable sort, the k-th ``TrialRecord`` on
-side ``s`` corresponds to the legacy ``rewards_idx[date][f"Reward_{s}"][k]``
-entry — giving byte-identical parity with the legacy snippet's iteration.
+sorts trials by ``tone_idx`` with a stable sort (Q-A.β post-2026-05-14),
+the k-th ``TrialRecord`` on side ``s`` corresponds to the legacy
+``rewards_idx[date][f"Reward_{s}"][k]`` entry — which was the tone-onset
+array all along under Case-2 universal — giving byte-identical parity
+with the legacy snippet's iteration.
 
 Window sub-filtering
 --------------------
@@ -128,19 +134,22 @@ def _sub_window_counts(
     """Return ``(n_correct, n_incorrect)`` licks inside ``window_seconds``.
 
     Counts are taken over ``TrialRecord.licks_{L,R}_indices_in_window``
-    sub-filtered to the half-open ``[reward + w0*Fs, reward + w1*Fs)`` range
-    relative to this trial's ``reward_idx``. "Correct" side =
-    ``trial.reward_side``.
+    sub-filtered to the half-open ``[tone + w0*Fs, tone + w1*Fs)`` range
+    relative to this trial's ``tone_idx`` (Q-A.β post-2026-05-14:
+    tone-onset is the always-present trial anchor; pre-fix this said
+    ``reward_idx`` but the underlying anchor was tone-onset all along
+    under Case-2 universal). "Correct" side = ``trial.tone_side``
+    (Q-B.α: was ``reward_side``).
     """
     w0_samples = int(round(window_seconds[0] * trial.Fs))
     w1_samples = int(round(window_seconds[1] * trial.Fs))
-    start = trial.reward_idx + w0_samples
-    end = trial.reward_idx + w1_samples
+    start = trial.tone_idx + w0_samples
+    end = trial.tone_idx + w1_samples
     licks_L = trial.licks_L_indices_in_window
     licks_R = trial.licks_R_indices_in_window
     n_L = int(np.count_nonzero((licks_L >= start) & (licks_L < end)))
     n_R = int(np.count_nonzero((licks_R >= start) & (licks_R < end)))
-    if trial.reward_side == "L":
+    if trial.tone_side == "L":
         return n_L, n_R
     return n_R, n_L
 
@@ -160,7 +169,7 @@ def _group_trials_by_side(
     """Return per-side TrialRecord lists preserving chronological order."""
     out: dict[str, list[TrialRecord]] = {"L": [], "R": []}
     for t in trials:
-        out[t.reward_side].append(t)
+        out[t.tone_side].append(t)
     return out
 
 

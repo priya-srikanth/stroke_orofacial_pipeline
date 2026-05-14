@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from stroke_orofacial.spout_behavior.wavesurfer_io import (
+    _apply_tone_reward_swap,
     calibrate_treadmill,
     find_wavesurfer_file,
     resolve_treadmill_offset,
@@ -111,6 +112,201 @@ class TestFindWavesurferFile:
         (tmp_path / "stroke_0001.h5").touch()
         result = find_wavesurfer_file(tmp_path)
         assert result.name == "stroke_0001.h5"
+
+
+# ---- Phase 8a.10.1 Tone↔Reward swap fix ----
+
+
+def _make_pulses(n_samples: int, starts: list[int], width: int) -> np.ndarray:
+    """Build a bool array with rectangular pulses at given start indices."""
+    arr = np.zeros(n_samples, dtype=bool)
+    for s in starts:
+        arr[s : s + width] = True
+    return arr
+
+
+class TestApplyToneRewardSwap:
+    """Unit tests for the in-place dict-key swap helper.
+
+    Phase 8a.10.1 Task 1 Commit A. The raw `.h5` channel labels are
+    inverted cohort-wide: ``Reward_*`` carries ~200 ms tone TTLs;
+    ``Tone_*`` carries ~26 ms reward solenoid pulses. The swap fix
+    rebinds the dict keys post-read so consumers see semantically-
+    correct content under canonical labels. See Task 0.5 audit at
+    `.scratch_phase_8a_10_1/task_0_5_audit_report.md` (271/271 sessions
+    swap-confirmed).
+    """
+
+    def test_reward_channel_holds_short_pulses_post_swap(self):
+        """Post-swap, ``Reward_L`` holds the reward-solenoid short-pulse channel.
+
+        The raw .h5 channel labeled ``Tone_L`` carries the ~26 ms reward
+        pulse (per Task 0.5 audit). After the swap, that short-pulse
+        content lands at the canonical ``Reward_L`` key.
+        """
+        n = 1_000_000
+        short_pulse = _make_pulses(n, starts=[1000, 5000, 9000], width=26)
+        long_pulse = _make_pulses(n, starts=[1000, 5000, 9000], width=200)
+        signals = {
+            "Reward_L": long_pulse.copy(),  # pre-swap: labeled "Reward" but contains tone TTL
+            "Tone_L": short_pulse.copy(),   # pre-swap: labeled "Tone" but contains reward solenoid
+            "Reward_R": long_pulse.copy(),
+            "Tone_R": short_pulse.copy(),
+        }
+        _apply_tone_reward_swap(signals)
+        np.testing.assert_array_equal(signals["Reward_L"], short_pulse)
+        np.testing.assert_array_equal(signals["Reward_R"], short_pulse)
+
+    def test_tone_channel_holds_long_pulses_post_swap(self):
+        """Post-swap, ``Tone_L`` holds the auditory-tone long-pulse channel."""
+        n = 1_000_000
+        short_pulse = _make_pulses(n, starts=[100, 500, 900], width=26)
+        long_pulse = _make_pulses(n, starts=[100, 500, 900], width=200)
+        signals = {
+            "Reward_L": long_pulse.copy(),
+            "Tone_L": short_pulse.copy(),
+            "Reward_R": long_pulse.copy(),
+            "Tone_R": short_pulse.copy(),
+        }
+        _apply_tone_reward_swap(signals)
+        np.testing.assert_array_equal(signals["Tone_L"], long_pulse)
+        np.testing.assert_array_equal(signals["Tone_R"], long_pulse)
+
+    def test_swap_compensates_for_label_inversion(self):
+        """Identity check: round-trip swap of swapped content is original mapping.
+
+        Documents the swap explicitly. Given content known to be ``A`` at
+        the ``Reward_L`` key and ``B`` at the ``Tone_L`` key pre-swap, the
+        post-swap state has ``B`` at ``Reward_L`` and ``A`` at ``Tone_L``.
+        """
+        a = np.array([True, False, True, False], dtype=bool)
+        b = np.array([False, True, False, True], dtype=bool)
+        signals = {
+            "Reward_L": a.copy(), "Tone_L": b.copy(),
+            "Reward_R": a.copy(), "Tone_R": b.copy(),
+        }
+        _apply_tone_reward_swap(signals)
+        np.testing.assert_array_equal(signals["Reward_L"], b)
+        np.testing.assert_array_equal(signals["Tone_L"], a)
+        np.testing.assert_array_equal(signals["Reward_R"], b)
+        np.testing.assert_array_equal(signals["Tone_R"], a)
+
+    def test_swap_silent_noop_when_one_side_missing(self):
+        """Defensive: partial signals dict — pairs without both halves don't fire.
+
+        Real `.h5` files always have all 4 channels, but the helper is
+        called on a plain dict so a malformed input should silently skip
+        the absent-pair rather than mutate state.
+        """
+        only_left = {
+            "Reward_L": np.array([True, False], dtype=bool),
+            "Tone_L": np.array([False, True], dtype=bool),
+            # Reward_R, Tone_R intentionally absent
+        }
+        _apply_tone_reward_swap(only_left)
+        # Left pair swapped:
+        np.testing.assert_array_equal(only_left["Reward_L"], [False, True])
+        np.testing.assert_array_equal(only_left["Tone_L"], [True, False])
+        # Right pair simply absent (no spurious key creation):
+        assert "Reward_R" not in only_left
+        assert "Tone_R" not in only_left
+
+
+class TestLoadWavesurferSignalsSwapFlag:
+    """Verify the loader's ``tone_reward_swap_enabled`` kwarg gates the swap.
+
+    Monkey-patches ``pywavesurfer.ws.loadDataFile`` so the loader runs
+    against synthetic raw-channel content. The flag must apply the swap
+    when True (default) and skip it when False (kill-switch).
+    """
+
+    @staticmethod
+    def _fake_loaddata(signals_payload: dict) -> dict:
+        """Build a fake pywavesurfer.ws.loadDataFile return value."""
+        # Names + active mask: 1 analog ("Treadmill"), digital names per
+        # signals_payload's digital keys (anything matching Lick_*/Reward_*
+        # /Tone_*). Bit-pack the digital channels into a single uint8
+        # column per the real .h5 layout.
+        analog_names = np.array(["Treadmill"], dtype="S20")
+        digital_names_list = [k for k in signals_payload if k != "Treadmill"]
+        digital_names = np.array(
+            [n.encode() for n in digital_names_list], dtype="S20",
+        )
+        treadmill = signals_payload["Treadmill"]
+        n_samples = treadmill.shape[0]
+        # Pack the digital channels into bits column idx+1 (per the real
+        # layout's offset). Column 0 stays unused (legacy convention).
+        bits = np.zeros((n_samples, 8), dtype=bool)
+        for i, name in enumerate(digital_names_list):
+            bits[:, i + 1] = signals_payload[name]
+        raw_bits = np.packbits(bits, axis=1)[:, 0:1]  # 1 byte per sample, shape (n_samples, 1)
+        return {
+            "header": {
+                "AcquisitionSampleRate": np.array([1000.0]),
+                "AIChannelNames": analog_names,
+                "IsAIChannelActive": np.array([[True]]),
+                "DIChannelNames": digital_names,
+            },
+            "sweep_0001": {
+                "analogScans": np.array([treadmill]),
+                "digitalScans": np.array([raw_bits.flatten()]),
+            },
+        }
+
+    def test_swap_enabled_true_applies_swap(self, monkeypatch, tmp_path):
+        from stroke_orofacial.spout_behavior import wavesurfer_io
+        n = 64
+        short = _make_pulses(n, starts=[8, 32], width=4)
+        long = _make_pulses(n, starts=[8, 32], width=12)
+        payload = {
+            "Treadmill": np.zeros(n, dtype=float),
+            "Reward_L": long,   # pre-fix: "Reward" label holds tone TTL
+            "Reward_R": long,
+            "Tone_L": short,    # pre-fix: "Tone" label holds reward solenoid
+            "Tone_R": short,
+        }
+        monkeypatch.setattr(
+            wavesurfer_io.pywavesurfer.ws, "loadDataFile",
+            lambda _path: self._fake_loaddata(payload),
+        )
+        # Default flag True (post-fix behavior): swap is applied.
+        fake_h5 = tmp_path / "fake.h5"
+        fake_h5.touch()
+        signals = wavesurfer_io.load_wavesurfer_signals(fake_h5)
+        np.testing.assert_array_equal(signals["Reward_L"], short)
+        np.testing.assert_array_equal(signals["Tone_L"], long)
+
+    def test_swap_disabled_when_flag_false(self, monkeypatch, tmp_path):
+        """Kill-switch: ``tone_reward_swap_enabled=False`` skips the swap.
+
+        For hypothetical future correctly-labeled cohorts. Reading the
+        same fixture with the flag off must return the un-swapped raw
+        channel mapping (so ``Reward_L`` still holds the long-pulse
+        content that was at that key in the simulated raw `.h5`).
+        """
+        from stroke_orofacial.spout_behavior import wavesurfer_io
+        n = 64
+        short = _make_pulses(n, starts=[8, 32], width=4)
+        long = _make_pulses(n, starts=[8, 32], width=12)
+        payload = {
+            "Treadmill": np.zeros(n, dtype=float),
+            "Reward_L": long,
+            "Reward_R": long,
+            "Tone_L": short,
+            "Tone_R": short,
+        }
+        monkeypatch.setattr(
+            wavesurfer_io.pywavesurfer.ws, "loadDataFile",
+            lambda _path: self._fake_loaddata(payload),
+        )
+        fake_h5 = tmp_path / "fake.h5"
+        fake_h5.touch()
+        signals = wavesurfer_io.load_wavesurfer_signals(
+            fake_h5, tone_reward_swap_enabled=False,
+        )
+        # No swap: raw mapping preserved.
+        np.testing.assert_array_equal(signals["Reward_L"], long)
+        np.testing.assert_array_equal(signals["Tone_L"], short)
 
 
 # ---- Integration test (requires real wavesurfer data) ----

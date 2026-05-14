@@ -4,21 +4,31 @@ Two small per-session endpoints surfaced by the Phase 8a archaeology (§3)
 as cheap additions beyond the original Q9 list but scientifically useful
 for recovery-trajectory analysis:
 
-- :func:`reward_trial_count_per_session` — per-side rewarded-trial counts.
-  Engagement/motivation proxy; stroke-recovering animals typically maintain
-  or increase trial counts, non-recoverers plateau or decline.
+- :func:`tone_trial_count_per_session` — per-side trial-presented counts
+  (number of tone cues fired on each spout side). Engagement / motivation
+  proxy; stroke-recovering animals typically maintain or increase trial
+  counts, non-recoverers plateau or decline. Q-C rename from the prior
+  ``reward_trial_count_per_session`` (Phase 8a.10.1 audit lock
+  2026-05-14): the metric counts EXPOSURES (trial cues presented), not
+  REWARDS EARNED; under Case-2 universal the legacy ``Reward_*`` channel
+  was the tone-cue channel, so the "rewarded trial count" name was a
+  misnomer for "trials presented".
 - :func:`inter_trial_interval_distribution` — mean / median / std / n of
-  consecutive-reward gaps per side. Task-pace / motivation proxy. Raw
+  consecutive-tone gaps per side. Task-pace / motivation proxy. Raw
   per-ITI distribution is deferred (plan decision D13); only the summary
-  lands in the per-session JSON.
+  lands in the per-session JSON. (Function name is event-class-agnostic
+  and survives Q-C unchanged.)
 
-Both operate directly on the Phase 2 ``licks_and_rewards`` NPZ's reward-
-index arrays, with no dependence on the ``TrialRecord`` structure.
+Both operate directly on the Phase 2 ``licks_and_rewards`` NPZ's
+tone-index arrays (Q-C: read ``Tone_L``/``Tone_R`` keys, not
+``Reward_L``/``Reward_R``), with no dependence on the ``TrialRecord``
+structure.
 
 The ``engagement`` feature gates in ``defaults.yaml``
-(``compute_reward_trial_count_per_session``, ``compute_inter_trial_interval_distribution``)
-are the *caller's* responsibility; these primitives always compute when
-called. The gate values are echoed into provenance for traceability.
+(``compute_tone_trial_count_per_session``,
+``compute_inter_trial_interval_distribution``) are the *caller's*
+responsibility; these primitives always compute when called. The gate
+values are echoed into provenance for traceability.
 """
 from __future__ import annotations
 
@@ -31,40 +41,49 @@ from stroke_orofacial.spout_behavior.endpoint_result import EndpointResult
 
 
 # ---------------------------------------------------------------------------
-# reward_trial_count_per_session
+# tone_trial_count_per_session
 # ---------------------------------------------------------------------------
 
 
-def reward_trial_count_per_session(
-    reward_indices: dict[str, np.ndarray],
+def tone_trial_count_per_session(
+    tone_indices: dict[str, np.ndarray],
     *,
     endpoints_params: dict[str, Any],
 ) -> EndpointResult:
-    """Report per-side + total rewarded-trial counts for a session.
+    """Report per-side + total trial-presented counts for a session.
+
+    Q-C rename (2026-05-14): the function counts exposures (tones
+    presented), not rewards earned. Under Case-2 universal the legacy
+    ``Reward_*`` channel was the tone-cue channel, so the old name
+    ``reward_trial_count_per_session`` was a misnomer; reads from
+    ``Tone_L``/``Tone_R`` post-fix.
 
     Parameters
     ----------
-    reward_indices : dict
-        ``{"Reward_L": np.ndarray, "Reward_R": np.ndarray}`` — reward-onset
-        sample indices, as produced by Phase 2's lick-and-reward detection.
+    tone_indices : dict
+        ``{"Tone_L": np.ndarray, "Tone_R": np.ndarray}`` — tone-onset
+        sample indices, as produced by Phase 2's tone detection
+        post-swap-fix.
     endpoints_params : dict
-        ``spout_behavior.endpoints`` config block (snapshot for provenance).
+        ``spout_behavior.endpoints`` config block (snapshot for
+        provenance).
 
     Returns
     -------
     EndpointResult
         - ``per_session_aggregate``: ``{"L": int, "R": int, "total": int}``.
         - ``per_trial_array``: ``None``.
-        - ``per_trial_type_split``: ``None`` (the aggregate is already the split).
+        - ``per_trial_type_split``: ``None`` (the aggregate is already
+          the split).
     """
-    n_L = int(np.asarray(reward_indices.get("Reward_L", [])).size)
-    n_R = int(np.asarray(reward_indices.get("Reward_R", [])).size)
+    n_L = int(np.asarray(tone_indices.get("Tone_L", [])).size)
+    n_R = int(np.asarray(tone_indices.get("Tone_R", [])).size)
     return EndpointResult(
         per_session_aggregate={"L": n_L, "R": n_R, "total": n_L + n_R},
         per_trial_array=None,
         per_trial_type_split=None,
         provenance={
-            "endpoint_name": "reward_trial_count_per_session",
+            "endpoint_name": "tone_trial_count_per_session",
             "config_snapshot": copy.deepcopy(endpoints_params),
             "n_trials_input": n_L + n_R,
             "n_trials_used": n_L + n_R,
@@ -95,20 +114,23 @@ def _iti_stats(iti_samples: np.ndarray, Fs: float) -> dict[str, float]:
 
 
 def inter_trial_interval_distribution(
-    reward_indices: dict[str, np.ndarray],
+    tone_indices: dict[str, np.ndarray],
     Fs: float,
     *,
     endpoints_params: dict[str, Any],
 ) -> EndpointResult:
-    """Summary stats of consecutive-reward gaps per side and overall.
+    """Summary stats of consecutive-tone gaps per side and overall.
 
-    An ITI is the gap (in seconds) between consecutive reward events on the
-    same side. A side with fewer than 2 reward events contributes 0 ITIs.
+    Q-C semantics (2026-05-14): an ITI is the gap (in seconds) between
+    consecutive tone-cue events on the same side — i.e., the inter-trial
+    interval as experienced by the animal. A side with fewer than 2
+    tone events contributes 0 ITIs. (Function name survives Q-C
+    unchanged because "inter-trial interval" is event-class-agnostic.)
 
     Parameters
     ----------
-    reward_indices : dict
-        ``{"Reward_L": np.ndarray, "Reward_R": np.ndarray}``.
+    tone_indices : dict
+        ``{"Tone_L": np.ndarray, "Tone_R": np.ndarray}``.
     Fs : float
         Sampling rate in Hz (for samples → seconds).
     endpoints_params : dict
@@ -123,14 +145,14 @@ def inter_trial_interval_distribution(
           deferred per plan decision D13).
         - ``per_trial_type_split``: per-side dicts of the same summary.
     """
-    r_L = np.asarray(reward_indices.get("Reward_L", []), dtype=int)
-    r_R = np.asarray(reward_indices.get("Reward_R", []), dtype=int)
+    t_L = np.asarray(tone_indices.get("Tone_L", []), dtype=int)
+    t_R = np.asarray(tone_indices.get("Tone_R", []), dtype=int)
 
     # Sort inputs defensively — ITI requires monotonic ordering. Phase 2
     # arrays are already sorted but the cost is trivial and the safety
     # margin is real.
-    iti_L = np.diff(np.sort(r_L))
-    iti_R = np.diff(np.sort(r_R))
+    iti_L = np.diff(np.sort(t_L))
+    iti_R = np.diff(np.sort(t_R))
     iti_all = np.concatenate([iti_L, iti_R])
 
     return EndpointResult(
@@ -143,7 +165,7 @@ def inter_trial_interval_distribution(
         provenance={
             "endpoint_name": "inter_trial_interval_distribution",
             "config_snapshot": copy.deepcopy(endpoints_params),
-            "n_trials_input": int(r_L.size + r_R.size),
+            "n_trials_input": int(t_L.size + t_R.size),
             "n_trials_used": int(iti_all.size),
             "Fs": float(Fs),
         },

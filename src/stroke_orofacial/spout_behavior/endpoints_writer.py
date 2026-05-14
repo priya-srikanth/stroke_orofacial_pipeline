@@ -94,7 +94,7 @@ CANONICAL_ENDPOINT_NAMES: frozenset[str] = frozenset({
     "within_session_learning_curve",
     "within_session_change",
     "inter_session_persistence",
-    "reward_trial_count_per_session",
+    "tone_trial_count_per_session",
     "inter_trial_interval_distribution",
     "lick_bout_structure",
 })
@@ -147,11 +147,14 @@ def lick_bouts_to_endpoint_result(
     Trial-binning rule
     ------------------
     A bout is assigned to trial K iff ``bout.start_idx`` falls in
-    ``[trial_K.reward_idx + window_seconds[0]*Fs,
-       trial_K.reward_idx + window_seconds[1]*Fs)`` — half-open, matching
+    ``[trial_K.tone_idx + window_seconds[0]*Fs,
+       trial_K.tone_idx + window_seconds[1]*Fs)`` — half-open, matching
     :func:`stroke_orofacial.spout_behavior.trial_segmentation.build_per_trial_records`'s
-    own window semantics. Bouts outside every trial window contribute to
-    ``n_bouts`` (session total) but to no entry in ``per_trial_array``.
+    own window semantics. Q-A.β (2026-05-14): the trial anchor renamed
+    ``reward_idx → tone_idx``; pre-fix the field name implied
+    reward-delivery but the underlying anchor was tone-onset all along
+    under Case-2 universal. Bouts outside every trial window contribute
+    to ``n_bouts`` (session total) but to no entry in ``per_trial_array``.
 
     Parameters
     ----------
@@ -196,8 +199,8 @@ def lick_bouts_to_endpoint_result(
     if trials:
         per_trial_counts = np.zeros(len(trials), dtype=np.int64)
         for k, t in enumerate(trials):
-            win_start = t.reward_idx + int(round(t.window_seconds[0] * t.Fs))
-            win_end = t.reward_idx + int(round(t.window_seconds[1] * t.Fs))
+            win_start = t.tone_idx + int(round(t.window_seconds[0] * t.Fs))
+            win_end = t.tone_idx + int(round(t.window_seconds[1] * t.Fs))
             in_trial = (bout_starts >= win_start) & (bout_starts < win_end)
             per_trial_counts[k] = int(in_trial.sum())
         std_bouts_per_trial = float(np.std(per_trial_counts.astype(float), ddof=0))
