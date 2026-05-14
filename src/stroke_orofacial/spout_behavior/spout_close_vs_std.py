@@ -416,6 +416,61 @@ def _half_per_trial_lick_counts_per_side(
     return out
 
 
+def _half_pct_trials_with_correct_lick_per_side(
+    session: SessionPlotData,
+    window_around_tones: tuple[float, float] | list[float],
+) -> dict[str, float]:
+    """Per-(session, side) fraction of trials with ≥ 1 correct-side lick.
+
+    Phase 8a.10.1 Task 4 Change 2 (2026-05-14). Per session, for each
+    tone side, count trials where the correct-side lick array has
+    ≥ 1 entry within ``window_around_tones``, divided by total tone-
+    side trial count. Returns ``{"L": frac, "R": frac}`` with NaN
+    when a side has zero trials. "Correct" lick = same side as tone.
+    """
+    delays = compute_trial_lick_delays(session, window_around_tones)
+    out: dict[str, float] = {}
+    for side_tone in ("L", "R"):
+        per_trial = delays[f"Tone_{side_tone}"]
+        n_trials = len(per_trial)
+        if n_trials == 0:
+            out[side_tone] = float("nan")
+            continue
+        n_with_correct = sum(
+            1 for by_side in per_trial.values()
+            if int(by_side[f"Lick_{side_tone}"].size) >= 1
+        )
+        out[side_tone] = n_with_correct / n_trials
+    return out
+
+
+def _half_pct_trials_with_incorrect_lick_per_side(
+    session: SessionPlotData,
+    window_around_tones: tuple[float, float] | list[float],
+) -> dict[str, float]:
+    """Per-(session, side) fraction of trials with ≥ 1 incorrect-side lick.
+
+    Parallel to :func:`_half_pct_trials_with_correct_lick_per_side`;
+    "incorrect" lick = opposite-side from tone (L-tone → R-spout lick;
+    R-tone → L-spout lick). Used in Sub-B per_trial Row 4.
+    """
+    delays = compute_trial_lick_delays(session, window_around_tones)
+    out: dict[str, float] = {}
+    for side_tone in ("L", "R"):
+        other = "R" if side_tone == "L" else "L"
+        per_trial = delays[f"Tone_{side_tone}"]
+        n_trials = len(per_trial)
+        if n_trials == 0:
+            out[side_tone] = float("nan")
+            continue
+        n_with_incorrect = sum(
+            1 for by_side in per_trial.values()
+            if int(by_side[f"Lick_{other}"].size) >= 1
+        )
+        out[side_tone] = n_with_incorrect / n_trials
+    return out
+
+
 def _plot_row_per_session_dots_and_means(
     ax,
     side_tone: Literal["L", "R"],
@@ -423,8 +478,10 @@ def _plot_row_per_session_dots_and_means(
     bare_vals: list[float],
     b_vals: list[float],
     licking_xtick_fontsize: int | float | None = None,
+    ytick_fontsize: int | float | None = None,
     dot_size: float = 24.0,
     dot_edge_width: float = 0.8,
+    integer_yticks: bool = False,
 ) -> None:
     """Generic dot-plot helper for Rows 1, 2, 3.
 
@@ -509,6 +566,11 @@ def _plot_row_per_session_dots_and_means(
     ])
     if licking_xtick_fontsize is not None:
         ax.tick_params(axis="x", labelsize=licking_xtick_fontsize)
+    if ytick_fontsize is not None:
+        ax.tick_params(axis="y", labelsize=ytick_fontsize)
+    if integer_yticks:
+        from matplotlib.ticker import MaxNLocator
+        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_xlim(-0.5, 1.5)
 
 
@@ -934,8 +996,17 @@ def render_animal_summary_spout_close_vs_std(
     # can iterate via the cohort_dot_size config knob alone.
     cohort_dot_size = float(cohort_config["cohort_dot_size"])
     cohort_dot_edge_width = float(cohort_config["cohort_dot_edge_width"])
+    cohort_ytick_fontsize = cohort_config["cohort_ytick_fontsize"]
+    cohort_ylabel_fontsize = cohort_config["cohort_ylabel_fontsize"]
+    # Shared visual_gate flag (single source of truth); fall back
+    # to cohort_config copy or True if absent.
+    lick_count_int_yticks = bool(config.get(
+        "lick_count_integer_yticks",
+        cohort_config.get("lick_count_integer_yticks", True),
+    ))
 
-    # Row 1: accuracy_firstCorrectLickAll
+    # Row 1: accuracy_firstCorrectLickAll (fractional [0, 1] — NOT
+    # integer-locator-eligible)
     for jj, side in enumerate(("L", "R")):
         ax = axs[0, jj]
         _plot_row_per_session_dots_and_means(
@@ -943,8 +1014,10 @@ def render_animal_summary_spout_close_vs_std(
             bare_vals=bare_acc[side],
             b_vals=b_acc[side],
             licking_xtick_fontsize=licking_xtick_fontsize,
+            ytick_fontsize=cohort_ytick_fontsize,
             dot_size=cohort_dot_size,
             dot_edge_width=cohort_dot_edge_width,
+            integer_yticks=False,
         )
         ax.set_ylim(*row1_ylim)
         ax.set_title(
@@ -952,9 +1025,13 @@ def render_animal_summary_spout_close_vs_std(
             fontsize=panel_title_fontsize,
         )
         if jj == 0:
-            ax.set_ylabel("Accuracy (first-lick correct / all trials)")
+            ax.set_ylabel(
+                "Accuracy (first-lick correct / all trials)",
+                fontsize=cohort_ylabel_fontsize,
+            )
 
-    # Row 2: mean CORRECT licks per trial
+    # Row 2: mean CORRECT licks per trial (integer-locator-eligible
+    # per the lick_count_integer_yticks config flag)
     for jj, side in enumerate(("L", "R")):
         ax = axs[1, jj]
         _plot_row_per_session_dots_and_means(
@@ -962,8 +1039,10 @@ def render_animal_summary_spout_close_vs_std(
             bare_vals=bare_n_correct[side],
             b_vals=b_n_correct[side],
             licking_xtick_fontsize=licking_xtick_fontsize,
+            ytick_fontsize=cohort_ytick_fontsize,
             dot_size=cohort_dot_size,
             dot_edge_width=cohort_dot_edge_width,
+            integer_yticks=lick_count_int_yticks,
         )
         ax.set_ylim(*row2_ylim)
         ax.set_title(
@@ -971,9 +1050,13 @@ def render_animal_summary_spout_close_vs_std(
             fontsize=panel_title_fontsize,
         )
         if jj == 0:
-            ax.set_ylabel("Mean correct licks per trial")
+            ax.set_ylabel(
+                "Mean correct licks per trial",
+                fontsize=cohort_ylabel_fontsize,
+            )
 
-    # Row 3: mean INCORRECT licks per trial (separate ylim from Row 2)
+    # Row 3: mean INCORRECT licks per trial (separate ylim from Row 2;
+    # integer-locator-eligible)
     for jj, side in enumerate(("L", "R")):
         ax = axs[2, jj]
         _plot_row_per_session_dots_and_means(
@@ -981,8 +1064,10 @@ def render_animal_summary_spout_close_vs_std(
             bare_vals=bare_n_incorrect[side],
             b_vals=b_n_incorrect[side],
             licking_xtick_fontsize=licking_xtick_fontsize,
+            ytick_fontsize=cohort_ytick_fontsize,
             dot_size=cohort_dot_size,
             dot_edge_width=cohort_dot_edge_width,
+            integer_yticks=lick_count_int_yticks,
         )
         ax.set_ylim(*row3_ylim)
         ax.set_title(
@@ -997,7 +1082,10 @@ def render_animal_summary_spout_close_vs_std(
             fontsize=spout_distance_xlabel_fontsize,
         )
         if jj == 0:
-            ax.set_ylabel("Mean incorrect licks per trial")
+            ax.set_ylabel(
+                "Mean incorrect licks per trial",
+                fontsize=cohort_ylabel_fontsize,
+            )
 
     # Row 4: pooled lick raster, shared y-range across L/R.
     row4_totals: dict[str, tuple[int, int]] = {}
@@ -1087,8 +1175,10 @@ def _plot_panel_per_trial_scatter(
     bare_per_trial: list[int],
     b_per_trial: list[int],
     licking_xtick_fontsize: int | float,
+    ytick_fontsize: int | float | None = None,
     dot_size: float = 8.0,
     dot_edge_width: float = 0.5,
+    integer_yticks: bool = False,
 ) -> None:
     """Pooled per-trial scatter: each session contributes one dot
     per trial.
@@ -1151,6 +1241,11 @@ def _plot_panel_per_trial_scatter(
         SPOUT_DISTANCE_DISPLAY_LABELS["b"],
     ])
     ax.tick_params(axis="x", labelsize=licking_xtick_fontsize)
+    if ytick_fontsize is not None:
+        ax.tick_params(axis="y", labelsize=ytick_fontsize)
+    if integer_yticks:
+        from matplotlib.ticker import MaxNLocator
+        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_xlim(-0.5, 1.5)
 
 
@@ -1165,21 +1260,35 @@ def render_animal_per_trial_spout_close_vs_std(
     animal_info: AnimalInfo | None = None,
     overwrite: Literal["force", "skip", "raise"] = "force",
 ) -> tuple[Path, Path]:
-    """Render the per-trial 2×2 cohort scatter for one animal.
+    """Render the per-trial 4×2 cohort figure for one animal.
 
     Output:
     ``{resolver.spout_close_vs_std_dir(animal=None)}/<animal>_per_trial.{svg,png}``.
 
-    Layout (2 rows × 2 cols):
-      - Row 1: per-trial CORRECT lick counts (cols: Reward L, Reward R).
-      - Row 2: per-trial INCORRECT lick counts (cols: Reward L, Reward R).
-    Each panel pools every trial across sessions; one dot per
-    (trial, condition). Standard (bare) filled; Close (b) open.
-    Per-condition mean bars overlay in mouse-side color.
+    Layout (4 rows × 2 cols; expanded from 2×2 in the Task 4
+    follow-on per Priya 2026-05-14):
+      - Row 1: per-trial CORRECT lick counts (cols: Tone L, Tone R)
+        — pooled trial scatter, mean licks/trial on y-axis.
+      - Row 2: per-trial INCORRECT lick counts — same shape.
+      - Row 3 (NEW): per-session fraction of trials with ≥ 1 correct
+        lick. One dot per (session, condition); same-date connector;
+        per-mouse-side mean bar. y ∈ [0, 1].
+      - Row 4 (NEW): per-session fraction of trials with ≥ 1
+        incorrect lick. Same shape as Row 3. y ∈ [0, 1].
 
-    Y-axis is shared within each row across L/R panels (empirical
-    max + 10% pad). Rows do NOT share — incorrect magnitudes are
-    typically smaller; row-specific scaling preserves detail.
+    Rows 1-2 are per-trial scatter (pooled across sessions); Rows 3-4
+    are per-session aggregate (one dot per session, mirrors the
+    summary figure's Row 1-3 convention). Both visual conventions
+    coexist in this one figure; the filename keeps the legacy
+    ``<animal>_per_trial.{svg,png}`` form to avoid downstream
+    confusion.
+
+    "Correct" / "incorrect" lick semantics:
+      - L-tone trial: correct = lick on L spout; incorrect = lick on R.
+      - R-tone trial: correct = lick on R spout; incorrect = lick on L.
+
+    Y-axis sharing: Row 1 L↔R share; Row 2 L↔R share; Rows 3-4 each
+    use [0, 1] (fractional). Rows do not share across rows.
 
     Parameters mirror :func:`render_animal_summary_spout_close_vs_std`.
     """
@@ -1198,22 +1307,44 @@ def render_animal_per_trial_spout_close_vs_std(
         raise ValueError(
             f"render_animal_per_trial_spout_close_vs_std: no post-"
             f"stroke Cohort B sessions for {animal!r} — cannot build "
-            f"the 2×2 per-trial scatter"
+            f"the 4×2 per-trial grid"
         )
 
-    # ---- Pool per-trial counts across sessions ----
+    # ---- Pool per-trial counts across sessions (Rows 1-2) ----
     bare_correct: dict[str, list[int]] = {"L": [], "R": []}
     bare_incorrect: dict[str, list[int]] = {"L": [], "R": []}
     b_correct: dict[str, list[int]] = {"L": [], "R": []}
     b_incorrect: dict[str, list[int]] = {"L": [], "R": []}
+    # Per-session aggregates for Rows 3-4 (fraction of trials with
+    # ≥ 1 correct/incorrect lick).
+    bare_pct_corr: dict[str, list[float]] = {"L": [], "R": []}
+    b_pct_corr: dict[str, list[float]] = {"L": [], "R": []}
+    bare_pct_incorr: dict[str, list[float]] = {"L": [], "R": []}
+    b_pct_incorr: dict[str, list[float]] = {"L": [], "R": []}
     for pair in sessions:
         bare_counts = _half_per_trial_lick_counts_per_side(pair.bare, window)
         b_counts = _half_per_trial_lick_counts_per_side(pair.b, window)
+        bare_pct_corr_session = _half_pct_trials_with_correct_lick_per_side(
+            pair.bare, window,
+        )
+        b_pct_corr_session = _half_pct_trials_with_correct_lick_per_side(
+            pair.b, window,
+        )
+        bare_pct_incorr_session = _half_pct_trials_with_incorrect_lick_per_side(
+            pair.bare, window,
+        )
+        b_pct_incorr_session = _half_pct_trials_with_incorrect_lick_per_side(
+            pair.b, window,
+        )
         for side in ("L", "R"):
             bare_correct[side].extend(bare_counts[side]["correct"])
             bare_incorrect[side].extend(bare_counts[side]["incorrect"])
             b_correct[side].extend(b_counts[side]["correct"])
             b_incorrect[side].extend(b_counts[side]["incorrect"])
+            bare_pct_corr[side].append(bare_pct_corr_session[side])
+            b_pct_corr[side].append(b_pct_corr_session[side])
+            bare_pct_incorr[side].append(bare_pct_incorr_session[side])
+            b_pct_incorr[side].append(b_pct_incorr_session[side])
 
     # ---- Compute shared y-limits per row (Tweak 4 convention) ----
     def _empirical_ymax(*lists: list[int]) -> float:
@@ -1231,11 +1362,14 @@ def render_animal_per_trial_spout_close_vs_std(
         bare_incorrect["R"], b_incorrect["R"],
     )
     row2_ylim = (0.0, max(1.0, row2_max * 1.1))
+    # Rows 3-4 use the fractional [0, 1] convention (matches summary
+    # Row 1's accuracy_firstCorrectLickAll); +5% pad on the top.
+    row34_ylim = (0.0, 1.05)
 
     # ---- Build figure ----
-    figsize = (10.0, 8.0)
+    figsize = (10.0, 16.0)
     fig, axs = plt.subplots(
-        nrows=2, ncols=2, figsize=figsize, squeeze=False,
+        nrows=4, ncols=2, figsize=figsize, squeeze=False,
     )
     panel_title_fontsize = cohort_config["panel_title_fontsize"]
     licking_xtick_fontsize = cohort_config["licking_xtick_fontsize"]
@@ -1244,6 +1378,14 @@ def render_animal_per_trial_spout_close_vs_std(
     ]
     cohort_dot_size = float(cohort_config["cohort_dot_size"])
     cohort_dot_edge_width = float(cohort_config["cohort_dot_edge_width"])
+    cohort_ytick_fontsize = cohort_config["cohort_ytick_fontsize"]
+    cohort_ylabel_fontsize = cohort_config["cohort_ylabel_fontsize"]
+    # Shared visual_gate flag (single source of truth); fall back
+    # to cohort_config copy or True if absent.
+    lick_count_int_yticks = bool(config.get(
+        "lick_count_integer_yticks",
+        cohort_config.get("lick_count_integer_yticks", True),
+    ))
 
     # Row 1: per-trial CORRECT licks
     for jj, side in enumerate(("L", "R")):
@@ -1253,8 +1395,10 @@ def render_animal_per_trial_spout_close_vs_std(
             bare_per_trial=bare_correct[side],
             b_per_trial=b_correct[side],
             licking_xtick_fontsize=licking_xtick_fontsize,
+            ytick_fontsize=cohort_ytick_fontsize,
             dot_size=cohort_dot_size,
             dot_edge_width=cohort_dot_edge_width,
+            integer_yticks=lick_count_int_yticks,
         )
         ax.set_ylim(*row1_ylim)
         ax.set_title(
@@ -1262,7 +1406,10 @@ def render_animal_per_trial_spout_close_vs_std(
             fontsize=panel_title_fontsize,
         )
         if jj == 0:
-            ax.set_ylabel("Correct licks per trial")
+            ax.set_ylabel(
+                "Correct licks per trial",
+                fontsize=cohort_ylabel_fontsize,
+            )
 
     # Row 2: per-trial INCORRECT licks
     for jj, side in enumerate(("L", "R")):
@@ -1272,12 +1419,62 @@ def render_animal_per_trial_spout_close_vs_std(
             bare_per_trial=bare_incorrect[side],
             b_per_trial=b_incorrect[side],
             licking_xtick_fontsize=licking_xtick_fontsize,
+            ytick_fontsize=cohort_ytick_fontsize,
             dot_size=cohort_dot_size,
             dot_edge_width=cohort_dot_edge_width,
+            integer_yticks=lick_count_int_yticks,
         )
         ax.set_ylim(*row2_ylim)
         ax.set_title(
             f"Tone {side}: per-trial incorrect licks",
+            fontsize=panel_title_fontsize,
+        )
+        if jj == 0:
+            ax.set_ylabel(
+                "Incorrect licks per trial",
+                fontsize=cohort_ylabel_fontsize,
+            )
+
+    # Row 3 (NEW): per-session fraction of trials with ≥ 1 correct lick.
+    for jj, side in enumerate(("L", "R")):
+        ax = axs[2, jj]
+        _plot_row_per_session_dots_and_means(
+            ax, side,
+            bare_vals=bare_pct_corr[side],
+            b_vals=b_pct_corr[side],
+            licking_xtick_fontsize=licking_xtick_fontsize,
+            ytick_fontsize=cohort_ytick_fontsize,
+            dot_size=cohort_dot_size,
+            dot_edge_width=cohort_dot_edge_width,
+            integer_yticks=False,  # fractional [0, 1]
+        )
+        ax.set_ylim(*row34_ylim)
+        ax.set_title(
+            f"Tone {side}: fraction trials with ≥1 correct lick",
+            fontsize=panel_title_fontsize,
+        )
+        if jj == 0:
+            ax.set_ylabel(
+                "Fraction of trials with ≥1 correct lick",
+                fontsize=cohort_ylabel_fontsize,
+            )
+
+    # Row 4 (NEW): per-session fraction of trials with ≥ 1 incorrect lick.
+    for jj, side in enumerate(("L", "R")):
+        ax = axs[3, jj]
+        _plot_row_per_session_dots_and_means(
+            ax, side,
+            bare_vals=bare_pct_incorr[side],
+            b_vals=b_pct_incorr[side],
+            licking_xtick_fontsize=licking_xtick_fontsize,
+            ytick_fontsize=cohort_ytick_fontsize,
+            dot_size=cohort_dot_size,
+            dot_edge_width=cohort_dot_edge_width,
+            integer_yticks=False,  # fractional [0, 1]
+        )
+        ax.set_ylim(*row34_ylim)
+        ax.set_title(
+            f"Tone {side}: fraction trials with ≥1 incorrect lick",
             fontsize=panel_title_fontsize,
         )
         ax.set_xlabel(
@@ -1285,7 +1482,10 @@ def render_animal_per_trial_spout_close_vs_std(
             fontsize=spout_distance_xlabel_fontsize,
         )
         if jj == 0:
-            ax.set_ylabel("Incorrect licks per trial")
+            ax.set_ylabel(
+                "Fraction of trials with ≥1 incorrect lick",
+                fontsize=cohort_ylabel_fontsize,
+            )
 
     n_trials_L = len(bare_correct["L"]) + len(b_correct["L"])
     n_trials_R = len(bare_correct["R"]) + len(b_correct["R"])

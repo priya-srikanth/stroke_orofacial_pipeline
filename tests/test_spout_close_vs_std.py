@@ -1395,10 +1395,17 @@ class TestRenderAnimalPerTrial:
                 "PS55", sessions=[], resolver=resolver,
             )
 
-    def test_layout_is_2_rows_2_cols(
+    def test_layout_is_4_rows_2_cols(
         self, synth_pairs_3_sessions, tmp_path,
     ):
-        """Pin: 4 axes_groups (2 rows correct/incorrect × 2 cols L/R)."""
+        """Pin: 8 axes_groups (4 rows × 2 cols L/R).
+
+        Phase 8a.10.1 Task 4 follow-on (2026-05-14): expanded from
+        the prior 2×2 layout to 4×2, adding Row 3 (fraction trials
+        with ≥1 correct lick) + Row 4 (fraction trials with ≥1
+        incorrect lick) per-session aggregate panels below the
+        existing Rows 1-2 per-trial scatter.
+        """
         import re
         resolver = PathResolver(output_root=tmp_path)
         svg, _png = render_animal_per_trial_spout_close_vs_std(
@@ -1406,10 +1413,124 @@ class TestRenderAnimalPerTrial:
         )
         text = svg.read_text(encoding="utf-8")
         axes_groups = re.findall(r'<g id="axes_\d+">', text)
-        assert len(axes_groups) == 4, (
-            f"per-trial 2×2 grid should produce 4 axes; got "
+        assert len(axes_groups) == 8, (
+            f"per-trial 4×2 grid should produce 8 axes; got "
             f"{len(axes_groups)}"
         )
+
+    def test_rows_3_4_fraction_axis_in_0_1(
+        self, synth_pairs_3_sessions, tmp_path, monkeypatch,
+    ):
+        """Pin: Rows 3-4 set_ylim to (0.0, 1.05) — fractional axis with
+        +5% top pad. Captures all set_ylim calls and verifies the LAST
+        two pairs (Rows 3-4 × 2 cols) match the fractional convention.
+        """
+        import matplotlib
+        captured_ylims: list[tuple[float, float]] = []
+        orig_set_ylim = matplotlib.axes.Axes.set_ylim
+
+        def recording_set_ylim(self, *args, **kwargs):
+            result = orig_set_ylim(self, *args, **kwargs)
+            captured_ylims.append(tuple(self.get_ylim()))
+            return result
+
+        monkeypatch.setattr(
+            matplotlib.axes.Axes, "set_ylim", recording_set_ylim,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        render_animal_per_trial_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=resolver,
+        )
+        # 8 panel axes × 1 set_ylim each = 8 captures (plus possibly
+        # matplotlib internal calls). The Row 3-4 panels set ylim to
+        # exactly (0.0, 1.05) — filter for that.
+        row34_hits = [yl for yl in captured_ylims if yl == (0.0, 1.05)]
+        # Row 3 has 2 panels (L + R) and Row 4 has 2 panels, all
+        # ylim=(0, 1.05) → ≥ 4 hits.
+        assert len(row34_hits) >= 4, (
+            f"expected ≥4 set_ylim(0.0, 1.05) calls for Rows 3-4 "
+            f"L+R panels; got {row34_hits}"
+        )
+
+    def test_row_3_correct_lick_fraction_computation(self):
+        """Pin: _half_pct_trials_with_correct_lick_per_side computes
+        fraction of trials with ≥1 correct-side lick per (session, side).
+
+        Synthetic: 4 L-tone trials, 1 has an L-spout lick within
+        window → fraction = 1/4 = 0.25.
+        """
+        from stroke_orofacial.spout_behavior.spout_close_vs_std import (
+            _half_pct_trials_with_correct_lick_per_side,
+        )
+        from stroke_orofacial.spout_behavior.visual_gate import SessionPlotData
+
+        # 4 L-tones; only trial 0 has an L-spout lick in window.
+        # Window = (0, 2.0) s; tones at samples [1000, 5000, 9000, 13000].
+        # Licks: L-spout at sample 1500 (within trial-0 window [1000, 3000]).
+        session = SessionPlotData(
+            date_label="20250101",
+            lick_idx={
+                "Lick_L": np.array([1500], dtype=int),  # in trial 0
+                "Lick_R": np.array([], dtype=int),
+            },
+            tones_idx={
+                "Tone_L": np.array(
+                    [1000, 5000, 9000, 13000], dtype=int,
+                ),
+                "Tone_R": np.array([], dtype=int),
+            },
+            sample_rate=1000.0,
+            n_samples_session=20000,
+        )
+        out = _half_pct_trials_with_correct_lick_per_side(
+            session, window_around_tones=(0.0, 2.0),
+        )
+        assert out["L"] == pytest.approx(0.25), (
+            f"L-side: 1 of 4 trials has ≥1 correct L lick → 0.25; "
+            f"got {out['L']}"
+        )
+        # R has 0 trials → NaN.
+        import math
+        assert math.isnan(out["R"]), f"empty R should be NaN; got {out['R']}"
+
+    def test_row_4_incorrect_lick_fraction_computation(self):
+        """Pin: _half_pct_trials_with_incorrect_lick_per_side computes
+        fraction of trials with ≥1 incorrect-side lick per (session, side).
+
+        Synthetic parallel: 4 L-tone trials, 2 have R-spout licks
+        within window → fraction = 2/4 = 0.5. "Incorrect" on L-tone
+        trial = R-spout lick.
+        """
+        from stroke_orofacial.spout_behavior.spout_close_vs_std import (
+            _half_pct_trials_with_incorrect_lick_per_side,
+        )
+        from stroke_orofacial.spout_behavior.visual_gate import SessionPlotData
+
+        session = SessionPlotData(
+            date_label="20250101",
+            lick_idx={
+                "Lick_L": np.array([], dtype=int),
+                # R-spout licks in trials 1 + 3 windows.
+                "Lick_R": np.array([5500, 13500], dtype=int),
+            },
+            tones_idx={
+                "Tone_L": np.array(
+                    [1000, 5000, 9000, 13000], dtype=int,
+                ),
+                "Tone_R": np.array([], dtype=int),
+            },
+            sample_rate=1000.0,
+            n_samples_session=20000,
+        )
+        out = _half_pct_trials_with_incorrect_lick_per_side(
+            session, window_around_tones=(0.0, 2.0),
+        )
+        assert out["L"] == pytest.approx(0.5), (
+            f"L-side: 2 of 4 trials have ≥1 incorrect R lick → 0.5; "
+            f"got {out['L']}"
+        )
+        import math
+        assert math.isnan(out["R"]), f"empty R should be NaN; got {out['R']}"
 
     def test_per_trial_dot_count_pools_across_sessions(
         self, synth_pairs_3_sessions, tmp_path, monkeypatch,

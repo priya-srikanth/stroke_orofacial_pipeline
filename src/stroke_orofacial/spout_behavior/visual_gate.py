@@ -1464,6 +1464,13 @@ def _render_numLicks_bySession_kind(
     apply_longitudinal_axis(ax, axis, config)
     ax.set_ylim(0, config["numlicks_y_max"])
     ax.set_ylabel("Avg licks per trial  [avg + std]")
+    # Phase 8a.10.1 Task 4 follow-on: integer-only y-ticks on
+    # lick-count axes (drops the ".0" suffix on integer-valued
+    # ticks). Gated by visual_gate.lick_count_integer_yticks
+    # (default true).
+    if bool(config.get("lick_count_integer_yticks", True)):
+        from matplotlib.ticker import MaxNLocator
+        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     title = (
         "Avg correct licks per trial by session" if kind == "correct"
         else "Avg all licks per trial by session"
@@ -1567,6 +1574,11 @@ def render_numLicks_bySession_correct_and_incorrect(
     apply_longitudinal_axis(ax, axis, config)
     ax.set_ylim(0, config["numlicks_y_max"])
     ax.set_ylabel("Avg licks per trial  [avg + std]")
+    # Phase 8a.10.1 Task 4 follow-on: integer-only y-ticks on
+    # lick-count axes (drops the ".0" suffix on integer-valued ticks).
+    if bool(config.get("lick_count_integer_yticks", True)):
+        from matplotlib.ticker import MaxNLocator
+        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     ax.set_title("Avg correct & incorrect licks per trial by session")
     ax.legend(loc="upper right", ncol=2)
     paths = save_visual_gate_figure(
