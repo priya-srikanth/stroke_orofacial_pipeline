@@ -5738,8 +5738,8 @@ Verdict log archived at `.scratch_phase_7_pre/parity_run_secondary_spout_rerun_2
 
 ## Phase 8a.10 — Spout-behavior visual gate + spout-close-vs-standard cohort comparison
 
-**Date:** 2026-05-13
-**PR:** #FILL (merge-commit `<FILL>`)
+**Date:** 2026-05-13 (visual sign-off) → 2026-05-14 (merged + tagged)
+**PR:** #113 (merge-commit `46a237e`)
 **Tag on merge:** `v8a.10-spout-visual-gate`
 **Branch:** `phase/8a.10-spout-visual-gate`
 

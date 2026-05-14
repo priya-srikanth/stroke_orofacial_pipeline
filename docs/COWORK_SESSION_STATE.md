@@ -5,7 +5,7 @@
 PASS on all 88 Sub-A per-mouse plot family SVGs (8 animals × 11
 plot families) + 10 Sub-A cohort tile-grids + 12 Sub-B cohort
 output files (3 animals × {summary.svg/png, per_trial.svg/png}).
-PR #FILL merged 2026-05-13 as merge-commit `<FILL>`, tagged
+PR #113 merged 2026-05-14 as merge-commit `46a237e`, tagged
 `v8a.10-spout-visual-gate`. **Outcome A** faithful-port for
 Sub-deliverable A (11 plot families ported; 5 trimmed legacy
 families deferred to Phase 9 forward-pointer per Q1 Option 2
@@ -505,22 +505,22 @@ A new Cowork session works through this in order before answering any substantiv
 
 **Repo phase:** Phases 1–6 + 4.5-lite + 6.7 + 6.8 + 6.8a + 6.8a.1 + 6.8a.2 + 6.8a.3 + 7.0b + 13 + 8a.1–8a.7.5 + 8a.8 + 8a.9 + 7-pre + 7a.0 + 7a.1 + 7a.2 delivered on `main`; Phase 7a design brief locked (`docs/phase-7/interpolation-strategy.md`, tag `v7a-design-brief`). Phase 7a implementation is underway and on track — 7a.1 (kinematics_baselines seed + parity-harness scaffold + scipy stress pilot) and 7a.2 (v5p3 7-stage interpolation port + cohort-wide bit-identical parity) both closed against the 2026-04-22 parity-gate principle (zero drift on the 14-session parity set, twice). Task #17 closed the last cross-cutting convention decision blocking Phase 7 (DLC kinematics): NPZ / JSON / parquet side-keys now emit in mouse frame with version+flag stamps. Phase 6.8a threaded the convention through the reward-aligned writer and opened first-time Phase 6 NPZ emits for programmatic drift measurement. Phase 6.8a.1 refactored `build_reward_aligned_analysis` prerequisite-miss paths from silent `return None` to distinct `FileNotFoundError` so the cohort's 14,202-failure triage is diagnosable. Phase 6.8a.2 added unattended-runner scripts (`run_notebook_10_phase_4_centering.py`, `run_notebook_12_first_emit.py`) + runbook §8 / §9 for cohort-scale headless emits; validated end-to-end by the 2026-04-21 first emit (13,821 NPZs, 99.93% bundle pass). Phase 6.8a.3 closed out the diagnostic-gap carve-out from that first emit: notebook 12 + runner save-loop split the conflated `n_err` bucket into `n_skip_no_rewards` + `n_skip_no_frames` with distinct log lines, `scripts/task_runner_wrapper.sh` committed with `set -o pipefail` to defeat the `| tail -80` exit-code masking bug, runbook §8.4 refreshed to the current 6-bucket layout. Latest tags: `v6.7-session-manifest-refactor`, `v6.8-wavesurfer-side-convention`, `v6.8a-phase-5-6-trial-group-translation`, `v6.8a.1-distinct-prereq-errors`, `v6.8a.2-unattended-runners`, `v6.8a.3-notebook-12-skip-diagnostic`, `v7.0b-cell-classification`, `v8a.7-spout-endpoints-json-writer`, `v8a.7.5-criteria-hierarchy-port`, `v8a.8-spout-recovery-trajectories`, `v7a-design-brief`, `v7-pre-exclusions-schema`, `v7a.1-kinematics-baselines-parity-scaffold`, `v7a.2-interpolation-impl` (per the 2026-04-21 tag-convention-Path-A decision — every phase-close merge gets a tag, including letter-suffix atomic fixes and docs-only design-brief merges).
 
-**Current branch:** **Phase 8a.10 in PR review.** `main` at the
-Phase 7-pre-secondary-spout merge commit `29324eb`, tagged
-`v7-pre-secondary-spout`. **Active feature branch:**
-`phase/8a.10-spout-visual-gate` — **PR #113 open against main**,
-26 commits ahead. **Post-merge tag pending:**
-`v8a.10-spout-visual-gate` on the merge-commit (per
-CLAUDE.md tag-convention Path A; tag-message draft `Phase 8a.10:
-spout-behavior visual gate + spout_close_vs_std bare-vs-b
-comparison`). Pre-push smokes PASS. Cohort-wide visual eyeball-
-verdict PASS 2026-05-13 on all 88 Sub-A per-mouse SVGs + 10 Sub-A
-cohort tile-grids + 12 Sub-B cohort output files (3 animals ×
-{summary, per_trial}). Awaiting Priya merge. Prior phase-close
-tags on `main` (most recent first): `v7-pre-secondary-spout`
-(2026-05-12 PR #105 `29324eb`), `v7-pre-multi-half` (2026-05-12
-PR #99 `d14d831`), `v7a.6-mean-sem` (2026-05-03 PR #91
-`bb4b505`), `v7a.5-tongue-jaw-mismatch` (2026-04-30 PR #88),
+**Current branch:** `main` at the Phase 8a.10 merge commit
+`46a237e`, tagged `v8a.10-spout-visual-gate` (annotated tag,
+pushed to origin 2026-05-14). **PR #113 merged 2026-05-14** as
+the Phase 8a.10 close (26 commits + 1 docs polish in PR review;
+fill-in PR for placeholder backfill follows on
+`chore/phase-8a.10-fillin`). No active feature branch on the
+main implementation line. Pre-push smokes PASS throughout.
+Cohort-wide visual eyeball-verdict PASS 2026-05-13 on all 88
+Sub-A per-mouse SVGs + 10 Sub-A cohort tile-grids + 12 Sub-B
+cohort output files (3 animals × {summary, per_trial}). Prior
+phase-close tags on `main` (most recent first):
+`v8a.10-spout-visual-gate` (2026-05-14 PR #113 `46a237e`),
+`v7-pre-secondary-spout` (2026-05-12 PR #105 `29324eb`),
+`v7-pre-multi-half` (2026-05-12 PR #99 `d14d831`),
+`v7a.6-mean-sem` (2026-05-03 PR #91 `bb4b505`),
+`v7a.5-tongue-jaw-mismatch` (2026-04-30 PR #88),
 `v7a.3-jaw-audit-no-pertrial-features` (2026-04-30 PR #87),
 `v7a.4-tongue-visual-and-day-binned` (2026-04-30 PR #86),
 `v7a.3-tongue-pertrial-features` (2026-04-29 PR #85 `5063b5e`),
@@ -532,10 +532,11 @@ Two post-merge docs PRs landed 2026-04-30 alongside 7a.4:
 kickoff V3 retrospective rewrite (~1,794-line historical-narrative
 pass).
 
-**In flight:** *None.* Phase 8a.10 closed 2026-05-13 as PR #FILL,
-tagged `v8a.10-spout-visual-gate`. `main` at merge-commit `<FILL>`
-post-merge. No active feature branch. Phase 7-pre-secondary-spout
-closed 2026-05-12 as PR #105, tagged `v7-pre-secondary-spout`
+**In flight:** *None.* Phase 8a.10 closed 2026-05-14 as PR #113
+merge-commit `46a237e`, tagged `v8a.10-spout-visual-gate` (pushed
+to origin). `main` at merge-commit `46a237e` post-merge. No
+active feature branch. Phase 7-pre-secondary-spout closed
+2026-05-12 as PR #105, tagged `v7-pre-secondary-spout`
 (supersedes the 2026-05-12 PR #100 wiring follow-up that left
 `main` at `35708e7`). Next-phase candidate pick pending Priya
 from the list below — Phase 8a.10 deletion from the candidates
@@ -550,9 +551,9 @@ behavior visual gate + spout-close-vs-standard cohort comparison;
 Outcome A faithful-port + 8 intentional deviations + 9 visual-
 iteration rounds across 8 Addenda):**
 
-PR #FILL merged 2026-05-13 as merge-commit `<FILL>`, tagged
-`v8a.10-spout-visual-gate`. **24+ commits** on
-`phase/8a.10-spout-visual-gate`. Two sub-deliverables in one PR:
+PR #113 merged 2026-05-14 as merge-commit `46a237e`, tagged
+`v8a.10-spout-visual-gate`. **26 commits + 1 state-doc polish**
+on `phase/8a.10-spout-visual-gate`. Two sub-deliverables in one PR:
 
 **Sub-deliverable A — Legacy-parity gates (11 plot families × 8
 animals = 88 per-mouse SVGs + 10 cohort tile-grids).** Outcome A
@@ -1951,7 +1952,7 @@ section; most likely Phase 7 — DLC kinematics — via the existing
 
 **Completed since last state refresh:**
 
-- **Phase 8a.10 — Spout-behavior visual gate (Sub-deliverable A: 11 per-mouse plot families × 8 animals) + spout-close-vs-standard cohort comparison (Sub-deliverable B: 4-row story strip + per-trial 2×2 scatter, 3 animals, 14 post-stroke sessions) — Outcome A faithful-port + 8 intentional deviations + 9 visual-iteration rounds.** 24+ commits on `phase/8a.10-spout-visual-gate`. **Sub-A**: CG-1 → CG-6 ship the 11 production plot families (criteria_performance, accuracy_firstCorrectLick{,All}, lickRate_bySession, latency_bySession, numLicks_bySession_{correct,all,correct_and_incorrect}, lick_raster, lickiness_bySession, switchiness_bySession) + cohort tile-grid renderer (`cohort_summary.py`) + orchestrator notebook. Task 3 Rounds 2.5-2.8 polish on `lick_raster` (4 commits) converged on the final form. **Sub-B**: reshaped mid-phase from 5-endpoint per-session-and-cohort to 3-endpoint cohort-only (Addendum #1; CG-B2 per-session implementation at `d757294` preserved in history). Cohort B = 14 post-stroke sessions (PS51×1, PS54×10, PS55×3) under `rel_day >= 2` filter (`COHORT_B_REL_DAY_MIN=2`). Two cohort renderers per animal: `render_animal_summary_spout_close_vs_std` (4×2 story strip) + `render_animal_per_trial_spout_close_vs_std` (2×2 per-trial pooled scatter; Addendum #8 verbal). 9 visual-iteration rounds (Addenda #1-#8): CG-B3 R1 (scope replacement) → R2 (Standard/Close labels + per-condition palette → reverted in R3) → R3 (rename `bare_vs_b` → `spout_close_vs_std` + per-mouse-side palette + 4-row split + day labels + darker dividers + typography) → R4 (typography polish) → R5 (raster xticks + y-axis overhaul + all 3 animals) → R7 (per-session "0" y-tick markers) → R7 follow-on (day labels horizontal — Addendum #6 retroactively applied — + smaller raster yticks + Trials labelpad) → per-trial renderer (Addendum #8). Scientific message — "excursion limitation relieved by proximity" — confirmed via PS55 scientific-message check: L-side accuracy 0.098 → 0.611 = 6×; mean correct licks/trial 0.60 → 5.22 = 8.7×. **8 intentional deviations from legacy** (DECISIONS Decision 3): SIDE_COLORS mouse-frame palette inversion (legacy WS-frame + `fn_flip_lr()` at output); `raster_dot_alpha=0.6`; `criteria_34` overlay REMOVED; `zorder=2/3` layering; `fig.supxlabel("Time (s)")`; `raster_xticks=[0, 5]` + thin reward marker + smaller xticks; `longitudinal_xtick_fontsize=6` (dense Cohort A like PS54); `AnimalInfo.stroke_laterality` scaffolding for pub-figures phase consumer. **5 trimmed legacy plot families + recovery_trajectories** deferred to Phase 9 forward-pointer per Q1 Option 2 SCOPE LOCK. **Forward-pointer Phase 7-pre-secondary-spout Finding #3 ("Bare-vs-b spout-behavior comparison folded into Phase 8a.10 scope") discharged.** Test suite (Phase 8a.10 modules): 262 passed / 1 skipped (53 animals + 165 visual_gate + 44 spout_close_vs_std). Repo-wide `pytest --collect-only`: 1423 tests collected, 0 errors post-rename. Ruff clean. PR #FILL merged 2026-05-13 as merge-commit `<FILL>`, tagged `v8a.10-spout-visual-gate`. See DECISIONS 2026-05-13 + MIGRATION_LOG Phase 8a.10 entries for full breakdown.
+- **Phase 8a.10 — Spout-behavior visual gate (Sub-deliverable A: 11 per-mouse plot families × 8 animals) + spout-close-vs-standard cohort comparison (Sub-deliverable B: 4-row story strip + per-trial 2×2 scatter, 3 animals, 14 post-stroke sessions) — Outcome A faithful-port + 8 intentional deviations + 9 visual-iteration rounds.** 24+ commits on `phase/8a.10-spout-visual-gate`. **Sub-A**: CG-1 → CG-6 ship the 11 production plot families (criteria_performance, accuracy_firstCorrectLick{,All}, lickRate_bySession, latency_bySession, numLicks_bySession_{correct,all,correct_and_incorrect}, lick_raster, lickiness_bySession, switchiness_bySession) + cohort tile-grid renderer (`cohort_summary.py`) + orchestrator notebook. Task 3 Rounds 2.5-2.8 polish on `lick_raster` (4 commits) converged on the final form. **Sub-B**: reshaped mid-phase from 5-endpoint per-session-and-cohort to 3-endpoint cohort-only (Addendum #1; CG-B2 per-session implementation at `d757294` preserved in history). Cohort B = 14 post-stroke sessions (PS51×1, PS54×10, PS55×3) under `rel_day >= 2` filter (`COHORT_B_REL_DAY_MIN=2`). Two cohort renderers per animal: `render_animal_summary_spout_close_vs_std` (4×2 story strip) + `render_animal_per_trial_spout_close_vs_std` (2×2 per-trial pooled scatter; Addendum #8 verbal). 9 visual-iteration rounds (Addenda #1-#8): CG-B3 R1 (scope replacement) → R2 (Standard/Close labels + per-condition palette → reverted in R3) → R3 (rename `bare_vs_b` → `spout_close_vs_std` + per-mouse-side palette + 4-row split + day labels + darker dividers + typography) → R4 (typography polish) → R5 (raster xticks + y-axis overhaul + all 3 animals) → R7 (per-session "0" y-tick markers) → R7 follow-on (day labels horizontal — Addendum #6 retroactively applied — + smaller raster yticks + Trials labelpad) → per-trial renderer (Addendum #8). Scientific message — "excursion limitation relieved by proximity" — confirmed via PS55 scientific-message check: L-side accuracy 0.098 → 0.611 = 6×; mean correct licks/trial 0.60 → 5.22 = 8.7×. **8 intentional deviations from legacy** (DECISIONS Decision 3): SIDE_COLORS mouse-frame palette inversion (legacy WS-frame + `fn_flip_lr()` at output); `raster_dot_alpha=0.6`; `criteria_34` overlay REMOVED; `zorder=2/3` layering; `fig.supxlabel("Time (s)")`; `raster_xticks=[0, 5]` + thin reward marker + smaller xticks; `longitudinal_xtick_fontsize=6` (dense Cohort A like PS54); `AnimalInfo.stroke_laterality` scaffolding for pub-figures phase consumer. **5 trimmed legacy plot families + recovery_trajectories** deferred to Phase 9 forward-pointer per Q1 Option 2 SCOPE LOCK. **Forward-pointer Phase 7-pre-secondary-spout Finding #3 ("Bare-vs-b spout-behavior comparison folded into Phase 8a.10 scope") discharged.** Test suite (Phase 8a.10 modules): 262 passed / 1 skipped (53 animals + 165 visual_gate + 44 spout_close_vs_std). Repo-wide `pytest --collect-only`: 1423 tests collected, 0 errors post-rename. Ruff clean. PR #113 merged 2026-05-14 as merge-commit `46a237e`, tagged `v8a.10-spout-visual-gate` (annotated tag pushed to origin same day). See DECISIONS 2026-05-13 + MIGRATION_LOG Phase 8a.10 entries for full breakdown.
 - **Phase 7-pre-secondary-spout — Pattern B closer-spout 2nd-acquisition handling for PS51/PS54/PS55 (19 sessions; Outcome A infrastructure-only).** 13 commits on `phase/7-pre-secondary-spout` (Task 2 `f13d789` registry + Task 3a `b24c704` / 3b `ededaf5` / 3c `43cde64` / 3d `c8e29cf` session_suffix threading + Task 4 `b738dc1` Phase 2 driver + Task 5 `eabcecf` Phase 3 driver + Task 6a `34df83a` / 6b `ee1aba1` / 6c `5acdecc` / 6d `ce6e3cf` / 6e `5f9a327` 3-layer parity gate + Task 8 amended `8ac6983` DECISIONS+MIGRATION_LOG + bare-vs-b → 8a.10 fold-in + Task 9 `<NEW SHA>` state-doc). Task 6 live MICROSCOPE verdict: Layer 1 PASS (18 byte-equal + 1 PS55/2025-04-24 expected-divergence via `bare_ws_subdir_override`), Layer 2 PASS (19/19 b-half structural — required keys + Fs + side-convention stamps + session_id-suffix), Layer 3 PASS (5/5 synthetic defensive-check scenarios). Task 1 audit confirmed Outcome A — legacy notebooks (`playground_analyze_behavior_report_PS20250610.ipynb` + `batch_process_behavior_report_20260116PS.ipynb`) omit `*b` dates from `include_dates`, no bare-vs-b comparison code to port. **4 architectural commitments from 7-pre-multi-half Decision 5 honored**: `multi_half_sessions:` merge-intent only; session-id schema allows letter suffixes via `session_suffix` field; `MultiHalfNotDeclaredError` gains Pattern-B branch (suppresses when `secondary_spout_sessions:` covers `(animal, date)`); Phase 2/3/4 manifest-opaque output separation by session-id. Most architecturally significant decision this phase: the **module-level free function path-suffix pattern** (Decision 5 of the 7-pre-secondary-spout DECISIONS entry) — caller-side `date_str_suffixed = date_str + (manifest.session_suffix or "")` for free-function helpers that bypass PathResolver methods. **Bare-vs-b spout-behavior outcome comparison folded into Phase 8a.10 scope** per Priya 2026-05-12 (NOT a separate Phase 7-pre-secondary-spout-compare phase); DLC-side bare-vs-b comparison remains a separate forward-pointer (Phase 7-pre-secondary-spout-compare-DLC), blocked on b-half DLC inference. Test suite 1164 passed / 38 skipped (+15 from harness comparator tests). Pattern A regression: 152/152. PR #105 merged 2026-05-12 as merge-commit `29324eb`, tagged `v7-pre-secondary-spout`. See DECISIONS 2026-05-12 Phase 7-pre-secondary-spout + MIGRATION_LOG Phase 7-pre-secondary-spout.
 - **Task #41 — Phase 7a.4-orientation-fix (state-doc retrocapture; shipped 2026-05-03 + 2026-05-04).** Comprehensive grep audit of `src/stroke_orofacial/dlc_kinematics/` confirms cam-view convention (R-trials on figure-LEFT, L-trials on figure-RIGHT) is universally applied across every L/R subplot site: `tongue_visual.py::_plot_xy_by_phase` (PR #93 merge-commit `c34c51d`, tagged `v7a.4-orientation-fix-cam-view-flip`); `tongue_visual.py::_plot_first_vs_second_peak_scatter` and all 6+ plot families in `tongue_angle_cohort.py` via `_setup_cam_view_axes(...)` helper (PR #95 7a.4-cross-session-angle, merge-commit `718bbca`); `mean_sem_visual.py` (7a.6 C7.2). No remaining L-on-LEFT instances. Other rendering functions (`_plot_per_trial_qc_traces`, `_plot_first_peak_aligned`, `_plot_reward_aligned`, `_plot_phase_aligned_angle`) don't use L/R subplots — they overlay sides on a single axes by color, so there's no orientation to flip. State-doc Next-phase candidates list and Pending-open queue both carried stale references through the 7-pre-multi-half close-out polish; this entry retroactively captures closure.
 - **Phase 7-pre-multi-half follow-up — wire `merge_licks_and_rewards` into `_process_session_multi_half` (PR #100, merge-commit `35708e7`, 2026-05-12).** Wire `merge_licks_and_rewards` into `_process_session_multi_half` so multi-half sessions emit the parent-level merged licks NPZ as part of normal Phase-2 processing (deferred from Task 4 of Phase 7-pre-multi-half). After the per-half loop, the per-half NPZs are merged via `index_space="ws_sample"` and land at the canonical parent-level path `{output_root}/licks_and_rewards/{animal}/{date}.npz`; single-half code path unchanged. +1 unit test (`TestMergeWiring::test_merged_licks_npz_written_alongside_per_half`) verifies per-half + merged NPZs on disk with correct ws_sample offset semantics. Full pytest suite 1072 passed / 38 skipped (+1 vs branch base). No tag — captured as `Forward-pointer resolved` note in `docs/MIGRATION_LOG.md` below the Phase 7-pre-multi-half entry, per the small-post-merge-follow-up convention.
@@ -2253,13 +2254,13 @@ Whatever the server-side feature flag or staged-rollout gate was doing on 2026-0
 
 ## Best warm-start prompt (paste into a new Cowork chat)
 
-End of 2026-05-14 session (Phase 8a.10 in PR review):
+End of 2026-05-14 session (Phase 8a.10 closed):
 **Phase 8a.10 — Spout-behavior visual gate + spout-close-vs-
-standard cohort comparison — PR #113 OPEN on
-`phase/8a.10-spout-visual-gate`** (26 commits ahead of main).
-**Status: awaiting Priya merge + post-merge tag
-`v8a.10-spout-visual-gate`.** Pre-push smokes PASS; visual
-eyeball-verdict PASS 2026-05-13 on all 88 Sub-A per-mouse plot
+standard cohort comparison — PR #113 MERGED 2026-05-14** as
+merge-commit `46a237e` on `main`, **tagged
+`v8a.10-spout-visual-gate`** (annotated tag pushed to origin
+same day). **Status: merged + tagged.** Pre-push smokes PASS;
+visual eyeball-verdict PASS 2026-05-13 on all 88 Sub-A per-mouse plot
 SVGs (8 animals × 11 plot families: `criteria_performance`,
 `accuracy_firstCorrectLick{,All}`, `lickRate_bySession`,
 `latency_bySession`, `numLicks_bySession_{correct,all,correct_and_incorrect}`,
@@ -2290,13 +2291,13 @@ modules): 262 passed + 1 skipped (53 animals + 165 visual_gate +
 1423 collected, 0 errors post-rename (`bare_vs_b` →
 `spout_close_vs_std` via pure-rename commit `b79a7c5` per
 Addendum #3 Tweak 1). Ruff clean. **Post-merge obligations
-remaining:** (a) tag `v8a.10-spout-visual-gate` on merge SHA
-+ push to origin; (b) backfill phase-metadata placeholders
-(`<FILL>` merge-commit, `#FILL` PR number) in DECISIONS +
-MIGRATION_LOG + state-doc via small close-out polish PR
-(mirrors PR #101 / 7-pre-secondary-spout polish PR pattern).
-**Next-phase candidates** (Priya's pick from queued forward-
-pointers): **Phase 8a.10.1** (cohort-wide Tone↔Reward swap
+DONE:** (a) tag `v8a.10-spout-visual-gate` annotated + pushed
+to origin on merge SHA `46a237e` 2026-05-14; (b) phase-metadata
+placeholders (`<FILL>` merge-commit, `#FILL` PR number)
+backfilled in DECISIONS + MIGRATION_LOG + state-doc via the
+fill-in PR on `chore/phase-8a.10-fillin` (mirrors PR #101 /
+7-pre-secondary-spout polish PR pattern). **Next-phase
+candidates** (Priya's pick from queued forward-pointers): **Phase 8a.10.1** (cohort-wide Tone↔Reward swap
 re-emit — affects Sub-B Row 4 raster's "reward marker" semantic
 label only; lick-raster reads correctly regardless because tone
 + reward fire simultaneously at trial start), **126-session
@@ -2312,8 +2313,9 @@ phase** (consumer of `AnimalInfo.stroke_laterality` +
 heatmaps, 3 legacy sources, audit-first), **Phase 5.5 polish**
 (#16, ungated parallel). Verify
 `git tag --list | grep -E 'v7-pre-secondary-spout|v8a\.10-spout-visual-gate'`
-shows `v7-pre-secondary-spout` locally + on origin AND
-`v8a.10-spout-visual-gate` post-merge (currently pending).
+shows both `v7-pre-secondary-spout` and
+`v8a.10-spout-visual-gate` locally + on origin (verified
+2026-05-14 via `git ls-remote --tags origin`).
 
 ---
 
