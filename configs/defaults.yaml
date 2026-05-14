@@ -1256,3 +1256,232 @@ dlc_inference_o2:
   snapshot_renames:
     "snapshot-best-60": "snapshot_060"
     "snapshot_best-60": "snapshot_060"
+
+# ---- Phase 8a.10 sub-deliverable A: visual gate ----
+#
+# Per-mouse plot rendering parameters for the legacy-parity visual
+# gate. Values ported from the legacy `behavior_report_PS.py` module
+# (Phase 8a.10 Task 1 audit Section D). Per-animal styling is
+# intentionally absent — the legacy code locks all aesthetics cohort-
+# wide (an XTICK_FONTSIZE comment about "6 for PS51-55, 10-12 for
+# PS46-50" was never applied; locked to 10).
+
+visual_gate:
+  # Side colors — INVERTED vs legacy. Legacy had
+  # `side_colors = {"L": "mediumvioletred", "R": "dodgerblue"}`
+  # because the legacy renderer operated in wavesurfer-frame
+  # internally and re-labeled at plot output via `fn_flip_lr()`. The
+  # new pipeline operates in mouse-frame throughout post-Phase-6.8
+  # (DECISIONS 2026-04-20), so the color↔mouse-side mapping is direct:
+  # mouse-L → dodgerblue, mouse-R → mediumvioletred. See visual_gate.py
+  # SIDE_COLORS docstring + the side_colors_inverted_vs_legacy pin test.
+  side_colors:
+    L: "dodgerblue"
+    R: "mediumvioletred"
+
+  # Longitudinal-axis styling (behavior_report_PS.py:36-37). The
+  # `xtick_fontsize` knob is now scoped to the lick raster only;
+  # longitudinal plot families use `longitudinal_xtick_fontsize`
+  # below. Reduced from legacy 10 → 6 (Round 2.7) → 5 (Round 2.8,
+  # Priya 2026-05-13). Round 2.8 also drops raster_xticks to the
+  # minimal pair [0, 5] (one tick per axis-limit endpoint) for the
+  # cleanest possible raster panels.
+  xtick_fontsize: 5
+  # Day-label xtick fontsize for longitudinal plot families
+  # (lickiness, switchiness, numLicks_*, latency, lickRate,
+  # criteria_performance, accuracy_first*). Dense cohorts like
+  # PS54 (64 sessions in 85 days) had adjacent labels overlapping
+  # at the matplotlib default ~10pt; 6pt resolves the overlap.
+  # Priya 2026-05-13 (Task 3 Round 2.7).
+  longitudinal_xtick_fontsize: 6
+  stroke_linewidth: 2.5
+
+  # Stroke-day vertical marker (behavior_report_PS.py:352, 364)
+  stroke_vline_x: 0.5
+  stroke_vline_color: "red"
+  stroke_vline_linestyle: ":"
+  stroke_vline_alpha: 0.9
+
+  # Per-family y-axis bounds (behavior_report_PS.py:560, 611, 695, 766,
+  # 795, 845; _20250528.py:718 notes Priya bumped latency from 0.8 to 2)
+  accuracy_y_range: [0.0, 1.0]
+  latency_y_max: 2.0
+  lickrate_y_max: 10.0
+  numlicks_y_max: 40.0
+
+  # Late-lick window (behavior_report_PS.py:861)
+  lickiness_window_seconds: 60
+
+  # Raster styling (behavior_report_PS.py:425, 433)
+  raster_xlim: [-1, 5]
+  raster_dot_size: 0.5
+  # Per-dot transparency (intentional deviation from legacy; Priya
+  # 2026-05-13). Legacy default was 1.0 (fully opaque). 0.6 lets the
+  # under-layer R-on-top-of-L (or vice versa per mouse-frame row
+  # swap) peek through — mitigates label-side-dependent occlusion
+  # in lick rasters where one side has many more licks than the
+  # other. DECISIONS-entry queued for the phase-close commit.
+  raster_dot_alpha: 0.6
+  # Lick-raster dot colors. Semantic (correct vs incorrect lick relative
+  # to reward side); NOT mouse-side-coded, so not inverted vs legacy.
+  # Legacy hardcodes (behavior_report_PS.py:425): correct = "g" green;
+  # incorrect = "m" magenta.
+  raster_dot_correct_color: "g"
+  raster_dot_incorrect_color: "m"
+  # Per-dot z-order (intentional deviation from legacy; Priya
+  # 2026-05-13 Task 3 Round 2.7). Legacy used insertion-order
+  # (L drawn first, R drawn second on top), so the visible
+  # asymmetry depended on which side had more licks. Drawing
+  # incorrect-magenta on top of correct-green makes errors
+  # always visible regardless of subplot. DECISIONS-entry queued.
+  raster_dot_correct_zorder: 2
+  raster_dot_incorrect_zorder: 3
+  # Reward-marker vertical line at x=0 (behavior_report_PS.py:432).
+  # Linewidth reduced from matplotlib default (~1.5pt) to 0.5pt per
+  # Priya 2026-05-13 — the previous thick marker visually merged
+  # with the "0" xtick label.
+  raster_reward_marker_color: "k"
+  raster_reward_marker_alpha: 0.3
+  raster_reward_marker_linewidth: 0.5
+  # Explicit xticks for the lick raster (Priya 2026-05-13 Task 3
+  # Round 2.7 → Round 2.8). matplotlib's auto-locator placed [-1,
+  # 0, 1, 2, 3, 4, 5] which crowded against the reward marker at
+  # 0. Round 2.7 dropped to [0..5]; Round 2.8 reduces further to
+  # the axis-limit endpoints [0, 5] for the cleanest panel.
+  raster_xticks: [0, 5]
+  # Figure-level "Time (s)" xlabel fontsize (Priya 2026-05-13 Task 3
+  # Round 2.7). Was per-axis on every column; now a single fig
+  # supxlabel at the bottom.
+  raster_xlabel_fontsize: 8
+
+  # ---- Cohort-summary tiler (CG-5; cohort_summary.py) ----
+  # Default plot families to tile across animals when no explicit list
+  # is passed to make_summary_figures. Mirrors legacy summary_PS.py
+  # DEFAULT_PLOTS list — the 11 canonical families minus lick_raster
+  # (which is auto-skipped because its 2 × N_sessions panel grid is
+  # already too dense to tile across animals).
+  summary_default_plots:
+    - criteria_performance
+    - accuracy_firstCorrectLick
+    - accuracy_firstCorrectLickAll
+    - lickRate_bySession
+    - numLicks_bySession_correct
+    - numLicks_bySession_all
+    - numLicks_bySession_correct_and_incorrect
+    - latency_bySession
+    - lickiness_bySession
+    - switchiness_bySession
+  # Always-skipped plot families (applied even when caller passes an
+  # explicit plot_families list that includes them). Legacy
+  # summary_PS.py DEFAULT_SKIP.
+  summary_skip_plots:
+    - lick_raster
+  # Per-cell figure dimensions in inches (legacy line 94: figsize=(4 *
+  # ncols, 3 * nrows)). Multiplied by (ncols, nrows) at figure-build time.
+  summary_figsize_per_cell: [4, 3]
+  # Dots-per-inch for PNG raster export (legacy line 122 uses 300 for
+  # PNG; None for SVG — vector-native).
+  summary_dpi: 300
+
+  # Figure dimensions (behavior_report_PS.py:416 + multiple plt.subplots
+  # calls). Single-axis longitudinal default chosen to match the
+  # playground cell-56 recovery-trajectory render style (deferred this
+  # phase but shape locked); multi-panel grids override per-renderer.
+  figsize_longitudinal: [8, 4]
+  figsize_raster_grid: [10, 5]
+
+# ---- Behavior report parameters (Phase 8a.10 visual-gate consumer) ----
+#
+# Cohort-wide criteria + window params consumed by the per-mouse plot
+# families in `src/stroke_orofacial/spout_behavior/visual_gate.py`.
+# Mirrors the legacy `params` dict written per-mouse by
+# `batch_process_behavior_report_20260116PS.ipynb` cell-3. Values were
+# identical across mice in the legacy cohort; lifted here as cohort
+# defaults so the new pipeline doesn't need a per-mouse `params.json`
+# read for visual-gate scope.
+
+behavior_report:
+  # Lick-detection window relative to each reward delivery (seconds).
+  # Tuple (before, after). All per-trial lick computes (lick rate,
+  # num licks, first-lick correctness) use this window.
+  window_around_rewards: [1.0, 8.0]
+
+  criteria_1:
+    # At least the last [num_consecutive_pass] sessions meet
+    # criteria_2 for both reward directions.
+    num_consecutive_pass: 3
+
+  criteria_2:
+    # At least [fraction_pass] of trials per session per reward
+    # direction meet criteria_3 and criteria_4.
+    fraction_pass: 0.6
+
+  criteria_3:
+    # After reward delivery onset, there is a correct lick within
+    # [window] seconds.
+    window: [0, 2.0]
+
+  criteria_4:
+    # After the first correct lick, there are at least
+    # num_licks_correct_min correct licks within [window] seconds
+    # and no more than num_licks_incorrect_max incorrect licks.
+    window: [0, 2.5]
+    num_licks_correct_min: 5
+    num_licks_incorrect_max: 0
+
+
+# ============================================================
+# Phase 8a.10 sub-deliverable B — spout-close-vs-standard
+# cohort renderer (Addendum #3 Tweak 6 typography knobs).
+# Single 3-row figure per animal (renamed from bare_vs_b per
+# Addendum #3 2026-05-13). The renderer renders a 4-row × 2-col
+# grid: accuracy_firstCorrectLickAll / correct-licks / incorrect-
+# licks / lick-raster (faceted L vs R columns).
+# ============================================================
+spout_close_vs_std:
+  # Panel title fontsize — bumped from matplotlib default (~11) to
+  # 14 for cohort-level legibility. Visual-gate single-session
+  # panels keep their existing smaller defaults.
+  panel_title_fontsize: 14
+  # Cohort raster xtick fontsize — bumped from
+  # visual_gate.xtick_fontsize=5 (single-session) to 9 (R3) → 11
+  # (R4, Addendum #4 Tweak 1).
+  raster_xtick_fontsize: 11
+  # Cohort raster "Time (s)" xlabel fontsize — bumped from
+  # visual_gate.raster_xlabel_fontsize=8 to 11 (R3) → 13 (R4
+  # Tweak 1). Tweak 1 also moves "Time (s)" from fig.supxlabel
+  # to per-panel ax.set_xlabel so labelpad applies.
+  raster_xlabel_fontsize: 13
+  # "Time (s)" xlabel-to-tick-label gap (R4 Tweak 1). matplotlib
+  # default is ~4; reduce to 2 so the label sits closer to the
+  # raster panels.
+  raster_xlabel_labelpad: 2
+  # Per-session "d+N" labels on the right of the Row 4 raster
+  # (Addendum #3 Tweak 4 + Addendum #4 Tweak 2 rotation flip).
+  raster_day_label_fontsize: 7
+  # Licking-plot (Rows 1-3) "Standard"/"Close" xtick label
+  # fontsize (Addendum #4 Tweak 3). matplotlib default (~10) was
+  # crowded; bump to 12.
+  licking_xtick_fontsize: 12
+  # "Spout Distance" axis title on Row 3 (Addendum #4 Tweak 3).
+  # Matches raster_xlabel_fontsize=13 for cross-block visual
+  # consistency.
+  spout_distance_xlabel_fontsize: 13
+  # Row 4 raster xticks (Addendum #5 Tweak 1). Cohort raster shows
+  # every integer second across the visible window;
+  # visual_gate.raster_xticks=[0, 5] (single-session, sparser) is
+  # unchanged.
+  raster_xticks: [0, 1, 2, 3, 4, 5]
+  # Row 4 raster y-axis typography (Addendum #5 Tweak 3 + Addendum
+  # #7 + post-R7 follow-on). Per-session "0" tick markers (R7)
+  # stack densely on PS54 (20 markers per panel); raster_ytick_fontsize
+  # 11→8 keeps them readable. raster_ylabel_labelpad pushes the
+  # "Trials" axis title past the left-spine half labels
+  # ("Standard"/"Close") so they don't visually overlap.
+  raster_ytick_fontsize: 8
+  raster_ylabel_fontsize: 13
+  raster_ylabel_labelpad: 20
+  # "Standard"/"Close" half labels outside the LEFT spine, rotated
+  # 90° CCW (bottom-to-top reading; mirrors the day labels'
+  # rotated-270° right-spine convention).
+  raster_half_label_fontsize: 11

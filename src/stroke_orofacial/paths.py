@@ -903,3 +903,71 @@ class PathResolver:
         Use ``pipeline_outputs(subdir='spout_behavior')`` instead.
         """
         return self.root("local_processed_spout") / f"session_processing_{version}"
+
+    def spout_behavior_figures_dir(self, animal: str) -> Path:
+        """Return the per-mouse spout-behavior figures output directory.
+
+        Layout: ``{pipeline_outputs/spout_behavior}/spout_behavior_figures/{animal}/``.
+        Phase 8a.10 sub-deliverable A renders the 11 per-mouse plot-
+        family SVGs + PNGs here, mirroring the legacy
+        ``basic_behavior_analysis3/<mouse>/`` layout (one SVG per
+        ``(mouse, plot_family)`` pair).
+
+        **Task 3 Round 2 continuation rename (2026-05-13):** replaces
+        the prior ``visual_gate_dir``. The old layout at
+        ``spout_behavior/visual_gate/<animal>/`` is orphaned (manual
+        cleanup later).
+        """
+        return (
+            self.pipeline_outputs("spout_behavior")
+            / "spout_behavior_figures" / animal
+        )
+
+    def spout_behavior_figures_summary_dir(self) -> Path:
+        """Return the cohort-summary tile-grid output directory.
+
+        Layout: ``{pipeline_outputs/spout_behavior}/spout_behavior_figures/summary/``.
+        All cohort tile-grids live under a single shared ``summary/``
+        subdir; per-grid identity is encoded in the filename stem
+        (e.g. ``all_animals_grid``, ``stroke_mice_grid``,
+        ``ps46_only``) passed via :func:`make_summary_figures`'s
+        ``output_dir_name=`` (a misnomer now — it's a file-stem
+        prefix, not a directory name).
+
+        **Task 3 Round 2 continuation rename (2026-05-13):** replaces
+        the prior ``visual_gate_summary_dir(name)`` per-grid-dir
+        convention. The old layout at
+        ``spout_behavior/summary_<animals-joined>/`` is orphaned.
+        """
+        return (
+            self.pipeline_outputs("spout_behavior")
+            / "spout_behavior_figures" / "summary"
+        )
+
+    def spout_close_vs_std_dir(self, animal: str | None = None) -> Path:
+        """Return the spout-close-vs-standard comparison figures
+        output directory.
+
+        Phase 8a.10 sub-deliverable B output root. Renamed from
+        ``bare_vs_b_dir`` per Addendum #3 2026-05-13 — user-facing
+        nomenclature is "spout close vs standard". Underlying
+        ``half_suffix="bare"`` / ``"b"`` identifiers stay legacy
+        (NPZ keys, registry, ``load_session_plot_data`` signature).
+
+        Layout (Addendum #1 2026-05-13 — cohort-only design):
+          - ``animal=None`` →
+            ``{pipeline_outputs/spout_behavior}/spout_behavior_figures/spout_close_vs_std/cohort/``
+            (cohort summary outputs, one file per animal:
+            ``<animal>_summary.{svg,png}``).
+          - ``animal="PS55"`` →
+            ``{pipeline_outputs/spout_behavior}/spout_behavior_figures/spout_close_vs_std/PS55/``
+            (legacy per-animal nested dir from CG-B2; superseded by
+            Addendum #1 and orphan-cleaned by the orchestrator).
+        """
+        base = (
+            self.pipeline_outputs("spout_behavior")
+            / "spout_behavior_figures" / "spout_close_vs_std"
+        )
+        if animal is None:
+            return base / "cohort"
+        return base / animal

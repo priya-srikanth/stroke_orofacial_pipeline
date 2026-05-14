@@ -518,6 +518,96 @@ class TestWavesurferSidesMatchMouseSides:
             load_animals(cfg)
 
 
+class TestStrokeLaterality:
+    """Task 3 Round 2.8 (added 2026-05-13): per-animal mouse-frame
+    hemisphere of the stroke. Scaffolding for the future pub-figures
+    phase via :meth:`AnimalInfo.mouse_side_to_ipsi_contra`. Default
+    "L" matches all 8 current cohort animals."""
+
+    def test_animal_info_stroke_laterality_default_L(self):
+        """Direct AnimalInfo(...) construction without stroke_laterality
+        defaults to "L"."""
+        info = AnimalInfo(
+            animal_id="PS99",
+            stroke_date=datetime.date(2025, 1, 1),
+            session_start=datetime.date(2025, 1, 1),
+            session_end=datetime.date(2025, 1, 2),
+        )
+        assert info.stroke_laterality == "L"
+
+    def test_animal_info_stroke_laterality_explicit_R(self):
+        """Explicit stroke_laterality="R" is preserved through
+        construction (forward-compat for future R-hemisphere strokes)."""
+        info = AnimalInfo(
+            animal_id="PS99",
+            stroke_date=datetime.date(2025, 1, 1),
+            session_start=datetime.date(2025, 1, 1),
+            session_end=datetime.date(2025, 1, 2),
+            stroke_laterality="R",
+        )
+        assert info.stroke_laterality == "R"
+
+    def test_animal_info_invalid_stroke_laterality_raises(self, tmp_path):
+        """Loader rejects values outside {'L', 'R'} at load time."""
+        cfg = tmp_path / "invalid_laterality.yaml"
+        cfg.write_text(
+            textwrap.dedent("""\
+                PS99:
+                  stroke_date: 2025-01-01
+                  sessions:
+                    start: 2025-01-01
+                    end: 2025-01-02
+                  stroke_laterality: X
+                  kinematics_baselines:
+                    tongue: {x0: 0.0, y0: -110.0}
+                    jaw:    {x0: 0.0, y0: 290.0}
+            """)
+        )
+        with pytest.raises(ValueError, match="stroke_laterality"):
+            load_animals(cfg)
+
+    def test_mouse_side_to_ipsi_contra_default_animal(self):
+        """L-hemisphere stroke (current cohort default): mouse-L is
+        ipsi, mouse-R is contra."""
+        info = AnimalInfo(
+            animal_id="PS99",
+            stroke_date=datetime.date(2025, 1, 1),
+            session_start=datetime.date(2025, 1, 1),
+            session_end=datetime.date(2025, 1, 2),
+            stroke_laterality="L",
+        )
+        assert info.mouse_side_to_ipsi_contra("L") == "ipsi"
+        assert info.mouse_side_to_ipsi_contra("R") == "contra"
+
+    def test_mouse_side_to_ipsi_contra_right_stroke(self):
+        """R-hemisphere stroke: ipsi/contra mapping is inverted."""
+        info = AnimalInfo(
+            animal_id="PS99",
+            stroke_date=datetime.date(2025, 1, 1),
+            session_start=datetime.date(2025, 1, 1),
+            session_end=datetime.date(2025, 1, 2),
+            stroke_laterality="R",
+        )
+        assert info.mouse_side_to_ipsi_contra("L") == "contra"
+        assert info.mouse_side_to_ipsi_contra("R") == "ipsi"
+
+    def test_load_animals_yaml_includes_stroke_laterality(self):
+        """The real configs/animals.yaml at repo root has
+        stroke_laterality populated as "L" for every active animal
+        (placeholder entries with null stroke_date are skipped by
+        the loader)."""
+        animals = load_animals()
+        assert len(animals) == 8, (
+            f"expected 8 active animals in configs/animals.yaml; "
+            f"got {len(animals)}: {sorted(animals)}"
+        )
+        for animal_id, info in animals.items():
+            assert info.stroke_laterality == "L", (
+                f"animal {animal_id} has stroke_laterality="
+                f"{info.stroke_laterality!r}, expected 'L'"
+            )
+
+
 class TestKinematicsBaselines:
     """Phase 7a.1 (added 2026-04-22): per-animal per-bodypart (x0, y0)
     baselines are required at load time for every animal, consumed by

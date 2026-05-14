@@ -1,8 +1,8 @@
 {
   "metadata": {
-    "captured_at_iso": "2026-05-13T00:01:07.790622+00:00",
-    "captured_against_git_sha": "02a3d9e4d21a533836c12cf26cca5884901070bb",
-    "captured_against_branch": "chore/phase-8a.10-cohort-phase-2-reemit",
+    "captured_at_iso": "2026-05-13T04:14:36.085620+00:00",
+    "captured_against_git_sha": "64bd1ea290e96c98c195b6df73c578ab9ebc8e8f",
+    "captured_against_branch": "phase/8a.10-spout-visual-gate",
     "script_path": "scripts/phase_8a_10/cohort_reemit_phase_2.py",
     "cohort_size": 68,
     "legacy_keys_resolved": 69,
@@ -19,7 +19,7 @@
     "dual_h5_hack_sessions": [
       {
         "key": "PS55/20250606",
-        "h5_filename": "stroke_0001.h5"
+        "h5_filename": "stroke_0002.h5"
       }
     ],
     "phase_2_successes": 68,
