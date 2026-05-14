@@ -335,13 +335,32 @@ def apply_longitudinal_axis(
     raster-only ``xtick_fontsize`` knob. The longitudinal-family
     knob is sized for dense cohorts where adjacent day labels
     (e.g. d+31 / d+32) would otherwise overlap.
+
+    Phase 8a.10.1 absDate xtick rotation fix (2026-05-14): the
+    absDate variant of longitudinal plots clipped the leftmost xtick
+    label because the wider date labels (e.g. ``"20250307"``) overflow
+    matplotlib's default bottom margin under 90° rotation. The fix
+    rotates absDate labels to 45° with a right-anchored alignment —
+    standard matplotlib idiom for date-axis readability. relStroke
+    labels (narrower ``"d+10"`` form) stay at 90° / center; they fit
+    the default margin and look correct under vertical rotation.
     """
     ax.set_xticks(longitudinal_axis.x_vals)
-    ax.set_xticklabels(
-        longitudinal_axis.x_ticklabels,
-        rotation=90,
-        fontsize=visual_gate_config["longitudinal_xtick_fontsize"],
-    )
+    is_abs_date = longitudinal_axis.suffix == "_absDate"
+    if is_abs_date:
+        ax.set_xticklabels(
+            longitudinal_axis.x_ticklabels,
+            rotation=45,
+            ha="right",
+            rotation_mode="anchor",
+            fontsize=visual_gate_config["longitudinal_xtick_fontsize"],
+        )
+    else:
+        ax.set_xticklabels(
+            longitudinal_axis.x_ticklabels,
+            rotation=90,
+            fontsize=visual_gate_config["longitudinal_xtick_fontsize"],
+        )
     if longitudinal_axis.vline_x is not None:
         ax.axvline(
             longitudinal_axis.vline_x,
@@ -680,8 +699,14 @@ def save_visual_gate_figure(
             raise FileExistsError(f"visual_gate target exists: {target}")
         if overwrite == "skip":
             return svg_path, png_path
-    fig.savefig(svg_path, format="svg")
-    fig.savefig(png_path, format="png", dpi=300)
+    # Phase 8a.10.1 (2026-05-14): bbox_inches="tight" ensures rotated
+    # absDate xtick labels fit within the saved image bounds. The
+    # longitudinal-mean renderers don't call fig.tight_layout()
+    # themselves; the bbox kwarg here is the equivalent at save-time.
+    # Conservative — only trims excess whitespace; no geometric shift
+    # for figures whose default layout already fits.
+    fig.savefig(svg_path, format="svg", bbox_inches="tight")
+    fig.savefig(png_path, format="png", dpi=300, bbox_inches="tight")
     return svg_path, png_path
 
 
