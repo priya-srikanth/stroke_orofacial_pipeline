@@ -51,7 +51,6 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
 from stroke_orofacial.animals import AnimalInfo, get_animal  # noqa: E402
@@ -974,8 +973,8 @@ def _plot_phase_session_overlays(
         ax.set_title(f"{side} trials  ({n_sess} sessions)")
         if is_multi_cycle:
             ax.set_xlabel(
-                f"Centered lick phase (peak[i] at x=i+0.5; "
-                f"cycle width = pre-stroke median ILI)"
+                "Centered lick phase (peak[i] at x=i+0.5; "
+                "cycle width = pre-stroke median ILI)"
             )
         else:
             ax.set_xlabel(
@@ -1117,8 +1116,8 @@ def _plot_phase_binned_overlays(
             ax.set_xlim(0, x_max)
             ax.set_xticks(np.arange(0.0, x_max + 0.5, 0.5))
             ax.set_xlabel(
-                f"Centered lick phase (peak[i] at x=i+0.5; "
-                f"cycle width = pre-stroke median ILI)"
+                "Centered lick phase (peak[i] at x=i+0.5; "
+                "cycle width = pre-stroke median ILI)"
             )
         else:
             ax.axvline(0.0, color="0.7", lw=1.0, ls="--", alpha=0.7)

@@ -6,9 +6,7 @@ script generation, YAML structure, SBATCH content, and rename logic.
 
 from __future__ import annotations
 
-from pathlib import Path
 
-import pytest
 
 from stroke_orofacial.dlc_inference_o2.runner import generate_inference_script
 from stroke_orofacial.dlc_inference_o2.batch import (

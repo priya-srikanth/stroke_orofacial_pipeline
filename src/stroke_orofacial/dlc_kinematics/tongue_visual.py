@@ -736,8 +736,8 @@ def _plot_phase_aligned_angle(
         title_suffix = f"mode={phase_mode}"
     if is_multi_cycle:
         xlabel = (
-            f"Centered lick phase (peak[i] at x=i+0.5; "
-            f"cycle width = pre-stroke median ILI)"
+            "Centered lick phase (peak[i] at x=i+0.5; "
+            "cycle width = pre-stroke median ILI)"
         )
     else:
         xlabel = (
