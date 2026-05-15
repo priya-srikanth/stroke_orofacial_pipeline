@@ -113,7 +113,7 @@ def _extract_angle_at_lick_timestamps(
     angle_per_frame_session: np.ndarray, fps: float,
     reward_frame_idx: int, lick_t_ms: float,
 ) -> float:
-    """Sample the session-wide per-frame angle at one timestamp (ms post-reward).
+    """Sample the session-wide per-frame angle at one timestamp (ms post-tone).
 
     Uses linear interpolation via :func:`np.interp`. Returns NaN if the
     timestamp falls outside the session frame range.

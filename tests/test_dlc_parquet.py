@@ -118,7 +118,7 @@ class TestIntegrationParity:
 
         # Legacy parquet
         leg_dir = _DLC_DIR / legacy_dir
-        leg_files = sorted(leg_dir.glob(f"*2025-03-07T*_filtered.h5.intermediate.*.parquet"))
+        leg_files = sorted(leg_dir.glob("*2025-03-07T*_filtered.h5.intermediate.*.parquet"))
         assert len(leg_files) >= 1, f"No legacy parquet found for {mode}"
         legacy_df = pd.read_parquet(leg_files[0])
 

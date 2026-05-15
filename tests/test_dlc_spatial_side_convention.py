@@ -1,13 +1,13 @@
-"""Side-convention plumbing tests for ``dlc_spatial.reward_aligned``.
+"""Side-convention plumbing tests for ``dlc_spatial.tone_aligned``.
 
 Phase 6.8a: the heatmap NPZs produced by notebook 12 carry a mouse-frame
 ``trial_group`` label + the two convention scalars
 (``wavesurfer_sides_match_mouse_sides`` / ``side_convention_version``).
 This module covers the two new boundary layers:
 
-* :func:`stroke_orofacial.dlc_spatial.reward_aligned.save_reward_aligned_npz`
+* :func:`stroke_orofacial.dlc_spatial.tone_aligned.save_tone_aligned_npz`
   — writer that translates a result dict into the stamped NPZ payload.
-* :func:`stroke_orofacial.dlc_spatial.reward_aligned.build_reward_aligned_analysis_by_animal_date`
+* :func:`stroke_orofacial.dlc_spatial.tone_aligned.build_tone_aligned_analysis_by_animal_date`
   — wrapper that auto-populates the L/R flag from ``AnimalInfo`` when
   the caller doesn't pass it explicitly.
 
@@ -26,10 +26,10 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from stroke_orofacial.dlc_spatial.reward_aligned import (
-    build_reward_aligned_analysis,
-    build_reward_aligned_analysis_by_animal_date,
-    save_reward_aligned_npz,
+from stroke_orofacial.dlc_spatial.tone_aligned import (
+    build_tone_aligned_analysis,
+    build_tone_aligned_analysis_by_animal_date,
+    save_tone_aligned_npz,
 )
 from stroke_orofacial.lr_convention import (
     SIDE_CONVENTION_MATCH_KEY,
@@ -44,7 +44,7 @@ from stroke_orofacial.lr_convention import (
 
 def _fake_histogram(nbins: int = 8) -> dict[str, Any]:
     """Minimal histogram dict shaped like ``pixel_bins.build_histogram``
-    output — ``save_reward_aligned_npz`` cares about these four keys
+    output — ``save_tone_aligned_npz`` cares about these four keys
     (``H_counts`` / ``H_proportion`` / ``xedges`` / ``yedges`` / ``extent``)
     plus uses the shape of ``H_counts`` to infer nbins."""
     counts = np.ones((nbins, nbins), dtype=np.int64)
@@ -74,12 +74,12 @@ def _fake_result(
     histogram: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Minimal result dict shaped like
-    :func:`build_reward_aligned_analysis` output — exactly the fields
-    :func:`save_reward_aligned_npz` reads."""
+    :func:`build_tone_aligned_analysis` output — exactly the fields
+    :func:`save_tone_aligned_npz` reads."""
     hist = _fake_histogram() if histogram is None else histogram
     return {
         "histogram": hist,
-        "window": None,  # save_reward_aligned_npz ignores this
+        "window": None,  # save_tone_aligned_npz ignores this
         "n_rewards": 42,
         "n_selected_frames": 1337,
         "trial_group": trial_group,
@@ -91,11 +91,11 @@ def _fake_result(
 
 
 # ---------------------------------------------------------------------------
-# save_reward_aligned_npz — NPZ writer
+# save_tone_aligned_npz — NPZ writer
 # ---------------------------------------------------------------------------
 
 
-class TestSaveRewardAlignedNpz:
+class TestSaveToneAlignedNpz:
     """Schema, stamp correctness, and error paths for the Phase 6.8a
     heatmap NPZ writer."""
 
@@ -110,7 +110,7 @@ class TestSaveRewardAlignedNpz:
             center_mode="nose",
         )
         path = tmp_path / "heatmap.npz"
-        save_reward_aligned_npz(result, path)
+        save_tone_aligned_npz(result, path)
 
         data = np.load(path, allow_pickle=True)
         hist = result["histogram"]
@@ -148,7 +148,7 @@ class TestSaveRewardAlignedNpz:
         must propagate to disk."""
         result = _fake_result(wavesurfer_matches=matches)
         path = tmp_path / f"heatmap_{matches}.npz"
-        save_reward_aligned_npz(result, path)
+        save_tone_aligned_npz(result, path)
 
         data = np.load(path, allow_pickle=True)
         assert bool(data[SIDE_CONVENTION_MATCH_KEY]) is matches
@@ -165,8 +165,8 @@ class TestSaveRewardAlignedNpz:
         res_false = _fake_result(wavesurfer_matches=False, histogram=hist)
         p_true = tmp_path / "true.npz"
         p_false = tmp_path / "false.npz"
-        save_reward_aligned_npz(res_true, p_true)
-        save_reward_aligned_npz(res_false, p_false)
+        save_tone_aligned_npz(res_true, p_true)
+        save_tone_aligned_npz(res_false, p_false)
 
         d_true = np.load(p_true, allow_pickle=True)
         d_false = np.load(p_false, allow_pickle=True)
@@ -179,13 +179,13 @@ class TestSaveRewardAlignedNpz:
     def test_raises_on_none_histogram(self, tmp_path):
         """Empty/missing histogram shouldn't be silently skipped by the
         writer — the loop in notebook 12 checks for None *before* calling
-        save_reward_aligned_npz, so reaching this function with None is
+        save_tone_aligned_npz, so reaching this function with None is
         a caller bug."""
         result = _fake_result()
         result["histogram"] = None
         path = tmp_path / "bad.npz"
         with pytest.raises(ValueError, match="histogram"):
-            save_reward_aligned_npz(result, path)
+            save_tone_aligned_npz(result, path)
 
     def test_raises_on_non_bool_flag(self, tmp_path):
         """stamp_side_convention validates the flag is bool; a non-bool
@@ -199,29 +199,29 @@ class TestSaveRewardAlignedNpz:
             (TypeError, ValueError),
             match="(?i)(bool|wavesurfer_sides_match_mouse_sides)",
         ):
-            save_reward_aligned_npz(result, path)
+            save_tone_aligned_npz(result, path)
 
     def test_creates_parent_directories(self, tmp_path):
         """Writer creates missing parent dirs so callers can save deep
         into the output tree without a pre-mkdir step."""
         nested = tmp_path / "a" / "b" / "c" / "heatmap.npz"
         assert not nested.parent.exists()
-        save_reward_aligned_npz(_fake_result(), nested)
+        save_tone_aligned_npz(_fake_result(), nested)
         assert nested.exists()
 
     def test_string_path_accepted(self, tmp_path):
         """Both Path and str work, matching save_heatmap_npz's signature."""
         p = tmp_path / "via_str.npz"
-        save_reward_aligned_npz(_fake_result(), str(p))
+        save_tone_aligned_npz(_fake_result(), str(p))
         assert p.exists()
 
 
 # ---------------------------------------------------------------------------
-# build_reward_aligned_analysis — flag plumbing
+# build_tone_aligned_analysis — flag plumbing
 # ---------------------------------------------------------------------------
 
 
-class TestBuildRewardAlignedAnalysisFlagPlumbing:
+class TestBuildToneAlignedAnalysisFlagPlumbing:
     """The primary entry point must forward the caller's flag through
     load_tone_events AND echo it on the return dict. We mock the heavy
     dependencies (parquet read, histogram build, alignment) and assert
@@ -279,7 +279,7 @@ class TestBuildRewardAlignedAnalysisFlagPlumbing:
 
         # Short-circuit the centered-parquet read to a minimal DF, and
         # the histogram build to a minimal dict. The flag propagation
-        # happens at load_tone_events → build_reward_aligned_analysis
+        # happens at load_tone_events → build_tone_aligned_analysis
         # return dict — the histogram values are irrelevant here.
         import pandas as pd
 
@@ -292,14 +292,14 @@ class TestBuildRewardAlignedAnalysisFlagPlumbing:
         ), patch(
             "numpy.load",
         ) as mock_load, patch(
-            "stroke_orofacial.dlc_spatial.reward_aligned.build_reward_aligned_window",
+            "stroke_orofacial.dlc_spatial.tone_aligned.build_tone_aligned_window",
             return_value=MagicMock(n_events=3, n_selected=42),
         ), patch(
             "stroke_orofacial.dlc_spatial.pixel_bins.build_histogram",
             return_value=_fake_histogram(),
         ):
             # numpy.load is called twice: once by load_tone_events for
-            # the licks NPZ, once by build_reward_aligned_analysis for the
+            # the licks NPZ, once by build_tone_aligned_analysis for the
             # alignment template. Side-effect dispatches by call order.
             stamped_licks = {
                 "Tone_L": np.array([100, 200, 300], dtype=int),
@@ -323,10 +323,10 @@ class TestBuildRewardAlignedAnalysisFlagPlumbing:
                 _FakeNpz(fake_align),      # 2nd: alignment template
             ]
 
-            result = build_reward_aligned_analysis(
+            result = build_tone_aligned_analysis(
                 manifest, "tongue", "nose", "all",
                 (-500.0, 5000.0), resolver,
-                spatial_config={}, reward_config={},
+                spatial_config={}, tone_config={},
                 wavesurfer_sides_match_mouse_sides=matches,
             )
 
@@ -334,7 +334,7 @@ class TestBuildRewardAlignedAnalysisFlagPlumbing:
         assert result["wavesurfer_sides_match_mouse_sides"] is matches
 
 
-class TestBuildRewardAlignedAnalysisByAnimalDate:
+class TestBuildToneAlignedAnalysisByAnimalDate:
     """The wrapper auto-populates the L/R flag from AnimalInfo when the
     caller passes None, and lets an explicit kwarg override when
     provided (used by tests that exercise the stamp-mismatch path)."""
@@ -359,19 +359,19 @@ class TestBuildRewardAlignedAnalysisByAnimalDate:
             return None  # short-circuit; we only check the kwarg forwarding
 
         with patch(
-            "stroke_orofacial.dlc_spatial.reward_aligned.get_animal",
+            "stroke_orofacial.dlc_spatial.tone_aligned.get_animal",
             return_value=info,
         ), patch(
-            "stroke_orofacial.dlc_spatial.reward_aligned.build_manifest",
+            "stroke_orofacial.dlc_spatial.tone_aligned.build_manifest",
             return_value=MagicMock(),
         ), patch(
-            "stroke_orofacial.dlc_spatial.reward_aligned.build_reward_aligned_analysis",
+            "stroke_orofacial.dlc_spatial.tone_aligned.build_tone_aligned_analysis",
             side_effect=_capture,
         ):
-            build_reward_aligned_analysis_by_animal_date(
+            build_tone_aligned_analysis_by_animal_date(
                 "PS99", "20260115", "tongue", "nose", "all",
                 (-500.0, 5000.0), MagicMock(),
-                spatial_config={}, reward_config={},
+                spatial_config={}, tone_config={},
             )
 
         assert captured["wavesurfer_sides_match_mouse_sides"] is yaml_flag
@@ -388,19 +388,19 @@ class TestBuildRewardAlignedAnalysisByAnimalDate:
             return None
 
         with patch(
-            "stroke_orofacial.dlc_spatial.reward_aligned.get_animal",
+            "stroke_orofacial.dlc_spatial.tone_aligned.get_animal",
             return_value=info,
         ), patch(
-            "stroke_orofacial.dlc_spatial.reward_aligned.build_manifest",
+            "stroke_orofacial.dlc_spatial.tone_aligned.build_manifest",
             return_value=MagicMock(),
         ), patch(
-            "stroke_orofacial.dlc_spatial.reward_aligned.build_reward_aligned_analysis",
+            "stroke_orofacial.dlc_spatial.tone_aligned.build_tone_aligned_analysis",
             side_effect=_capture,
         ):
-            build_reward_aligned_analysis_by_animal_date(
+            build_tone_aligned_analysis_by_animal_date(
                 "PS99", "20260115", "tongue", "nose", "all",
                 (-500.0, 5000.0), MagicMock(),
-                spatial_config={}, reward_config={},
+                spatial_config={}, tone_config={},
                 wavesurfer_sides_match_mouse_sides=True,
             )
 

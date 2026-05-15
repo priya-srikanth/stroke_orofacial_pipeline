@@ -508,7 +508,7 @@ def _determinism_check(
     try:
         cohort_a = msv.build_cohort_aggregates(
             bodypart, animal, resolver,
-            reward_pre_ms=pre_ms, reward_post_ms=post_ms,
+            tone_pre_ms=pre_ms, tone_post_ms=post_ms,
         )
     except Exception as e:  # noqa: BLE001
         return None, 0.0, f"first build_cohort_aggregates raised: {e}"
@@ -517,7 +517,7 @@ def _determinism_check(
     try:
         cohort_b = msv.build_cohort_aggregates(
             bodypart, animal, resolver,
-            reward_pre_ms=pre_ms, reward_post_ms=post_ms,
+            tone_pre_ms=pre_ms, tone_post_ms=post_ms,
         )
     except Exception as e:  # noqa: BLE001
         return False, float("inf"), f"second build_cohort_aggregates raised: {e}"
@@ -595,7 +595,7 @@ def cohort_emit_one(
         try:
             cohort = msv.build_cohort_aggregates(
                 bodypart, animal, resolver,
-                reward_pre_ms=pre_ms, reward_post_ms=post_ms,
+                tone_pre_ms=pre_ms, tone_post_ms=post_ms,
             )
         except Exception as e:  # noqa: BLE001
             result.error = f"build_cohort_aggregates raised: {e}"
@@ -613,14 +613,14 @@ def cohort_emit_one(
             for sess in cohort.sessions:
                 ind = msv.build_individual_sessions(
                     bodypart, animal, sess.date, resolver,
-                    reward_pre_ms=pre_ms, reward_post_ms=post_ms,
+                    tone_pre_ms=pre_ms, tone_post_ms=post_ms,
                     cohort=cohort, overwrite="force",
                 )
                 if ind is not None:
                     result.n_individual_sessions += 1
                 tro = msv.build_trial_overlays(
                     bodypart, animal, sess.date, resolver,
-                    reward_pre_ms=pre_ms, reward_post_ms=post_ms,
+                    tone_pre_ms=pre_ms, tone_post_ms=post_ms,
                     cohort=cohort, overwrite="force",
                 )
                 if tro is not None:
@@ -629,17 +629,17 @@ def cohort_emit_one(
             # Cohort families.
             result.n_session_overlays = len(msv.build_session_overlays(
                 bodypart, animal, resolver,
-                reward_pre_ms=pre_ms, reward_post_ms=post_ms,
+                tone_pre_ms=pre_ms, tone_post_ms=post_ms,
                 cohort=cohort, overwrite="force",
             ))
             result.n_binned_overlays = len(msv.build_binned_overlays(
                 bodypart, animal, resolver,
-                reward_pre_ms=pre_ms, reward_post_ms=post_ms,
+                tone_pre_ms=pre_ms, tone_post_ms=post_ms,
                 cohort=cohort, overwrite="force",
             ))
             result.n_mean_trace = len(msv.build_mean_trace(
                 bodypart, animal, resolver,
-                reward_pre_ms=pre_ms, reward_post_ms=post_ms,
+                tone_pre_ms=pre_ms, tone_post_ms=post_ms,
                 overwrite="force",
             ))
             if skip_mean_video:
@@ -664,7 +664,7 @@ def cohort_emit_one(
             else:
                 video_paths = msv.build_mean_video(
                     bodypart, animal, resolver,
-                    reward_pre_ms=pre_ms, reward_post_ms=post_ms,
+                    tone_pre_ms=pre_ms, tone_post_ms=post_ms,
                     overwrite="force",
                     allow_gif_fallback=allow_gif_fallback,
                 )

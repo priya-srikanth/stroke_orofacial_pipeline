@@ -1,4 +1,4 @@
-"""First-run health report for Phase 6.8a reward-aligned heatmap NPZs.
+"""First-run health report for Phase 6.8a tone-aligned heatmap NPZs.
 
 After Priya executes notebook 12 under the mouse-frame convention, this
 script walks the emitted heatmap NPZ tree and confirms the outputs are
@@ -11,7 +11,7 @@ trial_group) NPZ:
 
 1. **Stamp presence.** Every NPZ has both ``wavesurfer_sides_match_mouse_sides``
    and ``side_convention_version`` — missing stamp means a writer
-   regression (someone bypassed ``save_reward_aligned_npz``).
+   regression (someone bypassed ``save_tone_aligned_npz``).
 2. **Stamp matches ``configs/animals.yaml``.** The NPZ's
    ``wavesurfer_sides_match_mouse_sides`` equals
    ``AnimalInfo.wavesurfer_sides_match_mouse_sides``. A mismatch means
@@ -143,7 +143,7 @@ def _check_one_npz(
     else:
         h = data["H_counts"]
         if h.sum() == 0:
-            # Not necessarily a failure — a session with no reward events
+            # Not necessarily a failure — a session with no tone events
             # or all frames masked out would produce zero counts. Emit an
             # info note, not a fail.
             pass

@@ -25,9 +25,10 @@ Inputs
   (39 float32 cols: nose / jaw / tongue / {L,R}_whiskers_{1,2,3} /
   {L,R}_eye / {L,R}_spout × {x, y, likelihood})
 - :class:`SessionManifest` (animal, date)
-- ``trial_events`` (per-trial reward frame + side) — supplied by caller
-  (Q7 lock 2026-04-28: keep as required arg; auto-derive deferred to
-  Task 5 wrapper)
+- ``trial_events`` (per-trial tone-onset frame + side; ``TrialEvent.reward_frame_idx``
+  field name PRESERVED per Phase 7b-light Addendum #1 — DataFrame column /
+  on-disk surface) — supplied by caller (Q7 lock 2026-04-28: keep as
+  required arg; auto-derive deferred to Task 5 wrapper)
 
 Outputs (atomic, three files per session)
 -----------------------------------------
@@ -93,11 +94,13 @@ class TrialEvent:
 
     The driver iterates over a :class:`Sequence` of these to extract per-trial
     snippets from the session-wide interpolated trace. ``reward_frame_idx``
+    (field name PRESERVED per Addendum #1 — DataFrame column / on-disk
+    surface; semantically the tone-onset frame index under Case-2 universal)
     pins t=0 for that trial; ``side`` keys the Cell 42 per-side aggregation.
 
     Why this is a caller-provided argument (Q7 lock 2026-04-28): trial-event
     resolution depends on upstream spout_behavior products (wavesurfer
-    reward times + alignment LUT → cam-frame indices) that are out of
+    tone-onset times + alignment LUT → cam-frame indices) that are out of
     scope for 7a.3. The Phase 7a.3 V3 parity harness (Task 5) wires these
     in from existing spout_behavior outputs; production callers do the same.
     """
@@ -1091,7 +1094,7 @@ def build_tongue_pertrial(
 
     ``trial_events`` is REQUIRED. It is not resolvable from a
     :class:`SessionManifest` alone (manifest carries DLC files + alignment
-    template, not reward times). Callers must derive it from upstream
+    template, not tone-onset times). Callers must derive it from upstream
     spout_behavior products (Q7 lock 2026-04-28; Task 5 parity-harness
     wrapper does this for cohort runs).
 
@@ -1324,28 +1327,32 @@ def _derive_trial_events_from_spout_behavior(
     resolver: PathResolver,
     manifest: SessionManifest,
 ) -> list[TrialEvent]:
-    """Auto-derive per-trial reward-frame + side from upstream pipeline products.
+    """Auto-derive per-trial tone-onset frame + side from upstream pipeline products.
 
     Mirrors legacy's ``Z["fr_reward_mouseL"]`` / ``Z["fr_reward_mouseR"]``
-    semantics by re-deriving at consume time. The 7a.2 consolidated parquet
-    deliberately drops the legacy reward arrays per §5 Option A pure-bodypart
-    schema, so 7a.3 reads the consolidated ``licks_and_rewards`` NPZ + cam2
-    alignment template and reapplies the WS→cam translation. No new alignment
-    code: this is a thin orchestration of public helpers already battle-tested
-    by Phase 6 + 7a.2's :func:`_load_reward_centers_cam`.
+    semantics by re-deriving at consume time (legacy NPZ-key citations
+    preserved). The 7a.2 consolidated parquet deliberately drops the
+    legacy tone-onset arrays per §5 Option A pure-bodypart schema, so
+    7a.3 reads the consolidated ``licks_and_rewards`` NPZ + cam2
+    alignment template and reapplies the WS→cam translation. No new
+    alignment code: this is a thin orchestration of public helpers
+    already battle-tested by Phase 6 + 7a.2's
+    :func:`_load_tone_centers_cam`.
 
     ``trial_index`` is **chronological-across-sides** (Option α lock 2026-04-28):
-    rewards are sorted by ``reward_frame_idx`` and assigned globally unique
-    ``trial_index = 0..N-1``. Per-side enumeration (legacy parity) is the
-    parity harness's responsibility (sort-by-(side, reward_frame_idx) →
-    re-key).
+    tone events are sorted by ``reward_frame_idx`` (field name preserved;
+    semantically tone-onset under Case-2 universal) and assigned globally
+    unique ``trial_index = 0..N-1``. Per-side enumeration (legacy parity)
+    is the parity harness's responsibility (sort-by-(side, reward_frame_idx)
+    → re-key).
 
-    Side translation: NOT applied here. The licks NPZ keys ``Reward_L`` /
-    ``Reward_R`` are already in mouse-frame coords post task #17 re-emit
-    (Phase 6.8 boundary at Phase 2 emit). :func:`load_reward_events`
-    validates the ``side_convention_version=1`` + ``wavesurfer_sides_match_mouse_sides``
-    stamps and raises on pre-task-#17 NPZs — let it raise its own error
-    (don't wrap or pre-validate).
+    Side translation: NOT applied here. The licks NPZ keys ``Tone_L`` /
+    ``Tone_R`` are already in mouse-frame coords post task #17 re-emit
+    + Phase 8a.10.1 swap-fix (Phase 6.8 boundary at Phase 2 emit).
+    :func:`load_tone_events` validates the ``side_convention_version=1``
+    + ``wavesurfer_sides_match_mouse_sides`` stamps and raises on
+    pre-task-#17 NPZs — let it raise its own error (don't wrap or
+    pre-validate).
 
     Parameters
     ----------
@@ -1355,12 +1362,13 @@ def _derive_trial_events_from_spout_behavior(
         Configured PathResolver.
     manifest
         Session manifest. Used for ``manifest.wavesurfer_sides_match_mouse_sides``
-        (cross-checked against the licks NPZ stamp inside ``load_reward_events``).
+        (cross-checked against the licks NPZ stamp inside ``load_tone_events``).
 
     Returns
     -------
     list[TrialEvent]
-        Sorted by ``reward_frame_idx``, ``trial_index`` 0-indexed contiguous.
+        Sorted by ``reward_frame_idx`` (field name preserved),
+        ``trial_index`` 0-indexed contiguous.
 
     Raises
     ------
@@ -1368,9 +1376,10 @@ def _derive_trial_events_from_spout_behavior(
         If the licks NPZ, the alignment template, or the upstream tongue
         parquet is missing.
     ValueError
-        If any reward_frame_idx falls outside ``[0, n_frames)`` after the
-        WS→cam translation. (``load_reward_events`` raises ValueError on
-        its own for pre-task-#17 / mismatched-stamp NPZs — propagated.)
+        If any ``reward_frame_idx`` value falls outside ``[0, n_frames)``
+        after the WS→cam translation. (``load_tone_events`` raises
+        ValueError on its own for pre-task-#17 / mismatched-stamp NPZs
+        — propagated.)
     """
     # 1. n_frames from the upstream tongue parquet metadata (must match the
     #    cam-frame count the alignment LUT was built for).
@@ -1394,7 +1403,7 @@ def _derive_trial_events_from_spout_behavior(
     n_frames = int(n_frames_meta)
 
     # 2. licks_and_rewards NPZ path (no dedicated PathResolver helper as of
-    #    Task 5.0; pattern matches 7a.2's _load_reward_centers_cam).
+    #    Task 5.0; pattern matches 7a.2's _load_tone_centers_cam).
     date_str = date.strftime("%Y%m%d")
     licks_path = (
         resolver.pipeline_outputs("spout_behavior")
@@ -1404,7 +1413,7 @@ def _derive_trial_events_from_spout_behavior(
     )
 
     # 3. Alignment template (cam2 — same fallback chain as 7a.2's
-    #    _load_reward_centers_cam: prefer manifest if set, else resolver).
+    #    _load_tone_centers_cam: prefer manifest if set, else resolver).
     align_path = manifest.alignment_template
     if align_path is None or not align_path.exists():
         align_path = resolver.alignment_template_legacy_read(animal, date, cam="cam2")
@@ -1415,7 +1424,7 @@ def _derive_trial_events_from_spout_behavior(
         )
 
     from stroke_orofacial.alignment.templates import load_alignment_template
-    from stroke_orofacial.dlc_spatial.reward_aligned import (
+    from stroke_orofacial.dlc_spatial.tone_aligned import (
         load_tone_events,
         ws_samples_to_frame_indices,
     )
@@ -1652,9 +1661,9 @@ def _extract_trial_slice(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Slice ``arr`` to a per-trial window and build the relative time axis.
 
-    ``win_ms = (lo_ms, hi_ms)`` is the post-reward window in ms (positive =
-    after reward). ``t_ms = (frame_idx - reward_frame_idx) / fps * 1000``,
-    relative to the reward.
+    ``win_ms = (lo_ms, hi_ms)`` is the post-tone window in ms (positive =
+    after tone onset). ``t_ms = (frame_idx - reward_frame_idx) / fps *
+    1000`` (field name preserved), relative to the tone onset.
 
     Returns ``(arr_slice, t_ms_slice)``. Both arrays have the same length.
     Slice is empty if the window falls entirely outside the session.

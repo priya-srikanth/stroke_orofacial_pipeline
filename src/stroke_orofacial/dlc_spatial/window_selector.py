@@ -1,7 +1,7 @@
 """Window selector: defines which frames to include in a spatial analysis.
 
 Phase 5 implements ``WholeSessionWindow`` (all frames).
-Phase 6 adds ``EventAlignedWindow`` and ``RewardAlignedWindow`` for
+Phase 6 adds ``EventAlignedWindow`` and ``ToneAlignedWindow`` for
 peri-event spatial analyses. The spatial analysis functions accept a
 ``WindowSelector`` and call ``select_frames()``.
 """
@@ -35,7 +35,16 @@ class WindowSelector(ABC):
     @property
     @abstractmethod
     def label(self) -> str:
-        """Short label for output filenames (e.g. 'whole', 'reward_-500_5000ms')."""
+        """Short label for output filenames (e.g. 'whole', 'reward_-500_5000ms').
+
+        Note on the ``reward_*`` token: this literal is preserved as the
+        on-disk filename suffix per Phase 7b-light Addendum #1 (the
+        bifurcation rule defers on-disk-layout-affecting strings to
+        Phase 7c-dlc-cohort-reemit). Phase 7b-light is source-side
+        narrative cleanup only; the class is named ``ToneAlignedWindow``
+        but the filename label stays ``reward_…`` until Phase 7c re-emits
+        cohort outputs under a new layout.
+        """
 
 
 class WholeSessionWindow(WindowSelector):
@@ -59,7 +68,9 @@ class EventAlignedWindow(WindowSelector):
     Parameters
     ----------
     event_frame_indices : np.ndarray
-        Frame indices of event onsets (e.g. reward delivery frames).
+        Frame indices of event onsets (e.g. tone-onset frames under
+        Case-2 universal; the auditory cue is the temporal anchor for
+        DLC peri-event windows).
     pre_frames : int
         Number of frames before each event to include (positive = before).
     post_frames : int
@@ -117,19 +128,26 @@ class EventAlignedWindow(WindowSelector):
         return self._n_selected
 
 
-class RewardAlignedWindow(EventAlignedWindow):
-    """Window around reward events, converting from WS samples to frames.
+class ToneAlignedWindow(EventAlignedWindow):
+    """Window around tone events, converting from WS samples to frames.
+
+    Under Case-2 universal (Phase 8a.10.1), every DLC peri-event window
+    is scientifically tone-anchored — the auditory cue marks trial onset
+    and the WS sample indices supplied here come from Phase 2's
+    ``Tone_L`` / ``Tone_R`` NPZ keys (post-swap-fix). The class was
+    formerly named ``RewardAlignedWindow``; renamed in Phase 7b-light
+    per Addendum #1 source-side narrative cleanup.
 
     Parameters
     ----------
-    reward_ws_samples : np.ndarray
-        Reward onset indices in wavesurfer sample space.
+    tone_ws_samples : np.ndarray
+        Tone-onset indices in wavesurfer sample space.
     sig_camIdx__idx_ws : np.ndarray
         Alignment lookup: camera frame index for each WS sample.
         From ``AlignmentResult.sig_camIdx__idx_ws``.
     window_ms : tuple[float, float]
         (pre_ms, post_ms) window in milliseconds. Pre is typically negative
-        (before reward) or zero. Post is positive (after reward).
+        (before tone) or zero. Post is positive (after tone).
     fps : float
         Camera frame rate (Hz). Default 250.
     n_frames : int
@@ -138,23 +156,27 @@ class RewardAlignedWindow(EventAlignedWindow):
 
     def __init__(
         self,
-        reward_ws_samples: np.ndarray,
+        tone_ws_samples: np.ndarray,
         sig_camIdx__idx_ws: np.ndarray,
         window_ms: tuple[float, float],
         fps: float = 250.0,
         n_frames: int = 0,
     ) -> None:
         # Convert WS sample indices → camera frame indices
-        reward_frames = _ws_to_cam_frames(reward_ws_samples, sig_camIdx__idx_ws, n_frames)
+        tone_frames = _ws_to_cam_frames(tone_ws_samples, sig_camIdx__idx_ws, n_frames)
 
         # Convert ms window to frame counts
         pre_ms, post_ms = window_ms
         pre_frames = int(np.round(abs(pre_ms) / 1000.0 * fps))
         post_frames = int(np.round(post_ms / 1000.0 * fps))
 
+        # Filename label: ``reward_…ms`` token PRESERVED per Phase 7b-light
+        # Addendum #1 — on-disk-layout-affecting strings stay at their
+        # current literals until Phase 7c-dlc-cohort-reemit handles them
+        # in lockstep with cohort regeneration.
         label_str = f"reward_{int(pre_ms)}_{int(post_ms)}ms"
 
-        super().__init__(reward_frames, pre_frames, post_frames, n_frames, label_str)
+        super().__init__(tone_frames, pre_frames, post_frames, n_frames, label_str)
 
 
 def _ws_to_cam_frames(

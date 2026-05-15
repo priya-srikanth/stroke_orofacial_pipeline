@@ -288,7 +288,7 @@ class TestFirstPeakAlignedRenderers:
 # ============================================================================
 
 
-def _make_synthetic_cohort_reward_aligned(
+def _make_synthetic_cohort_tone_aligned(
     *,
     animal: str = "PS50",
     bin_days: int = 2,
@@ -329,21 +329,21 @@ def _make_synthetic_cohort_reward_aligned(
     )
 
 
-class TestRewardAlignedRenderers:
+class TestToneAlignedRenderers:
     """Phase 7a.4-cross-session-angle Cross-session #3 (2026-05-04):
     reward_aligned family rendering smoke tests."""
 
     def test_session_overlays_clips_to_display_window(self):
         """X-axis must be clipped to
-        ``reward_aligned_display_window_ms`` regardless of the
+        ``tone_aligned_display_window_ms`` regardless of the
         bundle's wider data extent. Default = [-180, 1000] ms."""
         from stroke_orofacial.config_loader import load_defaults
         from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
-            _plot_reward_aligned_session_overlays,
+            _plot_tone_aligned_session_overlays,
         )
-        cohort = _make_synthetic_cohort_reward_aligned()
+        cohort = _make_synthetic_cohort_tone_aligned()
         params = load_defaults()
-        fig = _plot_reward_aligned_session_overlays(cohort, params=params)
+        fig = _plot_tone_aligned_session_overlays(cohort, params=params)
         assert isinstance(fig, plt.Figure)
         # Cam-view subplot ordering pinned via title.
         assert "R trials" in fig.axes[0].get_title()
@@ -358,11 +358,11 @@ class TestRewardAlignedRenderers:
     def test_binned_overlays_clips_to_display_window(self):
         from stroke_orofacial.config_loader import load_defaults
         from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
-            _plot_reward_aligned_binned_overlays,
+            _plot_tone_aligned_binned_overlays,
         )
-        cohort = _make_synthetic_cohort_reward_aligned()
+        cohort = _make_synthetic_cohort_tone_aligned()
         params = load_defaults()
-        fig = _plot_reward_aligned_binned_overlays(cohort, params=params)
+        fig = _plot_tone_aligned_binned_overlays(cohort, params=params)
         assert isinstance(fig, plt.Figure)
         for ax in fig.axes[:2]:
             xlim = ax.get_xlim()
@@ -469,18 +469,18 @@ class TestRewardAlignedRenderers:
         plt.close(fig)
 
     def test_display_window_override_propagates(self):
-        """Overriding ``reward_aligned_display_window_ms`` in params
+        """Overriding ``tone_aligned_display_window_ms`` in params
         flows through to the cohort renderer."""
         from stroke_orofacial.config_loader import load_defaults
         from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
-            _plot_reward_aligned_session_overlays,
+            _plot_tone_aligned_session_overlays,
         )
-        cohort = _make_synthetic_cohort_reward_aligned()
+        cohort = _make_synthetic_cohort_tone_aligned()
         params = load_defaults()
         params["dlc_kinematics"]["tongue_visual"][
-            "reward_aligned_display_window_ms"
+            "tone_aligned_display_window_ms"
         ] = [-100.0, 500.0]
-        fig = _plot_reward_aligned_session_overlays(cohort, params=params)
+        fig = _plot_tone_aligned_session_overlays(cohort, params=params)
         for ax in fig.axes[:2]:
             xlim = ax.get_xlim()
             assert xlim[0] == pytest.approx(-100.0)

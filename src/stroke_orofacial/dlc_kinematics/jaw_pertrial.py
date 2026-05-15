@@ -19,7 +19,9 @@ Inputs
 - 7a.2 jaw interpolated_traces parquet
   (``frame_idx``, ``y_final``, ``fps`` + ``n_frames`` in file metadata)
 - :class:`SessionManifest` (animal, date)
-- ``trial_events`` (per-trial reward frame + side) — supplied by caller
+- ``trial_events`` (per-trial tone frame + side; ``TrialEvent.reward_frame_idx``
+  field name PRESERVED per Phase 7b-light Addendum #1 — DataFrame column /
+  on-disk surface) — supplied by caller
   or auto-derived via the 7a.3 V3 helper
   :func:`stroke_orofacial.dlc_kinematics.tongue_pertrial._derive_trial_events_from_spout_behavior`
 
@@ -31,7 +33,7 @@ Outputs (atomic, one JSON file per session)
 Per-trial scalars (8 fields, co-indexed with ``trial_indices`` + ``sides``)
 --------------------------------------------------------------------------
 1.  ``jaw_baseline_mean`` — mean of ``y_final`` over ``baseline_win_ms``
-    (default ``(-500, 0)`` ms relative to reward).
+    (default ``(-500, 0)`` ms relative to tone onset).
 2.  ``jaw_baseline_sd`` — population SD (``np.nanstd``) over the same window.
 3.  ``jaw_peak_pos_deflection`` — max of ``(y_final - baseline_mean)``
     inside ``detect_win_ms`` (default ``(0, 5000)`` ms).
@@ -415,7 +417,7 @@ def _ms_to_frames(ms: float, fps: float) -> int:
 def _snippet(
     arr: np.ndarray, center_fr: int, pre_f: int, post_f: int, n_frames: int,
 ) -> np.ndarray:
-    """Per-trial slice with NaN padding when reward is near a session edge.
+    """Per-trial slice with NaN padding when tone is near a session edge.
 
     Mirrors Cell 53's ``_snippet`` helper byte-for-byte (vendored at
     ``docs/legacy_snippets/tongue_jaw_mismatch.py`` Cell 53 lines 189-199).

@@ -43,7 +43,7 @@ Predicate (verbatim from Cell 53):
     candidate_no_lick_with_jaw_move = quiet_tongue_pass AND jaw_pass_qc
 
 - ``quiet_tongue_pass``: zero peaks via the Cell 33 dy/dt slope detector
-  applied to the ``(70, 5000)`` ms post-reward window. Detector is
+  applied to the ``(70, 5000)`` ms post-tone window. Detector is
   invoked with mismatch-specific knobs (no smoothing, no MIN_FINITE
   filter, accept-no-fall like Cells 36/39/42 — see
   :func:`_build_tongue_detector_params`). Note: this re-runs the
@@ -454,7 +454,7 @@ def _build_classifier_result(
 
     rel_day = animal_info.day_relative_to_stroke(manifest.date)
     for ev in trial_events:
-        # Tongue snippet around reward, generous enough to span the
+        # Tongue snippet around tone onset, generous enough to span the
         # quiet window.
         pre_f = abs(_ms_to_frames(min(0.0, quiet_win_ms[0]), fps))
         post_f = abs(_ms_to_frames(max(0.0, quiet_win_ms[1]), fps))
@@ -746,7 +746,7 @@ def _save_and_close(fig: Figure, path: Path, *, dpi: float) -> None:
 # Per-trial snippet window for plotting (legacy Cell 55 VIEW_WIN_MS).
 _PLOT_VIEW_WIN_MS: tuple[float, float] = (-500.0, 5000.0)
 _SIDE_COLORS: dict[str, str] = {"L": "dodgerblue", "R": "mediumvioletred"}
-_REWARD_COLOR: str = "red"
+_TONE_COLOR: str = "red"
 _TONGUE_LS: str = ":"
 
 # Phase 7a.5 C6.2 legacy axis-label parity (Priya 2026-05-01). Match
@@ -984,7 +984,7 @@ def _plot_individual_trials_2col(
             row = group[rix]
             color = _SIDE_COLORS.get(row["side"], "k")
             ax.plot(row["t_ms"], row["jaw_y"], color=color, lw=1.4)
-            ax.axvline(0, color=_REWARD_COLOR, linestyle=":", lw=1.0, alpha=0.8)
+            ax.axvline(0, color=_TONE_COLOR, linestyle=":", lw=1.0, alpha=0.8)
             ax.axhline(0, color="0.5", linestyle="--", lw=0.8, alpha=0.6)
             ax2 = ax.twinx()
             ax2.plot(row["t_ms"], row["tongue_y"], color=color, lw=1.0,
@@ -1186,7 +1186,7 @@ def _plot_session_overlay_grid_4x2(
                         s["t_ms"], s["tongue_y"], color=color, lw=0.9,
                         alpha=0.10, linestyle=_TONGUE_LS,
                     )
-            ax.axvline(0, color=_REWARD_COLOR, linestyle=":", lw=1.0, alpha=0.8)
+            ax.axvline(0, color=_TONE_COLOR, linestyle=":", lw=1.0, alpha=0.8)
             ax.axhline(0, color="0.5", linestyle="--", lw=0.8, alpha=0.6)
             ax.set_ylabel(_LEGACY_JAW_YLABEL, color="k")
             ax2.set_ylabel(_LEGACY_TONGUE_YLABEL, color="k")
@@ -1373,7 +1373,7 @@ def _plot_cross_session_2x2(
                     it["t_ms"], it["tong_mu"], color=color, lw=0.9,
                     alpha=0.85, linestyle=_TONGUE_LS,
                 )
-            ax.axvline(0, color=_REWARD_COLOR, linestyle=":", lw=1.0, alpha=0.8)
+            ax.axvline(0, color=_TONE_COLOR, linestyle=":", lw=1.0, alpha=0.8)
             ax.axhline(0, color="0.5", linestyle="--", lw=0.8, alpha=0.6)
             ax.set_ylabel(_LEGACY_JAW_YLABEL, color="k")
             ax2.set_ylabel(_LEGACY_TONGUE_YLABEL, color="k")

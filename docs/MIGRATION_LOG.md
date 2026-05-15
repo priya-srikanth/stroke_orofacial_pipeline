@@ -5998,3 +5998,83 @@ All 4 gates PASS. No hot-fix required; no Q3.B revoke / Phase 7b cascading requi
 
 ---
 
+## Phase 7b-light — DLC source narrative cleanup (Case-2 module + var + docstring rename + bifurcation rule)
+
+**Date:** 2026-05-15
+**Tag on merge:** `v7b-light-dlc-narrative-cleanup`
+**Branch:** `phase/7b-light-dlc-narrative-cleanup`
+
+**Scope.** Case-2-discriminating source-side narrative rename across `dlc_spatial/` + `dlc_kinematics/` + tests + `configs/defaults.yaml` + `notebooks/12_*` + `scripts/`. Completes the Q3.B-deferred narrative cleanup from Phase 8a.10.1's X1-β surgical fold-in. Bifurcated via kickoff [Addendum #1](prompts/phase-7b-light-dlc-narrative-cleanup-kickoff.md): source-side identifiers + docstrings + YAML internal keys RENAME this phase; on-disk-layout-affecting strings (output subdir paths, NPZ schema keys, window-dir tokens, family-name tokens, CLI flag spellings, figure filename suffixes) PRESERVE for Phase 7c-dlc-cohort-reemit. Task 5 spot-check scope narrowed via [Addendum #2](prompts/phase-7b-light-dlc-narrative-cleanup-kickoff.md): 3-session spec → 1 session (PS46/2025-03-07) per operational PathResolver constraint + leverage of Phase 8a.10.1 Task 4.5's prior PS54 verdict + PS48 deferral to F-P-5.
+
+**What landed.** 12 commits on `phase/7b-light-dlc-narrative-cleanup`:
+
+| # | SHA | Scope |
+|---|-----|-------|
+| 1 | `71020b7` | docs(kickoff): kickoff doc + Addendum #1 |
+| 2 | `14c407e` | refactor(module): `dlc_spatial.reward_aligned` → `dlc_spatial.tone_aligned` + 8 importer path updates |
+| 3 | `3035ff6` | refactor(stub): delete `dlc_kinematics/reward_aligned.py` (1-line stub, 0 importers) |
+| 4 | `f184de2` | refactor(notebook): rename notebook 12 + script docstring reference |
+| 5 | `425d257` | refactor(C5): Case-2 sweep in `dlc_spatial/{tone_aligned, window_selector}.py` + 6 consumer files (class rename, function/param/var renames, narrative; on-disk strings preserved) |
+| 6 | `eb67f0b` | refactor(C6): Case-2 sweep in `dlc_kinematics/{interpolation, jaw_pertrial, _angle}.py` (function renames `_load_tone_centers_cam`, `_build_tone_aligned_pool_mask`; `reward_centers_cam` + `reward_frame_idx` fields PRESERVED) |
+| 7 | `9b87956` | refactor(C7): Case-2 sweep in `dlc_kinematics/{tongue_pertrial, tongue_jaw_mismatch}.py` (`_REWARD_COLOR` → `_TONE_COLOR`; narrative renames) |
+| 8 | `2656480` | refactor(C8): Case-2 sweep in `dlc_kinematics/{tongue_visual, tongue_angle_cohort, __init__}.py` + public-API rename `build_reward_aligned_cohort` → `build_tone_aligned_cohort` (single commit) |
+| 9 | `bed29fb` | refactor(C9): `mean_sem_visual.py` + `paths.py` lockstep (`reward_pre_ms`/`reward_post_ms` param pair rename across ~12 functions + 4 test/parity files) |
+| 10 | `c1a7efc` | refactor(C10): `configs/defaults.yaml` YAML key renames (`dlc_spatial_reward_aligned:` → `dlc_spatial_tone_aligned:`; `reward_aligned_display_window_ms:` → `tone_aligned_display_window_ms:`) + lockstep source-access updates across 10 files |
+| 11 | `407e194` | test(Task 4): rename `test_reward_aligned.py` → `test_tone_aligned.py` + internal class/helper identifier sync across 4 affected test files |
+| 12 | `374af69` | chore(ruff cleanup): auto-fix 17 pre-existing ruff errors in DLC subtree (F401 unused imports + F541 f-string-without-placeholders + F821 missing `from typing import Any`) |
+
+**Source-side renames (RENAMED per Addendum #1 bifurcation):**
+
+- Functions: `build_reward_aligned_*` family (4), `save_reward_aligned_npz`, `_load_reward_centers_cam`, `_build_reward_aligned_pool_mask`, `_extract_reward_aligned`, `_plot_reward_aligned`, `_plot_reward_aligned_session_overlays`, `_plot_reward_aligned_binned_overlays`, `build_reward_aligned_cohort` (public API).
+- Class: `RewardAlignedWindow` → `ToneAlignedWindow`.
+- Parameters: `reward_ws_samples`, `reward_config`, `reward_centers_float`, `reward_pre_ms` / `reward_post_ms` (paths.py + mean_sem_visual.py ~12 function pair).
+- Constants: `_REWARD_COLOR` → `_TONE_COLOR`.
+- YAML keys: `dlc_spatial_reward_aligned:`, `reward_aligned_display_window_ms:` (Q7 hard rename).
+- Module + test + notebook file renames: 3 + 1 stub deletion (see commit table).
+
+**On-disk-affecting strings (PRESERVED per Addendum #1; deferred to Phase 7c):**
+
+- NPZ schema keys: `"n_rewards"`, `"reward_centers_cam"`, `reward_frame_idx` (DataFrame col).
+- Output subdir literals: `spatial_reward_aligned/...`.
+- Window-dir token: `rewardAligned_<n>pre-<n>post` (`paths.py` f-string).
+- Family-name token: `"reward_aligned"` (string used as `_family_paths()` subdir + config sub-key under `tongue_visual.plot_families`).
+- CLI flag: `--reward-windows-ms`.
+- Figure filename suffixes: `mouseLrewards`, `mouseRrewards`.
+- Figure-content strings: plot titles + `_LEGACY_XLABEL` value + result-dict display narrative.
+- Legacy NPZ-key + filename citations inside comment narrative.
+
+**Sessions spot-checked.** 1 of 3 originally specified (PS46/2025-03-07; PS54 + PS48 deferred per Decision 5).
+
+**Spot-check verdict (PS46/2025-03-07): PASS.**
+
+| Output | sha256 prefix | Verdict |
+|--------|--------------|---------|
+| `interpolated_traces/tongue/PS46/20250307.parquet` | `1f44f78ff106…` | BYTE_EQUAL with production |
+| `interpolated_traces/jaw/PS46/20250307.parquet` | `e7d68496cb00…` | BYTE_EQUAL with production |
+| `spatial_reward_aligned/tongue_nose/trials-all_-500to5000ms/PS46/heatmap_20250307.npz` | `03499b98a918…` | BYTE_EQUAL with production |
+
+`n_rewards = 96` (48 L + 48 R) — matches Phase 8a.10.1 Task 4.5's PS46 baseline-pool prediction exactly. Eyeball verdict PASS by construction (Addendum #1 PRESERVED all figure-content strings → byte-equal inputs through unchanged matplotlib pipeline → byte-equal figures). Verdict deliverable: [`.scratch_phase_7b_light/spot_check_verdict.md`](../.scratch_phase_7b_light/spot_check_verdict.md).
+
+**Intentional behavior differences vs legacy.** None at the data level — phase is pure source-side narrative cleanup. Legacy outputs are not a valid baseline post-Phase-8a.10.1 (legacy carries the Tone↔Reward swap-buggy Phase 2 NPZs). The phase's verdict is byte-equality between pre-rename and post-rename source states on the same post-8a.10.1 Phase 2 inputs.
+
+**Exit criteria met.**
+
+- [x] `pytest -q` (full unfiltered, including integration) PASSES at 1417 passed, 39 skipped, 0 failed — matches the post-Phase-8a.10.1 baseline exactly.
+- [x] `ruff check src/ tests/` → "All checks passed!" (17 pre-existing errors cleaned in commit `374af69`).
+- [x] Forward public-API import `from stroke_orofacial.dlc_kinematics import build_tone_aligned_cohort` succeeds; reverse import (`build_reward_aligned_cohort`) raises `ImportError`.
+- [x] PS46/2025-03-07 spot-check PASS on 3 byte-equal outputs (Phase 7a.2 tongue + jaw + Phase 6 spatial heatmap).
+- [x] DECISIONS 2026-05-15 entry (8 decisions) + this MIGRATION_LOG entry.
+
+**Forward-pointers queued.**
+
+- **Phase 7c-dlc-cohort-reemit (new — primary forward-pointer).** Cohort-wide DLC kinematics + spatial re-emit on post-8a.10.1 Phase 2 NPZs. Resolves Addendum #1's on-disk-string deferrals + provides cohort-wide byte-equality verdict. Folds in Phase 7a.7 (DLC heatmaps visual gate) as a sub-task. Blocks Phase 9 + pub-figures.
+- **Phase 7-pre-alignment-templates (F-P-7 from Phase 8a.10.1 close).** Cohort-wide alignment template emit + consumer cutover.
+- **Phase 7-pre-multi-half-dlc (F-P-5 from Phase 8a.10.1 close).** Pattern A DLC merge wiring; also discharges PS48 spot-check deferral from this phase's Decision 5.
+- **Phase 9 stats.** Blocked on 7c.
+- **Phase 7-pre-secondary-spout-compare-DLC.** Blocked on b-half DLC inference.
+- **Pub-figures phase.** Blocked on 7c.
+
+**Tag:** `v7b-light-dlc-narrative-cleanup` on the merge commit.
+
+---
+

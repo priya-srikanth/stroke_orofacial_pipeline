@@ -32,7 +32,7 @@ from stroke_orofacial.dlc_kinematics.tongue_visual import (  # noqa: E402
     _plot_first_peak_aligned,
     _plot_per_trial_qc_traces,
     _plot_phase_aligned_angle,
-    _plot_reward_aligned,
+    _plot_tone_aligned,
     _plot_xy_by_phase,
     render_tongue_qc_figures,
 )
@@ -479,7 +479,7 @@ class TestPlotFamilies:
 
     def test_reward_aligned_returns_nonempty_figure(self, synthetic_bundle):
         params = load_defaults()
-        fig = _plot_reward_aligned(synthetic_bundle, params=params)
+        fig = _plot_tone_aligned(synthetic_bundle, params=params)
         assert isinstance(fig, plt.Figure)
         assert len(fig.axes) >= 1
         any_lines = any(len(ax.get_lines()) > 0 for ax in fig.axes)
@@ -488,8 +488,8 @@ class TestPlotFamilies:
 
     def test_reward_aligned_clips_x_axis_to_display_window(self):
         """Phase 7a.4-cross-session-angle Addendum #4 (2026-05-04):
-        ``_plot_reward_aligned`` clips the x-axis to
-        ``dlc_kinematics.tongue_visual.reward_aligned_display_window_ms``
+        ``_plot_tone_aligned`` clips the x-axis to
+        ``dlc_kinematics.tongue_visual.tone_aligned_display_window_ms``
         regardless of the bundle's wider ``plot_win_ms``. Locks the
         contract that per-session and cross-session reward-aligned
         plots share the same x-axis byte-for-byte.
@@ -502,10 +502,10 @@ class TestPlotFamilies:
         params = load_defaults()
         display_win = tuple(
             params["dlc_kinematics"]["tongue_visual"][
-                "reward_aligned_display_window_ms"
+                "tone_aligned_display_window_ms"
             ]
         )
-        fig = _plot_reward_aligned(bundle, params=params)
+        fig = _plot_tone_aligned(bundle, params=params)
         ax = fig.axes[0]
         xlim_lo, xlim_hi = ax.get_xlim()
         assert xlim_lo == pytest.approx(float(display_win[0]))
@@ -524,9 +524,9 @@ class TestPlotFamilies:
         # default so any leakage from auto-fit is visible.
         params = load_defaults()
         params["dlc_kinematics"]["tongue_visual"][
-            "reward_aligned_display_window_ms"
+            "tone_aligned_display_window_ms"
         ] = [-100.0, 500.0]
-        fig = _plot_reward_aligned(bundle, params=params)
+        fig = _plot_tone_aligned(bundle, params=params)
         ax = fig.axes[0]
         xlim_lo, xlim_hi = ax.get_xlim()
         assert xlim_lo == pytest.approx(-100.0)

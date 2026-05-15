@@ -104,14 +104,14 @@ def _legacy_kinematics_dir(
 def _consolidated_dir(
     animal: str, bodypart: str, real_resolver: PathResolver,
     *,
-    reward_pre_ms: int, reward_post_ms: int, plot_family: str,
+    tone_pre_ms: int, tone_post_ms: int, plot_family: str,
 ) -> Path:
     cm = _LEGACY_CENTER_MODE[bodypart]
     return real_resolver.mean_sem_visual_dir(
         bodypart,
         center_mode=cm,
-        reward_pre_ms=reward_pre_ms,
-        reward_post_ms=reward_post_ms,
+        tone_pre_ms=tone_pre_ms,
+        tone_post_ms=tone_post_ms,
         plot_family=plot_family,
         animal=animal,
     )
@@ -248,7 +248,7 @@ def _consolidated_per_session_path(
     """Find the consolidated PNG emitted by the harness for this session."""
     cons_dir = _consolidated_dir(
         animal, bodypart, real_resolver,
-        reward_pre_ms=pre_ms, reward_post_ms=post_ms,
+        tone_pre_ms=pre_ms, tone_post_ms=post_ms,
         plot_family=family,
     )
     if not cons_dir.exists():
@@ -275,7 +275,7 @@ def _consolidated_cohort_path(
     """
     cons_dir = _consolidated_dir(
         animal, bodypart, real_resolver,
-        reward_pre_ms=pre_ms, reward_post_ms=post_ms,
+        tone_pre_ms=pre_ms, tone_post_ms=post_ms,
         plot_family=(
             "mean_xy_overlays" if family == "mean_trace" else family
         ),

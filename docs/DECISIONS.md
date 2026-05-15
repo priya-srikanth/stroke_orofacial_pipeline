@@ -15,6 +15,160 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-15 — Phase 7b-light close — DLC source narrative cleanup (Case-2 module + var + docstring rename + bifurcation rule)
+
+**Phase metadata.** Branch `phase/7b-light-dlc-narrative-cleanup`, opened 2026-05-14 off `main` at chore-PR #117 merge commit `418a814` (F-P-6 YAML-cohort-gap policy lock). Tag `v7b-light-dlc-narrative-cleanup` on the merge commit. Kickoff [`docs/prompts/phase-7b-light-dlc-narrative-cleanup-kickoff.md`](prompts/phase-7b-light-dlc-narrative-cleanup-kickoff.md) (with Addendum #1 — on-disk-layout strings PRESERVED for Phase 7c — and Addendum #2 — Task 5 spot-check scope reduced to PS46/2025-03-07 only).
+
+### Decision 1 — Scope
+
+Case-2-discriminating rename pass across [`src/stroke_orofacial/dlc_spatial/`](../src/stroke_orofacial/dlc_spatial/) + [`src/stroke_orofacial/dlc_kinematics/`](../src/stroke_orofacial/dlc_kinematics/) + [`tests/test_tone_aligned.py`](../tests/test_tone_aligned.py) (renamed from `test_reward_aligned.py`) + [`configs/defaults.yaml`](../configs/defaults.yaml) + [`notebooks/12_dlc_spatial_tone_aligned.ipynb`](../notebooks/12_dlc_spatial_tone_aligned.ipynb) (renamed from `12_dlc_spatial_reward_aligned.ipynb`) + [`scripts/run_notebook_12_first_emit.py`](../scripts/run_notebook_12_first_emit.py) + [`scripts/phase_6_8a_first_run_health_report.py`](../scripts/phase_6_8a_first_run_health_report.py) + [`src/stroke_orofacial/paths.py`](../src/stroke_orofacial/paths.py). Per Q1 audit, `dlc_inference_o2/` had 0 reward hits and `dlc_io/` had only 3 legacy-notebook-filename citations (preserved) — no Case-2 hits surfaced, no STOP fired. Per Q1.7 audit, `paths.py` has no resolver method names with `_reward_aligned_` infix — STOP NOT fired.
+
+### Decision 2 — Stub deletion: `dlc_kinematics/reward_aligned.py` removed
+
+1-line docstring stub with zero importers (verified via `grep -rn 'dlc_kinematics.reward_aligned\|from stroke_orofacial.dlc_kinematics import reward_aligned\|from .reward_aligned'` across `src/`, `tests/`, `notebooks/`, `scripts/` — zero hits). Per-event kinematic work was already distributed across `interpolation.py`, `tongue_pertrial.py`, `mean_sem_visual.py` (the X1-β indirect callers). The stub never had a job. Q6.A lock. Commit `3035ff6`.
+
+### Decision 3 — Module + file-level renames
+
+Three file-level renames + 1 stub deletion (Task 2):
+
+- [`src/stroke_orofacial/dlc_spatial/reward_aligned.py`](../src/stroke_orofacial/dlc_spatial/) → [`src/stroke_orofacial/dlc_spatial/tone_aligned.py`](../src/stroke_orofacial/dlc_spatial/tone_aligned.py) (commit `14c407e`; 8 importers updated path-only in lockstep).
+- [`tests/test_reward_aligned.py`](../tests/) → [`tests/test_tone_aligned.py`](../tests/test_tone_aligned.py) (Task 4 commit `407e194`; internal class + helper identifiers synced).
+- [`notebooks/12_dlc_spatial_reward_aligned.ipynb`](../notebooks/) → [`notebooks/12_dlc_spatial_tone_aligned.ipynb`](../notebooks/12_dlc_spatial_tone_aligned.ipynb) (commit `f184de2`; script docstring reference + Cell `imports-setup` + Cell `reward-loop` synced).
+- [`src/stroke_orofacial/dlc_kinematics/reward_aligned.py`](../src/stroke_orofacial/dlc_kinematics/) — deleted (Decision 2 above; commit `3035ff6`).
+
+Public-API rename: `build_reward_aligned_cohort` → `build_tone_aligned_cohort` at the definition site in [`src/stroke_orofacial/dlc_kinematics/tongue_angle_cohort.py`](../src/stroke_orofacial/dlc_kinematics/tongue_angle_cohort.py) AND the re-export site in [`src/stroke_orofacial/dlc_kinematics/__init__.py`](../src/stroke_orofacial/dlc_kinematics/__init__.py) (imports + `__all__` list) — single commit `2656480` per kickoff Task 3 guidance ("public-API rename in single commit so re-export + definition stay in sync within one revision"). Forward import `from stroke_orofacial.dlc_kinematics import build_tone_aligned_cohort` succeeds; reverse import (`build_reward_aligned_cohort`) raises `ImportError` as expected.
+
+### Decision 4 — Bifurcation rule (Addendum #1 lock)
+
+Source-side narrative identifiers RENAME per Q2 Case-2 policy; on-disk-layout strings PRESERVE for Phase 7c-dlc-cohort-reemit. Categories:
+
+**RENAMED (source-side narrative):**
+
+- Function names: `build_reward_aligned_window` → `build_tone_aligned_window`; `build_reward_aligned_analysis` → `build_tone_aligned_analysis`; `build_reward_aligned_analysis_by_animal_date` → `build_tone_aligned_analysis_by_animal_date`; `save_reward_aligned_npz` → `save_tone_aligned_npz`; `_load_reward_centers_cam` → `_load_tone_centers_cam`; `_build_reward_aligned_pool_mask` → `_build_tone_aligned_pool_mask`; `_extract_reward_aligned` → `_extract_tone_aligned`; `_plot_reward_aligned` → `_plot_tone_aligned`; `_plot_reward_aligned_session_overlays` → `_plot_tone_aligned_session_overlays`; `_plot_reward_aligned_binned_overlays` → `_plot_tone_aligned_binned_overlays`; `build_reward_aligned_cohort` → `build_tone_aligned_cohort` (public API).
+- Class names: `RewardAlignedWindow` → `ToneAlignedWindow`.
+- Parameter names: `reward_ws_samples` → `tone_ws_samples`; `reward_config` → `tone_config`; `reward_centers_float` → `tone_centers_float`; `reward_pre_ms` → `tone_pre_ms`; `reward_post_ms` → `tone_post_ms` (paths.py `mean_sem_visual_dir` + mean_sem_visual.py ~12 function signatures + propagation).
+- Module-level constants: `_REWARD_COLOR` → `_TONE_COLOR` (`tongue_jaw_mismatch.py`).
+- YAML internal config keys: `dlc_spatial_reward_aligned:` → `dlc_spatial_tone_aligned:`; `reward_aligned_display_window_ms:` → `tone_aligned_display_window_ms:` (Q7 hard cutover; no shim).
+- Local variables: `reward_ws` → `tone_ws`; `bp_x_range_reward` → `bp_x_range_tone`; `reward_frames` → `tone_frames` (`window_selector.py`).
+- Docstrings + inline comments: Case-2 narrative ("Reward-aligned spatial analysis" → "Tone-aligned …"; "post-reward window" → "post-tone window"; "reward events" → "tone events"; etc.).
+
+**PRESERVED (on-disk-layout-affecting; deferred to Phase 7c):**
+
+- Output subdir literals: `spatial_reward_aligned/...` (referenced by notebook 12 + script + tone_aligned.py docstring).
+- Window-dir tokens: `rewardAligned_<n>pre-<n>post` (`paths.py:mean_sem_visual_dir` f-string).
+- NPZ schema keys: `"n_rewards"`, `"reward_centers_cam"`, `reward_frame_idx` (DataFrame column).
+- Family-name string tokens: `"reward_aligned"` (consumed by `_family_paths()` + config dispatcher; YAML sub-key `tongue_visual.plot_families.reward_aligned:` PRESERVED).
+- CLI flag spellings: `--reward-windows-ms` (`scripts/run_notebook_12_first_emit.py`).
+- Figure filename suffix templates: `mouseLrewards` / `mouseRrewards` (`mean_sem_visual.py`).
+- Figure-content strings: plot titles (`"Mouse RIGHT rewards | …"`), axis labels (`_LEGACY_XLABEL = "Time relative to reward (ms)"`), result-dict display narrative (`f"rewards={result['n_rewards']}"`).
+- Dataclass fields with on-disk surface: `InterpolationResult.reward_centers_cam` (NPZ key serialized via `np.savez` kwargs), `TrialEvent.reward_frame_idx` (DataFrame column "reward_frame_idx" + parity-harness mapping).
+- Legacy NPZ-key citations: `Reward_L` / `Reward_R` / `Z["fr_reward_mouseL"]` / `Z["fr_reward_mouseR"]` inside comment narrative.
+- Legacy filename citations: `20260323_DLC_build-parquet_reward-aligned_tongue_jaw.ipynb` (`dlc_io/*.py` + tone_aligned.py docstrings); `12_dlc_spatial_reward_aligned.ipynb` in docs/MIGRATION_LOG / DESIGN / phase prompts.
+
+Bounded local inconsistency intentional: e.g., `dlc_spatial/tone_aligned.py:build_tone_aligned_analysis` returns `{"n_rewards": ...}` (function name renamed; dict key preserved) and writes to `spatial_reward_aligned/` subdir. Time-limited until Phase 7c re-emits cohort outputs to new paths.
+
+### Decision 5 — Spot-check scope reduced to PS46/2025-03-07 only
+
+Original kickoff Task 5 specified a 3-session spot-check (PS46/2025-03-07 + PS54/2025-05-03 + PS48/2025-03-14). Mid-Task-5 verification surfaced a PathResolver constraint (`pipeline_outputs("dlc_analysis")` routes both reads and writes through `output_root` override; Phase 4 centered parquet reads + DLC kinematics writes share the logical root) plus the asymmetric swap-fix impact at the 3 sessions (PS46 byte-identical pre/post swap fix per Phase 8a.10.1 Task 4.5; PS54 changed; PS48 has pre-existing Pattern A gaps). Three options weighed: (1) pre-stage inputs into scratch tree via symlinks for all 3 sessions; (2) skip spot-check entirely on the strength of Addendum #1 bifurcation + pytest gate; (3) eyeball-only on PS46/2025-03-07. Adopted Option 3 — PS46 verification provides empirical end-to-end confirmation on real cohort data; PS54 + PS48 verification was already discharged by Phase 8a.10.1 Task 4.5 (PS54) or scoped to a future phase (PS48 → Phase 7-pre-multi-half-dlc F-P-5). Residual risk: low; the bifurcation rule + pytest pass + Task 4.5's prior verdict combined provide strong pre-hoc evidence that 7b-light's deeper rename is a no-op at the output-data layer.
+
+### Decision 6 — Parity strategy: pre-rename vs post-rename byte-equality (PS46/2025-03-07)
+
+NOT a legacy-parity gate (legacy carries the Phase 8a.10.1 swap and is not a valid baseline post-fix per the kickoff Task 5 correction). Three byte-equal outputs on PS46/2025-03-07 confirmed PASS:
+
+| Output | Code paths exercised | sha256 prefix | Verdict |
+|--------|----------------------|---------------|---------|
+| `interpolated_traces/tongue/PS46/20250307.parquet` | `_load_tone_centers_cam`, `_build_tone_aligned_pool_mask`, `tone_ws`, `load_tone_events` | `1f44f78ff106…` | BYTE_EQUAL |
+| `interpolated_traces/jaw/PS46/20250307.parquet` | (same) | `e7d68496cb00…` | BYTE_EQUAL |
+| `spatial_reward_aligned/tongue_nose/trials-all_-500to5000ms/PS46/heatmap_20250307.npz` | `build_tone_aligned_analysis_by_animal_date`, `ToneAlignedWindow`, `save_tone_aligned_npz`, YAML key `dlc_spatial_tone_aligned`, `tone_pre_ms`/`tone_post_ms` params, `n_rewards` NPZ key PRESERVED | `03499b98a918…` | BYTE_EQUAL |
+
+`n_rewards = 96` on PS46/2025-03-07 — matches Phase 8a.10.1 Task 4.5's PS46 baseline-pool prediction exactly (48 L + 48 R, swap-fix-invariant). Spot-check artifacts: [`.scratch_phase_7b_light/spot_check_verdict.md`](../.scratch_phase_7b_light/spot_check_verdict.md), [`spot_check_run.py`](../.scratch_phase_7b_light/spot_check_run.py), [`spot_check_phase6.py`](../.scratch_phase_7b_light/spot_check_phase6.py).
+
+### Decision 7 — YAML internal config keys: Q7.A hard cutover, no backward-compat shim
+
+[`configs/defaults.yaml`](../configs/defaults.yaml) keys renamed in lockstep with all source-side accesses:
+
+- Top-level: `dlc_spatial_reward_aligned:` → `dlc_spatial_tone_aligned:` (line 306).
+- Sub-key: `reward_aligned_display_window_ms:` → `tone_aligned_display_window_ms:` (line 639).
+
+PRESERVED: `tongue_visual.plot_families.reward_aligned:` (line 749) — family-name token consumed by `_family_paths()` to construct output subdirs + dispatch keys consumed by config-driven family registries. Per Addendum #1 edge case. [`configs/session_overrides.yaml`](../configs/session_overrides.yaml) audited; 0 references to renamed keys — no lockstep edit needed.
+
+Source-access lockstep updates: `defaults["dlc_spatial_reward_aligned"]` → `defaults["dlc_spatial_tone_aligned"]` in `tone_aligned.py` docstrings + `scripts/run_notebook_12_first_emit.py` + notebook 12 Cell `imports-setup` + `tests/test_tone_aligned.py` + `tests/test_notebook_runners.py`. `visual.get("reward_aligned_display_window_ms", ...)` → `visual.get("tone_aligned_display_window_ms", ...)` in `tongue_visual.py` + `tongue_angle_cohort.py` + `tests/test_tongue_visual.py` + `tests/test_tongue_angle_cohort.py`. Single commit `c1a7efc`.
+
+### Decision 8 — Ambiguous-identifier resolutions + pre-existing ruff cleanup
+
+Task 1 audit surfaced **0 AMBIGUOUS hits** (the 20-collected ambiguous instances collapsed to a single scoping meta-question resolved at Addendum #1 by the bifurcation rule). Single-pass adjudication sufficient; multi-pass escalation trigger (≥ 20 AMBIGUOUS) did not fire.
+
+Bundled into phase: 17 pre-existing ruff errors auto-fixed in `chore(phase-7b-light): ruff cleanup of pre-existing errors in DLC subtree` (commit `374af69`). Breakdown: 5 F401 unused imports (removed `pandas` from tongue_angle_cohort.py + test_dlc_loaders.py; `pathlib.Path` from test_difference_maps.py + test_dlc_inference.py; `pytest` from test_dlc_inference.py; `datetime` from test_wavesurfer_io.py); 8 F541 f-string-without-placeholders (dropped `f` prefix in tongue_angle_cohort.py + tongue_visual.py + test_dlc_parquet.py); 4 F821 `Undefined name 'Any'` (added `from typing import Any` to `tests/test_tongue_pertrial.py`). Errors verified pre-existing on `main` before Phase 7b-light started; fix bundled in-phase per Priya 2026-05-15.
+
+### Enforced at
+
+**Source.**
+- [`src/stroke_orofacial/dlc_spatial/tone_aligned.py`](../src/stroke_orofacial/dlc_spatial/tone_aligned.py) (renamed from `reward_aligned.py`).
+- [`src/stroke_orofacial/dlc_spatial/window_selector.py`](../src/stroke_orofacial/dlc_spatial/window_selector.py) (`RewardAlignedWindow` → `ToneAlignedWindow`).
+- [`src/stroke_orofacial/dlc_kinematics/__init__.py`](../src/stroke_orofacial/dlc_kinematics/__init__.py) (public-API re-export).
+- [`src/stroke_orofacial/dlc_kinematics/interpolation.py`](../src/stroke_orofacial/dlc_kinematics/interpolation.py).
+- [`src/stroke_orofacial/dlc_kinematics/jaw_pertrial.py`](../src/stroke_orofacial/dlc_kinematics/jaw_pertrial.py).
+- [`src/stroke_orofacial/dlc_kinematics/_angle.py`](../src/stroke_orofacial/dlc_kinematics/_angle.py).
+- [`src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py`](../src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py).
+- [`src/stroke_orofacial/dlc_kinematics/tongue_jaw_mismatch.py`](../src/stroke_orofacial/dlc_kinematics/tongue_jaw_mismatch.py).
+- [`src/stroke_orofacial/dlc_kinematics/tongue_visual.py`](../src/stroke_orofacial/dlc_kinematics/tongue_visual.py).
+- [`src/stroke_orofacial/dlc_kinematics/tongue_angle_cohort.py`](../src/stroke_orofacial/dlc_kinematics/tongue_angle_cohort.py).
+- [`src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py`](../src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py).
+- [`src/stroke_orofacial/paths.py`](../src/stroke_orofacial/paths.py) (mean_sem_visual_dir param rename + docstring narrative).
+- [`src/stroke_orofacial/dlc_kinematics/reward_aligned.py`](../src/stroke_orofacial/dlc_kinematics/) — DELETED.
+
+**Config + notebooks + scripts.**
+- [`configs/defaults.yaml`](../configs/defaults.yaml) — Q7 key renames + narrative comments.
+- [`notebooks/12_dlc_spatial_tone_aligned.ipynb`](../notebooks/12_dlc_spatial_tone_aligned.ipynb) — renamed; Cell `imports-setup` + Cell `reward-loop` content synced.
+- [`scripts/run_notebook_12_first_emit.py`](../scripts/run_notebook_12_first_emit.py).
+- [`scripts/phase_6_8a_first_run_health_report.py`](../scripts/phase_6_8a_first_run_health_report.py).
+
+**Tests.**
+- [`tests/test_tone_aligned.py`](../tests/test_tone_aligned.py) — renamed; internal class + helper names synced.
+- [`tests/test_dlc_spatial_side_convention.py`](../tests/test_dlc_spatial_side_convention.py) — 3 class renames + monkeypatch path strings + kwarg names.
+- [`tests/test_dlc_interpolation.py`](../tests/test_dlc_interpolation.py) — `_build_tone_aligned_pool_mask` import + test function rename + kwarg.
+- [`tests/test_tongue_pertrial.py`](../tests/test_tongue_pertrial.py) — narrative + monkeypatch path string + `from typing import Any` add.
+- [`tests/test_tongue_jaw_mismatch.py`](../tests/test_tongue_jaw_mismatch.py).
+- [`tests/test_tongue_visual.py`](../tests/test_tongue_visual.py) — `_plot_tone_aligned` import + YAML key string-literal accesses.
+- [`tests/test_tongue_angle_cohort.py`](../tests/test_tongue_angle_cohort.py) — `_plot_tone_aligned_*` + `TestToneAlignedRenderers` + `_make_synthetic_cohort_tone_aligned` + YAML key accesses.
+- [`tests/test_mean_sem_visual.py`](../tests/test_mean_sem_visual.py) — `tone_pre_ms`/`tone_post_ms` kwarg pair.
+- [`tests/test_paths_mean_sem_visual.py`](../tests/test_paths_mean_sem_visual.py) — same.
+- [`tests/test_notebook_runners.py`](../tests/test_notebook_runners.py) — `build_tone_aligned_analysis` import + YAML key.
+- [`tests/test_window_selector.py`](../tests/test_window_selector.py) — `ToneAlignedWindow` import + kwarg.
+- [`tests/scripts/parity_phase7a6_mean_sem.py`](../tests/scripts/parity_phase7a6_mean_sem.py) — `tone_pre_ms`/`tone_post_ms`.
+- [`tests/scripts/parity_phase7a6_visual_gate.py`](../tests/scripts/parity_phase7a6_visual_gate.py) — same.
+- Plus 4 ruff-cleanup-only files: test_difference_maps.py, test_dlc_inference.py, test_dlc_loaders.py, test_dlc_parquet.py, test_wavesurfer_io.py.
+
+**Docs.**
+- [`docs/DECISIONS.md`](DECISIONS.md) — this entry.
+- [`docs/MIGRATION_LOG.md`](MIGRATION_LOG.md) — Phase 7b-light entry (this commit's sibling).
+- [`docs/prompts/phase-7b-light-dlc-narrative-cleanup-kickoff.md`](prompts/phase-7b-light-dlc-narrative-cleanup-kickoff.md) — kickoff body (Q1.A / Q2.A / Q3-Q7 original framing preserved as audit trail) + Addendum #1 (bifurcation rule override) + Addendum #2 (Task 5 spot-check scope reduction override).
+
+**Scratch (uncommitted audit-trail).**
+- [`.scratch_phase_7b_light/case_2_rename_audit.md`](../.scratch_phase_7b_light/case_2_rename_audit.md) — Task 1 audit.
+- [`.scratch_phase_7b_light/spot_check_verdict.md`](../.scratch_phase_7b_light/spot_check_verdict.md) — Task 5 verdict.
+- [`.scratch_phase_7b_light/spot_check_run.py`](../.scratch_phase_7b_light/spot_check_run.py), [`spot_check_phase6.py`](../.scratch_phase_7b_light/spot_check_phase6.py) — Task 5 drivers.
+
+### Findings carried forward
+
+- **Phase 7c-dlc-cohort-reemit (new — primary forward-pointer from this phase).** Cohort-wide DLC kinematics + spatial re-emit on post-Phase-8a.10.1 Phase 2 NPZs. Resolves Addendum #1's on-disk-string deferrals (NPZ schema keys, output subdir literals, window-dir tokens, family-name tokens, CLI flag, figure filename suffixes — all rename in lockstep with cohort regeneration to new paths). Provides cohort-wide byte-equality verdict against post-rename code as a natural consequence of its re-emit step. Folds in **Phase 7a.7 (DLC heatmaps visual gate)** as a sub-task — visual gate runs on the freshly-emitted post-7c outputs. Blocks Phase 9 stats + pub-figures phase.
+- **Phase 7-pre-alignment-templates (F-P-7 from Phase 8a.10.1 close).** Cohort-wide alignment template emit + consumer cutover from legacy `O2_analysis/alignment_templates/cam2/` tree (345 templates) to new `pipeline_outputs/dlc_analysis/alignment_templates/cam2/` tree (currently 3 templates). Lands either before or after Phase 7c.
+- **Phase 7-pre-multi-half-dlc (F-P-5 from Phase 8a.10.1 close).** Pattern A DLC merge wiring for PS48/2025-03-14 + future Pattern A sessions. Also discharges PS48 spot-check deferral from this phase's Decision 5.
+- **Phase 9 stats.** Recovery-trajectory + stat-inferential endpoints. Blocked on Phase 7c (cohort-wide post-rename outputs).
+- **Phase 7-pre-secondary-spout-compare-DLC.** Blocked on b-half DLC inference (Priya's out-of-band DLC inference).
+- **Pub-figures phase.** Consumer of `AnimalInfo.stroke_laterality` + `mouse_side_to_ipsi_contra()` scaffolding. Blocked on Phase 7c.
+- **Phase 7a.7 retired into Phase 7c** as a sub-task (DLC heatmaps visual gate runs against post-7c cohort outputs; no separate 7a.7 phase needed).
+
+### Process lessons
+
+**Bifurcation rule keeps mid-phase scope tractable.** The original kickoff specified a comprehensive rename touching everything from source identifiers to on-disk path tokens. Task 1's audit surfaced that a single-pass full rename would force cohort regeneration in scope — a substantial scope expansion. Addendum #1 split the work: source-side renames here, on-disk-affecting renames at Phase 7c (where cohort regeneration is the natural mechanism). Resulted in a clean ~11-commit phase with 1417/39/0 pytest stability throughout, vs the alternative of bundling cohort regeneration into 7b-light. **Forward rule:** when a rename has both source-side and on-disk-affecting surfaces, bifurcate the work at the read/write boundary; defer the on-disk part to a phase that naturally regenerates the affected artifacts.
+
+**Operational constraints discovered mid-task are valid scope-reduction signals.** Task 5's PathResolver read/write coupling (`output_root` routes both) wasn't anticipated at kickoff. Surfaced via attempting the spot-check spec literally. Addendum #2 narrowed Task 5 from 3 sessions to 1 (PS46/2025-03-07) by leveraging Phase 8a.10.1 Task 4.5's prior verdict for PS54 + scoping PS48 to a future phase. The 1-session empirical PASS + 1417/39/0 pytest gate + Addendum #1's byte-stability-by-construction together provide ≈3-session-equivalent confidence at ~⅓ the operational cost. **Forward rule:** discovered operational complexity is allowed to shrink scope when (a) the discovered constraint is real (not a temporary blocker), and (b) the residual scope still hits the verdict bar via alternative evidence paths.
+
+**Public-API renames in single commits.** Per kickoff Task 3 guidance, `build_reward_aligned_cohort` → `build_tone_aligned_cohort` was bundled into one commit covering both the definition (`tongue_angle_cohort.py:1358`) and the re-export (`dlc_kinematics/__init__.py`). This prevented an intermediate state where the re-export pointed at a removed symbol. **Forward rule:** when renaming a public API exported via `__init__.py`, definition + re-export must move in lockstep within a single revision.
+
+---
+
 ## 2026-05-14 — Chore: YAML cohort-gap policy lock (F-P-6 discharge)
 
 **Chore metadata.** Branch `chore/yaml-cohort-gap-closure`, opened 2026-05-14 off main at the Phase 8a.10.1 merge commit `dc0e6bf`. Tag `vchore-yaml-cohort-gap-closure` on the merge commit (Priya confirms at PR-merge). Kickoff [`docs/prompts/chore-yaml-cohort-gap-closure-kickoff.md`](prompts/chore-yaml-cohort-gap-closure-kickoff.md) (re-scoped via Addendum #1, 2026-05-14). F-P-6 forward-pointer (from Phase 8a.10.1 close DECISIONS) discharged by this chore.

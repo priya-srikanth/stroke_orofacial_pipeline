@@ -438,13 +438,13 @@ def _plot_first_peak_aligned(
     return fig
 
 
-def _plot_reward_aligned(
+def _plot_tone_aligned(
     bundle: TongueVisualBundle,
     *,
     params: dict[str, Any],
 ) -> Figure:
     """Family 3 — session-wide reward-aligned tongue angle. Mu±SEM across
-    trials per side (legacy ``_plot_reward_aligned_angle``).
+    trials per side (legacy ``_plot_tone_aligned_angle``).
 
     Data source (Phase 7a.4-cross-session-angle, 2026-05-04, Addendum
     #8): ``angle_snip`` — the raw per-frame tongue angle from the
@@ -466,14 +466,14 @@ def _plot_reward_aligned(
     Addendum #4): the bundle's per-trial array spans the full
     ``plot_win_ms`` (default ``[-180, 8000]`` ms) but the rendered
     x-axis is clipped to
-    ``dlc_kinematics.tongue_visual.reward_aligned_display_window_ms``
+    ``dlc_kinematics.tongue_visual.tone_aligned_display_window_ms``
     (default ``[-180, 1000]`` ms) so per-session and cross-session
     reward-aligned plots share the same x-axis byte-for-byte.
     """
     visual = params["dlc_kinematics"]["tongue_visual"]
     side_colors = visual["side_colors"]
     display_win_ms = tuple(
-        visual.get("reward_aligned_display_window_ms", [-180.0, 1000.0])
+        visual.get("tone_aligned_display_window_ms", [-180.0, 1000.0])
     )
     df_trials = bundle.df_trials
 
@@ -736,8 +736,8 @@ def _plot_phase_aligned_angle(
         title_suffix = f"mode={phase_mode}"
     if is_multi_cycle:
         xlabel = (
-            f"Centered lick phase (peak[i] at x=i+0.5; "
-            f"cycle width = pre-stroke median ILI)"
+            "Centered lick phase (peak[i] at x=i+0.5; "
+            "cycle width = pre-stroke median ILI)"
         )
     else:
         xlabel = (
@@ -940,7 +940,7 @@ def _plot_xy_by_phase(
 # is per-side; the rest take the bundle directly).
 _PLOT_FAMILY_HELPERS = {
     "first_peak_aligned":           _plot_first_peak_aligned,
-    "reward_aligned":               _plot_reward_aligned,
+    "reward_aligned":               _plot_tone_aligned,
     "phase_aligned_angle":          _plot_phase_aligned_angle,
     "first_vs_second_peak_scatter": _plot_first_vs_second_peak_scatter,
     "xy_by_phase":                  _plot_xy_by_phase,

@@ -51,7 +51,6 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
 
 from stroke_orofacial.animals import AnimalInfo, get_animal  # noqa: E402
@@ -354,7 +353,7 @@ def _extract_phase_aligned(
     return t, mu, sem, n_peaks_contrib
 
 
-def _extract_reward_aligned(
+def _extract_tone_aligned(
     bundle: TongueVisualBundle, side: str,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, int] | None:
     """Per-side mean ± SEM of ``angle_snip`` (per Addendum #8: raw
@@ -506,7 +505,7 @@ def build_tongue_angle_cohort_aggregates(
                         t=t, mu=mu, sem=sem,
                     ))
             if "reward_aligned" in requested:
-                triple = _extract_reward_aligned(bundle, side)
+                triple = _extract_tone_aligned(bundle, side)
                 if triple is not None:
                     t, mu, sem, n_trials = triple
                     ts_rows.append(TimeSeriesSessionAggregate(
@@ -974,8 +973,8 @@ def _plot_phase_session_overlays(
         ax.set_title(f"{side} trials  ({n_sess} sessions)")
         if is_multi_cycle:
             ax.set_xlabel(
-                f"Centered lick phase (peak[i] at x=i+0.5; "
-                f"cycle width = pre-stroke median ILI)"
+                "Centered lick phase (peak[i] at x=i+0.5; "
+                "cycle width = pre-stroke median ILI)"
             )
         else:
             ax.set_xlabel(
@@ -1117,8 +1116,8 @@ def _plot_phase_binned_overlays(
             ax.set_xlim(0, x_max)
             ax.set_xticks(np.arange(0.0, x_max + 0.5, 0.5))
             ax.set_xlabel(
-                f"Centered lick phase (peak[i] at x=i+0.5; "
-                f"cycle width = pre-stroke median ILI)"
+                "Centered lick phase (peak[i] at x=i+0.5; "
+                "cycle width = pre-stroke median ILI)"
             )
         else:
             ax.axvline(0.0, color="0.7", lw=1.0, ls="--", alpha=0.7)
@@ -1237,16 +1236,16 @@ def _plot_phase_aligned_first_2_licks_binned_overlays(
     )
 
 
-def _plot_reward_aligned_session_overlays(
+def _plot_tone_aligned_session_overlays(
     cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
 ) -> Figure:
     """Per-mouse session-overlay plot for ``reward_aligned``. X-axis
-    clipped to ``dlc_kinematics.tongue_visual.reward_aligned_display_window_ms``
+    clipped to ``dlc_kinematics.tongue_visual.tone_aligned_display_window_ms``
     (default ``[-180, 1000]`` ms) per Addendum #4 — same display
     window as the per-session reward-aligned plot."""
     visual_block = params["dlc_kinematics"]["tongue_visual"]
     display_win = tuple(
-        visual_block.get("reward_aligned_display_window_ms", [-180.0, 1000.0])
+        visual_block.get("tone_aligned_display_window_ms", [-180.0, 1000.0])
     )
     return _plot_time_series_session_overlays(
         cohort,
@@ -1258,15 +1257,15 @@ def _plot_reward_aligned_session_overlays(
     )
 
 
-def _plot_reward_aligned_binned_overlays(
+def _plot_tone_aligned_binned_overlays(
     cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
 ) -> Figure:
     """Per-mouse binned-overlay plot for ``reward_aligned``. Same
-    display-window clip as :func:`_plot_reward_aligned_session_overlays`.
+    display-window clip as :func:`_plot_tone_aligned_session_overlays`.
     """
     visual_block = params["dlc_kinematics"]["tongue_visual"]
     display_win = tuple(
-        visual_block.get("reward_aligned_display_window_ms", [-180.0, 1000.0])
+        visual_block.get("tone_aligned_display_window_ms", [-180.0, 1000.0])
     )
     return _plot_time_series_binned_overlays(
         cohort,
@@ -1355,7 +1354,7 @@ def build_first_peak_aligned_cohort(
     return paths
 
 
-def build_reward_aligned_cohort(
+def build_tone_aligned_cohort(
     animal: str,
     resolver: PathResolver,
     *,
@@ -1370,7 +1369,7 @@ def build_reward_aligned_cohort(
     Phase 7a.4-cross-session-angle Cross-session #3 (2026-05-04):
     consumes ``angle_snip`` (per-frame raw angle, per Addendum #8);
     x-axis clipped to
-    ``dlc_kinematics.tongue_visual.reward_aligned_display_window_ms``
+    ``dlc_kinematics.tongue_visual.tone_aligned_display_window_ms``
     (default ``[-180, 1000]`` ms; per Addendum #4) — same display
     window as the per-session reward-aligned plot for byte-aligned
     visual identity.
@@ -1395,10 +1394,10 @@ def build_reward_aligned_cohort(
             families=["reward_aligned"],
         )
 
-    fig_so = _plot_reward_aligned_session_overlays(cohort, params=params)
+    fig_so = _plot_tone_aligned_session_overlays(cohort, params=params)
     _save_and_close(fig_so, paths["session_overlays"])
 
-    fig_bo = _plot_reward_aligned_binned_overlays(cohort, params=params)
+    fig_bo = _plot_tone_aligned_binned_overlays(cohort, params=params)
     _save_and_close(fig_bo, paths["binned_overlays"])
 
     return paths
@@ -1816,7 +1815,7 @@ def build_tongue_angle_cohort(
     available sessions; one bundle build per session), then
     dispatches to the 4 family drivers
     (:func:`build_first_peak_aligned_cohort`,
-    :func:`build_reward_aligned_cohort`,
+    :func:`build_tone_aligned_cohort`,
     :func:`build_phase_aligned_angle_cohort`,
     :func:`build_first_vs_second_peak_scatter_cohort`). Saves ~75%
     of the per-session walk cost vs. calling each family driver
@@ -1847,7 +1846,7 @@ def build_tongue_angle_cohort(
     # the keys with the family token for the composite return dict.
     for family_driver, family_token in (
         (build_first_peak_aligned_cohort, "first_peak_aligned"),
-        (build_reward_aligned_cohort, "reward_aligned"),
+        (build_tone_aligned_cohort, "reward_aligned"),
         (build_first_vs_second_peak_scatter_cohort,
          "first_vs_second_peak_scatter"),
     ):
@@ -1880,7 +1879,7 @@ __all__ = [
     "build_first_peak_aligned_cohort",
     "build_first_vs_second_peak_scatter_cohort",
     "build_phase_aligned_angle_cohort",
-    "build_reward_aligned_cohort",
+    "build_tone_aligned_cohort",
     "build_tongue_angle_cohort",
     "build_tongue_angle_cohort_aggregates",
 ]
