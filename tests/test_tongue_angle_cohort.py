@@ -339,11 +339,11 @@ class TestRewardAlignedRenderers:
         bundle's wider data extent. Default = [-180, 1000] ms."""
         from stroke_orofacial.config_loader import load_defaults
         from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
-            _plot_reward_aligned_session_overlays,
+            _plot_tone_aligned_session_overlays,
         )
         cohort = _make_synthetic_cohort_reward_aligned()
         params = load_defaults()
-        fig = _plot_reward_aligned_session_overlays(cohort, params=params)
+        fig = _plot_tone_aligned_session_overlays(cohort, params=params)
         assert isinstance(fig, plt.Figure)
         # Cam-view subplot ordering pinned via title.
         assert "R trials" in fig.axes[0].get_title()
@@ -358,11 +358,11 @@ class TestRewardAlignedRenderers:
     def test_binned_overlays_clips_to_display_window(self):
         from stroke_orofacial.config_loader import load_defaults
         from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
-            _plot_reward_aligned_binned_overlays,
+            _plot_tone_aligned_binned_overlays,
         )
         cohort = _make_synthetic_cohort_reward_aligned()
         params = load_defaults()
-        fig = _plot_reward_aligned_binned_overlays(cohort, params=params)
+        fig = _plot_tone_aligned_binned_overlays(cohort, params=params)
         assert isinstance(fig, plt.Figure)
         for ax in fig.axes[:2]:
             xlim = ax.get_xlim()
@@ -473,14 +473,14 @@ class TestRewardAlignedRenderers:
         flows through to the cohort renderer."""
         from stroke_orofacial.config_loader import load_defaults
         from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
-            _plot_reward_aligned_session_overlays,
+            _plot_tone_aligned_session_overlays,
         )
         cohort = _make_synthetic_cohort_reward_aligned()
         params = load_defaults()
         params["dlc_kinematics"]["tongue_visual"][
             "reward_aligned_display_window_ms"
         ] = [-100.0, 500.0]
-        fig = _plot_reward_aligned_session_overlays(cohort, params=params)
+        fig = _plot_tone_aligned_session_overlays(cohort, params=params)
         for ax in fig.axes[:2]:
             xlim = ax.get_xlim()
             assert xlim[0] == pytest.approx(-100.0)

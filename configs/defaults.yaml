@@ -630,7 +630,7 @@ dlc_kinematics:
       first_peak_align_win_ms: [-180.0, 1000.0]
 
     # Reward-aligned display window (Phase 7a.4-cross-session-angle,
-    # 2026-05-04, Addendum #4). Per-session ``_plot_reward_aligned``
+    # 2026-05-04, Addendum #4). Per-session ``_plot_tone_aligned``
     # and the cross-session reward-aligned plots both clip the
     # rendered x-axis to this range despite the underlying bundle's
     # wider plot_win_ms. Single source of truth for the reward

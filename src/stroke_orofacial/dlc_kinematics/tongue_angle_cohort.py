@@ -354,7 +354,7 @@ def _extract_phase_aligned(
     return t, mu, sem, n_peaks_contrib
 
 
-def _extract_reward_aligned(
+def _extract_tone_aligned(
     bundle: TongueVisualBundle, side: str,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, int] | None:
     """Per-side mean ± SEM of ``angle_snip`` (per Addendum #8: raw
@@ -506,7 +506,7 @@ def build_tongue_angle_cohort_aggregates(
                         t=t, mu=mu, sem=sem,
                     ))
             if "reward_aligned" in requested:
-                triple = _extract_reward_aligned(bundle, side)
+                triple = _extract_tone_aligned(bundle, side)
                 if triple is not None:
                     t, mu, sem, n_trials = triple
                     ts_rows.append(TimeSeriesSessionAggregate(
@@ -1237,7 +1237,7 @@ def _plot_phase_aligned_first_2_licks_binned_overlays(
     )
 
 
-def _plot_reward_aligned_session_overlays(
+def _plot_tone_aligned_session_overlays(
     cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
 ) -> Figure:
     """Per-mouse session-overlay plot for ``reward_aligned``. X-axis
@@ -1258,11 +1258,11 @@ def _plot_reward_aligned_session_overlays(
     )
 
 
-def _plot_reward_aligned_binned_overlays(
+def _plot_tone_aligned_binned_overlays(
     cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
 ) -> Figure:
     """Per-mouse binned-overlay plot for ``reward_aligned``. Same
-    display-window clip as :func:`_plot_reward_aligned_session_overlays`.
+    display-window clip as :func:`_plot_tone_aligned_session_overlays`.
     """
     visual_block = params["dlc_kinematics"]["tongue_visual"]
     display_win = tuple(
@@ -1355,7 +1355,7 @@ def build_first_peak_aligned_cohort(
     return paths
 
 
-def build_reward_aligned_cohort(
+def build_tone_aligned_cohort(
     animal: str,
     resolver: PathResolver,
     *,
@@ -1395,10 +1395,10 @@ def build_reward_aligned_cohort(
             families=["reward_aligned"],
         )
 
-    fig_so = _plot_reward_aligned_session_overlays(cohort, params=params)
+    fig_so = _plot_tone_aligned_session_overlays(cohort, params=params)
     _save_and_close(fig_so, paths["session_overlays"])
 
-    fig_bo = _plot_reward_aligned_binned_overlays(cohort, params=params)
+    fig_bo = _plot_tone_aligned_binned_overlays(cohort, params=params)
     _save_and_close(fig_bo, paths["binned_overlays"])
 
     return paths
@@ -1816,7 +1816,7 @@ def build_tongue_angle_cohort(
     available sessions; one bundle build per session), then
     dispatches to the 4 family drivers
     (:func:`build_first_peak_aligned_cohort`,
-    :func:`build_reward_aligned_cohort`,
+    :func:`build_tone_aligned_cohort`,
     :func:`build_phase_aligned_angle_cohort`,
     :func:`build_first_vs_second_peak_scatter_cohort`). Saves ~75%
     of the per-session walk cost vs. calling each family driver
@@ -1847,7 +1847,7 @@ def build_tongue_angle_cohort(
     # the keys with the family token for the composite return dict.
     for family_driver, family_token in (
         (build_first_peak_aligned_cohort, "first_peak_aligned"),
-        (build_reward_aligned_cohort, "reward_aligned"),
+        (build_tone_aligned_cohort, "reward_aligned"),
         (build_first_vs_second_peak_scatter_cohort,
          "first_vs_second_peak_scatter"),
     ):
@@ -1880,7 +1880,7 @@ __all__ = [
     "build_first_peak_aligned_cohort",
     "build_first_vs_second_peak_scatter_cohort",
     "build_phase_aligned_angle_cohort",
-    "build_reward_aligned_cohort",
+    "build_tone_aligned_cohort",
     "build_tongue_angle_cohort",
     "build_tongue_angle_cohort_aggregates",
 ]

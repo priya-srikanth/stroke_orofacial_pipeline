@@ -44,7 +44,7 @@ from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
     build_first_peak_aligned_cohort,
     build_first_vs_second_peak_scatter_cohort,
     build_phase_aligned_angle_cohort,
-    build_reward_aligned_cohort,
+    build_tone_aligned_cohort,
     build_tongue_angle_cohort,
     build_tongue_angle_cohort_aggregates,
 )
@@ -107,7 +107,7 @@ __all__ = [
     "build_first_peak_aligned_cohort",
     "build_first_vs_second_peak_scatter_cohort",
     "build_phase_aligned_angle_cohort",
-    "build_reward_aligned_cohort",
+    "build_tone_aligned_cohort",
     "build_tongue_angle_cohort",
     "build_tongue_angle_cohort_aggregates",
     "build_individual_sessions",
