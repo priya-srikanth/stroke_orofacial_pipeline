@@ -15,6 +15,56 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-14 — Chore: YAML cohort-gap policy lock (F-P-6 discharge)
+
+**Chore metadata.** Branch `chore/yaml-cohort-gap-closure`, opened 2026-05-14 off main at the Phase 8a.10.1 merge commit `dc0e6bf`. Tag `vchore-yaml-cohort-gap-closure` on the merge commit (Priya confirms at PR-merge). Kickoff [`docs/prompts/chore-yaml-cohort-gap-closure-kickoff.md`](prompts/chore-yaml-cohort-gap-closure-kickoff.md) (re-scoped via Addendum #1, 2026-05-14). F-P-6 forward-pointer (from Phase 8a.10.1 close DECISIONS) discharged by this chore.
+
+### Decision 1 — YAML is authoritative; no inclusion adjudication
+
+Per Phase 8a.10 Decision 6 path (b), the per-animal `sessions.start`/`sessions.end` ranges in [`configs/animals.yaml`](../configs/animals.yaml) reflect experimenter cohort-definition judgment. The 69-session out-of-scope set (sessions in legacy `report.json[latency_bySession]` outside the YAML range) is **intentional by design**, not an oversight requiring per-session re-adjudication. The chore-PR's kickoff initially queued a criterion-passing inclusion heuristic (Q1 of the kickoff); Addendum #1 reverses that framing — the heuristic is a diagnostic for "when did the animal learn the task," NOT a cohort-inclusion policy.
+
+### Decision 2 — Out-of-scope sessions enumerated as audit-trail artifacts
+
+CC's Task 1 produced two artifacts that document the 69-session out-of-scope set:
+- `.scratch_chore_yaml_cohort_gap/gap_audit_proposal.md` — human-readable per-animal table with day-of-life, criterion-3 max, trial count, and pre-Addendum-#1 heuristic INCLUDE/EXCLUDE proposals.
+- `.scratch_chore_yaml_cohort_gap/gap_audit_raw.json` — machine-readable per-(animal, date) records.
+
+These stay at `.scratch_chore_yaml_cohort_gap/` as permanent audit-trail references (not committed; reproducible from CC's Task 1 audit script `audit_gap.py`). Future readers asking "what's in legacy report.json that's not in our cohort?" find the answer there.
+
+Note on the gap count: F-P-6 was queued at Phase 8a.10.1 close with the language "111-session YAML-cohort gap." CC's Task 1 audit established **69 unique-date gaps** as the canonical count — the 111 figure inherited the legacy `report.json` key-count (Pattern A multi-half + Pattern B closer-spout `a`/`b`-suffixed keys count as separate keys but collapse to the same per-(animal, date) cohort entry). The 69 figure is per-(animal, date) and matches the consolidated pipeline's session abstraction.
+
+### Decision 3 — PS50 pre-tone-change retraining note
+
+PS50's `sessions.start` is 2025-03-19 (vs PS46-PS48 at 2025-03-07 and PS49 at 2025-03-10). The pre-2025-03-19 sessions are pre-tone-change retraining under a different stimulus regime — the animal was not learning the task well on the original tones, and the tones were changed mid-experiment with subsequent retraining. Criterion-passing on the pre-tone-change regime is NOT scientifically equivalent to cohort criterion-passing, so the 20 pre-2025-03-19 gap days for PS50 are excluded by experimenter design. (Per Priya 2026-05-14 chore-PR Task 2 adjudication.) This codifies the implicit reason; CC's Task 1 heuristic misclassified them as INCLUDE because it only looks at session-level criterion, not stimulus-regime continuity.
+
+### Decision 4 — Inline YAML breadcrumb comments
+
+[`configs/animals.yaml`](../configs/animals.yaml) gains a header comment block (after the existing convention block, before `PS46:`) and per-animal inline comments on each `sessions:` line pointing readers to this chore-PR + DECISIONS entry. No semantic YAML changes; verified by Task 4 diff re-verification (unchanged 69-session gap count post-edit). Rationale: future readers running the same diff (legacy `report.json` vs YAML) shouldn't ask "why are these sessions missing?" without a breadcrumb to the policy answer.
+
+### Decision 5 — PS52 / PS53 out-of-cohort confirmation
+
+Per Q4.A: PS52 (16 session keys in `report.json`, range 2025-04-16 to 2025-05-01) and PS53 (20 session keys, range 2025-04-16 to 2025-05-03) appear in legacy `report.json` but are not part of the consolidated cohort — no entries in [`configs/animals.yaml`](../configs/animals.yaml). Out-of-scope; no action.
+
+### Enforced at
+
+- [`configs/animals.yaml`](../configs/animals.yaml) — header comment block + 8 per-animal `sessions:` inline comments (Path C breadcrumbs).
+- `.scratch_chore_yaml_cohort_gap/gap_audit_proposal.md` (uncommitted audit-trail).
+- `.scratch_chore_yaml_cohort_gap/gap_audit_raw.json` (uncommitted audit-trail).
+- `.scratch_chore_yaml_cohort_gap/post_close_verification.md` (uncommitted; documents the 69-session gap as policy-locked).
+- [`docs/prompts/chore-yaml-cohort-gap-closure-kickoff.md`](prompts/chore-yaml-cohort-gap-closure-kickoff.md) — kickoff body (Q1.A / Q2.A original framing preserved as audit trail) + Addendum #1 (Q1.B / Q2.B override).
+
+### Findings carried forward
+
+- None. F-P-6 discharged.
+
+### Process lessons
+
+**Mis-framed kickoffs surface during STOP-and-report, not during execution.** The original kickoff Q1.A heuristic (criterion-passing → inclusion) was internally coherent but mis-aligned with Phase 8a.10 Decision 6's already-settled "treat YAML as authoritative" path. The Task 1 audit produced a clean proposal table; reviewing that table at Task 2 surfaced the framing mismatch — *the question was wrong, not the data*. **Forward rule:** when the kickoff includes a heuristic-derived adjudication step, treat the Task 1 STOP-and-report as a check on framing too, not only data; ask "does this proposal table answer the question the chore should be asking?" before locking dispositions.
+
+**Preserve the original kickoff body when re-scoping mid-chore.** Addendum #1 was appended; Q1.A / Q2.A were NOT edited out. Future-readers tracing the chore's evolution see both the original framing (Q1.A heuristic adjudication) and the override (Q1.B policy lock) — and the reasoning that bridged them. Per `feedback_iterative_addenda_pattern.md` (Priya's standing preference).
+
+---
+
 ## 2026-05-14 — Phase 8a.10.1 close — Cohort-wide Tone↔Reward channel-label swap fix at wavesurfer read time + Phase 2 re-emit (276 NPZs) + Phase 8a.10 figure re-render (404 figures) + DLC cascade-safety spot-check + stale-NPZ cleanup (512 files, 14.5 GB)
 
 **Supersedes:** None. Discharges the 2026-05-13 Phase 8a.10 close forward-pointer #1 ("Phase 8a.10.1 — cohort-wide Tone↔Reward swap re-emit"), eliminating the Decision 8 Sub-B Row 4 raster's "reward marker" semantic-label drift. Builds on the 2026-04-20 Phase 6.8 mouse-frame side-convention boundary-layer translation (the swap fix is independent of L/R framing; the stamped `side_convention_version=1` invariant is preserved across the re-emit) and on the Phase 6.7 SessionManifest contract (every re-emit consumer takes a manifest + resolver pair, so swapping the raw .h5 channel-read mapping at one boundary propagates cohort-wide without touching call sites).

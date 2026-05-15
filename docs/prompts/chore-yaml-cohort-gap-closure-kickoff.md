@@ -318,6 +318,159 @@ Phase 8a.10 DECISIONS Decision 6 (2026-05-13) settled the cohort-inclusion quest
 
 ### Re-scope — task structure
 
+**Task 1 — UNCHANGED** (completed). Audit-trail artifacts stay at `.scratch_chore_yaml_cohort_gap/`.
+
+**Task 2 — RE-LOCKED.** All 69 EXCLUDE. `gap_audit_locked.md` optional (a one-line summary file is fine; or skip entirely and let DECISIONS reference the proposal directly).
+
+**Task 3 — RE-SCOPED.** Inline YAML breadcrumb comments only — no semantic edits.
+
+Single commit: `chore(yaml-cohort-gap): inline breadcrumb comments per animal pointing to F-P-6 close`
+
+Add at the top of `configs/animals.yaml` (after the existing convention block, before the first animal entry):
+
+```yaml
+# Cohort-boundary policy (F-P-6 close, vchore-yaml-cohort-gap-closure):
+# Per-animal `sessions.start`/`sessions.end` ranges reflect experimenter
+# cohort-definition judgment. Sessions in the legacy
+# `basic_behavior_analysis3/<animal>/report.json[latency_bySession]` that
+# fall OUTSIDE these ranges are out-of-scope by intent — they include
+# pre-cohort-launch baseline acquisition (animal-learning-the-task
+# sessions), pre-tone-change retraining (PS50), and other
+# experimenter-excluded contexts that are not scientifically equivalent
+# to the criterion-cohort data. The 69-session out-of-scope set is
+# documented in scratch artifacts at
+# `.scratch_chore_yaml_cohort_gap/gap_audit_proposal.md`
+# (audit-trail; not consumed by the pipeline). See DECISIONS.md
+# 2026-MM-DD chore entry for full rationale.
+```
+
+Per animal: add a 1-line inline comment immediately after each `sessions:` line, e.g.:
+
+```yaml
+PS46:
+  ...
+  sessions:  # cohort-boundary policy: see header comment + DECISIONS
+    start: 2025-03-07
+    end: 2025-04-06
+```
+
+8 animals total (PS46, PS47, PS48, PS49, PS50, PS51, PS54, PS55) — same comment text on each. Do NOT add the comment to `configs/session_overrides.yaml`'s `secondary_spout_sessions:` block.
+
+**Acceptance criteria:** `git diff configs/animals.yaml` shows only comment additions; zero semantic changes. `pytest -q tests/test_animals.py` (or equivalent YAML-load tests) PASS.
+
+**Task 4 — SIMPLIFIED.** Re-run CC's Task 1 audit against post-Task-3 YAML; expect unchanged 69-session gap count (zero semantic changes). Deliverable at `.scratch_chore_yaml_cohort_gap/post_close_verification.md`.
+
+**Task 5 — RE-DRAFTED.** Replace the kickoff's original DECISIONS + MIGRATION_LOG templates with the corrected language below.
+
+`docs/DECISIONS.md` new top entry:
+
+```markdown
+## 2026-MM-DD — Chore: YAML cohort-gap policy lock (F-P-6 discharge)
+
+**Chore metadata.** Branch `chore/yaml-cohort-gap-closure`, opened 2026-MM-DD off main at the Phase 8a.10.1 merge commit `dc0e6bf`. Tag `vchore-yaml-cohort-gap-closure` on the merge commit (Priya confirms at PR-merge). Kickoff `docs/prompts/chore-yaml-cohort-gap-closure-kickoff.md` (re-scoped via Addendum #1, 2026-MM-DD). F-P-6 forward-pointer (from Phase 8a.10.1 close DECISIONS) discharged by this chore.
+
+### Decision 1 — YAML is authoritative; no inclusion adjudication
+
+Per Phase 8a.10 Decision 6 path (b), the per-animal `sessions.start`/`sessions.end` ranges in `configs/animals.yaml` reflect experimenter cohort-definition judgment. The 69-session out-of-scope set (sessions in legacy `report.json[latency_bySession]` outside the YAML range) is **intentional by design**, not an oversight requiring per-session re-adjudication. The chore-PR's kickoff initially queued a criterion-passing inclusion heuristic (Q1 of the kickoff); Addendum #1 reverses that framing — the heuristic is a diagnostic for "when did the animal learn the task," NOT a cohort-inclusion policy.
+
+### Decision 2 — Out-of-scope sessions enumerated as audit-trail artifacts
+
+CC's Task 1 produced two artifacts that document the 69-session out-of-scope set:
+- `.scratch_chore_yaml_cohort_gap/gap_audit_proposal.md` — human-readable per-animal table with day-of-life, criterion-3 max, trial count, and pre-Addendum-#1 heuristic INCLUDE/EXCLUDE proposals.
+- `.scratch_chore_yaml_cohort_gap/gap_audit_raw.json` — machine-readable per-(animal, date) records.
+
+These stay at `.scratch_chore_yaml_cohort_gap/` as permanent audit-trail references (not committed; reproducible from CC's Task 1 audit script). Future readers asking "what's in legacy report.json that's not in our cohort?" find the answer there.
+
+### Decision 3 — PS50 pre-tone-change retraining note
+
+PS50's `sessions.start` is 2025-03-19 (vs PS46-PS48 at 2025-03-07 and PS49 at 2025-03-10). The pre-2025-03-19 sessions are pre-tone-change retraining under a different stimulus regime — the animal was not learning the task well on the original tones, and the tones were changed mid-experiment with subsequent retraining. Criterion-passing on the pre-tone-change regime is NOT scientifically equivalent to cohort criterion-passing, so the 20 pre-2025-03-19 gap days are excluded by experimenter design. (Per Priya 2026-MM-DD chore-PR Task 2 adjudication.)
+
+### Decision 4 — Inline YAML breadcrumb comments
+
+`configs/animals.yaml` gains a header comment block and per-animal inline comments on each `sessions:` line pointing readers to this chore-PR + DECISIONS entry. No semantic YAML changes. Rationale: future readers running the same diff (legacy `report.json` vs YAML) shouldn't ask "why are these sessions missing?" without a breadcrumb to the policy answer.
+
+### Decision 5 — PS52 / PS53 out-of-cohort confirmation
+
+Per Q4.A: PS52 (16 session keys in `report.json`, range 2025-04-16 to 2025-05-01) and PS53 (20 session keys, range 2025-04-16 to 2025-05-03) appear in legacy `report.json` but are not part of the consolidated cohort — no entries in `configs/animals.yaml`. Out-of-scope; no action.
+
+### Enforced at
+- `configs/animals.yaml` — header comment block + 8 per-animal `sessions:` inline comments (Path C breadcrumbs).
+- `.scratch_chore_yaml_cohort_gap/gap_audit_proposal.md` (uncommitted audit-trail).
+- `.scratch_chore_yaml_cohort_gap/gap_audit_raw.json` (uncommitted audit-trail).
+- `.scratch_chore_yaml_cohort_gap/post_close_verification.md` (uncommitted; documents the 69-session gap as policy-locked).
+
+### Findings carried forward
+- None. F-P-6 discharged.
+```
+
+`docs/MIGRATION_LOG.md` append:
+
+```markdown
+## Chore — YAML cohort-gap policy lock (F-P-6 discharge)
+
+**Date:** 2026-MM-DD
+**Tag on merge:** `vchore-yaml-cohort-gap-closure` (if Priya confirms at PR-merge)
+**Branch:** `chore/yaml-cohort-gap-closure`
+
+**Scope.** Discharge F-P-6 (111-session — actually 69 unique-date — YAML-cohort gap chore, forward-pointer from Phase 8a.10.1 close). Re-scoped mid-chore via kickoff Addendum #1: original kickoff framed the chore as per-session inclusion adjudication; correct framing per Phase 8a.10 Decision 6 path (b) is policy lock + audit-trail documentation, no YAML semantic edits.
+
+**What landed.** Single docs+comments commit on `chore/yaml-cohort-gap-closure`:
+- `configs/animals.yaml` header comment block (cohort-boundary policy) + 8 per-animal inline `sessions:` comments. No semantic changes.
+- `docs/DECISIONS.md` entry (this chore's close record).
+- `docs/MIGRATION_LOG.md` entry (this entry).
+
+**Sessions adjudicated.** 69 unique-date gaps across PS46-PS55 (Cohort A) + 0 gaps for Cohort B (`secondary_spout_sessions:` registry confirmed complete by CC's Task 1 audit). All 69 documented as out-of-scope-by-design; YAML ranges unchanged.
+
+**Intentional behavior differences vs legacy.** None. Pipeline behavior is unchanged (no YAML semantic edits). Legacy `report.json` remains a historical reference; YAML stays the authoritative cohort definition. The new breadcrumb comments are documentation-only.
+
+**Exit criteria met.** Task 4 diff re-verification confirms unchanged gap count (69) post-close. YAML load tests PASS. No source code or analysis output changes.
+
+**Forward-pointers queued.** None from this chore. Phase 7b-light is the next item per memory `project_phase_7b_light_ordering.md`.
+
+**Tag:** `vchore-yaml-cohort-gap-closure` on the merge commit (Priya confirms at PR-merge; if declined, log as untagged chore).
+```
+
+Final commit sequence:
+1. `chore(yaml-cohort-gap): inline breadcrumb comments per animal pointing to F-P-6 close`
+2. `docs(yaml-cohort-gap): DECISIONS + MIGRATION_LOG entries for F-P-6 policy lock`
+3. (no Task 4 commit unless `post_close_verification.md` is committed — Priya's call; default uncommitted)
+
+Open chore-PR with title: `Chore: YAML cohort-gap policy lock (F-P-6 discharge; docs + comments only)`.
+
+### Process note
+
+The original kickoff's locked-decision body (Q1.A, Q2.A) remains untouched in the audit trail above this Addendum. This Addendum is the override; the body documents what was originally drafted and why it was re-scoped. Per `feedback_iterative_addenda_pattern.md`: focused Addendum per re-spec, "ALL OTHER LOCKS UNCHANGED" — the "all-other-locks-unchanged" applies to Q3-Q6 above; Q1 and Q2 are explicitly re-locked here.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q3 tagging, Q4 PS52/PS53 out-of-scope, Q5 Cohort B in scope, Q6 legacy report.json is the gap-audit source.)
+
+---
+
+## Addendum #1 — Re-scope from inclusion adjudication to policy lock (Priya 2026-05-14, post-Task-1)
+
+CC's Task 1 audit completed successfully (STOP-and-report at `.scratch_chore_yaml_cohort_gap/gap_audit_proposal.md` + `gap_audit_raw.json`; 69 unique-date gaps across PS46-PS55, 0 AMBIGUOUS, 0 Cohort B additions needed). During Task 2 adjudication review, the chore's framing was re-examined and re-scoped.
+
+### Finding — original kickoff misread Decision 6's intent
+
+Phase 8a.10 DECISIONS Decision 6 (2026-05-13) settled the cohort-inclusion question with **path (b): "treat YAML as authoritative."** F-P-6 was queued as a forward-pointer chore-PR with the framing "low scientific signal" and "small chore-PR" — indicating its purpose was to formally close Decision 6's deferral, NOT to re-litigate per-session inclusion. The original kickoff's Q1 (criterion-passing heuristic policy) and Q2 (YAML edit mechanism) framed the chore as inclusion re-adjudication. That framing was a misread.
+
+### Re-scope — RE-LOCKED Q1.B, Q2.B
+
+**Q1.B (supersedes Q1.A):** YAML is authoritative; no per-session inclusion adjudication. All 69 gap dates documented as out-of-scope-by-experimenter-design. CC's Task 1 audit-trail artifacts (`gap_audit_proposal.md` + `gap_audit_raw.json`) remain useful as a one-time "what's in legacy `report.json` outside our cohort" diagnostic but are NOT consumed as a cohort-inclusion policy.
+
+**Q2.B (supersedes Q2.A):** No semantic YAML edits. `configs/animals.yaml` `sessions.start`/`sessions.end` values stay unchanged. The chore-PR is docs+comments only: header comment block + 8 per-animal inline `sessions:` breadcrumb comments + DECISIONS + MIGRATION_LOG entries (Path C — Priya 2026-05-14).
+
+### Re-scope — supplements
+
+**PS50 pre-tone-change retraining (new Decision 3 in Task 5 template):** PS50's current `sessions.start` of 2025-03-19 is later than PS46-PS48 (2025-03-07) and PS49 (2025-03-10) because the animal was not learning the task well under the original tones; tones were changed mid-experiment and the animal needed retraining time. Pre-2025-03-19 sessions are pre-tone-change retraining under a different stimulus regime — criterion-passing on that regime is NOT scientifically equivalent to cohort criterion-passing. The 20 pre-2025-03-19 gap days for PS50 are excluded by experimenter design (this codifies the implicit reason; CC's Task 1 heuristic misclassified them as INCLUDE because it only looks at session-level criterion, not stimulus-regime continuity).
+
+**Q3 (tagging) — unchanged.** `vchore-yaml-cohort-gap-closure` on merge if Priya confirms; chore is now small enough to live un-tagged if Priya prefers.
+
+**Q4-Q6 — unchanged.**
+
+### Re-scope — task structure
+
 **Task 1 — UNCHANGED** (completed). Audit-trail artifacts stay.
 
 **Task 2 — RE-LOCKED.** All 69 EXCLUDE. `gap_audit_locked.md` optional (a one-line summary file is fine; or skip entirely and let DECISIONS reference the proposal directly).
