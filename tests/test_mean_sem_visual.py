@@ -355,7 +355,7 @@ class TestBuildPerSession:
 
         out_path = msv.build_individual_sessions(
             "tongue", "PS46", target_date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert out_path is not None
@@ -376,7 +376,7 @@ class TestBuildPerSession:
 
         out_path = msv.build_trial_overlays(
             "jaw", "PS46", target_date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert out_path is not None
@@ -395,7 +395,7 @@ class TestBuildPerSession:
         # First call writes.
         first = msv.build_individual_sessions(
             "tongue", "PS46", target_date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert first is not None
@@ -404,7 +404,7 @@ class TestBuildPerSession:
         # Second call with overwrite="skip" should NOT rewrite.
         second = msv.build_individual_sessions(
             "tongue", "PS46", target_date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="skip",
         )
         assert second == first
@@ -419,7 +419,7 @@ class TestBuildPerSession:
         cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
         out_path = msv.build_individual_sessions(
             "tongue", "PS46", datetime.date(1999, 1, 1), resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert out_path is None
@@ -439,7 +439,7 @@ class TestBuildCohort:
 
         paths = msv.build_session_overlays(
             "tongue", "PS46", resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert len(paths) == 4
@@ -465,7 +465,7 @@ class TestBuildCohort:
 
         paths = msv.build_binned_overlays(
             "jaw", "PS46", resolver,
-            reward_pre_ms=500, reward_post_ms=5000,
+            tone_pre_ms=500, tone_post_ms=5000,
             cohort=cohort, overwrite="force",
         )
         assert len(paths) == 4
@@ -494,7 +494,7 @@ class TestBuildCohort:
         )
         paths = msv.build_binned_overlays(
             "tongue", "PS46", resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort_no_bins, overwrite="force",
         )
         assert paths == []
@@ -520,7 +520,7 @@ class TestBodypartParametric:
         target_date = cohort.sessions[0].date
         out_path = msv.build_individual_sessions(
             bodypart, "PS46", target_date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert out_path is not None
@@ -536,7 +536,7 @@ class TestBodypartParametric:
         with pytest.raises(ValueError, match="bodypart must be one of"):
             msv.build_cohort_aggregates(
                 "fake_bodypart", "PS46", resolver,
-                reward_pre_ms=100, reward_post_ms=1000,
+                tone_pre_ms=100, tone_post_ms=1000,
             )
 
 
@@ -861,8 +861,8 @@ class TestCompositeWrappers:
             return _make_synthetic_cohort("PS46", "tongue", bin_days=1)
 
         def make_recorder(name):
-            def _fn(*a, reward_pre_ms, reward_post_ms, **kw):
-                called_with[name].append((reward_pre_ms, reward_post_ms))
+            def _fn(*a, tone_pre_ms, tone_post_ms, **kw):
+                called_with[name].append((tone_pre_ms, tone_post_ms))
                 return []
             return _fn
 
@@ -903,8 +903,8 @@ class TestCompositeWrappers:
         ):
             monkeypatch.setattr(msv, name, lambda *a, **kw: [])
 
-        def _fake_mean_video(*a, reward_pre_ms, reward_post_ms, **kw):
-            mv_calls.append((reward_pre_ms, reward_post_ms))
+        def _fake_mean_video(*a, tone_pre_ms, tone_post_ms, **kw):
+            mv_calls.append((tone_pre_ms, tone_post_ms))
             return []
         monkeypatch.setattr(msv, "build_mean_video", _fake_mean_video)
 
@@ -1307,7 +1307,7 @@ class TestQ2BodypartParametricPublicAPI:
         cohort = _make_synthetic_cohort("PS46", bodypart, bin_days=1)
         out = msv.build_individual_sessions(
             bodypart, "PS46", cohort.sessions[0].date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert out is not None and out.exists()
@@ -1319,7 +1319,7 @@ class TestQ2BodypartParametricPublicAPI:
         cohort = _make_synthetic_cohort("PS46", bodypart, bin_days=1)
         out = msv.build_trial_overlays(
             bodypart, "PS46", cohort.sessions[0].date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert out is not None and out.exists()
@@ -1331,7 +1331,7 @@ class TestQ2BodypartParametricPublicAPI:
         cohort = _make_synthetic_cohort("PS46", bodypart, bin_days=1)
         paths = msv.build_session_overlays(
             bodypart, "PS46", resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert len(paths) == 4
@@ -1345,7 +1345,7 @@ class TestQ2BodypartParametricPublicAPI:
         cohort = _make_synthetic_cohort("PS46", bodypart, bin_days=2)
         paths = msv.build_binned_overlays(
             bodypart, "PS46", resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert len(paths) == 4
@@ -1373,7 +1373,7 @@ class TestQ4MultiBinPublic:
         monkeypatch.setattr(msv, "build_mean_trace_cohort", lambda *a, **k: cohort)
         paths = msv.build_mean_trace(
             "tongue", "PS46", resolver,
-            reward_pre_ms=0, reward_post_ms=500,
+            tone_pre_ms=0, tone_post_ms=500,
             bin_sizes_days=2,
             overwrite="force",
         )
@@ -1405,7 +1405,7 @@ class TestQ4MultiBinPublic:
         monkeypatch.setattr(msv, "build_mean_trace_cohort", stub_builder)
         paths = msv.build_mean_trace(
             "tongue", "PS46", resolver,
-            reward_pre_ms=0, reward_post_ms=500,
+            tone_pre_ms=0, tone_post_ms=500,
             bin_sizes_days=[2, 7],
             overwrite="force",
         )
@@ -1420,7 +1420,7 @@ class TestQ4MultiBinPublic:
         resolver = PathResolver(output_root=tmp_path)
         paths = msv.build_mean_trace(
             "tongue", "PS46", resolver,
-            reward_pre_ms=0, reward_post_ms=500,
+            tone_pre_ms=0, tone_post_ms=500,
             bin_sizes_days=[],
             overwrite="force",
         )
@@ -1476,7 +1476,7 @@ class TestQ5WithFrameTimestampsPublic:
         }
         paths = msv.build_mean_video(
             "tongue", "PS46", resolver,
-            reward_pre_ms=0, reward_post_ms=500,
+            tone_pre_ms=0, tone_post_ms=500,
             bin_sizes_days=2, modes=["dot"],
             video_format="gif",
             with_frame_timestamps=with_ts,
@@ -1499,7 +1499,7 @@ class TestQ6LowercaseTonguePublic:
         cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
         out = msv.build_individual_sessions(
             "tongue", "PS46", cohort.sessions[0].date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert out is not None
@@ -1516,7 +1516,7 @@ class TestQ6LowercaseTonguePublic:
         cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
         paths = msv.build_session_overlays(
             "tongue", "PS46", resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         for p in paths:
@@ -1547,7 +1547,7 @@ class TestQ7PerWindowSubdirPublic:
         )
         out = msv.build_individual_sessions(
             bodypart, "PS46", cohort.sessions[0].date, resolver,
-            reward_pre_ms=pre, reward_post_ms=post,
+            tone_pre_ms=pre, tone_post_ms=post,
             cohort=cohort, overwrite="force",
         )
         assert out is not None
@@ -1571,14 +1571,14 @@ class TestPublicAPIReturnShapes:
         # Hit case: returns Path.
         hit = msv.build_individual_sessions(
             "tongue", "PS46", cohort.sessions[0].date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert isinstance(hit, Path)
         # Miss case (date not in cohort): returns None.
         miss = msv.build_individual_sessions(
             "tongue", "PS46", datetime.date(1999, 1, 1), resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert miss is None
@@ -1591,7 +1591,7 @@ class TestPublicAPIReturnShapes:
         cohort = _make_synthetic_cohort("PS46", "tongue", bin_days=1)
         paths = msv.build_session_overlays(
             "tongue", "PS46", resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert isinstance(paths, list)
@@ -1625,13 +1625,13 @@ class TestSkipForceOverwriteSemantics:
         target_date = cohort.sessions[0].date
         first = msv.build_individual_sessions(
             "tongue", "PS46", target_date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         first_mtime = first.stat().st_mtime_ns
         second = msv.build_individual_sessions(
             "tongue", "PS46", target_date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="skip",
         )
         # Same path returned + mtime unchanged.
@@ -1645,7 +1645,7 @@ class TestSkipForceOverwriteSemantics:
         target_date = cohort.sessions[0].date
         first = msv.build_individual_sessions(
             "tongue", "PS46", target_date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         # Stale-marker the file to detect a rewrite.
@@ -1656,7 +1656,7 @@ class TestSkipForceOverwriteSemantics:
         recorded = first.stat().st_mtime_ns
         second = msv.build_individual_sessions(
             "tongue", "PS46", target_date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert second == first
@@ -1674,7 +1674,7 @@ class TestSkipForceOverwriteSemantics:
         with pytest.raises(ValueError, match="overwrite must be"):
             msv.build_individual_sessions(
                 "tongue", "PS46", cohort.sessions[0].date, resolver,
-                reward_pre_ms=100, reward_post_ms=1000,
+                tone_pre_ms=100, tone_post_ms=1000,
                 cohort=cohort, overwrite=overwrite,
             )
 
@@ -1823,7 +1823,7 @@ class TestC71Issue3AnimalBounds:
         monkeypatch.setattr(msv, "_plot_session_2x2", capture)
         msv.build_individual_sessions(
             "tongue", "PS46", target_date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
             animal_y_bounds=(-50.0, 50.0),
             animal_x_bounds=(-25.0, 25.0),
@@ -1851,7 +1851,7 @@ class TestC71Issue3AnimalBounds:
         monkeypatch.setattr(msv, "_plot_session_2x2", capture)
         msv.build_individual_sessions(
             "tongue", "PS46", target_date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert captured["y_lim_override"] is None
@@ -1875,7 +1875,7 @@ class TestC71Issue3AnimalBounds:
         monkeypatch.setattr(msv, "_plot_trial_overlays_2x2", capture)
         msv.build_trial_overlays(
             "jaw", "PS46", target_date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
             animal_y_bounds=(-30.0, 30.0),
             animal_x_bounds=(-15.0, 15.0),
@@ -1914,7 +1914,7 @@ class TestC71BuildIndividualSessionsAnimal:
         dates = [s.date for s in cohort.sessions]
         paths = msv.build_individual_sessions_animal(
             "tongue", "PS46", dates, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             overwrite="force",
         )
         # One PNG per date.
@@ -1933,7 +1933,7 @@ class TestC71BuildIndividualSessionsAnimal:
         )
         paths = msv.build_individual_sessions_animal(
             "tongue", "PS46", [datetime.date(2025, 1, 1)], resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             overwrite="force",
         )
         assert paths == []
@@ -1944,7 +1944,7 @@ class TestC71BuildIndividualSessionsAnimal:
         with pytest.raises(ValueError, match="overwrite must be"):
             msv.build_individual_sessions_animal(
                 "tongue", "PS46", [], resolver,
-                reward_pre_ms=100, reward_post_ms=1000,
+                tone_pre_ms=100, tone_post_ms=1000,
                 overwrite="bogus",
             )
 
@@ -1974,7 +1974,7 @@ class TestC71BuildTrialOverlaysAnimal:
         dates = [s.date for s in cohort.sessions]
         paths = msv.build_trial_overlays_animal(
             "jaw", "PS46", dates, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             overwrite="force",
         )
         assert len(paths) == len(dates)
@@ -2245,7 +2245,7 @@ class TestC72IssueBCamViewOrdering:
         monkeypatch.setattr(plt, "close", capture_close)
         msv.build_individual_sessions(
             "tongue", "PS46", target_date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         # axs[0, 0] is LEFT column → R trials per cam-view.
@@ -2286,7 +2286,7 @@ class TestC72IssueBCamViewOrdering:
         monkeypatch.setattr(plt, "close", capture_close)
         msv.build_trial_overlays(
             "jaw", "PS46", target_date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert "RIGHT rewards" in captured["title_00"]
@@ -2529,7 +2529,7 @@ class TestC73Step4MasterCellNotInverted:
         monkeypatch.setattr(plt, "close", capture_close)
         msv.build_individual_sessions(
             "tongue", "PS46", target_date, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         assert "ylim_00" in captured
@@ -2571,7 +2571,7 @@ class TestC73Step4MasterCellNotInverted:
         monkeypatch.setattr(plt, "close", capture_close)
         msv.build_session_overlays(
             "tongue", "PS46", resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
             cohort=cohort, overwrite="force",
         )
         # All 4 PNGs should have natural-order Y limits.

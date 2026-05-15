@@ -78,8 +78,8 @@ class TestMeanSemVisualDir:
         path = resolver.mean_sem_visual_dir(
             bodypart,
             center_mode=center_mode,
-            reward_pre_ms=100,
-            reward_post_ms=1000,
+            tone_pre_ms=100,
+            tone_post_ms=1000,
             plot_family=plot_family,
             animal="PS46",
         )
@@ -122,8 +122,8 @@ class TestMeanSemVisualDir:
         path = resolver.mean_sem_visual_dir(
             "tongue",
             center_mode="centered_spout_midpoint",
-            reward_pre_ms=pre_ms,
-            reward_post_ms=post_ms,
+            tone_pre_ms=pre_ms,
+            tone_post_ms=post_ms,
             plot_family="individual_sessions",
             animal="PS46",
         )
@@ -145,8 +145,8 @@ class TestMeanSemVisualDir:
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(output_root=tmp_path)
         common = dict(
-            reward_pre_ms=100,
-            reward_post_ms=1000,
+            tone_pre_ms=100,
+            tone_post_ms=1000,
             plot_family="individual_sessions",
             animal="PS49",
         )
@@ -183,8 +183,8 @@ class TestMeanSemVisualDir:
         path = resolver.mean_sem_visual_dir(
             "tongue",
             center_mode="centered_spout_midpoint",
-            reward_pre_ms=100,
-            reward_post_ms=1000,
+            tone_pre_ms=100,
+            tone_post_ms=1000,
             plot_family="individual_sessions",
             animal="PS46",
         )
@@ -215,8 +215,8 @@ class TestMeanSemVisualDir:
             path = resolver.mean_sem_visual_dir(
                 bodypart,
                 center_mode=center_mode,
-                reward_pre_ms=100,
-                reward_post_ms=1000,
+                tone_pre_ms=100,
+                tone_post_ms=1000,
                 plot_family="binned_overlays",
                 animal="PS47",
             )
@@ -235,8 +235,8 @@ class TestMeanSemVisualDir:
         path = resolver.mean_sem_visual_dir(
             "jaw",
             center_mode="centered_eye_midpoint",
-            reward_pre_ms=500,
-            reward_post_ms=5000,
+            tone_pre_ms=500,
+            tone_post_ms=5000,
             plot_family="overlays",
             animal="PS48",
         )
@@ -267,8 +267,8 @@ class TestMeanSemVisualDir:
         path = resolver.mean_sem_visual_dir(
             "tongue",
             center_mode="centered_spout_midpoint",
-            reward_pre_ms=100,
-            reward_post_ms=1000,
+            tone_pre_ms=100,
+            tone_post_ms=1000,
             plot_family="some_future_family",
             animal="PS54",
         )

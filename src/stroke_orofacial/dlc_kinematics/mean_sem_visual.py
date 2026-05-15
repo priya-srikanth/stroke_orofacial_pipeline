@@ -829,8 +829,8 @@ def build_cohort_aggregates(
     animal: str,
     resolver: PathResolver,
     *,
-    reward_pre_ms: int,
-    reward_post_ms: int,
+    tone_pre_ms: int,
+    tone_post_ms: int,
     params: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
 ) -> CohortAggregates | None:
@@ -876,7 +876,7 @@ def build_cohort_aggregates(
         try:
             sa = _load_session_aggregates(
                 bodypart, animal, d, resolver,
-                pre_ms=reward_pre_ms, post_ms=reward_post_ms,
+                pre_ms=tone_pre_ms, post_ms=tone_post_ms,
                 animal_info=animal_info,
             )
         except FileNotFoundError:
@@ -979,7 +979,7 @@ def build_cohort_aggregates(
     else:
         date_start = sessions[0].date.strftime("%Y%m%d")
         date_end = sessions[-1].date.strftime("%Y%m%d")
-    win_tag = f"{int(reward_pre_ms)}pre-{int(reward_post_ms)}post"
+    win_tag = f"{int(tone_pre_ms)}pre-{int(tone_post_ms)}post"
     suffix_parts = [f"{date_start}-{date_end}_{win_tag}"]
     if animal_info is not None and animal_info.stroke_date is not None:
         suffix_parts.append(
@@ -995,8 +995,8 @@ def build_cohort_aggregates(
     return CohortAggregates(
         bodypart=bodypart,
         animal=animal,
-        pre_ms=float(reward_pre_ms),
-        post_ms=float(reward_post_ms),
+        pre_ms=float(tone_pre_ms),
+        post_ms=float(tone_post_ms),
         pre_f=pre_f,
         post_f=post_f,
         fps=fps0,
@@ -1419,12 +1419,12 @@ def _plot_binned_overlay(
 
 def _per_session_filename(
     family: str, sess: SessionAggregates, cam: str,
-    reward_pre_ms: int, reward_post_ms: int,
+    tone_pre_ms: int, tone_post_ms: int,
 ) -> str:
     """Match legacy line 400 / 443:
     ``{mouse}_{date}_{win_tag}_{cam}_{interp_version}_meanSEM_2x2[_trials][_legend].png``
     """
-    win_tag = f"{int(reward_pre_ms)}pre-{int(reward_post_ms)}post"
+    win_tag = f"{int(tone_pre_ms)}pre-{int(tone_post_ms)}post"
     base = (
         f"{sess.animal}_{sess.date.strftime('%Y%m%d')}_{win_tag}_{cam}_"
         f"{sess.interp_version}_meanSEM_2x2"
@@ -1467,8 +1467,8 @@ def build_individual_sessions(
     date: datetime.date,
     resolver: PathResolver,
     *,
-    reward_pre_ms: int,
-    reward_post_ms: int,
+    tone_pre_ms: int,
+    tone_post_ms: int,
     params: dict[str, Any] | None = None,
     cohort: CohortAggregates | None = None,
     animal_y_bounds: tuple[float, float] | None = None,
@@ -1489,8 +1489,8 @@ def build_individual_sessions(
     bodypart : {"tongue", "jaw"}
     animal, date, resolver
         Standard 7a.x signature.
-    reward_pre_ms, reward_post_ms
-        Reward-aligned window endpoints in milliseconds. Must match a
+    tone_pre_ms, tone_post_ms
+        Tone-aligned window endpoints in milliseconds. Must match a
         window present in the cohort if one is supplied.
     params
         Loaded :func:`load_defaults` block. ``None`` → loads the repo
@@ -1538,7 +1538,7 @@ def build_individual_sessions(
     if cohort is None:
         cohort = build_cohort_aggregates(
             bodypart, animal, resolver,
-            reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+            tone_pre_ms=tone_pre_ms, tone_post_ms=tone_post_ms,
             params=params,
         )
     if cohort is None:
@@ -1555,15 +1555,15 @@ def build_individual_sessions(
     out_dir = resolver.mean_sem_visual_dir(
         bodypart,
         center_mode=center_mode,
-        reward_pre_ms=reward_pre_ms,
-        reward_post_ms=reward_post_ms,
+        tone_pre_ms=tone_pre_ms,
+        tone_post_ms=tone_post_ms,
         plot_family="individual_sessions",
         animal=animal,
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     fname = _per_session_filename(
         "individual_sessions", sess, cohort.cam,
-        reward_pre_ms, reward_post_ms,
+        tone_pre_ms, tone_post_ms,
     )
     out_path = out_dir / fname
 
@@ -1584,8 +1584,8 @@ def build_trial_overlays(
     date: datetime.date,
     resolver: PathResolver,
     *,
-    reward_pre_ms: int,
-    reward_post_ms: int,
+    tone_pre_ms: int,
+    tone_post_ms: int,
     params: dict[str, Any] | None = None,
     cohort: CohortAggregates | None = None,
     animal_y_bounds: tuple[float, float] | None = None,
@@ -1622,7 +1622,7 @@ def build_trial_overlays(
     if cohort is None:
         cohort = build_cohort_aggregates(
             bodypart, animal, resolver,
-            reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+            tone_pre_ms=tone_pre_ms, tone_post_ms=tone_post_ms,
             params=params,
         )
     if cohort is None:
@@ -1638,15 +1638,15 @@ def build_trial_overlays(
     out_dir = resolver.mean_sem_visual_dir(
         bodypart,
         center_mode=center_mode,
-        reward_pre_ms=reward_pre_ms,
-        reward_post_ms=reward_post_ms,
+        tone_pre_ms=tone_pre_ms,
+        tone_post_ms=tone_post_ms,
         plot_family="trial_overlays",
         animal=animal,
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     fname = _per_session_filename(
         "trial_overlays", sess, cohort.cam,
-        reward_pre_ms, reward_post_ms,
+        tone_pre_ms, tone_post_ms,
     )
     out_path = out_dir / fname
 
@@ -1667,8 +1667,8 @@ def build_individual_sessions_animal(
     dates: Sequence[datetime.date],
     resolver: PathResolver,
     *,
-    reward_pre_ms: int,
-    reward_post_ms: int,
+    tone_pre_ms: int,
+    tone_post_ms: int,
     params: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
     overwrite: Literal["skip", "force"] = "skip",
@@ -1700,7 +1700,7 @@ def build_individual_sessions_animal(
         dates = [date(2025, 3, 7), date(2025, 3, 10), date(2025, 3, 13)]
         build_individual_sessions_animal(
             "tongue", "PS46", dates, resolver,
-            reward_pre_ms=100, reward_post_ms=1000,
+            tone_pre_ms=100, tone_post_ms=1000,
         )
     """
     if overwrite not in ("skip", "force"):
@@ -1710,7 +1710,7 @@ def build_individual_sessions_animal(
 
     cohort = build_cohort_aggregates(
         bodypart, animal, resolver,
-        reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+        tone_pre_ms=tone_pre_ms, tone_post_ms=tone_post_ms,
         params=params, animal_info=animal_info,
     )
     if cohort is None:
@@ -1720,7 +1720,7 @@ def build_individual_sessions_animal(
     for date in dates:
         path = build_individual_sessions(
             bodypart, animal, date, resolver,
-            reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+            tone_pre_ms=tone_pre_ms, tone_post_ms=tone_post_ms,
             params=params, cohort=cohort,
             animal_y_bounds=cohort.y_lim,
             animal_x_bounds=cohort.x_lim,
@@ -1737,8 +1737,8 @@ def build_trial_overlays_animal(
     dates: Sequence[datetime.date],
     resolver: PathResolver,
     *,
-    reward_pre_ms: int,
-    reward_post_ms: int,
+    tone_pre_ms: int,
+    tone_post_ms: int,
     params: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
     overwrite: Literal["skip", "force"] = "skip",
@@ -1756,7 +1756,7 @@ def build_trial_overlays_animal(
 
     cohort = build_cohort_aggregates(
         bodypart, animal, resolver,
-        reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+        tone_pre_ms=tone_pre_ms, tone_post_ms=tone_post_ms,
         params=params, animal_info=animal_info,
     )
     if cohort is None:
@@ -1766,7 +1766,7 @@ def build_trial_overlays_animal(
     for date in dates:
         path = build_trial_overlays(
             bodypart, animal, date, resolver,
-            reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+            tone_pre_ms=tone_pre_ms, tone_post_ms=tone_post_ms,
             params=params, cohort=cohort,
             animal_y_bounds=cohort.trial_y_lim,
             animal_x_bounds=cohort.trial_x_lim,
@@ -1822,8 +1822,8 @@ def build_session_overlays(
     animal: str,
     resolver: PathResolver,
     *,
-    reward_pre_ms: int,
-    reward_post_ms: int,
+    tone_pre_ms: int,
+    tone_post_ms: int,
     params: dict[str, Any] | None = None,
     cohort: CohortAggregates | None = None,
     overwrite: Literal["skip", "force"] = "skip",
@@ -1844,7 +1844,7 @@ def build_session_overlays(
     if cohort is None:
         cohort = build_cohort_aggregates(
             bodypart, animal, resolver,
-            reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+            tone_pre_ms=tone_pre_ms, tone_post_ms=tone_post_ms,
             params=params,
         )
     if cohort is None:
@@ -1854,8 +1854,8 @@ def build_session_overlays(
     out_dir = resolver.mean_sem_visual_dir(
         bodypart,
         center_mode=center_mode,
-        reward_pre_ms=reward_pre_ms,
-        reward_post_ms=reward_post_ms,
+        tone_pre_ms=tone_pre_ms,
+        tone_post_ms=tone_post_ms,
         plot_family="session_overlays",
         animal=animal,
     )
@@ -1885,8 +1885,8 @@ def build_binned_overlays(
     animal: str,
     resolver: PathResolver,
     *,
-    reward_pre_ms: int,
-    reward_post_ms: int,
+    tone_pre_ms: int,
+    tone_post_ms: int,
     params: dict[str, Any] | None = None,
     cohort: CohortAggregates | None = None,
     overwrite: Literal["skip", "force"] = "skip",
@@ -1908,7 +1908,7 @@ def build_binned_overlays(
     if cohort is None:
         cohort = build_cohort_aggregates(
             bodypart, animal, resolver,
-            reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+            tone_pre_ms=tone_pre_ms, tone_post_ms=tone_post_ms,
             params=params,
         )
     if cohort is None or not cohort.binned:
@@ -1918,8 +1918,8 @@ def build_binned_overlays(
     out_dir = resolver.mean_sem_visual_dir(
         bodypart,
         center_mode=center_mode,
-        reward_pre_ms=reward_pre_ms,
-        reward_post_ms=reward_post_ms,
+        tone_pre_ms=tone_pre_ms,
+        tone_post_ms=tone_post_ms,
         plot_family="binned_overlays",
         animal=animal,
     )
@@ -2315,8 +2315,8 @@ def build_mean_trace_cohort(
     animal: str,
     resolver: PathResolver,
     *,
-    reward_pre_ms: int,
-    reward_post_ms: int,
+    tone_pre_ms: int,
+    tone_post_ms: int,
     bin_size_days: int | None = None,
     params: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
@@ -2420,8 +2420,8 @@ def build_mean_trace_cohort(
         except FileNotFoundError:
             continue
 
-        pre_f = max(0, int(round((float(reward_pre_ms) / 1000.0) * fps)))
-        post_f = max(0, int(round((float(reward_post_ms) / 1000.0) * fps)))
+        pre_f = max(0, int(round((float(tone_pre_ms) / 1000.0) * fps)))
+        post_f = max(0, int(round((float(tone_post_ms) / 1000.0) * fps)))
         t_ms_full = np.arange(-pre_f, post_f + 1) * (1000.0 / fps)
         t_ms = t_ms_full[::stride] if stride > 1 else t_ms_full
 
@@ -2442,8 +2442,8 @@ def build_mean_trace_cohort(
             rows.append(MeanTraceRow(
                 date=d, side=side, rel_day=rel_day,
                 n_trials=n_trials, fps=fps,
-                pre_ms=float(reward_pre_ms),
-                post_ms=float(reward_post_ms),
+                pre_ms=float(tone_pre_ms),
+                post_ms=float(tone_post_ms),
                 t_ms=t_ms, mx=mx, my=my, sx=sx, sy=sy,
             ))
 
@@ -2514,7 +2514,7 @@ def build_mean_trace_cohort(
     y_max = float(y_hi_raw * (1.0 + y_pad_frac))
 
     # Suffix per legacy: encodes window + bin + smoothing + xlim + stroke.
-    win_tag = f"{int(reward_pre_ms)}pre-{int(reward_post_ms)}post"
+    win_tag = f"{int(tone_pre_ms)}pre-{int(tone_post_ms)}post"
     suffix_parts = [win_tag]
     if do_rel_day_bin:
         suffix_parts.append(f"relDayBin{bin_size_days_resolved}d")
@@ -2533,8 +2533,8 @@ def build_mean_trace_cohort(
     return MeanTraceCohort(
         bodypart=bodypart,
         animal=animal,
-        pre_ms=float(reward_pre_ms),
-        post_ms=float(reward_post_ms),
+        pre_ms=float(tone_pre_ms),
+        post_ms=float(tone_post_ms),
         bin_size_days=bin_size_days_resolved,
         fps=fps0,
         cam=cam,
@@ -2964,8 +2964,8 @@ def build_mean_video(
     animal: str,
     resolver: PathResolver,
     *,
-    reward_pre_ms: int,
-    reward_post_ms: int,
+    tone_pre_ms: int,
+    tone_post_ms: int,
     bin_sizes_days: int | Sequence[int] | None = None,
     modes: Sequence[str] | None = None,
     video_format: str | None = None,
@@ -2991,8 +2991,8 @@ def build_mean_video(
     bodypart : {"tongue", "jaw"}
     animal, resolver
         Standard 7a.x signature.
-    reward_pre_ms, reward_post_ms
-        Reward-aligned window endpoints in milliseconds.
+    tone_pre_ms, tone_post_ms
+        Tone-aligned window endpoints in milliseconds.
     bin_sizes_days : int | Sequence[int] | None
         Same semantics as :func:`build_mean_trace`. Default uses
         ``animal_info.bin_days``.
@@ -3056,8 +3056,8 @@ def build_mean_video(
     out_dir = resolver.mean_sem_visual_dir(
         bodypart,
         center_mode=center_mode,
-        reward_pre_ms=reward_pre_ms,
-        reward_post_ms=reward_post_ms,
+        tone_pre_ms=tone_pre_ms,
+        tone_post_ms=tone_post_ms,
         plot_family="mean_xy_overlays",
         animal=animal,
     )
@@ -3069,7 +3069,7 @@ def build_mean_video(
     for size in sizes:
         cohort = build_mean_trace_cohort(
             bodypart, animal, resolver,
-            reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+            tone_pre_ms=tone_pre_ms, tone_post_ms=tone_post_ms,
             bin_size_days=size,
             params=params, animal_info=animal_info,
         )
@@ -3336,8 +3336,8 @@ def build_mean_trace(
     animal: str,
     resolver: PathResolver,
     *,
-    reward_pre_ms: int,
-    reward_post_ms: int,
+    tone_pre_ms: int,
+    tone_post_ms: int,
     bin_sizes_days: int | Sequence[int] | None = None,
     params: dict[str, Any] | None = None,
     overwrite: Literal["skip", "force"] = "skip",
@@ -3386,8 +3386,8 @@ def build_mean_trace(
     out_dir = resolver.mean_sem_visual_dir(
         bodypart,
         center_mode=center_mode,
-        reward_pre_ms=reward_pre_ms,
-        reward_post_ms=reward_post_ms,
+        tone_pre_ms=tone_pre_ms,
+        tone_post_ms=tone_post_ms,
         plot_family="mean_xy_overlays",
         animal=animal,
     )
@@ -3397,7 +3397,7 @@ def build_mean_trace(
     for size in sizes:
         cohort = build_mean_trace_cohort(
             bodypart, animal, resolver,
-            reward_pre_ms=reward_pre_ms, reward_post_ms=reward_post_ms,
+            tone_pre_ms=tone_pre_ms, tone_post_ms=tone_post_ms,
             bin_size_days=size,
             params=params, animal_info=animal_info,
         )
@@ -3517,7 +3517,7 @@ def build_mean_sem_by_animal_date(
         if cohort is None:
             cohort = build_cohort_aggregates(
                 bodypart, animal, resolver,
-                reward_pre_ms=key[0], reward_post_ms=key[1],
+                tone_pre_ms=key[0], tone_post_ms=key[1],
                 params=params, animal_info=animal_info,
             )
             if cohort is not None:
@@ -3526,14 +3526,14 @@ def build_mean_sem_by_animal_date(
             continue
         ind_path = build_individual_sessions(
             bodypart, animal, date, resolver,
-            reward_pre_ms=key[0], reward_post_ms=key[1],
+            tone_pre_ms=key[0], tone_post_ms=key[1],
             params=params, cohort=cohort, overwrite=overwrite,
         )
         if ind_path is not None:
             out["individual_sessions"].append(ind_path)
         trial_path = build_trial_overlays(
             bodypart, animal, date, resolver,
-            reward_pre_ms=key[0], reward_post_ms=key[1],
+            tone_pre_ms=key[0], tone_post_ms=key[1],
             params=params, cohort=cohort, overwrite=overwrite,
         )
         if trial_path is not None:
@@ -3605,28 +3605,28 @@ def build_mean_sem_cohort(
         key = (int(pre_ms), int(post_ms))
         cohort = build_cohort_aggregates(
             bodypart, animal, resolver,
-            reward_pre_ms=key[0], reward_post_ms=key[1],
+            tone_pre_ms=key[0], tone_post_ms=key[1],
             params=params, animal_info=animal_info,
         )
         if cohort is not None:
             out["session_overlays"].extend(
                 build_session_overlays(
                     bodypart, animal, resolver,
-                    reward_pre_ms=key[0], reward_post_ms=key[1],
+                    tone_pre_ms=key[0], tone_post_ms=key[1],
                     params=params, cohort=cohort, overwrite=overwrite,
                 ),
             )
             out["binned_overlays"].extend(
                 build_binned_overlays(
                     bodypart, animal, resolver,
-                    reward_pre_ms=key[0], reward_post_ms=key[1],
+                    tone_pre_ms=key[0], tone_post_ms=key[1],
                     params=params, cohort=cohort, overwrite=overwrite,
                 ),
             )
         out["mean_trace"].extend(
             build_mean_trace(
                 bodypart, animal, resolver,
-                reward_pre_ms=key[0], reward_post_ms=key[1],
+                tone_pre_ms=key[0], tone_post_ms=key[1],
                 bin_sizes_days=bin_sizes_days,
                 params=params, animal_info=animal_info,
                 overwrite=overwrite,
@@ -3643,7 +3643,7 @@ def build_mean_sem_cohort(
                 out["mean_video"].extend(
                     build_mean_video(
                         bodypart, animal, resolver,
-                        reward_pre_ms=key[0], reward_post_ms=key[1],
+                        tone_pre_ms=key[0], tone_post_ms=key[1],
                         bin_sizes_days=bin_sizes_days,
                         params=params, animal_info=animal_info,
                         overwrite=overwrite,

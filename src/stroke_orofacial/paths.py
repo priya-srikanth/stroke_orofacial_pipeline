@@ -675,8 +675,8 @@ class PathResolver:
         bodypart: str,
         *,
         center_mode: str,
-        reward_pre_ms: int,
-        reward_post_ms: int,
+        tone_pre_ms: int,
+        tone_post_ms: int,
         plot_family: str,
         animal: str,
     ) -> Path:
@@ -698,10 +698,10 @@ class PathResolver:
             for tongue, ``"centered_eye_midpoint"`` for jaw). Sourced
             from ``mean_sem_visual.{bodypart}.center_mode`` in
             ``configs/defaults.yaml``.
-        reward_pre_ms, reward_post_ms : int
-            Reward-aligned window endpoints in **milliseconds**. The
+        tone_pre_ms, tone_post_ms : int
+            Tone-aligned window endpoints in **milliseconds**. The
             subdir name is composed as
-            ``f"rewardAligned_{reward_pre_ms}pre-{reward_post_ms}post"``,
+            ``f"rewardAligned_{tone_pre_ms}pre-{tone_post_ms}post"``,
             matching the legacy jaw subdir convention. Q7 (locked
             2026-05-01): this per-window subdir layout is adopted
             uniformly for both bodyparts. Tongue's legacy flat-layout
@@ -735,7 +735,7 @@ class PathResolver:
         in the Phase 7a.6 commit message.
         """
         window_dir = (
-            f"rewardAligned_{reward_pre_ms}pre-{reward_post_ms}post"
+            f"rewardAligned_{tone_pre_ms}pre-{tone_post_ms}post"
         )
         return (
             self.pipeline_outputs(subdir="dlc_kinematics")
