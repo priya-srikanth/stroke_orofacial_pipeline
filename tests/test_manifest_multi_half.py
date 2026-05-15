@@ -263,12 +263,19 @@ class TestPatternAMultiHalf:
         assert manifest.halves[0].cam_subdir == "20250314a"
         assert manifest.halves[0].file_timestamp == "2025-03-14T12_31_07"
 
-    def test_parent_level_fields_cleared_when_multi_half(
+    def test_parent_level_ws_and_video_cleared_when_multi_half(
         self, pattern_a_layout, pattern_a_overrides, ps48_info
     ):
         """Per the manifest contract, when halves is populated the parent
-        level wavesurfer_file / video_files / dlc_*_files are empty —
-        downstream consumers must read per-half data from halves[i]."""
+        level wavesurfer_file / video_files are empty — downstream Phase
+        2/3 consumers read per-half WS + video from halves[i].
+
+        Phase 7c.2 Task 2 F-P-5 wiring fix: parent-level dlc_h5_files /
+        dlc_csv_files now carry [halves[0].dlc_h5_file] /
+        [halves[0].dlc_csv_file] (half-A's DLC paths) so Phase 7a
+        consumers find the merged centered parquet via half-A's H5
+        filename — see ``TestPatternAMultiHalfDlcFilesWiring`` below.
+        """
         resolver = _make_resolver_for_layout(**pattern_a_layout)
         manifest = build_manifest(
             "PS48",
@@ -280,8 +287,6 @@ class TestPatternAMultiHalf:
         )
         assert manifest.wavesurfer_file is None
         assert manifest.video_files == []
-        assert manifest.dlc_h5_files == []
-        assert manifest.dlc_csv_files == []
 
     def test_per_half_ws_discovery(
         self, pattern_a_layout, pattern_a_overrides, ps48_info
