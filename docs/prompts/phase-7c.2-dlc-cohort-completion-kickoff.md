@@ -294,16 +294,22 @@ Order: PS46, PS47, PS48, PS49, PS50, PS51, PS54, PS55 (Cohort A order). For each
 
 ### Task 7 — Legacy-tree cleanup
 
-**Goal:** Delete legacy `dlc_analysis/spatial_reward_aligned/` tree + figure-suffix-variant artifacts. Establish on-disk == canonical-cohort invariant.
+**Goal:** Delete legacy `dlc_analysis/spatial_reward_aligned/` tree + figure-suffix-variant artifacts + multi-half-leftover parquets superseded by Task 2 Option A's merged parquet. Establish on-disk == canonical-cohort invariant.
 
 **Pre-condition:** Task 6 PASS verdict on all three axes.
 
 **Steps:**
 
-1. Generate deletion manifest: enumerate every path under `pipeline_outputs/dlc_analysis/spatial_reward_aligned/` + per-path size + sha256 (for traceability). Plus legacy figure-suffix variants (`mouseLrewards`, `mouseRrewards`) grepped from any output tree.
+1. Generate deletion manifest: enumerate every path under `pipeline_outputs/dlc_analysis/spatial_reward_aligned/` + per-path size + sha256 (for traceability). Plus legacy figure-suffix variants (`mouseLrewards`, `mouseRrewards`) grepped from any output tree. **Plus multi-half-leftover parquets** at parent level superseded by Task 2 Option A's merged parquet — for Cohort A scope this is the pre-2026-05-15 half-B-only parent-level parquet at `centered_<mode>/PS48/video2_2025-03-14T13_09_29....parquet` (mtime 2026-04-21, 577,365 rows) × each center mode. PS48 is the sole Pattern A session in Cohort A; no other animals affected. **Plus pre-rename `dlc_kinematics/` directory layouts** that consolidated-pipeline stopped writing to during prior phases (Category 2 stale legacy; Priya 2026-05-15 housekeeping additions):
+   - `dlc_kinematics/figures_qc/tongue/...` — pre-2026-05-03 `tongue_visual_qc_dir` outputs. Active layout is `dlc_kinematics/tongue_angle/within_session/<animal>/<date>/`.
+   - `dlc_kinematics/tongue_jaw_mismatch/figures_qc/...` — pre-2026-05-03 `tongue_jaw_mismatch_qc_dir` outputs. Active layout is `dlc_kinematics/tongue_jaw_mismatch/within_session/<animal>/<date>/`.
+   - `dlc_kinematics/tongue_angle/<animal>/<date>/` (without `within_session/` interstitial) — short-lived 2026-05-03 to 2026-05-04 flat layout. Active layout is `dlc_kinematics/tongue_angle/within_session/<animal>/<date>/`.
+   - `dlc_kinematics/tongue_angle_cohort/<animal>/` — pre-2026-05-04-Addendum-#17 cohort layout. Active layout is `dlc_kinematics/tongue_angle/cross_session/<animal>/`.
+
+   For each pre-rename layout, CC's manifest-generation step enumerates via `find pipeline_outputs/dlc_kinematics/<old-path> -type f 2>/dev/null` and includes any results with mtime + size + sha256. May surface zero entries for 3+4 (short-lived layouts) and non-zero entries for 1+2 (longer-lived). Either is fine.
 2. Manifest committed to `scripts/phase_7c2/legacy_cleanup_manifest.csv`.
 3. Apply deletions via `scripts/phase_7c2/cleanup_legacy_tree.py`.
-4. Verify on-disk == canonical-cohort invariant: no `spatial_reward_aligned/` paths remain; new `spatial_tone_aligned/` tree is the sole DLC spatial output tree.
+4. Verify on-disk == canonical-cohort invariant: no `spatial_reward_aligned/` paths remain; new `spatial_tone_aligned/` tree is the sole DLC spatial output tree; no pre-2026-05-15 multi-half-leftover parquets at parent level for PS48 (merged is the sole parent-level parquet; per-half halves stay in `20250314ab/` subdir as part of the Pattern A canonical layout).
 
 **Commit pattern:** deletion manifest + cleanup driver script committed; the actual deletions are filesystem operations on MICROSCOPE.
 
@@ -450,8 +456,8 @@ Per Priya 2026-05-15. Extend Task 2 with an additional step:
 For each of the 3 center modes (`centered_eye_midpoint`, `centered_spout_midpoint`, plus any third mode the pipeline supports for PS48):
 
 1. Invoke `build_centered_parquet(animal="PS48", date=date(2025,3,14), center_mode=<mode>, overwrite="force")` (or whatever the canonical entry point is — likely `_build_centered_parquet_multi_half` invoked via the standard parquet ingestion code path with overwrite flag).
-2. Verify the merged parquet lands at `pipeline_outputs/dlc_analysis/centered_<mode>/PS48/20250314ab/<merged_filename>.parquet` (the Pattern A nested layout per Phase 7-pre-multi-half).
-3. Verify row count matches Phase 7-pre-multi-half's expected merged_row_count=1,148,512 (or `571,147 + 577,365` summed from the existing half-A/half-B parquets).
+2. Verify the merged parquet lands at `pipeline_outputs/dlc_analysis/centered_<mode>/PS48/{half_a_h5_name}.intermediate.{sig}.parquet` (PARENT-level merged path per Phase 7-pre-multi-half's actual code design; per-half halves live in `20250314ab/` subdir at the same parent — NOT the reverse, which an earlier draft of this Addendum had wrong). The F-P-5 wiring fix's `manifest.dlc_h5_files[0].name` lookup expects the parent-level layout.
+3. Verify row count matches Phase 7-pre-multi-half's expected merged_row_count=1,148,512 (or `571,147 + 577,365` summed from the existing half-A/half-B parquets in the `20250314ab/` subdir).
 
 **Step 7 (new) — Re-invoke Phase 7a.2 spot-check on PS48/2025-03-14:**
 
@@ -474,3 +480,123 @@ PS48/2025-03-14 still has no consolidated-pipeline baseline at standard paths (t
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.B 257-session cohort, Q2 output safety, Q3 verification axes, Q4 visual gate, Q5 cleanup, Q6 PathResolver, Q7 sub-batching, Q8 no-backup, Q9 F-P-5 bundle.)
+
+---
+
+## Addendum #3 — Spatial pipeline architectural pivot: eliminate cached NPZ tree; canonical = Phase 4 centered parquets + compute-on-demand; bodypart × center_mode allowlist narrowing + whisker individual-rendering (Priya 2026-05-15, mid-Task-3)
+
+This Addendum captures a SUBSTANTIAL architectural pivot mid-Task-3 that supersedes multiple Q-locks and revises Tasks 3/5/7. Also folds Phase 7c.3 (whole-session heatmaps) into Task 5 as a sub-scope (no separate phase needed under the new architecture).
+
+### Trigger
+
+Mid-Task-3 cohort re-emit, Priya raised: "could the all-trials -500to5000 NPZ contain all information?" Initial analysis showed the cache is informationally redundant but each NPZ is an aggregated histogram (can't derive subsets from). Deeper probe surfaced two architectural options:
+
+- **Interpretation 1:** Make Phase 4 centered parquets canonical whole-session spatial source; compute tone-aligned analyses on-demand; eliminate cached NPZ tree.
+- **Interpretation 2:** New whole-session NPZ data product alongside existing cache.
+
+**LOCKED Interpretation 1** per Priya 2026-05-15. Subagent audit confirmed:
+
+- **Zero source-code consumers of cached spatial NPZs.** `dlc_spatial/tone_aligned.py:save_tone_aligned_npz` writes the cache; nothing else reads it. Existing pipeline already computes histograms on-demand from Phase 4 centered parquets via `read_centered_parquet` + `build_histogram`. The NPZ writes are a side-effect that no downstream code consumes.
+- **Phase 4 centered parquet schema is complete for on-demand derivation:** 13 bodyparts × 3 coords (x, y, likelihood) + WS-indexed row positions. No schema gap.
+- **Bodypart × center_mode allowlist locked at 5 family entries → 10 individual heatmaps:**
+
+| Family entry | Individual bodyparts | Center mode | Heatmap count |
+|---|---|---|---|
+| `tongue_spout_midpoint` | tongue | spout_midpoint | 1 |
+| `tongue_eye_midpoint` | tongue | eye_midpoint | 1 |
+| `jaw_eye_midpoint` | jaw | eye_midpoint | 1 |
+| `nose_eye_midpoint` | nose | eye_midpoint | 1 |
+| `whiskers_eye_midpoint` | L_whiskers_1, L_whiskers_2, L_whiskers_3, R_whiskers_1, R_whiskers_2, R_whiskers_3 | eye_midpoint | **6** (one heatmap per whisker, no aggregation) |
+
+Total: 10 individual heatmaps per (trial_group, window, session). Whiskers stay as 6 distinct bodyparts through the pipeline; no aggregation logic needed.
+
+### Re-locked Q-decisions
+
+**Q2 RE-LOCKED Q2.B (supersedes Q2.A):**
+- Spatial: **NO cached NPZ tree emission.** `save_tone_aligned_npz` calls dropped from `build_tone_aligned_analysis_by_animal_date` (or made off-by-default behind a config flag); cohort re-emit produces zero `spatial_tone_aligned/...heatmap_<date>.npz` files.
+- Kinematics: IN-PLACE OVERWRITE (unchanged from Q2.A).
+- Interpolated_traces: IN-PLACE OVERWRITE (unchanged).
+- Phase 4 centered parquets: canonical whole-session spatial data; UNCHANGED in 7c.2 (already cohort-wide via prior phase emissions; PS48/2025-03-14 force-emit from Task 2 fills its single gap).
+
+**Q4 RE-LOCKED Q4.B (supersedes Q4.A):**
+- Phase 7a.7 visual gate renders via compute-on-demand from centered parquets. New wrapper function `render_tone_aligned_heatmap(animal, date, bodypart, center_mode, trial_group, window) -> Figure` reads centered parquet + computes histogram + renders. Same wrapper handles whole-session via `window=None` (folds in Phase 7c.3 scope).
+- Per-animal × per-(family,bodypart) × per-(trial_group,window) SVGs at `pipeline_outputs/dlc_analysis/spatial_visual_gate/<animal>/<family>/<bodypart>/<trial_group>_<window>.svg` (or equivalent path; CC chooses canonical layout).
+- Cohort tile-grids per family.
+- Whole-session SVGs at `pipeline_outputs/dlc_analysis/spatial_whole_session_visual_gate/<animal>/<family>/<bodypart>.svg`.
+
+**Q5 RE-LOCKED Q5.B (supersedes Q5.A — expanded cleanup scope):**
+- Delete BOTH `pipeline_outputs/dlc_analysis/spatial_reward_aligned/` (legacy from Phase 6.8a) AND `pipeline_outputs/dlc_analysis/spatial_tone_aligned/` (cache emitted by 7c.1 pilot + any partial Task 3 output before interrupt). NEITHER tree is consumed under the new architecture; both go.
+- Plus the cleanup items already in Task 7 manifest: figure suffix variants, multi-half-leftover parent-level half-B parquets, pre-rename `dlc_kinematics/figures_qc/` etc.
+
+**Q9 — F-P-5 bundle stays LOCKED Q9.A.** Task 2 work (SessionManifest Pattern A wiring + Phase 4 force-emit) is preserved; unaffected by the pivot.
+
+### New Q10 — Spatial config restructure for allowlist enforcement
+
+**LOCKED Q10.A:** Reshape `configs/defaults.yaml dlc_spatial_tone_aligned:` block from per-bodypart-only config to per-family with explicit (bodypart, center_mode) pairs per the 5-entry allowlist above. Whisker family enumerates 6 individual bodyparts. Per-family overrides for likelihood thresholds + axis ranges retained. Out-of-allowlist combos (e.g., `jaw_spout_midpoint`, `nose_spout_midpoint`) explicitly removed.
+
+### Revised task structure
+
+| Task | Status |
+|---|---|
+| Task 0 — Setup | DONE |
+| Task 1 — Archeology audit | DONE |
+| Task 2 — F-P-5 wiring + Phase 4 force-emit | DONE |
+| **Task 2.5 (NEW) — Spatial config restructure + stop spatial NPZ emission** | New work; see below |
+| Task 3 — REVISED scope (kinematics-only cohort re-emit) | Resume in revised form |
+| Task 4 — Cohort-aggregate kinematics re-emit | Unchanged |
+| Task 5 — REVISED scope (compute-on-demand visual gate + whole-session render-on-demand wrapper; folds in Phase 7c.3) | Revised; see below |
+| Task 6 — Spot-check verification (simplified per pivot) | Revised; see below |
+| Task 7 — EXPANDED cleanup (delete both spatial trees + previously-flagged items) | Expanded per Q5.B |
+| Task 8 — DECISIONS + MIGRATION_LOG | Unchanged |
+
+#### Task 2.5 (new) — Spatial config restructure + stop spatial NPZ emission
+
+1. **Reshape `configs/defaults.yaml dlc_spatial_tone_aligned:`** to per-family with explicit (bodypart, center_mode) pairs per Q10.A. Add validation in `config_loader.py` that loaded config enforces the 5-family allowlist (raises on out-of-allowlist combos).
+2. **Modify `build_tone_aligned_analysis_by_animal_date` (or its caller chain)** to skip `save_tone_aligned_npz` invocation. Cleanest implementation: add a `emit_cache: bool = False` parameter (default False) to the analysis entry point; cohort driver passes False. Legacy callers (notebook 12) can pass True if they want the NPZ for one-off inspection, but cohort driver doesn't.
+3. **Update unit tests** for the new config schema (test_config_loader.py adds Q10.A allowlist enforcement) + test_tone_aligned.py adds no-NPZ-emission default behavior coverage.
+4. **No production data emission in Task 2.5** — pure source-side config + code restructure.
+5. **Acceptance:** pytest -q PASSES at 1422+/39+/0; ruff clean; loading defaults.yaml from `config_loader` returns the new per-family allowlist structure; `build_tone_aligned_analysis_by_animal_date(emit_cache=False)` succeeds without writing any NPZ to disk.
+
+Commit pattern: 2-3 commits — `feat(phase-7c.2): per-family allowlist enforcement in dlc_spatial_tone_aligned config block` + `feat(phase-7c.2): emit_cache parameter on build_tone_aligned_analysis (default False; cohort driver opts out of NPZ cache)` + tests.
+
+#### Task 3 RESUMED — Kinematics-only cohort re-emit
+
+Resume per-animal cohort re-emit driver, but with revised scope:
+
+- **DROP Category A (spatial heatmap NPZs)** — no `save_tone_aligned_npz` calls; nothing emitted to `spatial_tone_aligned/`.
+- **KEEP Categories B (interpolated_traces), C (per-trial features + jaw_pertrial + licking_dynamics), D (tongue_angle within_session + tongue_jaw_mismatch within_session + candidate_trials)** per Phase 7c.1 Addendum #1.
+- **Resumption state determined by CC's interrupt-state-report** — already-completed animals' kinematics outputs remain valid; resume from where the cohort manifest last logged.
+- **Per-animal sub-batching unchanged** per Q7.A.
+- **Revised wall-time:** ~50-60s/session × 257 sessions ≈ ~3.5-4 hr (vs prior ~5.2 hr estimate with spatial included). Spatial drop reduces per-session cost ~25%.
+
+Per-animal manifest schema unchanged; spatial-category fields just blank.
+
+#### Task 5 REVISED — Visual gate + whole-session via compute-on-demand (folds in 7c.3)
+
+1. **Build `render_tone_aligned_heatmap(animal, date, bodypart, center_mode, trial_group, window) -> Figure`** wrapper in `dlc_spatial/` (e.g., `dlc_spatial/render_on_demand.py` or similar). Reads centered parquet via `read_centered_parquet` + tone events via existing `load_tone_events` + computes histogram via existing `build_histogram` + renders figure.
+2. **Build whole-session variant** — same wrapper with `window=None` produces whole-session heatmap (no tone alignment; full-session bodypart spatial distribution).
+3. **Visual gate driver `scripts/phase_7c2/render_visual_gate.py`** invokes the wrappers per-(animal, family, bodypart, trial_group, window) per the 10-heatmap allowlist; writes SVGs at canonical paths (CC chooses layout; suggested `pipeline_outputs/dlc_analysis/spatial_visual_gate/...`).
+4. **Whole-session driver** invokes wholesession variant per-(animal, bodypart); same 10-bodypart scope (no trial_group / window fanout); writes to `pipeline_outputs/dlc_analysis/spatial_whole_session_visual_gate/...`.
+5. **Cohort tile-grids per family** — render driver aggregates per-(family, trial_group, window) across the 8 animals into tile-grids; mirror Phase 8a.10 Sub-A pattern.
+
+Per-animal eyeball verdict per (animal, family-entry) cell; cohort tile-grid verdict per family.
+
+#### Task 6 REVISED — Spot-check verification (simplified)
+
+- **Axis 1 (kinematics byte-equality):** verify per-animal kinematics outputs match Phase 7a.4 cohort emit baseline (where it exists at standard paths) for non-Pattern-A sessions; PS48/2025-03-14 qualitative sanity per Addendum #1.
+- **Axis 2 (no spatial byte-equality possible):** spatial cache is gone; nothing to byte-compare. Verdict criterion = "spatial visual gate eyeball PASS" per Task 5.
+- **Axis 3 (whole-session sanity):** whole-session heatmaps render successfully for all 10 (animal-set × bodypart × center_mode) cells; eyeball-plausible.
+
+STOP-and-report at `.scratch_phase_7c2/verdict.md` per kickoff Task 6.
+
+#### Task 7 EXPANDED — Cleanup includes BOTH spatial trees
+
+Per Q5.B: delete both `pipeline_outputs/dlc_analysis/spatial_reward_aligned/` AND `pipeline_outputs/dlc_analysis/spatial_tone_aligned/` (including the 3 7c.1 pilot sessions + any partial Task 3 output that was written before interrupt). Plus the previously-flagged cleanup items (figure suffix variants, multi-half-leftover parent-level half-B parquets, pre-rename `dlc_kinematics/figures_qc/` etc.).
+
+### Phase 7c.3 retired into Task 5
+
+Phase 7c.3 (whole-session heatmaps) folded into Phase 7c.2 Task 5 as the compute-on-demand wrapper's whole-session variant. No separate phase needed under the new architecture. Memory `project_phase_7c3_whole_session_and_npz_schema_forward_pointers.md` superseded by Addendum #3.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.B 257-session cohort, Q3 verification axes per revised Task 6, Q6 PathResolver, Q7 per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle.)
