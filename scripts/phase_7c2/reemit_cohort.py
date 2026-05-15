@@ -10,12 +10,9 @@ Addendum #1:
   - Cohort B b-half sessions explicitly OUT-OF-SCOPE (Addendum #1
     Finding 2; deferred to Phase 7-pre-secondary-spout-compare-DLC).
 
-Per-session output scope per Addendum #1 (full Categories A-D +
-supplements):
+Per-session output scope — KINEMATICS-ONLY post Addendum #3 Q2.B
+(Phase 7c.2 spatial architectural pivot LOCKED 2026-05-15 mid-Task-3):
 
-  A. Phase 6 spatial heatmap NPZs — sweep 3 bp × 3 cm × 3 tg × 2 win
-     = 54 NPZs per session at
-     spatial_tone_aligned/<bp>_<cm>/trials-<tg>_<win>/<animal>/heatmap_<date>.npz
   B. Phase 7a.2 interpolated traces (tongue + jaw) at
      interpolated_traces/<bp>/<animal>/<date>.parquet
   C. Phase 7a.3 per-trial features (tongue + jaw_pertrial endpoints) +
@@ -29,6 +26,13 @@ supplements):
   D-supplement. Phase 7a.5 tongue-jaw mismatch per-session at
      dlc_kinematics/tongue_jaw_mismatch/candidate_trials/<animal>/<date>.parquet
      dlc_kinematics/tongue_jaw_mismatch/within_session/<animal>/<date>/*.png
+
+Category A (Phase 6 spatial heatmap NPZ sweep) DROPPED per Addendum #3
+Q2.B — cohort-wide cached NPZ tree eliminated; spatial visual gate
+moves to compute-on-demand via render_tone_aligned_heatmap (Task 5).
+PS46's already-completed Category-A NPZs (~1,134 cached at
+spatial_tone_aligned/PS46/) are dead artifacts queued for Task 7
+cleanup.
 
 Per-session manifest schema (per Addendum #1):
   animal, date, runtime_seconds_total, runtime_seconds_{interpolation,
@@ -71,10 +75,7 @@ import sys
 import time
 from pathlib import Path
 
-from stroke_orofacial.config_loader import (
-    load_defaults,
-    load_session_overrides,
-)
+from stroke_orofacial.config_loader import load_session_overrides
 from stroke_orofacial.paths import PathResolver
 from stroke_orofacial.dlc_kinematics import (
     build_interpolated_trace_by_animal_date,
@@ -84,18 +85,9 @@ from stroke_orofacial.dlc_kinematics import (
     classify_tongue_jaw_mismatch_by_animal_date,
     render_within_session_figures,
 )
-from stroke_orofacial.dlc_spatial.tone_aligned import (
-    build_tone_aligned_analysis_by_animal_date,
-    save_tone_aligned_npz,
-)
 
 
 COHORT_ORDER = ("PS46", "PS47", "PS48", "PS49", "PS50", "PS51", "PS54", "PS55")
-
-PHASE6_BODYPARTS = ("tongue", "jaw", "nose")
-PHASE6_CENTER_MODES = ("nose", "spout_midpoint", "eye_midpoint")
-PHASE6_TRIAL_GROUPS = ("all", "L", "R")
-PHASE6_WINDOWS_MS = ((-500.0, 5000.0), (-100.0, 1000.0))
 
 MANIFEST_PATH = Path(".scratch_phase_7c2/cohort_manifest.csv")
 MANIFEST_HEADER = [
@@ -197,14 +189,13 @@ def _build_failed_row(animal: str, date: dt.date, session_t0: float, anomalies: 
 
 def _run_session(
     animal: str, date: dt.date, resolver: PathResolver,
-    spatial_config, tone_config,
 ) -> tuple[bool, dict]:
-    """Run the full per-session DLC pipeline (Categories A-D + supplements)
-    on (animal, date). Returns (ok, manifest_row).
+    """Run the kinematics-only per-session DLC pipeline (Categories B-D +
+    supplements; Category A dropped per Addendum #3 Q2.B) on
+    (animal, date). Returns (ok, manifest_row).
     """
     log.info(f"=== {animal}/{date.isoformat()} ===")
     session_t0 = time.perf_counter()
-    date_str = date.strftime("%Y%m%d")
     anomalies: list[str] = []
     outputs_sha: dict[str, str] = {}
 
@@ -224,39 +215,11 @@ def _run_session(
         log.error(f"  [B] interpolation: ERR {ex!r}")
         return False, _build_failed_row(animal, date, session_t0, anomalies)
 
-    # ----- Category A: spatial heatmaps (sweep) — writes to NEW spatial_tone_aligned/ -----
-    t0 = time.perf_counter()
-    n_a_ok = n_a_skip = n_a_err = 0
-    spatial_root_under = resolver.pipeline_outputs("dlc_analysis") / "spatial_tone_aligned"
-    try:
-        for bp in PHASE6_BODYPARTS:
-            for cm in PHASE6_CENTER_MODES:
-                for tg in PHASE6_TRIAL_GROUPS:
-                    for w in PHASE6_WINDOWS_MS:
-                        win_tag = f"{int(w[0])}to{int(w[1])}ms"
-                        out_dir = spatial_root_under / f"{bp}_{cm}" / f"trials-{tg}_{win_tag}" / animal
-                        npz_path = out_dir / f"heatmap_{date_str}.npz"
-                        result = build_tone_aligned_analysis_by_animal_date(
-                            animal=animal, date_str=date_str,
-                            bodypart=bp, center_mode=cm,
-                            trial_group=tg, window_ms=w,
-                            resolver=resolver,
-                            spatial_config=spatial_config,
-                            tone_config=tone_config,
-                        )
-                        if result is None or result["histogram"] is None:
-                            n_a_skip += 1
-                            continue
-                        out_dir.mkdir(parents=True, exist_ok=True)
-                        save_tone_aligned_npz(result, npz_path)
-                        outputs_sha[str(npz_path)] = _sha256(npz_path)
-                        n_a_ok += 1
-        rt_A = time.perf_counter() - t0
-        log.info(f"  [A] spatial sweep: {rt_A:.1f}s ({n_a_ok} OK, {n_a_skip} skip, {n_a_err} err)")
-    except Exception as ex:
-        anomalies.append(f"A-spatial: {ex!r}")
-        log.error(f"  [A] spatial: ERR {ex!r}")
-        return False, _build_failed_row(animal, date, session_t0, anomalies)
+    # Category A (Phase 6 spatial heatmap NPZ sweep) DROPPED per Addendum #3
+    # Q2.B — the cached spatial_tone_aligned/ tree is eliminated under
+    # Interpretation 1. Visual gate now renders on-demand from Phase 4
+    # centered parquets via Task 5's render_tone_aligned_heatmap wrapper.
+    rt_A = 0.0
 
     # ----- Category C: per-trial features (tongue + jaw_pertrial endpoints = D-supp-2) -----
     t0 = time.perf_counter()
@@ -334,7 +297,7 @@ def _date_str_to_date(date_str: str) -> dt.date:
     return dt.date(int(date_str[0:4]), int(date_str[4:6]), int(date_str[6:8]))
 
 
-def _process_animal(animal: str, resolver, spatial_config, tone_config, overrides) -> tuple[int, int, int]:
+def _process_animal(animal: str, resolver, overrides) -> tuple[int, int, int]:
     """Process all cohort-A bare + (PS48 only) Pattern A sessions for one animal.
 
     Returns (n_run, n_ok, n_fail). Stops within-animal if failure count >=
@@ -362,7 +325,7 @@ def _process_animal(animal: str, resolver, spatial_config, tone_config, override
         if prior_status == "PARTIAL":
             log.info(f"  [skip] {animal}/{date.isoformat()} already PARTIAL in prior manifest")
             continue
-        ok, row = _run_session(animal, date, resolver, spatial_config, tone_config)
+        ok, row = _run_session(animal, date, resolver)
         _append_manifest(row)
         n_run += 1
         if ok:
@@ -391,9 +354,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     resolver = PathResolver()
-    defaults = load_defaults()
-    spatial_config = defaults["dlc_spatial"]
-    tone_config = defaults["dlc_spatial_tone_aligned"]
     overrides = load_session_overrides()
     log.info(f"output_root: {resolver.pipeline_outputs('dlc_analysis')}")
     log.info(f"manifest: {MANIFEST_PATH.resolve()}")
@@ -402,9 +362,7 @@ def main(argv: list[str] | None = None) -> int:
 
     total_run = total_ok = total_fail = 0
     for animal in animals:
-        n_run, n_ok, n_fail = _process_animal(
-            animal, resolver, spatial_config, tone_config, overrides,
-        )
+        n_run, n_ok, n_fail = _process_animal(animal, resolver, overrides)
         total_run += n_run
         total_ok += n_ok
         total_fail += n_fail
