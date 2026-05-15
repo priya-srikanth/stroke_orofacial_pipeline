@@ -26,7 +26,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from stroke_orofacial.dlc_spatial.reward_aligned import (
+from stroke_orofacial.dlc_spatial.tone_aligned import (
     build_reward_aligned_analysis,
     build_reward_aligned_analysis_by_animal_date,
     save_reward_aligned_npz,
@@ -292,7 +292,7 @@ class TestBuildRewardAlignedAnalysisFlagPlumbing:
         ), patch(
             "numpy.load",
         ) as mock_load, patch(
-            "stroke_orofacial.dlc_spatial.reward_aligned.build_reward_aligned_window",
+            "stroke_orofacial.dlc_spatial.tone_aligned.build_reward_aligned_window",
             return_value=MagicMock(n_events=3, n_selected=42),
         ), patch(
             "stroke_orofacial.dlc_spatial.pixel_bins.build_histogram",
@@ -359,13 +359,13 @@ class TestBuildRewardAlignedAnalysisByAnimalDate:
             return None  # short-circuit; we only check the kwarg forwarding
 
         with patch(
-            "stroke_orofacial.dlc_spatial.reward_aligned.get_animal",
+            "stroke_orofacial.dlc_spatial.tone_aligned.get_animal",
             return_value=info,
         ), patch(
-            "stroke_orofacial.dlc_spatial.reward_aligned.build_manifest",
+            "stroke_orofacial.dlc_spatial.tone_aligned.build_manifest",
             return_value=MagicMock(),
         ), patch(
-            "stroke_orofacial.dlc_spatial.reward_aligned.build_reward_aligned_analysis",
+            "stroke_orofacial.dlc_spatial.tone_aligned.build_reward_aligned_analysis",
             side_effect=_capture,
         ):
             build_reward_aligned_analysis_by_animal_date(
@@ -388,13 +388,13 @@ class TestBuildRewardAlignedAnalysisByAnimalDate:
             return None
 
         with patch(
-            "stroke_orofacial.dlc_spatial.reward_aligned.get_animal",
+            "stroke_orofacial.dlc_spatial.tone_aligned.get_animal",
             return_value=info,
         ), patch(
-            "stroke_orofacial.dlc_spatial.reward_aligned.build_manifest",
+            "stroke_orofacial.dlc_spatial.tone_aligned.build_manifest",
             return_value=MagicMock(),
         ), patch(
-            "stroke_orofacial.dlc_spatial.reward_aligned.build_reward_aligned_analysis",
+            "stroke_orofacial.dlc_spatial.tone_aligned.build_reward_aligned_analysis",
             side_effect=_capture,
         ):
             build_reward_aligned_analysis_by_animal_date(

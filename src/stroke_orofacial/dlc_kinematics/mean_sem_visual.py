@@ -576,7 +576,7 @@ def _derive_reward_events_for_bodypart(
         )
 
     from stroke_orofacial.alignment.templates import load_alignment_template
-    from stroke_orofacial.dlc_spatial.reward_aligned import (
+    from stroke_orofacial.dlc_spatial.tone_aligned import (
         load_tone_events,
         ws_samples_to_frame_indices,
     )

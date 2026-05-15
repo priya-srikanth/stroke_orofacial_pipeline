@@ -52,7 +52,7 @@ from matplotlib.colors import LogNorm
 
 from stroke_orofacial.animals import load_animals
 from stroke_orofacial.config_loader import load_defaults
-from stroke_orofacial.dlc_spatial.reward_aligned import (
+from stroke_orofacial.dlc_spatial.tone_aligned import (
     build_reward_aligned_analysis,
     save_reward_aligned_npz,
 )

@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from stroke_orofacial.dlc_spatial.reward_aligned import (
+from stroke_orofacial.dlc_spatial.tone_aligned import (
     load_tone_events,
     ws_samples_to_frame_indices,
 )
@@ -197,7 +197,7 @@ class TestIntegrationRewardAligned:
         """End-to-end smoke test: reward-aligned analysis produces results."""
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         from stroke_orofacial.config_loader import load_defaults
-        from stroke_orofacial.dlc_spatial.reward_aligned import (
+        from stroke_orofacial.dlc_spatial.tone_aligned import (
             build_reward_aligned_analysis_by_animal_date,
         )
         from stroke_orofacial.paths import PathResolver
@@ -220,7 +220,7 @@ class TestIntegrationRewardAligned:
         """L, R, all trial groups should produce different reward counts."""
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         from stroke_orofacial.config_loader import load_defaults
-        from stroke_orofacial.dlc_spatial.reward_aligned import (
+        from stroke_orofacial.dlc_spatial.tone_aligned import (
             build_reward_aligned_analysis_by_animal_date,
         )
         from stroke_orofacial.paths import PathResolver
@@ -255,7 +255,7 @@ class TestIntegrationRewardAlignedWithManifest:
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         from stroke_orofacial.animals import get_animal
         from stroke_orofacial.config_loader import load_defaults
-        from stroke_orofacial.dlc_spatial.reward_aligned import (
+        from stroke_orofacial.dlc_spatial.tone_aligned import (
             build_reward_aligned_analysis,
         )
         from stroke_orofacial.manifest import build_manifest
@@ -288,7 +288,7 @@ class TestBuildRewardAlignedAnalysisRaisesOnEmptyDlc:
         import datetime
         from unittest.mock import MagicMock
 
-        from stroke_orofacial.dlc_spatial.reward_aligned import (
+        from stroke_orofacial.dlc_spatial.tone_aligned import (
             build_reward_aligned_analysis,
         )
         from stroke_orofacial.manifest import SessionManifest
@@ -325,7 +325,7 @@ class TestBuildRewardAlignedAnalysisRaisesOnMissingPrerequisites:
         import datetime
         from unittest.mock import MagicMock
 
-        from stroke_orofacial.dlc_spatial.reward_aligned import (
+        from stroke_orofacial.dlc_spatial.tone_aligned import (
             build_reward_aligned_analysis,
         )
         from stroke_orofacial.manifest import SessionManifest

@@ -512,7 +512,7 @@ def _load_reward_centers_cam(
     baseline pool only needs the SET of reward centers, and that set is
     invariant to the wavesurfer↔mouse-frame flip applied to labels.
     """
-    from stroke_orofacial.dlc_spatial.reward_aligned import load_tone_events
+    from stroke_orofacial.dlc_spatial.tone_aligned import load_tone_events
 
     date_str = manifest.date.strftime("%Y%m%d")
     licks_path = (

@@ -1620,7 +1620,7 @@ class TestTrialEventsAutoDerive:
             return np.full(len(ws_samples), n_cam_frames + 5, dtype=np.int64)
 
         monkeypatch.setattr(
-            "stroke_orofacial.dlc_spatial.reward_aligned"
+            "stroke_orofacial.dlc_spatial.tone_aligned"
             ".ws_samples_to_frame_indices",
             _patched_translator,
         )
