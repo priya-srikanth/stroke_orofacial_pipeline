@@ -320,7 +320,7 @@ def _make_synthetic_cohort_tone_aligned(
             mu = base + rng.normal(0, 0.4, size=n_t_bins)
             sem = np.full_like(mu, 0.4)
             rows.append(TimeSeriesSessionAggregate(
-                family="reward_aligned",
+                family="tone_aligned",
                 side=side, date=d, rel_day=rel_day,
                 n_trials=20, t=t, mu=mu, sem=sem,
             ))

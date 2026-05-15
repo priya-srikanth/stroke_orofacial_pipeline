@@ -291,7 +291,7 @@ class TestRenderTongueQCFigures:
             overwrite="force",
         )
         assert set(out.keys()) == {
-            "qc_trials", "first_peak_aligned", "reward_aligned",
+            "qc_trials", "first_peak_aligned", "tone_aligned",
             "phase_aligned_angle", "first_vs_second_peak_scatter",
             "xy_by_phase",
         }

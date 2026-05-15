@@ -165,10 +165,10 @@ def _resolve_legacy_per_session_path(
 
 # For session_overlays / binned_overlays, pick a canonical label so the
 # legacy + consolidated panes show the SAME (axis × side) variant of the
-# 4-fold family. Y_mouseLrewards is the most informative single subject
+# 4-fold family. Y_mouseLtones is the most informative single subject
 # for layout verification (Y is the primary licking axis; L the
 # canonical default-prefer side).
-_COHORT_LABEL_DEFAULT = "Y_mouseLrewards"
+_COHORT_LABEL_DEFAULT = "Y_mouseLtones"
 
 
 def _resolve_legacy_cohort_path(

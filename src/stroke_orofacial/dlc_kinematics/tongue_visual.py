@@ -71,7 +71,7 @@ from stroke_orofacial.paths import PathResolver  # noqa: E402
 _FAMILIES_ALL: tuple[str, ...] = (
     "qc_trials",
     "first_peak_aligned",
-    "reward_aligned",
+    "tone_aligned",
     "phase_aligned_angle",
     "first_vs_second_peak_scatter",
     "xy_by_phase",
@@ -940,7 +940,7 @@ def _plot_xy_by_phase(
 # is per-side; the rest take the bundle directly).
 _PLOT_FAMILY_HELPERS = {
     "first_peak_aligned":           _plot_first_peak_aligned,
-    "reward_aligned":               _plot_tone_aligned,
+    "tone_aligned":               _plot_tone_aligned,
     "phase_aligned_angle":          _plot_phase_aligned_angle,
     "first_vs_second_peak_scatter": _plot_first_vs_second_peak_scatter,
     "xy_by_phase":                  _plot_xy_by_phase,

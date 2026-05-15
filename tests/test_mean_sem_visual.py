@@ -445,10 +445,10 @@ class TestBuildCohort:
         assert len(paths) == 4
         names = sorted(p.name for p in paths)
         # Y/X × L/R = 4 plots.
-        assert any("overlay_Y_mouseLrewards" in n for n in names)
-        assert any("overlay_Y_mouseRrewards" in n for n in names)
-        assert any("overlay_X_mouseLrewards" in n for n in names)
-        assert any("overlay_X_mouseRrewards" in n for n in names)
+        assert any("overlay_Y_mouseLtones" in n for n in names)
+        assert any("overlay_Y_mouseRtones" in n for n in names)
+        assert any("overlay_X_mouseLtones" in n for n in names)
+        assert any("overlay_X_mouseRtones" in n for n in names)
         for p in paths:
             assert p.exists()
             assert "Tongue" not in str(p)  # Q6
