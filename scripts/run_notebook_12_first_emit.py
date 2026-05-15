@@ -184,7 +184,7 @@ def _render_and_save(
     ax.set_title(
         f"{animal_id} {bodypart} {date_str}\n"
         f"{center_mode} | {trial_group} | {win_tag}\n"
-        f"rewards={result['n_rewards']}, frames={result['n_selected_frames']}"
+        f"tones={result['n_tones']}, frames={result['n_selected_frames']}"
     )
     ax.set_xlabel(f"{bodypart}_x")
     ax.set_ylabel(f"{bodypart}_y")
@@ -213,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     defaults = load_defaults()
     spatial_config = defaults["dlc_spatial"]
     tone_config = defaults["dlc_spatial_tone_aligned"]
-    output_root = resolver.pipeline_outputs("dlc_analysis") / "spatial_reward_aligned"
+    output_root = resolver.pipeline_outputs("dlc_analysis") / "spatial_tone_aligned"
 
     animal_ids = args.animals if args.animals is not None else list(animals_config.keys())
     unknown = sorted(set(animal_ids) - set(animals_config.keys()))
@@ -249,13 +249,13 @@ def main(argv: list[str] | None = None) -> int:
 
     # Cell 4: quadruple-nested loop.
     grand_ok = grand_skip = grand_err = 0
-    grand_skip_no_rewards = grand_skip_no_frames = 0
+    grand_skip_no_tones = grand_skip_no_frames = 0
     for center_mode in args.center_modes:
         for bodypart in args.bodyparts:
             for window_ms in tone_windows_ms:
                 for trial_group in args.trial_groups:
                     n_ok = n_skip = n_err = 0
-                    n_skip_no_rewards = n_skip_no_frames = 0
+                    n_skip_no_tones = n_skip_no_frames = 0
                     win_tag = f"{int(window_ms[0])}to{int(window_ms[1])}ms"
 
                     for animal_id, date, manifest in manifests:
@@ -285,9 +285,9 @@ def main(argv: list[str] | None = None) -> int:
                             # distinguishes them. See notebook 12 cell 4
                             # for rationale.
                             if result is None:
-                                n_skip_no_rewards += 1
+                                n_skip_no_tones += 1
                                 log.info(
-                                    "skip_no_rewards %s/%s/%s/%s/%s/%s",
+                                    "skip_no_tones %s/%s/%s/%s/%s/%s",
                                     animal_id, date_str, bodypart,
                                     center_mode, trial_group, win_tag,
                                 )
@@ -329,23 +329,23 @@ def main(argv: list[str] | None = None) -> int:
                     tag = f"{bodypart}/{center_mode}/trials-{trial_group}/{win_tag}"
                     if (
                         n_ok + n_skip + n_err
-                        + n_skip_no_rewards + n_skip_no_frames
+                        + n_skip_no_tones + n_skip_no_frames
                         > 0
                     ):
                         print(
                             f"  {tag}: ok={n_ok} skip={n_skip} "
-                            f"skip_no_rewards={n_skip_no_rewards} "
+                            f"skip_no_tones={n_skip_no_tones} "
                             f"skip_no_frames={n_skip_no_frames} err={n_err}"
                         )
                     grand_ok += n_ok
                     grand_skip += n_skip
-                    grand_skip_no_rewards += n_skip_no_rewards
+                    grand_skip_no_tones += n_skip_no_tones
                     grand_skip_no_frames += n_skip_no_frames
                     grand_err += n_err
 
     print(
         f"\nTotals: ok={grand_ok} skip={grand_skip} "
-        f"skip_no_rewards={grand_skip_no_rewards} "
+        f"skip_no_tones={grand_skip_no_tones} "
         f"skip_no_frames={grand_skip_no_frames} err={grand_err} "
         f"(output_root={output_root})"
     )

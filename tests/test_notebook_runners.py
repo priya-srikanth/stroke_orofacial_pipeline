@@ -4,7 +4,7 @@ Scoped to the counter-split introduced in v6.8a.3: the save loop used
 to collapse "zero rewards for trial_group" (``build_tone_aligned_analysis``
 returns None), "zero qualifying DLC frames" (``result['histogram']`` is
 None), and every other error path into one ``n_err`` bucket. Post-split,
-the runner reports five buckets (``ok``, ``skip``, ``skip_no_rewards``,
+the runner reports five buckets (``ok``, ``skip``, ``skip_no_tones``,
 ``skip_no_frames``, ``err``), and each of the two new skip buckets
 emits a distinct ``logging.info`` line per skipped (animal, date).
 
@@ -130,20 +130,20 @@ class TestCounterSplit:
     get their own counters + their own log lines, distinct from the
     generic ``n_err`` bucket."""
 
-    def test_skip_no_rewards_increments_and_logs(
+    def test_skip_no_tones_increments_and_logs(
         self, patched_runner, caplog, capsys,
     ):
         with caplog.at_level(logging.INFO):
             exit_code, _ = patched_runner(script=[None])
         assert exit_code == 0
         out = capsys.readouterr().out
-        assert "skip_no_rewards=1" in out
+        assert "skip_no_tones=1" in out
         assert "skip_no_frames=0" in out
         assert "err=0" in out
         assert any(
-            "skip_no_rewards" in r.getMessage() and "PS51" in r.getMessage()
+            "skip_no_tones" in r.getMessage() and "PS51" in r.getMessage()
             for r in caplog.records
-        ), "expected a skip_no_rewards INFO log line for PS51"
+        ), "expected a skip_no_tones INFO log line for PS51"
 
     def test_skip_no_frames_increments_and_logs(
         self, patched_runner, caplog, capsys,
@@ -154,7 +154,7 @@ class TestCounterSplit:
             )
         assert exit_code == 0
         out = capsys.readouterr().out
-        assert "skip_no_rewards=0" in out
+        assert "skip_no_tones=0" in out
         assert "skip_no_frames=1" in out
         assert "err=0" in out
         assert any(
@@ -185,5 +185,5 @@ class TestCounterSplit:
         assert exit_code == 0
         out = capsys.readouterr().out
         assert "err=1" in out
-        assert "skip_no_rewards=0" in out
+        assert "skip_no_tones=0" in out
         assert "skip_no_frames=0" in out
