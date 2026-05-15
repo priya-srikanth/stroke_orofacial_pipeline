@@ -466,7 +466,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
                     cmp_dir = (
                         args.emit_root / bodypart
-                        / f"rewardAligned_{pre_ms}pre-{post_ms}post"
+                        / f"toneAligned_{pre_ms}pre-{post_ms}post"
                         / family / animal
                     )
                     cmp_path = (

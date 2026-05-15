@@ -12,7 +12,7 @@ is the formal acceptance sweep for the four phase-locked decisions:
 - Q5 (with_frame_timestamps consolidate): mean_video both branches at
   the public + private API levels.
 - Q6 (lowercase tongue): no capital-T leak in any path component.
-- Q7 (per-window subdir): ``rewardAligned_{pre}pre-{post}post/`` for
+- Q7 (per-window subdir): ``toneAligned_{pre}pre-{post}post/`` for
   both bodyparts.
 
 Plus pure-function helper tests (``_mean_sem``, ``_snippet``,
@@ -364,7 +364,7 @@ class TestBuildPerSession:
         # Q6: lowercase tongue dir on path.
         assert "Tongue" not in str(out_path)
         # Q7: per-window subdir present.
-        assert "rewardAligned_100pre-1000post" in str(out_path)
+        assert "toneAligned_100pre-1000post" in str(out_path)
         # Filename matches legacy ``meanSEM_2x2`` pattern.
         assert "meanSEM_2x2" in out_path.name
 
@@ -382,7 +382,7 @@ class TestBuildPerSession:
         assert out_path is not None
         assert out_path.exists()
         assert "meanSEM_2x2_trials" in out_path.name
-        assert "rewardAligned_100pre-1000post" in str(out_path)
+        assert "toneAligned_100pre-1000post" in str(out_path)
 
     def test_build_individual_sessions_skip_uses_existing(
         self, monkeypatch, tmp_path,
@@ -1525,15 +1525,15 @@ class TestQ6LowercaseTonguePublic:
 
 
 class TestQ7PerWindowSubdirPublic:
-    """Q7: ``rewardAligned_{pre}pre-{post}post/`` for both bodyparts."""
+    """Q7: ``toneAligned_{pre}pre-{post}post/`` for both bodyparts."""
 
     @pytest.mark.parametrize("bodypart", ["tongue", "jaw"])
     @pytest.mark.parametrize(
         "pre, post, slug",
         [
-            (100, 1000, "rewardAligned_100pre-1000post"),
-            (500, 5000, "rewardAligned_500pre-5000post"),
-            (0, 1500, "rewardAligned_0pre-1500post"),
+            (100, 1000, "toneAligned_100pre-1000post"),
+            (500, 5000, "toneAligned_500pre-5000post"),
+            (0, 1500, "toneAligned_0pre-1500post"),
         ],
     )
     def test_individual_sessions_subdir(

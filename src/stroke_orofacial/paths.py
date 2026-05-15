@@ -683,7 +683,7 @@ class PathResolver:
         """Return the Phase 7a.6 mean/SEM visual gate output directory.
 
         E.g. ``<outputs>/dlc_kinematics/mean_sem/tongue/centered_spout_midpoint/
-        rewardAligned_100pre-1000post/individual_sessions/PS46/``.
+        toneAligned_100pre-1000post/individual_sessions/PS46/``.
 
         Parameters
         ----------
@@ -701,7 +701,7 @@ class PathResolver:
         tone_pre_ms, tone_post_ms : int
             Tone-aligned window endpoints in **milliseconds**. The
             subdir name is composed as
-            ``f"rewardAligned_{tone_pre_ms}pre-{tone_post_ms}post"``,
+            ``f"toneAligned_{tone_pre_ms}pre-{tone_post_ms}post"``,
             matching the legacy jaw subdir convention. Q7 (locked
             2026-05-01): this per-window subdir layout is adopted
             uniformly for both bodyparts. Tongue's legacy flat-layout
@@ -727,15 +727,15 @@ class PathResolver:
         -----
         Deviation from the Phase 7a.6 kickoff template, which sketched
         ``reward_pre_s: float`` (seconds, with example ``(2.0, 5.0) →
-        rewardAligned_2-5``). The legacy filename and directory
-        convention is millisecond-based (``rewardAligned_100pre-1000post/``),
+        toneAligned_2-5``). The legacy filename and directory
+        convention is millisecond-based (``toneAligned_100pre-1000post/``),
         and the master cell's ``TIME_WINDOWS_MS`` is also milliseconds
         — using milliseconds here keeps the consolidated subdir names
         bit-comparable with legacy outputs in the visual gate. Documented
         in the Phase 7a.6 commit message.
         """
         window_dir = (
-            f"rewardAligned_{tone_pre_ms}pre-{tone_post_ms}post"
+            f"toneAligned_{tone_pre_ms}pre-{tone_post_ms}post"
         )
         return (
             self.pipeline_outputs(subdir="dlc_kinematics")
