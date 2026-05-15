@@ -273,6 +273,7 @@ def build_tone_aligned_analysis(
     tone_config: dict[str, Any],
     *,
     wavesurfer_sides_match_mouse_sides: bool | None = None,
+    emit_cache: bool = False,
 ) -> dict[str, Any] | None:
     """Run a complete tone-aligned spatial analysis for one session.
 
@@ -325,6 +326,18 @@ def build_tone_aligned_analysis(
         ``None``, the Phase 2 stamp is still required to exist (else
         we can't tell mouse-frame from wavesurfer-frame) but its value
         is not cross-checked.
+    emit_cache : bool
+        Phase 7c.2 Addendum #3 Q2.B opt-in for legacy/inspection callers.
+        Default ``False`` — function returns the result dict in-memory
+        without persisting an NPZ. When ``True``, additionally calls
+        :func:`save_tone_aligned_npz` at the canonical
+        ``pipeline_outputs/dlc_analysis/spatial_tone_aligned/{bp}_{cm}/trials-{tg}_{win}/{animal}/heatmap_{date}.npz``
+        path. Phase 7c.2 cohort re-emit driver always opts out
+        (default); notebook 12 / one-off inspection workflows can opt
+        in by passing ``True``. Cached NPZ tree is otherwise eliminated
+        under the new architecture (Phase 4 centered parquets are the
+        canonical whole-session spatial source; tone-aligned analyses
+        derive on-demand).
 
     Returns
     -------
@@ -441,12 +454,18 @@ def build_tone_aligned_analysis(
 
     # Build histogram with window.
     # Tone-aligned analyses use the Phase 6 `dlc_spatial_tone_aligned`
-    # config for likelihood thresholds and (per-bodypart, non-center-mode-aware)
-    # x_range filters; axis limits come from the Phase 5 `dlc_spatial` config
-    # which IS per-(bodypart, center_mode).
-    bp_config = tone_config.get("bodyparts", {}).get(bodypart, {})
-    bp_x_range_tone = bp_config.get("x_range")
-    lik_thresholds = bp_config.get("likelihood_thresholds", [0.8])
+    # config for likelihood thresholds and per-family x_range filters;
+    # axis limits come from the Phase 5 `dlc_spatial` config which IS
+    # per-(bodypart, center_mode).
+    #
+    # Phase 7c.2 Task 2.5 (Addendum #3 Q10.A): per-bodypart `bodyparts:`
+    # block restructured to per-family `families:` allowlist. Each family
+    # pins explicit (bodyparts, center_mode) pairs; out-of-allowlist
+    # combos raise KeyError via :func:`lookup_tone_family`.
+    from stroke_orofacial.config_loader import lookup_tone_family
+    family = lookup_tone_family(tone_config, bodypart, center_mode)
+    bp_x_range_tone = family.get("x_range")
+    lik_thresholds = family.get("likelihood_thresholds", [0.8])
     lik_thr = lik_thresholds[0] if lik_thresholds else 0.8
 
     nbins_list = tone_config.get("default_nbins", [80, 80])
@@ -479,7 +498,7 @@ def build_tone_aligned_analysis(
     # PRESERVED per Phase 7b-light Addendum #1 (NPZ schema keys; on-disk
     # contract). Phase 7c-dlc-cohort-reemit renames these in lockstep
     # with cohort regeneration.
-    return {
+    result = {
         "histogram": histogram,
         "window": window,
         "n_tones": window.n_events,
@@ -490,6 +509,24 @@ def build_tone_aligned_analysis(
         "center_mode": center_mode,
         "wavesurfer_sides_match_mouse_sides": effective_flag,
     }
+
+    # Phase 7c.2 Addendum #3 Q2.B: emit_cache is off by default — no NPZ
+    # write. Opt-in path persists at canonical spatial_tone_aligned/ tree
+    # for notebook 12 / one-off inspection. The cohort re-emit driver
+    # never sets emit_cache=True.
+    if emit_cache and histogram is not None:
+        win_tag = f"{int(window_ms[0])}to{int(window_ms[1])}ms"
+        npz_dir = (
+            resolver.pipeline_outputs("dlc_analysis")
+            / "spatial_tone_aligned"
+            / f"{bodypart}_{center_mode}"
+            / f"trials-{trial_group}_{win_tag}"
+            / animal
+        )
+        npz_path = npz_dir / f"heatmap_{date_str}.npz"
+        save_tone_aligned_npz(result, npz_path)
+
+    return result
 
 
 def build_tone_aligned_analysis_by_animal_date(
@@ -504,6 +541,7 @@ def build_tone_aligned_analysis_by_animal_date(
     tone_config: dict[str, Any],
     *,
     wavesurfer_sides_match_mouse_sides: bool | None = None,
+    emit_cache: bool = False,
 ) -> dict[str, Any] | None:
     """Convenience wrapper: builds a SessionManifest then calls build_tone_aligned_analysis().
 
@@ -559,6 +597,7 @@ def build_tone_aligned_analysis_by_animal_date(
         manifest, bodypart, center_mode, trial_group, window_ms,
         resolver, spatial_config, tone_config,
         wavesurfer_sides_match_mouse_sides=effective_flag,
+        emit_cache=emit_cache,
     )
 
 

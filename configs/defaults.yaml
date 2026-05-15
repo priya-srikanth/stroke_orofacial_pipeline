@@ -299,15 +299,35 @@ dlc_spatial:
       center_mode: spout_midpoint
 
 # ---- DLC spatial (tone-aligned) ----
-# Per-bodypart tone-aligned config. Tongue has legacy values from
-# 20260323 cell 16 (legacy filename preserved as historical citation).
-# All others are sanity-check-only defaults — first tone-aligned runs
-# require visual inspection. (Phase 7b-light: YAML key renamed from
-# ``dlc_spatial_reward_aligned`` per Q7 hard rename; on-disk output
-# subdir `spatial_reward_aligned/` PRESERVED per Addendum #1 through
-# Phase 7b-light; **Phase 7c.1 renamed source-side to `spatial_tone_aligned/`
-# in lockstep with the 3-session pilot re-emit. Legacy `spatial_reward_aligned/`
-# tree remains on-disk; retired in Phase 7c.2 cohort completion.**)
+# Per-family tone-aligned config — Phase 7c.2 Addendum #3 Q10.A.
+#
+# Schema restructured 2026-05-15: the prior `bodyparts:` flat per-bodypart
+# block (which implicitly allowed all bodypart × center_mode combinations)
+# is replaced by a `families:` allowlist. Each family entry pins explicit
+# (bodyparts, center_mode) pairs, scoped tighter than the Phase 4.5-lite
+# sweep covered. Out-of-allowlist combinations (e.g., jaw_spout_midpoint,
+# nose_spout_midpoint) are explicitly removed. ``config_loader``
+# validates the loaded structure against the locked 5-family allowlist
+# at load time; out-of-allowlist combos raise at YAML-load.
+#
+# Yields 10 heatmaps per (trial_group, window, session):
+#   tongue_spout_midpoint = 1
+#   tongue_eye_midpoint = 1
+#   jaw_eye_midpoint = 1
+#   nose_eye_midpoint = 1
+#   whiskers_eye_midpoint = 6 (one per individual whisker; no aggregation)
+#
+# Per Phase 7c.2 Addendum #3 Interpretation 1 lock, this config drives
+# compute-on-demand tone-aligned rendering (Task 5 ``render_tone_aligned_heatmap``
+# wrapper). NO cached NPZ tree emission by default — the cohort re-emit
+# driver in scripts/phase_7c2/reemit_cohort.py drops Category A entirely.
+# ``build_tone_aligned_analysis(emit_cache=True)`` is the opt-in escape
+# hatch for notebook 12 / one-off inspection cases that still want the
+# NPZ on disk.
+#
+# History: YAML key renamed from ``dlc_spatial_reward_aligned`` in
+# Phase 7b-light per Q7 hard rename; per-bodypart -> per-family restructure
+# in Phase 7c.2 Task 2.5 per Q10.A.
 
 dlc_spatial_tone_aligned:
   tone_windows_ms:
@@ -320,40 +340,38 @@ dlc_spatial_tone_aligned:
   vmin_log_prop: 1.0e-5
   share_xy_within_mouse: true
   fps: 250.0
-  bodyparts:
-    tongue:
+  families:
+    tongue_spout_midpoint:
+      bodyparts: ["tongue"]
+      center_mode: "spout_midpoint"
       likelihood_thresholds: [0.5, 0.7]
       x_range: [-150, 150]
       parity_status: "legacy-ported"
-    jaw:
+    tongue_eye_midpoint:
+      bodyparts: ["tongue"]
+      center_mode: "eye_midpoint"
+      likelihood_thresholds: [0.5, 0.7]
+      x_range: null
+      parity_status: "sanity-check-only"
+    jaw_eye_midpoint:
+      bodyparts: ["jaw"]
+      center_mode: "eye_midpoint"
       likelihood_thresholds: [0.5]
       x_range: null
       parity_status: "sanity-check-only"
-    nose:
+    nose_eye_midpoint:
+      bodyparts: ["nose"]
+      center_mode: "eye_midpoint"
       likelihood_thresholds: [0.7]
       x_range: null
       parity_status: "sanity-check-only"
-    L_whiskers_1:
-      likelihood_thresholds: [0.8]
-      x_range: null
-      parity_status: "sanity-check-only"
-    L_whiskers_2:
-      likelihood_thresholds: [0.8]
-      x_range: null
-      parity_status: "sanity-check-only"
-    L_whiskers_3:
-      likelihood_thresholds: [0.8]
-      x_range: null
-      parity_status: "sanity-check-only"
-    R_whiskers_1:
-      likelihood_thresholds: [0.8]
-      x_range: null
-      parity_status: "sanity-check-only"
-    R_whiskers_2:
-      likelihood_thresholds: [0.8]
-      x_range: null
-      parity_status: "sanity-check-only"
-    R_whiskers_3:
+    whiskers_eye_midpoint:
+      # One heatmap per individual whisker bodypart — no aggregation.
+      # Six entries fan out at the render layer; lookup_tone_family
+      # returns this family entry for each (whisker_bp, eye_midpoint) probe.
+      bodyparts: ["L_whiskers_1", "L_whiskers_2", "L_whiskers_3",
+                  "R_whiskers_1", "R_whiskers_2", "R_whiskers_3"]
+      center_mode: "eye_midpoint"
       likelihood_thresholds: [0.8]
       x_range: null
       parity_status: "sanity-check-only"

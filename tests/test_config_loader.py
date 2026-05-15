@@ -8,12 +8,15 @@ from pathlib import Path
 import pytest
 
 from stroke_orofacial.config_loader import (
+    EXPECTED_TONE_ALIGNED_FAMILIES,
     _deep_merge,
     check_merge_required,
     default_center_mode,
     get_session_params,
     load_defaults,
     load_session_overrides,
+    lookup_tone_family,
+    validate_tone_aligned_allowlist,
 )
 
 
@@ -192,6 +195,152 @@ class TestDefaultCenterMode:
         }
         with pytest.raises(ValueError):
             default_center_mode(synthetic, "tongue")
+
+
+def _allowlist_yaml_dict() -> dict:
+    """Return a fresh dict matching the locked allowlist (mirrors what
+    defaults.yaml carries post-Task-2.5). Tests mutate copies to exercise
+    failure modes without touching the real config."""
+    return {
+        "dlc_spatial_tone_aligned": {
+            "families": {
+                "tongue_spout_midpoint": {
+                    "bodyparts": ["tongue"],
+                    "center_mode": "spout_midpoint",
+                    "likelihood_thresholds": [0.5, 0.7],
+                    "x_range": [-150, 150],
+                    "parity_status": "legacy-ported",
+                },
+                "tongue_eye_midpoint": {
+                    "bodyparts": ["tongue"],
+                    "center_mode": "eye_midpoint",
+                    "likelihood_thresholds": [0.5, 0.7],
+                    "x_range": None,
+                    "parity_status": "sanity-check-only",
+                },
+                "jaw_eye_midpoint": {
+                    "bodyparts": ["jaw"],
+                    "center_mode": "eye_midpoint",
+                    "likelihood_thresholds": [0.5],
+                    "x_range": None,
+                    "parity_status": "sanity-check-only",
+                },
+                "nose_eye_midpoint": {
+                    "bodyparts": ["nose"],
+                    "center_mode": "eye_midpoint",
+                    "likelihood_thresholds": [0.7],
+                    "x_range": None,
+                    "parity_status": "sanity-check-only",
+                },
+                "whiskers_eye_midpoint": {
+                    "bodyparts": [
+                        "L_whiskers_1", "L_whiskers_2", "L_whiskers_3",
+                        "R_whiskers_1", "R_whiskers_2", "R_whiskers_3",
+                    ],
+                    "center_mode": "eye_midpoint",
+                    "likelihood_thresholds": [0.8],
+                    "x_range": None,
+                    "parity_status": "sanity-check-only",
+                },
+            },
+        },
+    }
+
+
+class TestValidateToneAlignedAllowlist:
+    """Phase 7c.2 Task 2.5 (Addendum #3 Q10.A): validate the 5-family
+    allowlist on every config load. The validator pins the locked
+    family-name set, per-family bodyparts list, and per-family
+    center_mode. Out-of-allowlist combos raise at load time."""
+
+    def test_real_config_passes_validation(self):
+        """The committed defaults.yaml must satisfy the allowlist (this is
+        the load-time invariant the validator enforces)."""
+        d = load_defaults()
+        # Already validated inside load_defaults; assert no raise + structure
+        # matches what EXPECTED_TONE_ALIGNED_FAMILIES requires.
+        families = d["dlc_spatial_tone_aligned"]["families"]
+        assert set(families.keys()) == set(EXPECTED_TONE_ALIGNED_FAMILIES.keys())
+
+    def test_synthetic_allowlist_passes(self):
+        validate_tone_aligned_allowlist(_allowlist_yaml_dict())  # no raise
+
+    def test_missing_dlc_spatial_tone_aligned_is_noop(self):
+        """Synthetic configs that don't define the tone-aligned block aren't
+        validated — gives tests headroom to construct minimal configs."""
+        validate_tone_aligned_allowlist({})  # no raise
+        validate_tone_aligned_allowlist({"dlc_centering": {"default_mode": "nose"}})  # no raise
+
+    def test_missing_families_block_is_noop(self):
+        """If dlc_spatial_tone_aligned exists without families, the validator
+        passes (defensive: allows synthetic configs that test other code paths)."""
+        validate_tone_aligned_allowlist({
+            "dlc_spatial_tone_aligned": {"trial_groups": ["all"]}
+        })  # no raise
+
+    def test_extra_family_raises(self):
+        cfg = _allowlist_yaml_dict()
+        cfg["dlc_spatial_tone_aligned"]["families"]["jaw_spout_midpoint"] = {
+            "bodyparts": ["jaw"], "center_mode": "spout_midpoint",
+        }
+        with pytest.raises(ValueError, match="Extra"):
+            validate_tone_aligned_allowlist(cfg)
+
+    def test_missing_family_raises(self):
+        cfg = _allowlist_yaml_dict()
+        del cfg["dlc_spatial_tone_aligned"]["families"]["whiskers_eye_midpoint"]
+        with pytest.raises(ValueError, match="Missing"):
+            validate_tone_aligned_allowlist(cfg)
+
+    def test_bodyparts_mismatch_raises(self):
+        cfg = _allowlist_yaml_dict()
+        # Drop one whisker — bodyparts set diverges.
+        cfg["dlc_spatial_tone_aligned"]["families"]["whiskers_eye_midpoint"]["bodyparts"] = [
+            "L_whiskers_1", "L_whiskers_2", "L_whiskers_3",
+            "R_whiskers_1", "R_whiskers_2",  # missing R_whiskers_3
+        ]
+        with pytest.raises(ValueError, match="bodyparts"):
+            validate_tone_aligned_allowlist(cfg)
+
+    def test_center_mode_mismatch_raises(self):
+        cfg = _allowlist_yaml_dict()
+        cfg["dlc_spatial_tone_aligned"]["families"]["jaw_eye_midpoint"]["center_mode"] = "spout_midpoint"
+        with pytest.raises(ValueError, match="center_mode"):
+            validate_tone_aligned_allowlist(cfg)
+
+
+class TestLookupToneFamily:
+    """Phase 7c.2 Task 2.5: the per-family lookup helper used by
+    ``build_tone_aligned_analysis`` to resolve per-(bodypart, center_mode)
+    parameters from the new families block."""
+
+    def test_returns_family_for_legal_combo(self):
+        tone_cfg = _allowlist_yaml_dict()["dlc_spatial_tone_aligned"]
+        family = lookup_tone_family(tone_cfg, "tongue", "spout_midpoint")
+        assert family["family_name"] == "tongue_spout_midpoint"
+        assert family["center_mode"] == "spout_midpoint"
+        assert "tongue" in family["bodyparts"]
+        assert family["x_range"] == [-150, 150]
+        assert family["likelihood_thresholds"] == [0.5, 0.7]
+
+    def test_returns_family_for_whisker(self):
+        tone_cfg = _allowlist_yaml_dict()["dlc_spatial_tone_aligned"]
+        for whisker in ("L_whiskers_1", "L_whiskers_2", "L_whiskers_3",
+                        "R_whiskers_1", "R_whiskers_2", "R_whiskers_3"):
+            family = lookup_tone_family(tone_cfg, whisker, "eye_midpoint")
+            assert family["family_name"] == "whiskers_eye_midpoint"
+
+    def test_out_of_allowlist_raises(self):
+        tone_cfg = _allowlist_yaml_dict()["dlc_spatial_tone_aligned"]
+        with pytest.raises(KeyError, match="not in the .*allowlist"):
+            lookup_tone_family(tone_cfg, "jaw", "spout_midpoint")
+        with pytest.raises(KeyError, match="not in the .*allowlist"):
+            lookup_tone_family(tone_cfg, "nose", "spout_midpoint")
+
+    def test_unknown_bodypart_raises(self):
+        tone_cfg = _allowlist_yaml_dict()["dlc_spatial_tone_aligned"]
+        with pytest.raises(KeyError, match="not in the .*allowlist"):
+            lookup_tone_family(tone_cfg, "fake_bodypart", "eye_midpoint")
 
 
 class TestCheckMergeRequired:
