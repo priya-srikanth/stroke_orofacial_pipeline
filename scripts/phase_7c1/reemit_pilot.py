@@ -1,42 +1,51 @@
 """Phase 7c.1 Task 3 — 3-session pilot re-emit on PS46/2025-03-07 +
 PS54/2025-05-03 + PS50/2025-03-25 per Q1.A.
 
-Runs DLC kinematics + spatial pipeline under POST-rename source state.
-Writes to:
-  - NEW spatial outputs: `pipeline_outputs/dlc_analysis/spatial_tone_aligned/...`
-    (post-C5 output_root rename; legacy `spatial_reward_aligned/` untouched
-    per Q3.A).
-  - Existing kinematics paths: `pipeline_outputs/dlc_analysis/interpolated_traces/{bp}/{animal}/{date}.parquet`
-    (path unchanged; internal schema renamed `reward_centers_cam` →
-    `tone_centers_cam` per Cat D1). LEGACY parquets at these paths get
-    OVERWRITTEN for the 3 pilot sessions only. Pre-Task-3 sanity check
-    confirmed legacy parquets exist; snapshot their sha256 in pre_run.txt
-    if precise byte-equality verification is needed at Task 4. The
-    post-rename parquet column-set differs (`tone_centers_cam` instead
-    of `reward_centers_cam`), so byte-level sha256 will NOT match
-    legacy — Task 4 verification compares structurally (per-column
-    array equality modulo renamed column name).
+Pilot output scope per kickoff Addendum #1: ALL per-session DLC
+categories (A through D + D-supplements). Cross-session aggregates
+(Category E) are excluded and belong to Phase 7c.2.
 
-Per-session manifest written incrementally to
-`.scratch_phase_7c1/pilot_manifest.csv` after each session completes
-(don't batch). If interrupted, the partial manifest is the recovery
-state for a fresh CC session.
+Categories executed per session (in dependency order):
+
+  B. Kinematics interpolated traces (Phase 7a.2)
+     - interpolated_traces/tongue/<animal>/<YYYYMMDD>.parquet
+     - interpolated_traces/jaw/<animal>/<YYYYMMDD>.parquet
+
+  A. Spatial heatmap NPZs (Phase 6) — sweep 3 bodyparts × 3 center_modes
+     × 3 trial_groups × 2 windows = 54 NPZs per session.
+     - spatial_tone_aligned/<bp>_<cm>/trials-<tg>_<win>/<animal>/heatmap_<date>.npz
+
+  C. Per-trial features (Phase 7a.3)
+     - dlc_kinematics/features/tongue/<animal>/<YYYYMMDD>.parquet
+     - dlc_kinematics/licking_dynamics/traces/<animal>/<YYYYMMDD>.parquet
+     - dlc_kinematics/endpoints/<animal>/<YYYYMMDD>.json
+     - dlc_kinematics/jaw_pertrial/endpoints/<animal>/<YYYYMMDD>.json (D-supplement-2)
+
+  D. Tongue angle within-session 9-PNG bundle (Phase 7a.4)
+     - dlc_kinematics/tongue_angle/within_session/<animal>/<YYYYMMDD>/*.png
+
+  D-supplement. Tongue-jaw mismatch per-session (Phase 7a.5)
+     - dlc_kinematics/tongue_jaw_mismatch/candidate_trials/<animal>/<YYYYMMDD>.parquet
+     - dlc_kinematics/tongue_jaw_mismatch/within_session/<animal>/<YYYYMMDD>/*.png
+
+Manifest schema per Addendum #1: per-session row with per-category
+runtime_seconds_* breakdowns + output_sha256s dict (parquet/JSON/NPZ
+only; PNGs excluded since matplotlib rasterization can be slightly
+non-deterministic). Manifest path: `.scratch_phase_7c1/pilot_manifest.csv`.
 
 Order: PS46 → PS54 → PS50 (fastest predicted first; gives early signal).
 
-Anomaly handling:
-  - Unexpected per-session failure → STOP-and-report immediately;
-    do not continue.
-  - PS50 specifically: if pipeline fails or visibly broken outputs
-    (zero trials, NaN-poisoning, off-by-orders axes), STOP-and-report
-    — that's a real signal, not a bug.
-  - 2+ of 3 sessions fail → STOP for re-scope.
+Anomaly handling per kickoff:
+  - Unexpected per-session failure → STOP-and-report immediately.
+  - PS50 visibly-broken outputs → STOP-and-report (real signal, not bug).
+  - 2+ session failures → STOP for re-scope.
 """
 from __future__ import annotations
 
 import csv
 import datetime as dt
 import hashlib
+import json
 import logging
 import sys
 import time
@@ -47,7 +56,14 @@ import numpy as np
 from stroke_orofacial.animals import get_animal
 from stroke_orofacial.config_loader import load_defaults
 from stroke_orofacial.paths import PathResolver
-from stroke_orofacial.dlc_kinematics import build_interpolated_trace_by_animal_date
+from stroke_orofacial.dlc_kinematics import (
+    build_interpolated_trace_by_animal_date,
+    build_tongue_pertrial_by_animal_date,
+    build_jaw_pertrial_by_animal_date,
+    render_tongue_qc_figures,
+    classify_tongue_jaw_mismatch_by_animal_date,
+    render_within_session_figures,
+)
 from stroke_orofacial.dlc_spatial.tone_aligned import (
     build_tone_aligned_analysis_by_animal_date,
     save_tone_aligned_npz,
@@ -60,7 +76,6 @@ SESSIONS = [
     ("PS50", dt.date(2025, 3, 25)),
 ]
 
-# Pilot Phase 6 sweep: 3 bodyparts × 3 center modes × 3 trial groups × 2 windows = 54 per session.
 PHASE6_BODYPARTS = ("tongue", "jaw", "nose")
 PHASE6_CENTER_MODES = ("nose", "spout_midpoint", "eye_midpoint")
 PHASE6_TRIAL_GROUPS = ("all", "L", "R")
@@ -68,8 +83,17 @@ PHASE6_WINDOWS_MS = ((-500.0, 5000.0), (-100.0, 1000.0))
 
 MANIFEST_PATH = Path(".scratch_phase_7c1/pilot_manifest.csv")
 MANIFEST_HEADER = [
-    "animal", "date", "step", "output_path", "runtime_seconds",
-    "sha256", "status", "anomaly_notes",
+    "animal", "date",
+    "runtime_seconds_total",
+    "runtime_seconds_interpolation",
+    "runtime_seconds_spatial",
+    "runtime_seconds_pertrial_features",
+    "runtime_seconds_tongue_angle_figures",
+    "runtime_seconds_tongue_jaw_mismatch",
+    "n_outputs_written",
+    "output_sha256s_json",
+    "status",
+    "anomaly_notes",
 ]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s", datefmt="%H:%M:%S")
@@ -77,7 +101,7 @@ log = logging.getLogger("phase_7c1.pilot")
 
 
 def _sha256(path: Path) -> str:
-    if not path.exists():
+    if not path.exists() or not path.is_file():
         return ""
     h = hashlib.sha256()
     with path.open("rb") as fh:
@@ -96,152 +120,176 @@ def _append_manifest(row: dict) -> None:
         w.writerow(row)
 
 
-def _run_phase7a2(animal: str, date: dt.date, resolver: PathResolver) -> list[dict]:
-    """Phase 7a.2 interpolated_traces (tongue + jaw)."""
-    rows: list[dict] = []
-    for bp in ("tongue", "jaw"):
-        t0 = time.perf_counter()
-        try:
+def _hash_parquet_json_npz_in(directory: Path) -> dict[str, str]:
+    """Compute sha256s for every .parquet/.json/.npz file under `directory`.
+    PNGs intentionally excluded (matplotlib rasterization can be slightly
+    non-deterministic; not in sha256 verdict per Addendum #1)."""
+    out = {}
+    if not directory.exists():
+        return out
+    for p in directory.rglob("*"):
+        if p.is_file() and p.suffix in (".parquet", ".json", ".npz"):
+            out[str(p)] = _sha256(p)
+    return out
+
+
+def _run_session(
+    animal: str, date: dt.date, resolver: PathResolver,
+    spatial_config, tone_config, output_root: Path,
+) -> tuple[bool, dict]:
+    log.info(f"=== {animal}/{date.isoformat()} ===")
+    session_t0 = time.perf_counter()
+    date_str = date.strftime("%Y%m%d")
+    anomalies: list[str] = []
+    outputs_sha: dict[str, str] = {}
+
+    # ----- Category B: interpolated_traces (tongue + jaw) -----
+    t0 = time.perf_counter()
+    try:
+        for bp in ("tongue", "jaw"):
             out_path = build_interpolated_trace_by_animal_date(
                 animal=animal, date=date, bodypart=bp,
                 resolver=resolver, overwrite="force",
             )
-            rt = time.perf_counter() - t0
-            sha = _sha256(out_path)
-            rows.append({
-                "animal": animal, "date": date.isoformat(),
-                "step": f"phase7a2/{bp}",
-                "output_path": str(out_path),
-                "runtime_seconds": f"{rt:.3f}",
-                "sha256": sha, "status": "OK", "anomaly_notes": "",
-            })
-            log.info(f"  phase7a2/{bp}: {rt:.1f}s -> {out_path.name}")
-        except Exception as ex:
-            rt = time.perf_counter() - t0
-            rows.append({
-                "animal": animal, "date": date.isoformat(),
-                "step": f"phase7a2/{bp}",
-                "output_path": "", "runtime_seconds": f"{rt:.3f}",
-                "sha256": "", "status": "ERR",
-                "anomaly_notes": repr(ex),
-            })
-            log.error(f"  phase7a2/{bp}: ERR -- {ex!r}")
-    return rows
+            outputs_sha[str(out_path)] = _sha256(out_path)
+        rt_B = time.perf_counter() - t0
+        log.info(f"  [B] interpolation: {rt_B:.1f}s ({len(outputs_sha)} files)")
+    except Exception as ex:
+        anomalies.append(f"B-interpolation: {ex!r}")
+        log.error(f"  [B] interpolation: ERR {ex!r}")
+        return False, _build_failed_row(animal, date, session_t0, anomalies)
 
+    # ----- Category A: spatial heatmaps (sweep) -----
+    t0 = time.perf_counter()
+    n_a_ok = n_a_skip = n_a_err = 0
+    spatial_root_under = resolver.pipeline_outputs("dlc_analysis") / "spatial_tone_aligned"
+    spatial_outputs_before = set(outputs_sha.keys())
+    try:
+        for bp in PHASE6_BODYPARTS:
+            for cm in PHASE6_CENTER_MODES:
+                for tg in PHASE6_TRIAL_GROUPS:
+                    for w in PHASE6_WINDOWS_MS:
+                        win_tag = f"{int(w[0])}to{int(w[1])}ms"
+                        out_dir = spatial_root_under / f"{bp}_{cm}" / f"trials-{tg}_{win_tag}" / animal
+                        npz_path = out_dir / f"heatmap_{date_str}.npz"
+                        result = build_tone_aligned_analysis_by_animal_date(
+                            animal=animal, date_str=date_str,
+                            bodypart=bp, center_mode=cm,
+                            trial_group=tg, window_ms=w,
+                            resolver=resolver,
+                            spatial_config=spatial_config,
+                            tone_config=tone_config,
+                        )
+                        if result is None or result["histogram"] is None:
+                            n_a_skip += 1
+                            continue
+                        out_dir.mkdir(parents=True, exist_ok=True)
+                        save_tone_aligned_npz(result, npz_path)
+                        outputs_sha[str(npz_path)] = _sha256(npz_path)
+                        n_a_ok += 1
+        rt_A = time.perf_counter() - t0
+        log.info(f"  [A] spatial sweep: {rt_A:.1f}s ({n_a_ok} OK, {n_a_skip} skip, {n_a_err} err)")
+    except Exception as ex:
+        anomalies.append(f"A-spatial: {ex!r}")
+        log.error(f"  [A] spatial: ERR {ex!r}")
+        return False, _build_failed_row(animal, date, session_t0, anomalies)
 
-def _run_phase6_one(
-    animal: str, date: dt.date, resolver: PathResolver,
-    spatial_config, tone_config, output_root: Path,
-    bodypart: str, center_mode: str, trial_group: str,
-    window_ms: tuple[float, float],
-) -> dict:
-    """Phase 6 spatial heatmap for one (bp, center, trial_group, window)."""
-    date_str = date.strftime("%Y%m%d")
-    win_tag = f"{int(window_ms[0])}to{int(window_ms[1])}ms"
-    out_dir = (
-        output_root / f"{bodypart}_{center_mode}"
-        / f"trials-{trial_group}_{win_tag}" / animal
-    )
-    npz_path = out_dir / f"heatmap_{date_str}.npz"
-    step_label = f"phase6/{bodypart}/{center_mode}/{trial_group}/{win_tag}"
-
+    # ----- Category C: per-trial features (tongue_pertrial + jaw_pertrial endpoints = D-supp-2) -----
     t0 = time.perf_counter()
     try:
-        result = build_tone_aligned_analysis_by_animal_date(
-            animal=animal, date_str=date_str,
-            bodypart=bodypart, center_mode=center_mode,
-            trial_group=trial_group, window_ms=window_ms,
-            resolver=resolver,
-            spatial_config=spatial_config,
-            tone_config=tone_config,
+        tongue_pertrial_paths = build_tongue_pertrial_by_animal_date(
+            animal=animal, date=date, resolver=resolver, overwrite="force",
         )
-        if result is None:
-            rt = time.perf_counter() - t0
-            return {
-                "animal": animal, "date": date.isoformat(),
-                "step": step_label, "output_path": "",
-                "runtime_seconds": f"{rt:.3f}",
-                "sha256": "", "status": "SKIP_NO_TONES",
-                "anomaly_notes": "zero events for this trial_group",
-            }
-        if result["histogram"] is None:
-            rt = time.perf_counter() - t0
-            return {
-                "animal": animal, "date": date.isoformat(),
-                "step": step_label, "output_path": "",
-                "runtime_seconds": f"{rt:.3f}",
-                "sha256": "", "status": "SKIP_NO_FRAMES",
-                "anomaly_notes": "no DLC frames passed likelihood threshold",
-            }
-        out_dir.mkdir(parents=True, exist_ok=True)
-        save_tone_aligned_npz(result, npz_path)
-        rt = time.perf_counter() - t0
-        sha = _sha256(npz_path)
-        return {
-            "animal": animal, "date": date.isoformat(),
-            "step": step_label, "output_path": str(npz_path),
-            "runtime_seconds": f"{rt:.3f}",
-            "sha256": sha, "status": "OK",
-            "anomaly_notes": f"n_tones={result['n_tones']}",
-        }
+        if tongue_pertrial_paths:
+            for label, p in tongue_pertrial_paths.items():
+                if p and p.exists():
+                    outputs_sha[str(p)] = _sha256(p)
+        jaw_pertrial_path = build_jaw_pertrial_by_animal_date(
+            animal=animal, date=date, resolver=resolver, overwrite="force",
+        )
+        if jaw_pertrial_path and jaw_pertrial_path.exists():
+            outputs_sha[str(jaw_pertrial_path)] = _sha256(jaw_pertrial_path)
+        rt_C = time.perf_counter() - t0
+        log.info(f"  [C/D-supp-2] per-trial features: {rt_C:.1f}s")
     except Exception as ex:
-        rt = time.perf_counter() - t0
-        return {
-            "animal": animal, "date": date.isoformat(),
-            "step": step_label, "output_path": "",
-            "runtime_seconds": f"{rt:.3f}",
-            "sha256": "", "status": "ERR", "anomaly_notes": repr(ex),
-        }
+        anomalies.append(f"C-pertrial: {ex!r}")
+        log.error(f"  [C] pertrial: ERR {ex!r}")
+        return False, _build_failed_row(animal, date, session_t0, anomalies)
 
+    # ----- Category D: tongue angle within-session figures -----
+    t0 = time.perf_counter()
+    try:
+        qc_paths = render_tongue_qc_figures(
+            animal=animal, date=date, resolver=resolver, overwrite="force",
+        )
+        # qc_paths is dict[family_name → list[Path]]; PNGs not sha256'd per manifest spec.
+        n_d_pngs = sum(len(paths) for paths in qc_paths.values()) if qc_paths else 0
+        rt_D = time.perf_counter() - t0
+        log.info(f"  [D] tongue angle figures: {rt_D:.1f}s ({n_d_pngs} PNGs)")
+    except Exception as ex:
+        anomalies.append(f"D-tongue_angle: {ex!r}")
+        log.error(f"  [D] tongue_angle: ERR {ex!r}")
+        return False, _build_failed_row(animal, date, session_t0, anomalies)
 
-def _run_session(animal: str, date: dt.date, resolver: PathResolver,
-                 spatial_config, tone_config, output_root: Path) -> bool:
-    """Returns True on success, False on failure."""
-    log.info(f"=== {animal}/{date.isoformat()} ===")
-    session_t0 = time.perf_counter()
-
-    # Phase 7a.2 interpolated_traces (tongue + jaw)
-    phase7a2_rows = _run_phase7a2(animal, date, resolver)
-    for row in phase7a2_rows:
-        _append_manifest(row)
-    if any(r["status"] == "ERR" for r in phase7a2_rows):
-        log.error(f"{animal}/{date.isoformat()}: Phase 7a.2 failures — STOP-and-report")
-        return False
-
-    # Phase 6 spatial heatmaps (sweep 3 × 3 × 3 × 2 = 54)
-    log.info(f"  phase6 sweep: {len(PHASE6_BODYPARTS)*len(PHASE6_CENTER_MODES)*len(PHASE6_TRIAL_GROUPS)*len(PHASE6_WINDOWS_MS)} combos")
-    n_ok = n_skip = n_err = 0
-    for bp in PHASE6_BODYPARTS:
-        for cm in PHASE6_CENTER_MODES:
-            for tg in PHASE6_TRIAL_GROUPS:
-                for w in PHASE6_WINDOWS_MS:
-                    row = _run_phase6_one(
-                        animal, date, resolver, spatial_config,
-                        tone_config, output_root, bp, cm, tg, w,
-                    )
-                    _append_manifest(row)
-                    if row["status"] == "OK":
-                        n_ok += 1
-                    elif row["status"].startswith("SKIP"):
-                        n_skip += 1
-                    else:
-                        n_err += 1
+    # ----- Category D-supplement: tongue-jaw mismatch per-session -----
+    t0 = time.perf_counter()
+    try:
+        cand_path = classify_tongue_jaw_mismatch_by_animal_date(
+            animal=animal, date=date, resolver=resolver, overwrite="force",
+        )
+        if cand_path and cand_path.exists():
+            outputs_sha[str(cand_path)] = _sha256(cand_path)
+        mismatch_figs = render_within_session_figures(
+            animal=animal, date=date, resolver=resolver, overwrite="force",
+        )
+        n_dsupp_pngs = sum(len(paths) for paths in mismatch_figs.values()) if mismatch_figs else 0
+        rt_Dsupp = time.perf_counter() - t0
+        log.info(f"  [D-supp] tongue_jaw_mismatch: {rt_Dsupp:.1f}s ({n_dsupp_pngs} PNGs)")
+    except Exception as ex:
+        anomalies.append(f"D-supp-tongue_jaw_mismatch: {ex!r}")
+        log.error(f"  [D-supp] tongue_jaw_mismatch: ERR {ex!r}")
+        return False, _build_failed_row(animal, date, session_t0, anomalies)
 
     session_rt = time.perf_counter() - session_t0
-    log.info(f"  phase6 totals: ok={n_ok} skip={n_skip} err={n_err}")
     log.info(f"  SESSION TOTAL: {session_rt:.1f}s ({session_rt/60:.1f} min)")
-    _append_manifest({
+    return True, {
         "animal": animal, "date": date.isoformat(),
-        "step": "SESSION_TOTAL", "output_path": "",
-        "runtime_seconds": f"{session_rt:.3f}",
-        "sha256": "", "status": "OK" if n_err == 0 else "PARTIAL_ERR",
-        "anomaly_notes": f"phase7a2 outputs:{len(phase7a2_rows)} phase6 ok/skip/err:{n_ok}/{n_skip}/{n_err}",
-    })
-    return n_err == 0
+        "runtime_seconds_total": f"{session_rt:.3f}",
+        "runtime_seconds_interpolation": f"{rt_B:.3f}",
+        "runtime_seconds_spatial": f"{rt_A:.3f}",
+        "runtime_seconds_pertrial_features": f"{rt_C:.3f}",
+        "runtime_seconds_tongue_angle_figures": f"{rt_D:.3f}",
+        "runtime_seconds_tongue_jaw_mismatch": f"{rt_Dsupp:.3f}",
+        "n_outputs_written": str(len(outputs_sha)),
+        "output_sha256s_json": json.dumps(outputs_sha, sort_keys=True),
+        "status": "OK" if not anomalies else "PARTIAL",
+        "anomaly_notes": "; ".join(anomalies),
+    }
+
+
+def _build_failed_row(animal: str, date: dt.date, session_t0: float, anomalies: list[str]) -> dict:
+    return {
+        "animal": animal, "date": date.isoformat(),
+        "runtime_seconds_total": f"{time.perf_counter() - session_t0:.3f}",
+        "runtime_seconds_interpolation": "",
+        "runtime_seconds_spatial": "",
+        "runtime_seconds_pertrial_features": "",
+        "runtime_seconds_tongue_angle_figures": "",
+        "runtime_seconds_tongue_jaw_mismatch": "",
+        "n_outputs_written": "0",
+        "output_sha256s_json": "{}",
+        "status": "ERR",
+        "anomaly_notes": "; ".join(anomalies),
+    }
 
 
 def main() -> int:
-    resolver = PathResolver()  # Q4.A: bare resolver; writes to MICROSCOPE production.
+    # Wipe prior manifest (this is the Addendum #1 revised schema, supersedes prior).
+    if MANIFEST_PATH.exists():
+        MANIFEST_PATH.unlink()
+        log.info(f"Wiped prior manifest at {MANIFEST_PATH}")
+
+    resolver = PathResolver()
     defaults = load_defaults()
     spatial_config = defaults["dlc_spatial"]
     tone_config = defaults["dlc_spatial_tone_aligned"]
@@ -252,7 +300,8 @@ def main() -> int:
 
     n_session_fail = 0
     for animal, date in SESSIONS:
-        ok = _run_session(animal, date, resolver, spatial_config, tone_config, output_root)
+        ok, row = _run_session(animal, date, resolver, spatial_config, tone_config, output_root)
+        _append_manifest(row)
         if not ok:
             n_session_fail += 1
             if n_session_fail >= 2:

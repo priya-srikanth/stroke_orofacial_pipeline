@@ -158,7 +158,7 @@ Task 1 produces zero commits.
 2. PS54/2025-05-03 — withhold-bearing post-stroke.
 3. PS50/2025-03-25 — post-tone-change regime sanity.
 
-**Output safety:** Q3.A (new-tree write; legacy untouched). Outputs go to `pipeline_outputs/dlc_analysis/spatial_tone_aligned/...` + `pipeline_outputs/dlc_analysis/dlc_kinematics/.../<new on-disk subdir>/...` per the post-Task-2 renamed paths.
+**Output safety:** Q3.A (new-tree write; legacy untouched). Outputs go to `pipeline_outputs/dlc_analysis/spatial_tone_aligned/...` + `pipeline_outputs/dlc_kinematics/.../<new on-disk subdir>/...` per the post-Task-2 renamed paths.
 
 **Per-session manifest:** record (animal, date, runtime_seconds, output sha256s, success/failure, anomaly notes). Aggregate at `.scratch_phase_7c1/pilot_manifest.csv`. Surface unexpected failures as STOP-and-report.
 
@@ -233,3 +233,102 @@ Task 1 produces zero commits.
 Cowork drafted this kickoff 2026-05-15 post-Phase-7b-light merge, split from a combined Phase 7c kickoff per Priya 2026-05-15 (option (a) split). Q1-Q7 default-locked; Priya can adjust at draft review or via Addendum mid-phase. Paste-ready CC handoff prompt delivered inline in Cowork chat (per `feedback_direct_doc_edits_and_paste_ready_prompts.md` workflow).
 
 **Mid-phase re-specs:** any scope changes land as sequentially-numbered Addenda at the end of this kickoff (Addendum #1, #2, …) with the "ALL OTHER LOCKS UNCHANGED" footer per `feedback_iterative_addenda_pattern.md`. Expected mid-phase Addenda candidates: Q1 pilot session set adjustment if Task 1 audit surfaces edge cases not covered by the 3 default sessions; Q3 output-safety adjustment if pilot collisions with downstream consumers surface; PathResolver scope re-open if Q4.A breaks under pilot operations.
+
+---
+
+## Addendum #1 — Task 3 pilot output scope pinned to full per-session DLC pipeline (Priya 2026-05-15, pre-Task-3)
+
+The original Task 3 prose said "Invokes DLC kinematics + spatial pipeline for the 3 pilot sessions" without pinning which output categories the driver script covers. This Addendum locks the pilot scope to **all per-session-scoped DLC output categories** (A-D below); cross-session aggregates (E) belong to Phase 7c.2.
+
+### Locked pilot output scope — Categories A-D (full per-session DLC pipeline)
+
+**A. Spatial heatmap NPZs** (Phase 6 / `dlc_spatial/tone_aligned.py`).
+- Path: `pipeline_outputs/dlc_analysis/spatial_tone_aligned/<bodypart>/<window-dir>/<animal>/heatmap_<YYYYMMDD>.npz`.
+- One NPZ per (bodypart × window-dir × trial-group) combination configured in `configs/defaults.yaml dlc_spatial_tone_aligned`.
+
+**B. Kinematics interpolated traces** (Phase 7a.2 / `dlc_kinematics/interpolation.py`).
+- `interpolated_traces/tongue/<animal>/<YYYYMMDD>.parquet`
+- `interpolated_traces/jaw/<animal>/<YYYYMMDD>.parquet`
+- QC NPZ companion if `emit_qc_bundle=True` (default per phase 7a.2 conventions; CC checks).
+
+**C. Per-trial features** (Phase 7a.3 / `dlc_kinematics/tongue_pertrial.py` + `jaw_pertrial.py`).
+- `dlc_kinematics/features/tongue/<animal>/<YYYYMMDD>.parquet`
+- `dlc_kinematics/licking_dynamics/traces/<animal>/<YYYYMMDD>.parquet`
+- `dlc_kinematics/endpoints/<animal>/<YYYYMMDD>.json` (tongue top-level endpoints)
+- `dlc_kinematics/jaw_pertrial/endpoints/<animal>/<YYYYMMDD>.json` (jaw top-level endpoints; if jaw_pertrial implements its own endpoint emission)
+
+**D. Tongue angle within-session figures** (Phase 7a.4 / `dlc_kinematics/tongue_visual.py:render_tongue_qc_figures`).
+- `dlc_kinematics/tongue_angle/within_session/<animal>/<YYYYMMDD>/` directory with the 9-PNG bundle: `qc_trials_L`, `qc_trials_R`, `first_peak_aligned`, `tone_aligned` (renamed from `reward_aligned` via 7c.1 Cat E/G), 3 phase-aligned-angle variants, `first_vs_second_peak_scatter`, `xy_by_phase`. "Tongue angle" here is the directory NAME (the phase-binning axis used in 6 of 9 panels); the bundle covers tongue position, velocity, phase relationships, and peak structure broadly.
+
+**D-supplement. Tongue-jaw mismatch per-session outputs** (Phase 7a.5 / `dlc_kinematics/tongue_jaw_mismatch.py`) — added to pilot scope per Priya 2026-05-15 (initial Addendum #1 draft undercounted Phase 7a.5 per-session surface).
+- `dlc_kinematics/tongue_jaw_mismatch/candidate_trials/<animal>/<YYYYMMDD>.parquet` — Phase 7a.5 per-session classifier output (per-trial 37-column schema, emitted by `classify_tongue_jaw_mismatch`).
+- `dlc_kinematics/tongue_jaw_mismatch/within_session/<animal>/<YYYYMMDD>/` directory hosting within-session PNG figures (Cell 55 `individualTrials2col` + `sessionOverlayGrid4x2` families, emitted by `render_within_session_figures`).
+
+**D-supplement-2. Jaw per-trial endpoints** (Phase 7a.5 / `dlc_kinematics/jaw_pertrial.py:build_jaw_pertrial`).
+- `dlc_kinematics/jaw_pertrial/endpoints/<animal>/<YYYYMMDD>.json` — per-trial jaw baseline / deflection / QC scalars.
+
+**Excluded from pilot scope: Category E — cross-session aggregates.** `dlc_kinematics/tongue_angle/cross_session/...`, `mean_sem_visual/...`, `tongue_jaw_mismatch/...`, `licking_dynamics/day_binned/...` are animal-scope or cohort-scope; running them on a 3-session pilot doesn't make sense. These belong to Phase 7c.2.
+
+### Rationale
+
+- The Task 3 wall-time deliverable (7c.2 cohort budget) requires the full per-session cost; spatial-only would undercount kinematics compute.
+- Exercising the renamed kinematics code on real cohort data catches integration bugs that pytest fixture data can't.
+- Categories A-D cover the verification axes (PS46 byte-equality on at least A + B; PS54 `n_tones` delta on A; PS50 light sanity on A-D execution).
+
+### Verification axis mapping (locked from kickoff Task 4)
+
+- **PS46/2025-03-07 byte-equality** — compare Category A spatial heatmap NPZs + Category B interpolated_traces parquets between new `spatial_tone_aligned/` + new `interpolated_traces/` paths and corresponding legacy `spatial_reward_aligned/` + legacy `interpolated_traces/` paths. Mirrors the 7b-light Task 5 sha256 comparison (tongue/jaw parquets + heatmap NPZ).
+- **PS54/2025-05-03 delta sanity** — Category A `n_tones` field on the heatmap NPZ; expected ≈ legacy `n_rewards` + 86.
+- **PS50/2025-03-25 light sanity** — confirm Categories A-D all execute without errors; spot-check plausibility of trial counts + axis ranges. No quantitative verdict required.
+
+### Manifest schema update for Task 3
+
+Per-session manifest row in `.scratch_phase_7c1/pilot_manifest.csv` records:
+- `animal`, `date`
+- `runtime_seconds_total` (start-to-end across all 4 categories)
+- `runtime_seconds_spatial`, `runtime_seconds_interpolation`, `runtime_seconds_pertrial_features`, `runtime_seconds_tongue_angle_figures`, `runtime_seconds_tongue_jaw_mismatch` (per-category breakdown — informs 7c.2 budgeting precision)
+- `n_outputs_written` (count of files written across all 4 categories)
+- `output_sha256s` (dict of relative_path → sha256 for parquet/JSON/NPZ files; PNGs excluded from sha256 since rendering can have minor non-determinism on font rasterization)
+- `success/failure` flag + `anomaly_notes`
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1 pilot session set, Q2 audit policy, Q3 output safety new-tree write, Q4 PathResolver no infrastructure change, Q5 pilot verification two-axis, Q6 7c.2 forward-pointer, Q7 legacy-tree cleanup deferred to 7c.2.)
+
+---
+
+## Addendum #2 — Finding A: Phase 8a.10.1 Task 4.5 wrote to production paths; cohort-archeology question for 7c.2 (Priya 2026-05-15, post-Task-4)
+
+CC's Task 4 verdict surfaced an unanticipated finding about the state of legacy on-disk DLC outputs on MICROSCOPE — material for both this phase's DECISIONS prose and Phase 7c.2 verification design.
+
+### Finding A — Phase 8a.10.1 Task 4.5 wrote to production paths, not scratch
+
+The kickoff Q1.A expected PS54/2025-05-03 to show a `+86 trial-event delta` between post-rename outputs and legacy `spatial_reward_aligned/` outputs (per Phase 8a.10.1 Task 4.5's report of `45 L-withholds + 41 R-withholds`). CC's Task 4 empirically observed `+0 delta across all 54 heatmap configs`. The cause: legacy PS54/2025-05-03 outputs on MICROSCOPE are **already post-Phase-8a.10.1-swap-fix**, most plausibly written by Task 4.5 itself when running the X1-β-renamed source against the post-fix Phase 2 NPZs. No truly-pre-fix legacy baseline exists on MICROSCOPE for PS54 anymore.
+
+**Implication for 7c.1 verification:** the conclusion is identical to the kickoff-expected +86 case — 7c.1 source rename is a data-layer no-op. PS54 byte-equality vs existing post-fix legacy still confirms the rename doesn't change output bytes; the +86 vs +0 difference is about what the LEGACY tree contains (post-fix already, vs the kickoff assumed truly-pre-fix), not about what the post-rename re-emit produced. Verdict stands: PASS.
+
+**Correction to a Cowork earlier inference:** an earlier Cowork investigation of `.scratch_phase_8a_10_1/task_3_supplementary.py` showed `tmp_resolver` (tempfile) usage and inferred Task 4.5 wrote to scratch. That inference was wrong — `task_3_supplementary.py` was Task 3-supplementary (Task 3 = pre/post-fix swap comparison on an excluded session via tmp_resolver), NOT Task 4.5 (DLC cascade-safety spot-check, which used bare PathResolver and wrote to production paths). The conflation came from filename similarity.
+
+### Implication for Phase 7c.2 verification design
+
+**Mixed cohort state on legacy paths.** Some sessions' legacy `spatial_reward_aligned/` outputs are already post-fix (the Task 4.5 spot-check sessions: PS46/2025-03-07, PS54/2025-05-03, PS48/2025-03-14 — though PS48 was partial per F-P-4); other ~352 sessions are still genuinely pre-fix. 7c.2 verification design must accommodate both:
+
+- **Sessions touched by Task 4.5 (PS46, PS54, partial PS48):** legacy outputs are already post-fix. 7c.2 cohort re-emit produces byte-identical-to-legacy outputs at new paths. Verdict: byte-equality vs legacy (modulo NPZ-key rename).
+- **Sessions NOT touched by Task 4.5 (~352 others):** legacy outputs are genuinely pre-fix. 7c.2 cohort re-emit produces post-fix outputs showing the swap-fix delta (the +86-pattern for withhold-bearing post-stroke sessions; byte-equal for bilateral/no-withhold sessions). Verdict: directional shift sanity per the parity strategy already drafted.
+
+**Recommended 7c.2 Task 1 audit addition:** enumerate which Cohort A + Cohort B sessions have legacy outputs that are post-Task-4.5-fix vs still pre-fix. Cheapest method: check `mtime` of legacy `spatial_reward_aligned/<bodypart>/<window>/<animal>/heatmap_<date>.npz` files — Task 4.5 writes have mtime around the Phase 8a.10.1 close date (2026-05-14), pre-fix writes have earlier mtimes. Produces a per-session "legacy is post-fix yes/no" classification that feeds the 7c.2 verification design.
+
+### Pilot wall-time data for 7c.2 budgeting (locked from Task 3 manifest)
+
+- **~21s per session** for Phase 7a.2 (interpolation) + Phase 6 (spatial heatmap × 54 configs) combined.
+- Extrapolation across the 4 pilot output categories (A spatial + B interpolation + C per-trial features + D tongue angle + D-supplement tongue-jaw mismatch + D-supplement-2 jaw pertrial): per-session ~60-120s (rough, depends on per-category mix).
+- **Full cohort budget estimate: 6-12 hr operational compute for ~352 sessions × full per-session DLC pipeline.**
+- Tractable as a single 7c.2 phase — no need to split further by animal or by category. Overnight runs sufficient.
+
+### Implication for F-P-4 (PS48 Pattern A pre-existing gaps)
+
+Phase 8a.10.1 Task 4.5 reported PS48/2025-03-14 as "2 of 5 sites runnable, the other 3 fail on pre-existing upstream Phase 7a gaps unrelated to swap fix." If Task 4.5 wrote partial post-fix outputs to production paths for PS48 (2 sites' worth), those production paths are in an inconsistent state — partly post-fix, partly stale-pre-fix-or-empty. **Phase 7-pre-multi-half-dlc (F-P-5)** needs to be aware of this when handling PS48 Pattern A merge wiring; its Task 1 audit should classify PS48's per-site legacy state explicitly.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1-Q7 + Addendum #1 pilot-scope additions all stand; Finding A re-interprets the PS54 verification axis but doesn't change the verdict.)
