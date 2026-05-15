@@ -5965,3 +5965,36 @@ All 4 gates PASS. No hot-fix required; no Q3.B revoke / Phase 7b cascading requi
 
 ---
 
+## Chore — YAML cohort-gap policy lock (F-P-6 discharge)
+
+**Date:** 2026-05-14
+**Tag on merge:** `vchore-yaml-cohort-gap-closure` (if Priya confirms at PR-merge)
+**Branch:** `chore/yaml-cohort-gap-closure`
+
+**Scope.** Discharge F-P-6 (111-session — actually 69 unique-date — YAML-cohort gap chore, forward-pointer from Phase 8a.10.1 close). Re-scoped mid-chore via kickoff Addendum #1: original kickoff framed the chore as per-session inclusion adjudication; correct framing per Phase 8a.10 Decision 6 path (b) is policy lock + audit-trail documentation, no YAML semantic edits.
+
+**What landed.** Three commits on `chore/yaml-cohort-gap-closure`:
+
+1. `docs(yaml-cohort-gap kickoff)`: kickoff doc + Addendum #1 (re-scope override).
+2. `chore(yaml-cohort-gap)`: [`configs/animals.yaml`](../configs/animals.yaml) header comment block (cohort-boundary policy) + 8 per-animal inline `sessions:` comments. No semantic changes.
+3. `docs(yaml-cohort-gap)`: [`docs/DECISIONS.md`](DECISIONS.md) entry (this chore's close record) + this `MIGRATION_LOG` entry.
+
+**Sessions adjudicated.** 69 unique-date gaps across PS46-PS55 (Cohort A) + 0 gaps for Cohort B (`secondary_spout_sessions:` registry confirmed complete by CC's Task 1 audit). All 69 documented as out-of-scope-by-design; YAML ranges unchanged. Per-animal gap counts: PS46=10, PS47=9, PS48=9, PS49=12, PS50=20, PS51=3, PS54=3, PS55=3. The 111-figure from F-P-6 inherited the legacy `report.json` key-count (suffixed `a`/`b` halves counted as separate keys); the 69-figure is per-(animal, date) and matches the consolidated pipeline session abstraction.
+
+**Intentional behavior differences vs legacy.** None. Pipeline behavior is unchanged (no YAML semantic edits). Legacy `report.json` remains a historical reference; YAML stays the authoritative cohort definition. The new breadcrumb comments are documentation-only.
+
+**Exit criteria met.**
+
+- [x] Task 1 diff audit produced [.scratch_chore_yaml_cohort_gap/gap_audit_proposal.md](../.scratch_chore_yaml_cohort_gap/gap_audit_proposal.md) + `gap_audit_raw.json` (uncommitted audit-trail).
+- [x] Task 3 YAML edits comment-only (verified by `git diff configs/animals.yaml`; only `+` lines).
+- [x] Task 4 diff re-verification confirms unchanged 69-session gap count post-edit ([.scratch_chore_yaml_cohort_gap/post_close_verification.md](../.scratch_chore_yaml_cohort_gap/post_close_verification.md), uncommitted).
+- [x] `pytest -q tests/test_animals.py` → 53 passed (YAML load tests unchanged).
+- [x] `load_animals()` returns 8 animals with `session_start` / `session_end` unchanged for each.
+- [x] DECISIONS 2026-05-14 chore entry + this MIGRATION_LOG entry.
+
+**Forward-pointers queued.** None from this chore. Phase 7b-light is the next item per memory `project_phase_7b_light_ordering.md`.
+
+**Tag:** `vchore-yaml-cohort-gap-closure` on the merge commit (Priya confirms at PR-merge; if declined, log as untagged chore).
+
+---
+

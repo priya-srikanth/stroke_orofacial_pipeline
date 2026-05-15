@@ -60,9 +60,23 @@
 # rel_day=0 (last pre-stroke session); see DECISIONS.md Phase 7a.4
 # entry. Default for any future animal is 1 (per-day bins).
 
+# Cohort-boundary policy (F-P-6 close, vchore-yaml-cohort-gap-closure):
+# Per-animal `sessions.start`/`sessions.end` ranges reflect experimenter
+# cohort-definition judgment. Sessions in the legacy
+# `basic_behavior_analysis3/<animal>/report.json[latency_bySession]` that
+# fall OUTSIDE these ranges are out-of-scope by intent — they include
+# pre-cohort-launch baseline acquisition (animal-learning-the-task
+# sessions), pre-tone-change retraining (PS50), and other
+# experimenter-excluded contexts that are not scientifically equivalent
+# to the criterion-cohort data. The 69-session out-of-scope set is
+# documented in scratch artifacts at
+# `.scratch_chore_yaml_cohort_gap/gap_audit_proposal.md`
+# (audit-trail; not consumed by the pipeline). See DECISIONS.md
+# 2026-05-14 chore entry for full rationale.
+
 PS46:
   stroke_date: 2025-03-13
-  sessions:
+  sessions:  # cohort-boundary policy: see header comment + DECISIONS
     start: 2025-03-07
     end: 2025-04-06
   exclusions: []
@@ -90,7 +104,7 @@ PS46:
 
 PS47:
   stroke_date: 2025-03-13
-  sessions:
+  sessions:  # cohort-boundary policy: see header comment + DECISIONS
     start: 2025-03-07
     end: 2025-04-06
   exclusions: []
@@ -115,7 +129,7 @@ PS47:
 
 PS48:
   stroke_date: 2025-03-13
-  sessions:
+  sessions:  # cohort-boundary policy: see header comment + DECISIONS
     start: 2025-03-07
     end: 2025-04-06
   exclusions: []
@@ -140,7 +154,7 @@ PS48:
 
 PS49:
   stroke_date: 2025-03-17
-  sessions:
+  sessions:  # cohort-boundary policy: see header comment + DECISIONS
     start: 2025-03-10
     end: 2025-04-06
   exclusions: []
@@ -165,7 +179,7 @@ PS49:
 
 PS50:
   stroke_date: 2025-03-23
-  sessions:
+  sessions:  # cohort-boundary policy: see header comment + DECISIONS
     start: 2025-03-19
     end: 2025-04-06
   exclusions: []
@@ -190,7 +204,7 @@ PS50:
 
 PS51:
   stroke_date: 2025-04-29
-  sessions:
+  sessions:  # cohort-boundary policy: see header comment + DECISIONS
     start: 2025-04-21
     end: 2025-07-09
   exclusions:
@@ -221,7 +235,7 @@ PS51:
 
 PS54:
   stroke_date: 2025-04-30
-  sessions:
+  sessions:  # cohort-boundary policy: see header comment + DECISIONS
     start: 2025-04-21
     end: 2025-07-09
   exclusions:
@@ -249,7 +263,7 @@ PS54:
 
 PS55:
   stroke_date: 2025-04-30
-  sessions:
+  sessions:  # cohort-boundary policy: see header comment + DECISIONS
     start: 2025-04-21
     end: 2025-07-09
   exclusions:
