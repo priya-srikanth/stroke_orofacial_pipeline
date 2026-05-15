@@ -89,7 +89,7 @@ def patched_runner(monkeypatch, tmp_path):
     monkeypatch.setattr(runner, "load_animals", lambda: animals)
     monkeypatch.setattr(
         runner, "load_defaults",
-        lambda: {"dlc_spatial": {}, "dlc_spatial_reward_aligned": {}},
+        lambda: {"dlc_spatial": {}, "dlc_spatial_tone_aligned": {}},
     )
 
     # Build a single manifest for the test animal/date.

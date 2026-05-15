@@ -30,7 +30,7 @@ phase) completes the source-side narrative rename:
     :mod:`stroke_orofacial.dlc_spatial.window_selector`).
   - Local variables: ``reward_ws`` → ``tone_ws``,
     ``reward_ws_samples`` → ``tone_ws_samples``, etc.
-  - YAML internal config key: ``dlc_spatial_reward_aligned`` →
+  - YAML internal config key: ``dlc_spatial_tone_aligned`` →
     ``dlc_spatial_tone_aligned`` (Q7 hard rename; no compat shim).
 
 Per Phase 7b-light Addendum #1 (bifurcation rule), on-disk-layout
@@ -312,7 +312,7 @@ def build_tone_aligned_analysis(
         The ``dlc_spatial`` section from defaults.yaml.
     tone_config : dict
         The ``dlc_spatial_tone_aligned`` section from defaults.yaml
-        (renamed from ``dlc_spatial_reward_aligned`` in Phase 7b-light
+        (renamed from ``dlc_spatial_tone_aligned`` in Phase 7b-light
         per Q7 hard rename).
     wavesurfer_sides_match_mouse_sides : bool, optional
         Per-animal rig-orientation flag from

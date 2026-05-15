@@ -466,14 +466,14 @@ def _plot_tone_aligned(
     Addendum #4): the bundle's per-trial array spans the full
     ``plot_win_ms`` (default ``[-180, 8000]`` ms) but the rendered
     x-axis is clipped to
-    ``dlc_kinematics.tongue_visual.reward_aligned_display_window_ms``
+    ``dlc_kinematics.tongue_visual.tone_aligned_display_window_ms``
     (default ``[-180, 1000]`` ms) so per-session and cross-session
     reward-aligned plots share the same x-axis byte-for-byte.
     """
     visual = params["dlc_kinematics"]["tongue_visual"]
     side_colors = visual["side_colors"]
     display_win_ms = tuple(
-        visual.get("reward_aligned_display_window_ms", [-180.0, 1000.0])
+        visual.get("tone_aligned_display_window_ms", [-180.0, 1000.0])
     )
     df_trials = bundle.df_trials
 

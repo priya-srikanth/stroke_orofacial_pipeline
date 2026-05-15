@@ -1241,12 +1241,12 @@ def _plot_tone_aligned_session_overlays(
     cohort: TongueAngleCohortAggregates, *, params: dict[str, Any],
 ) -> Figure:
     """Per-mouse session-overlay plot for ``reward_aligned``. X-axis
-    clipped to ``dlc_kinematics.tongue_visual.reward_aligned_display_window_ms``
+    clipped to ``dlc_kinematics.tongue_visual.tone_aligned_display_window_ms``
     (default ``[-180, 1000]`` ms) per Addendum #4 — same display
     window as the per-session reward-aligned plot."""
     visual_block = params["dlc_kinematics"]["tongue_visual"]
     display_win = tuple(
-        visual_block.get("reward_aligned_display_window_ms", [-180.0, 1000.0])
+        visual_block.get("tone_aligned_display_window_ms", [-180.0, 1000.0])
     )
     return _plot_time_series_session_overlays(
         cohort,
@@ -1266,7 +1266,7 @@ def _plot_tone_aligned_binned_overlays(
     """
     visual_block = params["dlc_kinematics"]["tongue_visual"]
     display_win = tuple(
-        visual_block.get("reward_aligned_display_window_ms", [-180.0, 1000.0])
+        visual_block.get("tone_aligned_display_window_ms", [-180.0, 1000.0])
     )
     return _plot_time_series_binned_overlays(
         cohort,
@@ -1370,7 +1370,7 @@ def build_tone_aligned_cohort(
     Phase 7a.4-cross-session-angle Cross-session #3 (2026-05-04):
     consumes ``angle_snip`` (per-frame raw angle, per Addendum #8);
     x-axis clipped to
-    ``dlc_kinematics.tongue_visual.reward_aligned_display_window_ms``
+    ``dlc_kinematics.tongue_visual.tone_aligned_display_window_ms``
     (default ``[-180, 1000]`` ms; per Addendum #4) — same display
     window as the per-session reward-aligned plot for byte-aligned
     visual identity.

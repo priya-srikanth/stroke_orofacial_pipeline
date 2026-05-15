@@ -171,7 +171,7 @@ dlc_spatial:
   # Per-(bodypart, center_mode) axis limits.
   # Derived from PS46/20250307 data ranges with ~25% margin.
   # Limits set to null are not yet validated — Phase 6+ will fill in
-  # when reward-aligned analyses are tested on those combinations.
+  # when tone-aligned analyses are tested on those combinations.
   bodyparts:
     nose:
       likelihood_threshold: 0.80
@@ -298,12 +298,16 @@ dlc_spatial:
       likelihood_threshold: 0.80
       center_mode: spout_midpoint
 
-# ---- DLC spatial (reward-aligned) ----
-# Per-bodypart reward-aligned config. Tongue has legacy values from
-# 20260323 cell 16. All others are sanity-check-only defaults —
-# first reward-aligned runs require visual inspection.
+# ---- DLC spatial (tone-aligned) ----
+# Per-bodypart tone-aligned config. Tongue has legacy values from
+# 20260323 cell 16 (legacy filename preserved as historical citation).
+# All others are sanity-check-only defaults — first tone-aligned runs
+# require visual inspection. (Phase 7b-light: YAML key renamed from
+# ``dlc_spatial_reward_aligned`` per Q7 hard rename; on-disk output
+# subdir `spatial_reward_aligned/` PRESERVED per Addendum #1, deferred
+# to Phase 7c-dlc-cohort-reemit.)
 
-dlc_spatial_reward_aligned:
+dlc_spatial_tone_aligned:
   reward_windows_ms:
     - [-500, 5000]
     - [-100, 1000]
@@ -616,12 +620,12 @@ dlc_kinematics:
     #
     # Phase 7a.4-cross-session-angle (2026-05-04, Addendum #4): widened
     # plot_win_ms left edge from 0.0 to -180.0 to share the per-session
-    # and cross-session reward-aligned plot window with the
+    # and cross-session tone-aligned plot window with the
     # first_peak_align_win_ms left edge for visual symmetry across both
-    # pre-reward families. Display clipping to the narrow [-180, 1000]
-    # ms reward-aligned view is applied at render time via
-    # reward_aligned_display_window_ms below; the bundle data itself
-    # extends to 8000 ms so qc_trials retains its full post-reward
+    # pre-tone families. Display clipping to the narrow [-180, 1000]
+    # ms tone-aligned view is applied at render time via
+    # tone_aligned_display_window_ms below; the bundle data itself
+    # extends to 8000 ms so qc_trials retains its full post-tone
     # context. Detector + first-peak-align windows are independent of
     # plot_win_ms and unaffected.
     bundle:
@@ -629,14 +633,14 @@ dlc_kinematics:
       detect_win_ms: [70.0, 3000.0]
       first_peak_align_win_ms: [-180.0, 1000.0]
 
-    # Reward-aligned display window (Phase 7a.4-cross-session-angle,
+    # Tone-aligned display window (Phase 7a.4-cross-session-angle,
     # 2026-05-04, Addendum #4). Per-session ``_plot_tone_aligned``
-    # and the cross-session reward-aligned plots both clip the
+    # and the cross-session tone-aligned plots both clip the
     # rendered x-axis to this range despite the underlying bundle's
-    # wider plot_win_ms. Single source of truth for the reward
+    # wider plot_win_ms. Single source of truth for the tone-aligned
     # display window — both per-session and cross-session readers
     # consume this knob.
-    reward_aligned_display_window_ms: [-180.0, 1000.0]
+    tone_aligned_display_window_ms: [-180.0, 1000.0]
 
     # Number of consecutive licks shown in the parameterized
     # first-N-licks phase-aligned-angle plot (Phase

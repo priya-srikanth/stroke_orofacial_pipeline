@@ -335,7 +335,7 @@ class TestRewardAlignedRenderers:
 
     def test_session_overlays_clips_to_display_window(self):
         """X-axis must be clipped to
-        ``reward_aligned_display_window_ms`` regardless of the
+        ``tone_aligned_display_window_ms`` regardless of the
         bundle's wider data extent. Default = [-180, 1000] ms."""
         from stroke_orofacial.config_loader import load_defaults
         from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
@@ -469,7 +469,7 @@ class TestRewardAlignedRenderers:
         plt.close(fig)
 
     def test_display_window_override_propagates(self):
-        """Overriding ``reward_aligned_display_window_ms`` in params
+        """Overriding ``tone_aligned_display_window_ms`` in params
         flows through to the cohort renderer."""
         from stroke_orofacial.config_loader import load_defaults
         from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
@@ -478,7 +478,7 @@ class TestRewardAlignedRenderers:
         cohort = _make_synthetic_cohort_reward_aligned()
         params = load_defaults()
         params["dlc_kinematics"]["tongue_visual"][
-            "reward_aligned_display_window_ms"
+            "tone_aligned_display_window_ms"
         ] = [-100.0, 500.0]
         fig = _plot_tone_aligned_session_overlays(cohort, params=params)
         for ax in fig.axes[:2]:

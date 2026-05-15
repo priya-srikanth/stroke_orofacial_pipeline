@@ -212,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
     animals_config = load_animals()
     defaults = load_defaults()
     spatial_config = defaults["dlc_spatial"]
-    tone_config = defaults["dlc_spatial_reward_aligned"]
+    tone_config = defaults["dlc_spatial_tone_aligned"]
     output_root = resolver.pipeline_outputs("dlc_analysis") / "spatial_reward_aligned"
 
     animal_ids = args.animals if args.animals is not None else list(animals_config.keys())

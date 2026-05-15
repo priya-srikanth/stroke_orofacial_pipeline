@@ -208,7 +208,7 @@ class TestIntegrationRewardAligned:
         result = build_tone_aligned_analysis_by_animal_date(
             "PS46", "20250307", "tongue", "nose", "all",
             (-500, 5000), resolver,
-            defaults["dlc_spatial"], defaults["dlc_spatial_reward_aligned"],
+            defaults["dlc_spatial"], defaults["dlc_spatial_tone_aligned"],
         )
         assert result is not None
         assert result["n_rewards"] > 0
@@ -233,7 +233,7 @@ class TestIntegrationRewardAligned:
             r = build_tone_aligned_analysis_by_animal_date(
                 "PS46", "20250307", "tongue", "nose", tg,
                 (-500, 5000), resolver,
-                defaults["dlc_spatial"], defaults["dlc_spatial_reward_aligned"],
+                defaults["dlc_spatial"], defaults["dlc_spatial_tone_aligned"],
             )
             counts[tg] = r["n_rewards"] if r else 0
 
@@ -273,7 +273,7 @@ class TestIntegrationRewardAlignedWithManifest:
         result = build_tone_aligned_analysis(
             manifest, "tongue", "nose", "all", (-500, 5000),
             resolver, defaults["dlc_spatial"],
-            defaults["dlc_spatial_reward_aligned"],
+            defaults["dlc_spatial_tone_aligned"],
         )
         assert result is not None
         assert result["n_rewards"] > 0

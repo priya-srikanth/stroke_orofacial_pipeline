@@ -489,7 +489,7 @@ class TestPlotFamilies:
     def test_reward_aligned_clips_x_axis_to_display_window(self):
         """Phase 7a.4-cross-session-angle Addendum #4 (2026-05-04):
         ``_plot_tone_aligned`` clips the x-axis to
-        ``dlc_kinematics.tongue_visual.reward_aligned_display_window_ms``
+        ``dlc_kinematics.tongue_visual.tone_aligned_display_window_ms``
         regardless of the bundle's wider ``plot_win_ms``. Locks the
         contract that per-session and cross-session reward-aligned
         plots share the same x-axis byte-for-byte.
@@ -502,7 +502,7 @@ class TestPlotFamilies:
         params = load_defaults()
         display_win = tuple(
             params["dlc_kinematics"]["tongue_visual"][
-                "reward_aligned_display_window_ms"
+                "tone_aligned_display_window_ms"
             ]
         )
         fig = _plot_tone_aligned(bundle, params=params)
@@ -524,7 +524,7 @@ class TestPlotFamilies:
         # default so any leakage from auto-fit is visible.
         params = load_defaults()
         params["dlc_kinematics"]["tongue_visual"][
-            "reward_aligned_display_window_ms"
+            "tone_aligned_display_window_ms"
         ] = [-100.0, 500.0]
         fig = _plot_tone_aligned(bundle, params=params)
         ax = fig.axes[0]
