@@ -286,11 +286,11 @@ Task 1 produces zero commits on the feature branch. Branch created in Task 2.
 
 **Steps:**
 
-1. **Pre-rename baseline.** Before Task 2 lands (or via `git stash` / branch checkout), run DLC kinematics + spatial pipeline on the 3 sessions (Q4-locked set: PS46/2025-03-07, PS54/2025-05-03, PS48/2025-03-14). Snapshot outputs at `.scratch_phase_7b_light/pre_rename_baselines/`.
+1. **Pre-rename baseline.** Via `git stash` (or by checking out `main` locally in a sibling worktree) to restore pre-7b-light source state, run DLC kinematics + spatial pipeline on the 3 sessions (Q4-locked set: PS46/2025-03-07, PS54/2025-05-03, PS48/2025-03-14). Write outputs to `.scratch_phase_7b_light/spot_check/<animal>_<date>/pre_rename/`.
 
-   **Alternative (simpler):** the Phase 8a.10.1 close output tree at `pipeline_outputs/dlc_analysis/` already contains pre-7b-light outputs (because no DLC re-emit happened post-8a.10.1). Use that tree as the pre-rename baseline; no separate snapshot needed.
+   **NOTE — invalid alternative:** an earlier draft of this task suggested using existing `pipeline_outputs/dlc_analysis/` outputs as the pre-rename baseline. That alternative is **invalid**: existing on-disk DLC outputs were generated from pre-Phase-8a.10.1 Phase 2 NPZs (swap-buggy), while a post-rename re-run consumes post-8a.10.1 Phase 2 NPZs (corrected). Even with a perfect no-op rename, post-rename outputs would differ from existing on-disk outputs because Phase 2 inputs changed underneath — the comparison would mix swap-fix effects with rename effects and couldn't isolate the rename verdict. Always snapshot the pre-rename baseline by running pre-rename code against the same (post-8a.10.1) Phase 2 inputs the post-rename run will use.
 
-2. **Post-rename re-run.** After Task 4 closes, re-run the same DLC pipeline on the same 3 sessions, writing to a parallel scratch tree.
+2. **Post-rename re-run.** Restore 7b-light branch state, re-run the same DLC pipeline on the same 3 sessions, writing outputs to `.scratch_phase_7b_light/spot_check/<animal>_<date>/post_rename/`. Spot-check outputs go to the scratch tree, **not** to `pipeline_outputs/dlc_analysis/` — writing to production would inadvertently produce a partial Phase 7c cohort re-emit.
 
 3. **Numeric sanity check.** For each session, `numpy.testing.assert_array_equal` (or `assert_allclose(atol=1e-12)` if any non-determinism) on the parquet output arrays. PASS = byte-equality; FAIL = STOP-and-report.
 
@@ -449,3 +449,42 @@ This bifurcation creates intentional local inconsistency: inside `dlc_spatial/to
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1 scope, Q2 Case-2 discrimination, Q3 test sync, Q4 spot-check sessions, Q5 chore-first ordering [already discharged], Q6 stub deletion, Q7 YAML internal config keys [those rename normally — distinct from on-disk-output schema].)
+
+---
+
+## Addendum #2 — Task 5 spot-check scope reduced to PS46/2025-03-07 only (Priya 2026-05-14, post-Task-5 entry)
+
+CC entered Task 5 and surfaced a real operational constraint that wasn't anticipated when Task 5 was drafted: `PathResolver(output_root=...)` routes BOTH reads AND writes through the override. Pipeline modules like `build_tone_aligned_analysis` read Phase 4 centered parquets via `resolver.pipeline_outputs("dlc_analysis") / centered_<mode> / animal`. An `output_root` override to `.scratch_phase_7b_light/...` makes the build function unable to find the centered parquets (which live on MICROSCOPE). The kickoff Task 5 spec's `.scratch_phase_7b_light/spot_check/` write target is unreachable without either (a) symlink-staging the production inputs into the scratch tree or (b) extending PathResolver to separate read/write roots.
+
+### Re-scope — Option 3 adopted (eyeball-only on PS46/2025-03-07)
+
+Three options weighed:
+
+- **Option 1 — Full strict path:** symlink-stage centered parquets + Phase 2 NPZs + alignment templates into a scratch tree for all 3 sessions; run pre-rename + post-rename pipelines into the staged tree; byte-compare. ~3-6 hours operational. Most rigorous.
+- **Option 2 — Skip session-level spot-check; pytest 1417/39/0 IS the gate.** Bifurcation guarantee + pytest gate provide pre-hoc evidence renames are no-ops at the data layer. No empirical end-to-end confirmation on real cohort data.
+- **Option 3 — Eyeball-only on PS46/2025-03-07.** Run notebook 12 + cohort posts post-rename on PS46 only. Compare against existing on-disk `pipeline_outputs/dlc_analysis/` outputs — valid for PS46 because Phase 8a.10.1 Task 4.5 verified PS46's baseline pool was byte-identical pre/post swap fix (bilateral session, no withholds — swap fix is a no-op for synchronous events).
+
+**LOCKED — Option 3.** Empirical end-to-end confirmation on PS46/2025-03-07; PS54/PS48 verification deferred per the rationale below.
+
+### Rationale — Why PS46/2025-03-07 alone is sufficient
+
+PS46/2025-03-07 is a **clean comparison case** for 7b-light's rename verdict specifically:
+
+- Bilateral / no-withhold session — Phase 8a.10.1's swap fix produced byte-identical DLC outputs (Task 4.5 verified: baseline pool size 96 pre and post).
+- Existing on-disk DLC outputs at this session are therefore valid pre-rename baselines (they're swap-fix-invariant + pre-7b-light-rename).
+- A post-rename DLC run on PS46 can be byte-compared against existing on-disk outputs without contamination from the Phase 8a.10.1 swap-fix delta.
+- Avoids the PathResolver read-routing complication entirely: run with bare `PathResolver()`, write to scratch via the sentinel-suffix workaround if needed, byte-compare to existing on-disk PS46 outputs.
+
+### Residual scope reduction — what 7b-light does NOT verify (and why that's acceptable)
+
+- **PS54/2025-05-03 NOT spot-checked in 7b-light.** Phase 8a.10.1 Task 4.5 already verified PS54's cascade safety under the X1-β surgical rename (baseline pool grew by exactly 86 events = 45 L-withholds + 41 R-withholds — predicted swap-fix outcome). 7b-light extends the X1-β rename to docstrings/local variables/comments per the Addendum #1 bifurcation rule; that's strictly weaker than the X1-β function-call boundary rename Task 4.5 already verified. PS54's verdict inherits.
+- **PS48/2025-03-14 NOT spot-checked in 7b-light.** Phase 8a.10.1 Task 4.5 surfaced F-P-4 (PS48 Pattern A pre-existing infrastructure gaps: missing `interpolated_traces/tongue/PS48/20250314.parquet` + empty `SessionManifest.dlc_h5_files` for the multi-half merge pattern). Those gaps are upstream of 7b-light's rename scope; running the spot-check would re-encounter them without producing rename-relevant signal. Pattern A re-verification belongs to **Phase 7-pre-multi-half-dlc (F-P-5)**.
+- The 3-session original spec is scientifically narrowed to 1 session on the strength of Addendum #1's bifurcation guarantee + 1417/39/0 pytest gate + Phase 8a.10.1's already-discharged Task 4.5 verdict for the other two.
+
+### Residual risk
+
+Low. The bifurcation rule + pytest pass + Task 4.5's prior verdict combined provide strong pre-hoc evidence that 7b-light's deeper rename is a no-op at the output-data layer. PS46's empirical PASS adds end-to-end execution confirmation on real cohort data. Phase 7c-dlc-cohort-reemit provides cohort-wide byte-equality verdict against post-rename code as a natural consequence of its re-emit step — so the comprehensive cohort verdict happens there, not here.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1-Q7 locks above; Addendum #1 bifurcation rule applies to Task 5's post-rename spot-check run.)
