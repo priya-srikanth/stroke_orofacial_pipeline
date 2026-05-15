@@ -1,7 +1,7 @@
 """Standalone runner that reproduces notebook 12's reward-aligned emit loop.
 
 Phase 6.8a addition. Notebook 12
-(``notebooks/12_dlc_spatial_reward_aligned.ipynb``) is the interactive
+(``notebooks/12_dlc_spatial_tone_aligned.ipynb``) is the interactive
 entry point for the DLC reward-aligned heatmap + NPZ emit; this script
 is the non-interactive equivalent so the first Phase-6 emit can run
 unattended on a headless machine (e.g. the Windows box while Priya's
