@@ -61,7 +61,7 @@ _FILL_METHOD_BASELINE: int = 3
 # callers read it from ``alignment.fps_cam``; this is the fallback.
 _DEFAULT_FPS: float = 250.0
 
-# Post-reward window for the baseline-pool mask. Locked at legacy values;
+# Post-tone window for the baseline-pool mask. Locked at legacy values;
 # not a YAML knob because the cohort's legacy NPZs were computed with
 # these exact bounds.
 _BASELINE_POST_WIN_MS: tuple[float, float] = (0.0, 5000.0)
@@ -128,8 +128,11 @@ class InterpolationResult:
     # wavesurfer_sides_match_mouse_sides`` so the writer can emit the
     # v6.8 parquet metadata without re-looking-up AnimalInfo.
     wavesurfer_sides_match_mouse_sides: bool = False
-    # Cam-frame reward centers used for the baseline pool — kept for the
-    # optional QC NPZ sidecar only.
+    # Cam-frame tone-onset centers used for the baseline pool — kept for
+    # the optional QC NPZ sidecar only. Dataclass field name + NPZ key
+    # ``reward_centers_cam`` PRESERVED per Phase 7b-light Addendum #1
+    # (on-disk contract; Phase 7c-dlc-cohort-reemit will rename in
+    # lockstep with cohort regeneration).
     reward_centers_cam: np.ndarray = field(default_factory=lambda: np.array([]))
 
 
@@ -349,23 +352,24 @@ def _fill_nan_with(arr: np.ndarray, fill_value: float) -> np.ndarray:
     return out
 
 
-def _build_reward_aligned_pool_mask(
+def _build_tone_aligned_pool_mask(
     n_frames: int,
-    reward_centers_float: np.ndarray,
+    tone_centers_float: np.ndarray,
     fps: float,
     win_ms: tuple[float, float] = _BASELINE_POST_WIN_MS,
 ) -> np.ndarray:
-    """Boolean mask: frames within ``win_ms`` of any reward center.
+    """Boolean mask: frames within ``win_ms`` of any tone-onset center.
 
-    Uses rounded reward-center frame indices (OR'ed per-reward windows),
-    matching the vendored ``_build_reward_aligned_pool_mask`` byte-for-byte.
+    Uses rounded tone-onset frame indices (OR'ed per-tone windows),
+    matching the vendored ``_build_reward_aligned_pool_mask`` byte-for-byte
+    (legacy vendored helper retains its pre-Case-2 name as a citation).
     """
     w0_ms, w1_ms = float(win_ms[0]), float(win_ms[1])
     if w1_ms < w0_ms:
         raise ValueError(f"win_ms must be (start, end) with end>=start; got {win_ms}")
     w0_f = int(np.floor((w0_ms / 1000.0) * fps))
     w1_f = int(np.ceil((w1_ms / 1000.0) * fps))
-    centers_i = np.round(reward_centers_float).astype(int)
+    centers_i = np.round(tone_centers_float).astype(int)
     centers_i = centers_i[(centers_i >= 0) & (centers_i < n_frames)]
     mask = np.zeros(n_frames, dtype=bool)
     for c in centers_i:
@@ -501,16 +505,17 @@ def _load_centered_df(
     return df
 
 
-def _load_reward_centers_cam(
+def _load_tone_centers_cam(
     manifest: SessionManifest,
     resolver: PathResolver,
 ) -> np.ndarray:
-    """Return the cam-frame union of mouse-L+R reward centers.
+    """Return the cam-frame union of mouse-L+R tone-onset centers.
 
     Uses the consolidated Phase 2 licks NPZ (post-re-emit, mouse-frame,
     stamped) + cam2 alignment template. Labels are discarded — the
-    baseline pool only needs the SET of reward centers, and that set is
-    invariant to the wavesurfer↔mouse-frame flip applied to labels.
+    baseline pool only needs the SET of tone-onset centers, and that
+    set is invariant to the wavesurfer↔mouse-frame flip applied to
+    labels.
     """
     from stroke_orofacial.dlc_spatial.tone_aligned import load_tone_events
 
@@ -529,20 +534,20 @@ def _load_reward_centers_cam(
         )
 
     # v6.8 boundary-layer invariance: ``trial_group="all"`` returns the
-    # union of mouse-L and mouse-R reward WS indices. The legacy cells
-    # (pre-v6.8, wavesurfer-frame) concatenate Reward_R + Reward_L (the
-    # experimenter-labeled sides); the consolidated Phase 2 NPZ (post-
-    # v6.8, mouse-frame) concatenates mouse-L + mouse-R. The UNION is
-    # set-identical across the L/R flip — baseline pool-mask is
-    # bit-identical regardless of which side each label sits on.
-    # X1-β: function rename to load_tone_events. Local variable
-    # `reward_ws` left as-is — its rename + the "concatenate Reward_R
-    # + Reward_L" comment cleanup belong to Phase 7b's pass per Q3.B.
-    reward_ws = load_tone_events(
+    # union of mouse-L and mouse-R tone-onset WS indices. The legacy
+    # cells (pre-v6.8, wavesurfer-frame) concatenate ``Reward_R`` +
+    # ``Reward_L`` NPZ keys (the experimenter-labeled sides; legacy
+    # NPZ-key citations preserved); the consolidated Phase 2 NPZ
+    # (post-v6.8, mouse-frame; post-Phase-8a.10.1 swap-fix carries
+    # tone-onset content under ``Tone_<side>`` keys) concatenates
+    # mouse-L + mouse-R. The UNION is set-identical across the L/R
+    # flip — baseline pool-mask is bit-identical regardless of which
+    # side each label sits on.
+    tone_ws = load_tone_events(
         licks_path, trial_group="all",
         wavesurfer_sides_match_mouse_sides=manifest.wavesurfer_sides_match_mouse_sides,
     )
-    if len(reward_ws) == 0:
+    if len(tone_ws) == 0:
         return np.array([], dtype=float)
 
     align_path = manifest.alignment_template
@@ -558,7 +563,7 @@ def _load_reward_centers_cam(
     aln = np.load(str(align_path), allow_pickle=False)
     sig_camIdx__idx_ws = aln["sig_camIdx__idx_ws"]
 
-    ws_idx = np.asarray(reward_ws, dtype=np.int64)
+    ws_idx = np.asarray(tone_ws, dtype=np.int64)
     ws_idx = ws_idx[(ws_idx >= 0) & (ws_idx < len(sig_camIdx__idx_ws))]
     fr = sig_camIdx__idx_ws[ws_idx].astype(float)
     return fr[np.isfinite(fr)]
@@ -652,9 +657,9 @@ def _interpolate_bodypart_core(
     ).astype(np.int8)
     is_interp_fill = fill_method != _FILL_METHOD_NONE
 
-    # Baseline pool (reward-aligned on the "drop" stage).
-    pool_mask = _build_reward_aligned_pool_mask(
-        n_frames=n_frames, reward_centers_float=reward_centers_cam, fps=fps,
+    # Baseline pool (tone-aligned on the "drop" stage).
+    pool_mask = _build_tone_aligned_pool_mask(
+        n_frames=n_frames, tone_centers_float=reward_centers_cam, fps=fps,
     )
     # Data-driven baseline (informational when force=true; feeds X0/Y0 when false).
     y0_lk_thr = float(baseline_cfg.get("y0_lk_thr", lk_thr))
@@ -891,7 +896,7 @@ def build_interpolated_trace(
     fps = float((params.get("alignment") or {}).get("fps_cam", _DEFAULT_FPS))
 
     df = _load_centered_df(manifest, bodypart, center_mode, resolver)
-    reward_centers_cam = _load_reward_centers_cam(manifest, resolver)
+    reward_centers_cam = _load_tone_centers_cam(manifest, resolver)
 
     result = _interpolate_bodypart_core(
         df=df,

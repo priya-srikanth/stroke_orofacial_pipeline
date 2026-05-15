@@ -32,7 +32,7 @@ from stroke_orofacial.dlc_kinematics.interpolation import (
     _FILL_METHOD_LINEAR,
     _FILL_METHOD_NONE,
     _FILL_METHOD_PCHIP,
-    _build_reward_aligned_pool_mask,
+    _build_tone_aligned_pool_mask,
     _center_mode_short,
     _fill_nan_with,
     _interp_small_gaps,
@@ -778,12 +778,12 @@ class TestCenterModeShort:
 # ---------------------------------------------------------------------------
 
 
-def test_build_reward_aligned_pool_mask_shape_and_membership():
+def test_build_tone_aligned_pool_mask_shape_and_membership():
     """Windows OR cleanly around rounded-int reward centers; mask stays
     within ``[0, n_frames)``."""
     centers = np.array([100.0, 500.0, 1800.0])
-    mask = _build_reward_aligned_pool_mask(
-        n_frames=2000, reward_centers_float=centers,
+    mask = _build_tone_aligned_pool_mask(
+        n_frames=2000, tone_centers_float=centers,
         fps=250.0, win_ms=(0.0, 200.0),
     )
     # 200 ms at 250 fps → 50 frames after center.

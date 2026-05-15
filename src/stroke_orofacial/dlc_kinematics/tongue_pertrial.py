@@ -1332,7 +1332,7 @@ def _derive_trial_events_from_spout_behavior(
     schema, so 7a.3 reads the consolidated ``licks_and_rewards`` NPZ + cam2
     alignment template and reapplies the WS→cam translation. No new alignment
     code: this is a thin orchestration of public helpers already battle-tested
-    by Phase 6 + 7a.2's :func:`_load_reward_centers_cam`.
+    by Phase 6 + 7a.2's :func:`_load_tone_centers_cam`.
 
     ``trial_index`` is **chronological-across-sides** (Option α lock 2026-04-28):
     rewards are sorted by ``reward_frame_idx`` and assigned globally unique
@@ -1394,7 +1394,7 @@ def _derive_trial_events_from_spout_behavior(
     n_frames = int(n_frames_meta)
 
     # 2. licks_and_rewards NPZ path (no dedicated PathResolver helper as of
-    #    Task 5.0; pattern matches 7a.2's _load_reward_centers_cam).
+    #    Task 5.0; pattern matches 7a.2's _load_tone_centers_cam).
     date_str = date.strftime("%Y%m%d")
     licks_path = (
         resolver.pipeline_outputs("spout_behavior")
@@ -1404,7 +1404,7 @@ def _derive_trial_events_from_spout_behavior(
     )
 
     # 3. Alignment template (cam2 — same fallback chain as 7a.2's
-    #    _load_reward_centers_cam: prefer manifest if set, else resolver).
+    #    _load_tone_centers_cam: prefer manifest if set, else resolver).
     align_path = manifest.alignment_template
     if align_path is None or not align_path.exists():
         align_path = resolver.alignment_template_legacy_read(animal, date, cam="cam2")
