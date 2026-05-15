@@ -246,7 +246,7 @@ python scripts/run_notebook_12_first_emit.py --overwrite force --verbose
 ```
 
 Flags: `--animals`, `--dates YYYYMMDD`, `--bodyparts`, `--center-modes`,
-`--trial-groups`, `--reward-windows-ms=-500,5000` (the `=` form is
+`--trial-groups`, `--tone-windows-ms=-500,5000` (the `=` form is
 required because the leading minus would otherwise be parsed as a
 flag). Writes to the same output tree as the notebook — they're
 interchangeable.

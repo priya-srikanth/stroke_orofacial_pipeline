@@ -304,11 +304,13 @@ dlc_spatial:
 # All others are sanity-check-only defaults — first tone-aligned runs
 # require visual inspection. (Phase 7b-light: YAML key renamed from
 # ``dlc_spatial_reward_aligned`` per Q7 hard rename; on-disk output
-# subdir `spatial_reward_aligned/` PRESERVED per Addendum #1, deferred
-# to Phase 7c-dlc-cohort-reemit.)
+# subdir `spatial_reward_aligned/` PRESERVED per Addendum #1 through
+# Phase 7b-light; **Phase 7c.1 renamed source-side to `spatial_tone_aligned/`
+# in lockstep with the 3-session pilot re-emit. Legacy `spatial_reward_aligned/`
+# tree remains on-disk; retired in Phase 7c.2 cohort completion.**)
 
 dlc_spatial_tone_aligned:
-  reward_windows_ms:
+  tone_windows_ms:
     - [-500, 5000]
     - [-100, 1000]
   trial_groups: ["all", "L", "R"]
@@ -750,7 +752,7 @@ dlc_kinematics:
         peak_size: 18                # legacy QC_PEAK_SIZE
       first_peak_aligned:
         enabled: true
-      reward_aligned:
+      tone_aligned:
         enabled: true
       phase_aligned_angle:
         enabled: true
@@ -1000,11 +1002,13 @@ dlc_kinematics:
     save_overlay_pngs: true
     save_binned_pngs: true
 
-    # ---- Reward-aligned time windows (master cells 31/30 TIME_WINDOWS_MS).
+    # ---- Tone-aligned time windows (master cells 31/30 TIME_WINDOWS_MS;
+    # renamed from `Reward-aligned` in Phase 7c.1 per Cat F YAML lockstep).
     # Each (pre_ms, post_ms) entry produces its own
-    # `rewardAligned_{pre}pre-{post}post/` subdir of saved figures (Q7
-    # uniform layout for both bodyparts). Units: milliseconds, matching
-    # legacy filename convention (e.g., `rewardAligned_100pre-1000post/`).
+    # `toneAligned_{pre}pre-{post}post/` subdir of saved figures (Q7
+    # uniform layout for both bodyparts). Units: milliseconds. Legacy
+    # outputs at `rewardAligned_*` directories remain on-disk through
+    # Phase 7c.1 and are retired in Phase 7c.2 cohort completion.
     time_windows_ms:
       - [100, 1000]   # short window
       - [500, 5000]   # long window

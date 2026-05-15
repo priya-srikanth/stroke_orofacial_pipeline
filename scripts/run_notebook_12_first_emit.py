@@ -17,11 +17,11 @@ Usage::
     python scripts/run_notebook_12_first_emit.py --animals PS46 PS47
     python scripts/run_notebook_12_first_emit.py \
         --bodyparts tongue --center-modes nose \
-        --reward-windows-ms=-500,5000 --reward-windows-ms=-100,1000 \
+        --tone-windows-ms=-500,5000 --tone-windows-ms=-100,1000 \
         --trial-groups L R all
 
-Note: ``--reward-windows-ms`` is ``action='append'`` (one window per
-invocation) and values must use the ``=`` form (``--reward-windows-ms=-500,5000``)
+Note: ``--tone-windows-ms`` is ``action='append'`` (one window per
+invocation) and values must use the ``=`` form (``--tone-windows-ms=-500,5000``)
 because the leading minus would otherwise be parsed as a flag.
 
 Rationale for "script rather than nbconvert": running
@@ -61,13 +61,13 @@ from stroke_orofacial.paths import PathResolver
 
 
 def _parse_window_ms(spec: str) -> tuple[float, float]:
-    """Parse a ``--reward-windows-ms`` token like ``-500,5000`` into a tuple."""
+    """Parse a ``--tone-windows-ms`` token like ``-500,5000`` into a tuple."""
     try:
         pre, post = spec.split(",")
         return (float(pre), float(post))
     except ValueError as exc:
         raise argparse.ArgumentTypeError(
-            f"--reward-windows-ms token must be 'pre,post' floats (e.g. -500,5000), got {spec!r}"
+            f"--tone-windows-ms token must be 'pre,post' floats (e.g. -500,5000), got {spec!r}"
         ) from exc
 
 
@@ -105,12 +105,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Centering modes to render (default: nose spout_midpoint eye_midpoint).",
     )
     parser.add_argument(
-        "--reward-windows-ms", action="append", type=_parse_window_ms,
+        "--tone-windows-ms", action="append", type=_parse_window_ms,
         default=None, metavar="PRE,POST",
         help=(
             "Reward window as comma-separated pre,post ms. Repeat the flag for "
             "multiple windows; leading-minus values require the '=' form, e.g. "
-            "--reward-windows-ms=-500,5000 --reward-windows-ms=-100,1000. "
+            "--tone-windows-ms=-500,5000 --tone-windows-ms=-100,1000. "
             "Default (no flags): -500,5000 and -100,1000."
         ),
     )
@@ -223,11 +223,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # argparse can't default ``action="append"`` to a list without the
     # default leaking into user-supplied runs; do the fallback here so
-    # the bare ``--reward-windows-ms=-500,5000`` invocation overrides
+    # the bare ``--tone-windows-ms=-500,5000`` invocation overrides
     # the notebook default cleanly.
-    reward_windows_ms = (
-        args.reward_windows_ms
-        if args.reward_windows_ms is not None
+    tone_windows_ms = (
+        args.tone_windows_ms
+        if args.tone_windows_ms is not None
         else [(-500.0, 5000.0), (-100.0, 1000.0)]
     )
 
@@ -243,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
         args.overwrite,
         args.bodyparts,
         args.center_modes,
-        reward_windows_ms,
+        tone_windows_ms,
         args.trial_groups,
     )
 
@@ -252,7 +252,7 @@ def main(argv: list[str] | None = None) -> int:
     grand_skip_no_rewards = grand_skip_no_frames = 0
     for center_mode in args.center_modes:
         for bodypart in args.bodyparts:
-            for window_ms in reward_windows_ms:
+            for window_ms in tone_windows_ms:
                 for trial_group in args.trial_groups:
                     n_ok = n_skip = n_err = 0
                     n_skip_no_rewards = n_skip_no_frames = 0

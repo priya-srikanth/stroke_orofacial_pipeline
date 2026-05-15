@@ -114,7 +114,7 @@ def patched_runner(monkeypatch, tmp_path):
             "--bodyparts", "tongue",
             "--center-modes", "eye_midpoint",
             "--trial-groups", "R",
-            "--reward-windows-ms=-100,1000",
+            "--tone-windows-ms=-100,1000",
             "--overwrite", "force",
         ]
         if extra_args:
@@ -179,7 +179,7 @@ class TestCounterSplit:
             "--bodyparts", "tongue",
             "--center-modes", "eye_midpoint",
             "--trial-groups", "R",
-            "--reward-windows-ms=-100,1000",
+            "--tone-windows-ms=-100,1000",
             "--overwrite", "force",
         ])
         assert exit_code == 0
