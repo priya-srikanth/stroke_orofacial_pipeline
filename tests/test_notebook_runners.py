@@ -1,14 +1,14 @@
 """Unit tests for the Phase 6.8a notebook-12 runner script.
 
 Scoped to the counter-split introduced in v6.8a.3: the save loop used
-to collapse "zero rewards for trial_group" (``build_reward_aligned_analysis``
+to collapse "zero rewards for trial_group" (``build_tone_aligned_analysis``
 returns None), "zero qualifying DLC frames" (``result['histogram']`` is
 None), and every other error path into one ``n_err`` bucket. Post-split,
 the runner reports five buckets (``ok``, ``skip``, ``skip_no_rewards``,
 ``skip_no_frames``, ``err``), and each of the two new skip buckets
 emits a distinct ``logging.info`` line per skipped (animal, date).
 
-These tests monkey-patch ``build_reward_aligned_analysis`` inside the
+These tests monkey-patch ``build_tone_aligned_analysis`` inside the
 runner module so no parquet / licks / alignment / DLC I/O happens,
 and inspect the runner's stdout + the ``INFO``-level log records to
 confirm the split lands correctly.
@@ -41,7 +41,7 @@ def _make_animal_info(animal_id: str) -> AnimalInfo:
 
 def _make_manifest(animal_id: str, date: datetime.date) -> SessionManifest:
     """Minimal manifest with a non-empty dlc_h5_files list (the runner
-    doesn't actually use it because build_reward_aligned_analysis is
+    doesn't actually use it because build_tone_aligned_analysis is
     mocked, but a realistic manifest avoids surprises if downstream
     fixture code ever inspects it)."""
     return SessionManifest(
@@ -106,7 +106,7 @@ def patched_runner(monkeypatch, tmp_path):
     def drive(script, extra_args=None):
         analysis = _ScriptedAnalysis(script)
         monkeypatch.setattr(
-            runner, "build_reward_aligned_analysis", analysis,
+            runner, "build_tone_aligned_analysis", analysis,
         )
         args = [
             "--animals", "PS51",
@@ -172,7 +172,7 @@ class TestCounterSplit:
             raise FileNotFoundError("simulated missing centered parquet")
 
         # Override the scripted analysis with a raiser for this test.
-        runner.build_reward_aligned_analysis = raiser
+        runner.build_tone_aligned_analysis = raiser
         exit_code = runner.main([
             "--animals", "PS51",
             "--dates", "20250430",

@@ -1,28 +1,61 @@
-"""Reward-aligned spatial analysis functions.
+"""Tone-aligned spatial analysis functions.
 
 Ported from cell 16 (and cells 18, 20) of canonical notebook
-``20260323_DLC_build-parquet_reward-aligned_tongue_jaw.ipynb``.
+``20260323_DLC_build-parquet_reward-aligned_tongue_jaw.ipynb`` (legacy
+filename preserved as historical citation).
 
-Loads reward events from Phase 2's ``licks_and_rewards`` NPZ, converts
-WS sample indices → camera frame indices via Phase 3's alignment template,
-builds peri-reward frame windows, and produces reward-aligned heatmaps.
+Loads tone events from Phase 2's ``licks_and_rewards`` NPZ
+(``licks_and_rewards`` is the Phase 2 output directory name; PRESERVED
+per Phase 8a.10.1 Decision 8 E.B.1), converts WS sample indices →
+camera frame indices via Phase 3's alignment template, builds peri-tone
+frame windows, and produces tone-aligned heatmaps.
 
 This is the first phase without array-level parity reference — the legacy
 cell 16 was coded but never run to produce saved outputs on MICROSCOPE.
 Tongue config is legacy-ported; jaw, nose, and whisker configs are
 sanity-check-only defaults.
 
+**Case-2 universal (Phase 8a.10.1, locked 2026-05-14):** every DLC
+peri-event window in this module is scientifically tone-anchored — the
+auditory cue is the temporal anchor for DLC frame windows; the pre-fix
+``reward_aligned`` naming was a Case-2 misnomer mirroring the
+cohort-wide Tone↔Reward WS-channel-label swap (corrected at the
+wavesurfer read boundary in Phase 8a.10.1). Phase 7b-light (this
+phase) completes the source-side narrative rename:
+
+  - File: ``reward_aligned.py`` → ``tone_aligned.py``.
+  - Functions: ``build_reward_aligned_*`` / ``save_reward_aligned_npz`` →
+    ``build_tone_aligned_*`` / ``save_tone_aligned_npz``.
+  - Class: ``RewardAlignedWindow`` → ``ToneAlignedWindow`` (in
+    :mod:`stroke_orofacial.dlc_spatial.window_selector`).
+  - Local variables: ``reward_ws`` → ``tone_ws``,
+    ``reward_ws_samples`` → ``tone_ws_samples``, etc.
+  - YAML internal config key: ``dlc_spatial_reward_aligned`` →
+    ``dlc_spatial_tone_aligned`` (Q7 hard rename; no compat shim).
+
+Per Phase 7b-light Addendum #1 (bifurcation rule), on-disk-layout
+strings are PRESERVED here and deferred to Phase 7c-dlc-cohort-reemit:
+
+  - NPZ schema key ``"n_rewards"`` in the analysis result dict and the
+    saved NPZ payload (re-emit changes the schema in lockstep with data
+    regeneration).
+  - Output subdir literal ``"spatial_reward_aligned"`` consumed by the
+    notebook 12 driver.
+  - Window filename label ``f"reward_{pre}_{post}ms"`` constructed by
+    :class:`ToneAlignedWindow` (figure-filename suffix).
+
 **Phase 6.8a (mouse-frame trial_group):** Phase 2 NPZs carry mouse-frame
-``Reward_L`` / ``Reward_R`` keys post-task-#17 re-emit, stamped with
-``wavesurfer_sides_match_mouse_sides`` + ``side_convention_version``
-scalars. :func:`load_tone_events` now verifies that stamp is present
-and, if the caller supplies ``wavesurfer_sides_match_mouse_sides``, that
-it agrees with what Phase 2 wrote — guarding against silently reading a
-pre-re-emit NPZ as if it were mouse-frame. Callers pass
-``trial_group="L"`` / ``"R"`` meaning *mouse*-L / *mouse*-R and the
-orchestrator forwards that meaning through the return dict so downstream
-writers (notebook 12 → :func:`save_heatmap_npz`) can stamp the Phase 6
-output with the same convention.
+``Tone_L`` / ``Tone_R`` keys post task #17 re-emit + Phase 8a.10.1
+swap-fix, stamped with ``wavesurfer_sides_match_mouse_sides`` +
+``side_convention_version`` scalars. :func:`load_tone_events` verifies
+that stamp is present and, if the caller supplies
+``wavesurfer_sides_match_mouse_sides``, that it agrees with what Phase 2
+wrote — guarding against silently reading a pre-re-emit NPZ as if it
+were mouse-frame. Callers pass ``trial_group="L"`` / ``"R"`` meaning
+*mouse*-L / *mouse*-R and the orchestrator forwards that meaning through
+the return dict so downstream writers (notebook 12 →
+:func:`save_tone_aligned_npz`) can stamp the Phase 6 output with the
+same convention.
 """
 
 from __future__ import annotations
@@ -35,7 +68,7 @@ import numpy as np
 
 from stroke_orofacial.animals import get_animal
 from stroke_orofacial.dlc_spatial.window_selector import (
-    RewardAlignedWindow,
+    ToneAlignedWindow,
     _ws_to_cam_frames,
 )
 from stroke_orofacial.lr_convention import (
@@ -59,12 +92,12 @@ def load_tone_events(
     Phase 8a.10.1 X1-β surgical rename (locked 2026-05-14): function
     renamed ``load_reward_events → load_tone_events``; NPZ-key reads
     swapped ``Reward_<side> → Tone_<side>``. Under Case-2 universal,
-    every DLC reward-aligned analysis was scientifically tone-anchored
+    every DLC peri-event analysis was scientifically tone-anchored
     (the auditory cue is the temporal anchor for DLC frame windows);
     the pre-fix name was a Case-2 misnomer mirroring the swapped WS
-    channel label. Module name ``reward_aligned.py``, local variables
-    in the indirect callers, and docstring narrative cleanup stay
-    deferred to Phase 7b's atomic Phase-7 rename pass per Q3.B.
+    channel label. Phase 7b-light (2026-05-14) completes the
+    source-side narrative cleanup: module file rename, local-variable
+    + parameter renames, docstring narrative.
 
     Per Phase 6.8a, ``trial_group`` is interpreted in the **mouse frame**:
     ``"L"`` means mouse-left tone trials, ``"R"`` means mouse-right.
@@ -178,7 +211,8 @@ def ws_samples_to_frame_indices(
     Parameters
     ----------
     ws_samples : np.ndarray
-        Reward onset indices in WS sample space.
+        Tone-onset indices in WS sample space (Case-2 universal — the
+        caller passes tone-anchored events).
     sig_camIdx__idx_ws : np.ndarray
         Alignment lookup table from ``AlignmentResult``.
     n_cam_frames : int
@@ -192,24 +226,24 @@ def ws_samples_to_frame_indices(
     return _ws_to_cam_frames(ws_samples, sig_camIdx__idx_ws, n_cam_frames)
 
 
-def build_reward_aligned_window(
-    reward_ws_samples: np.ndarray,
+def build_tone_aligned_window(
+    tone_ws_samples: np.ndarray,
     sig_camIdx__idx_ws: np.ndarray,
     window_ms: tuple[float, float],
     fps: float,
     n_frames: int,
-) -> RewardAlignedWindow:
-    """Construct a RewardAlignedWindow from reward events + alignment data.
+) -> ToneAlignedWindow:
+    """Construct a ToneAlignedWindow from tone events + alignment data.
 
     Parameters
     ----------
-    reward_ws_samples : np.ndarray
-        Reward onset indices in WS sample space.
+    tone_ws_samples : np.ndarray
+        Tone-onset indices in WS sample space.
     sig_camIdx__idx_ws : np.ndarray
         Alignment lookup from Phase 3.
     window_ms : tuple[float, float]
         (pre_ms, post_ms) — e.g. ``(-500, 5000)`` for 500ms before to
-        5000ms after each reward.
+        5000ms after each tone onset.
     fps : float
         Camera frame rate (250 Hz).
     n_frames : int
@@ -217,10 +251,10 @@ def build_reward_aligned_window(
 
     Returns
     -------
-    RewardAlignedWindow
+    ToneAlignedWindow
     """
-    return RewardAlignedWindow(
-        reward_ws_samples=reward_ws_samples,
+    return ToneAlignedWindow(
+        tone_ws_samples=tone_ws_samples,
         sig_camIdx__idx_ws=sig_camIdx__idx_ws,
         window_ms=window_ms,
         fps=fps,
@@ -228,7 +262,7 @@ def build_reward_aligned_window(
     )
 
 
-def build_reward_aligned_analysis(
+def build_tone_aligned_analysis(
     manifest: SessionManifest,
     bodypart: str,
     center_mode: str,
@@ -236,11 +270,11 @@ def build_reward_aligned_analysis(
     window_ms: tuple[float, float],
     resolver: PathResolver,
     spatial_config: dict[str, Any],
-    reward_config: dict[str, Any],
+    tone_config: dict[str, Any],
     *,
     wavesurfer_sides_match_mouse_sides: bool | None = None,
 ) -> dict[str, Any] | None:
-    """Run a complete reward-aligned spatial analysis for one session.
+    """Run a complete tone-aligned spatial analysis for one session.
 
     Primary entry point — consumes a ``SessionManifest`` produced by
     ``build_manifest()``. Reads DLC h5 files from ``manifest.dlc_h5_files``
@@ -249,11 +283,11 @@ def build_reward_aligned_analysis(
     centered parquet derived from DLC h5).
 
     Pure function — no module-level state. Loads all inputs from disk,
-    builds the reward-aligned window, computes the histogram, and returns
+    builds the tone-aligned window, computes the histogram, and returns
     the results.
 
     For callers that prefer the legacy (animal, date_str) entry point,
-    see ``build_reward_aligned_analysis_by_animal_date()`` below.
+    see ``build_tone_aligned_analysis_by_animal_date()`` below.
 
     Parameters
     ----------
@@ -268,23 +302,25 @@ def build_reward_aligned_analysis(
     trial_group : str
         ``"all"``, ``"L"``, or ``"R"`` — mouse-frame per Phase 6.8a
         (post task #17 re-emit of Phase 2). ``"L"`` means mouse-left
-        reward trials regardless of rig orientation.
+        tone trials regardless of rig orientation.
     window_ms : tuple[float, float]
-        Reward window in ms.
+        Tone-aligned window in ms.
     resolver : PathResolver
         Configured path resolver (used for output-tree placement and as
         a cam2 alignment-template fallback when the manifest didn't see it).
     spatial_config : dict
         The ``dlc_spatial`` section from defaults.yaml.
-    reward_config : dict
-        The ``dlc_spatial_reward_aligned`` section from defaults.yaml.
+    tone_config : dict
+        The ``dlc_spatial_tone_aligned`` section from defaults.yaml
+        (renamed from ``dlc_spatial_reward_aligned`` in Phase 7b-light
+        per Q7 hard rename).
     wavesurfer_sides_match_mouse_sides : bool, optional
         Per-animal rig-orientation flag from
         :attr:`stroke_orofacial.animals.AnimalInfo.wavesurfer_sides_match_mouse_sides`.
         When provided, the loader verifies the Phase 2 NPZ's stamp
         agrees with this value (catches stale NPZs after yaml edits)
         and the value is forwarded into the returned dict so the
-        downstream writer (notebook 12 → :func:`save_heatmap_npz`)
+        downstream writer (notebook 12 → :func:`save_tone_aligned_npz`)
         can stamp the Phase 6 NPZ with the same convention. When
         ``None``, the Phase 2 stamp is still required to exist (else
         we can't tell mouse-frame from wavesurfer-frame) but its value
@@ -294,13 +330,16 @@ def build_reward_aligned_analysis(
     -------
     dict or None
         ``{"histogram": ..., "window": ..., "n_rewards": ..., "n_selected_frames": ..., "trial_group": ..., "window_ms": ..., "bodypart": ..., "center_mode": ..., "wavesurfer_sides_match_mouse_sides": ...}``
-        — or None if the manifest has zero rewards for the requested
+        — or None if the manifest has zero tone events for the requested
         ``trial_group`` (a valid-but-empty data condition; e.g. a
         post-stroke session with no L-only trials). The
         ``wavesurfer_sides_match_mouse_sides`` field echoes the kwarg
         when provided, else the value stamped into the Phase 2 NPZ
         (read back from disk), so notebook 12 can stamp the Phase 6
-        output without having to re-lookup ``AnimalInfo``.
+        output without having to re-lookup ``AnimalInfo``. The
+        ``"n_rewards"`` dict key is PRESERVED per Phase 7b-light
+        Addendum #1 (NPZ schema key; renamed to ``"n_tones"`` in
+        Phase 7c-dlc-cohort-reemit in lockstep with on-disk regeneration).
 
     Raises
     ------
@@ -321,7 +360,7 @@ def build_reward_aligned_analysis(
     if not manifest.dlc_h5_files:
         raise FileNotFoundError(
             f"{manifest.session_id}: manifest.dlc_h5_files is empty. "
-            f"Phase 6 reward-aligned spatial analysis requires DLC. "
+            f"Phase 6 tone-aligned spatial analysis requires DLC. "
             f"Either provide a manifest with DLC files, or run DLC "
             f"inference first."
         )
@@ -351,7 +390,9 @@ def build_reward_aligned_analysis(
     df = read_centered_parquet(parquet_path)
     n_frames = len(df)
 
-    # Load reward events from Phase 2 licks NPZ (manifest gives animal+date).
+    # Load tone events from Phase 2 licks NPZ (manifest gives animal+date).
+    # The ``licks_and_rewards`` directory name is PRESERVED per Phase 8a.10.1
+    # Decision 8 E.B.1 (rename-cost-without-benefit cycle avoided).
     spout_root = resolver.pipeline_outputs("spout_behavior")
     licks_path = spout_root / "licks_and_rewards" / animal / f"{date_str}.npz"
     if not licks_path.exists():
@@ -361,14 +402,11 @@ def build_reward_aligned_analysis(
             f"for this session before Phase 6.8a."
         )
 
-    # X1-β: function rename to load_tone_events. Local variable
-    # `reward_ws` left as-is — its rename to `tone_ws` is part of
-    # Phase 7b's local-variable + module-name cleanup pass per Q3.B.
-    reward_ws = load_tone_events(
+    tone_ws = load_tone_events(
         licks_path, trial_group,
         wavesurfer_sides_match_mouse_sides=wavesurfer_sides_match_mouse_sides,
     )
-    if len(reward_ws) == 0:
+    if len(tone_ws) == 0:
         return None
 
     # Phase 6.8a: surface the effective L/R convention on the return dict
@@ -397,24 +435,24 @@ def build_reward_aligned_analysis(
     align_data = np.load(str(align_path), allow_pickle=True)
     sig_camIdx = align_data["sig_camIdx__idx_ws"]
 
-    # Build reward-aligned window
-    fps = float(reward_config.get("fps", 250.0))
-    window = build_reward_aligned_window(reward_ws, sig_camIdx, window_ms, fps, n_frames)
+    # Build tone-aligned window
+    fps = float(tone_config.get("fps", 250.0))
+    window = build_tone_aligned_window(tone_ws, sig_camIdx, window_ms, fps, n_frames)
 
     # Build histogram with window.
-    # Reward-aligned analyses use the Phase 6 `dlc_spatial_reward_aligned`
+    # Tone-aligned analyses use the Phase 6 `dlc_spatial_tone_aligned`
     # config for likelihood thresholds and (per-bodypart, non-center-mode-aware)
     # x_range filters; axis limits come from the Phase 5 `dlc_spatial` config
     # which IS per-(bodypart, center_mode).
-    bp_config = reward_config.get("bodyparts", {}).get(bodypart, {})
-    bp_x_range_reward = bp_config.get("x_range")
+    bp_config = tone_config.get("bodyparts", {}).get(bodypart, {})
+    bp_x_range_tone = bp_config.get("x_range")
     lik_thresholds = bp_config.get("likelihood_thresholds", [0.8])
     lik_thr = lik_thresholds[0] if lik_thresholds else 0.8
 
-    nbins_list = reward_config.get("default_nbins", [80, 80])
+    nbins_list = tone_config.get("default_nbins", [80, 80])
     nbins = nbins_list[0] if isinstance(nbins_list[0], int) else int(nbins_list[0])
 
-    # Override only the likelihood threshold (reward-aligned thresholds differ
+    # Override only the likelihood threshold (tone-aligned thresholds differ
     # from whole-session thresholds). All other per-(bodypart, center_mode)
     # values (xlim, ylim, x_range) come from the Phase 5 spatial_config via
     # the build_histogram center_mode kwarg.
@@ -424,10 +462,10 @@ def build_reward_aligned_analysis(
     existing_bp["likelihood_threshold"] = lik_thr
     config_for_hist["bodyparts"][bodypart] = existing_bp
 
-    # Reward-aligned per-bodypart x_range (Phase 6 config) takes precedence
+    # Tone-aligned per-bodypart x_range (Phase 6 config) takes precedence
     # over the Phase 5 per_center_mode.x_range when provided; fall back to
     # Phase 5's value otherwise by passing x_range=None to build_histogram.
-    x_range_override = tuple(bp_x_range_reward) if bp_x_range_reward is not None else None
+    x_range_override = tuple(bp_x_range_tone) if bp_x_range_tone is not None else None
 
     histogram = build_histogram(
         df, bodypart, config_for_hist,
@@ -437,6 +475,10 @@ def build_reward_aligned_analysis(
         window=window,
     )
 
+    # NOTE: dict keys ``"n_rewards"``, ``"n_selected_frames"`` are
+    # PRESERVED per Phase 7b-light Addendum #1 (NPZ schema keys; on-disk
+    # contract). Phase 7c-dlc-cohort-reemit renames these in lockstep
+    # with cohort regeneration.
     return {
         "histogram": histogram,
         "window": window,
@@ -450,7 +492,7 @@ def build_reward_aligned_analysis(
     }
 
 
-def build_reward_aligned_analysis_by_animal_date(
+def build_tone_aligned_analysis_by_animal_date(
     animal: str,
     date_str: str,
     bodypart: str,
@@ -459,11 +501,11 @@ def build_reward_aligned_analysis_by_animal_date(
     window_ms: tuple[float, float],
     resolver: PathResolver,
     spatial_config: dict[str, Any],
-    reward_config: dict[str, Any],
+    tone_config: dict[str, Any],
     *,
     wavesurfer_sides_match_mouse_sides: bool | None = None,
 ) -> dict[str, Any] | None:
-    """Convenience wrapper: builds a SessionManifest then calls build_reward_aligned_analysis().
+    """Convenience wrapper: builds a SessionManifest then calls build_tone_aligned_analysis().
 
     Equivalent to::
 
@@ -473,9 +515,9 @@ def build_reward_aligned_analysis_by_animal_date(
             animal, date, resolver, animal_info,
             analysis_context="dlc.spatial",
         )
-        return build_reward_aligned_analysis(
+        return build_tone_aligned_analysis(
             manifest, bodypart, center_mode, trial_group, window_ms,
-            resolver, spatial_config, reward_config,
+            resolver, spatial_config, tone_config,
             wavesurfer_sides_match_mouse_sides=(
                 animal_info.wavesurfer_sides_match_mouse_sides
                 if wavesurfer_sides_match_mouse_sides is None
@@ -489,7 +531,7 @@ def build_reward_aligned_analysis_by_animal_date(
     common path for scripts/tests that identify a session by
     (animal, date) — callers who are already holding an
     ``AnimalInfo`` or ``SessionManifest`` should use the primary
-    ``build_reward_aligned_analysis()`` signature directly and pass
+    ``build_tone_aligned_analysis()`` signature directly and pass
     the flag from there.
 
     The ``analysis_context="dlc.spatial"`` argument scopes exclusion
@@ -497,7 +539,7 @@ def build_reward_aligned_analysis_by_animal_date(
     prefix-match schema.
 
     Phase 6 is DLC-required; if DLC inference hasn't run for this session,
-    the underlying ``build_reward_aligned_analysis`` raises FileNotFoundError.
+    the underlying ``build_tone_aligned_analysis`` raises FileNotFoundError.
     """
     animal_info = get_animal(animal)
     date = datetime.datetime.strptime(date_str, "%Y%m%d").date()
@@ -513,18 +555,18 @@ def build_reward_aligned_analysis_by_animal_date(
         if wavesurfer_sides_match_mouse_sides is None
         else wavesurfer_sides_match_mouse_sides
     )
-    return build_reward_aligned_analysis(
+    return build_tone_aligned_analysis(
         manifest, bodypart, center_mode, trial_group, window_ms,
-        resolver, spatial_config, reward_config,
+        resolver, spatial_config, tone_config,
         wavesurfer_sides_match_mouse_sides=effective_flag,
     )
 
 
-def save_reward_aligned_npz(
+def save_tone_aligned_npz(
     result: dict[str, Any],
     path: Path | str,
 ) -> None:
-    """Serialize a reward-aligned analysis result dict to NPZ.
+    """Serialize a tone-aligned analysis result dict to NPZ.
 
     Phase 6.8a addition — complements the PNG that notebook 12 already
     writes. The NPZ captures the fine-grid histogram arrays (previously
@@ -532,7 +574,9 @@ def save_reward_aligned_npz(
     diagnostics can read ``H_counts`` programmatically without
     re-rendering from parquet.
 
-    NPZ schema:
+    NPZ schema (NPZ keys PRESERVED per Phase 7b-light Addendum #1 —
+    on-disk contract; Phase 7c-dlc-cohort-reemit renames in lockstep
+    with cohort regeneration):
 
       - ``H_counts`` — raw 2D histogram counts (nbins × nbins).
       - ``H_proportion`` — normalized so total = 1.
@@ -543,7 +587,9 @@ def save_reward_aligned_npz(
       - ``trial_group`` — string scalar (``"all"`` / ``"L"`` / ``"R"``,
         mouse-frame per Phase 6.8a).
       - ``window_ms`` — 2-element float array ``[pre_ms, post_ms]``.
-      - ``n_rewards`` — int, number of reward events contributing.
+      - ``n_rewards`` — int, number of tone events contributing
+        (PRESERVED key name; payload semantics are tone-anchored under
+        Case-2 universal).
       - ``n_selected_frames`` — int, number of DLC frames in the window.
       - ``bodypart`` — string scalar.
       - ``center_mode`` — string scalar.
@@ -553,7 +599,7 @@ def save_reward_aligned_npz(
     Parameters
     ----------
     result : dict
-        The dict returned by :func:`build_reward_aligned_analysis`.
+        The dict returned by :func:`build_tone_aligned_analysis`.
         Must contain a non-None ``histogram`` entry (callers that
         receive ``None`` from the analysis should skip NPZ saving).
     path : Path or str
@@ -567,7 +613,7 @@ def save_reward_aligned_npz(
     hist = result["histogram"]
     if hist is None:
         raise ValueError(
-            "save_reward_aligned_npz: result['histogram'] is None; "
+            "save_tone_aligned_npz: result['histogram'] is None; "
             "caller should skip saving for sessions with no valid "
             "histogram rather than calling this function."
         )

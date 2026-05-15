@@ -8,7 +8,7 @@ import pytest
 
 from stroke_orofacial.dlc_spatial.window_selector import (
     EventAlignedWindow,
-    RewardAlignedWindow,
+    ToneAlignedWindow,
     WholeSessionWindow,
     _ws_to_cam_frames,
 )
@@ -110,13 +110,13 @@ class TestWsToCamFrames:
         assert result[2] == 2
 
 
-class TestRewardAlignedWindow:
+class TestToneAlignedWindow:
     def test_basic(self):
         # Simple LUT: 1:1 mapping (WS sample = frame)
         lut = np.arange(1000, dtype=float)
         reward_ws = np.array([100, 500])
-        w = RewardAlignedWindow(
-            reward_ws_samples=reward_ws,
+        w = ToneAlignedWindow(
+            tone_ws_samples=reward_ws,
             sig_camIdx__idx_ws=lut,
             window_ms=(-100, 500),  # 100ms before to 500ms after
             fps=250.0,

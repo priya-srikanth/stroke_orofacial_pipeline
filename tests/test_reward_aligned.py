@@ -198,14 +198,14 @@ class TestIntegrationRewardAligned:
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         from stroke_orofacial.config_loader import load_defaults
         from stroke_orofacial.dlc_spatial.tone_aligned import (
-            build_reward_aligned_analysis_by_animal_date,
+            build_tone_aligned_analysis_by_animal_date,
         )
         from stroke_orofacial.paths import PathResolver
 
         resolver = PathResolver()
         defaults = load_defaults()
 
-        result = build_reward_aligned_analysis_by_animal_date(
+        result = build_tone_aligned_analysis_by_animal_date(
             "PS46", "20250307", "tongue", "nose", "all",
             (-500, 5000), resolver,
             defaults["dlc_spatial"], defaults["dlc_spatial_reward_aligned"],
@@ -221,7 +221,7 @@ class TestIntegrationRewardAligned:
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         from stroke_orofacial.config_loader import load_defaults
         from stroke_orofacial.dlc_spatial.tone_aligned import (
-            build_reward_aligned_analysis_by_animal_date,
+            build_tone_aligned_analysis_by_animal_date,
         )
         from stroke_orofacial.paths import PathResolver
 
@@ -230,7 +230,7 @@ class TestIntegrationRewardAligned:
 
         counts = {}
         for tg in ("all", "L", "R"):
-            r = build_reward_aligned_analysis_by_animal_date(
+            r = build_tone_aligned_analysis_by_animal_date(
                 "PS46", "20250307", "tongue", "nose", tg,
                 (-500, 5000), resolver,
                 defaults["dlc_spatial"], defaults["dlc_spatial_reward_aligned"],
@@ -250,13 +250,13 @@ class TestIntegrationRewardAlignedWithManifest:
     """Exercise the manifest-first primary signature on real data."""
 
     def test_smoke_with_manifest(self, monkeypatch):
-        """Build manifest explicitly, pass to build_reward_aligned_analysis(...)."""
+        """Build manifest explicitly, pass to build_tone_aligned_analysis(...)."""
         import datetime
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         from stroke_orofacial.animals import get_animal
         from stroke_orofacial.config_loader import load_defaults
         from stroke_orofacial.dlc_spatial.tone_aligned import (
-            build_reward_aligned_analysis,
+            build_tone_aligned_analysis,
         )
         from stroke_orofacial.manifest import build_manifest
         from stroke_orofacial.paths import PathResolver
@@ -270,7 +270,7 @@ class TestIntegrationRewardAlignedWithManifest:
         assert len(manifest.dlc_h5_files) > 0
         assert manifest.alignment_template is not None
 
-        result = build_reward_aligned_analysis(
+        result = build_tone_aligned_analysis(
             manifest, "tongue", "nose", "all", (-500, 5000),
             resolver, defaults["dlc_spatial"],
             defaults["dlc_spatial_reward_aligned"],
@@ -282,14 +282,14 @@ class TestIntegrationRewardAlignedWithManifest:
 
 class TestBuildRewardAlignedAnalysisRaisesOnEmptyDlc:
     """Phase 6 is DLC-required (per Phase 6.7 architectural decision).
-    build_reward_aligned_analysis must raise on empty manifest.dlc_h5_files."""
+    build_tone_aligned_analysis must raise on empty manifest.dlc_h5_files."""
 
     def test_raises_when_manifest_has_no_dlc(self, tmp_path):
         import datetime
         from unittest.mock import MagicMock
 
         from stroke_orofacial.dlc_spatial.tone_aligned import (
-            build_reward_aligned_analysis,
+            build_tone_aligned_analysis,
         )
         from stroke_orofacial.manifest import SessionManifest
         from stroke_orofacial.paths import PathResolver
@@ -306,9 +306,9 @@ class TestBuildRewardAlignedAnalysisRaisesOnEmptyDlc:
             dlc_csv_files=[],
         )
         with pytest.raises(FileNotFoundError, match="dlc_h5_files"):
-            build_reward_aligned_analysis(
+            build_tone_aligned_analysis(
                 manifest, "tongue", "nose", "all", (-500, 5000),
-                resolver, spatial_config={}, reward_config={},
+                resolver, spatial_config={}, tone_config={},
             )
 class TestBuildRewardAlignedAnalysisRaisesOnMissingPrerequisites:
     """Phase 6.8a follow-up: the silent ``return None`` path for the
@@ -326,7 +326,7 @@ class TestBuildRewardAlignedAnalysisRaisesOnMissingPrerequisites:
         from unittest.mock import MagicMock
 
         from stroke_orofacial.dlc_spatial.tone_aligned import (
-            build_reward_aligned_analysis,
+            build_tone_aligned_analysis,
         )
         from stroke_orofacial.manifest import SessionManifest
         from stroke_orofacial.paths import PathResolver
@@ -351,7 +351,7 @@ class TestBuildRewardAlignedAnalysisRaisesOnMissingPrerequisites:
             dlc_csv_files=[],
         )
         with pytest.raises(FileNotFoundError, match="Phase 4 centered parquet"):
-            build_reward_aligned_analysis(
+            build_tone_aligned_analysis(
                 manifest, "tongue", "nose", "all", (-500, 5000),
-                resolver, spatial_config={}, reward_config={},
+                resolver, spatial_config={}, tone_config={},
             )

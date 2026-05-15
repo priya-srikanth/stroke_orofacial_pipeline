@@ -1,8 +1,8 @@
-"""Standalone runner that reproduces notebook 12's reward-aligned emit loop.
+"""Standalone runner that reproduces notebook 12's tone-aligned emit loop.
 
 Phase 6.8a addition. Notebook 12
 (``notebooks/12_dlc_spatial_tone_aligned.ipynb``) is the interactive
-entry point for the DLC reward-aligned heatmap + NPZ emit; this script
+entry point for the DLC tone-aligned heatmap + NPZ emit; this script
 is the non-interactive equivalent so the first Phase-6 emit can run
 unattended on a headless machine (e.g. the Windows box while Priya's
 Mac laptop is closed). It imports the same modules, calls the same
@@ -53,8 +53,8 @@ from matplotlib.colors import LogNorm
 from stroke_orofacial.animals import load_animals
 from stroke_orofacial.config_loader import load_defaults
 from stroke_orofacial.dlc_spatial.tone_aligned import (
-    build_reward_aligned_analysis,
-    save_reward_aligned_npz,
+    build_tone_aligned_analysis,
+    save_tone_aligned_npz,
 )
 from stroke_orofacial.manifest import build_manifest
 from stroke_orofacial.paths import PathResolver
@@ -195,7 +195,7 @@ def _render_and_save(
     # Phase 6.8a: also save the histogram as NPZ. The helper stamps the
     # per-animal L/R flag from ``result`` so the trial_group label is
     # unambiguous at read time.
-    save_reward_aligned_npz(result, out_path.with_suffix(".npz"))
+    save_tone_aligned_npz(result, out_path.with_suffix(".npz"))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -212,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
     animals_config = load_animals()
     defaults = load_defaults()
     spatial_config = defaults["dlc_spatial"]
-    reward_config = defaults["dlc_spatial_reward_aligned"]
+    tone_config = defaults["dlc_spatial_reward_aligned"]
     output_root = resolver.pipeline_outputs("dlc_analysis") / "spatial_reward_aligned"
 
     animal_ids = args.animals if args.animals is not None else list(animals_config.keys())
@@ -272,10 +272,10 @@ def main(argv: list[str] | None = None) -> int:
 
                         try:
                             animal_info = animals_config[animal_id]
-                            result = build_reward_aligned_analysis(
+                            result = build_tone_aligned_analysis(
                                 manifest, bodypart, center_mode, trial_group,
                                 window_ms, resolver,
-                                spatial_config, reward_config,
+                                spatial_config, tone_config,
                                 wavesurfer_sides_match_mouse_sides=(
                                     animal_info.wavesurfer_sides_match_mouse_sides
                                 ),
