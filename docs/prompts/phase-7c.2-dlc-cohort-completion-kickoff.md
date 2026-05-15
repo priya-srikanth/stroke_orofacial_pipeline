@@ -409,10 +409,68 @@ The "mixed legacy state" axis 1 design (post-fix-via-Task-4.5 sessions vs genuin
 - **All 256 cohort-A bare sessions:** legacy is genuinely pre-fix at both spatial and kinematics layers.
 - **Spatial outputs:** byte-equality expected for every session (swap-fix-invariant; only key rename `n_rewards → n_tones` is the data-layer change).
 - **Kinematics outputs:** byte-equality for bilateral/no-withhold sessions (swap-fix-invariant for synchronous events); directional +86-pattern delta for withhold-bearing post-stroke sessions.
-- **PS48/2025-03-14 (F-P-5 first run-through):** qualitative sanity (no legacy baseline; pipeline executes + outputs plausible).
+- **PS48/2025-03-14 (F-P-5 first run-through via consolidated pipeline):** Qualitative sanity only. No consolidated-pipeline baseline exists at standard paths (F-P-4 gap is real — Priya's manual notebook code never saved its merged parquet output; the merged parquet was generated in-memory in a notebook only). Priya's legacy alignment template at `O2_analysis/alignment_templates/cam2/PS48/20250314.npz` uses camera-index alignment vs the consolidated pipeline's WS-index alignment, so byte-comparison vs that legacy tree is the wrong criterion. Verdict criteria: pipeline executes, outputs plausible (correct row counts ~1.15M after Phase 4 multi-half merge fix; correct schema; n_tones field makes sense; no NaN-poisoning; axis ranges well-defined), trial counts in expected range for a post-stroke day 1 session (PS48 stroke date is 2025-03-13).
 
 Task 6 spot-check verdict scoring against this simpler matrix.
 
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q2 output safety, Q4 visual gate, Q5 cleanup, Q6 PathResolver, Q7 sub-batching, Q8 no-backup, Q9 F-P-5 bundle.)
+
+---
+
+## Addendum #2 — Phase 4 production multi-half gap + Task 2 extension (Priya 2026-05-15, post-Task-2 STOP)
+
+CC's Task 2 spot-check on PS48/2025-03-14 surfaced a Phase 7-pre-multi-half production-emit oversight + locked Option A as the remediation.
+
+### Finding — Phase 7-pre-multi-half's scratch-path-only validation; production never touched
+
+Phase 7-pre-multi-half (closed 2026-05-12, tag `v7-pre-multi-half`) shipped Architecture X three-layer merge code (`merge_licks_and_rewards` + `merge_alignment_templates` + `merge_centered_parquet`) AND wired them into production pipeline call paths (`dlc_io/parquet.py:_build_centered_parquet_multi_half`, `alignment/timebase.py:compute_and_merge_alignment_multi_half`). But the phase's 3-layer parity gate was **scratch-path validation only** — the merge functions were never invoked on production data with `overwrite="force"` for PS48/2025-03-14.
+
+Production state pre-Task-2:
+
+| Stage | Production state |
+|---|---|
+| Phase 2 licks NPZ | MERGED (Phase 8a.10.1 cohort re-emit, 2026-05-14) |
+| Phase 3 alignment template | MERGED (Phase 7-pre-multi-half, 2026-05-12) |
+| Phase 4 centered parquets | **STALE single-half** (2026-04-21) — half-A + half-B parquets at parent level, no `20250314ab/<merged>.parquet` |
+
+CC's Task 2 F-P-5 wiring fix correctly populated `manifest.dlc_h5_files` for Pattern A, but Phase 7a.2 `build_interpolated_trace` consumed the half-A single-half parquet (whichever Phase 4 left at the standard path) and produced half-A-only interpolated_traces parquets (571,147 rows = half-A only, NOT the merged 1,148,512 expected per Phase 7-pre-multi-half's verdict).
+
+### Process lesson (saved to memory for future-Cowork-me)
+
+Phase 7-pre-multi-half's scratch-path parity gate is NOT equivalent to production state. Future merge-code phases must either (a) explicitly invoke the merge functions on production with `overwrite="force"` during the phase, or (b) defer the production emit to a downstream cohort-emit phase that explicitly handles Pattern A sessions.
+
+### Option A LOCKED — extend Task 2 with Phase 4 production multi-half force-emit
+
+Per Priya 2026-05-15. Extend Task 2 with an additional step:
+
+**Step 6 (new) — Force-emit Phase 4 multi-half merged centered parquet for PS48/2025-03-14:**
+
+For each of the 3 center modes (`centered_eye_midpoint`, `centered_spout_midpoint`, plus any third mode the pipeline supports for PS48):
+
+1. Invoke `build_centered_parquet(animal="PS48", date=date(2025,3,14), center_mode=<mode>, overwrite="force")` (or whatever the canonical entry point is — likely `_build_centered_parquet_multi_half` invoked via the standard parquet ingestion code path with overwrite flag).
+2. Verify the merged parquet lands at `pipeline_outputs/dlc_analysis/centered_<mode>/PS48/20250314ab/<merged_filename>.parquet` (the Pattern A nested layout per Phase 7-pre-multi-half).
+3. Verify row count matches Phase 7-pre-multi-half's expected merged_row_count=1,148,512 (or `571,147 + 577,365` summed from the existing half-A/half-B parquets).
+
+**Step 7 (new) — Re-invoke Phase 7a.2 spot-check on PS48/2025-03-14:**
+
+1. Re-invoke `build_interpolated_trace_by_animal_date("PS48", date(2025,3,14), "tongue"/"jaw")` (NOW with the merged Phase 4 parquet available via F-P-5-wired manifest).
+2. Confirm interpolated_traces/{tongue,jaw}/PS48/20250314.parquet row counts ≈ 1.15M (vs the half-A-only 571,147 from the pre-Option-A spot-check).
+3. Confirm schema, n_tones field, plausibility of values.
+
+**Acceptance criteria for Task 2 extension:** Phase 4 merged parquets exist at `centered_<mode>/PS48/20250314ab/` for all center modes; Phase 7a.2 outputs at expected row counts; pytest -q PASSES at 1417+/39+/0; ruff clean.
+
+**Commit pattern:** 1 additional commit beyond the 2 already shipped (`e11fe90` + `eb49a97`) — `feat(phase-7c.2): force-emit Phase 4 multi-half merged centered parquet for PS48/20250314 (closes F-P-4 production gap; Phase 7-pre-multi-half scratch-only validation completed in production)`.
+
+### Q9 stays LOCKED Q9.A — no de-bundle needed
+
+The Phase 4 production-gap finding is closely related to F-P-5 wiring (it's the upstream input the wiring fix needs to consume) and fits inside Task 2's scope as an extension. Q9 alternative (de-bundle F-P-5 to separate phase) is NOT triggered.
+
+### PS48/2025-03-14 verification design — UNCHANGED per Addendum #1's qualitative-sanity verdict
+
+PS48/2025-03-14 still has no consolidated-pipeline baseline at standard paths (the half-A-only spot-check outputs CC left at `interpolated_traces/{tongue,jaw}/PS48/20250314.parquet` aren't a useful baseline — they're known-wrong). Post-Option-A, the merged outputs supersede those half-A-only ones; verification stays qualitative sanity per Addendum #1.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.B 257-session cohort, Q2 output safety, Q3 verification axes, Q4 visual gate, Q5 cleanup, Q6 PathResolver, Q7 sub-batching, Q8 no-backup, Q9 F-P-5 bundle.)
