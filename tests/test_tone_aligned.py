@@ -1,4 +1,4 @@
-"""Tests for stroke_orofacial.dlc_spatial.reward_aligned."""
+"""Tests for stroke_orofacial.dlc_spatial.tone_aligned."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def _write_stamped_tones_npz(
     tone_R: np.ndarray,
     wavesurfer_matches: bool = False,
 ) -> None:
-    """Test helper: write a minimal Phase-2-shaped rewards NPZ with the
+    """Test helper: write a minimal Phase-2-shaped tones NPZ with the
     mouse-frame side-convention stamp. Mirrors what
     ``_save_npz_with_side_convention`` writes in production, but only the
     fields ``load_tone_events`` reads.
@@ -142,7 +142,7 @@ class TestLoadToneEventsStamp:
 
     def test_accepts_matching_flag(self, tmp_path):
         """Caller's flag matches the NPZ's stamp → no raise, returns
-        the expected reward indices."""
+        the expected tone-onset indices."""
         path = tmp_path / "matches_false.npz"
         _write_stamped_tones_npz(
             path, tone_L=[10, 30], tone_R=[20, 40],
@@ -188,13 +188,13 @@ _V2 = Path("/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs
     not _MOUNT.exists() or not (_V2 / "spout_behavior").exists(),
     reason="MICROSCOPE or stroke_orofacial_pipeline_outputs not available",
 )
-class TestIntegrationRewardAligned:
+class TestIntegrationToneAligned:
     """Integration tests via the by_animal_date wrapper. The wrapper builds
     the manifest internally; the manifest-first primary signature is
-    exercised in TestIntegrationRewardAlignedWithManifest below."""
+    exercised in TestIntegrationToneAlignedWithManifest below."""
 
     def test_smoke_ps46_20250307(self, monkeypatch):
-        """End-to-end smoke test: reward-aligned analysis produces results."""
+        """End-to-end smoke test: tone-aligned analysis produces results."""
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         from stroke_orofacial.config_loader import load_defaults
         from stroke_orofacial.dlc_spatial.tone_aligned import (
@@ -217,7 +217,7 @@ class TestIntegrationRewardAligned:
         assert result["histogram"]["H_counts"].sum() > 0
 
     def test_trial_groups_differ(self, monkeypatch):
-        """L, R, all trial groups should produce different reward counts."""
+        """L, R, all trial groups should produce different tone counts."""
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
         from stroke_orofacial.config_loader import load_defaults
         from stroke_orofacial.dlc_spatial.tone_aligned import (
@@ -246,7 +246,7 @@ class TestIntegrationRewardAligned:
     not _MOUNT.exists() or not (_V2 / "spout_behavior").exists(),
     reason="MICROSCOPE or stroke_orofacial_pipeline_outputs not available",
 )
-class TestIntegrationRewardAlignedWithManifest:
+class TestIntegrationToneAlignedWithManifest:
     """Exercise the manifest-first primary signature on real data."""
 
     def test_smoke_with_manifest(self, monkeypatch):
@@ -280,7 +280,7 @@ class TestIntegrationRewardAlignedWithManifest:
         assert result["histogram"]["H_counts"].sum() > 0
 
 
-class TestBuildRewardAlignedAnalysisRaisesOnEmptyDlc:
+class TestBuildToneAlignedAnalysisRaisesOnEmptyDlc:
     """Phase 6 is DLC-required (per Phase 6.7 architectural decision).
     build_tone_aligned_analysis must raise on empty manifest.dlc_h5_files."""
 
@@ -310,7 +310,7 @@ class TestBuildRewardAlignedAnalysisRaisesOnEmptyDlc:
                 manifest, "tongue", "nose", "all", (-500, 5000),
                 resolver, spatial_config={}, tone_config={},
             )
-class TestBuildRewardAlignedAnalysisRaisesOnMissingPrerequisites:
+class TestBuildToneAlignedAnalysisRaisesOnMissingPrerequisites:
     """Phase 6.8a follow-up: the silent ``return None`` path for the
     missing Phase 4 centered parquet now raises FileNotFoundError with
     a message naming the exact missing upstream artefact, so runner

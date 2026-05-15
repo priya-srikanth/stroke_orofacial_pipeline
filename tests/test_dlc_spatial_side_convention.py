@@ -95,7 +95,7 @@ def _fake_result(
 # ---------------------------------------------------------------------------
 
 
-class TestSaveRewardAlignedNpz:
+class TestSaveToneAlignedNpz:
     """Schema, stamp correctness, and error paths for the Phase 6.8a
     heatmap NPZ writer."""
 
@@ -221,7 +221,7 @@ class TestSaveRewardAlignedNpz:
 # ---------------------------------------------------------------------------
 
 
-class TestBuildRewardAlignedAnalysisFlagPlumbing:
+class TestBuildToneAlignedAnalysisFlagPlumbing:
     """The primary entry point must forward the caller's flag through
     load_tone_events AND echo it on the return dict. We mock the heavy
     dependencies (parquet read, histogram build, alignment) and assert
@@ -334,7 +334,7 @@ class TestBuildRewardAlignedAnalysisFlagPlumbing:
         assert result["wavesurfer_sides_match_mouse_sides"] is matches
 
 
-class TestBuildRewardAlignedAnalysisByAnimalDate:
+class TestBuildToneAlignedAnalysisByAnimalDate:
     """The wrapper auto-populates the L/R flag from AnimalInfo when the
     caller passes None, and lets an explicit kwarg override when
     provided (used by tests that exercise the stamp-mismatch path)."""

@@ -288,7 +288,7 @@ class TestFirstPeakAlignedRenderers:
 # ============================================================================
 
 
-def _make_synthetic_cohort_reward_aligned(
+def _make_synthetic_cohort_tone_aligned(
     *,
     animal: str = "PS50",
     bin_days: int = 2,
@@ -329,7 +329,7 @@ def _make_synthetic_cohort_reward_aligned(
     )
 
 
-class TestRewardAlignedRenderers:
+class TestToneAlignedRenderers:
     """Phase 7a.4-cross-session-angle Cross-session #3 (2026-05-04):
     reward_aligned family rendering smoke tests."""
 
@@ -341,7 +341,7 @@ class TestRewardAlignedRenderers:
         from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
             _plot_tone_aligned_session_overlays,
         )
-        cohort = _make_synthetic_cohort_reward_aligned()
+        cohort = _make_synthetic_cohort_tone_aligned()
         params = load_defaults()
         fig = _plot_tone_aligned_session_overlays(cohort, params=params)
         assert isinstance(fig, plt.Figure)
@@ -360,7 +360,7 @@ class TestRewardAlignedRenderers:
         from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
             _plot_tone_aligned_binned_overlays,
         )
-        cohort = _make_synthetic_cohort_reward_aligned()
+        cohort = _make_synthetic_cohort_tone_aligned()
         params = load_defaults()
         fig = _plot_tone_aligned_binned_overlays(cohort, params=params)
         assert isinstance(fig, plt.Figure)
@@ -475,7 +475,7 @@ class TestRewardAlignedRenderers:
         from stroke_orofacial.dlc_kinematics.tongue_angle_cohort import (
             _plot_tone_aligned_session_overlays,
         )
-        cohort = _make_synthetic_cohort_reward_aligned()
+        cohort = _make_synthetic_cohort_tone_aligned()
         params = load_defaults()
         params["dlc_kinematics"]["tongue_visual"][
             "tone_aligned_display_window_ms"
