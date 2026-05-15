@@ -295,7 +295,7 @@ def _setup_session_with_one_strong_deflection(
     )
     _make_synthetic_jaw_parquet(parquet_path, n, fps=fps, y_final=y)
     manifest = _make_minimal_manifest(animal=animal, date=date)
-    trial_events = [TrialEvent(trial_index=0, reward_frame_idx=reward_fr, side="L")]
+    trial_events = [TrialEvent(trial_index=0, tone_frame_idx=reward_fr, side="L")]
     return resolver, manifest, trial_events
 
 
@@ -441,7 +441,7 @@ class TestJawPertrialDriver:
         _make_synthetic_jaw_parquet(parquet_path, n, fps=fps, y_final=y)
         manifest = _make_minimal_manifest(animal=animal, date=date)
         trial_events = [
-            TrialEvent(trial_index=k, reward_frame_idx=fr, side=sd)
+            TrialEvent(trial_index=k, tone_frame_idx=fr, side=sd)
             for k, (fr, sd) in enumerate(zip(reward_frs, ["L", "R", "L"]))
         ]
         out_path = build_jaw_pertrial(

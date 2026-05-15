@@ -19,7 +19,7 @@ Inputs
 - 7a.2 jaw interpolated_traces parquet
   (``frame_idx``, ``y_final``, ``fps`` + ``n_frames`` in file metadata)
 - :class:`SessionManifest` (animal, date)
-- ``trial_events`` (per-trial tone frame + side; ``TrialEvent.reward_frame_idx``
+- ``trial_events`` (per-trial tone frame + side; ``TrialEvent.tone_frame_idx``
   field name PRESERVED per Phase 7b-light Addendum #1 — DataFrame column /
   on-disk surface) — supplied by caller
   or auto-derived via the 7a.3 V3 helper
@@ -346,7 +346,7 @@ def _compute_per_trial(
     post_f = abs(_ms_to_frames(snippet_hi_ms, fps))
     t_ms = (np.arange(-pre_f, post_f + 1) * (1000.0 / fps))
 
-    jaw_yw = _snippet(jaw_y, ev.reward_frame_idx, pre_f, post_f, n_frames)
+    jaw_yw = _snippet(jaw_y, ev.tone_frame_idx, pre_f, post_f, n_frames)
 
     base_mean, base_sd = _compute_jaw_baseline(
         jaw_yw, t_ms, baseline_win_ms=baseline_win_ms,

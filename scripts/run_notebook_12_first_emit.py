@@ -17,11 +17,11 @@ Usage::
     python scripts/run_notebook_12_first_emit.py --animals PS46 PS47
     python scripts/run_notebook_12_first_emit.py \
         --bodyparts tongue --center-modes nose \
-        --reward-windows-ms=-500,5000 --reward-windows-ms=-100,1000 \
+        --tone-windows-ms=-500,5000 --tone-windows-ms=-100,1000 \
         --trial-groups L R all
 
-Note: ``--reward-windows-ms`` is ``action='append'`` (one window per
-invocation) and values must use the ``=`` form (``--reward-windows-ms=-500,5000``)
+Note: ``--tone-windows-ms`` is ``action='append'`` (one window per
+invocation) and values must use the ``=`` form (``--tone-windows-ms=-500,5000``)
 because the leading minus would otherwise be parsed as a flag.
 
 Rationale for "script rather than nbconvert": running
@@ -61,13 +61,13 @@ from stroke_orofacial.paths import PathResolver
 
 
 def _parse_window_ms(spec: str) -> tuple[float, float]:
-    """Parse a ``--reward-windows-ms`` token like ``-500,5000`` into a tuple."""
+    """Parse a ``--tone-windows-ms`` token like ``-500,5000`` into a tuple."""
     try:
         pre, post = spec.split(",")
         return (float(pre), float(post))
     except ValueError as exc:
         raise argparse.ArgumentTypeError(
-            f"--reward-windows-ms token must be 'pre,post' floats (e.g. -500,5000), got {spec!r}"
+            f"--tone-windows-ms token must be 'pre,post' floats (e.g. -500,5000), got {spec!r}"
         ) from exc
 
 
@@ -105,12 +105,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Centering modes to render (default: nose spout_midpoint eye_midpoint).",
     )
     parser.add_argument(
-        "--reward-windows-ms", action="append", type=_parse_window_ms,
+        "--tone-windows-ms", action="append", type=_parse_window_ms,
         default=None, metavar="PRE,POST",
         help=(
             "Reward window as comma-separated pre,post ms. Repeat the flag for "
             "multiple windows; leading-minus values require the '=' form, e.g. "
-            "--reward-windows-ms=-500,5000 --reward-windows-ms=-100,1000. "
+            "--tone-windows-ms=-500,5000 --tone-windows-ms=-100,1000. "
             "Default (no flags): -500,5000 and -100,1000."
         ),
     )
@@ -184,7 +184,7 @@ def _render_and_save(
     ax.set_title(
         f"{animal_id} {bodypart} {date_str}\n"
         f"{center_mode} | {trial_group} | {win_tag}\n"
-        f"rewards={result['n_rewards']}, frames={result['n_selected_frames']}"
+        f"tones={result['n_tones']}, frames={result['n_selected_frames']}"
     )
     ax.set_xlabel(f"{bodypart}_x")
     ax.set_ylabel(f"{bodypart}_y")
@@ -213,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     defaults = load_defaults()
     spatial_config = defaults["dlc_spatial"]
     tone_config = defaults["dlc_spatial_tone_aligned"]
-    output_root = resolver.pipeline_outputs("dlc_analysis") / "spatial_reward_aligned"
+    output_root = resolver.pipeline_outputs("dlc_analysis") / "spatial_tone_aligned"
 
     animal_ids = args.animals if args.animals is not None else list(animals_config.keys())
     unknown = sorted(set(animal_ids) - set(animals_config.keys()))
@@ -223,11 +223,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # argparse can't default ``action="append"`` to a list without the
     # default leaking into user-supplied runs; do the fallback here so
-    # the bare ``--reward-windows-ms=-500,5000`` invocation overrides
+    # the bare ``--tone-windows-ms=-500,5000`` invocation overrides
     # the notebook default cleanly.
-    reward_windows_ms = (
-        args.reward_windows_ms
-        if args.reward_windows_ms is not None
+    tone_windows_ms = (
+        args.tone_windows_ms
+        if args.tone_windows_ms is not None
         else [(-500.0, 5000.0), (-100.0, 1000.0)]
     )
 
@@ -243,19 +243,19 @@ def main(argv: list[str] | None = None) -> int:
         args.overwrite,
         args.bodyparts,
         args.center_modes,
-        reward_windows_ms,
+        tone_windows_ms,
         args.trial_groups,
     )
 
     # Cell 4: quadruple-nested loop.
     grand_ok = grand_skip = grand_err = 0
-    grand_skip_no_rewards = grand_skip_no_frames = 0
+    grand_skip_no_tones = grand_skip_no_frames = 0
     for center_mode in args.center_modes:
         for bodypart in args.bodyparts:
-            for window_ms in reward_windows_ms:
+            for window_ms in tone_windows_ms:
                 for trial_group in args.trial_groups:
                     n_ok = n_skip = n_err = 0
-                    n_skip_no_rewards = n_skip_no_frames = 0
+                    n_skip_no_tones = n_skip_no_frames = 0
                     win_tag = f"{int(window_ms[0])}to{int(window_ms[1])}ms"
 
                     for animal_id, date, manifest in manifests:
@@ -285,9 +285,9 @@ def main(argv: list[str] | None = None) -> int:
                             # distinguishes them. See notebook 12 cell 4
                             # for rationale.
                             if result is None:
-                                n_skip_no_rewards += 1
+                                n_skip_no_tones += 1
                                 log.info(
-                                    "skip_no_rewards %s/%s/%s/%s/%s/%s",
+                                    "skip_no_tones %s/%s/%s/%s/%s/%s",
                                     animal_id, date_str, bodypart,
                                     center_mode, trial_group, win_tag,
                                 )
@@ -329,23 +329,23 @@ def main(argv: list[str] | None = None) -> int:
                     tag = f"{bodypart}/{center_mode}/trials-{trial_group}/{win_tag}"
                     if (
                         n_ok + n_skip + n_err
-                        + n_skip_no_rewards + n_skip_no_frames
+                        + n_skip_no_tones + n_skip_no_frames
                         > 0
                     ):
                         print(
                             f"  {tag}: ok={n_ok} skip={n_skip} "
-                            f"skip_no_rewards={n_skip_no_rewards} "
+                            f"skip_no_tones={n_skip_no_tones} "
                             f"skip_no_frames={n_skip_no_frames} err={n_err}"
                         )
                     grand_ok += n_ok
                     grand_skip += n_skip
-                    grand_skip_no_rewards += n_skip_no_rewards
+                    grand_skip_no_tones += n_skip_no_tones
                     grand_skip_no_frames += n_skip_no_frames
                     grand_err += n_err
 
     print(
         f"\nTotals: ok={grand_ok} skip={grand_skip} "
-        f"skip_no_rewards={grand_skip_no_rewards} "
+        f"skip_no_tones={grand_skip_no_tones} "
         f"skip_no_frames={grand_skip_no_frames} err={grand_err} "
         f"(output_root={output_root})"
     )

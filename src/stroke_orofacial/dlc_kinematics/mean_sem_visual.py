@@ -1790,14 +1790,14 @@ def _cohort_overlay_specs(
 ) -> tuple[tuple[str, str, str, str, str], ...]:
     label = _AXIS_LABEL[bodypart]
     return (
-        ("myl", "syl", "Mouse LEFT rewards",
-         f"{label} Y (px)", "overlay_Y_mouseLrewards"),
-        ("myr", "syr", "Mouse RIGHT rewards",
-         f"{label} Y (px)", "overlay_Y_mouseRrewards"),
-        ("mxl", "sxl", "Mouse LEFT rewards",
-         f"{label} X (px)", "overlay_X_mouseLrewards"),
-        ("mxr", "sxr", "Mouse RIGHT rewards",
-         f"{label} X (px)", "overlay_X_mouseRrewards"),
+        ("myl", "syl", "Mouse LEFT tones",
+         f"{label} Y (px)", "overlay_Y_mouseLtones"),
+        ("myr", "syr", "Mouse RIGHT tones",
+         f"{label} Y (px)", "overlay_Y_mouseRtones"),
+        ("mxl", "sxl", "Mouse LEFT tones",
+         f"{label} X (px)", "overlay_X_mouseLtones"),
+        ("mxr", "sxr", "Mouse RIGHT tones",
+         f"{label} X (px)", "overlay_X_mouseRtones"),
     )
 
 
@@ -1806,14 +1806,14 @@ def _cohort_binned_specs(
 ) -> tuple[tuple[str, str, str, str, str], ...]:
     label = _AXIS_LABEL[bodypart]
     return (
-        ("myl", "syl", "Mouse LEFT rewards",
-         f"{label} Y (px)", "binnedOverlay_Y_mouseLrewards"),
-        ("myr", "syr", "Mouse RIGHT rewards",
-         f"{label} Y (px)", "binnedOverlay_Y_mouseRrewards"),
-        ("mxl", "sxl", "Mouse LEFT rewards",
-         f"{label} X (px)", "binnedOverlay_X_mouseLrewards"),
-        ("mxr", "sxr", "Mouse RIGHT rewards",
-         f"{label} X (px)", "binnedOverlay_X_mouseRrewards"),
+        ("myl", "syl", "Mouse LEFT tones",
+         f"{label} Y (px)", "binnedOverlay_Y_mouseLtones"),
+        ("myr", "syr", "Mouse RIGHT tones",
+         f"{label} Y (px)", "binnedOverlay_Y_mouseRtones"),
+        ("mxl", "sxl", "Mouse LEFT tones",
+         f"{label} X (px)", "binnedOverlay_X_mouseLtones"),
+        ("mxr", "sxr", "Mouse RIGHT tones",
+         f"{label} X (px)", "binnedOverlay_X_mouseRtones"),
     )
 
 

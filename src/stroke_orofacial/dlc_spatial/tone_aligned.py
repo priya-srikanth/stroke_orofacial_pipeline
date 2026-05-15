@@ -36,7 +36,7 @@ phase) completes the source-side narrative rename:
 Per Phase 7b-light Addendum #1 (bifurcation rule), on-disk-layout
 strings are PRESERVED here and deferred to Phase 7c-dlc-cohort-reemit:
 
-  - NPZ schema key ``"n_rewards"`` in the analysis result dict and the
+  - NPZ schema key ``"n_tones"`` in the analysis result dict and the
     saved NPZ payload (re-emit changes the schema in lockstep with data
     regeneration).
   - Output subdir literal ``"spatial_reward_aligned"`` consumed by the
@@ -329,7 +329,7 @@ def build_tone_aligned_analysis(
     Returns
     -------
     dict or None
-        ``{"histogram": ..., "window": ..., "n_rewards": ..., "n_selected_frames": ..., "trial_group": ..., "window_ms": ..., "bodypart": ..., "center_mode": ..., "wavesurfer_sides_match_mouse_sides": ...}``
+        ``{"histogram": ..., "window": ..., "n_tones": ..., "n_selected_frames": ..., "trial_group": ..., "window_ms": ..., "bodypart": ..., "center_mode": ..., "wavesurfer_sides_match_mouse_sides": ...}``
         — or None if the manifest has zero tone events for the requested
         ``trial_group`` (a valid-but-empty data condition; e.g. a
         post-stroke session with no L-only trials). The
@@ -337,7 +337,7 @@ def build_tone_aligned_analysis(
         when provided, else the value stamped into the Phase 2 NPZ
         (read back from disk), so notebook 12 can stamp the Phase 6
         output without having to re-lookup ``AnimalInfo``. The
-        ``"n_rewards"`` dict key is PRESERVED per Phase 7b-light
+        ``"n_tones"`` dict key is PRESERVED per Phase 7b-light
         Addendum #1 (NPZ schema key; renamed to ``"n_tones"`` in
         Phase 7c-dlc-cohort-reemit in lockstep with on-disk regeneration).
 
@@ -475,14 +475,14 @@ def build_tone_aligned_analysis(
         window=window,
     )
 
-    # NOTE: dict keys ``"n_rewards"``, ``"n_selected_frames"`` are
+    # NOTE: dict keys ``"n_tones"``, ``"n_selected_frames"`` are
     # PRESERVED per Phase 7b-light Addendum #1 (NPZ schema keys; on-disk
     # contract). Phase 7c-dlc-cohort-reemit renames these in lockstep
     # with cohort regeneration.
     return {
         "histogram": histogram,
         "window": window,
-        "n_rewards": window.n_events,
+        "n_tones": window.n_events,
         "n_selected_frames": window.n_selected,
         "trial_group": trial_group,
         "window_ms": window_ms,
@@ -587,7 +587,7 @@ def save_tone_aligned_npz(
       - ``trial_group`` — string scalar (``"all"`` / ``"L"`` / ``"R"``,
         mouse-frame per Phase 6.8a).
       - ``window_ms`` — 2-element float array ``[pre_ms, post_ms]``.
-      - ``n_rewards`` — int, number of tone events contributing
+      - ``n_tones`` — int, number of tone events contributing
         (PRESERVED key name; payload semantics are tone-anchored under
         Case-2 universal).
       - ``n_selected_frames`` — int, number of DLC frames in the window.
@@ -632,7 +632,7 @@ def save_tone_aligned_npz(
             [float(result["window_ms"][0]), float(result["window_ms"][1])],
             dtype=np.float64,
         ),
-        "n_rewards": int(result["n_rewards"]),
+        "n_tones": int(result["n_tones"]),
         "n_selected_frames": int(result["n_selected_frames"]),
         "bodypart": np.asarray(result["bodypart"]),
         "center_mode": np.asarray(result["center_mode"]),

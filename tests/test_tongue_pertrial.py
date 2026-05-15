@@ -988,19 +988,19 @@ class TestCell50Angle:
         # Per-frame angle linear ramp: angle[k] = k * 0.1 deg.
         n = 1000
         angle = np.arange(n, dtype=np.float64) * 0.1
-        # Sample at t_ms = 200 ms with reward_frame_idx = 0, fps=250.
+        # Sample at t_ms = 200 ms with tone_frame_idx = 0, fps=250.
         # target_frame = 0 + 200/1000*250 = 50 → angle ≈ 5.0.
         out = _extract_angle_at_lick_timestamps(
-            angle, _SYNTH_FPS, reward_frame_idx=0, lick_t_ms=200.0,
+            angle, _SYNTH_FPS, tone_frame_idx=0, lick_t_ms=200.0,
         )
         assert out == pytest.approx(5.0, abs=1e-9)
         # NaN propagation: NaN lick_t_ms → NaN.
         assert np.isnan(_extract_angle_at_lick_timestamps(
-            angle, _SYNTH_FPS, reward_frame_idx=0, lick_t_ms=float("nan"),
+            angle, _SYNTH_FPS, tone_frame_idx=0, lick_t_ms=float("nan"),
         ))
         # Out-of-bounds: large lick_t_ms → NaN.
         assert np.isnan(_extract_angle_at_lick_timestamps(
-            angle, _SYNTH_FPS, reward_frame_idx=0, lick_t_ms=1e6,
+            angle, _SYNTH_FPS, tone_frame_idx=0, lick_t_ms=1e6,
         ))
 
     # 28
@@ -1011,11 +1011,11 @@ class TestCell50Angle:
         angle = np.zeros(n, dtype=np.float64)
         angle[100] = 10.0  # signed-max within pad of frame 100
         angle[200] = -15.0  # signed-max (largest |angle|) within pad of frame 200
-        # Lick t_ms (with reward_frame_idx=0, fps=250):
+        # Lick t_ms (with tone_frame_idx=0, fps=250):
         # frame 100 → 400 ms; frame 200 → 800 ms.
         lick_t_ms = np.array([400.0, 800.0, np.nan, np.nan, np.nan])
         out = _extract_angle_max_signed_per_lick(
-            angle, _SYNTH_FPS, reward_frame_idx=0, lick_t_peaks_ms=lick_t_ms,
+            angle, _SYNTH_FPS, tone_frame_idx=0, lick_t_peaks_ms=lick_t_ms,
             peak_pad_ms=52.0,
         )
         assert out.shape == (5,)
@@ -1208,8 +1208,8 @@ class TestDriverAndSchema:
         _make_synthetic_eye_landmark_parquet(eye_path, n_frames)
 
         trial_events = [
-            TrialEvent(trial_index=0, reward_frame_idx=500, side="L"),
-            TrialEvent(trial_index=1, reward_frame_idx=2500, side="R"),
+            TrialEvent(trial_index=0, tone_frame_idx=500, side="L"),
+            TrialEvent(trial_index=1, tone_frame_idx=2500, side="R"),
         ]
         return resolver, manifest, trial_events
 
@@ -1494,8 +1494,8 @@ class TestTrialEventsAutoDerive:
         assert [ev.trial_index for ev in events] == list(range(5))
         # All sides in {"L", "R"}.
         assert all(ev.side in ("L", "R") for ev in events)
-        # All reward_frame_idx in [0, n_frames).
-        assert all(0 <= ev.reward_frame_idx < n_frames for ev in events)
+        # All tone_frame_idx in [0, n_frames).
+        assert all(0 <= ev.tone_frame_idx < n_frames for ev in events)
 
     # 2 — alignment translation: WS index → cam frame
     def test_derive_trial_events_alignment_translation(
@@ -1512,7 +1512,7 @@ class TestTrialEventsAutoDerive:
             animal=animal, date=date, resolver=resolver, manifest=manifest,
         )
         assert len(events) == 1
-        assert events[0].reward_frame_idx == 1000
+        assert events[0].tone_frame_idx == 1000
         assert events[0].side == "L"
 
     # 3 — sides pass through (NPZ already mouse-frame regardless of
@@ -1532,7 +1532,7 @@ class TestTrialEventsAutoDerive:
         events = _derive_trial_events_from_spout_behavior(
             animal=animal, date=date, resolver=resolver, manifest=manifest,
         )
-        sides_by_frame = {ev.reward_frame_idx: ev.side for ev in events}
+        sides_by_frame = {ev.tone_frame_idx: ev.side for ev in events}
         assert sides_by_frame == {1000: "L", 2000: "R"}
 
         # Match=False case: NPZ stamped False, manifest=False. Same NPZ
@@ -1550,7 +1550,7 @@ class TestTrialEventsAutoDerive:
             animal=animal2, date=date2,
             resolver=resolver2, manifest=manifest2,
         )
-        sides_by_frame2 = {ev.reward_frame_idx: ev.side for ev in events2}
+        sides_by_frame2 = {ev.tone_frame_idx: ev.side for ev in events2}
         assert sides_by_frame2 == {1000: "L", 2000: "R"}
 
     # 4 — missing licks NPZ → FileNotFoundError
@@ -1612,7 +1612,7 @@ class TestTrialEventsAutoDerive:
             animal=animal, date=date, resolver=resolver, manifest=manifest,
         )
         assert len(events) == 1  # the out-of-range one was dropped
-        assert events[0].reward_frame_idx == 1000
+        assert events[0].tone_frame_idx == 1000
         # Defensive ValueError: monkeypatch the translator to return a
         # frame index >= n_frames (bypassing its built-in clamp).
         from stroke_orofacial.dlc_kinematics import tongue_pertrial as _tp_mod
@@ -1628,7 +1628,7 @@ class TestTrialEventsAutoDerive:
         # Re-import path: the helper imports inside its function body.
         # Patch at the source module so the helper's local import resolves
         # to the patched function.
-        with pytest.raises(ValueError, match="reward_frame_idx"):
+        with pytest.raises(ValueError, match="tone_frame_idx"):
             _tp_mod._derive_trial_events_from_spout_behavior(
                 animal=animal, date=date, resolver=resolver, manifest=manifest,
             )

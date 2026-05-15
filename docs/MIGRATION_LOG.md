@@ -6078,3 +6078,81 @@ All 4 gates PASS. No hot-fix required; no Q3.B revoke / Phase 7b cascading requi
 
 ---
 
+## Phase 7c.1 — Source-side on-disk-string renames (Addendum #1 deferrals from 7b-light) + 3-session pilot re-emit
+
+**Date:** 2026-05-15
+**Tag on merge:** `v7c.1-dlc-source-rename-and-pilot`
+**Branch:** `phase/7c.1-dlc-source-rename-and-pilot`
+
+**Scope.** Inverts Phase 7b-light's PRESERVED on-disk-string set (output subdir paths, NPZ schema keys, window-dir tokens, dataclass-field-with-on-disk-surface, family-name tokens, CLI flag spellings, figure filename suffixes, skip-counter narrative, notebook cell IDs, result-dict display narrative) — exactly the strings 7b-light deferred are the strings 7c.1 renames. Bifurcated via kickoff [Addendum #1](prompts/phase-7c.1-dlc-source-rename-and-pilot-kickoff.md): pilot scope locked to full per-session DLC pipeline (Categories A spatial + B interpolation + C per-trial features + D tongue angle figures + D-supplement tongue-jaw mismatch + D-supplement-2 jaw pertrial endpoints). Finding-A re-interpretation of PS54 verdict captured in [Addendum #2](prompts/phase-7c.1-dlc-source-rename-and-pilot-kickoff.md) (Phase 8a.10.1 Task 4.5 wrote to production paths, so legacy PS54 outputs are already post-fix; cohort-archeology implications for Phase 7c.2).
+
+**What landed.** 10 commits on `phase/7c.1-dlc-source-rename-and-pilot`:
+
+| # | SHA | Scope |
+|---|-----|-------|
+| 1 | `27c30bf` | docs(kickoff): kickoff doc with Q1-Q7 scoping decisions + bifurcation-rule inversion plan |
+| 2 | `a06d99b` | refactor(C1): `dlc_spatial/` on-disk strings — Cat E family-name token + Cat G figure filename suffixes + Cat H figure titles (Cat A subdir literal pending C5) |
+| 3 | `d975194` | refactor(C2): `dlc_kinematics/` on-disk strings — Cat C NPZ schema key + Cat B2 window-selector label + Cat D1/D2 dataclass fields |
+| 4 | `0830567` | refactor(C3): `paths.py` `mean_sem_visual_dir()` Cat B1 window-dir token + docstring narrative + 13-hit test path-assertion lockstep |
+| 5 | `533d53f` | refactor(C4): `configs/defaults.yaml` Cat E YAML sub-key rename + Cat F CLI flag chain lockstep (`--tone-windows-ms` + auto-derived attribute + local var + notebook constant) |
+| 6 | `90b8bfc` | refactor(C5): notebook 12 + `scripts/run_notebook_12_first_emit.py` — Cat A subdir literal + Cat J notebook cell ID + Cat K result-dict + Cat F4 consumer + Cat I skip-counter + markdown narrative |
+| 7 | `d55a847` | chore(C6): `scripts/phase_6_8a_first_run_health_report.py` inline-comment breadcrumb per Open Q §5.1 (PRESERVE; retires in Phase 7c.2 Task 5) |
+| 8 | `17b1bf9` | test(Task 3): pilot driver Round 1 (Categories A + B only) |
+| 9 | `7c354ff` | test(Task 3): pilot driver Round 2 rewrite + kickoff Addenda #1 + #2 (full A-D + D-supplements scope per Addendum #1) |
+| 10 | _this commit_ | docs(close): DECISIONS + MIGRATION_LOG entries |
+
+**Source-side renamed strings (inverted from 7b-light PRESERVED list):**
+
+- **Cat A** — output subdir literal `spatial_reward_aligned` → `spatial_tone_aligned` (notebook 12 + script + tone_aligned.py docstring).
+- **Cat B1 / B2** — window-dir tokens `rewardAligned_<N>pre-<M>post` (paths.py f-string) + `reward_<N>_<M>ms` label (window_selector.py).
+- **Cat C** — NPZ schema key `n_rewards` → `n_tones` (tone_aligned.py NPZ writer).
+- **Cat D1 / D2** — dataclass fields `InterpolationResult.reward_centers_cam` → `tone_centers_cam` (NPZ key) + `TrialEvent.reward_frame_idx` → `tone_frame_idx` (DataFrame column).
+- **Cat E** — family-name token `"reward_aligned"` → `"tone_aligned"` (`_family_paths()` subdir + YAML sub-key under `tongue_visual.plot_families`).
+- **Cat F1-F4** — CLI flag `--reward-windows-ms` → `--tone-windows-ms` + auto-derived attribute + local var + notebook constant `TONE_WINDOWS_MS`.
+- **Cat G / H** — figure filename suffixes `mouseLrewards`/`mouseRrewards` → `mouseLtones`/`mouseRtones` + paired figure titles.
+- **Cat I** — skip-counter log keys + counter vars (`n_skip_no_rewards` → `n_skip_no_tones`).
+- **Cat J** — notebook cell ID `reward-loop` → `tone-loop` (notebook 12).
+- **Cat K** — result-dict display narrative `f"rewards=..."` → `f"tones=..."`.
+
+**Audit Open Questions resolved as proposed.** §5.1 PRESERVE `scripts/phase_6_8a_first_run_health_report.py` with inline-comment breadcrumb (retires alongside legacy tree in Phase 7c.2 Task 5); §5.2 RENAME `reward_windows_ms` → `tone_windows_ms` in lockstep with Cat F; §5.3 SKIP `_deprecated/` test file. STOP-and-report acceptance PASS — 0 AMBIGUOUS.
+
+**Sessions piloted.** 3 of 3 per Q1.A — PS46/2025-03-07 (bilateral, swap-fix-invariant baseline) + PS54/2025-05-03 (withhold-bearing post-stroke) + PS50/2025-03-25 (post-tone-change regime sanity).
+
+**Pilot verdict (Round 2, full A-D + D-supplements scope per Addendum #1): PASS.**
+
+| Axis | Verdict |
+|------|---------|
+| PS46 Cat A byte-equality (modulo `n_rewards` → `n_tones` rename) | PASS — 54/54 heatmap NPZs byte-equal |
+| PS46 Cat B interpolated_traces (sha256 anchor) | PASS — matches 7b-light Task 5 anchors |
+| PS54 delta sanity (re-interpreted per Finding A) | PASS — uniform delta=+0 across 54 configs; legacy already post-fix |
+| PS50 Cat A light sanity | PASS — 54/54 outputs, `n_tones` range 48-96, 0 anomalies |
+| Cat B/C/D/D-supp/D-supp-2 execution on all 3 sessions | PASS — 61 outputs/session × 3 = 183 outputs total; manifest status=OK |
+
+Verdict deliverable at [`.scratch_phase_7c1/pilot_verdict.md`](../.scratch_phase_7c1/pilot_verdict.md). Per-session manifest at [`.scratch_phase_7c1/pilot_manifest.csv`](../.scratch_phase_7c1/pilot_manifest.csv).
+
+**Wall-time data for Phase 7c.2 budgeting.** Mean ~73 s/session = ~1.2 min/session for the full per-session DLC pipeline. Extrapolation across ~352 sessions: ~7-14 hr realistic cohort budget. Cross-session aggregates (Category E) are NOT in the per-session cost; they add a one-time cohort-completion compute pass on top. Tractable as a single 7c.2 phase; overnight runs sufficient.
+
+**Finding A (PS54 verdict re-interpretation).** Kickoff Q1.A expected PS54 to show `+86 trial-event delta` vs legacy `spatial_reward_aligned/`; empirically observed `+0 delta uniformly` across all 54 configs. Cause: legacy PS54 outputs on MICROSCOPE are already post-Phase-8a.10.1-swap-fix (most plausibly written by Task 4.5 itself during the X1-β cascade-safety spot-check). Conclusion identical: rename is data-layer no-op. Implication for Phase 7c.2: mixed cohort state on legacy paths — Task 4.5 sessions are post-fix already; ~352 other sessions are genuinely pre-fix. 7c.2 verification design must accommodate both, with per-session classification recommended (cheap mtime check on legacy `heatmap_*.npz` files; Task 4.5 writes have mtime around the Phase 8a.10.1 close date 2026-05-14).
+
+**Intentional behavior differences vs legacy.** None at the data level — phase is on-disk-string rename + pilot re-emit on the same post-Phase-8a.10.1 Phase 2 NPZs. New on-disk paths (`spatial_tone_aligned/`, `toneAligned_*`, `n_tones`, `tone_centers_cam`, `tone_frame_idx`, etc.) carry byte-identical content to the legacy paths' equivalents modulo the key/column renames.
+
+**Exit criteria met.**
+
+- [x] `pytest -q` (full unfiltered) PASSES at 1417 passed, 39 skipped, 0 failed — matches the post-Phase-7b-light baseline exactly.
+- [x] All on-disk-string renames in lockstep across source + config + tests + notebook + scripts; no broken references.
+- [x] Pilot verdict PASS on all 3 sessions across full A-D + D-supplements scope (183 outputs total; manifest `status=OK`).
+- [x] DECISIONS 2026-05-15 entry (8 decisions) + this MIGRATION_LOG entry.
+
+**Forward-pointers queued.**
+
+- **Phase 7c.2-dlc-cohort-completion (primary forward-pointer).** Cohort-wide DLC kinematics + spatial re-emit on the renamed source for ~352 remaining sessions (Cohort A + Cohort B). Folds in Phase 7a.7 (DLC heatmaps visual gate) as a sub-task. Legacy-path cleanup (delete `spatial_reward_aligned/` etc. + retire `scripts/phase_6_8a_first_run_health_report.py`) in 7c.2 Task 5 after cohort verification PASSes. Phase 7c.2 Task 1 audit should add per-session legacy-state classification per Finding A. Blocks Phase 9 + pub-figures. Cohort budget: ~7-14 hr operational compute per Decision 8.
+- **Phase 7-pre-alignment-templates (F-P-7).** Cohort-wide alignment template emit + consumer cutover; lands before or after Phase 7c.2.
+- **Phase 7-pre-multi-half-dlc (F-P-5).** PS48 Pattern A merge wiring; Task 1 audit should classify PS48's per-site legacy state per Finding A's F-P-4 implication.
+- **Phase 9 stats.** Blocked on Phase 7c.2.
+- **Phase 7-pre-secondary-spout-compare-DLC.** Blocked on b-half DLC inference.
+- **Pub-figures phase.** Blocked on Phase 7c.2.
+
+**Tag:** `v7c.1-dlc-source-rename-and-pilot` on the merge commit.
+
+---
+

@@ -173,7 +173,7 @@ def _setup_session(
     )
     manifest = _make_minimal_manifest(animal=animal, date=date)
     trial_events = [
-        TrialEvent(trial_index=k, reward_frame_idx=int(fr), side=str(sd))
+        TrialEvent(trial_index=k, tone_frame_idx=int(fr), side=str(sd))
         for k, (fr, sd) in enumerate(zip(reward_frames, sides))
     ]
     return resolver, manifest, trial_events
@@ -281,7 +281,7 @@ class TestClassifierSchemaAndEdges:
         df = pd.read_parquet(out)
         expected_cols = {
             "mouse", "date", "rel_day", "trial_index", "side",
-            "reward_frame_idx", "fps",
+            "tone_frame_idx", "fps",
             "n_licks_in_quiet_win", "tongue_peak_times_ms", "quiet_tongue_pass",
             "jaw_baseline_mean", "jaw_baseline_sd",
             "jaw_peak_pos_deflection", "jaw_peak_neg_deflection",
@@ -478,8 +478,8 @@ class TestPlotFamilySmoke:
             center_mode="centered_spout_midpoint",
         )
         te2 = [
-            TrialEvent(trial_index=0, reward_frame_idx=1500, side="L"),
-            TrialEvent(trial_index=1, reward_frame_idx=4000, side="R"),
+            TrialEvent(trial_index=0, tone_frame_idx=1500, side="L"),
+            TrialEvent(trial_index=1, tone_frame_idx=4000, side="R"),
         ]
         classify_tongue_jaw_mismatch(
             manifest=m2, resolver=resolver, trial_events=te2,
@@ -752,7 +752,7 @@ class TestPlotFamilyVisualFidelity:
             ),
             n, fps=fps, y_final=ty,
         )
-        te2 = [TrialEvent(trial_index=0, reward_frame_idx=1500, side="L")]
+        te2 = [TrialEvent(trial_index=0, tone_frame_idx=1500, side="L")]
         classify_tongue_jaw_mismatch(
             manifest=m2, resolver=resolver, trial_events=te2,
             params=base_params, overwrite="force",
@@ -850,8 +850,8 @@ class TestPlotFamilyVisualFidelity:
         # of linspace ~ [10, 25] (sd ≈ 8) and the test (0, 5000) values
         # exceed 4*sd. Already in [10, 40] — should pass QC.
         trial_events = [
-            TrialEvent(trial_index=0, reward_frame_idx=1500, side="L"),
-            TrialEvent(trial_index=1, reward_frame_idx=3000, side="R"),
+            TrialEvent(trial_index=0, tone_frame_idx=1500, side="L"),
+            TrialEvent(trial_index=1, tone_frame_idx=3000, side="R"),
         ]
         classify_tongue_jaw_mismatch(
             manifest=manifest, resolver=resolver, trial_events=trial_events,
@@ -1261,8 +1261,8 @@ class TestPlotFamilyVisualFidelity:
             n_frames, fps=fps, y_final=tongue_y_2,
         )
         te2 = [
-            TrialEvent(trial_index=0, reward_frame_idx=1500, side="L"),
-            TrialEvent(trial_index=1, reward_frame_idx=3000, side="R"),
+            TrialEvent(trial_index=0, tone_frame_idx=1500, side="L"),
+            TrialEvent(trial_index=1, tone_frame_idx=3000, side="R"),
         ]
         classify_tongue_jaw_mismatch(
             manifest=m2, resolver=resolver, trial_events=te2,
@@ -1333,7 +1333,7 @@ class TestPlotFamilyVisualFidelity:
         )
         manifest = _make_minimal_manifest(animal=animal, date=date)
         trial_events = [
-            TrialEvent(trial_index=k, reward_frame_idx=int(fr),
+            TrialEvent(trial_index=k, tone_frame_idx=int(fr),
                        side=("L" if k < 5 else "R"))
             for k, fr in enumerate(reward_frames)
         ]

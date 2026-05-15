@@ -459,8 +459,8 @@ def _build_classifier_result(
         pre_f = abs(_ms_to_frames(min(0.0, quiet_win_ms[0]), fps))
         post_f = abs(_ms_to_frames(max(0.0, quiet_win_ms[1]), fps))
         t_ms_local = (np.arange(-pre_f, post_f + 1) * (1000.0 / fps))
-        y_w = _snippet(tongue_y, ev.reward_frame_idx, pre_f, post_f, n_frames)
-        x_w = _snippet(tongue_x, ev.reward_frame_idx, pre_f, post_f, n_frames)
+        y_w = _snippet(tongue_y, ev.tone_frame_idx, pre_f, post_f, n_frames)
+        x_w = _snippet(tongue_x, ev.tone_frame_idx, pre_f, post_f, n_frames)
 
         peaks = _slope_detect_lick_peaks(
             y_t=y_w, x_t=x_w, t_ms=t_ms_local, fps=fps,
@@ -493,7 +493,7 @@ def _build_classifier_result(
             rel_day=int(rel_day),
             trial_index=int(ev.trial_index),
             side=str(ev.side),
-            reward_frame_idx=int(ev.reward_frame_idx),
+            tone_frame_idx=int(ev.tone_frame_idx),
             fps=float(fps),
             n_licks_in_quiet_win=int(n_licks),
             tongue_peak_times_ms=peak_times_ms,
@@ -794,7 +794,7 @@ def _build_plot_snippets(
     t_ms = (np.arange(-pre_f, post_f + 1) * (1000.0 / fps))
     rows: list[dict[str, Any]] = []
     for _, r in df.iterrows():
-        ct = int(r["reward_frame_idx"])
+        ct = int(r["tone_frame_idx"])
         jaw_yw = _snippet(jaw_y, ct, pre_f, post_f, n_frames)
         tong_yw = _snippet(tongue_y, ct, pre_f, post_f, n_frames)
         baseline_mean = float(r["jaw_baseline_mean"]) if r["jaw_baseline_mean"] is not None else float("nan")

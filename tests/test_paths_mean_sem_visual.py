@@ -5,13 +5,13 @@ Architecture: single resolver, ``bodypart`` argument either ``"tongue"``
 or ``"jaw"`` (Q2 locked 2026-05-01); returns
 
     {outputs}/dlc_kinematics/mean_sem/{bodypart}/{center_mode}/
-    rewardAligned_{pre_ms}pre-{post_ms}post/{plot_family}/{animal}/
+    toneAligned_{pre_ms}pre-{post_ms}post/{plot_family}/{animal}/
 
 Q6 / Q7 are exercised explicitly:
 
 - Q6: lowercase ``{bodypart}`` only — the consolidated tree never gets
   the legacy capital-T tongue subdir bug.
-- Q7: per-window ``rewardAligned_{pre}-{post}`` subdir layout for
+- Q7: per-window ``toneAligned_{pre}-{post}`` subdir layout for
   BOTH bodyparts (tongue's flat legacy layout is not replicated).
 
 The resolver is a directory resolver, not a file resolver, so no
@@ -50,13 +50,13 @@ class TestMeanSemVisualDir:
     Phase 7a.6 (locked 2026-05-01):
     - Q2: bodypart-parametric single resolver (``bodypart`` arg).
     - Q6: lowercase ``{bodypart}`` only (no capital-T legacy bug).
-    - Q7: per-window ``rewardAligned_{pre}pre-{post}post`` subdir layout
+    - Q7: per-window ``toneAligned_{pre}pre-{post}post`` subdir layout
       for both bodyparts.
 
     Window units (deviation from kickoff): the legacy filename + jaw
     subdir convention is millisecond-based
-    (``rewardAligned_100pre-1000post/``). The kickoff template sketched
-    seconds (``(2.0, 5.0) → rewardAligned_2-5``); we use milliseconds
+    (``toneAligned_100pre-1000post/``). The kickoff template sketched
+    seconds (``(2.0, 5.0) → toneAligned_2-5``); we use milliseconds
     (int) here to keep visual-gate filename comparison bit-comparable
     with legacy outputs.
     """
@@ -89,7 +89,7 @@ class TestMeanSemVisualDir:
             / "mean_sem"
             / bodypart
             / center_mode
-            / "rewardAligned_100pre-1000post"
+            / "toneAligned_100pre-1000post"
             / plot_family
             / "PS46"
         )
@@ -107,16 +107,16 @@ class TestMeanSemVisualDir:
     @pytest.mark.parametrize(
         ("pre_ms", "post_ms", "expected_subdir"),
         [
-            (100, 1000, "rewardAligned_100pre-1000post"),
-            (500, 5000, "rewardAligned_500pre-5000post"),
-            (200, 2500, "rewardAligned_200pre-2500post"),
-            (0, 8000, "rewardAligned_0pre-8000post"),
+            (100, 1000, "toneAligned_100pre-1000post"),
+            (500, 5000, "toneAligned_500pre-5000post"),
+            (200, 2500, "toneAligned_200pre-2500post"),
+            (0, 8000, "toneAligned_0pre-8000post"),
         ],
     )
     def test_window_subdir_format(
         self, monkeypatch, tmp_path, pre_ms, post_ms, expected_subdir
     ):
-        """Window subdir renders as ``rewardAligned_{pre}pre-{post}post`` (ms)."""
+        """Window subdir renders as ``toneAligned_{pre}pre-{post}post`` (ms)."""
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(output_root=tmp_path)
         path = resolver.mean_sem_visual_dir(
@@ -201,7 +201,7 @@ class TestMeanSemVisualDir:
     ):
         """Q7 (locked 2026-05-01): tongue adopts jaw's per-window subdir.
 
-        Both bodyparts produce ``rewardAligned_{pre}pre-{post}post/`` as
+        Both bodyparts produce ``toneAligned_{pre}pre-{post}post/`` as
         an explicit dir component. Tongue's legacy flat-layout
         (saved files at the family-subdir level with the window encoded
         only in the filename, not the dir tree) is NOT replicated.
@@ -220,7 +220,7 @@ class TestMeanSemVisualDir:
                 plot_family="binned_overlays",
                 animal="PS47",
             )
-            assert path.parts[-3] == "rewardAligned_100pre-1000post"
+            assert path.parts[-3] == "toneAligned_100pre-1000post"
 
     def test_no_eager_mkdir(self, monkeypatch, tmp_path):
         """Resolver returns the path without creating any ancestor dirs.

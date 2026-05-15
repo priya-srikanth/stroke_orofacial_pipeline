@@ -211,7 +211,7 @@ class TestIntegrationToneAligned:
             defaults["dlc_spatial"], defaults["dlc_spatial_tone_aligned"],
         )
         assert result is not None
-        assert result["n_rewards"] > 0
+        assert result["n_tones"] > 0
         assert result["n_selected_frames"] > 0
         assert result["histogram"] is not None
         assert result["histogram"]["H_counts"].sum() > 0
@@ -235,7 +235,7 @@ class TestIntegrationToneAligned:
                 (-500, 5000), resolver,
                 defaults["dlc_spatial"], defaults["dlc_spatial_tone_aligned"],
             )
-            counts[tg] = r["n_rewards"] if r else 0
+            counts[tg] = r["n_tones"] if r else 0
 
         assert counts["all"] == counts["L"] + counts["R"]
         assert counts["L"] > 0
@@ -276,7 +276,7 @@ class TestIntegrationToneAlignedWithManifest:
             defaults["dlc_spatial_tone_aligned"],
         )
         assert result is not None
-        assert result["n_rewards"] > 0
+        assert result["n_tones"] > 0
         assert result["histogram"]["H_counts"].sum() > 0
 
 

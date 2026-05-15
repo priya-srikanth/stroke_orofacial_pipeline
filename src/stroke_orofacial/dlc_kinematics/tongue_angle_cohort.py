@@ -72,7 +72,7 @@ from stroke_orofacial.paths import PathResolver  # noqa: E402
 # Plot family / sub-variant tokens.
 FAMILY_TOKENS: tuple[str, ...] = (
     "first_peak_aligned",
-    "reward_aligned",
+    "tone_aligned",
     "phase_aligned_angle_1st_lick",
     "phase_aligned_angle_all_licks",
     "phase_aligned_angle_first_2_licks",
@@ -504,12 +504,12 @@ def build_tongue_angle_cohort_aggregates(
                         n_trials=n_trials,
                         t=t, mu=mu, sem=sem,
                     ))
-            if "reward_aligned" in requested:
+            if "tone_aligned" in requested:
                 triple = _extract_tone_aligned(bundle, side)
                 if triple is not None:
                     t, mu, sem, n_trials = triple
                     ts_rows.append(TimeSeriesSessionAggregate(
-                        family="reward_aligned",
+                        family="tone_aligned",
                         side=side, date=d, rel_day=rel_day,
                         n_trials=n_trials,
                         t=t, mu=mu, sem=sem,
@@ -1249,8 +1249,8 @@ def _plot_tone_aligned_session_overlays(
     )
     return _plot_time_series_session_overlays(
         cohort,
-        family_token="reward_aligned",
-        title_label="reward-aligned tongue angle",
+        family_token="tone_aligned",
+        title_label="tone-aligned tongue angle",
         x_axis_label="Time from reward (ms)",
         x_clip=(float(display_win[0]), float(display_win[1])),
         params=params,
@@ -1269,8 +1269,8 @@ def _plot_tone_aligned_binned_overlays(
     )
     return _plot_time_series_binned_overlays(
         cohort,
-        family_token="reward_aligned",
-        title_label="reward-aligned tongue angle",
+        family_token="tone_aligned",
+        title_label="tone-aligned tongue angle",
         x_axis_label="Time from reward (ms)",
         x_clip=(float(display_win[0]), float(display_win[1])),
         params=params,
@@ -1384,14 +1384,14 @@ def build_tone_aligned_cohort(
         animal_info = get_animal(animal)
 
     out_dir = resolver.tongue_angle_cross_session_dir(animal)
-    paths = _family_paths(out_dir, animal, "reward_aligned")
+    paths = _family_paths(out_dir, animal, "tone_aligned")
     if overwrite == "skip" and all(p.exists() for p in paths.values()):
         return paths
 
     if cohort is None:
         cohort = build_tongue_angle_cohort_aggregates(
             animal, resolver, params=params, animal_info=animal_info,
-            families=["reward_aligned"],
+            families=["tone_aligned"],
         )
 
     fig_so = _plot_tone_aligned_session_overlays(cohort, params=params)
@@ -1846,7 +1846,7 @@ def build_tongue_angle_cohort(
     # the keys with the family token for the composite return dict.
     for family_driver, family_token in (
         (build_first_peak_aligned_cohort, "first_peak_aligned"),
-        (build_tone_aligned_cohort, "reward_aligned"),
+        (build_tone_aligned_cohort, "tone_aligned"),
         (build_first_vs_second_peak_scatter_cohort,
          "first_vs_second_peak_scatter"),
     ):

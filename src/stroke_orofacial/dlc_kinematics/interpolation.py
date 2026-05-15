@@ -130,10 +130,10 @@ class InterpolationResult:
     wavesurfer_sides_match_mouse_sides: bool = False
     # Cam-frame tone-onset centers used for the baseline pool — kept for
     # the optional QC NPZ sidecar only. Dataclass field name + NPZ key
-    # ``reward_centers_cam`` PRESERVED per Phase 7b-light Addendum #1
+    # ``tone_centers_cam`` PRESERVED per Phase 7b-light Addendum #1
     # (on-disk contract; Phase 7c-dlc-cohort-reemit will rename in
     # lockstep with cohort regeneration).
-    reward_centers_cam: np.ndarray = field(default_factory=lambda: np.array([]))
+    tone_centers_cam: np.ndarray = field(default_factory=lambda: np.array([]))
 
 
 # ---------------------------------------------------------------------------
@@ -579,7 +579,7 @@ def _interpolate_bodypart_core(
     bodypart: str,
     center_mode: str,
     bodypart_params: dict[str, Any],
-    reward_centers_cam: np.ndarray,
+    tone_centers_cam: np.ndarray,
     *,
     animal_info: AnimalInfo,
     fps: float = _DEFAULT_FPS,
@@ -659,7 +659,7 @@ def _interpolate_bodypart_core(
 
     # Baseline pool (tone-aligned on the "drop" stage).
     pool_mask = _build_tone_aligned_pool_mask(
-        n_frames=n_frames, tone_centers_float=reward_centers_cam, fps=fps,
+        n_frames=n_frames, tone_centers_float=tone_centers_cam, fps=fps,
     )
     # Data-driven baseline (informational when force=true; feeds X0/Y0 when false).
     y0_lk_thr = float(baseline_cfg.get("y0_lk_thr", lk_thr))
@@ -714,7 +714,7 @@ def _interpolate_bodypart_core(
         wavesurfer_sides_match_mouse_sides=bool(
             animal_info.wavesurfer_sides_match_mouse_sides
         ),
-        reward_centers_cam=reward_centers_cam,
+        tone_centers_cam=tone_centers_cam,
     )
 
 
@@ -804,7 +804,7 @@ def _write_qc_npz(result: InterpolationResult, path: Path) -> None:
         interpolation_version=np.array(result.interpolation_version),
         bodypart=np.array(result.bodypart),
         animal=np.array(result.animal),
-        reward_centers_cam=result.reward_centers_cam.astype(np.float64),
+        tone_centers_cam=result.tone_centers_cam.astype(np.float64),
     )
 
 
@@ -896,14 +896,14 @@ def build_interpolated_trace(
     fps = float((params.get("alignment") or {}).get("fps_cam", _DEFAULT_FPS))
 
     df = _load_centered_df(manifest, bodypart, center_mode, resolver)
-    reward_centers_cam = _load_tone_centers_cam(manifest, resolver)
+    tone_centers_cam = _load_tone_centers_cam(manifest, resolver)
 
     result = _interpolate_bodypart_core(
         df=df,
         bodypart=bodypart,
         center_mode=center_mode,
         bodypart_params=bodypart_params,
-        reward_centers_cam=reward_centers_cam,
+        tone_centers_cam=tone_centers_cam,
         animal_info=animal_info,
         fps=fps,
     )

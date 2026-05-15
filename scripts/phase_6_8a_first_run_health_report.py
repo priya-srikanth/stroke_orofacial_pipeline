@@ -1,5 +1,15 @@
 """First-run health report for Phase 6.8a tone-aligned heatmap NPZs.
 
+**Phase 7c.1 disposition (Open Q §5.1):** this script reads the
+LEGACY `spatial_reward_aligned/` on-disk tree (NPZ schema key
+``n_rewards``, output subdir ``spatial_reward_aligned/``). Phase 7c.1
+renamed the source-side emission to ``spatial_tone_aligned/`` + NPZ
+key ``n_tones`` for new emits; legacy NPZs at the old paths still
+carry the old key. This script remains pointed at the legacy tree
+to continue serving its purpose for legacy-tree audits. The script
+retires alongside the legacy tree in **Phase 7c.2 Task 5** (legacy-
+path cleanup, post cohort-wide re-emit verification).
+
 After Priya executes notebook 12 under the mouse-frame convention, this
 script walks the emitted heatmap NPZ tree and confirms the outputs are
 internally consistent. Phase 6 has no legacy array-level reference (cell

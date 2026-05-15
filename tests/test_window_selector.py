@@ -129,4 +129,4 @@ class TestToneAlignedWindow:
         assert mask[75]    # 100 - 25
         assert mask[225]   # 100 + 125
         assert w.n_events == 2
-        assert w.label == "reward_-100_500ms"
+        assert w.label == "tone_-100_500ms"
