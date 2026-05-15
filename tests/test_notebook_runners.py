@@ -150,7 +150,7 @@ class TestCounterSplit:
     ):
         with caplog.at_level(logging.INFO):
             exit_code, _ = patched_runner(
-                script=[{"histogram": None, "n_rewards": 10}],
+                script=[{"histogram": None, "n_tones": 10}],
             )
         assert exit_code == 0
         out = capsys.readouterr().out

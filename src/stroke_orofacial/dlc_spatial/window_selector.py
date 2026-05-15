@@ -35,15 +35,15 @@ class WindowSelector(ABC):
     @property
     @abstractmethod
     def label(self) -> str:
-        """Short label for output filenames (e.g. 'whole', 'reward_-500_5000ms').
+        """Short label for output filenames (e.g. 'whole', 'tone_-500_5000ms').
 
-        Note on the ``reward_*`` token: this literal is preserved as the
-        on-disk filename suffix per Phase 7b-light Addendum #1 (the
-        bifurcation rule defers on-disk-layout-affecting strings to
-        Phase 7c-dlc-cohort-reemit). Phase 7b-light is source-side
-        narrative cleanup only; the class is named ``ToneAlignedWindow``
-        but the filename label stays ``reward_…`` until Phase 7c re-emits
-        cohort outputs under a new layout.
+        Note on the ``tone_*`` token: this literal was preserved as the
+        on-disk filename suffix through Phase 7b-light (per Addendum #1
+        bifurcation rule which deferred on-disk-layout-affecting strings
+        to Phase 7c). **Phase 7c.1 (2026-05-15) renamed `reward_*` →
+        `tone_*`** in lockstep with the 3-session pilot re-emit; legacy
+        outputs at the `reward_*` suffix remain untouched on disk and are
+        retired in Phase 7c.2 alongside the cohort completion.
         """
 
 
@@ -170,11 +170,12 @@ class ToneAlignedWindow(EventAlignedWindow):
         pre_frames = int(np.round(abs(pre_ms) / 1000.0 * fps))
         post_frames = int(np.round(post_ms / 1000.0 * fps))
 
-        # Filename label: ``reward_…ms`` token PRESERVED per Phase 7b-light
-        # Addendum #1 — on-disk-layout-affecting strings stay at their
-        # current literals until Phase 7c-dlc-cohort-reemit handles them
-        # in lockstep with cohort regeneration.
-        label_str = f"reward_{int(pre_ms)}_{int(post_ms)}ms"
+        # Filename label: ``tone_…ms`` token. Phase 7c.1 (2026-05-15)
+        # renamed `reward_*` → `tone_*` in lockstep with the 3-session
+        # pilot re-emit (Addendum #1 deferrals discharged here). Legacy
+        # outputs at the `reward_*` suffix remain on disk; retired in
+        # Phase 7c.2 cohort completion.
+        label_str = f"tone_{int(pre_ms)}_{int(post_ms)}ms"
 
         super().__init__(tone_frames, pre_frames, post_frames, n_frames, label_str)
 

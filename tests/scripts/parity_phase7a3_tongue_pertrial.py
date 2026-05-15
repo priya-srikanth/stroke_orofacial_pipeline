@@ -592,8 +592,8 @@ def _per_side_chronological_indices(
     pos_by_side: dict[str, list[tuple[int, int]]] = {"L": [], "R": []}
     for k, ev in enumerate(trial_events):
         if ev.side in pos_by_side:
-            pos_by_side[ev.side].append((ev.reward_frame_idx, k))
-    # trial_events is already sorted by reward_frame_idx (per
+            pos_by_side[ev.side].append((ev.tone_frame_idx, k))
+    # trial_events is already sorted by tone_frame_idx (per
     # _derive_trial_events_from_spout_behavior contract), so the
     # per-side ordering here is implicitly chronological.
     return {

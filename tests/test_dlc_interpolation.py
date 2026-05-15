@@ -461,7 +461,7 @@ class TestStageFilledAndFinal:
         m = minimal_session
         df = pd.read_parquet(m["parquet_path"])
         # Reward centers — synthesize directly so we bypass I/O.
-        reward_centers_cam = np.array([100.0, 500.0, 1500.0])
+        tone_centers_cam = np.array([100.0, 500.0, 1500.0])
         bp_params = m["params"]["dlc_kinematics"]["tongue"].copy()
         bp_params["interpolation_method"] = "pchip"
         bp_params["interpolation_fallback"] = "linear"
@@ -471,7 +471,7 @@ class TestStageFilledAndFinal:
             bodypart="tongue",
             center_mode="centered_spout_midpoint",
             bodypart_params=bp_params,
-            reward_centers_cam=reward_centers_cam,
+            tone_centers_cam=tone_centers_cam,
             animal_info=m["animal_info"],
             fps=250.0,
         )
@@ -500,7 +500,7 @@ class TestBodypartDispatch:
             df=df, bodypart="tongue",
             center_mode="centered_spout_midpoint",
             bodypart_params=bp_params,
-            reward_centers_cam=np.array([100.0, 500.0]),
+            tone_centers_cam=np.array([100.0, 500.0]),
             animal_info=m["animal_info"], fps=250.0,
         )
         assert result.bodypart == "tongue"
@@ -525,7 +525,7 @@ class TestBodypartDispatch:
             df=df, bodypart="jaw",
             center_mode="centered_eye_midpoint",
             bodypart_params=bp_params,
-            reward_centers_cam=np.array([200.0, 800.0]),
+            tone_centers_cam=np.array([200.0, 800.0]),
             animal_info=_animal_info(),
             fps=250.0,
         )
@@ -741,7 +741,7 @@ class TestEmitQcBundle:
         expected_scalars = {
             "X0", "Y0", "X0_data", "Y0_data", "fps", "n_frames",
             "center_mode", "baseline_stage", "interpolation_version",
-            "bodypart", "animal", "reward_centers_cam",
+            "bodypart", "animal", "tone_centers_cam",
         }
         expected = expected_arrays | expected_scalars
         actual = set(data.files)
@@ -812,7 +812,7 @@ def test_interpolation_result_dataclass_has_expected_fields():
         "fps", "n_frames", "center_mode", "baseline_stage",
         "interpolation_version", "bodypart", "animal", "date",
         "wavesurfer_sides_match_mouse_sides",
-        "reward_centers_cam",
+        "tone_centers_cam",
     }
     actual_fields = {f.name for f in dataclasses.fields(InterpolationResult)}
     assert actual_fields == expected_fields

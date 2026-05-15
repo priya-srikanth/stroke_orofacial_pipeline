@@ -25,7 +25,7 @@ Inputs
   (39 float32 cols: nose / jaw / tongue / {L,R}_whiskers_{1,2,3} /
   {L,R}_eye / {L,R}_spout × {x, y, likelihood})
 - :class:`SessionManifest` (animal, date)
-- ``trial_events`` (per-trial tone-onset frame + side; ``TrialEvent.reward_frame_idx``
+- ``trial_events`` (per-trial tone-onset frame + side; ``TrialEvent.tone_frame_idx``
   field name PRESERVED per Phase 7b-light Addendum #1 — DataFrame column /
   on-disk surface) — supplied by caller (Q7 lock 2026-04-28: keep as
   required arg; auto-derive deferred to Task 5 wrapper)
@@ -93,7 +93,7 @@ class TrialEvent:
     """Per-trial alignment record passed in by the caller.
 
     The driver iterates over a :class:`Sequence` of these to extract per-trial
-    snippets from the session-wide interpolated trace. ``reward_frame_idx``
+    snippets from the session-wide interpolated trace. ``tone_frame_idx``
     (field name PRESERVED per Addendum #1 — DataFrame column / on-disk
     surface; semantically the tone-onset frame index under Case-2 universal)
     pins t=0 for that trial; ``side`` keys the Cell 42 per-side aggregation.
@@ -106,7 +106,7 @@ class TrialEvent:
     """
 
     trial_index: int
-    reward_frame_idx: int
+    tone_frame_idx: int
     side: Literal["L", "R"]
 
 
@@ -1340,10 +1340,10 @@ def _derive_trial_events_from_spout_behavior(
     :func:`_load_tone_centers_cam`.
 
     ``trial_index`` is **chronological-across-sides** (Option α lock 2026-04-28):
-    tone events are sorted by ``reward_frame_idx`` (field name preserved;
+    tone events are sorted by ``tone_frame_idx`` (field name preserved;
     semantically tone-onset under Case-2 universal) and assigned globally
     unique ``trial_index = 0..N-1``. Per-side enumeration (legacy parity)
-    is the parity harness's responsibility (sort-by-(side, reward_frame_idx)
+    is the parity harness's responsibility (sort-by-(side, tone_frame_idx)
     → re-key).
 
     Side translation: NOT applied here. The licks NPZ keys ``Tone_L`` /
@@ -1367,7 +1367,7 @@ def _derive_trial_events_from_spout_behavior(
     Returns
     -------
     list[TrialEvent]
-        Sorted by ``reward_frame_idx`` (field name preserved),
+        Sorted by ``tone_frame_idx`` (field name preserved),
         ``trial_index`` 0-indexed contiguous.
 
     Raises
@@ -1376,7 +1376,7 @@ def _derive_trial_events_from_spout_behavior(
         If the licks NPZ, the alignment template, or the upstream tongue
         parquet is missing.
     ValueError
-        If any ``reward_frame_idx`` value falls outside ``[0, n_frames)``
+        If any ``tone_frame_idx`` value falls outside ``[0, n_frames)``
         after the WS→cam translation. (``load_tone_events`` raises
         ValueError on its own for pre-task-#17 / mismatched-stamp NPZs
         — propagated.)
@@ -1437,7 +1437,7 @@ def _derive_trial_events_from_spout_behavior(
     # with side-stamp validation), translate to cam frames, drop
     # invalid (-1). Local variable `ws_idx` carries tone-onset
     # samples; legacy name kept under Phase 7b deferral.
-    events: list[tuple[int, str]] = []  # (reward_frame_idx, side)
+    events: list[tuple[int, str]] = []  # (tone_frame_idx, side)
     for side in ("L", "R"):
         ws_idx = load_tone_events(
             licks_path, trial_group=side,
@@ -1455,7 +1455,7 @@ def _derive_trial_events_from_spout_behavior(
                 continue  # invalid translation; legacy `centers >= 0` filter
             if f >= n_frames:
                 raise ValueError(
-                    f"{animal}/{date_str}: reward_frame_idx={f} >= n_frames"
+                    f"{animal}/{date_str}: tone_frame_idx={f} >= n_frames"
                     f"={n_frames} after WS→cam translation. The alignment "
                     f"LUT may be out of sync with the tongue parquet's "
                     f"n_frames metadata.",
@@ -1465,7 +1465,7 @@ def _derive_trial_events_from_spout_behavior(
     # 6-7. Sort chronologically across sides; assign globally unique trial_index.
     events.sort(key=lambda ev: ev[0])
     return [
-        TrialEvent(trial_index=k, reward_frame_idx=fr, side=sd)
+        TrialEvent(trial_index=k, tone_frame_idx=fr, side=sd)
         for k, (fr, sd) in enumerate(events)
     ]
 
@@ -1657,26 +1657,26 @@ def _resolve_eye_midpoint_session_median(
 
 
 def _extract_trial_slice(
-    arr: np.ndarray, reward_frame_idx: int, win_ms: tuple[float, float], fps: float,
+    arr: np.ndarray, tone_frame_idx: int, win_ms: tuple[float, float], fps: float,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Slice ``arr`` to a per-trial window and build the relative time axis.
 
     ``win_ms = (lo_ms, hi_ms)`` is the post-tone window in ms (positive =
-    after tone onset). ``t_ms = (frame_idx - reward_frame_idx) / fps *
+    after tone onset). ``t_ms = (frame_idx - tone_frame_idx) / fps *
     1000`` (field name preserved), relative to the tone onset.
 
     Returns ``(arr_slice, t_ms_slice)``. Both arrays have the same length.
     Slice is empty if the window falls entirely outside the session.
     """
     n_frames = len(arr)
-    lo_frame = int(reward_frame_idx + np.floor(win_ms[0] / 1000.0 * fps))
-    hi_frame = int(reward_frame_idx + np.ceil(win_ms[1] / 1000.0 * fps))
+    lo_frame = int(tone_frame_idx + np.floor(win_ms[0] / 1000.0 * fps))
+    hi_frame = int(tone_frame_idx + np.ceil(win_ms[1] / 1000.0 * fps))
     lo = max(0, lo_frame)
     hi = min(n_frames, hi_frame + 1)
     if lo >= hi:
         return arr[lo:lo], np.zeros(0, dtype=np.float64)
     sliced = arr[lo:hi]
-    t_ms = (np.arange(lo, hi, dtype=np.float64) - reward_frame_idx) / fps * 1000.0
+    t_ms = (np.arange(lo, hi, dtype=np.float64) - tone_frame_idx) / fps * 1000.0
     return sliced, t_ms
 
 
@@ -2196,7 +2196,7 @@ def _build_visual_bundle_per_trial(
     x_final: np.ndarray,
     y_final: np.ndarray,
     angle_per_frame: np.ndarray,
-    reward_frame_idx: int,
+    tone_frame_idx: int,
     fps: float,
     plot_win_ms: tuple[float, float],
     detect_win_ms: tuple[float, float],
@@ -2223,13 +2223,13 @@ def _build_visual_bundle_per_trial(
     """
     # Slice all three session-length arrays at the bundle's plot window.
     y_snip, t_ms = _extract_trial_slice(
-        y_final, reward_frame_idx, plot_win_ms, fps,
+        y_final, tone_frame_idx, plot_win_ms, fps,
     )
     x_snip, _ = _extract_trial_slice(
-        x_final, reward_frame_idx, plot_win_ms, fps,
+        x_final, tone_frame_idx, plot_win_ms, fps,
     )
     angle_snip, _ = _extract_trial_slice(
-        angle_per_frame, reward_frame_idx, plot_win_ms, fps,
+        angle_per_frame, tone_frame_idx, plot_win_ms, fps,
     )
 
     # Per-trial peak detection within detect_win_ms (Cell 50 = [70, 3000]).
@@ -2414,7 +2414,7 @@ def _build_visual_bundle_per_trial(
         # frame).
         first_peak_t_ms_val = float(peaks.peak_times_ms[0])
         first_peak_session_frame = int(round(
-            reward_frame_idx + first_peak_t_ms_val / 1000.0 * fps
+            tone_frame_idx + first_peak_t_ms_val / 1000.0 * fps
         ))
         angle_firstpeak_snip, t_firstpeak_align_ms = _extract_trial_slice(
             angle_per_frame, first_peak_session_frame,
@@ -2567,10 +2567,10 @@ def _build_tongue_pertrial_core(
 
     for ev in trial_events:
         x_slice, t_ms = _extract_trial_slice(
-            x_final, ev.reward_frame_idx, widest_detect, fps,
+            x_final, ev.tone_frame_idx, widest_detect, fps,
         )
         y_slice, _ = _extract_trial_slice(
-            y_final, ev.reward_frame_idx, widest_detect, fps,
+            y_final, ev.tone_frame_idx, widest_detect, fps,
         )
 
         trial_indices.append(int(ev.trial_index))
@@ -2602,22 +2602,22 @@ def _build_tongue_pertrial_core(
         # Cell 50 per-trial angle scalars: sample the session-wide angle at
         # per-trial lick timestamps.
         angle_at_lick1.append(_extract_angle_at_lick_timestamps(
-            angle_per_frame, fps, ev.reward_frame_idx,
+            angle_per_frame, fps, ev.tone_frame_idx,
             lick12["lick1_t_peak_ms"],
         ))
         angle_at_lick2.append(_extract_angle_at_lick_timestamps(
-            angle_per_frame, fps, ev.reward_frame_idx,
+            angle_per_frame, fps, ev.tone_frame_idx,
             lick12["lick2_t_peak_ms"],
         ))
         per_lick_v = vel["lick_t_peaks_bylick"]
         per_lick_angle_at_v = np.full(5, np.nan, dtype=np.float64)
         for j in range(5):
             per_lick_angle_at_v[j] = _extract_angle_at_lick_timestamps(
-                angle_per_frame, fps, ev.reward_frame_idx, per_lick_v[j],
+                angle_per_frame, fps, ev.tone_frame_idx, per_lick_v[j],
             )
         angle_at_vpeak.append(per_lick_angle_at_v)
         angle_max_signed.append(_extract_angle_max_signed_per_lick(
-            angle_per_frame, fps, ev.reward_frame_idx,
+            angle_per_frame, fps, ev.tone_frame_idx,
             per_lick_v, peak_pad_ms,
         ))
 
@@ -2646,7 +2646,7 @@ def _build_tongue_pertrial_core(
             x_final=x_final,
             y_final=y_final,
             angle_per_frame=angle_per_frame,
-            reward_frame_idx=int(ev.reward_frame_idx),
+            tone_frame_idx=int(ev.tone_frame_idx),
             fps=fps,
             plot_win_ms=bundle_plot_win,
             detect_win_ms=bundle_detect_win,

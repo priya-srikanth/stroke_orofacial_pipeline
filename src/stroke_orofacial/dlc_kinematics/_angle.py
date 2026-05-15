@@ -111,7 +111,7 @@ def _extract_per_frame_angle_smoothed(
 
 def _extract_angle_at_lick_timestamps(
     angle_per_frame_session: np.ndarray, fps: float,
-    reward_frame_idx: int, lick_t_ms: float,
+    tone_frame_idx: int, lick_t_ms: float,
 ) -> float:
     """Sample the session-wide per-frame angle at one timestamp (ms post-tone).
 
@@ -120,7 +120,7 @@ def _extract_angle_at_lick_timestamps(
     """
     if not np.isfinite(lick_t_ms):
         return float("nan")
-    target_frame = reward_frame_idx + lick_t_ms / 1000.0 * fps
+    target_frame = tone_frame_idx + lick_t_ms / 1000.0 * fps
     n = len(angle_per_frame_session)
     if target_frame < 0 or target_frame > n - 1:
         return float("nan")
@@ -129,7 +129,7 @@ def _extract_angle_at_lick_timestamps(
 
 
 def _extract_angle_max_signed_per_lick(
-    angle_per_frame_session: np.ndarray, fps: float, reward_frame_idx: int,
+    angle_per_frame_session: np.ndarray, fps: float, tone_frame_idx: int,
     lick_t_peaks_ms: np.ndarray, peak_pad_ms: float,
 ) -> np.ndarray:
     """Per-lick signed-max of angle inside ``± peak_pad_ms`` of each lick t.
@@ -144,7 +144,7 @@ def _extract_angle_max_signed_per_lick(
     for j, t_ms in enumerate(lick_t_peaks_ms):
         if not np.isfinite(t_ms):
             continue
-        center = reward_frame_idx + int(round(t_ms / 1000.0 * fps))
+        center = tone_frame_idx + int(round(t_ms / 1000.0 * fps))
         lo = max(0, center - pad_frames)
         hi = min(n_frames, center + pad_frames + 1)
         win = angle_per_frame_session[lo:hi]

@@ -80,7 +80,7 @@ def _fake_result(
     return {
         "histogram": hist,
         "window": None,  # save_tone_aligned_npz ignores this
-        "n_rewards": 42,
+        "n_tones": 42,
         "n_selected_frames": 1337,
         "trial_group": trial_group,
         "window_ms": window_ms,
@@ -134,7 +134,7 @@ class TestSaveToneAlignedNpz:
         np.testing.assert_array_equal(
             data["window_ms"], np.asarray([-500.0, 5000.0]),
         )
-        assert int(data["n_rewards"]) == 42
+        assert int(data["n_tones"]) == 42
         assert int(data["n_selected_frames"]) == 1337
         assert str(data["bodypart"]) == "tongue"
         assert str(data["center_mode"]) == "nose"

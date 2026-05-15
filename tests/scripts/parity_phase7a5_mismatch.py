@@ -42,7 +42,7 @@ Per-row schema deviation (Task 5 lock):
   | jaw_n_frames_over_thresh    | same                                     | exact int  |
   | jaw_pass_qc                 | same                                     | exact bool |
   | candidate_no_lick_with_jaw_move | same                                 | exact bool |
-  | reward_center_fr_tongue/jaw | reward_frame_idx (modern, single col)    | atol on either |
+  | reward_center_fr_tongue/jaw | tone_frame_idx (modern, single col)    | atol on either |
   | rel_day, side, fps, mouse, date | same names                            | exact      |
   | date_dt                     | dropped (redundant)                       | skip       |
   | tongue_npz / jaw_npz        | dropped (NPZ provenance gone)            | skip       |
@@ -58,7 +58,7 @@ Per-row schema deviation (Task 5 lock):
   enumeration); modern uses α-style (chronological-across-sides).
   :func:`_compare_trial_indexing_convention` auto-detects which
   convention the legacy CSV uses; rows are aligned by matching on
-  ``(date, side, reward_frame_idx)`` rather than ``trial_index``
+  ``(date, side, tone_frame_idx)`` rather than ``trial_index``
   directly to be robust to the convention difference.
 """
 
@@ -108,8 +108,8 @@ _COL_PAIRS: tuple[tuple[str, str, str], ...] = (
     ("rel_day",                        "rel_day",                  "exact_int"),
     ("trial_index",                    "trial_index",              "skip"),  # convention diff; align by reward frame
     ("fps",                            "fps",                      "atol"),
-    ("reward_center_fr_tongue",        "reward_frame_idx",         "exact_int"),
-    ("reward_center_fr_jaw",           "reward_frame_idx",         "exact_int"),
+    ("reward_center_fr_tongue",        "tone_frame_idx",         "exact_int"),
+    ("reward_center_fr_jaw",           "tone_frame_idx",         "exact_int"),
     # Tongue side
     ("n_licks_in_window",              "n_licks_in_quiet_win",     "exact_int"),
     ("quiet_tongue_pass",              "quiet_tongue_pass",        "exact_bool"),
@@ -361,18 +361,18 @@ def _cohort_sanity_jaw_thresh_abs(
 
 
 def _build_join_key(df: pd.DataFrame) -> pd.Series:
-    """Compose join key ``(date, side, reward_frame_idx)`` as a tuple-string.
+    """Compose join key ``(date, side, tone_frame_idx)`` as a tuple-string.
 
     Robust to α/β trial-indexing convention difference: rows are matched
     on the underlying frame anchor instead of the enumeration index.
     """
-    if "reward_frame_idx" in df.columns:
-        rfr = df["reward_frame_idx"]
+    if "tone_frame_idx" in df.columns:
+        rfr = df["tone_frame_idx"]
     elif "reward_center_fr_tongue" in df.columns:
         rfr = df["reward_center_fr_tongue"]
     else:
         raise KeyError(
-            "DataFrame missing both reward_frame_idx and reward_center_fr_tongue.",
+            "DataFrame missing both tone_frame_idx and reward_center_fr_tongue.",
         )
     return df["date"].astype(str) + "|" + df["side"].astype(str) + "|" + rfr.astype(str)
 
