@@ -712,3 +712,63 @@ The Task 3 cohort driver's `_enumerate_cohort_a_bare_dates` enumerates from the 
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q2.B no-spatial-cache, Q3 verification axes, Q4.B compute-on-demand visual gate, Q5.C expanded cleanup [supersedes Q5.B with orphan kinematics additions], Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.A spatial allowlist.)
+
+---
+
+## Addendum #6 — Task 4 driver-scope fix + full-cohort re-run + Q5.D cleanup expansion for legacy rewardAligned_* window dirs (Priya 2026-05-15, mid-Task-4)
+
+CC's expanded diagnostic surfaced the full Task 4 driver scope-cut: 2 plot families never invoked + 1 plot family's video output disabled.
+
+### Findings (CC's expanded diagnostic)
+
+On-disk plot-family inventory for PS46 + PS47 (canonical combo `tongue/centered_spout_midpoint/toneAligned_100pre-1000post/`):
+
+| Plot family | PS46/PS47 state | Driver invocation status |
+|---|---|---|
+| `individual_sessions/` | MISSING | Not invoked (driver omits `build_individual_sessions_animal`) |
+| `trial_overlays/` | MISSING | Not invoked (driver omits `build_trial_overlays_animal`) |
+| `session_overlays/` | 4 PNGs ✓ | Invoked via `build_mean_sem_cohort` |
+| `binned_overlays/` | 4 PNGs ✓ | Invoked via `build_mean_sem_cohort` |
+| `mean_xy_overlays/` | 1 PNG only (no MP4) | `build_mean_trace` invoked; `build_mean_video` disabled via `include_mean_video=False` (unscoped commit `275d922`) |
+
+ffmpeg present in env (`ffmpeg 8.1.0` in `stroke_orofacial` conda env), so no GIF fallback would have triggered if `include_mean_video` had been True.
+
+### Q11 LOCKED — driver patch + full-cohort re-run (Priya 2026-05-15)
+
+**Patch driver `scripts/phase_7c2/reemit_cohort_aggregates.py:_process_animal`:**
+
+1. **Flip `include_mean_video=False` → `include_mean_video=True`** in `build_mean_sem_cohort` invocation. Per-window video gating preserved via `configs/defaults.yaml mean_sem_visual.mean_video.windows` (C7.7 config default `[[100, 1000]]` → only the short window gets MP4 output; longer (-500, 5000) window stays PNG-only).
+2. **Add `allow_gif_fallback=False`** explicit kwarg per Phase 7a.6 C7.5 fail-loud convention.
+3. **Add per-animal `build_individual_sessions_animal` invocation** for each bodypart × time window. Uses YAML-filtered date list (from Task-3 enumerator).
+4. **Add per-animal `build_trial_overlays_animal` invocation** for each bodypart × time window. Same date list.
+
+**Commit pattern:** single commit `fix(phase-7c.2): restore full plot family scope + mean_video in cohort-aggregate driver (Task 4 driver scope-cut at 275d922 corrected per Priya 2026-05-15)`.
+
+**Manifest reset (Option A):** wipe the existing cohort-aggregate manifest CSV (manifest header + all prior PS46/PS47 rows). Re-run produces a fresh manifest with all 8 animals × complete plot family scope. No version-tracking refactor needed.
+
+**Full-cohort re-run scope:** ALL 8 animals (PS46, PS47, PS48, PS49, PS50, PS51, PS54, PS55), not just PS46/PS47. Cleanest end-state: uniform plot-family coverage across the cohort.
+
+**No per-animal STOP-and-report:** the re-run is a single end-to-end pass per Priya 2026-05-15. Driver continues animal-to-animal without pausing for review. Anomaly thresholds per Addendum #4 still apply (≥ 2 per-animal failures → STOP; ≥ 5 cohort-wide → STOP); end-of-animal pause for ERR rows is dropped for this re-run.
+
+**Wall-time projection (CC's estimate):** ~12-16 min per animal for PS46-PS50; ~18-24 min for PS51/PS54/PS55. Cohort total ≈ 2.2 hr. Overnight tractable.
+
+### Q5 RE-EXPANDED Q5.D (supersedes Q5.C — adds legacy rewardAligned_* window-dir cleanup)
+
+Task 7 cleanup manifest enumerates **all legacy `rewardAligned_<N>pre-<M>post/` window directories** as Category 2 stale-pre-rename layouts. These directories exist under:
+
+- `pipeline_outputs/dlc_kinematics/mean_sem/<bodypart>/<center_mode>/rewardAligned_<N>pre-<M>post/...` — superseded by `toneAligned_<N>pre-<M>post/` post-Phase-7c.1 rename. Outputs at the old `rewardAligned_*` paths are stale (pre-Phase-7c.1, possibly pre-Phase-8a.10.1) and no longer referenced by post-7c.1 source code.
+- `pipeline_outputs/dlc_kinematics/mean_sem/<bodypart>/<center_mode>/rewardAligned_500pre-5000post/` window dir specifically — surfaced by CC's diagnostic on PS46 (contains pre-Task-4 PNG artifacts).
+- `pipeline_outputs/dlc_kinematics/mean_sem/<bodypart>/<center_mode>/rewardAligned_100pre-1000post/` window dir — surfaced by CC's diagnostic on PS46 (contains 2 pre-Task-4 MP4 artifacts from Phase 7a.6 era, plus PNGs).
+- Any other `rewardAligned_*` window dirs under `mean_sem/` for any (bodypart, center_mode) combination — Task 7 cleanup driver enumerates via `find pipeline_outputs/dlc_kinematics/mean_sem -type d -name 'rewardAligned_*'`.
+
+Task 7 cleanup driver's deletion manifest also enumerates any other directories matching the pre-rename `rewardAligned_*` pattern anywhere under `pipeline_outputs/dlc_analysis/` (which would already be in `spatial_reward_aligned/` tree deletion scope per Q5.B; no double-count) or under `pipeline_outputs/dlc_kinematics/` (new this Addendum).
+
+Plus all previously-enumerated cleanup items from Q5.B and Q5.C: `spatial_reward_aligned/` tree, figure suffix variants `mouseLrewards`/`mouseRrewards`, multi-half-leftover parent-level half-B parquets for PS48/2025-03-14, pre-rename `dlc_kinematics/figures_qc/`, pre-rename `dlc_kinematics/tongue_jaw_mismatch/figures_qc/`, pre-rename `dlc_kinematics/tongue_angle/<animal>/<date>/` (without `within_session/` interstitial), pre-rename `dlc_kinematics/tongue_angle_cohort/<animal>/`, plus orphan kinematics outputs for the 9 out-of-YAML-range sessions (PS51/PS54/PS55 × 2025-04-16/17/18).
+
+### Per-window video gating note (preserved via C7.7 config default)
+
+Per Priya 2026-05-15: videos ONLY for the short window (-100, 1000), NOT the longer window (-500, 5000). This matches the existing `mean_sem_visual.mean_video.windows = [[100, 1000]]` C7.7 config default. The driver patch passes `include_mean_video=True`; per-window gating happens inside `build_mean_sem_cohort` via config consultation. No additional code change needed for per-window restriction — verify by inspecting that the longer-window video output count is 0 post-re-run.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q4.B compute-on-demand visual gate, Q5.D expanded cleanup [supersedes Q5.C with rewardAligned_* window-dir additions], Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.A spatial allowlist.)
