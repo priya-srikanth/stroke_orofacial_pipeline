@@ -651,3 +651,64 @@ PS47 ran ~40s/session (13.9 min / 21 sessions). Faster than my post-pivot ~50-60
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.B 257-session cohort, Q2.B no-spatial-cache, Q3 verification axes per Addendum #3 Task 6, Q4.B compute-on-demand visual gate, Q5.B expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.A spatial allowlist.)
+
+---
+
+## Addendum #5 — Cohort scope correction 257 → 248 + driver YAML-range filter (Priya 2026-05-15, mid-Task-3 post-PS50-success)
+
+CC's Task 3 cohort re-emit completed PS46 (21/21) + PS47 (21/21) + PS48 (21/21 post-Addendum-#4 cleanup) + PS49 (22/22) + PS50 (19/19) = 104 sessions OK. PS51 failed early with 2 consecutive Phase 2 licks NPZ missing errors (per-animal threshold tripped; driver STOP'd cleanly per Addendum #4 anomaly-handling).
+
+### Root cause — driver enumeration walks legacy spatial tree without YAML-range filter
+
+`reemit_cohort.py:_enumerate_cohort_a_bare_dates` walks the legacy `spatial_reward_aligned/<canon>/<animal>/heatmap_*.npz` tree to enumerate session dates. It does NOT filter by `configs/animals.yaml <animal>.sessions.start/end`. As a result, 9 out-of-YAML-range sessions get enumerated:
+
+| Animal | YAML start | Out-of-range dates on legacy tree |
+|---|---|---|
+| PS51 | 2025-04-21 | 2025-04-16, 2025-04-17, 2025-04-18 |
+| PS54 | 2025-04-21 | 2025-04-16, 2025-04-17, 2025-04-18 |
+| PS55 | 2025-04-21 | 2025-04-16, 2025-04-17, 2025-04-18 |
+
+These are pre-cohort-launch baseline acquisitions, explicitly excluded from cohort scope per F-P-6 chore-PR's "69 unique-date gap" framing + `configs/animals.yaml` header comment locked 2026-05-14. Phase 6.8a cohort emit (2026-04-22) and Phase 7a.4 cohort emit (2026-05-04) wrote outputs for them because those phases didn't gate by YAML; **Phase 8a.10.1 Phase 2 re-emit (2026-05-14) DID gate by YAML, so Phase 2 licks NPZs no longer exist for these 9 dates**, while Phase 7a downstream consumers still try to use them via the legacy-tree enumeration.
+
+### Task 1 audit gap
+
+Task 1 audit CSV's `in_yaml_range=False` column already flagged these 9 sessions. The cohort enumeration in the driver just didn't honor it. Audit was correct; driver use of the audit data was incomplete.
+
+### Q1 RE-LOCKED Q1.C (supersedes Q1.B)
+
+Cohort scope = Cohort A 247 in-YAML-range bare sessions across 8 animals + 1 PS48 Pattern A multi-half session via F-P-5 Task 2 = **248 sessions total** (was 257 in Q1.B). Cohort B b-half sessions explicitly OUT-OF-SCOPE per Q1.B's prior lock (24 sessions, deferred to Phase 7-pre-secondary-spout-compare-DLC). The 9 out-of-YAML-range sessions (PS51/PS54/PS55 × 2025-04-16/17/18) are explicitly OUT-OF-SCOPE per F-P-6 cohort-boundary policy.
+
+### Option A LOCKED — driver YAML-range filter + manifest housekeeping
+
+Per Priya 2026-05-15. CC's proposal accepted:
+
+**Driver patch:** Patch `_enumerate_cohort_a_bare_dates` to call `get_animal(animal).sessions_start / .sessions_end` (or whatever the canonical accessor is) and filter the legacy-tree dates to the in-range subset before returning. Cleaner long-term: switch enumeration to YAML-driven directly (no filesystem walk), but that's a follow-up refactor — for this in-flight Task 3, the filter-after-walk approach unblocks PS51.
+
+**Manifest housekeeping:** the 2 ERR rows currently in the cohort manifest CSV for PS51/2025-04-16 + 2025-04-17 are now out-of-scope. Cleanest: **remove them from the manifest before re-running PS51** (so re-run starts clean with the YAML-filter driver). Alternative: change their status from `ERR` to `OUT_OF_SCOPE_YAML_FILTERED` to preserve audit trail. CC picks (either is fine); document the choice in the revised PS51 log commit.
+
+**Re-run PS51:** `python scripts/phase_7c2/reemit_cohort.py --animal PS51` post-patch + post-manifest-housekeeping. PS51's in-YAML-range sessions (start ≥ 2025-04-21) run cleanly. Continue PS54, PS55 in cohort order.
+
+### Q5 cleanup scope expands — Q5.C (supersedes Q5.B)
+
+Task 7's cleanup manifest enumerates additional orphan artifacts: the 9 out-of-YAML-range sessions' on-disk kinematics outputs at:
+
+- `pipeline_outputs/dlc_kinematics/features/tongue/{PS51,PS54,PS55}/{20250416,20250417,20250418}.parquet`
+- `pipeline_outputs/dlc_kinematics/endpoints/{PS51,PS54,PS55}/{20250416,20250417,20250418}.json`
+- `pipeline_outputs/dlc_kinematics/licking_dynamics/traces/{PS51,PS54,PS55}/{20250416,20250417,20250418}.parquet`
+- `pipeline_outputs/dlc_kinematics/tongue_angle/within_session/{PS51,PS54,PS55}/{20250416,20250417,20250418}/`
+- `pipeline_outputs/dlc_kinematics/tongue_jaw_mismatch/within_session/{PS51,PS54,PS55}/{20250416,20250417,20250418}/`
+- `pipeline_outputs/dlc_kinematics/tongue_jaw_mismatch/candidate_trials/{PS51,PS54,PS55}/{20250416,20250417,20250418}.parquet`
+- `pipeline_outputs/dlc_kinematics/jaw_pertrial/endpoints/{PS51,PS54,PS55}/{20250416,20250417,20250418}.json`
+- Plus Phase 4 centered parquets for these 9 sessions at `pipeline_outputs/dlc_analysis/centered_<mode>/{PS51,PS54,PS55}/<filename>_2025-04-16T*.parquet` etc.
+- Plus interpolated_traces at `pipeline_outputs/dlc_analysis/interpolated_traces/{tongue,jaw}/{PS51,PS54,PS55}/{20250416,20250417,20250418}.parquet`
+- Plus legacy spatial heatmap NPZs at `spatial_reward_aligned/<bodypart>/<window>/{PS51,PS54,PS55}/heatmap_{20250416,20250417,20250418}.npz` (already in Q5.B's `spatial_reward_aligned/` tree deletion scope; no double-count).
+
+Task 7 cleanup driver enumerates these via the `<animal>` + out-of-YAML-range date set; deletion manifest logs them as "orphan: out-of-YAML-range session × output class."
+
+### Forward-pointer — cohort enumeration should be YAML-driven, not filesystem-walked
+
+The Task 3 cohort driver's `_enumerate_cohort_a_bare_dates` enumerates from the legacy spatial tree as a session-listing proxy. After Task 7 deletes the legacy spatial tree, this enumeration approach won't work for any future re-runs. A small follow-up refactor switches enumeration to YAML-driven (iterate `configs/animals.yaml <animal>.sessions.start` to `.sessions.end` directly). Not blocking this phase; flag for post-7c.2 cleanup as a small chore-PR.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q2.B no-spatial-cache, Q3 verification axes, Q4.B compute-on-demand visual gate, Q5.C expanded cleanup [supersedes Q5.B with orphan kinematics additions], Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.A spatial allowlist.)
