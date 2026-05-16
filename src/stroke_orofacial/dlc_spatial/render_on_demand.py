@@ -354,7 +354,7 @@ def render_whole_session_heatmap(
     )
 
 
-def render_animal_aggregated_heatmap(
+def compute_animal_aggregated_histogram(
     animal: str,
     dates: list[dt.date],
     bodypart: str,
@@ -365,46 +365,19 @@ def render_animal_aggregated_heatmap(
     window_ms: tuple[float, float] | None,
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
-) -> plt.Figure:
-    """Render a per-animal heatmap aggregating frames across all in-scope
-    sessions for one (bodypart, center_mode) cell.
+) -> tuple[np.ndarray | None, list[float] | None, int, int]:
+    """Compute-only variant of :func:`render_animal_aggregated_heatmap`.
 
-    Aggregation works at the ``H_counts`` array level (memory-efficient):
-    per-session histograms are computed with build_histogram + summed.
-    The resulting summed histogram is normalized + rendered once.
+    Returns ``(H_total, extent, n_sessions_contributing, n_total_tones)``
+    so a caller can cache the histogram + render multiple SVG layouts
+    (per-animal panel + cohort tile-grid subplot) from one compute pass.
 
-    Tone-aligned mode (``trial_group`` + ``window_ms`` both non-None):
-    each session's histogram is windowed to the tone-aligned frames for
-    the given trial_group. Sessions with zero tone events for that group
-    contribute zero counts (no exception; the session is just absent).
-
-    Whole-session mode (``trial_group is None`` and ``window_ms is None``):
-    each session contributes all frames passing the likelihood / x_range
-    filter.
-
-    Parameters
-    ----------
-    animal : str
-    dates : list[datetime.date]
-        Sessions to aggregate. Typically the YAML-filtered cohort list
-        from :func:`stroke_orofacial.animals.AnimalInfo.session_start/end`.
-    bodypart : str
-    center_mode : str
-    resolver : PathResolver
-    trial_group : "all" | "L" | "R" | None
-    window_ms : tuple[float, float] | None
-        Pair → tone-aligned window. ``None`` + ``trial_group=None`` →
-        whole-session aggregation.
-    defaults : dict, optional
-    animal_info : AnimalInfo, optional
-
-    Returns
-    -------
-    matplotlib.figure.Figure
+    Returns ``(None, None, 0, 0)`` when no session contributes data
+    (no parquets, no tone events for the trial_group, etc.).
     """
     if (trial_group is None) != (window_ms is None):
         raise ValueError(
-            "render_animal_aggregated_heatmap: trial_group and window_ms "
+            "compute_animal_aggregated_histogram: trial_group and window_ms "
             "must both be set (tone-aligned) or both None (whole-session); "
             f"got trial_group={trial_group!r}, window_ms={window_ms!r}."
         )
@@ -474,37 +447,164 @@ def render_animal_aggregated_heatmap(
         else:
             H_total += hist["H_counts"]
 
-    if H_total is None:
-        # No data at all — return an empty placeholder figure so the
-        # SVG cell still exists for visual scanning.
-        fig, ax = plt.subplots(figsize=(8, 6))
+    return H_total, extent, n_sessions_contributing, n_total_tones
+
+
+def render_h_counts_panel(
+    H_counts: np.ndarray | None,
+    extent: list[float] | None,
+    bodypart: str,
+    center_mode: str,
+    *,
+    title: str,
+    defaults: dict[str, Any] | None = None,
+    figsize: tuple[float, float] = (8, 6),
+    ax: plt.Axes | None = None,
+) -> plt.Figure | plt.Axes:
+    """Public render-only variant.
+
+    When ``ax`` is None, returns a new Figure (single-panel layout). When
+    ``ax`` is provided, renders into the existing Axes (subplot layout)
+    and returns the Axes. Empty-data path (``H_counts is None``) renders
+    a "no data" placeholder.
+    """
+    if defaults is None:
+        defaults = load_defaults()
+    spatial_config = defaults["dlc_spatial"]
+    standalone = ax is None
+    if standalone:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.figure
+
+    if H_counts is None or extent is None or float(H_counts.sum()) == 0.0:
         ax.text(
-            0.5, 0.5, f"{animal}\nno data for\n{bodypart}/{center_mode}",
+            0.5, 0.5, "no data",
             ha="center", va="center", transform=ax.transAxes,
         )
         ax.set_axis_off()
-        return fig
+        if not standalone:
+            ax.set_title(title, fontsize=8)
+        return fig if standalone else ax
 
+    bp_cfg = spatial_config.get("bodyparts", {}).get(bodypart, {}) or {}
+    cmap_name = bp_cfg.get("cmap", "viridis")
+    per_mode = _get_per_center_mode_params(spatial_config, bodypart, center_mode)
+    x_limits = per_mode["xlim"] or (extent[0], extent[1])
+    y_limits = per_mode["ylim"] or (extent[2], extent[3])
+
+    total = float(H_counts.sum())
+    H_prop = H_counts / total
+    try:
+        cmap = plt.get_cmap(cmap_name)
+    except ValueError:
+        cmap = plt.get_cmap("viridis")
+    finite_nonzero = H_prop[np.isfinite(H_prop) & (H_prop > 0)]
+    if finite_nonzero.size > 0:
+        vmin = float(finite_nonzero.min())
+        vmax = float(H_prop.max())
+        norm = mcolors.LogNorm(vmin=max(vmin, 1e-10), vmax=vmax)
+    else:
+        norm = None
+    ax.imshow(
+        H_prop.T,
+        origin="lower",
+        extent=extent,
+        cmap=cmap,
+        aspect="auto",
+        norm=norm,
+    )
+    ax.set_xlim(x_limits)
+    ax.set_ylim(y_limits)
+    ax.invert_yaxis()
+    if standalone:
+        ax.set_xlabel(f"{bodypart}_x (centered)")
+        ax.set_ylabel(f"{bodypart}_y (centered)")
+        ax.set_title(title)
+    else:
+        ax.set_title(title, fontsize=8)
+        ax.tick_params(labelsize=6)
+
+    return fig if standalone else ax
+
+
+def render_animal_aggregated_heatmap(
+    animal: str,
+    dates: list[dt.date],
+    bodypart: str,
+    center_mode: str,
+    resolver: PathResolver,
+    *,
+    trial_group: str | None,
+    window_ms: tuple[float, float] | None,
+    defaults: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+) -> plt.Figure:
+    """Render a per-animal heatmap aggregating frames across all in-scope
+    sessions for one (bodypart, center_mode) cell.
+
+    Aggregation works at the ``H_counts`` array level (memory-efficient):
+    per-session histograms are computed with build_histogram + summed.
+    The resulting summed histogram is normalized + rendered once.
+
+    Tone-aligned mode (``trial_group`` + ``window_ms`` both non-None):
+    each session's histogram is windowed to the tone-aligned frames for
+    the given trial_group. Sessions with zero tone events for that group
+    contribute zero counts (no exception; the session is just absent).
+
+    Whole-session mode (``trial_group is None`` and ``window_ms is None``):
+    each session contributes all frames passing the likelihood / x_range
+    filter.
+
+    Parameters
+    ----------
+    animal : str
+    dates : list[datetime.date]
+        Sessions to aggregate. Typically the YAML-filtered cohort list
+        from :func:`stroke_orofacial.animals.AnimalInfo.session_start/end`.
+    bodypart : str
+    center_mode : str
+    resolver : PathResolver
+    trial_group : "all" | "L" | "R" | None
+    window_ms : tuple[float, float] | None
+        Pair → tone-aligned window. ``None`` + ``trial_group=None`` →
+        whole-session aggregation.
+    defaults : dict, optional
+    animal_info : AnimalInfo, optional
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    if defaults is None:
+        defaults = load_defaults()
+    H_total, extent, n_sessions, n_tones = compute_animal_aggregated_histogram(
+        animal, dates, bodypart, center_mode, resolver,
+        trial_group=trial_group, window_ms=window_ms,
+        defaults=defaults, animal_info=animal_info,
+    )
     if window_ms is not None:
         win_label = f"[{int(window_ms[0])}, {int(window_ms[1])}] ms"
         title = (
             f"{animal}  {bodypart}/{center_mode}  tg={trial_group}  "
-            f"win={win_label}  n_sessions={n_sessions_contributing}  "
-            f"n_tones={n_total_tones}"
+            f"win={win_label}  n_sessions={n_sessions}  "
+            f"n_tones={n_tones}"
         )
     else:
         title = (
             f"{animal}  {bodypart}/{center_mode}  WHOLE SESSION pooled  "
-            f"n_sessions={n_sessions_contributing}"
+            f"n_sessions={n_sessions}"
         )
-    return _h_counts_to_figure(
-        H_total, extent, bodypart, center_mode, spatial_config,
-        title=title,
+    return render_h_counts_panel(
+        H_total, extent, bodypart, center_mode,
+        title=title, defaults=defaults,
     )
 
 
 __all__ = [
+    "compute_animal_aggregated_histogram",
+    "render_animal_aggregated_heatmap",
+    "render_h_counts_panel",
     "render_tone_aligned_heatmap_session",
     "render_whole_session_heatmap",
-    "render_animal_aggregated_heatmap",
 ]
