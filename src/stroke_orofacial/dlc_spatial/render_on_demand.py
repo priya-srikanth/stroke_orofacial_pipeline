@@ -1073,6 +1073,249 @@ def render_binned_sessions_heatmap(
     )
 
 
+# ---------------------------------------------------------------------------
+# Phase 7c.2 Addendum #10 Q2 — proportion_differences plot type.
+# Math per legacy 20260111_DLC_analysis_build-parquet_tongue.ipynb cells
+# 2270-2360: D = H_post_prop - H_pre_prop. Divergent cmap with
+# TwoSlopeNorm centered on 0. Animal-level baseline = pool of all
+# pre-stroke sessions (rel_day <= 0).
+# ---------------------------------------------------------------------------
+
+# Divergent cmaps per legacy lines 1376-1381 of
+# 20251202_..._pixelbin.ipynb. Used for whisker-composite proportion-diff.
+_WHISKER_DIVERGENT_CMAPS: dict[str, str] = {
+    "L_whiskers_1": "BrBG",
+    "L_whiskers_2": "coolwarm",
+    "L_whiskers_3": "bwr",
+    "R_whiskers_1": "BrBG",
+    "R_whiskers_2": "coolwarm",
+    "R_whiskers_3": "bwr",
+}
+
+_PROPORTION_DIFF_DEFAULT_CMAP = "coolwarm"
+_PROPORTION_DIFF_VMAX_PERCENTILE = 99.0
+
+
+def _split_pre_post_dates(
+    dates: list[dt.date], animal_info: AnimalInfo,
+) -> tuple[list[dt.date], list[dt.date]]:
+    """Split a date list into (pre_dates, post_dates).
+
+    pre_dates: rel_day <= 0 (includes stroke_date itself per AnimalInfo
+    convention — stroke_date is the LAST PRE-STROKE SESSION).
+    post_dates: rel_day >= 1.
+    """
+    pre: list[dt.date] = []
+    post: list[dt.date] = []
+    for d in dates:
+        rel = animal_info.day_relative_to_stroke(d)
+        if rel <= 0:
+            pre.append(d)
+        else:
+            post.append(d)
+    return sorted(pre), sorted(post)
+
+
+def _compute_proportion_diff(
+    animal: str,
+    pre_dates: list[dt.date],
+    post_dates: list[dt.date],
+    bodypart: str,
+    center_mode: str,
+    scope: Scope,
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any],
+    animal_info: AnimalInfo,
+) -> tuple[np.ndarray | None, list[float] | None, int, int]:
+    """Compute D = H_post_prop - H_pre_prop for one bodypart.
+
+    Returns ``(D, extent, n_pre_sessions, n_post_sessions)``. Returns
+    ``(None, None, 0, 0)`` if either side has no contributing sessions.
+
+    For tone-aligned scope: aggregates frames inside the (0, 8000) ms
+    tone window across all trial groups (trial_group="all"). For
+    whole-session scope: no window.
+    """
+    if scope == "tone_aligned":
+        tg_arg: str | None = "all"
+        window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
+    elif scope == "whole_session":
+        tg_arg = None
+        window_ms = None
+    else:
+        raise ValueError(f"scope must be 'tone_aligned' or 'whole_session'; got {scope!r}")
+
+    H_pre, ext_pre, n_pre, _ = compute_animal_aggregated_histogram(
+        animal, pre_dates, bodypart, center_mode, resolver,
+        trial_group=tg_arg, window_ms=window_ms,
+        defaults=defaults, animal_info=animal_info,
+    )
+    H_post, ext_post, n_post, _ = compute_animal_aggregated_histogram(
+        animal, post_dates, bodypart, center_mode, resolver,
+        trial_group=tg_arg, window_ms=window_ms,
+        defaults=defaults, animal_info=animal_info,
+    )
+
+    if H_pre is None or H_post is None:
+        return None, None, n_pre, n_post
+    pre_sum = float(H_pre.sum())
+    post_sum = float(H_post.sum())
+    if pre_sum == 0.0 or post_sum == 0.0:
+        return None, None, n_pre, n_post
+
+    H_pre_prop = H_pre / pre_sum
+    H_post_prop = H_post / post_sum
+    D = H_post_prop - H_pre_prop
+
+    # Mask cells where both sides had zero counts (no-data) — matches
+    # legacy mask_for_plot at line 2298 of the legacy notebook.
+    no_data = (H_pre == 0) & (H_post == 0)
+    if no_data.any():
+        D = np.where(no_data, np.nan, D)
+
+    ext = ext_pre if ext_pre is not None else ext_post
+    return D, list(ext) if ext is not None else None, n_pre, n_post
+
+
+def _render_proportion_diff_panel(
+    ax: plt.Axes,
+    D: np.ndarray | None,
+    extent: list[float] | None,
+    bodypart: str,
+    center_mode: str,
+    *,
+    spatial_config: dict[str, Any],
+    cmap_name: str = _PROPORTION_DIFF_DEFAULT_CMAP,
+    title: str = "",
+) -> None:
+    """Render one (bodypart, center_mode) proportion-diff D array onto an
+    Axes. Uses ``TwoSlopeNorm(vcenter=0)`` with vmax = 99th-percentile of
+    |D| (legacy convention). Diverging cmap default ``coolwarm``."""
+    if D is None or extent is None:
+        ax.text(0.5, 0.5, f"{title}\n(no data)",
+                ha="center", va="center", transform=ax.transAxes)
+        ax.set_axis_off()
+        return
+    finite_abs = np.abs(D[np.isfinite(D)])
+    if finite_abs.size == 0:
+        ax.text(0.5, 0.5, f"{title}\n(no finite D)",
+                ha="center", va="center", transform=ax.transAxes)
+        ax.set_axis_off()
+        return
+    vmax = float(np.percentile(finite_abs, _PROPORTION_DIFF_VMAX_PERCENTILE))
+    vmax = max(vmax, 1e-12)
+    norm = mcolors.TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax)
+    try:
+        cmap = plt.get_cmap(cmap_name).with_extremes(bad="0.85")
+    except (ValueError, AttributeError):
+        cmap = plt.get_cmap("coolwarm")
+    D_plot = np.ma.array(D, mask=~np.isfinite(D))
+    im = ax.imshow(
+        D_plot.T, origin="lower", extent=extent,
+        cmap=cmap, aspect="auto", norm=norm,
+    )
+    per_mode = _get_per_center_mode_params(spatial_config, bodypart, center_mode)
+    if per_mode["xlim"]:
+        ax.set_xlim(per_mode["xlim"])
+    if per_mode["ylim"]:
+        ax.set_ylim(per_mode["ylim"])
+    ax.invert_yaxis()
+    ax.set_title(title, fontsize=9)
+    ax.tick_params(labelsize=6)
+    cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label("Δ proportion (post − pre)", fontsize=7)
+    cbar.ax.tick_params(labelsize=6)
+
+
+def render_proportion_difference_heatmap(
+    animal: str,
+    family_entry: str,
+    scope: Scope,
+    resolver: PathResolver,
+    *,
+    dates: list[dt.date] | None = None,
+    defaults: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+) -> plt.Figure:
+    """Render the per-(animal, family, scope) proportion-difference SVG.
+
+    Math: ``D = H_post_prop - H_pre_prop`` where pre = all rel_day <= 0
+    sessions pooled (animal-level baseline per Addendum #10 Q2a), post =
+    all rel_day >= 1 sessions pooled. Both as proportion-normalized
+    histograms. Divergent cmap centered on 0 (``TwoSlopeNorm``).
+
+    Non-whiskers families: 1×1 panel.
+    Whiskers family: 2×3 subplot grid with per-whisker divergent cmap
+    (BrBG / coolwarm / bwr cycle per whisker index; legacy lines
+    1376-1381 of 20251202_..._pixelbin.ipynb).
+
+    ``dates`` is the YAML-filtered in-range date list. If None, the
+    caller must provide it (driver always passes it).
+    """
+    if defaults is None:
+        defaults = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+    if dates is None:
+        raise ValueError(
+            "render_proportion_difference_heatmap requires explicit `dates` "
+            "list (the YAML-filtered cohort date set). Driver passes it."
+        )
+
+    bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
+    spatial_config = defaults["dlc_spatial"]
+    pre_dates, post_dates = _split_pre_post_dates(dates, animal_info)
+
+    suptitle = (
+        f"{animal}  {family_entry}  {scope}  proportion_differences  "
+        f"post − pre  (n_pre={len(pre_dates)}, n_post={len(post_dates)})"
+    )
+
+    if len(bodyparts) == 1:
+        bp = bodyparts[0]
+        D, ext, n_pre, n_post = _compute_proportion_diff(
+            animal, pre_dates, post_dates, bp, center_mode, scope, resolver,
+            defaults=defaults, animal_info=animal_info,
+        )
+        fig, ax = plt.subplots(figsize=(8, 6), constrained_layout=True)
+        title = f"{bp}/{center_mode}  n_pre_sess={n_pre} n_post_sess={n_post}"
+        _render_proportion_diff_panel(
+            ax, D, ext, bp, center_mode,
+            spatial_config=spatial_config,
+            cmap_name=_PROPORTION_DIFF_DEFAULT_CMAP,
+            title=title,
+        )
+        fig.suptitle(suptitle, fontsize=11)
+        return fig
+
+    # Whiskers composite — 2×3 grid, per-whisker divergent cmap.
+    nrows, ncols = 2, 3
+    fig, axes_obj = plt.subplots(
+        nrows=nrows, ncols=ncols,
+        figsize=(ncols * 5.0, nrows * 4.0),
+        constrained_layout=True,
+    )
+    axes = list(axes_obj.flat)
+    for bp, ax in zip(bodyparts, axes, strict=False):
+        D, ext, n_pre, n_post = _compute_proportion_diff(
+            animal, pre_dates, post_dates, bp, center_mode, scope, resolver,
+            defaults=defaults, animal_info=animal_info,
+        )
+        cmap_name = _WHISKER_DIVERGENT_CMAPS.get(bp, _PROPORTION_DIFF_DEFAULT_CMAP)
+        title = f"{bp}  n_pre_sess={n_pre} n_post_sess={n_post}"
+        _render_proportion_diff_panel(
+            ax, D, ext, bp, center_mode,
+            spatial_config=spatial_config,
+            cmap_name=cmap_name, title=title,
+        )
+    # Hide any trailing axes if bodyparts < 6.
+    for ax in axes[len(bodyparts):]:
+        ax.set_axis_off()
+    fig.suptitle(suptitle, fontsize=12)
+    return fig
+
+
 __all__ = [
     "TASK5_TONE_WINDOW_MS",
     "TASK5_TRIAL_GROUPS_TONE_ALIGNED",
@@ -1082,6 +1325,7 @@ __all__ = [
     "render_binned_sessions_heatmap",
     "render_h_counts_panel",
     "render_individual_session_heatmap",
+    "render_proportion_difference_heatmap",
     "render_tone_aligned_heatmap_session",
     "render_whole_session_heatmap",
 ]
