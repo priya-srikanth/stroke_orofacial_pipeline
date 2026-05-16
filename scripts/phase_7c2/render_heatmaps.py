@@ -58,6 +58,8 @@ from stroke_orofacial.dlc_kinematics._day_binned import _compute_rel_day_bin_lab
 from stroke_orofacial.dlc_spatial.render_on_demand import (
     render_binned_sessions_heatmap,
     render_individual_session_heatmap,
+    render_proportion_difference_heatmap,
+    render_unbalanced_ot_displacement_field,
 )
 from stroke_orofacial.paths import PathResolver
 
@@ -80,6 +82,8 @@ MANIFEST_HEADER = [
     "runtime_seconds_total",
     "n_individual_session_svgs",
     "n_binned_sessions_svgs",
+    "n_proportion_differences_svgs",
+    "n_unbalanced_ot_svgs",
     "n_errors",
     "status",
     "anomaly_notes",
@@ -162,6 +166,30 @@ def _binned_sessions_out_path(
     )
 
 
+def _proportion_diff_out_path(
+    resolver: PathResolver, scope: str, animal: str, family_entry: str,
+) -> Path:
+    if scope == "tone_aligned":
+        return resolver.tone_aligned_heatmap_proportion_differences_path(
+            animal, family_entry,
+        )
+    return resolver.whole_session_heatmap_proportion_differences_path(
+        animal, family_entry,
+    )
+
+
+def _unbalanced_ot_out_path(
+    resolver: PathResolver, scope: str, animal: str, family_entry: str,
+) -> Path:
+    if scope == "tone_aligned":
+        return resolver.tone_aligned_heatmap_unbalanced_ot_path(
+            animal, family_entry,
+        )
+    return resolver.whole_session_heatmap_unbalanced_ot_path(
+        animal, family_entry,
+    )
+
+
 def _load_manifest_so_far() -> dict[str, str]:
     if not MANIFEST_PATH.exists():
         return {}
@@ -196,6 +224,8 @@ def _process_animal(animal: str, resolver: PathResolver, defaults: dict) -> dict
 
     n_is = 0
     n_bs = 0
+    n_pd = 0
+    n_ot = 0
     n_err = 0
     anomalies: list[str] = []
     for family_entry in ALL_FAMILIES:
@@ -242,21 +272,65 @@ def _process_animal(animal: str, resolver: PathResolver, defaults: dict) -> dict
                     )
                     anomalies.append(msg)
                     log.error(f"    ERR {msg}")
+            # ----- proportion_differences (1 SVG per family × scope) -----
+            try:
+                fig = render_proportion_difference_heatmap(
+                    animal=animal, family_entry=family_entry,
+                    scope=scope, resolver=resolver,
+                    dates=dates,
+                    defaults=defaults, animal_info=animal_info,
+                )
+                out = _proportion_diff_out_path(
+                    resolver, scope, animal, family_entry,
+                )
+                fig.savefig(out, format="svg")
+                plt.close(fig)
+                n_pd += 1
+            except Exception as ex:
+                n_err += 1
+                msg = f"pd/{family_entry}/{scope}: {ex!r}"
+                anomalies.append(msg)
+                log.error(f"    ERR {msg}")
+
+            # ----- unbalanced_ot displacement field (1 SVG per family × scope) -----
+            try:
+                fig = render_unbalanced_ot_displacement_field(
+                    animal=animal, family_entry=family_entry,
+                    scope=scope, resolver=resolver,
+                    dates=dates,
+                    defaults=defaults, animal_info=animal_info,
+                )
+                out = _unbalanced_ot_out_path(
+                    resolver, scope, animal, family_entry,
+                )
+                fig.savefig(out, format="svg")
+                plt.close(fig)
+                n_ot += 1
+            except Exception as ex:
+                n_err += 1
+                msg = f"ot/{family_entry}/{scope}: {ex!r}"
+                anomalies.append(msg)
+                log.error(f"    ERR {msg}")
         log.info(
-            f"  family={family_entry} done; n_is={n_is} n_bs={n_bs} n_err={n_err}"
+            f"  family={family_entry} done; "
+            f"n_is={n_is} n_bs={n_bs} n_pd={n_pd} n_ot={n_ot} n_err={n_err}"
         )
 
     rt = time.perf_counter() - animal_t0
-    status = "OK" if n_err == 0 else ("PARTIAL" if (n_is + n_bs) > 0 else "ERR")
+    n_total = n_is + n_bs + n_pd + n_ot
+    status = "OK" if n_err == 0 else ("PARTIAL" if n_total > 0 else "ERR")
     log.info(
-        f"=== animal={animal}: complete — is={n_is} bs={n_bs} err={n_err} "
-        f"runtime {rt:.1f}s ({rt/60:.1f} min) status={status} ==="
+        f"=== animal={animal}: complete — is={n_is} bs={n_bs} pd={n_pd} "
+        f"ot={n_ot} err={n_err} runtime {rt:.1f}s ({rt/60:.1f} min) "
+        f"status={status} ==="
     )
     return {
         "animal": animal,
         "runtime_seconds_total": f"{rt:.3f}",
         "n_individual_session_svgs": str(n_is),
         "n_binned_sessions_svgs": str(n_bs),
+        "n_proportion_differences_svgs": str(n_pd),
+        "n_unbalanced_ot_svgs": str(n_ot),
         "n_errors": str(n_err),
         "status": status,
         "anomaly_notes": "; ".join(anomalies[:5]),  # cap to keep CSV cell readable
