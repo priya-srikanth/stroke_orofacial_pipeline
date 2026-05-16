@@ -768,6 +768,212 @@ def _assemble_panel_figure(
     return fig
 
 
+# ---------------------------------------------------------------------------
+# Whiskers composite (Addendum #10 Q1) — Pattern B layered overlay.
+# Ports the legacy render at lines 676-738 of
+# 20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb: sequential
+# ``ax.hist2d`` over PART_DRAW_ORDER with cmap + alpha=0.8 + LogNorm +
+# density=True, then per-part colorbars stacked vertically on the right.
+# Our port works at the imshow level (since we already have H_counts
+# arrays from compute_animal_aggregated_histogram) and renders the
+# colormap key as a compact figure-right legend instead of 6 colorbars
+# per panel (cleaner with the 3-panel trial-group layout).
+# ---------------------------------------------------------------------------
+
+# Per-whisker cmap dict from legacy lines 582-587 / 830-835 / 1394-1399 of
+# 20251202_..._pixelbin.ipynb. L/R whiskers share cmap per index.
+_WHISKER_CMAPS: dict[str, str] = {
+    "L_whiskers_1": "plasma",
+    "L_whiskers_2": "inferno",
+    "L_whiskers_3": "viridis",
+    "R_whiskers_1": "plasma",
+    "R_whiskers_2": "inferno",
+    "R_whiskers_3": "viridis",
+}
+
+_WHISKER_ALPHA: float = 0.5  # Slight softening vs legacy 0.8 for 6-way overlay readability.
+
+
+def _compute_whiskers_panels(
+    animal: str,
+    dates: list[dt.date],
+    bodyparts: list[str],
+    center_mode: str,
+    scope: Scope,
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any],
+    animal_info: AnimalInfo,
+) -> dict[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int]]]:
+    """Per-trial-group + per-whisker histogram compute.
+
+    Returns ``{tg: [(bp, H_counts, extent, n_sessions, n_tones), ...]}`` —
+    one entry per (trial_group, whisker_bp). For whole_session scope the
+    only trial_group key is ``"all"`` and ``n_tones`` is 0.
+    """
+    if scope == "tone_aligned":
+        trial_groups = TASK5_TRIAL_GROUPS_TONE_ALIGNED
+        window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
+    elif scope == "whole_session":
+        trial_groups = TASK5_TRIAL_GROUPS_WHOLE_SESSION
+        window_ms = None
+    else:
+        raise ValueError(f"scope must be 'tone_aligned' or 'whole_session'; got {scope!r}")
+
+    panels: dict[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int]]] = {}
+    for tg in trial_groups:
+        tg_arg = tg if window_ms is not None else None
+        per_tg: list[tuple[str, np.ndarray | None, list[float] | None, int, int]] = []
+        for bp in bodyparts:
+            H, ext, n_sess, n_tones = compute_animal_aggregated_histogram(
+                animal, dates, bp, center_mode, resolver,
+                trial_group=tg_arg, window_ms=window_ms,
+                defaults=defaults, animal_info=animal_info,
+            )
+            per_tg.append((
+                bp, H, ext, int(n_sess),
+                int(n_tones) if window_ms is not None else 0,
+            ))
+        panels[tg] = per_tg
+    return panels
+
+
+def _render_whiskers_panel_axis(
+    ax: plt.Axes,
+    whisker_panels: list[tuple[str, np.ndarray | None, list[float] | None, int, int]],
+    spatial_config: dict[str, Any],
+    *,
+    panel_title: str,
+) -> None:
+    """Render 6 sequential layered ``imshow`` plots on one axes — one per
+    whisker, each with its own cmap + LogNorm + alpha. Mirrors the
+    legacy ``ax.hist2d`` loop at lines 676-697 of 20251202_..._pixelbin.ipynb,
+    adapted to consume precomputed ``H_counts`` arrays (vs hist2d which
+    consumes raw xy).
+    """
+    extent_first: list[float] | None = None
+    n_layered = 0
+    for bp, H, ext, _n_sess, _n_tones in whisker_panels:
+        if H is None or float(H.sum()) == 0.0:
+            continue
+        if extent_first is None:
+            extent_first = ext
+        H_prop = H / float(H.sum())
+        finite_nonzero = H_prop[np.isfinite(H_prop) & (H_prop > 0)]
+        if finite_nonzero.size == 0:
+            continue
+        vmin = float(finite_nonzero.min())
+        vmax = float(H_prop.max())
+        try:
+            cmap = plt.get_cmap(_WHISKER_CMAPS.get(bp, "viridis"))
+        except ValueError:
+            cmap = plt.get_cmap("viridis")
+        ax.imshow(
+            H_prop.T,
+            origin="lower",
+            extent=ext,
+            cmap=cmap,
+            alpha=_WHISKER_ALPHA,
+            aspect="auto",
+            norm=mcolors.LogNorm(vmin=max(vmin, 1e-10), vmax=vmax),
+        )
+        n_layered += 1
+
+    if extent_first is None:
+        # No data for any whisker — placeholder.
+        ax.text(
+            0.5, 0.5, f"{panel_title}\n(no whisker data)",
+            ha="center", va="center", transform=ax.transAxes,
+        )
+        ax.set_axis_off()
+        return
+
+    # All 6 whiskers share eye_midpoint center_mode + similar xlim/ylim;
+    # use the first whisker's per_center_mode block as the panel axis
+    # range. Empirically the 6 per_center_mode entries differ by ~10s of
+    # px (each whisker pad has a slightly different baseline), but the
+    # spread is contained — the union of all 6 xlim/ylim would be wider
+    # than any single bp's range and lose detail. Sticking with the
+    # first-bp range gives a usable shared scale; if needed we can
+    # union later.
+    per_mode = _get_per_center_mode_params(spatial_config, "L_whiskers_1", "eye_midpoint")
+    if per_mode["xlim"]:
+        ax.set_xlim(per_mode["xlim"])
+    else:
+        ax.set_xlim(extent_first[0], extent_first[1])
+    if per_mode["ylim"]:
+        ax.set_ylim(per_mode["ylim"])
+    else:
+        ax.set_ylim(extent_first[2], extent_first[3])
+    ax.invert_yaxis()
+    ax.set_title(panel_title, fontsize=8)
+    ax.tick_params(labelsize=6)
+
+
+def _attach_whiskers_legend(fig: plt.Figure) -> None:
+    """Add a compact figure-right legend listing the 6 whiskers + their
+    colormap names. Cheaper than 6 colorbars per panel — clean
+    identification of which color belongs to which whisker."""
+    lines = [f"{bp} → {cmap}" for bp, cmap in _WHISKER_CMAPS.items()]
+    fig.text(
+        0.99, 0.5, "Whiskers (cmap key)\n\n" + "\n".join(lines),
+        ha="right", va="center", fontsize=7,
+        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.8, "edgecolor": "0.7"},
+    )
+
+
+def _assemble_whiskers_figure(
+    panels: dict[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int]]],
+    scope: Scope,
+    suptitle: str,
+    *,
+    defaults: dict[str, Any],
+) -> plt.Figure:
+    """Render the whiskers composite figure — 1×3 grid (tone_aligned) /
+    1×1 (whole_session), each panel layering 6 whiskers via
+    :func:`_render_whiskers_panel_axis`. Per-trial-group panel title
+    includes session count + tone-event count when tone-aligned.
+    """
+    spatial_config = defaults["dlc_spatial"]
+    if scope == "tone_aligned":
+        trial_groups = TASK5_TRIAL_GROUPS_TONE_ALIGNED
+        figsize = (18.0, 5.0)
+    else:
+        trial_groups = TASK5_TRIAL_GROUPS_WHOLE_SESSION
+        figsize = (8.0, 6.0)
+
+    fig, axes_obj = plt.subplots(
+        nrows=1, ncols=len(trial_groups),
+        figsize=figsize, constrained_layout=True,
+    )
+    axes = list(axes_obj.flat) if hasattr(axes_obj, "flat") else [axes_obj]
+    for tg, ax in zip(trial_groups, axes, strict=False):
+        whisker_panels = panels.get(tg, [])
+        if not whisker_panels:
+            ax.set_axis_off()
+            continue
+        # Summarize sessions + tones across whiskers (same values per whisker
+        # within a tg, modulo missing data; use first non-empty for title).
+        n_sess = 0
+        n_tones = 0
+        for _bp, H, _ext, ns, nt in whisker_panels:
+            if H is not None and float(H.sum()) > 0:
+                n_sess = max(n_sess, ns)
+                n_tones = max(n_tones, nt)
+        if scope == "tone_aligned":
+            panel_title = f"tg={tg}  n_sess={n_sess}  n_tones={n_tones}"
+        else:
+            panel_title = f"whole session  n_sess={n_sess}"
+        _render_whiskers_panel_axis(
+            ax, whisker_panels, spatial_config, panel_title=panel_title,
+        )
+    _attach_whiskers_legend(fig)
+    fig.suptitle(suptitle, fontsize=11)
+    # Make room for the right-edge legend.
+    fig.subplots_adjust(right=0.83)
+    return fig
+
+
 def render_individual_session_heatmap(
     animal: str,
     family_entry: str,
@@ -793,21 +999,24 @@ def render_individual_session_heatmap(
     if animal_info is None:
         animal_info = get_animal(animal)
     bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
+    suptitle = (
+        f"{animal}/{date.isoformat()}  {family_entry}  {scope}  "
+        f"individual_session"
+    )
     if len(bodyparts) > 1:
-        # Whiskers composite — pending Addendum #9 Issue 2 legacy port.
-        raise NotImplementedError(
-            f"family_entry={family_entry!r}: composite render (multi-bodypart "
-            "family) pending legacy port per Phase 7c.2 Addendum #9 Issue 2."
+        # Whiskers composite — Addendum #10 Q1 Pattern B layered overlay.
+        whisker_panels = _compute_whiskers_panels(
+            animal, [date], bodyparts, center_mode, scope, resolver,
+            defaults=defaults, animal_info=animal_info,
+        )
+        return _assemble_whiskers_figure(
+            whisker_panels, scope, suptitle, defaults=defaults,
         )
     bp = bodyparts[0]
 
     panels = _compute_panels_for_session(
         animal, date, bp, center_mode, scope, resolver,
         defaults=defaults, animal_info=animal_info,
-    )
-    suptitle = (
-        f"{animal}/{date.isoformat()}  {family_entry}  {scope}  "
-        f"individual_session"
     )
     return _assemble_panel_figure(
         panels, bp, center_mode, scope, suptitle, defaults=defaults,
@@ -840,20 +1049,24 @@ def render_binned_sessions_heatmap(
     if animal_info is None:
         animal_info = get_animal(animal)
     bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
+    suptitle = (
+        f"{animal}  {family_entry}  {scope}  binned_sessions  "
+        f"rel_day_bin={rel_day_bin_label}  n_dates_in_bin={len(dates_in_bin)}"
+    )
     if len(bodyparts) > 1:
-        raise NotImplementedError(
-            f"family_entry={family_entry!r}: composite render (multi-bodypart "
-            "family) pending legacy port per Phase 7c.2 Addendum #9 Issue 2."
+        # Whiskers composite — Addendum #10 Q1 Pattern B layered overlay.
+        whisker_panels = _compute_whiskers_panels(
+            animal, dates_in_bin, bodyparts, center_mode, scope, resolver,
+            defaults=defaults, animal_info=animal_info,
+        )
+        return _assemble_whiskers_figure(
+            whisker_panels, scope, suptitle, defaults=defaults,
         )
     bp = bodyparts[0]
 
     panels = _compute_panels_for_dates(
         animal, dates_in_bin, bp, center_mode, scope, resolver,
         defaults=defaults, animal_info=animal_info,
-    )
-    suptitle = (
-        f"{animal}  {family_entry}  {scope}  binned_sessions  "
-        f"rel_day_bin={rel_day_bin_label}  n_dates_in_bin={len(dates_in_bin)}"
     )
     return _assemble_panel_figure(
         panels, bp, center_mode, scope, suptitle, defaults=defaults,

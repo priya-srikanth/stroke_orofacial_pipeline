@@ -64,13 +64,9 @@ from stroke_orofacial.paths import PathResolver
 
 COHORT_ORDER = ("PS46", "PS47", "PS48", "PS49", "PS50", "PS51", "PS54", "PS55")
 
-# Plot families to render in this driver. Whiskers deferred to legacy
-# port per Addendum #9 Issue 2 — skipped with a log line; will land via
-# scripts/phase_7c2/render_heatmaps_whiskers.py (Step 3 port).
-NON_WHISKER_FAMILIES = tuple(
-    name for name in EXPECTED_TONE_ALIGNED_FAMILIES
-    if name != "whiskers_eye_midpoint"
-)
+# All 5 family entries iterate (whiskers dispatches to the composite
+# overlay renderer per Addendum #10 Q1 / commit-to-follow).
+ALL_FAMILIES = tuple(EXPECTED_TONE_ALIGNED_FAMILIES.keys())
 
 SCOPES = ("tone_aligned", "whole_session")
 
@@ -202,7 +198,7 @@ def _process_animal(animal: str, resolver: PathResolver, defaults: dict) -> dict
     n_bs = 0
     n_err = 0
     anomalies: list[str] = []
-    for family_entry in NON_WHISKER_FAMILIES:
+    for family_entry in ALL_FAMILIES:
         for scope in SCOPES:
             for date in dates:
                 try:
@@ -249,12 +245,6 @@ def _process_animal(animal: str, resolver: PathResolver, defaults: dict) -> dict
         log.info(
             f"  family={family_entry} done; n_is={n_is} n_bs={n_bs} n_err={n_err}"
         )
-
-    # Whisker family — log skip per Addendum #9 Issue 2.
-    log.info(
-        "  [skip] whiskers_eye_midpoint — composite legacy port pending "
-        "(Addendum #9 Issue 2 STOP-and-ask)."
-    )
 
     rt = time.perf_counter() - animal_t0
     status = "OK" if n_err == 0 else ("PARTIAL" if (n_is + n_bs) > 0 else "ERR")
