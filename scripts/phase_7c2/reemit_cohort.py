@@ -75,6 +75,7 @@ import sys
 import time
 from pathlib import Path
 
+from stroke_orofacial.animals import get_animal
 from stroke_orofacial.config_loader import load_session_overrides
 from stroke_orofacial.paths import PathResolver
 from stroke_orofacial.dlc_kinematics import (
@@ -129,16 +130,48 @@ def _sha256(path: Path) -> str:
 
 def _enumerate_cohort_a_bare_dates(animal: str, resolver: PathResolver) -> list[str]:
     """Walk legacy `spatial_reward_aligned/<canon>/<animal>/heatmap_*.npz` to
-    enumerate cohort-A bare-session date strings."""
+    enumerate cohort-A bare-session date strings, FILTERED to in-YAML-range
+    per ``configs/animals.yaml <animal>.sessions.start/end``.
+
+    Per Phase 7c.2 Addendum #5 Q1.C: 9 sessions on the legacy tree
+    (PS51/PS54/PS55 × 2025-04-16/17/18) are pre-cohort-launch baseline
+    acquisitions explicitly excluded from cohort scope per F-P-6
+    cohort-boundary policy + animals.yaml header comment. Phase 8a.10.1
+    Phase 2 re-emit gated by YAML so their licks NPZs no longer exist,
+    blocking Phase 7a kinematics consumers if processed. Filter here
+    before enumeration to avoid that failure mode.
+
+    Forward-pointer (memory
+    project_cohort_enumeration_should_be_yaml_driven_forward_pointer.md):
+    after Task 7 deletes the legacy spatial tree this walk won't work
+    for future re-runs; enumeration should switch to YAML-driven
+    (iterate ``animal_info.session_start`` to ``.session_end`` directly).
+    Not in 7c.2 scope; small chore-PR post-7c.2.
+    """
     output_root = resolver.pipeline_outputs("dlc_analysis")
     canon_dir = output_root / "spatial_reward_aligned" / CANON_BP_CM / CANON_WIN / animal
     if not canon_dir.exists():
         return []
+    animal_info = get_animal(animal)
+    start = animal_info.session_start
+    end = animal_info.session_end
     dates: list[str] = []
+    excluded: list[str] = []
     for npz in sorted(canon_dir.glob("heatmap_*.npz")):
         m = re.match(r"heatmap_(\d{8})\.npz", npz.name)
-        if m:
-            dates.append(m.group(1))
+        if not m:
+            continue
+        date_str = m.group(1)
+        d = dt.date(int(date_str[0:4]), int(date_str[4:6]), int(date_str[6:8]))
+        if start <= d <= end:
+            dates.append(date_str)
+        else:
+            excluded.append(date_str)
+    if excluded:
+        log.info(
+            f"  YAML-range filter ({animal}, {start.isoformat()}..{end.isoformat()}): "
+            f"excluded {len(excluded)} out-of-range dates: {excluded}"
+        )
     return sorted(dates)
 
 
