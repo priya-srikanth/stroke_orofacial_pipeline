@@ -1264,6 +1264,108 @@ class TestPhase7a5Paths:
         assert path.exists() and path.is_dir()
 
 
+# ---- Phase 7c.2 Addendum #9 — Task 5 heatmap path resolvers ----
+
+
+class TestTask5HeatmapPathResolvers:
+    """8 new path resolvers per Addendum #9 Q12.B. Both tone_aligned and
+    whole_session variants for each of 4 plot types (individual_session,
+    binned_sessions, proportion_differences, unbalanced_ot)."""
+
+    @pytest.fixture()
+    def resolver(self, tmp_path):
+        return PathResolver(output_root=tmp_path)
+
+    def test_tone_aligned_individual_session_path(self, resolver, tmp_path):
+        import datetime
+        p = resolver.tone_aligned_heatmap_individual_session_path(
+            "PS46", "tongue_eye_midpoint", datetime.date(2025, 3, 7),
+        )
+        assert p == (
+            tmp_path / "dlc_kinematics" / "tone_aligned_heatmaps" / "PS46"
+            / "tongue_eye_midpoint" / "individual_session" / "20250307.svg"
+        )
+        assert p.parent.exists()  # mkdir eager
+
+    def test_tone_aligned_individual_session_path_session_suffix(self, resolver, tmp_path):
+        import datetime
+        p = resolver.tone_aligned_heatmap_individual_session_path(
+            "PS54", "tongue_spout_midpoint", datetime.date(2025, 6, 20),
+            session_suffix="b",
+        )
+        assert p.name == "20250620b.svg"
+
+    def test_tone_aligned_binned_sessions_path(self, resolver, tmp_path):
+        p = resolver.tone_aligned_heatmap_binned_sessions_path(
+            "PS46", "jaw_eye_midpoint", "1..7",
+        )
+        assert p == (
+            tmp_path / "dlc_kinematics" / "tone_aligned_heatmaps" / "PS46"
+            / "jaw_eye_midpoint" / "binned_sessions" / "1..7.svg"
+        )
+        assert p.parent.exists()
+
+    def test_tone_aligned_proportion_differences_path(self, resolver, tmp_path):
+        p = resolver.tone_aligned_heatmap_proportion_differences_path(
+            "PS46", "nose_eye_midpoint",
+        )
+        assert p == (
+            tmp_path / "dlc_kinematics" / "tone_aligned_heatmaps" / "PS46"
+            / "nose_eye_midpoint" / "proportion_differences"
+            / "post_minus_pre_stroke.svg"
+        )
+        assert p.parent.exists()
+
+    def test_tone_aligned_unbalanced_ot_path(self, resolver, tmp_path):
+        p = resolver.tone_aligned_heatmap_unbalanced_ot_path(
+            "PS46", "whiskers_eye_midpoint",
+        )
+        assert p == (
+            tmp_path / "dlc_kinematics" / "tone_aligned_heatmaps" / "PS46"
+            / "whiskers_eye_midpoint" / "unbalanced_ot" / "unbalanced_ot.svg"
+        )
+
+    def test_tone_aligned_unbalanced_ot_path_custom_stem(self, resolver, tmp_path):
+        p = resolver.tone_aligned_heatmap_unbalanced_ot_path(
+            "PS46", "tongue_eye_midpoint", filename_stem="ot_sinkhorn_lam0.5",
+        )
+        assert p.name == "ot_sinkhorn_lam0.5.svg"
+
+    def test_whole_session_individual_session_path(self, resolver, tmp_path):
+        import datetime
+        p = resolver.whole_session_heatmap_individual_session_path(
+            "PS50", "tongue_spout_midpoint", datetime.date(2025, 3, 25),
+        )
+        assert p == (
+            tmp_path / "dlc_kinematics" / "whole_session_heatmaps" / "PS50"
+            / "tongue_spout_midpoint" / "individual_session" / "20250325.svg"
+        )
+        assert p.parent.exists()
+
+    def test_whole_session_binned_sessions_path(self, resolver, tmp_path):
+        p = resolver.whole_session_heatmap_binned_sessions_path(
+            "PS51", "whiskers_eye_midpoint", "-6..0",
+        )
+        assert p == (
+            tmp_path / "dlc_kinematics" / "whole_session_heatmaps" / "PS51"
+            / "whiskers_eye_midpoint" / "binned_sessions" / "-6..0.svg"
+        )
+
+    def test_whole_session_proportion_differences_path(self, resolver, tmp_path):
+        p = resolver.whole_session_heatmap_proportion_differences_path(
+            "PS54", "jaw_eye_midpoint",
+        )
+        assert p.name == "post_minus_pre_stroke.svg"
+        assert p.parent.name == "proportion_differences"
+
+    def test_whole_session_unbalanced_ot_path(self, resolver, tmp_path):
+        p = resolver.whole_session_heatmap_unbalanced_ot_path(
+            "PS55", "tongue_eye_midpoint",
+        )
+        assert p.name == "unbalanced_ot.svg"
+        assert p.parent.name == "unbalanced_ot"
+
+
 # ---- Integration test (requires real mount) ----
 
 _MOUNT = Path("/Volumes/Neurobio/MICROSCOPE/Priya")

@@ -601,10 +601,274 @@ def render_animal_aggregated_heatmap(
     )
 
 
+# ---------------------------------------------------------------------------
+# Phase 7c.2 Addendum #9 — Task 5 plot types (individual_session,
+# binned_sessions). Trial-group panel layout: 3-panel (all, L, R) for
+# tone-aligned plot types; 1-panel (all only) for whole-session.
+# Single tone-aligned window = (0, 8000) ms per Q12.B.
+# ---------------------------------------------------------------------------
+
+# Tone-aligned single window per Addendum #9 Issue 4.
+TASK5_TONE_WINDOW_MS: tuple[float, float] = (0.0, 8000.0)
+TASK5_TRIAL_GROUPS_TONE_ALIGNED: tuple[str, str, str] = ("all", "L", "R")
+TASK5_TRIAL_GROUPS_WHOLE_SESSION: tuple[str, ...] = ("all",)
+
+Scope = str  # Literal["tone_aligned", "whole_session"]; relaxed for older type-checkers.
+
+
+def _resolve_family_entry(
+    family_entry: str,
+    defaults: dict[str, Any],
+) -> tuple[list[str], str]:
+    """Look up (bodyparts, center_mode) for a family entry from defaults.yaml.
+
+    Reads ``dlc_spatial_tone_aligned.families.<family_entry>``. Returns
+    a list of bodyparts (single-element for non-whisker families; 6
+    individual whisker bodyparts for ``whiskers_eye_midpoint``).
+    """
+    tone_config = defaults["dlc_spatial_tone_aligned"]
+    families = tone_config.get("families") or {}
+    if family_entry not in families:
+        raise KeyError(
+            f"family_entry {family_entry!r} not in "
+            f"dlc_spatial_tone_aligned.families allowlist: "
+            f"{sorted(families.keys())}"
+        )
+    fam = families[family_entry]
+    return list(fam["bodyparts"]), str(fam["center_mode"])
+
+
+def _compute_panels_for_session(
+    animal: str,
+    date: dt.date,
+    bodypart: str,
+    center_mode: str,
+    scope: Scope,
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any],
+    animal_info: AnimalInfo,
+) -> dict[str, tuple[np.ndarray | None, list[float] | None, int]]:
+    """Compute per-trial-group histograms for a single (animal, date) cell.
+
+    Returns ``{tg: (H_counts, extent, n_tones)}`` for every trial group in
+    the scope-specific panel set. Missing-data panels (no tone events for
+    a trial_group) map to ``(None, None, 0)``.
+    """
+    if scope == "tone_aligned":
+        trial_groups = TASK5_TRIAL_GROUPS_TONE_ALIGNED
+        window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
+    elif scope == "whole_session":
+        trial_groups = TASK5_TRIAL_GROUPS_WHOLE_SESSION
+        window_ms = None
+    else:
+        raise ValueError(f"scope must be 'tone_aligned' or 'whole_session'; got {scope!r}")
+
+    panels: dict[str, tuple[np.ndarray | None, list[float] | None, int]] = {}
+    for tg in trial_groups:
+        tg_arg = tg if window_ms is not None else None
+        H, ext, _n_sess, n_tones = compute_animal_aggregated_histogram(
+            animal, [date], bodypart, center_mode, resolver,
+            trial_group=tg_arg, window_ms=window_ms,
+            defaults=defaults, animal_info=animal_info,
+        )
+        panels[tg] = (H, ext, int(n_tones) if window_ms is not None else 0)
+    return panels
+
+
+def _compute_panels_for_dates(
+    animal: str,
+    dates: list[dt.date],
+    bodypart: str,
+    center_mode: str,
+    scope: Scope,
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any],
+    animal_info: AnimalInfo,
+) -> dict[str, tuple[np.ndarray | None, list[float] | None, int, int]]:
+    """Compute per-trial-group aggregated histograms for a date set
+    (e.g., one rel_day_bin's sessions). Returns
+    ``{tg: (H_counts, extent, n_sessions, n_tones)}``.
+    """
+    if scope == "tone_aligned":
+        trial_groups = TASK5_TRIAL_GROUPS_TONE_ALIGNED
+        window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
+    elif scope == "whole_session":
+        trial_groups = TASK5_TRIAL_GROUPS_WHOLE_SESSION
+        window_ms = None
+    else:
+        raise ValueError(f"scope must be 'tone_aligned' or 'whole_session'; got {scope!r}")
+
+    panels: dict[str, tuple[np.ndarray | None, list[float] | None, int, int]] = {}
+    for tg in trial_groups:
+        tg_arg = tg if window_ms is not None else None
+        H, ext, n_sess, n_tones = compute_animal_aggregated_histogram(
+            animal, dates, bodypart, center_mode, resolver,
+            trial_group=tg_arg, window_ms=window_ms,
+            defaults=defaults, animal_info=animal_info,
+        )
+        panels[tg] = (H, ext, int(n_sess), int(n_tones) if window_ms is not None else 0)
+    return panels
+
+
+def _assemble_panel_figure(
+    panels: dict[str, tuple],
+    bodypart: str,
+    center_mode: str,
+    scope: Scope,
+    suptitle: str,
+    *,
+    defaults: dict[str, Any],
+) -> plt.Figure:
+    """Render the per-trial-group panels as one Figure.
+
+    Tone-aligned scope: 1×3 grid (all, L, R). Whole-session scope: 1×1.
+    Each panel's title carries n_sessions / n_tones depending on the
+    panel payload shape (3-tuple for single-session, 4-tuple for
+    bin-aggregated).
+    """
+    if scope == "tone_aligned":
+        trial_groups = TASK5_TRIAL_GROUPS_TONE_ALIGNED
+        figsize = (18.0, 5.0)
+    else:
+        trial_groups = TASK5_TRIAL_GROUPS_WHOLE_SESSION
+        figsize = (8.0, 6.0)
+
+    fig, axes_obj = plt.subplots(
+        nrows=1, ncols=len(trial_groups),
+        figsize=figsize, constrained_layout=True,
+    )
+    axes = list(axes_obj.flat) if hasattr(axes_obj, "flat") else [axes_obj]
+    for tg, ax in zip(trial_groups, axes, strict=False):
+        payload = panels.get(tg)
+        if payload is None:
+            ax.text(0.5, 0.5, f"tg={tg}\n(no data)",
+                    ha="center", va="center", transform=ax.transAxes)
+            ax.set_axis_off()
+            continue
+        if len(payload) == 3:
+            H, ext, n_tones = payload
+            panel_title = (
+                f"tg={tg} n_tones={n_tones}"
+                if scope == "tone_aligned"
+                else "whole session"
+            )
+        else:
+            H, ext, n_sess, n_tones = payload
+            if scope == "tone_aligned":
+                panel_title = f"tg={tg} n_sess={n_sess} n_tones={n_tones}"
+            else:
+                panel_title = f"whole session n_sess={n_sess}"
+        render_h_counts_panel(
+            H, ext, bodypart, center_mode,
+            title=panel_title, defaults=defaults, ax=ax,
+        )
+    fig.suptitle(suptitle, fontsize=12)
+    return fig
+
+
+def render_individual_session_heatmap(
+    animal: str,
+    family_entry: str,
+    date: dt.date,
+    scope: Scope,
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+) -> plt.Figure:
+    """Render the per-session heatmap figure for one (animal, family,
+    date, scope) cell.
+
+    Tone-aligned: 1×3 panel grid (all, L, R) using the
+    (0, 8000) ms window. Whole-session: 1×1 panel (all only; no
+    trial-group split).
+
+    Raises ``NotImplementedError`` for ``whiskers_eye_midpoint`` until
+    the legacy composite is ported (Addendum #9 Issue 2).
+    """
+    if defaults is None:
+        defaults = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+    bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
+    if len(bodyparts) > 1:
+        # Whiskers composite — pending Addendum #9 Issue 2 legacy port.
+        raise NotImplementedError(
+            f"family_entry={family_entry!r}: composite render (multi-bodypart "
+            "family) pending legacy port per Phase 7c.2 Addendum #9 Issue 2."
+        )
+    bp = bodyparts[0]
+
+    panels = _compute_panels_for_session(
+        animal, date, bp, center_mode, scope, resolver,
+        defaults=defaults, animal_info=animal_info,
+    )
+    suptitle = (
+        f"{animal}/{date.isoformat()}  {family_entry}  {scope}  "
+        f"individual_session"
+    )
+    return _assemble_panel_figure(
+        panels, bp, center_mode, scope, suptitle, defaults=defaults,
+    )
+
+
+def render_binned_sessions_heatmap(
+    animal: str,
+    family_entry: str,
+    rel_day_bin_label: str,
+    dates_in_bin: list[dt.date],
+    scope: Scope,
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+) -> plt.Figure:
+    """Render the per-(rel_day_bin) heatmap figure for one (animal,
+    family, rel_day_bin, scope) cell.
+
+    Aggregates frames across all ``dates_in_bin`` for the bin (single
+    bin per call; cohort driver groups sessions by bin using
+    ``_compute_rel_day_bin_label`` from ``_day_binned`` module).
+
+    Panel layout same as :func:`render_individual_session_heatmap`.
+    Raises ``NotImplementedError`` for ``whiskers_eye_midpoint``.
+    """
+    if defaults is None:
+        defaults = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+    bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
+    if len(bodyparts) > 1:
+        raise NotImplementedError(
+            f"family_entry={family_entry!r}: composite render (multi-bodypart "
+            "family) pending legacy port per Phase 7c.2 Addendum #9 Issue 2."
+        )
+    bp = bodyparts[0]
+
+    panels = _compute_panels_for_dates(
+        animal, dates_in_bin, bp, center_mode, scope, resolver,
+        defaults=defaults, animal_info=animal_info,
+    )
+    suptitle = (
+        f"{animal}  {family_entry}  {scope}  binned_sessions  "
+        f"rel_day_bin={rel_day_bin_label}  n_dates_in_bin={len(dates_in_bin)}"
+    )
+    return _assemble_panel_figure(
+        panels, bp, center_mode, scope, suptitle, defaults=defaults,
+    )
+
+
 __all__ = [
+    "TASK5_TONE_WINDOW_MS",
+    "TASK5_TRIAL_GROUPS_TONE_ALIGNED",
+    "TASK5_TRIAL_GROUPS_WHOLE_SESSION",
     "compute_animal_aggregated_histogram",
     "render_animal_aggregated_heatmap",
+    "render_binned_sessions_heatmap",
     "render_h_counts_panel",
+    "render_individual_session_heatmap",
     "render_tone_aligned_heatmap_session",
     "render_whole_session_heatmap",
 ]

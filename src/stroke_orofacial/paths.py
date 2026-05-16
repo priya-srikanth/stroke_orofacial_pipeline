@@ -487,6 +487,159 @@ class PathResolver:
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 
+    # ---------------- Phase 7c.2 Addendum #9 — Task 5 heatmaps ----------------
+    # Output path layout per Q12.B:
+    #   tone_aligned_heatmaps/<animal>/<family_entry>/<plot_type>/<filename>.svg
+    #   whole_session_heatmaps/<animal>/<family_entry>/<plot_type>/<filename>.svg
+    # Plot types: individual_session, binned_sessions, proportion_differences,
+    # unbalanced_ot. Single (0, 8000)ms tone-aligned window per Issue 4.
+    # whiskers_eye_midpoint family produces a composite figure rather than
+    # per-bodypart fanout — same resolver path; caller's renderer decides
+    # composite vs single-bodypart layout.
+
+    def _tone_aligned_heatmap_dir(
+        self, animal: str, family_entry: str, plot_type: str,
+    ) -> Path:
+        """Internal shared root for tone-aligned heatmap plot-type subdir."""
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "tone_aligned_heatmaps"
+            / animal
+            / family_entry
+            / plot_type
+        )
+
+    def _whole_session_heatmap_dir(
+        self, animal: str, family_entry: str, plot_type: str,
+    ) -> Path:
+        """Internal shared root for whole-session heatmap plot-type subdir."""
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "whole_session_heatmaps"
+            / animal
+            / family_entry
+            / plot_type
+        )
+
+    def tone_aligned_heatmap_individual_session_path(
+        self, animal: str, family_entry: str, date: datetime.date,
+        *, session_suffix: str | None = None,
+    ) -> Path:
+        """Return the per-(session date) tone-aligned heatmap SVG path.
+
+        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/individual_session/20250307.svg``.
+
+        Filename uses ``%Y%m%d`` to match the Phase 7a per-session output
+        conventions (interpolated_traces, tongue_pertrial endpoints, etc).
+        Parent directory is created eagerly.
+        """
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
+        out = self._tone_aligned_heatmap_dir(
+            animal, family_entry, "individual_session",
+        ) / f"{date_str}.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def tone_aligned_heatmap_binned_sessions_path(
+        self, animal: str, family_entry: str, rel_day_bin_label: str,
+    ) -> Path:
+        """Return the per-(rel_day_bin) tone-aligned binned-sessions SVG path.
+
+        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/binned_sessions/1..7.svg``.
+
+        ``rel_day_bin_label`` follows the legacy ``f"{lo}..{hi}"``
+        convention from :func:`stroke_orofacial.dlc_kinematics._day_binned._compute_rel_day_bin_label`.
+        Parent directory is created eagerly.
+        """
+        out = self._tone_aligned_heatmap_dir(
+            animal, family_entry, "binned_sessions",
+        ) / f"{rel_day_bin_label}.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def tone_aligned_heatmap_proportion_differences_path(
+        self, animal: str, family_entry: str,
+    ) -> Path:
+        """Return the per-(animal, family) tone-aligned proportion-difference
+        SVG path.
+
+        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/proportion_differences/post_minus_pre_stroke.svg``.
+
+        Filename is fixed at ``post_minus_pre_stroke.svg`` per Q12.B layout
+        spec. Parent directory is created eagerly.
+        """
+        out = self._tone_aligned_heatmap_dir(
+            animal, family_entry, "proportion_differences",
+        ) / "post_minus_pre_stroke.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def tone_aligned_heatmap_unbalanced_ot_path(
+        self, animal: str, family_entry: str, filename_stem: str = "unbalanced_ot",
+    ) -> Path:
+        """Return the per-(animal, family) tone-aligned Unbalanced-OT SVG path.
+
+        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/unbalanced_ot/unbalanced_ot.svg``.
+
+        ``filename_stem`` defaults to ``"unbalanced_ot"`` but the legacy
+        port may override (TBD per Addendum #9 STOP-and-ask). Parent
+        directory is created eagerly.
+        """
+        out = self._tone_aligned_heatmap_dir(
+            animal, family_entry, "unbalanced_ot",
+        ) / f"{filename_stem}.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def whole_session_heatmap_individual_session_path(
+        self, animal: str, family_entry: str, date: datetime.date,
+        *, session_suffix: str | None = None,
+    ) -> Path:
+        """Return the per-(session date) whole-session heatmap SVG path.
+
+        E.g. ``<outputs>/dlc_kinematics/whole_session_heatmaps/PS46/tongue_eye_midpoint/individual_session/20250307.svg``.
+        """
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
+        out = self._whole_session_heatmap_dir(
+            animal, family_entry, "individual_session",
+        ) / f"{date_str}.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def whole_session_heatmap_binned_sessions_path(
+        self, animal: str, family_entry: str, rel_day_bin_label: str,
+    ) -> Path:
+        """Return the per-(rel_day_bin) whole-session binned-sessions SVG path."""
+        out = self._whole_session_heatmap_dir(
+            animal, family_entry, "binned_sessions",
+        ) / f"{rel_day_bin_label}.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def whole_session_heatmap_proportion_differences_path(
+        self, animal: str, family_entry: str,
+    ) -> Path:
+        """Return the per-(animal, family) whole-session proportion-difference SVG path.
+
+        Filename ``post_minus_pre_stroke.svg`` (matches tone-aligned sibling)."""
+        out = self._whole_session_heatmap_dir(
+            animal, family_entry, "proportion_differences",
+        ) / "post_minus_pre_stroke.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def whole_session_heatmap_unbalanced_ot_path(
+        self, animal: str, family_entry: str, filename_stem: str = "unbalanced_ot",
+    ) -> Path:
+        """Return the per-(animal, family) whole-session Unbalanced-OT SVG path."""
+        out = self._whole_session_heatmap_dir(
+            animal, family_entry, "unbalanced_ot",
+        ) / f"{filename_stem}.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    # ---------------- end Task 5 heatmap resolvers ----------------
+
     def tongue_angle_within_session_dir(
         self, animal: str, date: datetime.date,
         *, session_suffix: str | None = None,
