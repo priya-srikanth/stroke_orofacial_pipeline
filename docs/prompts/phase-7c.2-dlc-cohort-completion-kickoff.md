@@ -959,15 +959,29 @@ Each wrapper reads Phase 4 centered parquets + (if tone-aligned) tone events + a
 
 ### Legacy-code porting workflow
 
-CC ports legacy implementations for:
-1. Whiskers composite plot (Issue 2 re-lock)
-2. Proportion differences (Issue 3 plot type)
-3. Unbalanced Optimal Transport (Issue 3 plot type; needs `ot` Python library — check if available in conda env, install if not)
+Legacy notebook references (per Priya 2026-05-15) — all under `\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\DeepLabCut\code\` on Windows (`/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/code/` on Mac):
 
-When CC encounters legacy code references, STOP-and-ask Priya for:
-- Specific legacy notebook file + cell number
-- Any ported-already vs needs-fresh-port classification
-- Adjudication on adaptation choices if legacy code uses pre-Phase-8a.10.1 conventions
+| Legacy file | Covers |
+|---|---|
+| `20260111_DLC_analysis_build-parquet_tongue.ipynb` | Tongue heatmaps + tongue proportion-difference heatmaps |
+| `20251117_DLC_analysis_nose.ipynb` | Nose heatmaps + nose proportion-difference heatmaps |
+| `20251117_DLC_analysis_jaw.ipynb` | Jaw heatmaps + jaw proportion-difference heatmaps |
+| `20251202_DLC_analysis_all_bodyparts_stats_pixelbin` (Priya 2026-05-15: "I think" — CC verifies) | Whisker composite heatmaps (likely); also possibly unbalanced OT analysis |
+
+**Read-only access per CLAUDE.md ground rules 1-2.** CC reads these notebooks for porting reference; never modifies them.
+
+**Unbalanced OT location is not explicitly identified** — Priya 2026-05-15 noted the unbalanced OT calculations + graphing parameters are in the legacy code but didn't pin a specific file. CC should grep across the 4 files above (or the broader `DeepLabCut/code/` directory) for terms like `optimal_transport`, `sinkhorn`, `ot.unbalanced`, `unbalanced_ot`, `wasserstein`, etc. STOP-and-ask Priya if the OT code isn't located in those 4 files.
+
+CC ports legacy implementations for:
+1. **Whiskers composite plot** (Issue 2 re-lock) — likely in `20251202_DLC_analysis_all_bodyparts_stats_pixelbin`.
+2. **Proportion differences** (Issue 3 plot type) — one per bodypart; references in the 3 bodypart-specific files (`20260111` for tongue, `20251117_nose` for nose, `20251117_jaw` for jaw). The "post-stroke minus pre-stroke" framing is consistent across bodyparts; CC ports the per-bodypart version but the math should be the same.
+3. **Unbalanced Optimal Transport** (Issue 3 plot type; needs `ot` Python library — check if available in conda env, install if not).
+
+When CC encounters scoping questions while porting legacy code, STOP-and-ask Priya for:
+- Per-bodypart subtle differences if the legacy implementations diverge between tongue/jaw/nose
+- Animal-level pre-stroke baseline definition (single per-animal vs session-level vs binned-pre-stroke)
+- OT parameter values + graphing specifics if grepped legacy code is ambiguous
+- Adjudication on adaptation choices if legacy code uses pre-Phase-8a.10.1 conventions (e.g., `reward_idx`-based filtering that should be re-interpreted as `tone_idx`)
 
 ### Re-render existing in-flight Task 5 output
 
@@ -976,3 +990,51 @@ CC's pre-Addendum-#9 in-flight Task 5 render produced incorrect outputs (redunda
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.B 5-family allowlist [whiskers still 6 individual bodyparts but rendered as composite per Issue 2 re-lock above], Q11 driver patch.)
+
+---
+
+## Addendum #10 — Task 5 legacy-port locks for whiskers + proportion_differences + unbalanced_ot (Priya 2026-05-15, mid-Task-5 STOP-and-ask resolution)
+
+CC's STOP-and-ask surfaced 4 scoping questions for the Task 5 legacy ports. Priya 2026-05-15 locks below.
+
+### Q1 LOCKED — whiskers composite Pattern B (layered overlay)
+
+**Whiskers composite is the layered overlay pattern** (one axis, 6 sequential `hist2d` calls each with its own colormap + alpha blending). The per-whisker colormap dict CC found at lines 582-587 / 830-835 / 1394-1399 of `20251202_..._pixelbin.ipynb` (`plasma`/`inferno`/`viridis` × L+R) is the config input; the actual overlay-render cell lives elsewhere in the file.
+
+**CC action:** search `20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb` for the literal overlay-render cell (sequential `hist2d` calls + `alpha` keyword + iteration over the per-whisker cmap dict). Look for patterns like `for bp in whiskers`, `alpha=0.` clustered with `hist2d`, etc. If CC can't locate the render cell after a thorough grep, STOP-and-ask Priya for a pointer.
+
+NOT pooled-into-one-distribution (Pattern A) — that's a different legacy code path used for statistics, not the composite plot.
+
+### Q2 LOCKED — proportion differences definition
+
+- **Q2a (baseline):** Animal-level pool of all pre-stroke sessions (`rel_day <= 0`). One fixed aggregated pre-stroke histogram per (animal, family entry). Post-stroke compared against that fixed baseline.
+- **Q2b (math):** Normalized histogram subtraction (raw `H_post_proportion - H_pre_proportion`). Higher values where bodypart spends more time post-stroke; lower where less time. Diverging colormap appropriate (e.g., `coolwarm`, `BrBG`, `bwr` — see legacy cells 1376-1381 for divergent cmap dict reference).
+
+### Q3 LOCKED — unbalanced_ot plot type semantics
+
+- **Q3a (which legacy cells to port):** Priya 2026-05-15 statement: "balanced OT is for statistics, not plotting. For plotting I meant the displacement field arrow plots." CC's investigation surfaced an internal contradiction (the displacement-field section at line 6937+ uses BALANCED `ot.sinkhorn`, while UNBALANCED variants are at cells 3624-3641 / 5014-5018 / 5404-5444). CC's pending Read-X-vs-Read-Y investigation determines which cells produce arrow-field SVGs and ports those. If both balanced and unbalanced variants produce arrow-field plots, default to the unbalanced version per Priya's "for plotting I meant" framing; STOP-and-ask if both produce arrow plots with substantively different semantics.
+- **Q3b (OT parameters — reg, reg_m, cost-matrix C):** Port legacy values verbatim as defaults; can tune later if needed. Defaults pulled from whichever cells CC settles on per Q3a.
+- **Q3c (per-day SVG layout):** Multiple days per file (grid summary). Per-animal-family output is ONE SVG containing multiple-day panels in a grid, not separate per-day SVGs. CC's legacy filename convention `<part>_relXXX_CONDWASS_displacementField.svg` adapts to the grid-summary scope; canonical filename suggestion: `unbalanced_ot_displacement_field_grid.svg` or similar.
+- **Q3d (comparison source):** **Per-session vs animal-level pre-stroke baseline.** For each post-stroke session within the animal's recovery period, one OT calculation comparing that session's distribution against the animal-level pre-stroke aggregated baseline (from Q2a). Multiple per-session OT outputs combined into the single grid-summary SVG per Q3c. Per-animal-family: one summary SVG with one panel per post-stroke session (or per-relative-day-bin if more compact).
+
+### Q4 LOCKED — whisker config OK as-is
+
+CC's existing whisker bodypart config entries (likelihood_threshold=0.80, x_range=null, parity_status="sanity-check-only", per-eye_midpoint xlim/ylim from Phase 4.5-lite sweep) are CONFIRMED OK as-is. No whisker-specific value adjustments needed.
+
+### Implementation order revised
+
+CC's remaining work post-Addendum-#10:
+
+1. **Resume Q3a investigation** (already in flight) — examine unbalanced-sinkhorn cells (3624-3641, 5014-5018, 5404-5444) for arrow-field rendering primitives. Determine if Read-X (balanced line 6937+ is the displacement-field plot source) or Read-Y (unbalanced cells produce arrow plots elsewhere). Report.
+2. **Step 3 — port whiskers composite** per Q1: layered-overlay rendering. Locate the render cell in `20251202_..._pixelbin.ipynb`; STOP-and-ask if not findable.
+3. **Step 4 — port proportion_differences** per Q2: animal-level pre-stroke baseline + normalized histogram subtraction. Diverging colormap. Three bodypart files (tongue/jaw/nose) carry the math; verify consistency across them.
+4. **Step 5 — port unbalanced_ot displacement-field** per Q3: per-session-vs-baseline OT + grid-summary SVG. Port OT params verbatim from the cells determined by Q3a investigation. Filename: `unbalanced_ot_displacement_field_grid.svg` (or whatever canonical name CC picks; report).
+5. **Step 7 — re-render full Task 5 cohort scope** after legacy ports complete.
+
+### Implementation note for Q3a investigation outcome
+
+If CC's investigation reveals that ONLY the balanced `ot.sinkhorn` code at line 6937+ produces displacement-field plots (Read X), proceed with that as the unbalanced_ot port source despite the naming mismatch — Priya's intent is displacement-field plots regardless of which sinkhorn variant the legacy code happens to use. If investigation reveals UNBALANCED-sinkhorn variants ALSO produce arrow-field plots with different semantics, STOP-and-ask Priya which variant.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.B 5-family allowlist, Q11 driver patch, Addendum #9 Task 5 scope.)
