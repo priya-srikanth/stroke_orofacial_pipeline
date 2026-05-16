@@ -219,12 +219,15 @@ Order: PS46, PS47, PS48, PS49, PS50, PS51, PS54, PS55 (Cohort A order). For each
 **Per-session manifest schema:**
 - `animal`, `date`, `runtime_seconds_total`, per-category runtime breakdown, `n_outputs_written`, `output_sha256s` dict (parquet/JSON/NPZ; PNGs excluded), `success/failure`, `anomaly_notes`.
 
-**Anomaly handling:**
+**Anomaly handling (clarified 2026-05-15 mid-Task-3 per CC's observed driver behavior; supersedes earlier strict-STOP-on-first-failure wording):**
 
-- Per-session failure: STOP-and-report immediately. Don't continue past unexpected failure modes.
-- Per-animal failure rate ≥ 2 sessions: STOP-and-report after the second failure in the same animal; don't burn through compute on a broken animal.
-- Cohort-wide failure rate ≥ 5 sessions: STOP-and-report; we re-scope before continuing.
-- **PS48/2025-03-14 specifically:** expected to run cleanly post-Task-2; if it fails, that's a signal Task 2's wiring fix is incomplete and we surface to Priya before continuing PS48's other sessions.
+- **Per-session failure** logs as ERR in the cohort manifest CSV; driver CONTINUES to the next session in the same animal. This collects maximum useful context per cohort run.
+- **Per-animal failure rate ≥ 2 sessions in same animal:** driver STOP-and-reports after the second failure within one animal (`MAX_PER_ANIMAL_FAILURES=2` threshold).
+- **End-of-animal with ≥ 1 ERR in manifest:** driver exits with non-zero code; STOP-and-report to Priya before continuing to next animal.
+- **Cohort-wide failure rate ≥ 5 sessions:** STOP-and-report; re-scope.
+- **PS48/2025-03-14 specifically:** expected to run cleanly post-Task-2-Option-A + post-pre-Task-7 surgical cleanup of half-B parent-level leftover parquets (see Addendum #4 below).
+
+Note: this clarification supersedes the earlier "Per-session failure: STOP-and-report immediately" wording. The driver's actual behavior (continue past isolated failures, exit at end-of-animal) is more useful in practice — PS48's run is the example: 20 successful sessions of useful data collected before isolating the Pattern A failure. Strict-STOP-on-first would have wasted that context.
 
 **Commit pattern:** driver script + per-animal log entries committed. NPZ/parquet/PNG outputs go to MICROSCOPE production paths, not git.
 
@@ -600,3 +603,51 @@ Phase 7c.3 (whole-session heatmaps) folded into Phase 7c.2 Task 5 as the compute
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.B 257-session cohort, Q3 verification axes per revised Task 6, Q6 PathResolver, Q7 per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle.)
+
+---
+
+## Addendum #4 — PS48/2025-03-14 half-B leftover resolver-glob ambiguity + pre-Task-7 surgical cleanup (Priya 2026-05-15, mid-Task-3)
+
+CC's Task 3 cohort re-emit completed PS46 (21/21 OK) + PS47 (21/21 OK in 13.9 min = ~40s/session, faster than the post-pivot ~50-60s estimate) + PS48 (20/21 OK; PS48/2025-03-14 FAILED). Exit code 1 at end of PS48 sweep.
+
+### Failure root cause
+
+PS48/2025-03-14 Phase 7a.3 per-trial features failed at Category C with `RuntimeError: Multiple centered_spout_midpoint parquets`. The `dlc_centered_spout_midpoint_parquet` resolver at `paths.py:792` globs `video2_{date.isoformat()}T*.parquet` and raises on >1 match.
+
+Production state for PS48/2025-03-14 at each of 3 center modes (centered_spout_midpoint, centered_eye_midpoint, centered_nose_midpoint):
+
+| File | Source | Rows | Status |
+|---|---|---|---|
+| `video2_2025-03-14T12_31_07....intermediate.<sig>.parquet` (half-A name) | Phase 4 force-emit (Task 2 Option A, 2026-05-15) | 1,148,512 | Merged — canonical post-pivot |
+| `video2_2025-03-14T13_09_29....intermediate.<sig>.parquet` (half-B name) | Pre-multi-half single-half emit (2026-04-21) | 577,365 | **Dead leftover; blocks the glob** |
+
+Both files match the resolver's date glob → ambiguous → RuntimeError.
+
+### Cowork misread correction
+
+Phase 7c.2 Task 2 STOP-report (CC's previous report) characterized the half-B leftover as "not consumed by Phase 7a." This was wrong — the resolver glob DOES match it. The misread came from focusing on whether the merged parquet at parent level was wired correctly (it was), without checking whether the glob would surface both parent-level parquets. Same scratch-validation-vs-production-state gap as F-P-5 / Addendum #2, one layer downstream (resolver glob vs merge function invocation). Memory `feedback_scratch_path_validation_not_production_state.md` updated to capture this secondary manifestation as a worked example.
+
+### LOCKED — pre-Task-7 surgical cleanup of the 3 half-B leftover parquets
+
+CC's proposal accepted as-is:
+
+1. **Pre-Task-7 surgical cleanup driver:** `scripts/phase_7c2/cleanup_PS48_20250314_halfb_leftovers.py` enumerates the 3 target paths (one per center mode), verifies each is the half-B leftover (mtime 2026-04-21, row count 577,365, distinct from the merged half-A canonical), deletes, logs deleted paths. Defensive checks before deletion to avoid accidentally removing the merged canonical.
+2. **Re-run PS48/2025-03-14:** `python scripts/phase_7c2/reemit_cohort.py --animal PS48` (driver's resumability skips OK rows; re-tries ERR rows). Only PS48/2025-03-14 re-runs.
+3. **Manifest update:** PS48/2025-03-14 row flips from ERR → OK; revised PS48 log commit replaces or supplements the prior per-animal commit.
+4. **Continue cohort:** PS49, PS50, PS51, PS54, PS55 in order per Q7.A.
+
+### Task 7 cleanup-manifest adjustment
+
+Task 7's expanded cleanup scope (Addendum #2 Q5.B) already enumerates these 3 half-B leftover parquets. The pre-Task-7 surgical cleanup just pulls forward their deletion to unblock Task 3. Task 7's manifest-generation step will find them missing and log "already gone, expected" — no double-delete.
+
+### Alternative rejected — resolver glob filter
+
+CC considered + rejected patching the resolver glob to filter known-leftover names. Rejected because it encodes a one-off cleanup pattern as permanent code logic. Cleaner to delete leftovers + leave the resolver clean.
+
+### Wall-time update
+
+PS47 ran ~40s/session (13.9 min / 21 sessions). Faster than my post-pivot ~50-60s estimate. **Revised cohort wall-time estimate: ~257 × 40s ≈ ~2.8 hr** (was ~3.5-4 hr in Addendum #3). Comfortably bounded single overnight.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.B 257-session cohort, Q2.B no-spatial-cache, Q3 verification axes per Addendum #3 Task 6, Q4.B compute-on-demand visual gate, Q5.B expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.A spatial allowlist.)
