@@ -772,3 +772,207 @@ Per Priya 2026-05-15: videos ONLY for the short window (-100, 1000), NOT the lon
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q4.B compute-on-demand visual gate, Q5.D expanded cleanup [supersedes Q5.C with rewardAligned_* window-dir additions], Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.A spatial allowlist.)
+
+---
+
+## Addendum #7 — Task 5 spatial heatmap output renamed from "visual_gate" to "tone_aligned_heatmaps" + "whole_session_heatmaps" (Priya 2026-05-15, pre-Task-5)
+
+Priya 2026-05-15 clarification: the spatial heatmap outputs from Task 5 are scientific figures (publication-grade / analysis-grade outputs), NOT just QC visual gates. Path naming was overloaded — "visual_gate" framing in Addendum #3 implied QC-only purpose. Corrected.
+
+### Q12 LOCKED — output path naming + parent directory
+
+**Output paths:**
+
+- **Tone-aligned heatmaps** (from `render_tone_aligned_heatmap(..., window=<WindowSelector>)`): `pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/<animal>/<family>/<bodypart>/<trial_group>_<window>.svg`
+- **Whole-session heatmaps** (from same wrapper with `window=None`): `pipeline_outputs/dlc_kinematics/whole_session_heatmaps/<animal>/<family>/<bodypart>.svg`
+- **Cohort tile-grids per family**: same parent (`dlc_kinematics/tone_aligned_heatmaps/cohort_tile_grids/<family>/<trial_group>_<window>.svg` + `whole_session_heatmaps/cohort_tile_grids/<family>.svg`).
+
+### Parent directory note
+
+Heatmaps are conventionally spatial outputs (position-binned histograms) and would typically live under `dlc_analysis/` alongside `centered_<mode>/`, `interpolated_traces/`, etc. Priya 2026-05-15 specified `dlc_kinematics/` parent — accepted as the locked choice; reflects experimenter categorization treating these as kinematic-analysis outputs (broadly), not strictly "spatial vs kinematic" axis-of-data-shape categorization. CC follows Priya's preference.
+
+If Priya later flips back to `dlc_analysis/` parent, the path move is a simple rename — Task 7 cleanup driver enumerates either location.
+
+### Naming hygiene note
+
+The `tone_aligned_heatmaps` directory naming uses snake_case (consistent with the per-animal subdirectory naming + family subdirectory naming). The window-dir tokens INSIDE the file names use camelCase per pre-existing convention (`tone_aligned_heatmaps/<animal>/<family>/<bodypart>/all_toneAligned_100pre-1000post.svg` or similar) — that's the toneAligned_*pre-*post pattern from Phase 7c.1 source-side renames. Mixed convention is intentional: directory layout uses snake_case; legacy-compatible filename tokens use camelCase.
+
+### Updates to Task 5 driver expectations
+
+Task 5 driver `scripts/phase_7c2/render_visual_gate.py` (or whatever CC names it post-rename — `render_heatmaps.py` is more accurate now) writes to the renamed paths above. Mean-trace overlay SVGs at `pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/...` instead of `dlc_analysis/spatial_visual_gate/...`.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q4.B compute-on-demand spatial figures per renamed paths above, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.A spatial allowlist, Q11 driver patch.)
+
+---
+
+## Addendum #8 — Whiskers family: 6 panels in ONE SVG file (Priya 2026-05-15, pre-Task-5 refinement of Q10.A)
+
+Priya 2026-05-15 clarification of the whiskers family rendering: render all 6 individual whisker heatmaps as SUBPLOTS within a single SVG figure (per (animal, family-entry, trial_group, window)), NOT as 6 separate SVG files. Refines Addendum #3 Q10.A's "whiskers_eye_midpoint = 6 (one heatmap per whisker, no aggregation)" — the 6 individual heatmaps still render separately at the data level (no aggregation/pooling), but they're laid out as 6 panels in ONE file at the path level.
+
+### Q10 RE-LOCKED Q10.B (supersedes Q10.A)
+
+The 5-entry family allowlist remains:
+
+| Family entry | Individual bodyparts | Center mode | Output layout per (animal, trial_group, window) |
+|---|---|---|---|
+| `tongue_spout_midpoint` | tongue | spout_midpoint | 1 SVG, 1 panel |
+| `tongue_eye_midpoint` | tongue | eye_midpoint | 1 SVG, 1 panel |
+| `jaw_eye_midpoint` | jaw | eye_midpoint | 1 SVG, 1 panel |
+| `nose_eye_midpoint` | nose | eye_midpoint | 1 SVG, 1 panel |
+| `whiskers_eye_midpoint` | L_whiskers_1, L_whiskers_2, L_whiskers_3, R_whiskers_1, R_whiskers_2, R_whiskers_3 | eye_midpoint | **1 SVG, 6 panels** (subplot grid, suggested 2×3 or 3×2 layout; CC picks canonical) |
+
+Total: **5 SVG files per (animal, trial_group, window)** for tone-aligned (was 10 individual SVGs in Q10.A). Whiskers panel-grid layout shows all 6 whisker spatial distributions side-by-side in one figure for direct comparison.
+
+For whole-session heatmaps (no trial_group/window fanout): same 5-SVG-per-animal layout, with whiskers as 6-panel grid.
+
+### Path naming clarification
+
+Per-family entry path layout per Addendum #7:
+
+- Tongue at spout_midpoint: `pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/<animal>/tongue_spout_midpoint/<trial_group>_<window>.svg` (1 panel)
+- Tongue at eye_midpoint: `pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/<animal>/tongue_eye_midpoint/<trial_group>_<window>.svg`
+- Jaw at eye_midpoint: similar
+- Nose at eye_midpoint: similar
+- **Whiskers at eye_midpoint:** `pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/<animal>/whiskers_eye_midpoint/<trial_group>_<window>.svg` — **single SVG with 6 panels**
+
+Whole-session counterpart: drop the `<trial_group>_<window>` suffix; same single-SVG-per-family layout.
+
+### Implementation notes for Task 5 driver
+
+The compute-on-demand wrapper for the whiskers family needs different output handling than the single-bodypart families:
+
+- For single-bodypart families (tongue, jaw, nose): wrapper returns 1 Figure with 1 axis.
+- For the whiskers family: wrapper returns 1 Figure with 6 axes (subplot grid). Each panel renders the histogram for one whisker bodypart. Common color scale across panels (so visual comparison is meaningful) — suggested implementation: compute per-panel histograms, find global vmax across the 6, render all panels with a shared colormap normalization.
+
+CC picks the canonical panel grid layout + colormap norm strategy at implementation time.
+
+### Manifest schema update
+
+Cohort manifest for Task 5 records `n_svgs_written` per (animal, family-entry); for whiskers family, this is 1 (file count), not 6 (bodypart count). Add a `panel_count` column if useful for distinguishing the whiskers-6-panel case from the single-bodypart case.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q4.B compute-on-demand spatial figures, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q11 driver patch.)
+
+---
+
+## Addendum #9 — Task 5 spatial heatmap scope re-lock (Priya 2026-05-15, mid-Task-5)
+
+Major Task 5 re-scoping after Priya inspected in-flight render output. Supersedes Addendum #3 Q4.B + Addendum #7 + Addendum #8 on Task 5 specifics. Four issues addressed; legacy-code references identified for CC to port.
+
+### Issue 1 LOCKED — drop redundant inner bodypart subdir
+
+Family entry name already implies bodypart; no nested `<bodypart>/` subdir under `<family_entry>/`. Corrected path:
+
+- Before: `tone_aligned_heatmaps/<animal>/tongue_eye_midpoint/tongue/<filename>.svg`
+- After: `tone_aligned_heatmaps/<animal>/tongue_eye_midpoint/<filename>.svg`
+
+### Issue 2 RE-LOCKED — whiskers composite, NOT panel grid (supersedes Addendum #8)
+
+Addendum #8's "6 panels in 1 SVG subplot grid" framing was wrong. Correct spec per Priya 2026-05-15:
+
+**One figure showing heatmaps for ALL whiskers, each with its own proportion colormap.** Reference legacy code for the exact composite rendering — likely a single matplotlib axis where each whisker's histogram is overlaid in its own color (or composite RGB-like layering of 6 individual colormap-encoded distributions). NOT a discrete-subplot panel grid.
+
+CC ports the legacy whiskers composite plot when implementing the wrapper. STOP-and-ask Priya for the specific legacy notebook file + cell number if uncertain.
+
+### Issue 3 LOCKED — plot types per family entry
+
+Within each family entry directory (e.g., `tone_aligned_heatmaps/<animal>/tongue_eye_midpoint/`), four plot types (sub-subdirs):
+
+| Plot type | Tone-aligned scope | Whole-session scope | Description |
+|---|---|---|---|
+| `individual_session/` | 1 SVG per (session date) × 3 trial-group panels (all, L, R) in one figure | 1 SVG per (session date), all-trial-group only (1 panel) | Per-session heatmaps |
+| `binned_sessions/` | 1 SVG per (relative-day-bin) × 3 trial-group panels | 1 SVG per (relative-day-bin), all only | Cross-session day-binned heatmaps; binning convention same as `licking_dynamics/day_binned/` (`<rel_day_bin_label>` like `-6..0`, `1..7`) |
+| `proportion_differences/` | 1 SVG showing post-stroke minus pre-stroke spatial distribution; values are higher where bodypart spends more time post-stroke, lower where less time | (same; whole-session aggregated; trial_group=all) | Port from legacy code. CC STOP-and-asks Priya for specific legacy file + cell when implementing if scope unclear (animal-level baseline vs session-level diff). |
+| `unbalanced_ot/` | 1 SVG showing Unbalanced Optimal Transport analysis of spatial distribution change (port from legacy; legacy code carries graphing parameters) | (same scope) | Port from legacy code. STOP-and-ask Priya for legacy reference when implementing. |
+
+Trial-group fanout for `individual_session/` + `binned_sessions/` is **3 panels in 1 SVG** (NOT 3 separate SVGs). Panel layout: subplot grid (all on top, L below-left, R below-right, or similar; CC picks canonical).
+
+For whole-session heatmaps: trial_group collapses to "all" only (single-panel SVG per session/bin). Trial-group split doesn't make sense for whole-session since it includes non-trial time per Priya 2026-05-15.
+
+### Issue 4 LOCKED — tone-aligned window = (0, 8000)ms
+
+Single tone-aligned window: **(0, 8000)ms after tone** (NOT the (100, 1000) + (500, 5000) fanout used elsewhere in 7c.2). Trial-group fanout (all, L, R) still applies for tone-aligned plot types (`individual_session`, `binned_sessions`). Single window simplifies the per-plot-type fanout to (trial_group × {(0, 8000)}) = trial_group only.
+
+Whole-session heatmaps: no window (full session). Collapse to all-trial-group only.
+
+### Plotting constraints (likelihood + X-location gating) — already in config
+
+Per-bodypart `likelihood_threshold` + per-(bodypart, center_mode) `x_range`/`xlim`/`ylim` are already configured in `configs/defaults.yaml dlc_spatial_tone_aligned.bodyparts.<bp>` block + sibling `dlc_spatial_tone_aligned.<bp>.per_center_mode.<mode>` block. Existing histogram builder in `dlc_spatial/pixel_bins.py:build_histogram` already consumes these via the config audit (per Phase 7c.2 Addendum #3 subagent audit). The compute-on-demand wrapper passes config through; no new config edits.
+
+If any whisker bodypart (L_whiskers_1 etc.) lacks a config entry, CC adds default entries based on tongue/jaw conventions and STOP-and-asks Priya for review of whisker-specific values.
+
+### Q12 RE-EXPANDED Q12.B (supersedes Q12.A from Addendum #7)
+
+Task 5 output path layout (corrected for Addendum #9):
+
+```
+pipeline_outputs/dlc_kinematics/
+├── tone_aligned_heatmaps/
+│   ├── <animal>/
+│   │   ├── tongue_spout_midpoint/
+│   │   │   ├── individual_session/
+│   │   │   │   ├── <date>.svg              # 3 trial-group panels (all, L, R)
+│   │   │   ├── binned_sessions/
+│   │   │   │   ├── <rel_day_bin_label>.svg # 3 trial-group panels
+│   │   │   ├── proportion_differences/
+│   │   │   │   └── post_minus_pre_stroke.svg
+│   │   │   └── unbalanced_ot/
+│   │   │       └── <legacy_filename>.svg
+│   │   ├── tongue_eye_midpoint/ (same plot-type subdirs)
+│   │   ├── jaw_eye_midpoint/ (same)
+│   │   ├── nose_eye_midpoint/ (same)
+│   │   └── whiskers_eye_midpoint/
+│   │       ├── individual_session/
+│   │       │   └── <date>.svg              # ONE composite figure showing all 6 whiskers, each with its own colormap; per-trial-group fanout = 3 panels per file
+│   │       ├── binned_sessions/...
+│   │       ├── proportion_differences/...
+│   │       └── unbalanced_ot/...
+└── whole_session_heatmaps/
+    ├── <animal>/
+    │   ├── tongue_spout_midpoint/
+    │   │   ├── individual_session/
+    │   │   │   ├── <date>.svg              # 1 panel (all only; no trial-group split)
+    │   │   ├── binned_sessions/
+    │   │   │   ├── <rel_day_bin_label>.svg
+    │   │   ├── proportion_differences/
+    │   │   │   └── post_minus_pre_stroke.svg
+    │   │   └── unbalanced_ot/
+    │   │       └── <legacy_filename>.svg
+    │   ├── ... (same plot-type subdirs for other family entries)
+    │   └── whiskers_eye_midpoint/ (composite figure per plot type; trial_group=all)
+```
+
+### Implementation notes for CC
+
+Task 5 driver structure (CC chooses canonical naming):
+
+- `render_individual_session_heatmap(animal, family_entry, date, scope) -> Figure` — `scope ∈ {"tone_aligned", "whole_session"}`. Tone-aligned returns 3-panel figure (all/L/R); whole-session returns 1-panel.
+- `render_binned_sessions_heatmap(animal, family_entry, rel_day_bin, scope) -> Figure` — similar.
+- `render_proportion_difference_heatmap(animal, family_entry, scope) -> Figure` — port from legacy notebook code. Pre-vs-post stroke aggregation specifics: STOP-and-ask Priya when implementing.
+- `render_unbalanced_ot_plot(animal, family_entry, scope) -> Figure` — port from legacy notebook code. OT params + plotting specifics in legacy: STOP-and-ask Priya for legacy file reference.
+- `render_whiskers_composite(family_entry, plot_type, ...) -> Figure` — port from legacy notebook code for the all-6-whiskers-one-figure layout with per-whisker colormaps.
+
+Each wrapper reads Phase 4 centered parquets + (if tone-aligned) tone events + applies likelihood threshold + x_range filter + computes histogram via `pixel_bins.py:build_histogram` (existing) + renders.
+
+### Legacy-code porting workflow
+
+CC ports legacy implementations for:
+1. Whiskers composite plot (Issue 2 re-lock)
+2. Proportion differences (Issue 3 plot type)
+3. Unbalanced Optimal Transport (Issue 3 plot type; needs `ot` Python library — check if available in conda env, install if not)
+
+When CC encounters legacy code references, STOP-and-ask Priya for:
+- Specific legacy notebook file + cell number
+- Any ported-already vs needs-fresh-port classification
+- Adjudication on adaptation choices if legacy code uses pre-Phase-8a.10.1 conventions
+
+### Re-render existing in-flight Task 5 output
+
+CC's pre-Addendum-#9 in-flight Task 5 render produced incorrect outputs (redundant inner dirs, 6-separate-whisker-SVGs instead of composite, single-plot-type per family instead of 4-plot-types). All in-flight Task 5 output discarded; re-render with Addendum #9 scope after CC ports the legacy code.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.B 5-family allowlist [whiskers still 6 individual bodyparts but rendered as composite per Issue 2 re-lock above], Q11 driver patch.)
