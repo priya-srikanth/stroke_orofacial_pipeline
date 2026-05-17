@@ -563,7 +563,7 @@ def render_h_counts_panel(
             norm = mcolors.LogNorm(vmin=max(vmin, 1e-10), vmax=vmax)
         else:
             norm = None
-    ax.imshow(
+    im = ax.imshow(
         H_prop.T,
         origin="lower",
         extent=extent,
@@ -582,6 +582,13 @@ def render_h_counts_panel(
         ax.set_title(title, fontsize=_Q22_SUPTITLE_FONTSIZE)
     else:
         ax.set_title(title, fontsize=_Q22_PANEL_TITLE_FONTSIZE)
+
+    # Q24 Addendum #24: per-panel colorbar for IS + BS single-bp heatmaps
+    # (LogNorm scale). Label "frame proportion" matches the Q17
+    # total-frame-denominator H_proportion semantics.
+    cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label("frame proportion", fontsize=_Q22_AXIS_LABELSIZE)
+    _apply_q22_colorbar_polish(cbar)
 
     return fig if standalone else ax
 
@@ -1077,25 +1084,61 @@ def _render_composite_panel_axis(
     ax.set_title(panel_title, fontsize=_Q22_PANEL_TITLE_FONTSIZE)
 
 
-def _attach_composite_legend(
+def _attach_composite_colorbars(
     fig: plt.Figure,
     family_bodyparts: list[str],
     spatial_config: dict[str, Any],
     *,
     family_label: str,
+    shared_vmin: float | None,
+    shared_vmax: float | None,
 ) -> None:
-    """Add a compact figure-right legend listing each composite bodypart
-    + its colormap name. Cheaper than N colorbars per panel — clean
-    identification of which color belongs to which bodypart."""
-    lines = [
-        f"{bp} → {_get_bodypart_cmap(spatial_config, bp)}"
-        for bp in family_bodyparts
-    ]
-    fig.text(
-        0.99, 0.5, f"{family_label} (cmap key)\n\n" + "\n".join(lines),
-        ha="right", va="center", fontsize=7,
-        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.8, "edgecolor": "0.7"},
+    """Q24 Addendum #24: stacked per-bp colorbars on figure right.
+
+    For Pattern B layered overlays (whiskers, fiducial bilateral pairs),
+    each bp has its own cmap (config-driven via ``_get_bodypart_cmap``)
+    and a shared LogNorm range across the bucket (Q18). One colorbar
+    per bp is the unambiguous way to convey which color belongs to
+    which bp at which intensity.
+
+    Replaces the prior text-only ``_attach_composite_legend``; the text
+    legend listed cmap NAMES (e.g., ``plasma``) which gave a reader
+    only the abstract identity, not the visual scale.
+
+    When ``shared_vmin`` / ``shared_vmax`` are missing (e.g., standalone
+    smoke without a bucket precompute pass), the colorbar block is
+    skipped — falls back to silent rendering rather than picking a
+    misleading scale.
+    """
+    if shared_vmin is None or shared_vmax is None or shared_vmax <= 0:
+        return
+    norm = mcolors.LogNorm(
+        vmin=max(float(shared_vmin), 1e-10), vmax=float(shared_vmax),
     )
+    n_bps = len(family_bodyparts)
+    if n_bps == 0:
+        return
+    # Allocate stacked axes at fig right (one row per bp).
+    cbar_left = 0.88
+    cbar_width = 0.018
+    total_height = 0.7
+    spacing = 0.01
+    block_height = (total_height - spacing * (n_bps - 1)) / n_bps
+    base_bottom = 0.5 - total_height / 2.0
+    for i, bp in enumerate(family_bodyparts):
+        cmap_name = _get_bodypart_cmap(spatial_config, bp)
+        try:
+            cmap = plt.get_cmap(cmap_name)
+        except ValueError:
+            cmap = plt.get_cmap(_COMPOSITE_FALLBACK_CMAP)
+        # Top → bottom in the order of family_bodyparts (visual reading order).
+        bottom = base_bottom + (n_bps - 1 - i) * (block_height + spacing)
+        cax = fig.add_axes([cbar_left, bottom, cbar_width, block_height])
+        sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
+        sm.set_array([])
+        cbar = fig.colorbar(sm, cax=cax)
+        cbar.set_label(bp, fontsize=_Q22_AXIS_LABELSIZE - 2)
+        cbar.ax.tick_params(labelsize=_Q22_TICK_LABELSIZE - 2)
 
 
 def _assemble_composite_figure(
@@ -1156,12 +1199,15 @@ def _assemble_composite_figure(
             panel_title=panel_title,
             shared_vmin=shared_vmin, shared_vmax=shared_vmax,
         )
-    _attach_composite_legend(
-        fig, family_bodyparts, spatial_config, family_label=family_label,
+    # Q24 Addendum #24: stacked per-bp colorbars on figure right.
+    _attach_composite_colorbars(
+        fig, family_bodyparts, spatial_config,
+        family_label=family_label,
+        shared_vmin=shared_vmin, shared_vmax=shared_vmax,
     )
     fig.suptitle(suptitle, fontsize=_Q22_SUPTITLE_FONTSIZE)
-    # Make room for the right-edge legend.
-    fig.subplots_adjust(right=0.83)
+    # Make room for the right-edge colorbar block.
+    fig.subplots_adjust(right=0.85)
     return fig
 
 
@@ -1320,9 +1366,13 @@ _PROPORTION_DIFF_CMAP = mcolors.LinearSegmentedColormap.from_list(
     "rgb_diverging",
     # Q22 Addendum #21: midpoint lightened from "gray" (RGB ~0.5) to
     # "#d0d0d0" (~0.82) so near-zero diffs aren't visually heavy against
-    # the white panel background. Tunable to "#dcdcdc" / "#e5e5e5" if
-    # still too dark after PS46 spot-check.
-    [(0.0, "red"), (0.5, "#d0d0d0"), (1.0, "blue")],
+    # the white panel background.
+    # Q25 Addendum #24: cmap direction FLIPPED — blue for negative diffs
+    # (post < pre, decreased proportion), red for positive diffs
+    # (post > pre, increased proportion). Matches the IS+BS LogNorm
+    # convention (redder/hotter = denser) so a viewer reading both plot
+    # types together gets a consistent "more = warmer" mental model.
+    [(0.0, "blue"), (0.5, "#d0d0d0"), (1.0, "red")],
     N=256,
 )
 _PROPORTION_DIFF_CMAP.set_bad("white")
@@ -1485,7 +1535,7 @@ def _render_proportion_diff_panel(
         except (ValueError, AttributeError):
             cmap = _PROPORTION_DIFF_CMAP
     D_plot = np.ma.array(D, mask=~np.isfinite(D))
-    im = ax.imshow(
+    ax.imshow(
         D_plot.T, origin="lower", extent=extent,
         cmap=cmap, aspect="auto", norm=norm,
     )
@@ -1498,9 +1548,11 @@ def _render_proportion_diff_panel(
     # Q22 Addendum #21: uniform tick + axis-label polish + larger title.
     _apply_q22_panel_polish(ax)
     ax.set_title(title, fontsize=_Q22_PANEL_TITLE_FONTSIZE)
-    cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label("Δ proportion (post − pre)", fontsize=_Q22_AXIS_LABELSIZE)
-    _apply_q22_colorbar_polish(cbar)
+    # Q24 Addendum #24: per-panel colorbars are dropped here; ONE shared
+    # colorbar is attached at the figure level by
+    # `render_proportion_difference_heatmap` (Q18 shares vmax across all
+    # panels in the SVG → one bar correct + reduces clutter). The outer
+    # function recovers the imshow artifact via `ax.images[0]` post-hoc.
 
 
 def _compute_proportion_diff_for_bin(
@@ -1725,6 +1777,24 @@ def render_proportion_difference_heatmap(
         )
     for ax in axes[len(bin_labels):]:
         ax.set_axis_off()
+    # Q24 Addendum #24: ONE shared colorbar at the figure right, since
+    # all panels share the same symmetric Normalize per Q14/Q18. Find
+    # the first panel with a rendered imshow and use its mappable.
+    shared_im = None
+    for ax in axes:
+        if ax.images:
+            shared_im = ax.images[0]
+            break
+    if shared_im is not None:
+        cbar = fig.colorbar(
+            shared_im,
+            ax=list(axes_obj.flat) if hasattr(axes_obj, "flat") else [axes_obj],
+            shrink=0.6, pad=0.02,
+        )
+        cbar.set_label(
+            "Δ proportion (post − pre)", fontsize=_Q22_AXIS_LABELSIZE,
+        )
+        _apply_q22_colorbar_polish(cbar)
     # Q22 Addendum #21 title spec: animal | family | bin_size − all_pre_stroke | scope | trial_group.
     bucket_label = "bucket" if shared_vmax is not None else "file"
     fig.suptitle(
@@ -1927,7 +1997,7 @@ def _render_ot_mass_change_panels(
         if shared_v is not None and shared_v > 0:
             imshow_kwargs["vmin"] = 0.0
             imshow_kwargs["vmax"] = float(shared_v)
-        im = ax.imshow(
+        ax.imshow(
             arr.T, origin="lower", extent=extent,
             cmap=cmap, aspect="auto", **imshow_kwargs,
         )
@@ -1939,9 +2009,10 @@ def _render_ot_mass_change_panels(
             f"bin {bin_label} | mass_{kind}",
             fontsize=_Q22_PANEL_TITLE_FONTSIZE,
         )
-        cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_label(f"mass_{kind}", fontsize=_Q22_AXIS_LABELSIZE)
-        _apply_q22_colorbar_polish(cbar)
+        # Q24 Addendum #24: per-panel colorbars dropped. ONE shared
+        # colorbar per mass type (destroy / create) attached at the
+        # figure level by `render_unbalanced_ot_displacement_field`.
+        # Mappable recovered via `ax.images[0]` post-hoc.
 
 
 def _render_ot_arrows_panel(
@@ -2366,6 +2437,27 @@ def render_unbalanced_ot_displacement_field(
             threshold_pct50_multiplier=threshold_pct50_multiplier,
         )
 
+    # Q24 Addendum #24: two shared colorbars (mass_destroy + mass_create)
+    # at figure right, scoped to their respective grid columns. Arrows
+    # column has no colorbar (it's a quiver-style plot; linewidth/head
+    # already convey magnitude visually and the Q22 panel labels carry
+    # the bin context).
+    destroy_axes = list(axes[:, 0]) if axes.ndim == 2 else [axes[0]]
+    create_axes = list(axes[:, 1]) if axes.ndim == 2 else [axes[1]]
+    destroy_im = next((a.images[0] for a in destroy_axes if a.images), None)
+    create_im = next((a.images[0] for a in create_axes if a.images), None)
+    if destroy_im is not None:
+        cbar_d = fig.colorbar(
+            destroy_im, ax=destroy_axes, shrink=0.7, pad=0.02,
+        )
+        cbar_d.set_label("mass_destroy", fontsize=_Q22_AXIS_LABELSIZE)
+        _apply_q22_colorbar_polish(cbar_d)
+    if create_im is not None:
+        cbar_c = fig.colorbar(
+            create_im, ax=create_axes, shrink=0.7, pad=0.02,
+        )
+        cbar_c.set_label("mass_create", fontsize=_Q22_AXIS_LABELSIZE)
+        _apply_q22_colorbar_polish(cbar_c)
     # Q22 Addendum #21 title spec: animal | family | UOT | scope | trial_group.
     fig.suptitle(
         f"{animal} | {family_entry} | UOT bin{int(bin_size_days)}d "

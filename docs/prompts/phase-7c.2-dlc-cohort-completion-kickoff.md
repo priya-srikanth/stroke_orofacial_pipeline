@@ -1628,3 +1628,64 @@ Q5.F's `rm -rf` simplification handles cleanup of the Addendum-#20-era `nbins=15
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q23, Addendum #9-22 Task 5 scope.)
+
+---
+
+## Addendum #24 — Colorbars + proportion-diff cmap direction flip + log-scale decision (Priya 2026-05-15)
+
+### Q24 LOCKED — Colorbar legend present on every Task 5 SVG
+
+Every Task 5 plot must include a visible colorbar legend that does NOT overlap with the plot area or obscure data:
+
+- **Single-axis plots** (individual_session per-trial-group, single binned-session panel, single proportion_diff panel): one colorbar per axis, attached to the right side of the axis. Use `fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)` or matplotlib's `make_axes_locatable(ax).append_axes("right", size="5%", pad=0.1)` pattern so the colorbar takes its own space outside the plot area.
+- **Grid-summary plots** (proportion_differences `bin<N>d.svg`, UOT `unbalanced_ot_grid_bin<N>d.svg`, multi-panel binned_sessions): **one shared colorbar per grid SVG**, placed to the right of the full grid (e.g., via `fig.colorbar(im, ax=axes.ravel().tolist(), shrink=0.6, pad=0.02)`). Rationale: per Q14 + Addendum #14 Q14 the colormap scale is shared across all panels in a (animal, family_entry, plot_type, scope, bin_size, trial_group) bucket, so one shared bar is correct + reduces visual clutter.
+- **Multi-panel UOT subplots within a single bin** (mass_destroy + mass_create + arrows): mass_destroy and mass_create are hist2d panels and need colorbars; the arrows panel is a quiver plot and doesn't need one. Either two colorbars per row (one each for mass_destroy/mass_create columns) or — if mass_destroy and mass_create share the same colormap scale — one shared colorbar per grid. CC picks based on whether the two panels actually share scale; document choice in Task 8 DECISIONS.
+- **Colorbar tick label size:** 12pt to match Q22's tick/axis label sizing.
+- **Colorbar label:** include a short descriptive label (e.g., `"frame proportion"` for heatmaps, `"Δ proportion (post − pre)"` for proportion_differences, `"mass change"` for UOT mass panels). Apply via `cbar.set_label(..., fontsize=12)`.
+
+Default to one colorbar per SVG (one per single-axis plot; one shared per grid-summary). CC deviates only if a multi-cmap layered overlay (Pattern B: whiskers / spout / eye) makes a single colorbar misleading — in which case use one colorbar per layer's cmap, stacked vertically to the right of the plot. Document any deviation in Task 8 DECISIONS.
+
+### Q25 LOCKED — Proportion-difference cmap direction flip: red = increased, blue = decreased
+
+Q20 / Q22 currently locks the proportion_diff cmap as `[(0.0, "red"), (0.5, "#d0d0d0"), (1.0, "blue")]` which maps `vmin→red`, `vmid→gray`, `vmax→blue`. With symmetric `vmin=-V`, `vmax=+V`, this puts NEGATIVE differences (post < pre, decreased) at red and POSITIVE differences (post > pre, increased) at blue.
+
+Priya 2026-05-15: this is the wrong direction. Flip so that:
+
+- **Increased proportion (post-stroke > pre-stroke, positive diff)** → **RED**
+- **Decreased proportion (post-stroke < pre-stroke, negative diff)** → **BLUE**
+
+This matches the convention in individual_session + binned_sessions heatmaps where redder/hotter = denser (more frames present in that bin).
+
+**Implementation:** reverse the cmap stops:
+
+```python
+_PROPORTION_DIFF_CMAP = mcolors.LinearSegmentedColormap.from_list(
+    "rgb_diverging",
+    [(0.0, "blue"), (0.5, "#d0d0d0"), (1.0, "red")],  # FLIPPED from Q22
+    N=256,
+)
+_PROPORTION_DIFF_CMAP.set_bad("white")
+```
+
+Keep the lightened grey (`#d0d0d0` from Q22) at the midpoint. `set_bad("white")` for NaN bins unchanged.
+
+### Q26 LOCKED — Proportion-difference colorbar scale: LINEAR, not log
+
+Priya asked whether the proportion-difference heatmap scales should be log. Recommendation: **NO — keep linear with symmetric vmin/vmax around 0.**
+
+Reasoning:
+1. **Diverging cmap + zero centering needs linear-symmetric normalization.** With proportion differences spanning both positive and negative, the cmap midpoint (gray) must align with zero. Standard `Normalize(vmin=-V, vmax=+V)` does this trivially in linear; in log space you'd need `SymLogNorm` which adds a `linthresh` knob and visual interpretation becomes harder for readers.
+2. **Proportion-difference magnitudes are typically small** (e.g., -0.005 to +0.005). The dynamic range doesn't span orders of magnitude where log helps.
+3. **Reader interpretation is cleaner in linear.** A linear colorbar with symmetric limits clearly conveys "this many percentage-point-difference" without needing to read a log-scale legend.
+
+For the RAW count heatmaps (individual_session, binned_sessions), legacy code likely uses log-scale `LogNorm` because raw counts span orders of magnitude — Q13 already locks "port legacy log-scaling decisions verbatim" via Addendum #5 Q13. So:
+
+- **individual_session, binned_sessions:** keep legacy log-scaling decision (likely `LogNorm`) per Q13 verbatim port.
+- **proportion_differences:** linear `Normalize(vmin=-V, vmax=+V)` with V = max(|min|, |max|) across the (animal, family_entry, scope, bin_size, trial_group) bucket per Q14 shared-scale rule. No log.
+- **unbalanced_ot mass panels:** check legacy at lines 6300-6680 of `20251202_..._pixelbin.ipynb` — mass changes can be diverging or single-signed depending on which panel (`mass_destroy` is conservation-positive, `mass_create` is conservation-positive — both single-signed). Port legacy decision verbatim per Q13.
+
+CC can revisit if PS46 spot-check shows the linear proportion_diff colorbar is washed out by an outlier bin — in which case clip via percentile-based vmin/vmax (e.g., 2nd/98th percentile of |H_diff| within the bucket) rather than switching to log.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Addendum #9-23 Task 5 scope.)
