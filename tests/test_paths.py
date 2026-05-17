@@ -1321,19 +1321,19 @@ class TestTask5HeatmapPathResolvers:
         assert p2.parent.exists()
 
     def test_tone_aligned_unbalanced_ot_path(self, resolver, tmp_path):
-        p = resolver.tone_aligned_heatmap_unbalanced_ot_path(
-            "PS46", "whiskers_eye_midpoint",
+        # Addendum #14 Q3d.B: bin-fanout filename.
+        p2 = resolver.tone_aligned_heatmap_unbalanced_ot_path(
+            "PS46", "whiskers_eye_midpoint", 2,
         )
-        assert p == (
+        assert p2 == (
             tmp_path / "dlc_kinematics" / "tone_aligned_heatmaps" / "PS46"
-            / "whiskers_eye_midpoint" / "unbalanced_ot" / "unbalanced_ot.svg"
+            / "whiskers_eye_midpoint" / "unbalanced_ot"
+            / "unbalanced_ot_grid_bin2d.svg"
         )
-
-    def test_tone_aligned_unbalanced_ot_path_custom_stem(self, resolver, tmp_path):
-        p = resolver.tone_aligned_heatmap_unbalanced_ot_path(
-            "PS46", "tongue_eye_midpoint", filename_stem="ot_sinkhorn_lam0.5",
+        p7 = resolver.tone_aligned_heatmap_unbalanced_ot_path(
+            "PS46", "whiskers_eye_midpoint", 7,
         )
-        assert p.name == "ot_sinkhorn_lam0.5.svg"
+        assert p7.name == "unbalanced_ot_grid_bin7d.svg"
 
     def test_whole_session_individual_session_path(self, resolver, tmp_path):
         import datetime
@@ -1368,11 +1368,16 @@ class TestTask5HeatmapPathResolvers:
         assert p2.name == "bin2d.svg"
 
     def test_whole_session_unbalanced_ot_path(self, resolver, tmp_path):
-        p = resolver.whole_session_heatmap_unbalanced_ot_path(
-            "PS55", "tongue_eye_midpoint",
+        # Addendum #14 Q3d.B: bin-fanout filename.
+        p2 = resolver.whole_session_heatmap_unbalanced_ot_path(
+            "PS55", "tongue_eye_midpoint", 2,
         )
-        assert p.name == "unbalanced_ot.svg"
-        assert p.parent.name == "unbalanced_ot"
+        assert p2.name == "unbalanced_ot_grid_bin2d.svg"
+        assert p2.parent.name == "unbalanced_ot"
+        p7 = resolver.whole_session_heatmap_unbalanced_ot_path(
+            "PS55", "tongue_eye_midpoint", 7,
+        )
+        assert p7.name == "unbalanced_ot_grid_bin7d.svg"
 
 
 # ---- Integration test (requires real mount) ----

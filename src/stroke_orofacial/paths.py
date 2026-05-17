@@ -578,19 +578,21 @@ class PathResolver:
         return out
 
     def tone_aligned_heatmap_unbalanced_ot_path(
-        self, animal: str, family_entry: str, filename_stem: str = "unbalanced_ot",
+        self, animal: str, family_entry: str, bin_size_days: int,
     ) -> Path:
-        """Return the per-(animal, family) tone-aligned Unbalanced-OT SVG path.
+        """Return the per-(animal, family, bin_size) tone-aligned
+        Unbalanced-OT grid-summary SVG path.
 
-        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/unbalanced_ot/unbalanced_ot.svg``.
+        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/unbalanced_ot/unbalanced_ot_grid_bin2d.svg``.
 
-        ``filename_stem`` defaults to ``"unbalanced_ot"`` but the legacy
-        port may override (TBD per Addendum #9 STOP-and-ask). Parent
-        directory is created eagerly.
+        Per Phase 7c.2 Addendum #14 Q3d.B: per-bin grid summary, one SVG
+        per configured bin_size. Filename ``unbalanced_ot_grid_bin{N}d.svg``
+        where N is the bin size in days. Mirrors the proportion_differences
+        bin{N}d.svg naming. Parent directory is created eagerly.
         """
         out = self._tone_aligned_heatmap_dir(
             animal, family_entry, "unbalanced_ot",
-        ) / f"{filename_stem}.svg"
+        ) / f"unbalanced_ot_grid_bin{int(bin_size_days)}d.svg"
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 
@@ -633,12 +635,15 @@ class PathResolver:
         return out
 
     def whole_session_heatmap_unbalanced_ot_path(
-        self, animal: str, family_entry: str, filename_stem: str = "unbalanced_ot",
+        self, animal: str, family_entry: str, bin_size_days: int,
     ) -> Path:
-        """Return the per-(animal, family) whole-session Unbalanced-OT SVG path."""
+        """Return the per-(animal, family, bin_size) whole-session
+        Unbalanced-OT grid-summary SVG path. Filename
+        ``unbalanced_ot_grid_bin{N}d.svg`` (matches tone-aligned sibling
+        per Addendum #14 Q3d.B)."""
         out = self._whole_session_heatmap_dir(
             animal, family_entry, "unbalanced_ot",
-        ) / f"{filename_stem}.svg"
+        ) / f"unbalanced_ot_grid_bin{int(bin_size_days)}d.svg"
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 

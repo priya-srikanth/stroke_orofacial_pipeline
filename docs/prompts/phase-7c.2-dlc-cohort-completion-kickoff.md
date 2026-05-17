@@ -1200,3 +1200,55 @@ Reference family entries are sanity checks; their plots should look like tight c
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist [supersedes Q10.B], Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Addendum #9-12 Task 5 scope.)
+
+---
+
+## Addendum #14 — UOT comparison flips to bins vs all-pre-stroke (mirrors proportion_differences) + confirm all plot types render both scopes (Priya 2026-05-15, mid-Task-5)
+
+Two clarifications.
+
+### Q3d RE-LOCKED Q3d.B (supersedes Addendum #10 Q3d.A per-session-vs-baseline)
+
+**UOT comparison flips from per-session vs baseline to per-bin vs all-pre-stroke pool.** Now symmetric with proportion_differences (Addendum #11 Q2.B):
+
+- **Fixed reference:** Animal-level pool of all pre-stroke sessions (`rel_day <= 0`) → one aggregated `H_all_pre_stroke` distribution per (animal, family entry, scope). Same baseline as proportion_differences uses.
+- **Per-bin UOT panels:** For each bin in the animal's configured `bin_sizes_days` (2d, 7d), compute the per-bin aggregated distribution → run unbalanced sinkhorn OT between bin's distribution AND animal-level pre-stroke pool → produce 3 panels per bin (mass_destroy + mass_create + arrows displacement field). BOTH pre-stroke bins AND post-stroke bins get UOT panels (pre-stroke bins show within-pre-stroke variability vs pool; post-stroke bins show stroke-induced departure with displacement direction).
+- **Grid-summary SVG:** All bins' 3-panel rows laid out in one grid per (animal, family entry, scope, bin_size). N rows × 3 cols where N = number of bins for that bin_size.
+
+Output naming: `unbalanced_ot_grid_bin<N>d.svg` per (animal, family entry, scope, bin_size). Mirrors proportion_differences `bin<N>d.svg` naming.
+
+Per (animal, family entry, scope), two unbalanced_ot SVGs (one per bin_size: 2d, 7d), matching proportion_differences fanout.
+
+### Q3a / Q3b unchanged
+
+- Q3a.B locked Addendum #12: port from unbalanced-sinkhorn cells (3624-3641, 5014-5018, 5404-5444; primarily 6300-6680 per CC's investigation).
+- Q3b unchanged: OT params verbatim from legacy as defaults (UNB_REG = 0.02; UNB_REG_M = TBD per CC's pinning).
+
+### Confirmation — all 4 plot types render for both scopes
+
+Per Addendum #9 framework (reaffirmed for clarity):
+
+| Plot type | tone_aligned/ scope | whole_session/ scope | Output structure |
+|---|---|---|---|
+| `individual_session/` | YES (3 trial-group panels per session date file) | YES (1 panel, all-trial-group only) | 1 SVG per session date |
+| `binned_sessions/` | YES (3 trial-group panels per rel_day_bin file) | YES (1 panel, all-trial-group only) | 1 SVG per (bin_size, rel_day_bin) |
+| `proportion_differences/` | YES (grid summary, per-bin panels) | YES (grid summary, per-bin panels) | 1 SVG per bin_size (`bin<N>d.svg`) |
+| `unbalanced_ot/` | YES (grid summary, per-bin 3-panel rows) | YES (grid summary, per-bin 3-panel rows) | 1 SVG per bin_size (`unbalanced_ot_grid_bin<N>d.svg`) per Q3d.B |
+
+Per (animal, family entry):
+- 2 scopes × N_dates `individual_session/` SVGs (one per date per scope)
+- 2 scopes × 2 bin_sizes × M_bins `binned_sessions/` SVGs (or 2 scopes × N_dates if collapsed)
+- 2 scopes × 2 bin_sizes `proportion_differences/` SVGs (4 total)
+- 2 scopes × 2 bin_sizes `unbalanced_ot/` SVGs (4 total)
+
+Total cohort outputs at scale: 8 animals × 7 family entries × (N_dates + M_bins variants + 4 + 4) × 2 scopes ≈ many SVGs. CC's driver iterates over the family entries + plot types + bin sizes + scopes generically.
+
+### Implementation note for UOT bins refinement
+
+CC's existing UOT layout A (3-panel-per-bin grid) directly accommodates this — the per-bin aggregation logic changes from "all post-stroke sessions in this bin" (per Addendum #11 Q2.B proportion_differences semantics) was already what CC was implementing. UOT-per-bin uses the same aggregation; just runs unbalanced sinkhorn on (per-bin aggregated, animal-level pre-stroke pool) and renders the 3 panels.
+
+This means CC's planned `_compute_unbalanced_ot_plan` invocation runs once per (animal, family entry, scope, bin_size, bin) tuple — not once per (animal, family entry, scope, post-stroke session). Lower invocation count + cleaner symmetry with proportion_differences.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Addendum #9-13 Task 5 scope except Q3d supersession noted above.)

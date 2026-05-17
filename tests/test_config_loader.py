@@ -242,16 +242,30 @@ def _allowlist_yaml_dict() -> dict:
                     "x_range": None,
                     "parity_status": "sanity-check-only",
                 },
+                "spout_spout_midpoint": {
+                    "bodyparts": ["L_spout", "R_spout"],
+                    "center_mode": "spout_midpoint",
+                    "likelihood_thresholds": [0.8],
+                    "x_range": None,
+                    "parity_status": "sanity-check-only",
+                },
+                "eye_eye_midpoint": {
+                    "bodyparts": ["L_eye", "R_eye"],
+                    "center_mode": "eye_midpoint",
+                    "likelihood_thresholds": [0.8],
+                    "x_range": None,
+                    "parity_status": "sanity-check-only",
+                },
             },
         },
     }
 
 
 class TestValidateToneAlignedAllowlist:
-    """Phase 7c.2 Task 2.5 (Addendum #3 Q10.A): validate the 5-family
-    allowlist on every config load. The validator pins the locked
-    family-name set, per-family bodyparts list, and per-family
-    center_mode. Out-of-allowlist combos raise at load time."""
+    """Phase 7c.2 Task 2.5 (Addendum #3 Q10.A; extended in Addendum #13):
+    validate the 7-family allowlist on every config load. The validator
+    pins the locked family-name set, per-family bodyparts list, and
+    per-family center_mode. Out-of-allowlist combos raise at load time."""
 
     def test_real_config_passes_validation(self):
         """The committed defaults.yaml must satisfy the allowlist (this is
@@ -329,6 +343,22 @@ class TestLookupToneFamily:
                         "R_whiskers_1", "R_whiskers_2", "R_whiskers_3"):
             family = lookup_tone_family(tone_cfg, whisker, "eye_midpoint")
             assert family["family_name"] == "whiskers_eye_midpoint"
+
+    def test_returns_family_for_spout_fiducials(self):
+        """Phase 7c.2 Addendum #13: spout_spout_midpoint covers L_spout +
+        R_spout under spout_midpoint."""
+        tone_cfg = _allowlist_yaml_dict()["dlc_spatial_tone_aligned"]
+        for bp in ("L_spout", "R_spout"):
+            family = lookup_tone_family(tone_cfg, bp, "spout_midpoint")
+            assert family["family_name"] == "spout_spout_midpoint"
+
+    def test_returns_family_for_eye_fiducials(self):
+        """Phase 7c.2 Addendum #13: eye_eye_midpoint covers L_eye + R_eye
+        under eye_midpoint."""
+        tone_cfg = _allowlist_yaml_dict()["dlc_spatial_tone_aligned"]
+        for bp in ("L_eye", "R_eye"):
+            family = lookup_tone_family(tone_cfg, bp, "eye_midpoint")
+            assert family["family_name"] == "eye_eye_midpoint"
 
     def test_out_of_allowlist_raises(self):
         tone_cfg = _allowlist_yaml_dict()["dlc_spatial_tone_aligned"]

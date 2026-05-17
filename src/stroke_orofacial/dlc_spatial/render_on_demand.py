@@ -769,32 +769,43 @@ def _assemble_panel_figure(
 
 
 # ---------------------------------------------------------------------------
-# Whiskers composite (Addendum #10 Q1) — Pattern B layered overlay.
-# Ports the legacy render at lines 676-738 of
-# 20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb: sequential
-# ``ax.hist2d`` over PART_DRAW_ORDER with cmap + alpha=0.8 + LogNorm +
-# density=True, then per-part colorbars stacked vertically on the right.
-# Our port works at the imshow level (since we already have H_counts
-# arrays from compute_animal_aggregated_histogram) and renders the
-# colormap key as a compact figure-right legend instead of 6 colorbars
-# per panel (cleaner with the 3-panel trial-group layout).
+# Multi-bp composite renderer — Pattern B layered overlay.
+#
+# Originally written for the whiskers composite (Addendum #10 Q1) which
+# ports legacy lines 676-738 of 20251202_DLC_analysis_all_bodyparts_stats_
+# pixelbin.ipynb: sequential ``ax.hist2d`` over PART_DRAW_ORDER with cmap +
+# alpha=0.8 + LogNorm + density=True, then per-part colorbars stacked
+# vertically on the right. Our port works at the imshow level (since we
+# already have H_counts arrays from compute_animal_aggregated_histogram)
+# and renders the colormap key as a compact figure-right legend instead
+# of N colorbars per panel.
+#
+# Generalized in Phase 7c.2 Addendum #13 to also serve the two fiducial
+# bilateral-pair composite families (``spout_spout_midpoint`` and
+# ``eye_eye_midpoint``). Dispatch from per-family entry: any family with
+# > 1 bodypart routes here, regardless of which bodyparts. cmap lookup
+# is config-driven via ``_get_bodypart_cmap``; composite axis range uses
+# the first bp's per_center_mode block (per legacy whiskers convention).
 # ---------------------------------------------------------------------------
 
-# Per-whisker cmap dict from legacy lines 582-587 / 830-835 / 1394-1399 of
-# 20251202_..._pixelbin.ipynb. L/R whiskers share cmap per index.
-_WHISKER_CMAPS: dict[str, str] = {
-    "L_whiskers_1": "plasma",
-    "L_whiskers_2": "inferno",
-    "L_whiskers_3": "viridis",
-    "R_whiskers_1": "plasma",
-    "R_whiskers_2": "inferno",
-    "R_whiskers_3": "viridis",
-}
-
-_WHISKER_ALPHA: float = 0.5  # Slight softening vs legacy 0.8 for 6-way overlay readability.
+# Per-bodypart cmap is loaded from ``dlc_spatial.bodyparts.{bp}.cmap``
+# (defaults.yaml). Whiskers cmaps echo legacy lines 582-587 / 830-835 /
+# 1394-1399 of 20251202_..._pixelbin.ipynb (L/R whiskers share cmap per
+# index). Fiducial bilateral-pair cmaps were added Phase 7c.2 Addendum #13
+# (L=Reds, R=Blues; clear visual L/R contrast).
+_COMPOSITE_FALLBACK_CMAP: str = "viridis"
+_COMPOSITE_ALPHA: float = 0.5  # Slight softening vs legacy 0.8 for multi-bp overlay readability.
 
 
-def _compute_whiskers_panels(
+def _get_bodypart_cmap(spatial_config: dict[str, Any], bp: str) -> str:
+    """Look up the per-bp cmap from ``dlc_spatial.bodyparts.{bp}.cmap``.
+    Returns a fallback when missing (so callers stay robust against
+    incomplete configs)."""
+    cmap = (spatial_config.get("bodyparts", {}).get(bp, {}) or {}).get("cmap")
+    return str(cmap) if cmap else _COMPOSITE_FALLBACK_CMAP
+
+
+def _compute_composite_panels(
     animal: str,
     dates: list[dt.date],
     bodyparts: list[str],
@@ -805,11 +816,12 @@ def _compute_whiskers_panels(
     defaults: dict[str, Any],
     animal_info: AnimalInfo,
 ) -> dict[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int]]]:
-    """Per-trial-group + per-whisker histogram compute.
+    """Per-trial-group + per-bodypart histogram compute for a composite family.
 
     Returns ``{tg: [(bp, H_counts, extent, n_sessions, n_tones), ...]}`` —
-    one entry per (trial_group, whisker_bp). For whole_session scope the
-    only trial_group key is ``"all"`` and ``n_tones`` is 0.
+    one entry per (trial_group, bp). For whole_session scope the only
+    trial_group key is ``"all"`` and ``n_tones`` is 0. Used by all
+    composite families (whiskers + fiducial bilateral pairs).
     """
     if scope == "tone_aligned":
         trial_groups = TASK5_TRIAL_GROUPS_TONE_ALIGNED
@@ -838,22 +850,25 @@ def _compute_whiskers_panels(
     return panels
 
 
-def _render_whiskers_panel_axis(
+def _render_composite_panel_axis(
     ax: plt.Axes,
-    whisker_panels: list[tuple[str, np.ndarray | None, list[float] | None, int, int]],
+    composite_panels: list[tuple[str, np.ndarray | None, list[float] | None, int, int]],
     spatial_config: dict[str, Any],
     *,
+    family_bodyparts: list[str],
+    family_center_mode: str,
     panel_title: str,
 ) -> None:
-    """Render 6 sequential layered ``imshow`` plots on one axes — one per
-    whisker, each with its own cmap + LogNorm + alpha. Mirrors the
-    legacy ``ax.hist2d`` loop at lines 676-697 of 20251202_..._pixelbin.ipynb,
-    adapted to consume precomputed ``H_counts`` arrays (vs hist2d which
-    consumes raw xy).
+    """Render N sequential layered ``imshow`` plots on one axes — one per
+    bodypart in the composite family, each with its own cmap + LogNorm +
+    alpha. Mirrors the legacy ``ax.hist2d`` loop at lines 676-697 of
+    20251202_..._pixelbin.ipynb, adapted to consume precomputed
+    ``H_counts`` arrays (vs hist2d which consumes raw xy). cmap lookup
+    is config-driven via ``_get_bodypart_cmap``.
     """
     extent_first: list[float] | None = None
     n_layered = 0
-    for bp, H, ext, _n_sess, _n_tones in whisker_panels:
+    for bp, H, ext, _n_sess, _n_tones in composite_panels:
         if H is None or float(H.sum()) == 0.0:
             continue
         if extent_first is None:
@@ -865,38 +880,39 @@ def _render_whiskers_panel_axis(
         vmin = float(finite_nonzero.min())
         vmax = float(H_prop.max())
         try:
-            cmap = plt.get_cmap(_WHISKER_CMAPS.get(bp, "viridis"))
+            cmap = plt.get_cmap(_get_bodypart_cmap(spatial_config, bp))
         except ValueError:
-            cmap = plt.get_cmap("viridis")
+            cmap = plt.get_cmap(_COMPOSITE_FALLBACK_CMAP)
         ax.imshow(
             H_prop.T,
             origin="lower",
             extent=ext,
             cmap=cmap,
-            alpha=_WHISKER_ALPHA,
+            alpha=_COMPOSITE_ALPHA,
             aspect="auto",
             norm=mcolors.LogNorm(vmin=max(vmin, 1e-10), vmax=vmax),
         )
         n_layered += 1
 
     if extent_first is None:
-        # No data for any whisker — placeholder.
+        # No data for any bodypart — placeholder.
         ax.text(
-            0.5, 0.5, f"{panel_title}\n(no whisker data)",
+            0.5, 0.5, f"{panel_title}\n(no data)",
             ha="center", va="center", transform=ax.transAxes,
         )
         ax.set_axis_off()
         return
 
-    # All 6 whiskers share eye_midpoint center_mode + similar xlim/ylim;
-    # use the first whisker's per_center_mode block as the panel axis
-    # range. Empirically the 6 per_center_mode entries differ by ~10s of
-    # px (each whisker pad has a slightly different baseline), but the
-    # spread is contained — the union of all 6 xlim/ylim would be wider
-    # than any single bp's range and lose detail. Sticking with the
-    # first-bp range gives a usable shared scale; if needed we can
-    # union later.
-    per_mode = _get_per_center_mode_params(spatial_config, "L_whiskers_1", "eye_midpoint")
+    # Composite axis range = first bp's per_center_mode block. For
+    # whiskers the 6 per_center_mode entries differ by ~10s of px (each
+    # whisker pad has a slightly different baseline) and we accept that
+    # the first-bp range will under-cover the others slightly. For
+    # fiducial pairs the config supplies a UNIFIED bilateral range so
+    # the first-bp lookup already covers L+R. If both lookups miss the
+    # config, fall back to the union of bp extents.
+    per_mode = _get_per_center_mode_params(
+        spatial_config, family_bodyparts[0], family_center_mode,
+    )
     if per_mode["xlim"]:
         ax.set_xlim(per_mode["xlim"])
     else:
@@ -910,28 +926,40 @@ def _render_whiskers_panel_axis(
     ax.tick_params(labelsize=6)
 
 
-def _attach_whiskers_legend(fig: plt.Figure) -> None:
-    """Add a compact figure-right legend listing the 6 whiskers + their
-    colormap names. Cheaper than 6 colorbars per panel — clean
-    identification of which color belongs to which whisker."""
-    lines = [f"{bp} → {cmap}" for bp, cmap in _WHISKER_CMAPS.items()]
+def _attach_composite_legend(
+    fig: plt.Figure,
+    family_bodyparts: list[str],
+    spatial_config: dict[str, Any],
+    *,
+    family_label: str,
+) -> None:
+    """Add a compact figure-right legend listing each composite bodypart
+    + its colormap name. Cheaper than N colorbars per panel — clean
+    identification of which color belongs to which bodypart."""
+    lines = [
+        f"{bp} → {_get_bodypart_cmap(spatial_config, bp)}"
+        for bp in family_bodyparts
+    ]
     fig.text(
-        0.99, 0.5, "Whiskers (cmap key)\n\n" + "\n".join(lines),
+        0.99, 0.5, f"{family_label} (cmap key)\n\n" + "\n".join(lines),
         ha="right", va="center", fontsize=7,
         bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.8, "edgecolor": "0.7"},
     )
 
 
-def _assemble_whiskers_figure(
+def _assemble_composite_figure(
     panels: dict[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int]]],
     scope: Scope,
     suptitle: str,
     *,
+    family_bodyparts: list[str],
+    family_center_mode: str,
+    family_label: str,
     defaults: dict[str, Any],
 ) -> plt.Figure:
-    """Render the whiskers composite figure — 1×3 grid (tone_aligned) /
-    1×1 (whole_session), each panel layering 6 whiskers via
-    :func:`_render_whiskers_panel_axis`. Per-trial-group panel title
+    """Render the multi-bp composite figure — 1×3 grid (tone_aligned) /
+    1×1 (whole_session), each panel layering N bodyparts via
+    :func:`_render_composite_panel_axis`. Per-trial-group panel title
     includes session count + tone-event count when tone-aligned.
     """
     spatial_config = defaults["dlc_spatial"]
@@ -942,21 +970,25 @@ def _assemble_whiskers_figure(
         trial_groups = TASK5_TRIAL_GROUPS_WHOLE_SESSION
         figsize = (8.0, 6.0)
 
+    # NOTE: constrained_layout=False here — the right-edge legend needs
+    # manual room reserved via fig.subplots_adjust(right=...) at the
+    # bottom of this function. constrained_layout would override that
+    # call (incompatible APIs per matplotlib docs).
     fig, axes_obj = plt.subplots(
         nrows=1, ncols=len(trial_groups),
-        figsize=figsize, constrained_layout=True,
+        figsize=figsize, constrained_layout=False,
     )
     axes = list(axes_obj.flat) if hasattr(axes_obj, "flat") else [axes_obj]
     for tg, ax in zip(trial_groups, axes, strict=False):
-        whisker_panels = panels.get(tg, [])
-        if not whisker_panels:
+        composite_panels = panels.get(tg, [])
+        if not composite_panels:
             ax.set_axis_off()
             continue
-        # Summarize sessions + tones across whiskers (same values per whisker
+        # Summarize sessions + tones across bps (same values per bp
         # within a tg, modulo missing data; use first non-empty for title).
         n_sess = 0
         n_tones = 0
-        for _bp, H, _ext, ns, nt in whisker_panels:
+        for _bp, H, _ext, ns, nt in composite_panels:
             if H is not None and float(H.sum()) > 0:
                 n_sess = max(n_sess, ns)
                 n_tones = max(n_tones, nt)
@@ -964,10 +996,15 @@ def _assemble_whiskers_figure(
             panel_title = f"tg={tg}  n_sess={n_sess}  n_tones={n_tones}"
         else:
             panel_title = f"whole session  n_sess={n_sess}"
-        _render_whiskers_panel_axis(
-            ax, whisker_panels, spatial_config, panel_title=panel_title,
+        _render_composite_panel_axis(
+            ax, composite_panels, spatial_config,
+            family_bodyparts=family_bodyparts,
+            family_center_mode=family_center_mode,
+            panel_title=panel_title,
         )
-    _attach_whiskers_legend(fig)
+    _attach_composite_legend(
+        fig, family_bodyparts, spatial_config, family_label=family_label,
+    )
     fig.suptitle(suptitle, fontsize=11)
     # Make room for the right-edge legend.
     fig.subplots_adjust(right=0.83)
@@ -991,8 +1028,9 @@ def render_individual_session_heatmap(
     (0, 8000) ms window. Whole-session: 1×1 panel (all only; no
     trial-group split).
 
-    Raises ``NotImplementedError`` for ``whiskers_eye_midpoint`` until
-    the legacy composite is ported (Addendum #9 Issue 2).
+    Composite families (whiskers + fiducial bilateral pairs; any family
+    with > 1 bodypart) dispatch to the Pattern B layered-overlay
+    renderer (Addendum #10 Q1, generalized in Addendum #13).
     """
     if defaults is None:
         defaults = load_defaults()
@@ -1004,13 +1042,17 @@ def render_individual_session_heatmap(
         f"individual_session"
     )
     if len(bodyparts) > 1:
-        # Whiskers composite — Addendum #10 Q1 Pattern B layered overlay.
-        whisker_panels = _compute_whiskers_panels(
+        # Composite family — Pattern B layered overlay (Addenda #10/#13).
+        composite_panels = _compute_composite_panels(
             animal, [date], bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
         )
-        return _assemble_whiskers_figure(
-            whisker_panels, scope, suptitle, defaults=defaults,
+        return _assemble_composite_figure(
+            composite_panels, scope, suptitle,
+            family_bodyparts=bodyparts,
+            family_center_mode=center_mode,
+            family_label=family_entry,
+            defaults=defaults,
         )
     bp = bodyparts[0]
 
@@ -1042,7 +1084,8 @@ def render_binned_sessions_heatmap(
     ``_compute_rel_day_bin_label`` from ``_day_binned`` module).
 
     Panel layout same as :func:`render_individual_session_heatmap`.
-    Raises ``NotImplementedError`` for ``whiskers_eye_midpoint``.
+    Composite families (any family with > 1 bodypart) dispatch to the
+    Pattern B layered-overlay renderer.
     """
     if defaults is None:
         defaults = load_defaults()
@@ -1054,13 +1097,17 @@ def render_binned_sessions_heatmap(
         f"rel_day_bin={rel_day_bin_label}  n_dates_in_bin={len(dates_in_bin)}"
     )
     if len(bodyparts) > 1:
-        # Whiskers composite — Addendum #10 Q1 Pattern B layered overlay.
-        whisker_panels = _compute_whiskers_panels(
+        # Composite family — Pattern B layered overlay (Addenda #10/#13).
+        composite_panels = _compute_composite_panels(
             animal, dates_in_bin, bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
         )
-        return _assemble_whiskers_figure(
-            whisker_panels, scope, suptitle, defaults=defaults,
+        return _assemble_composite_figure(
+            composite_panels, scope, suptitle,
+            family_bodyparts=bodyparts,
+            family_center_mode=center_mode,
+            family_label=family_entry,
+            defaults=defaults,
         )
     bp = bodyparts[0]
 
@@ -1243,15 +1290,17 @@ def _compute_proportion_diff_for_bin(
 ) -> tuple[np.ndarray | None, list[float] | None, int]:
     """Compute D = H_bin_prop - H_pre_pool_prop for one rel_day_bin.
 
-    For single-bp family: per-bp histogram. For whisker family: pooled
-    6-whisker pseudo-histogram (matches UOT whisker handling per
-    legacy 'Pool all six whiskers as one part' pattern).
+    For single-bp family: per-bp histogram. For composite families
+    (whiskers + fiducial bilateral pairs, any family with > 1 bp): pooled
+    N-bp pseudo-histogram (matches UOT composite handling per legacy
+    'Pool all six whiskers as one part' pattern, generalized in
+    Addendum #13).
 
     Returns ``(D, extent, n_sessions_in_bin)``.
     """
     if len(bodyparts) > 1:
-        # Whiskers family: pooled-6-whisker pseudo-bp.
-        H_bin, ext, n_sess = _aggregate_for_dates_pooled_whiskers(
+        # Composite family: pooled N-bp pseudo-bp.
+        H_bin, ext, n_sess = _aggregate_for_dates_pooled_bodyparts(
             animal, bin_dates, bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
         )
@@ -1298,9 +1347,10 @@ def render_proportion_difference_heatmap(
     bins (within-pre variability) and post-stroke bins (stroke-induced
     departure) get panels.
 
-    Non-whiskers families: per-bp single-bodypart D per panel.
-    Whiskers family: pooled-6-whisker pseudo-bp per panel (matches
-    UOT whisker treatment).
+    Single-bp families: per-bp D per panel.
+    Composite families (whiskers + fiducial bilateral pairs, any family
+    with > 1 bp): pooled N-bp pseudo-bp per panel (matches UOT composite
+    treatment per Addendum #13 generalization).
 
     Layout: 4-col grid (analogous to UOT grid summary); rows = ceil(N_bins / 4).
     """
@@ -1321,7 +1371,7 @@ def render_proportion_difference_heatmap(
     # Compute fixed reference: animal-level pre-stroke pool, proportion-
     # normalized.
     if len(bodyparts) > 1:
-        H_pre_pool, ext_pre, n_pre_sess = _aggregate_for_dates_pooled_whiskers(
+        H_pre_pool, ext_pre, n_pre_sess = _aggregate_for_dates_pooled_bodyparts(
             animal, pre_dates, bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
         )
@@ -1419,36 +1469,55 @@ def _bin_label_sort_key(label: str) -> tuple[int, int]:
 # Math + arrow conventions ported verbatim from legacy lines 7340-7515.
 # ---------------------------------------------------------------------------
 
-# OT parameters per legacy line 7158 + arrow scale constants from the same
-# cell (approximate; legacy defines them in an earlier sub-cell that uses
-# session-pixel-size-dependent scaling — we use fixed defaults matching
-# legacy "px-grid" magnitudes).
-_OT_REG = 0.02
+# OT parameters + arrow scale constants ported verbatim from
+# 20251202_..._pixelbin.ipynb cell preamble (lines 6087-6098). Per
+# Addendum #14 Q3a.B + Q3b: UNBALANCED sinkhorn (not the balanced
+# variant at line 6937+ that an earlier draft used).
+_OT_REG = 0.02              # entropic regularization
+_OT_REG_M = 10.0            # marginal (mass) relaxation penalty
 _OT_NUMITERMAX = 500
 _OT_STOPTHR = 1e-6
-_ARROW_LW_MIN = 0.4
-_ARROW_LW_MAX = 2.5
-_ARROW_HEAD_W_MIN = 3.0
-_ARROW_HEAD_W_MAX = 10.0
-_ARROW_HEAD_L_MIN = 4.0
-_ARROW_HEAD_L_MAX = 14.0
-_ARROW_ALPHA_MIN = 0.55
-_ARROW_ALPHA_MAX = 0.95
+_OT_MIN_MASS = 1e-4         # threshold below which marginal is treated as zero
+_OT_EPS = 1e-8              # floor on marginals to stabilize sinkhorn
+_ARROW_LW_MIN = 0.1         # legacy ARROW_LW_MIN
+_ARROW_LW_MAX = 3.0         # legacy ARROW_LW_MAX
+_ARROW_ALPHA_MIN = 0.9      # legacy ARROW_ALPHA_MIN (constant in legacy)
+_ARROW_ALPHA_MAX = 0.9      # legacy ARROW_ALPHA_MAX
+# Head dimensions scale with histogram cell size dx/dy at render time
+# (legacy lines 6175-6178: HEAD_W = 0.1..0.65 × dx).
+_ARROW_HEAD_W_MIN_FRAC_DX = 0.1
+_ARROW_HEAD_W_MAX_FRAC_DX = 0.65
+_ARROW_HEAD_L_MIN_FRAC_DY = 0.1
+_ARROW_HEAD_L_MAX_FRAC_DY = 0.65
 _OT_ARROW_CMAP = "YlGnBu"
+_OT_MASS_DESTROY_CMAP = "Reds"
+_OT_MASS_CREATE_CMAP = "Blues"
 
 
-def _compute_displacement_field(
+def _compute_unbalanced_ot_plan(
     H_pre: np.ndarray,
     H_sess: np.ndarray,
     extent: list[float],
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
-    """Compute the balanced-OT displacement field for one (pre, sess)
-    histogram pair. Returns ``(Xg, Yg, Ux, Uy, move_grid, conditional_mass)``
-    or ``None`` if degenerate (zero mass either side, or all-zero
-    displacements). Mirrors legacy lines 7340-7404.
+) -> dict[str, Any] | None:
+    """Compute the UNBALANCED-OT plan + displacement field + mass-change
+    maps for one (pre, sess) histogram pair. Per Addendum #14 Q3a.B
+    (Read Y) — ports the legacy ``ot_unb.sinkhorn_unbalanced`` invocation
+    at line 6376 + mass-change at 6403-6409 + displacement at 6444-6456
+    of ``20251202_..._pixelbin.ipynb``.
+
+    Returns a dict with keys ``{Xg, Yg, dx, dy, Ux, Uy, mag, mass_grid,
+    mass_destroy, mass_create}`` or ``None`` if both marginals are
+    essentially empty (per legacy MIN_MASS=1e-4 gate).
+
+    Marginals are PROPORTION-normalized before sinkhorn — same
+    convention as proportion_differences (Addendum #11 Q2.B). Sinkhorn
+    is unbalanced; deviation from input marginals quantified by
+    ``mass_destroy = max(a - G.sum(axis=1), 0)`` and
+    ``mass_create = max(b - G.sum(axis=0), 0)``.
     """
     try:
-        import ot  # POT
+        import ot
+        from ot import unbalanced as ot_unb
     except ImportError:
         return None
 
@@ -1457,12 +1526,24 @@ def _compute_displacement_field(
 
     a = H_pre.astype(float).ravel()
     b = H_sess.astype(float).ravel()
-    sum_a = a.sum()
-    sum_b = b.sum()
-    if sum_a <= 0 or sum_b <= 0:
+    a[a < 0] = 0.0
+    b[b < 0] = 0.0
+    sum_a = float(a.sum())
+    sum_b = float(b.sum())
+    if sum_a <= _OT_MIN_MASS and sum_b <= _OT_MIN_MASS:
         return None
-    a = a / sum_a
-    b = b / sum_b
+    # Normalize to proportions.
+    if sum_a > 0:
+        a = a / sum_a
+    if sum_b > 0:
+        b = b / sum_b
+    # Clip to EPS floor per legacy lines 6367-6373.
+    if a.sum() <= _OT_MIN_MASS:
+        a[:] = _OT_EPS
+    if b.sum() <= _OT_MIN_MASS:
+        b[:] = _OT_EPS
+    a = np.clip(a, _OT_EPS, None)
+    b = np.clip(b, _OT_EPS, None)
 
     dx = (extent[1] - extent[0]) / nx
     dy = (extent[3] - extent[2]) / ny
@@ -1475,11 +1556,12 @@ def _compute_displacement_field(
     C = C / max(C.max(), 1e-9)
 
     try:
-        G = ot.sinkhorn(
+        G = ot_unb.sinkhorn_unbalanced(
             a, b, C,
             reg=_OT_REG,
-            numItermax=_OT_NUMITERMAX,
+            reg_m=_OT_REG_M,
             stopThr=_OT_STOPTHR,
+            numItermax=_OT_NUMITERMAX,
             verbose=False,
         )
     except Exception:
@@ -1489,27 +1571,83 @@ def _compute_displacement_field(
         return None
 
     out_from_pre = G.sum(axis=1)
+    into_post = G.sum(axis=0)
+
+    # Mass-change maps (legacy lines 6408-6409).
+    mass_destroy = np.maximum(a - out_from_pre, 0.0).reshape(nx, ny)
+    mass_create = np.maximum(b - into_post, 0.0).reshape(nx, ny)
+
+    # Displacement field (legacy lines 6443-6456).
     disp = np.zeros_like(coords_xy)
     nz = out_from_pre > 0
-    if not np.any(nz):
-        return None
-    disp[nz] = (
-        (G[nz] @ coords_xy - out_from_pre[nz, None] * coords_xy[nz])
-        / out_from_pre[nz, None]
-    )
+    if np.any(nz):
+        disp[nz] = (
+            (G[nz] @ coords_xy - out_from_pre[nz, None] * coords_xy[nz])
+            / out_from_pre[nz, None]
+        )
     Ux = disp[:, 0].reshape(nx, ny)
     Uy = disp[:, 1].reshape(nx, ny)
     mag = np.hypot(Ux, Uy)
-    if not np.any(mag > 0):
-        return None
-    mass_grid_base = out_from_pre.reshape(nx, ny)
-    move_grid = mass_grid_base * mag
-    return Xg, Yg, Ux, Uy, move_grid, mass_grid_base
+    mass_grid = out_from_pre.reshape(nx, ny)
+
+    return {
+        "Xg": Xg, "Yg": Yg, "dx": float(dx), "dy": float(dy),
+        "Ux": Ux, "Uy": Uy, "mag": mag,
+        "mass_grid": mass_grid,
+        "mass_destroy": mass_destroy,
+        "mass_create": mass_create,
+    }
+
+
+def _render_ot_mass_change_panels(
+    ax_destroy: plt.Axes,
+    ax_create: plt.Axes,
+    mass_destroy: np.ndarray,
+    mass_create: np.ndarray,
+    extent: list[float],
+    bodypart: str,
+    center_mode: str,
+    *,
+    spatial_config: dict[str, Any],
+    bin_label: str,
+) -> None:
+    """Render the 2 mass-change heatmaps onto a pair of Axes —
+    ``mass_destroy`` (Reds cmap) + ``mass_create`` (Blues cmap). Linear
+    imshow per legacy lines 6411-6441. Y-axis inverted to match heatmap
+    convention.
+    """
+    per_mode = _get_per_center_mode_params(spatial_config, bodypart, center_mode)
+    xl = per_mode["xlim"] if per_mode["xlim"] else (extent[0], extent[1])
+    yl = per_mode["ylim"] if per_mode["ylim"] else (extent[2], extent[3])
+    for ax, arr, cmap_name, kind in (
+        (ax_destroy, mass_destroy, _OT_MASS_DESTROY_CMAP, "destroy"),
+        (ax_create, mass_create, _OT_MASS_CREATE_CMAP, "create"),
+    ):
+        if arr is None or float(arr.sum()) == 0.0:
+            ax.text(0.5, 0.5, f"{kind}\n(no mass change)",
+                    ha="center", va="center", transform=ax.transAxes)
+            ax.set_axis_off()
+            continue
+        try:
+            cmap = plt.get_cmap(cmap_name)
+        except ValueError:
+            cmap = plt.get_cmap("viridis")
+        im = ax.imshow(
+            arr.T, origin="lower", extent=extent,
+            cmap=cmap, aspect="auto",
+        )
+        ax.set_xlim(xl)
+        ax.set_ylim(yl[1], yl[0])  # inverted Y
+        ax.set_title(f"bin {bin_label}  mass {kind}", fontsize=8)
+        ax.tick_params(labelsize=6)
+        cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_label(f"mass {kind}", fontsize=7)
+        cbar.ax.tick_params(labelsize=6)
 
 
 def _render_ot_arrows_panel(
     ax: plt.Axes,
-    payload: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None,
+    plan: dict[str, Any] | None,
     extent: list[float] | None,
     bodypart: str,
     center_mode: str,
@@ -1517,25 +1655,36 @@ def _render_ot_arrows_panel(
     spatial_config: dict[str, Any],
     title: str,
 ) -> None:
-    """Render the balanced-OT displacement-field arrows on one Axes per
-    legacy lines 7405-7503: threshold by 50th percentile × 0.1 of moved
-    mass, log10-scale linewidth + head + alpha + color, ``YlGnBu`` cmap.
+    """Render the UNBALANCED-OT displacement-field arrows on one Axes per
+    legacy lines 6443-6565: threshold by 50th-pct × 0.1 of mass + mag,
+    log10-scaled linewidth + head + alpha + color, ``YlGnBu`` cmap.
+    Head dimensions scale with histogram dx/dy (legacy lines 6175-6178).
     """
-    if payload is None or extent is None:
+    if plan is None or extent is None:
         ax.text(0.5, 0.5, f"{title}\n(no OT data)",
                 ha="center", va="center", transform=ax.transAxes)
         ax.set_axis_off()
         return
-    Xg, Yg, Ux, Uy, move_grid, _mass_base = payload
+    Xg = plan["Xg"]
+    Yg = plan["Yg"]
+    Ux = plan["Ux"]
+    Uy = plan["Uy"]
+    mag = plan["mag"]
+    mass_grid = plan["mass_grid"]
+    dx_cell = plan["dx"]
+    dy_cell = plan["dy"]
 
-    move_pos = move_grid[move_grid > 0]
-    if move_pos.size == 0:
-        ax.text(0.5, 0.5, f"{title}\n(no movement)",
+    if not np.any(mag > 0):
+        ax.text(0.5, 0.5, f"{title}\n(no displacement)",
                 ha="center", va="center", transform=ax.transAxes)
         ax.set_axis_off()
         return
-    move_thr = float(np.percentile(move_pos, 50) * 0.1)
-    mask = move_grid > move_thr
+
+    mass_pos = mass_grid[mass_grid > 0]
+    mag_pos = mag[mag > 0]
+    mass_thr = float(np.percentile(mass_pos, 50) * 0.1) if mass_pos.size > 0 else 0.0
+    mag_thr = float(np.percentile(mag_pos, 50) * 0.1) if mag_pos.size > 0 else 0.0
+    mask = (mass_grid > mass_thr) & (mag > mag_thr)
     if not np.any(mask):
         ax.text(0.5, 0.5, f"{title}\n(below threshold)",
                 ha="center", va="center", transform=ax.transAxes)
@@ -1546,7 +1695,7 @@ def _render_ot_arrows_panel(
     Y_plot = Yg[mask]
     U_plot = Ux[mask]
     V_plot = Uy[mask]
-    M_plot = move_grid[mask]
+    M_plot = mass_grid[mask]
 
     pos_mass = M_plot[M_plot > 0]
     if pos_mass.size == 0:
@@ -1562,8 +1711,13 @@ def _render_ot_arrows_panel(
         hi_m = lo_m + 1e-6
     frac_m = np.clip((logM - lo_m) / (hi_m - lo_m), 0.0, 1.0)
     lw_vals = _ARROW_LW_MIN + frac_m * (_ARROW_LW_MAX - _ARROW_LW_MIN)
-    head_w_vals = _ARROW_HEAD_W_MIN + frac_m * (_ARROW_HEAD_W_MAX - _ARROW_HEAD_W_MIN)
-    head_l_vals = _ARROW_HEAD_L_MIN + frac_m * (_ARROW_HEAD_L_MAX - _ARROW_HEAD_L_MIN)
+    # Head dimensions scale with histogram cell width/height per legacy.
+    head_w_min = _ARROW_HEAD_W_MIN_FRAC_DX * dx_cell
+    head_w_max = _ARROW_HEAD_W_MAX_FRAC_DX * dx_cell
+    head_l_min = _ARROW_HEAD_L_MIN_FRAC_DY * dy_cell
+    head_l_max = _ARROW_HEAD_L_MAX_FRAC_DY * dy_cell
+    head_w_vals = head_w_min + frac_m * (head_w_max - head_w_min)
+    head_l_vals = head_l_min + frac_m * (head_l_max - head_l_min)
     alphas = _ARROW_ALPHA_MIN + frac_m * (_ARROW_ALPHA_MAX - _ARROW_ALPHA_MIN)
 
     cmap = plt.get_cmap(_OT_ARROW_CMAP)
@@ -1588,16 +1742,15 @@ def _render_ot_arrows_panel(
     else:
         ax.set_xlim(extent[0], extent[1])
     if per_mode["ylim"]:
-        # Inverted Y to match heatmap convention (legacy line 7490).
         ylim_lo, ylim_hi = per_mode["ylim"]
-        ax.set_ylim(ylim_hi, ylim_lo)
+        ax.set_ylim(ylim_hi, ylim_lo)  # inverted Y per legacy line 6539
     else:
         ax.set_ylim(extent[3], extent[2])
     ax.set_title(title, fontsize=8)
     ax.tick_params(labelsize=6)
 
 
-def _aggregate_for_dates_pooled_whiskers(
+def _aggregate_for_dates_pooled_bodyparts(
     animal: str,
     dates: list[dt.date],
     bodyparts: list[str],
@@ -1608,14 +1761,16 @@ def _aggregate_for_dates_pooled_whiskers(
     defaults: dict[str, Any],
     animal_info: AnimalInfo,
 ) -> tuple[np.ndarray | None, list[float] | None, int]:
-    """Sum the 6-whisker per-bp histograms cell-wise (pseudo-pooling).
+    """Sum N per-bp histograms cell-wise (pseudo-pooling) for any
+    composite family.
 
     Returns ``(H_sum, extent, n_sessions)``. The pooling approximates the
     legacy "Pool all six whiskers as one part" pattern (line 2174 of
-    20251202_..._pixelbin.ipynb cited by Addendum #10). The per-whisker
-    histograms share the same extent because we use the first whisker's
-    per_center_mode block as the shared axis range. Per Q3a, we use
-    balanced OT downstream.
+    20251202_..._pixelbin.ipynb cited by Addendum #10). The per-bp
+    histograms share the same extent because we use the first bp's
+    per_center_mode block as the shared axis range. Generalized in
+    Phase 7c.2 Addendum #13 to also serve the fiducial bilateral-pair
+    composite families.
     """
     if scope == "tone_aligned":
         tg_arg: str | None = "all"
@@ -1653,120 +1808,165 @@ def render_unbalanced_ot_displacement_field(
     resolver: PathResolver,
     *,
     dates: list[dt.date],
+    bin_size_days: int | None = None,
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
 ) -> plt.Figure:
-    """Render the balanced-OT displacement-field grid-summary SVG per
-    Addendum #10 Q3 / Q3a Read X outcome.
+    """Render the UNBALANCED-OT per-bin grid summary SVG per Addendum #14
+    Q3d.B (mirrors proportion_differences per-bin pattern from
+    Addendum #11 Q2.B).
 
-    Algorithm (legacy line 6937+):
-      1. H_pre = animal-level pre-stroke baseline (pooled rel_day <= 0).
-      2. For each rel_day_bin with at least one post-stroke session:
-         a. H_sess = aggregated histogram across bin's sessions.
-         b. ``G = ot.sinkhorn(H_pre_prop, H_sess_prop, C, reg=0.02)``.
-         c. Compute displacement field + moved-mass thresholded arrows.
-      3. Tile per-bin arrow panels into one grid-summary SVG.
+    Algorithm:
+      1. ``H_pre_pool`` = animal-level pre-stroke baseline (pooled
+         rel_day <= 0 sessions), proportion-normalized.
+      2. Group ALL dates (pre + post) by rel_day_bin at ``bin_size_days``.
+         Both pre-stroke bins (within-pre variability) and post-stroke
+         bins (stroke-induced departure) get UOT panels per Q2.B
+         framing carried into UOT.
+      3. For each bin: ``H_bin`` aggregated → unbalanced sinkhorn vs
+         ``H_pre_pool`` → 3 panels (mass_destroy + mass_create + arrows).
+      4. Grid layout: N rows × 3 cols (N = number of bins; chronological
+         pre→post).
 
-    Per Q3d: per-rel_day_bin (NOT per-session) for compute tractability
-    while preserving "multiple days per file" Q3c semantic. CC choice;
-    Priya re-tunable.
+    Output filename: ``unbalanced_ot_grid_bin{N}d.svg`` per Q14 path
+    convention; one SVG per (animal, family, scope, bin_size).
 
-    Non-whiskers families: single-bodypart OT.
-    Whiskers family: pooled-6-whisker pseudo-bodypart (legacy "Pool all
-    six whiskers as one part" pattern at line 2174 of legacy notebook).
+    Single-bp families: single-bp OT.
+    Composite families (whiskers + fiducial bilateral pairs, any family
+    with > 1 bp): pooled N-bp pseudo-bp (legacy "Pool all six whiskers
+    as one part" at line 2174 of legacy notebook, generalized in
+    Addendum #13).
     """
     if defaults is None:
         defaults = load_defaults()
     if animal_info is None:
         animal_info = get_animal(animal)
+    if bin_size_days is None:
+        raise ValueError(
+            "render_unbalanced_ot_displacement_field requires explicit "
+            "bin_size_days kwarg per Addendum #14 Q3d.B (per-bin grid "
+            "summary). Driver passes it."
+        )
+
     bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
     spatial_config = defaults["dlc_spatial"]
-
-    pre_dates, post_dates = _split_pre_post_dates(dates, animal_info)
-    if not pre_dates or not post_dates:
-        # Cannot compute OT — return placeholder figure.
+    pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
+    if not pre_dates:
         fig, ax = plt.subplots(figsize=(8, 6))
-        ax.text(0.5, 0.5,
-                f"{animal}/{family_entry}/{scope}\n"
-                f"OT skipped (n_pre={len(pre_dates)}, n_post={len(post_dates)})",
-                ha="center", va="center", transform=ax.transAxes)
+        ax.text(
+            0.5, 0.5,
+            f"{animal}/{family_entry}/{scope}/bin{bin_size_days}d\n"
+            "UOT skipped (no pre-stroke sessions)",
+            ha="center", va="center", transform=ax.transAxes,
+        )
         ax.set_axis_off()
         return fig
 
-    # Group post-dates by rel_day_bin (matches Q3c grid-summary semantic).
-    post_by_bin: dict[str, list[dt.date]] = {}
-    for d in post_dates:
-        from stroke_orofacial.dlc_kinematics._day_binned import _compute_rel_day_bin_label
-        label = _compute_rel_day_bin_label(d, animal_info.stroke_date, animal_info.bin_days)
-        post_by_bin.setdefault(label, []).append(d)
-    bin_labels = sorted(post_by_bin.keys())
-
-    # Compute baseline H_pre (single per family).
+    # Compute fixed reference: animal-level pre-stroke pool, proportion-
+    # normalized.
     if len(bodyparts) == 1:
         bp_for_axis = bodyparts[0]
-        H_pre, ext_pre, n_pre_sess = compute_animal_aggregated_histogram(
+        H_pre_pool, ext_pre, n_pre_sess, _ = compute_animal_aggregated_histogram(
             animal, pre_dates, bp_for_axis, center_mode, resolver,
             trial_group=("all" if scope == "tone_aligned" else None),
             window_ms=(TASK5_TONE_WINDOW_MS if scope == "tone_aligned" else None),
             defaults=defaults, animal_info=animal_info,
-        )[:3]
+        )
     else:
-        bp_for_axis = bodyparts[0]  # first whisker as shared-axis reference
-        H_pre, ext_pre, n_pre_sess = _aggregate_for_dates_pooled_whiskers(
+        bp_for_axis = bodyparts[0]
+        H_pre_pool, ext_pre, n_pre_sess = _aggregate_for_dates_pooled_bodyparts(
             animal, pre_dates, bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
         )
 
-    if H_pre is None or float(H_pre.sum()) == 0.0:
+    if H_pre_pool is None or float(H_pre_pool.sum()) == 0.0:
         fig, ax = plt.subplots(figsize=(8, 6))
-        ax.text(0.5, 0.5,
-                f"{animal}/{family_entry}/{scope}\nOT skipped (empty pre)",
-                ha="center", va="center", transform=ax.transAxes)
+        ax.text(
+            0.5, 0.5,
+            f"{animal}/{family_entry}/{scope}/bin{bin_size_days}d\n"
+            f"UOT skipped (empty pre-stroke pool, n_pre={len(pre_dates)})",
+            ha="center", va="center", transform=ax.transAxes,
+        )
         ax.set_axis_off()
         return fig
 
+    H_pre_pool_prop = H_pre_pool / float(H_pre_pool.sum())
+
+    # Group ALL dates by rel_day_bin at the requested bin_size_days.
+    from stroke_orofacial.dlc_kinematics._day_binned import _compute_rel_day_bin_label
+    bins: dict[str, list[dt.date]] = {}
+    for d in dates:
+        label = _compute_rel_day_bin_label(
+            session_date=d, d0=animal_info.stroke_date, bin_days=int(bin_size_days),
+        )
+        bins.setdefault(label, []).append(d)
+    bin_labels = sorted(bins.keys(), key=_bin_label_sort_key)
+
+    # Grid: N rows × 3 cols (mass_destroy + mass_create + arrows per bin).
     n_bins = len(bin_labels)
-    ncols = min(4, max(1, n_bins))
-    nrows = max(1, int(np.ceil(n_bins / ncols)))
+    nrows = max(1, n_bins)
+    ncols = 3
     fig, axes_obj = plt.subplots(
         nrows=nrows, ncols=ncols,
-        figsize=(ncols * 5.5, nrows * 4.5),
+        figsize=(ncols * 5.0, nrows * 3.8),
         constrained_layout=True,
     )
-    axes = list(axes_obj.flat) if hasattr(axes_obj, "flat") else [axes_obj]
+    # Normalize axes layout to 2D (nrows, 3).
+    if nrows == 1:
+        axes = np.array(axes_obj).reshape(1, ncols)
+    else:
+        axes = axes_obj
 
-    for bin_label, ax in zip(bin_labels, axes, strict=False):
-        bin_dates = post_by_bin[bin_label]
+    for row_idx, bin_label in enumerate(bin_labels):
+        bin_dates = bins[bin_label]
         if len(bodyparts) == 1:
-            H_sess, ext_s, n_sess = compute_animal_aggregated_histogram(
-                animal, bin_dates, bodyparts[0], center_mode, resolver,
+            H_bin, ext_b, n_sess, _ = compute_animal_aggregated_histogram(
+                animal, bin_dates, bp_for_axis, center_mode, resolver,
                 trial_group=("all" if scope == "tone_aligned" else None),
                 window_ms=(TASK5_TONE_WINDOW_MS if scope == "tone_aligned" else None),
                 defaults=defaults, animal_info=animal_info,
-            )[:3]
+            )
         else:
-            H_sess, ext_s, n_sess = _aggregate_for_dates_pooled_whiskers(
+            H_bin, ext_b, n_sess = _aggregate_for_dates_pooled_bodyparts(
                 animal, bin_dates, bodyparts, center_mode, scope, resolver,
                 defaults=defaults, animal_info=animal_info,
             )
-        if H_sess is None or float(H_sess.sum()) == 0.0:
-            ax.text(0.5, 0.5, f"bin {bin_label}\n(no data)",
-                    ha="center", va="center", transform=ax.transAxes)
-            ax.set_axis_off()
+        ax_destroy = axes[row_idx, 0]
+        ax_create = axes[row_idx, 1]
+        ax_arrows = axes[row_idx, 2]
+        if H_bin is None or float(H_bin.sum()) == 0.0:
+            for ax in (ax_destroy, ax_create, ax_arrows):
+                ax.text(0.5, 0.5, f"bin {bin_label}\n(no data)",
+                        ha="center", va="center", transform=ax.transAxes)
+                ax.set_axis_off()
             continue
-        ext = ext_pre or ext_s
-        payload = _compute_displacement_field(H_pre, H_sess, ext)
-        title = f"bin {bin_label}  n_sess={n_sess}"
-        _render_ot_arrows_panel(
-            ax, payload, ext, bp_for_axis, center_mode,
-            spatial_config=spatial_config, title=title,
+        ext = ext_pre or ext_b
+        H_bin_prop = H_bin / float(H_bin.sum())
+        plan = _compute_unbalanced_ot_plan(H_pre_pool_prop, H_bin_prop, ext)
+        if plan is None:
+            for ax in (ax_destroy, ax_create, ax_arrows):
+                ax.text(0.5, 0.5, f"bin {bin_label}\n(OT solver failed)",
+                        ha="center", va="center", transform=ax.transAxes)
+                ax.set_axis_off()
+            continue
+        bin_n_sess_title = f"n_sess={n_sess}"
+        _render_ot_mass_change_panels(
+            ax_destroy, ax_create,
+            plan["mass_destroy"], plan["mass_create"], ext,
+            bp_for_axis, center_mode,
+            spatial_config=spatial_config,
+            bin_label=f"{bin_label} {bin_n_sess_title}",
         )
-    # Hide trailing empty axes.
-    for ax in axes[len(bin_labels):]:
-        ax.set_axis_off()
+        _render_ot_arrows_panel(
+            ax_arrows, plan, ext, bp_for_axis, center_mode,
+            spatial_config=spatial_config,
+            title=f"bin {bin_label} arrows {bin_n_sess_title}",
+        )
+
     fig.suptitle(
-        f"{animal}  {family_entry}  {scope}  unbalanced_ot displacement field "
-        f"(pre-stroke baseline, n_pre_sess={n_pre_sess}; per rel_day_bin)",
+        f"{animal}  {family_entry}  {scope}  unbalanced_ot grid  "
+        f"bin{int(bin_size_days)}d  vs all-pre-stroke pool "
+        f"(n_pre_sess={n_pre_sess})",
         fontsize=11,
     )
     return fig

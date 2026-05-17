@@ -171,9 +171,11 @@ def default_center_mode(defaults: dict[str, Any], bodypart: str) -> str:
 # Phase 7c.2 Addendum #3 Q10.A — dlc_spatial_tone_aligned.families allowlist
 # ---------------------------------------------------------------------------
 #
-# The locked 5-family allowlist (Priya 2026-05-15). Total: 10 individual
-# heatmaps per (trial_group, window, session). Whiskers stay as 6
-# distinct bodyparts through the pipeline; no aggregation logic.
+# The locked 7-family allowlist (Priya 2026-05-15; extended 2026-05-15 per
+# Addendum #13 with the two fiducial bilateral-pair composites). Total:
+# 14 individual heatmaps per (trial_group, window, session). Whiskers
+# stay as 6 distinct bodyparts through the pipeline; fiducial composites
+# pair (L, R) per side. No aggregation logic — render layer fans out per bp.
 EXPECTED_TONE_ALIGNED_FAMILIES: dict[str, dict[str, Any]] = {
     "tongue_spout_midpoint": {
         "bodyparts": ("tongue",),
@@ -196,6 +198,14 @@ EXPECTED_TONE_ALIGNED_FAMILIES: dict[str, dict[str, Any]] = {
             "L_whiskers_1", "L_whiskers_2", "L_whiskers_3",
             "R_whiskers_1", "R_whiskers_2", "R_whiskers_3",
         ),
+        "center_mode": "eye_midpoint",
+    },
+    "spout_spout_midpoint": {
+        "bodyparts": ("L_spout", "R_spout"),
+        "center_mode": "spout_midpoint",
+    },
+    "eye_eye_midpoint": {
+        "bodyparts": ("L_eye", "R_eye"),
         "center_mode": "eye_midpoint",
     },
 }

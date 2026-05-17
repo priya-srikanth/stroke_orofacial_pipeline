@@ -72,11 +72,12 @@ ALL_FAMILIES = tuple(EXPECTED_TONE_ALIGNED_FAMILIES.keys())
 
 SCOPES = ("tone_aligned", "whole_session")
 
-# Proportion-diff bin sizes per Addendum #11 Q2.B: render one SVG per
-# bin_size; current cohort-wide config is the union of small-animal (2d)
-# + big-animal (7d) bin sizes. Each animal produces 2 proportion_diff
-# SVGs per (family, scope).
-PROPORTION_DIFF_BIN_SIZES: tuple[int, ...] = (2, 7)
+# Per-bin grid-summary bin sizes, shared by proportion_differences
+# (Addendum #11 Q2.B) and unbalanced_ot (Addendum #14 Q3d.B). One SVG per
+# bin_size for each plot type; current cohort-wide config is the union of
+# small-animal (2d) + big-animal (7d) bin sizes. Each animal produces 2
+# proportion_diff + 2 unbalanced_ot SVGs per (family, scope).
+BIN_SIZES_DAYS: tuple[int, ...] = (2, 7)
 
 # Task 3/4 cohort enumeration constants.
 CANON_BP_CM = "tongue_spout_midpoint"
@@ -187,13 +188,14 @@ def _proportion_diff_out_path(
 
 def _unbalanced_ot_out_path(
     resolver: PathResolver, scope: str, animal: str, family_entry: str,
+    bin_size_days: int,
 ) -> Path:
     if scope == "tone_aligned":
         return resolver.tone_aligned_heatmap_unbalanced_ot_path(
-            animal, family_entry,
+            animal, family_entry, bin_size_days,
         )
     return resolver.whole_session_heatmap_unbalanced_ot_path(
-        animal, family_entry,
+        animal, family_entry, bin_size_days,
     )
 
 
@@ -281,7 +283,7 @@ def _process_animal(animal: str, resolver: PathResolver, defaults: dict) -> dict
                     log.error(f"    ERR {msg}")
             # ----- proportion_differences (Addendum #11 Q2.B: 1 SVG per
             # family × scope × bin_size) -----
-            for bin_size_days in PROPORTION_DIFF_BIN_SIZES:
+            for bin_size_days in BIN_SIZES_DAYS:
                 try:
                     fig = render_proportion_difference_heatmap(
                         animal=animal, family_entry=family_entry,
@@ -302,25 +304,28 @@ def _process_animal(animal: str, resolver: PathResolver, defaults: dict) -> dict
                     anomalies.append(msg)
                     log.error(f"    ERR {msg}")
 
-            # ----- unbalanced_ot displacement field (1 SVG per family × scope) -----
-            try:
-                fig = render_unbalanced_ot_displacement_field(
-                    animal=animal, family_entry=family_entry,
-                    scope=scope, resolver=resolver,
-                    dates=dates,
-                    defaults=defaults, animal_info=animal_info,
-                )
-                out = _unbalanced_ot_out_path(
-                    resolver, scope, animal, family_entry,
-                )
-                fig.savefig(out, format="svg")
-                plt.close(fig)
-                n_ot += 1
-            except Exception as ex:
-                n_err += 1
-                msg = f"ot/{family_entry}/{scope}: {ex!r}"
-                anomalies.append(msg)
-                log.error(f"    ERR {msg}")
+            # ----- unbalanced_ot per-bin grid (Addendum #14 Q3d.B: 1 SVG
+            # per family × scope × bin_size; per-bin vs all-pre-stroke pool) -----
+            for bin_size_days in BIN_SIZES_DAYS:
+                try:
+                    fig = render_unbalanced_ot_displacement_field(
+                        animal=animal, family_entry=family_entry,
+                        scope=scope, resolver=resolver,
+                        bin_size_days=bin_size_days,
+                        dates=dates,
+                        defaults=defaults, animal_info=animal_info,
+                    )
+                    out = _unbalanced_ot_out_path(
+                        resolver, scope, animal, family_entry, bin_size_days,
+                    )
+                    fig.savefig(out, format="svg")
+                    plt.close(fig)
+                    n_ot += 1
+                except Exception as ex:
+                    n_err += 1
+                    msg = f"ot/{family_entry}/{scope}/bin{bin_size_days}d: {ex!r}"
+                    anomalies.append(msg)
+                    log.error(f"    ERR {msg}")
         log.info(
             f"  family={family_entry} done; "
             f"n_is={n_is} n_bs={n_bs} n_pd={n_pd} n_ot={n_ot} n_err={n_err}"

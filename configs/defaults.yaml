@@ -284,19 +284,52 @@ dlc_spatial:
           ylim: [95, 265]
     # Fiducial bodyparts — null-baseline controls for Phase 9 significance testing
     # (DECISIONS 2026-04-19 Phase 4.5-lite §Constraints). Each fiducial is centered
-    # under its own regime. No cmap / per_center_mode: no heatmaps for fiducials today.
+    # under its own regime.
+    #
+    # Phase 7c.2 Addendum #13 (2026-05-15) extends these entries with cmap +
+    # per_center_mode blocks for the two new composite-family heatmaps
+    # (``spout_spout_midpoint`` = {L_spout, R_spout}@spout_midpoint, and
+    # ``eye_eye_midpoint`` = {L_eye, R_eye}@eye_midpoint). cmaps: "Reds" for
+    # L, "Blues" for R — bilateral pairs with clear L/R visual contrast.
+    # per_center_mode.xlim/ylim values are UNIFIED bilateral ranges (cover
+    # both L and R bodyparts) so the composite axis lookup (which keys on
+    # the first bp per legacy whiskers convention) renders both bilateral
+    # bodyparts visibly. Tight ~3-6 px DLC clusters (estimated from PS46/
+    # 2025-03-07; see .scratch_phase_7c2/estimate_fiducial_ranges.py output)
+    # get generous padding (~±20 px on Y, full bilateral span on X) for
+    # plot readability.
     L_eye:
       likelihood_threshold: 0.80
       center_mode: eye_midpoint
+      cmap: "Reds"
+      per_center_mode:
+        eye_midpoint:
+          xlim: [-160, 160]
+          ylim: [-20, 20]
     R_eye:
       likelihood_threshold: 0.80
       center_mode: eye_midpoint
+      cmap: "Blues"
+      per_center_mode:
+        eye_midpoint:
+          xlim: [-160, 160]
+          ylim: [-20, 20]
     L_spout:
       likelihood_threshold: 0.80
       center_mode: spout_midpoint
+      cmap: "Reds"
+      per_center_mode:
+        spout_midpoint:
+          xlim: [-100, 100]
+          ylim: [-20, 20]
     R_spout:
       likelihood_threshold: 0.80
       center_mode: spout_midpoint
+      cmap: "Blues"
+      per_center_mode:
+        spout_midpoint:
+          xlim: [-100, 100]
+          ylim: [-20, 20]
 
 # ---- DLC spatial (tone-aligned) ----
 # Per-family tone-aligned config — Phase 7c.2 Addendum #3 Q10.A.
@@ -307,15 +340,17 @@ dlc_spatial:
 # (bodyparts, center_mode) pairs, scoped tighter than the Phase 4.5-lite
 # sweep covered. Out-of-allowlist combinations (e.g., jaw_spout_midpoint,
 # nose_spout_midpoint) are explicitly removed. ``config_loader``
-# validates the loaded structure against the locked 5-family allowlist
+# validates the loaded structure against the locked 7-family allowlist
 # at load time; out-of-allowlist combos raise at YAML-load.
 #
-# Yields 10 heatmaps per (trial_group, window, session):
+# Yields 14 heatmaps per (trial_group, window, session):
 #   tongue_spout_midpoint = 1
 #   tongue_eye_midpoint = 1
 #   jaw_eye_midpoint = 1
 #   nose_eye_midpoint = 1
 #   whiskers_eye_midpoint = 6 (one per individual whisker; no aggregation)
+#   spout_spout_midpoint = 2 (L_spout + R_spout; layered composite — Add. #13)
+#   eye_eye_midpoint = 2 (L_eye + R_eye; layered composite — Add. #13)
 #
 # Per Phase 7c.2 Addendum #3 Interpretation 1 lock, this config drives
 # compute-on-demand tone-aligned rendering (Task 5 ``render_tone_aligned_heatmap``
@@ -371,6 +406,23 @@ dlc_spatial_tone_aligned:
       # returns this family entry for each (whisker_bp, eye_midpoint) probe.
       bodyparts: ["L_whiskers_1", "L_whiskers_2", "L_whiskers_3",
                   "R_whiskers_1", "R_whiskers_2", "R_whiskers_3"]
+      center_mode: "eye_midpoint"
+      likelihood_thresholds: [0.8]
+      x_range: null
+      parity_status: "sanity-check-only"
+    # Phase 7c.2 Addendum #13 (2026-05-15) — fiducial bilateral-pair
+    # composites. Pair the L/R fiducial bodyparts under their respective
+    # self-anchored center modes. Same Pattern B layered-overlay treatment
+    # as whiskers (per-bp cmap from dlc_spatial.bodyparts.{bp}.cmap;
+    # composite axis = first-bp's per_center_mode block).
+    spout_spout_midpoint:
+      bodyparts: ["L_spout", "R_spout"]
+      center_mode: "spout_midpoint"
+      likelihood_thresholds: [0.8]
+      x_range: null
+      parity_status: "sanity-check-only"
+    eye_eye_midpoint:
+      bodyparts: ["L_eye", "R_eye"]
       center_mode: "eye_midpoint"
       likelihood_thresholds: [0.8]
       x_range: null
