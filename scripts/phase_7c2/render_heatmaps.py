@@ -175,11 +175,11 @@ def _binned_sessions_out_path(
 
 def _proportion_diff_out_path(
     resolver: PathResolver, scope: str, animal: str, family_entry: str,
-    bin_size_days: int,
+    bin_size_days: int, trial_group: str,
 ) -> Path:
     if scope == "tone_aligned":
         return resolver.tone_aligned_heatmap_proportion_differences_path(
-            animal, family_entry, bin_size_days,
+            animal, family_entry, bin_size_days, trial_group,
         )
     return resolver.whole_session_heatmap_proportion_differences_path(
         animal, family_entry, bin_size_days,
@@ -188,15 +188,21 @@ def _proportion_diff_out_path(
 
 def _unbalanced_ot_out_path(
     resolver: PathResolver, scope: str, animal: str, family_entry: str,
-    bin_size_days: int,
+    bin_size_days: int, trial_group: str,
 ) -> Path:
     if scope == "tone_aligned":
         return resolver.tone_aligned_heatmap_unbalanced_ot_path(
-            animal, family_entry, bin_size_days,
+            animal, family_entry, bin_size_days, trial_group,
         )
     return resolver.whole_session_heatmap_unbalanced_ot_path(
         animal, family_entry, bin_size_days,
     )
+
+
+def _trial_groups_for_scope(scope: str) -> tuple[str, ...]:
+    """Trial-group fanout per Addendum #15 Q16. For tone_aligned, fan out
+    all/L/R; for whole_session, single 'all' panel."""
+    return ("all", "L", "R") if scope == "tone_aligned" else ("all",)
 
 
 def _load_manifest_so_far() -> dict[str, str]:
@@ -220,10 +226,24 @@ def _append_manifest(row: dict) -> None:
         w.writerow(row)
 
 
-def _process_animal(animal: str, resolver: PathResolver, defaults: dict) -> dict:
-    """Render individual_session + binned_sessions × 2 scopes × 4 non-whisker
-    families for one animal. Returns manifest row dict."""
-    log.info(f"=== animal={animal}: render_heatmaps Task 5 ===")
+def _process_animal(
+    animal: str, resolver: PathResolver, defaults: dict,
+    *, only_pd_ot: bool = False,
+) -> dict:
+    """Render all 4 plot types × 2 scopes × 7 families for one animal.
+
+    Per Addendum #15 Q16: PD + UOT fan out across 3 trial_groups under
+    tone_aligned scope (1 under whole_session). Filename suffix
+    ``_{trial_group}`` distinguishes the per-tg SVGs.
+
+    ``only_pd_ot=True``: skip individual_session + binned_sessions
+    re-emit (they're tg-invariant and Addendum #15 doesn't change their
+    spec); useful for the post-Addendum-15 catch-up pass where IS+BS
+    were already emitted in the prior cohort run.
+
+    Returns manifest row dict.
+    """
+    log.info(f"=== animal={animal}: render_heatmaps Task 5 (only_pd_ot={only_pd_ot}) ===")
     animal_t0 = time.perf_counter()
     animal_info = get_animal(animal)
     dates = _enumerate_yaml_filtered_dates(animal, resolver)
@@ -239,93 +259,107 @@ def _process_animal(animal: str, resolver: PathResolver, defaults: dict) -> dict
     anomalies: list[str] = []
     for family_entry in ALL_FAMILIES:
         for scope in SCOPES:
-            for date in dates:
-                try:
-                    fig = render_individual_session_heatmap(
-                        animal=animal, family_entry=family_entry,
-                        date=date, scope=scope, resolver=resolver,
-                        defaults=defaults, animal_info=animal_info,
-                    )
-                    out = _individual_session_out_path(
-                        resolver, scope, animal, family_entry, date,
-                    )
-                    fig.savefig(out, format="svg")
-                    plt.close(fig)
-                    n_is += 1
-                except Exception as ex:
-                    n_err += 1
-                    msg = (
-                        f"is/{family_entry}/{scope}/{date.isoformat()}: {ex!r}"
-                    )
-                    anomalies.append(msg)
-                    log.error(f"    ERR {msg}")
-            for bin_label, bin_dates in sorted(bins.items()):
-                try:
-                    fig = render_binned_sessions_heatmap(
-                        animal=animal, family_entry=family_entry,
-                        rel_day_bin_label=bin_label,
-                        dates_in_bin=bin_dates,
-                        scope=scope, resolver=resolver,
-                        defaults=defaults, animal_info=animal_info,
-                    )
-                    out = _binned_sessions_out_path(
-                        resolver, scope, animal, family_entry, bin_label,
-                    )
-                    fig.savefig(out, format="svg")
-                    plt.close(fig)
-                    n_bs += 1
-                except Exception as ex:
-                    n_err += 1
-                    msg = (
-                        f"bs/{family_entry}/{scope}/{bin_label}: {ex!r}"
-                    )
-                    anomalies.append(msg)
-                    log.error(f"    ERR {msg}")
-            # ----- proportion_differences (Addendum #11 Q2.B: 1 SVG per
-            # family × scope × bin_size) -----
+            if not only_pd_ot:
+                for date in dates:
+                    try:
+                        fig = render_individual_session_heatmap(
+                            animal=animal, family_entry=family_entry,
+                            date=date, scope=scope, resolver=resolver,
+                            defaults=defaults, animal_info=animal_info,
+                        )
+                        out = _individual_session_out_path(
+                            resolver, scope, animal, family_entry, date,
+                        )
+                        fig.savefig(out, format="svg")
+                        plt.close(fig)
+                        n_is += 1
+                    except Exception as ex:
+                        n_err += 1
+                        msg = (
+                            f"is/{family_entry}/{scope}/{date.isoformat()}: {ex!r}"
+                        )
+                        anomalies.append(msg)
+                        log.error(f"    ERR {msg}")
+                for bin_label, bin_dates in sorted(bins.items()):
+                    try:
+                        fig = render_binned_sessions_heatmap(
+                            animal=animal, family_entry=family_entry,
+                            rel_day_bin_label=bin_label,
+                            dates_in_bin=bin_dates,
+                            scope=scope, resolver=resolver,
+                            defaults=defaults, animal_info=animal_info,
+                        )
+                        out = _binned_sessions_out_path(
+                            resolver, scope, animal, family_entry, bin_label,
+                        )
+                        fig.savefig(out, format="svg")
+                        plt.close(fig)
+                        n_bs += 1
+                    except Exception as ex:
+                        n_err += 1
+                        msg = (
+                            f"bs/{family_entry}/{scope}/{bin_label}: {ex!r}"
+                        )
+                        anomalies.append(msg)
+                        log.error(f"    ERR {msg}")
+            # ----- proportion_differences (Addendum #11 Q2.B per-bin grid +
+            # Addendum #15 Q14 shared symmetric colormap + Q16 trial-group
+            # fanout: 3 SVGs per (family, tone_aligned, bin_size), 1 SVG per
+            # whole_session bin_size) -----
             for bin_size_days in BIN_SIZES_DAYS:
-                try:
-                    fig = render_proportion_difference_heatmap(
-                        animal=animal, family_entry=family_entry,
-                        scope=scope, resolver=resolver,
-                        bin_size_days=bin_size_days,
-                        dates=dates,
-                        defaults=defaults, animal_info=animal_info,
-                    )
-                    out = _proportion_diff_out_path(
-                        resolver, scope, animal, family_entry, bin_size_days,
-                    )
-                    fig.savefig(out, format="svg")
-                    plt.close(fig)
-                    n_pd += 1
-                except Exception as ex:
-                    n_err += 1
-                    msg = f"pd/{family_entry}/{scope}/bin{bin_size_days}d: {ex!r}"
-                    anomalies.append(msg)
-                    log.error(f"    ERR {msg}")
+                for tg in _trial_groups_for_scope(scope):
+                    try:
+                        fig = render_proportion_difference_heatmap(
+                            animal=animal, family_entry=family_entry,
+                            scope=scope, resolver=resolver,
+                            bin_size_days=bin_size_days,
+                            trial_group=tg,
+                            dates=dates,
+                            defaults=defaults, animal_info=animal_info,
+                        )
+                        out = _proportion_diff_out_path(
+                            resolver, scope, animal, family_entry,
+                            bin_size_days, tg,
+                        )
+                        fig.savefig(out, format="svg")
+                        plt.close(fig)
+                        n_pd += 1
+                    except Exception as ex:
+                        n_err += 1
+                        msg = (
+                            f"pd/{family_entry}/{scope}/bin{bin_size_days}d/tg={tg}: {ex!r}"
+                        )
+                        anomalies.append(msg)
+                        log.error(f"    ERR {msg}")
 
-            # ----- unbalanced_ot per-bin grid (Addendum #14 Q3d.B: 1 SVG
-            # per family × scope × bin_size; per-bin vs all-pre-stroke pool) -----
+            # ----- unbalanced_ot per-bin grid (Addendum #14 Q3d.B per-bin
+            # vs all-pre-stroke pool + Addendum #15 Q15 nbins=50 + Q16
+            # trial-group fanout) -----
             for bin_size_days in BIN_SIZES_DAYS:
-                try:
-                    fig = render_unbalanced_ot_displacement_field(
-                        animal=animal, family_entry=family_entry,
-                        scope=scope, resolver=resolver,
-                        bin_size_days=bin_size_days,
-                        dates=dates,
-                        defaults=defaults, animal_info=animal_info,
-                    )
-                    out = _unbalanced_ot_out_path(
-                        resolver, scope, animal, family_entry, bin_size_days,
-                    )
-                    fig.savefig(out, format="svg")
-                    plt.close(fig)
-                    n_ot += 1
-                except Exception as ex:
-                    n_err += 1
-                    msg = f"ot/{family_entry}/{scope}/bin{bin_size_days}d: {ex!r}"
-                    anomalies.append(msg)
-                    log.error(f"    ERR {msg}")
+                for tg in _trial_groups_for_scope(scope):
+                    try:
+                        fig = render_unbalanced_ot_displacement_field(
+                            animal=animal, family_entry=family_entry,
+                            scope=scope, resolver=resolver,
+                            bin_size_days=bin_size_days,
+                            trial_group=tg,
+                            dates=dates,
+                            defaults=defaults, animal_info=animal_info,
+                        )
+                        out = _unbalanced_ot_out_path(
+                            resolver, scope, animal, family_entry,
+                            bin_size_days, tg,
+                        )
+                        fig.savefig(out, format="svg")
+                        plt.close(fig)
+                        n_ot += 1
+                    except Exception as ex:
+                        n_err += 1
+                        msg = (
+                            f"ot/{family_entry}/{scope}/bin{bin_size_days}d/tg={tg}: {ex!r}"
+                        )
+                        anomalies.append(msg)
+                        log.error(f"    ERR {msg}")
         log.info(
             f"  family={family_entry} done; "
             f"n_is={n_is} n_bs={n_bs} n_pd={n_pd} n_ot={n_ot} n_err={n_err}"
@@ -359,6 +393,20 @@ def main(argv: list[str] | None = None) -> int:
         choices=COHORT_ORDER,
         help="Process a single animal. Default: iterate the full Cohort A order.",
     )
+    parser.add_argument(
+        "--only-pd-ot",
+        action="store_true",
+        help="Skip individual_session + binned_sessions render calls; only "
+        "re-emit proportion_differences + unbalanced_ot. Used by the post-"
+        "Addendum-15 catch-up pass (PD+UOT spec changed; IS+BS unchanged).",
+    )
+    parser.add_argument(
+        "--no-skip",
+        action="store_true",
+        help="Disable resumability — process every animal even if its prior "
+        "manifest status is OK. Required when re-emitting after a spec "
+        "change (e.g., Addendum #15 PD+UOT signatures).",
+    )
     args = parser.parse_args(argv)
 
     resolver = PathResolver()
@@ -368,16 +416,19 @@ def main(argv: list[str] | None = None) -> int:
         f"{{tone_aligned,whole_session}}_heatmaps/"
     )
     log.info(f"manifest: {MANIFEST_PATH.resolve()}")
+    log.info(f"only_pd_ot={args.only_pd_ot}  no_skip={args.no_skip}")
 
     animals = [args.animal] if args.animal else list(COHORT_ORDER)
     prior = _load_manifest_so_far()
 
     for animal in animals:
         prior_status = prior.get(animal)
-        if prior_status == "OK":
+        if prior_status == "OK" and not args.no_skip:
             log.info(f"  [skip] {animal} already OK in prior manifest")
             continue
-        row = _process_animal(animal, resolver, defaults)
+        row = _process_animal(
+            animal, resolver, defaults, only_pd_ot=args.only_pd_ot,
+        )
         _append_manifest(row)
 
     return 0

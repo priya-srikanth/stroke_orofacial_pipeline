@@ -375,6 +375,14 @@ dlc_spatial_tone_aligned:
   vmin_log_prop: 1.0e-5
   share_xy_within_mouse: true
   fps: 250.0
+  # Phase 7c.2 Addendum #15 Q15: UOT spatial resolution decoupled from
+  # heatmap_nbins. Legacy renderer (cells 6300-6680 of
+  # 20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb, line 6434)
+  # uses NBINS = 50 — pinned here as the cohort default. Reduces arrow
+  # count from O(100²) to O(50²) keeping the displacement field readable.
+  # Other plot types continue to use default_nbins (heatmap resolution).
+  unbalanced_ot:
+    nbins: 50
   families:
     tongue_spout_midpoint:
       bodyparts: ["tongue"]

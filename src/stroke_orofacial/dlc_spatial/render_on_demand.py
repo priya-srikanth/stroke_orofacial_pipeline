@@ -365,6 +365,7 @@ def compute_animal_aggregated_histogram(
     window_ms: tuple[float, float] | None,
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
+    nbins_override: int | None = None,
 ) -> tuple[np.ndarray | None, list[float] | None, int, int]:
     """Compute-only variant of :func:`render_animal_aggregated_heatmap`.
 
@@ -374,6 +375,10 @@ def compute_animal_aggregated_histogram(
 
     Returns ``(None, None, 0, 0)`` when no session contributes data
     (no parquets, no tone events for the trial_group, etc.).
+
+    ``nbins_override`` (Phase 7c.2 Addendum #15 Q15) lets the UOT
+    renderer request a coarser histogram resolution than the
+    config-level default (legacy NBINS=50 vs default_nbins=80×80).
     """
     if (trial_group is None) != (window_ms is None):
         raise ValueError(
@@ -395,8 +400,11 @@ def compute_animal_aggregated_histogram(
     )
     lik_thresholds = family.get("likelihood_thresholds", [0.8])
     lik_thr = lik_thresholds[0] if lik_thresholds else 0.8
-    nbins_cfg = tone_config.get("default_nbins", [80, 80])
-    nbins = int(nbins_cfg[0]) if isinstance(nbins_cfg, list) else int(nbins_cfg)
+    if nbins_override is not None:
+        nbins = int(nbins_override)
+    else:
+        nbins_cfg = tone_config.get("default_nbins", [80, 80])
+        nbins = int(nbins_cfg[0]) if isinstance(nbins_cfg, list) else int(nbins_cfg)
 
     config_for_hist = dict(spatial_config)
     config_for_hist["bodyparts"] = dict(config_for_hist.get("bodyparts", {}))
@@ -1235,10 +1243,18 @@ def _render_proportion_diff_panel(
     spatial_config: dict[str, Any],
     cmap_name: str = _PROPORTION_DIFF_DEFAULT_CMAP,
     title: str = "",
+    shared_vmax: float | None = None,
 ) -> None:
     """Render one (bodypart, center_mode) proportion-diff D array onto an
-    Axes. Uses ``TwoSlopeNorm(vcenter=0)`` with vmax = 99th-percentile of
-    |D| (legacy convention). Diverging cmap default ``coolwarm``."""
+    Axes.
+
+    Per Phase 7c.2 Addendum #15 Q14: when ``shared_vmax`` is supplied,
+    use it as the symmetric colormap saturation point so every panel in
+    the SVG shares one diverging color scale (vmin=-shared_vmax,
+    vmax=+shared_vmax). When ``shared_vmax`` is None, fall back to the
+    legacy per-panel 99th-percentile-of-|D| TwoSlopeNorm. Diverging cmap
+    default ``coolwarm``.
+    """
     if D is None or extent is None:
         ax.text(0.5, 0.5, f"{title}\n(no data)",
                 ha="center", va="center", transform=ax.transAxes)
@@ -1250,9 +1266,13 @@ def _render_proportion_diff_panel(
                 ha="center", va="center", transform=ax.transAxes)
         ax.set_axis_off()
         return
-    vmax = float(np.percentile(finite_abs, _PROPORTION_DIFF_VMAX_PERCENTILE))
-    vmax = max(vmax, 1e-12)
-    norm = mcolors.TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax)
+    if shared_vmax is not None:
+        vmax = max(float(shared_vmax), 1e-12)
+        norm = mcolors.Normalize(vmin=-vmax, vmax=vmax)
+    else:
+        vmax = float(np.percentile(finite_abs, _PROPORTION_DIFF_VMAX_PERCENTILE))
+        vmax = max(vmax, 1e-12)
+        norm = mcolors.TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax)
     try:
         cmap = plt.get_cmap(cmap_name).with_extremes(bad="0.85")
     except (ValueError, AttributeError):
@@ -1287,6 +1307,7 @@ def _compute_proportion_diff_for_bin(
     *,
     defaults: dict[str, Any],
     animal_info: AnimalInfo,
+    trial_group: str = "all",
 ) -> tuple[np.ndarray | None, list[float] | None, int]:
     """Compute D = H_bin_prop - H_pre_pool_prop for one rel_day_bin.
 
@@ -1296,6 +1317,9 @@ def _compute_proportion_diff_for_bin(
     'Pool all six whiskers as one part' pattern, generalized in
     Addendum #13).
 
+    ``trial_group`` (Phase 7c.2 Addendum #15 Q16) selects the
+    tone-aligned trial-group filter; ignored when scope='whole_session'.
+
     Returns ``(D, extent, n_sessions_in_bin)``.
     """
     if len(bodyparts) > 1:
@@ -1303,10 +1327,11 @@ def _compute_proportion_diff_for_bin(
         H_bin, ext, n_sess = _aggregate_for_dates_pooled_bodyparts(
             animal, bin_dates, bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
+            trial_group=trial_group,
         )
     else:
         if scope == "tone_aligned":
-            tg_arg: str | None = "all"
+            tg_arg: str | None = trial_group
             window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
         else:
             tg_arg = None
@@ -1334,23 +1359,37 @@ def render_proportion_difference_heatmap(
     resolver: PathResolver,
     *,
     bin_size_days: int,
+    trial_group: str = "all",
     dates: list[dt.date] | None = None,
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
 ) -> plt.Figure:
-    """Render the per-(animal, family, scope, bin_size) proportion-
-    difference grid-summary SVG per Addendum #11 Q2.B.
+    """Render the per-(animal, family, scope, bin_size, trial_group)
+    proportion-difference grid-summary SVG per Addendum #11 Q2.B +
+    Addendum #15 Q14/Q16.
 
-    Animal-level pre-stroke baseline (pool of all rel_day <= 0 sessions)
-    is fixed; one panel per rel_day_bin at the requested ``bin_size_days``
-    showing ``D_bin = H_bin_prop - H_pre_pool_prop``. Both pre-stroke
-    bins (within-pre variability) and post-stroke bins (stroke-induced
+    Animal-level pre-stroke baseline (pool of all rel_day <= 0 sessions,
+    same trial_group filter as the per-bin panels) is fixed; one panel
+    per rel_day_bin at the requested ``bin_size_days`` showing
+    ``D_bin = H_bin_prop - H_pre_pool_prop``. Both pre-stroke bins
+    (within-pre variability) and post-stroke bins (stroke-induced
     departure) get panels.
+
+    ``trial_group`` (Addendum #15 Q16): filter frames to this tone-aligned
+    trial group before per-bin aggregation. For tone_aligned scope, the
+    driver fans out 3 SVGs per (animal, family, bin_size) — one per
+    trial_group ∈ {all, L, R}. For whole_session scope, only 'all' is
+    meaningful (no trial-group split).
 
     Single-bp families: per-bp D per panel.
     Composite families (whiskers + fiducial bilateral pairs, any family
     with > 1 bp): pooled N-bp pseudo-bp per panel (matches UOT composite
     treatment per Addendum #13 generalization).
+
+    Addendum #15 Q14: per-bin D arrays are pre-computed; global
+    ``vmax = max(|D|.max() across bins)`` is shared across all panels in
+    the SVG; symmetric diverging colormap normalization (vmin=-vmax,
+    vmax=+vmax) makes inter-bin diff intensities visually comparable.
 
     Layout: 4-col grid (analogous to UOT grid summary); rows = ceil(N_bins / 4).
     """
@@ -1369,15 +1408,17 @@ def render_proportion_difference_heatmap(
     pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
 
     # Compute fixed reference: animal-level pre-stroke pool, proportion-
-    # normalized.
+    # normalized. Apply the same trial_group filter so the per-bin
+    # comparison is apples-to-apples.
     if len(bodyparts) > 1:
         H_pre_pool, ext_pre, n_pre_sess = _aggregate_for_dates_pooled_bodyparts(
             animal, pre_dates, bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
+            trial_group=trial_group,
         )
     else:
         if scope == "tone_aligned":
-            tg_arg: str | None = "all"
+            tg_arg: str | None = trial_group
             window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
         else:
             tg_arg = None
@@ -1393,7 +1434,7 @@ def render_proportion_difference_heatmap(
         fig, ax = plt.subplots(figsize=(8, 6))
         ax.text(
             0.5, 0.5,
-            f"{animal}/{family_entry}/{scope}/bin{bin_size_days}d\n"
+            f"{animal}/{family_entry}/{scope}/bin{bin_size_days}d/tg={trial_group}\n"
             f"empty pre-stroke pool (n_pre={len(pre_dates)})",
             ha="center", va="center", transform=ax.transAxes,
         )
@@ -1412,6 +1453,28 @@ def render_proportion_difference_heatmap(
         bins.setdefault(label, []).append(d)
     bin_labels = sorted(bins.keys(), key=_bin_label_sort_key)
 
+    # Q14: pre-compute all per-bin D arrays first, then derive shared
+    # symmetric vmax across the SVG. Each tuple is (bin_label, D, ext, n_sess).
+    bin_results: list[tuple[str, np.ndarray | None, list[float] | None, int]] = []
+    for bin_label in bin_labels:
+        bin_dates = bins[bin_label]
+        D, ext, n_sess = _compute_proportion_diff_for_bin(
+            animal, bin_dates, H_pre_pool_prop, ext_pre,
+            bodyparts, center_mode, scope, resolver,
+            defaults=defaults, animal_info=animal_info,
+            trial_group=trial_group,
+        )
+        bin_results.append((bin_label, D, ext, n_sess))
+    # Shared vmax = max |D| across all bins with finite data.
+    abs_maxes: list[float] = []
+    for _label, D, _ext, _n in bin_results:
+        if D is None:
+            continue
+        finite_abs = np.abs(D[np.isfinite(D)])
+        if finite_abs.size:
+            abs_maxes.append(float(finite_abs.max()))
+    shared_vmax = max(abs_maxes) if abs_maxes else 1e-12
+
     bp_for_axis = bodyparts[0]  # reference for spatial_config axis lookup
     n_bins = len(bin_labels)
     ncols = min(4, max(1, n_bins))
@@ -1422,13 +1485,7 @@ def render_proportion_difference_heatmap(
         constrained_layout=True,
     )
     axes = list(axes_obj.flat) if hasattr(axes_obj, "flat") else [axes_obj]
-    for bin_label, ax in zip(bin_labels, axes, strict=False):
-        bin_dates = bins[bin_label]
-        D, ext, n_sess = _compute_proportion_diff_for_bin(
-            animal, bin_dates, H_pre_pool_prop, ext_pre,
-            bodyparts, center_mode, scope, resolver,
-            defaults=defaults, animal_info=animal_info,
-        )
+    for (bin_label, D, ext, n_sess), ax in zip(bin_results, axes, strict=False):
         cmap_name = (
             _WHISKER_DIVERGENT_CMAPS.get(bodyparts[0], _PROPORTION_DIFF_DEFAULT_CMAP)
             if len(bodyparts) > 1
@@ -1439,13 +1496,15 @@ def render_proportion_difference_heatmap(
             ax, D, ext, bp_for_axis, center_mode,
             spatial_config=spatial_config,
             cmap_name=cmap_name, title=title,
+            shared_vmax=shared_vmax,
         )
     for ax in axes[len(bin_labels):]:
         ax.set_axis_off()
     fig.suptitle(
         f"{animal}  {family_entry}  {scope}  proportion_differences  "
-        f"bin{int(bin_size_days)}d  vs all-pre-stroke pool "
-        f"(n_pre_sess={n_pre_sess})",
+        f"bin{int(bin_size_days)}d  tg={trial_group}  "
+        f"vs all-pre-stroke pool (n_pre_sess={n_pre_sess})  "
+        f"shared |vmax|={shared_vmax:.3g}",
         fontsize=11,
     )
     return fig
@@ -1760,6 +1819,8 @@ def _aggregate_for_dates_pooled_bodyparts(
     *,
     defaults: dict[str, Any],
     animal_info: AnimalInfo,
+    trial_group: str = "all",
+    nbins_override: int | None = None,
 ) -> tuple[np.ndarray | None, list[float] | None, int]:
     """Sum N per-bp histograms cell-wise (pseudo-pooling) for any
     composite family.
@@ -1771,9 +1832,19 @@ def _aggregate_for_dates_pooled_bodyparts(
     per_center_mode block as the shared axis range. Generalized in
     Phase 7c.2 Addendum #13 to also serve the fiducial bilateral-pair
     composite families.
+
+    ``trial_group`` (Phase 7c.2 Addendum #15 Q16) selects the
+    tone-aligned trial-group filter; ignored when ``scope='whole_session'``
+    (where trial_group always collapses to None / all-frames). Default
+    'all' preserves the pre-Q16 behavior for PD/UOT callers that have
+    not yet been updated.
+
+    ``nbins_override`` (Phase 7c.2 Addendum #15 Q15) forwards a coarser
+    histogram resolution down to each per-bp aggregation call. Used by
+    the UOT renderer to keep arrow count tractable.
     """
     if scope == "tone_aligned":
-        tg_arg: str | None = "all"
+        tg_arg: str | None = trial_group
         window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
     elif scope == "whole_session":
         tg_arg = None
@@ -1789,6 +1860,7 @@ def _aggregate_for_dates_pooled_bodyparts(
             animal, dates, bp, center_mode, resolver,
             trial_group=tg_arg, window_ms=window_ms,
             defaults=defaults, animal_info=animal_info,
+            nbins_override=nbins_override,
         )
         if H is None:
             continue
@@ -1809,27 +1881,40 @@ def render_unbalanced_ot_displacement_field(
     *,
     dates: list[dt.date],
     bin_size_days: int | None = None,
+    trial_group: str = "all",
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
 ) -> plt.Figure:
     """Render the UNBALANCED-OT per-bin grid summary SVG per Addendum #14
     Q3d.B (mirrors proportion_differences per-bin pattern from
-    Addendum #11 Q2.B).
+    Addendum #11 Q2.B) + Addendum #15 Q15/Q16.
 
     Algorithm:
       1. ``H_pre_pool`` = animal-level pre-stroke baseline (pooled
-         rel_day <= 0 sessions), proportion-normalized.
+         rel_day <= 0 sessions, same trial_group filter), proportion-
+         normalized.
       2. Group ALL dates (pre + post) by rel_day_bin at ``bin_size_days``.
          Both pre-stroke bins (within-pre variability) and post-stroke
          bins (stroke-induced departure) get UOT panels per Q2.B
          framing carried into UOT.
-      3. For each bin: ``H_bin`` aggregated → unbalanced sinkhorn vs
-         ``H_pre_pool`` → 3 panels (mass_destroy + mass_create + arrows).
+      3. For each bin: ``H_bin`` aggregated (per trial_group) →
+         unbalanced sinkhorn vs ``H_pre_pool`` → 3 panels (mass_destroy +
+         mass_create + arrows).
       4. Grid layout: N rows × 3 cols (N = number of bins; chronological
          pre→post).
 
-    Output filename: ``unbalanced_ot_grid_bin{N}d.svg`` per Q14 path
-    convention; one SVG per (animal, family, scope, bin_size).
+    ``trial_group`` (Phase 7c.2 Addendum #15 Q16): per-trial-group fanout
+    for tone_aligned scope. Driver emits 3 SVGs per (animal, family,
+    bin_size). For whole_session, only 'all' is meaningful.
+
+    Histogram resolution (Phase 7c.2 Addendum #15 Q15): read from
+    ``defaults['dlc_spatial_tone_aligned']['unbalanced_ot']['nbins']``
+    (default 50, pinned from legacy notebook line 6434). Coarser than the
+    heatmap default (80×80) so the arrow rendering stays readable.
+
+    Output filename: ``unbalanced_ot_grid_bin{N}d_{trial_group}.svg`` per
+    Addendum #15 Q16 path convention; one SVG per (animal, family, scope,
+    bin_size, trial_group).
 
     Single-bp families: single-bp OT.
     Composite families (whiskers + fiducial bilateral pairs, any family
@@ -1850,12 +1935,15 @@ def render_unbalanced_ot_displacement_field(
 
     bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
     spatial_config = defaults["dlc_spatial"]
+    tone_config = defaults["dlc_spatial_tone_aligned"]
+    unb_nbins = int(((tone_config.get("unbalanced_ot") or {}).get("nbins")) or 50)
+
     pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
     if not pre_dates:
         fig, ax = plt.subplots(figsize=(8, 6))
         ax.text(
             0.5, 0.5,
-            f"{animal}/{family_entry}/{scope}/bin{bin_size_days}d\n"
+            f"{animal}/{family_entry}/{scope}/bin{bin_size_days}d/tg={trial_group}\n"
             "UOT skipped (no pre-stroke sessions)",
             ha="center", va="center", transform=ax.transAxes,
         )
@@ -1863,27 +1951,31 @@ def render_unbalanced_ot_displacement_field(
         return fig
 
     # Compute fixed reference: animal-level pre-stroke pool, proportion-
-    # normalized.
+    # normalized. Apply the same trial_group filter so the per-bin
+    # comparison is apples-to-apples.
+    tg_arg = trial_group if scope == "tone_aligned" else None
+    window_ms = TASK5_TONE_WINDOW_MS if scope == "tone_aligned" else None
     if len(bodyparts) == 1:
         bp_for_axis = bodyparts[0]
         H_pre_pool, ext_pre, n_pre_sess, _ = compute_animal_aggregated_histogram(
             animal, pre_dates, bp_for_axis, center_mode, resolver,
-            trial_group=("all" if scope == "tone_aligned" else None),
-            window_ms=(TASK5_TONE_WINDOW_MS if scope == "tone_aligned" else None),
+            trial_group=tg_arg, window_ms=window_ms,
             defaults=defaults, animal_info=animal_info,
+            nbins_override=unb_nbins,
         )
     else:
         bp_for_axis = bodyparts[0]
         H_pre_pool, ext_pre, n_pre_sess = _aggregate_for_dates_pooled_bodyparts(
             animal, pre_dates, bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
+            trial_group=trial_group, nbins_override=unb_nbins,
         )
 
     if H_pre_pool is None or float(H_pre_pool.sum()) == 0.0:
         fig, ax = plt.subplots(figsize=(8, 6))
         ax.text(
             0.5, 0.5,
-            f"{animal}/{family_entry}/{scope}/bin{bin_size_days}d\n"
+            f"{animal}/{family_entry}/{scope}/bin{bin_size_days}d/tg={trial_group}\n"
             f"UOT skipped (empty pre-stroke pool, n_pre={len(pre_dates)})",
             ha="center", va="center", transform=ax.transAxes,
         )
@@ -1922,14 +2014,15 @@ def render_unbalanced_ot_displacement_field(
         if len(bodyparts) == 1:
             H_bin, ext_b, n_sess, _ = compute_animal_aggregated_histogram(
                 animal, bin_dates, bp_for_axis, center_mode, resolver,
-                trial_group=("all" if scope == "tone_aligned" else None),
-                window_ms=(TASK5_TONE_WINDOW_MS if scope == "tone_aligned" else None),
+                trial_group=tg_arg, window_ms=window_ms,
                 defaults=defaults, animal_info=animal_info,
+                nbins_override=unb_nbins,
             )
         else:
             H_bin, ext_b, n_sess = _aggregate_for_dates_pooled_bodyparts(
                 animal, bin_dates, bodyparts, center_mode, scope, resolver,
                 defaults=defaults, animal_info=animal_info,
+                trial_group=trial_group, nbins_override=unb_nbins,
             )
         ax_destroy = axes[row_idx, 0]
         ax_create = axes[row_idx, 1]
@@ -1965,8 +2058,9 @@ def render_unbalanced_ot_displacement_field(
 
     fig.suptitle(
         f"{animal}  {family_entry}  {scope}  unbalanced_ot grid  "
-        f"bin{int(bin_size_days)}d  vs all-pre-stroke pool "
-        f"(n_pre_sess={n_pre_sess})",
+        f"bin{int(bin_size_days)}d  tg={trial_group}  "
+        f"vs all-pre-stroke pool (n_pre_sess={n_pre_sess})  "
+        f"nbins={unb_nbins}",
         fontsize=11,
     )
     return fig

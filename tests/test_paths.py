@@ -1306,34 +1306,43 @@ class TestTask5HeatmapPathResolvers:
         assert p.parent.exists()
 
     def test_tone_aligned_proportion_differences_path(self, resolver, tmp_path):
-        # Addendum #11 Q2.B: filename bin{N}d.svg per bin_size.
-        p2 = resolver.tone_aligned_heatmap_proportion_differences_path(
-            "PS46", "nose_eye_midpoint", 2,
+        # Addendum #11 Q2.B + Addendum #15 Q16: filename
+        # bin{N}d_{trial_group}.svg per (bin_size, trial_group).
+        p_all_2 = resolver.tone_aligned_heatmap_proportion_differences_path(
+            "PS46", "nose_eye_midpoint", 2, "all",
         )
-        assert p2 == (
+        assert p_all_2 == (
             tmp_path / "dlc_kinematics" / "tone_aligned_heatmaps" / "PS46"
-            / "nose_eye_midpoint" / "proportion_differences" / "bin2d.svg"
+            / "nose_eye_midpoint" / "proportion_differences" / "bin2d_all.svg"
         )
-        p7 = resolver.tone_aligned_heatmap_proportion_differences_path(
-            "PS46", "nose_eye_midpoint", 7,
+        p_L_7 = resolver.tone_aligned_heatmap_proportion_differences_path(
+            "PS46", "nose_eye_midpoint", 7, "L",
         )
-        assert p7.name == "bin7d.svg"
-        assert p2.parent.exists()
+        assert p_L_7.name == "bin7d_L.svg"
+        p_R_2 = resolver.tone_aligned_heatmap_proportion_differences_path(
+            "PS46", "nose_eye_midpoint", 2, "R",
+        )
+        assert p_R_2.name == "bin2d_R.svg"
+        assert p_all_2.parent.exists()
 
     def test_tone_aligned_unbalanced_ot_path(self, resolver, tmp_path):
-        # Addendum #14 Q3d.B: bin-fanout filename.
-        p2 = resolver.tone_aligned_heatmap_unbalanced_ot_path(
-            "PS46", "whiskers_eye_midpoint", 2,
+        # Addendum #14 Q3d.B + Addendum #15 Q16: per-bin + per-trial-group fanout.
+        p_all_2 = resolver.tone_aligned_heatmap_unbalanced_ot_path(
+            "PS46", "whiskers_eye_midpoint", 2, "all",
         )
-        assert p2 == (
+        assert p_all_2 == (
             tmp_path / "dlc_kinematics" / "tone_aligned_heatmaps" / "PS46"
             / "whiskers_eye_midpoint" / "unbalanced_ot"
-            / "unbalanced_ot_grid_bin2d.svg"
+            / "unbalanced_ot_grid_bin2d_all.svg"
         )
-        p7 = resolver.tone_aligned_heatmap_unbalanced_ot_path(
-            "PS46", "whiskers_eye_midpoint", 7,
+        p_L_7 = resolver.tone_aligned_heatmap_unbalanced_ot_path(
+            "PS46", "whiskers_eye_midpoint", 7, "L",
         )
-        assert p7.name == "unbalanced_ot_grid_bin7d.svg"
+        assert p_L_7.name == "unbalanced_ot_grid_bin7d_L.svg"
+        p_R_2 = resolver.tone_aligned_heatmap_unbalanced_ot_path(
+            "PS46", "whiskers_eye_midpoint", 2, "R",
+        )
+        assert p_R_2.name == "unbalanced_ot_grid_bin2d_R.svg"
 
     def test_whole_session_individual_session_path(self, resolver, tmp_path):
         import datetime

@@ -559,40 +559,45 @@ class PathResolver:
 
     def tone_aligned_heatmap_proportion_differences_path(
         self, animal: str, family_entry: str, bin_size_days: int,
+        trial_group: str,
     ) -> Path:
-        """Return the per-(animal, family, bin_size) tone-aligned
+        """Return the per-(animal, family, bin_size, trial_group) tone-aligned
         proportion-difference grid-summary SVG path.
 
-        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/proportion_differences/bin2d.svg``.
+        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/proportion_differences/bin2d_all.svg``.
 
-        Per Phase 7c.2 Addendum #11 Q2.B (supersedes prior single-figure
-        framing): one SVG per configured bin_size, containing a grid of
-        per-bin diff panels (one panel per day-bin within that bin_size).
-        Filename ``bin{N}d.svg`` where N is the bin size in days. Parent
-        directory is created eagerly.
+        Per Phase 7c.2 Addendum #11 Q2.B (one SVG per configured bin_size,
+        containing a grid of per-bin diff panels) + Addendum #15 Q16 (3
+        trial-group SVGs per bin_size; previous bin{N}d.svg superseded).
+        Filename ``bin{N}d_{trial_group}.svg`` where N is the bin size in
+        days and trial_group ∈ {all, L, R}. Parent directory is created
+        eagerly.
         """
         out = self._tone_aligned_heatmap_dir(
             animal, family_entry, "proportion_differences",
-        ) / f"bin{int(bin_size_days)}d.svg"
+        ) / f"bin{int(bin_size_days)}d_{trial_group}.svg"
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 
     def tone_aligned_heatmap_unbalanced_ot_path(
         self, animal: str, family_entry: str, bin_size_days: int,
+        trial_group: str,
     ) -> Path:
-        """Return the per-(animal, family, bin_size) tone-aligned
+        """Return the per-(animal, family, bin_size, trial_group) tone-aligned
         Unbalanced-OT grid-summary SVG path.
 
-        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/unbalanced_ot/unbalanced_ot_grid_bin2d.svg``.
+        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/unbalanced_ot/unbalanced_ot_grid_bin2d_all.svg``.
 
-        Per Phase 7c.2 Addendum #14 Q3d.B: per-bin grid summary, one SVG
-        per configured bin_size. Filename ``unbalanced_ot_grid_bin{N}d.svg``
-        where N is the bin size in days. Mirrors the proportion_differences
-        bin{N}d.svg naming. Parent directory is created eagerly.
+        Per Phase 7c.2 Addendum #14 Q3d.B (per-bin grid summary, one SVG
+        per configured bin_size) + Addendum #15 Q16 (3 trial-group SVGs
+        per bin_size; previous unbalanced_ot_grid_bin{N}d.svg superseded).
+        Filename ``unbalanced_ot_grid_bin{N}d_{trial_group}.svg`` where N
+        is the bin size in days and trial_group ∈ {all, L, R}. Parent
+        directory is created eagerly.
         """
         out = self._tone_aligned_heatmap_dir(
             animal, family_entry, "unbalanced_ot",
-        ) / f"unbalanced_ot_grid_bin{int(bin_size_days)}d.svg"
+        ) / f"unbalanced_ot_grid_bin{int(bin_size_days)}d_{trial_group}.svg"
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 
