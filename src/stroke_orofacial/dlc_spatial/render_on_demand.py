@@ -574,13 +574,14 @@ def render_h_counts_panel(
     ax.set_xlim(x_limits)
     ax.set_ylim(y_limits)
     ax.invert_yaxis()
+    # Q22 Addendum #21: uniform tick + axis-label polish across all
+    # plot types. Per-panel title sized for subplot context;
+    # standalone-figure mode gets a larger title (Q22 suptitle-fontsize).
+    _apply_q22_panel_polish(ax)
     if standalone:
-        ax.set_xlabel(f"{bodypart}_x (centered)")
-        ax.set_ylabel(f"{bodypart}_y (centered)")
-        ax.set_title(title)
+        ax.set_title(title, fontsize=_Q22_SUPTITLE_FONTSIZE)
     else:
-        ax.set_title(title, fontsize=8)
-        ax.tick_params(labelsize=6)
+        ax.set_title(title, fontsize=_Q22_PANEL_TITLE_FONTSIZE)
 
     return fig if standalone else ax
 
@@ -671,6 +672,40 @@ def render_animal_aggregated_heatmap(
 TASK5_TONE_WINDOW_MS: tuple[float, float] = (0.0, 8000.0)
 TASK5_TRIAL_GROUPS_TONE_ALIGNED: tuple[str, str, str] = ("all", "L", "R")
 TASK5_TRIAL_GROUPS_WHOLE_SESSION: tuple[str, ...] = ("all",)
+
+# Q22 Addendum #21 — plot polish constants applied uniformly across all
+# 4 plot types × 2 scopes × 7 families. Promote to config if tunability
+# is needed; pure constants for now.
+_Q22_TICK_LABELSIZE: int = 12       # axes + colorbar tick labels
+_Q22_AXIS_LABELSIZE: int = 12       # X/Y axis labels
+_Q22_PANEL_TITLE_FONTSIZE: int = 11  # per-panel titles (composite, UOT subplots, PD bin panels)
+_Q22_SUPTITLE_FONTSIZE: int = 14     # figure-level suptitle
+# Centered-parquet coordinates are pure pixel offsets (raw_pixel −
+# center_pixel from the per-frame centering transform). No mm conversion;
+# axis labels stay in pixel units.
+_Q22_X_AXIS_LABEL: str = "X (px, centered)"
+_Q22_Y_AXIS_LABEL: str = "Y (px, centered)"
+
+
+def _apply_q22_panel_polish(
+    ax: plt.Axes, *, set_labels: bool = True, label_fontsize: int | None = None,
+) -> None:
+    """Q22 Addendum #21: tick labelsize 12 + ``X (px, centered)`` /
+    ``Y (px, centered)`` axis labels. Only sets labels when
+    ``set_labels=True``; whole-session-scope single-panel callers may
+    skip via False if they have a custom label.
+    """
+    ax.tick_params(axis="both", labelsize=_Q22_TICK_LABELSIZE)
+    if set_labels:
+        size = label_fontsize if label_fontsize is not None else _Q22_AXIS_LABELSIZE
+        ax.set_xlabel(_Q22_X_AXIS_LABEL, fontsize=size)
+        ax.set_ylabel(_Q22_Y_AXIS_LABEL, fontsize=size)
+
+
+def _apply_q22_colorbar_polish(cbar: Any) -> None:
+    """Q22: colorbar tick labelsize 12."""
+    cbar.ax.tick_params(labelsize=_Q22_TICK_LABELSIZE)
+
 
 Scope = str  # Literal["tone_aligned", "whole_session"]; relaxed for older type-checkers.
 
@@ -829,11 +864,14 @@ def _assemble_panel_figure(
                     ha="center", va="center", transform=ax.transAxes)
             ax.set_axis_off()
             continue
+        # Q22 Addendum #21: per-panel title carries the trial-group +
+        # count qualifier; figure suptitle has the (animal, family, scope,
+        # plot-type, date/bin) prefix.
         if len(payload) == 4:
             # individual_session: (H, ext, n_tones, n_total_frames)
             H, ext, n_tones, n_total = payload
             panel_title = (
-                f"tg={tg} n_tones={n_tones}"
+                f"trial_group={tg} | n_tones={n_tones}"
                 if scope == "tone_aligned"
                 else "whole session"
             )
@@ -841,9 +879,11 @@ def _assemble_panel_figure(
             # binned_sessions: (H, ext, n_sess, n_tones, n_total_frames)
             H, ext, n_sess, n_tones, n_total = payload
             if scope == "tone_aligned":
-                panel_title = f"tg={tg} n_sess={n_sess} n_tones={n_tones}"
+                panel_title = (
+                    f"trial_group={tg} | n_sess={n_sess} | n_tones={n_tones}"
+                )
             else:
-                panel_title = f"whole session n_sess={n_sess}"
+                panel_title = f"whole session | n_sess={n_sess}"
         else:
             raise ValueError(
                 f"_assemble_panel_figure: unexpected payload length "
@@ -855,7 +895,7 @@ def _assemble_panel_figure(
             n_total_frames=n_total,
             shared_vmin=shared_vmin, shared_vmax=shared_vmax,
         )
-    fig.suptitle(suptitle, fontsize=12)
+    fig.suptitle(suptitle, fontsize=_Q22_SUPTITLE_FONTSIZE)
     return fig
 
 
@@ -1032,8 +1072,9 @@ def _render_composite_panel_axis(
     else:
         ax.set_ylim(extent_first[2], extent_first[3])
     ax.invert_yaxis()
-    ax.set_title(panel_title, fontsize=8)
-    ax.tick_params(labelsize=6)
+    # Q22 Addendum #21: uniform tick + axis-label polish.
+    _apply_q22_panel_polish(ax)
+    ax.set_title(panel_title, fontsize=_Q22_PANEL_TITLE_FONTSIZE)
 
 
 def _attach_composite_legend(
@@ -1105,9 +1146,9 @@ def _assemble_composite_figure(
                 n_sess = max(n_sess, ns)
                 n_tones = max(n_tones, nt)
         if scope == "tone_aligned":
-            panel_title = f"tg={tg}  n_sess={n_sess}  n_tones={n_tones}"
+            panel_title = f"trial_group={tg} | n_sess={n_sess} | n_tones={n_tones}"
         else:
-            panel_title = f"whole session  n_sess={n_sess}"
+            panel_title = f"whole session | n_sess={n_sess}"
         _render_composite_panel_axis(
             ax, composite_panels, spatial_config,
             family_bodyparts=family_bodyparts,
@@ -1118,7 +1159,7 @@ def _assemble_composite_figure(
     _attach_composite_legend(
         fig, family_bodyparts, spatial_config, family_label=family_label,
     )
-    fig.suptitle(suptitle, fontsize=11)
+    fig.suptitle(suptitle, fontsize=_Q22_SUPTITLE_FONTSIZE)
     # Make room for the right-edge legend.
     fig.subplots_adjust(right=0.83)
     return fig
@@ -1156,9 +1197,10 @@ def render_individual_session_heatmap(
     if animal_info is None:
         animal_info = get_animal(animal)
     bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
+    # Q22 Addendum #21 title spec: animal | family | date | scope | plot_type.
     suptitle = (
-        f"{animal}/{date.isoformat()}  {family_entry}  {scope}  "
-        f"individual_session"
+        f"{animal} | {family_entry} | {date.isoformat()} | {scope} "
+        f"| individual_session"
     )
     if len(bodyparts) > 1:
         # Composite family — Pattern B layered overlay (Addenda #10/#13).
@@ -1219,9 +1261,11 @@ def render_binned_sessions_heatmap(  # noqa: D401
     if animal_info is None:
         animal_info = get_animal(animal)
     bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
+    # Q22 Addendum #21 title spec: animal | family | bin_label | scope | plot_type.
     suptitle = (
-        f"{animal}  {family_entry}  {scope}  binned_sessions  "
-        f"rel_day_bin={rel_day_bin_label}  n_dates_in_bin={len(dates_in_bin)}"
+        f"{animal} | {family_entry} | rel_day_bin={rel_day_bin_label} "
+        f"| {scope} | binned_sessions  "
+        f"(n_dates_in_bin={len(dates_in_bin)})"
     )
     if len(bodyparts) > 1:
         # Composite family — Pattern B layered overlay (Addenda #10/#13).
@@ -1274,7 +1318,11 @@ def render_binned_sessions_heatmap(  # noqa: D401
 # inherited from legacy.
 _PROPORTION_DIFF_CMAP = mcolors.LinearSegmentedColormap.from_list(
     "rgb_diverging",
-    [(0.0, "red"), (0.5, "gray"), (1.0, "blue")],
+    # Q22 Addendum #21: midpoint lightened from "gray" (RGB ~0.5) to
+    # "#d0d0d0" (~0.82) so near-zero diffs aren't visually heavy against
+    # the white panel background. Tunable to "#dcdcdc" / "#e5e5e5" if
+    # still too dark after PS46 spot-check.
+    [(0.0, "red"), (0.5, "#d0d0d0"), (1.0, "blue")],
     N=256,
 )
 _PROPORTION_DIFF_CMAP.set_bad("white")
@@ -1447,11 +1495,12 @@ def _render_proportion_diff_panel(
     if per_mode["ylim"]:
         ax.set_ylim(per_mode["ylim"])
     ax.invert_yaxis()
-    ax.set_title(title, fontsize=9)
-    ax.tick_params(labelsize=6)
+    # Q22 Addendum #21: uniform tick + axis-label polish + larger title.
+    _apply_q22_panel_polish(ax)
+    ax.set_title(title, fontsize=_Q22_PANEL_TITLE_FONTSIZE)
     cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label("Δ proportion (post − pre)", fontsize=7)
-    cbar.ax.tick_params(labelsize=6)
+    cbar.set_label("Δ proportion (post − pre)", fontsize=_Q22_AXIS_LABELSIZE)
+    _apply_q22_colorbar_polish(cbar)
 
 
 def _compute_proportion_diff_for_bin(
@@ -1676,13 +1725,13 @@ def render_proportion_difference_heatmap(
         )
     for ax in axes[len(bin_labels):]:
         ax.set_axis_off()
+    # Q22 Addendum #21 title spec: animal | family | bin_size − all_pre_stroke | scope | trial_group.
     bucket_label = "bucket" if shared_vmax is not None else "file"
     fig.suptitle(
-        f"{animal}  {family_entry}  {scope}  proportion_differences  "
-        f"bin{int(bin_size_days)}d  tg={trial_group}  "
-        f"vs all-pre-stroke pool (n_pre_sess={n_pre_sess})  "
-        f"{bucket_label} |vmax|={local_shared_vmax:.3g}",
-        fontsize=11,
+        f"{animal} | {family_entry} | bin{int(bin_size_days)}d − all_pre_stroke "
+        f"| {scope} | trial_group={trial_group}  "
+        f"(n_pre_sess={n_pre_sess}, {bucket_label} |vmax|={local_shared_vmax:.3g})",
+        fontsize=_Q22_SUPTITLE_FONTSIZE,
     )
     return fig
 
@@ -1884,11 +1933,15 @@ def _render_ot_mass_change_panels(
         )
         ax.set_xlim(xl)
         ax.set_ylim(yl[1], yl[0])  # inverted Y
-        ax.set_title(f"bin {bin_label}  mass {kind}", fontsize=8)
-        ax.tick_params(labelsize=6)
+        # Q22 Addendum #21: uniform tick + axis-label polish.
+        _apply_q22_panel_polish(ax)
+        ax.set_title(
+            f"bin {bin_label} | mass_{kind}",
+            fontsize=_Q22_PANEL_TITLE_FONTSIZE,
+        )
         cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_label(f"mass {kind}", fontsize=7)
-        cbar.ax.tick_params(labelsize=6)
+        cbar.set_label(f"mass_{kind}", fontsize=_Q22_AXIS_LABELSIZE)
+        _apply_q22_colorbar_polish(cbar)
 
 
 def _render_ot_arrows_panel(
@@ -2031,8 +2084,9 @@ def _render_ot_arrows_panel(
         ax.set_ylim(ylim_hi, ylim_lo)  # inverted Y per legacy line 6539
     else:
         ax.set_ylim(extent[3], extent[2])
-    ax.set_title(title, fontsize=8)
-    ax.tick_params(labelsize=6)
+    # Q22 Addendum #21: uniform tick + axis-label polish.
+    _apply_q22_panel_polish(ax)
+    ax.set_title(title, fontsize=_Q22_PANEL_TITLE_FONTSIZE)
 
 
 def _aggregate_for_dates_pooled_bodyparts(
@@ -2312,12 +2366,12 @@ def render_unbalanced_ot_displacement_field(
             threshold_pct50_multiplier=threshold_pct50_multiplier,
         )
 
+    # Q22 Addendum #21 title spec: animal | family | UOT | scope | trial_group.
     fig.suptitle(
-        f"{animal}  {family_entry}  {scope}  unbalanced_ot grid  "
-        f"bin{int(bin_size_days)}d  tg={trial_group}  "
-        f"vs all-pre-stroke pool (n_pre_sess={n_pre_sess})  "
-        f"nbins={unb_nbins}",
-        fontsize=11,
+        f"{animal} | {family_entry} | UOT bin{int(bin_size_days)}d "
+        f"| {scope} | trial_group={trial_group}  "
+        f"(n_pre_sess={n_pre_sess}, nbins={unb_nbins})",
+        fontsize=_Q22_SUPTITLE_FONTSIZE,
     )
     return fig
 

@@ -1543,3 +1543,64 @@ CC picks: per-pattern enumeration vs full-tree-wipe-before-Step-7. Either is fin
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.E expanded cleanup [supersedes Q5.D with intermediate Task 5 stale output additions], Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Addendum #9-19 Task 5 scope.)
+
+---
+
+## Addendum #21 — Task 5 plot polish: axis labels, tick sizes, titles, lighter neutral grey (Priya 2026-05-15)
+
+### Q22 LOCKED — Plot polish for all Task 5 SVG output
+
+Across all 4 plot types (individual_session, binned_sessions, proportion_differences, unbalanced_ot) × both scopes (tone_aligned, whole_session) × all 7 family entries, the rendering wrappers must produce SVGs with these polish properties:
+
+1. **Tick label sizes.** Increase X and Y axis tick label `fontsize` to ~12pt (up from matplotlib default ~10pt). Apply via `ax.tick_params(axis='both', labelsize=12)`. Same for the colorbar tick labels. CC can iterate to 11pt or 13pt if 12pt reads wrong at the SVG export size.
+2. **Axis labels always present.** Every axis must have an X-axis label and Y-axis label. Use the source coordinate convention — `"X (px)"` and `"Y (px)"` as defaults, but if the centered-parquet coordinates have a more meaningful unit (e.g., mm-from-spout-midpoint), prefer that. CC inspects parquet column metadata + picks the right unit; document the choice in Task 8 DECISIONS. Apply via `ax.set_xlabel(...)` / `ax.set_ylabel(...)` with `fontsize=12` matching tick label sizing.
+3. **Titles always present and informative.** Every plot needs a title that identifies (animal, family_entry, plot_type, scope, and any axis-specific qualifier like bin range or trial group). Title format suggestion:
+   - **individual_session:** `f"{animal} | {family_entry} | {date} | {scope} | {trial_group}"`
+   - **binned_sessions:** `f"{animal} | {family_entry} | {bin_label} | {scope} | {trial_group}"` where `bin_label` is e.g. `"days -2 to 0"`.
+   - **proportion_differences:** `f"{animal} | {family_entry} | {bin_label} − all_pre_stroke | {scope} | {trial_group}"`.
+   - **unbalanced_ot:** per-bin subplot titles `f"{bin_label} | {panel}"` where `panel ∈ {mass_destroy, mass_create, arrows}`; figure-level suptitle `f"{animal} | {family_entry} | UOT | {scope} | {trial_group}"`.
+   
+   Use `fontsize=14` for the figure-level title (`suptitle` for multi-panel UOT; `set_title` for single-axis plots) and `fontsize=11-12` for per-panel subplot titles in UOT.
+4. **Proportion-diff neutral grey lightened.** The Q20 gray-at-zero diverging cmap (red-gray-blue `LinearSegmentedColormap`) — lighten the central grey stop. Replace the existing midpoint `(0.5, "gray")` with a lighter neutral, e.g., `(0.5, "#d0d0d0")` or `(0.5, (0.82, 0.82, 0.82))`. CC starts at `#d0d0d0`; if still too dark visually, try `#dcdcdc` or `#e5e5e5`. The white-NaN setting (`set_bad("white")`) stays unchanged — only the cmap midpoint shifts.
+
+**Implementation site:** all changes are in the rendering wrappers in `dlc_spatial/render_on_demand.py` (or wherever the per-plot-type rendering lives for Task 5). No config knob exposure required at this point — these are visual polish constants. If CC anticipates future tunability, can promote to config under `dlc_spatial_tone_aligned.plot_style.{tick_labelsize, axis_labelsize, title_fontsize, neutral_grey_hex}` but not required.
+
+**Re-render scope:** apply polish, re-render PS46 spot-check, then re-render the full cohort at Step 7. Q5.E full-tree-wipe-before-Step-7 handles stale-output cleanup so this doesn't need a separate cleanup pass.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.E expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q21, Addendum #9-20 Task 5 scope.)
+
+---
+
+## Addendum #22 — Bin size per-animal-config only (no cross-config bin-size fanout) (Priya 2026-05-15)
+
+### Q23 LOCKED — Each animal renders ONLY at its configured `bin_days` value
+
+Across all bin-size-fanout plot types (`binned_sessions/`, `proportion_differences/`, `unbalanced_ot/`) × both scopes (`tone_aligned`, `whole_session`), each animal emits SVGs for only one bin size — the value at `configs/animals.yaml <animal>.bin_days`:
+
+- **PS46-50:** `bin_days = 2` → emit only `bin2d.svg` / `unbalanced_ot_grid_bin2d.svg`. Do NOT emit `bin7d.svg` / `unbalanced_ot_grid_bin7d.svg`.
+- **PS51-54:** `bin_days = 7` → emit only `bin7d.svg` / `unbalanced_ot_grid_bin7d.svg`. Do NOT emit `bin2d.svg` / `unbalanced_ot_grid_bin2d.svg`.
+
+This matches the existing infrastructure default: `bin_sizes_days` defaults to `[animal_info.bin_days]` (singleton list) when not overridden. The Phase 7c.2 driver must NOT override with a list of all bin sizes — pass the singleton through, or omit the override entirely so the default kicks in.
+
+**Implementation:** in the Task 5 cohort-render driver (`scripts/phase_7c2/render_heatmaps.py`), the per-animal call into the rendering wrappers should resolve `bin_sizes_days` from `animals.yaml <animal>.bin_days` and pass `[bin_days]` as a singleton list. Do not hard-code `[2, 7]`.
+
+**Output-tree impact (corrected from Addendum #18 Q15 fanout table):** per (animal, family_entry, scope), only ONE bin_size emit per plot type — not two. Halves the per-animal Task 5 fanout for the bin-size-fanout plot types.
+
+**Cohort-A 248-session set:** PS46-50 cover the bulk of sessions and emit 2d-binned outputs; PS51-54 (smaller subset) emit 7d-binned outputs. No animal emits both.
+
+### Q5 RE-EXPANDED Q5.F (supersedes Q5.E) — Task 7 cleanup includes cross-config bin-size mismatches
+
+Task 7 cleanup must remove any cross-config bin-size SVGs accumulated during the iterative Task 5 work (pre-Addendum-#22 outputs):
+
+- For PS46-50: delete any `bin7d.svg` / `unbalanced_ot_grid_bin7d.svg` files under their `tone_aligned_heatmaps/` + `whole_session_heatmaps/` trees.
+- For PS51-54: delete any `bin2d.svg` / `unbalanced_ot_grid_bin2d.svg` files under their trees.
+
+**Simplification (recommended; preserved from Q5.E):** `rm -rf pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/ pipeline_outputs/dlc_kinematics/whole_session_heatmaps/` BEFORE Step 7's final cohort re-render. The final re-render emits only the Q23-correct singleton bin_size per animal, producing canonical output from scratch.
+
+All prior Q5.E cleanup categories continue to apply (legacy `spatial_reward_aligned/` tree, legacy `spatial_tone_aligned/` cache from 7c.1, figure suffix variants, multi-half-leftover parquets, pre-rename `figures_qc/` etc., orphan-out-of-YAML-range kinematics outputs, legacy `rewardAligned_*` window directories under `mean_sem/`, and pre-Addendum-#9/#12/#15/#17/#19 stale Task 5 intermediates).
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup [supersedes Q5.E with cross-config bin-size mismatch removal], Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q22, Addendum #9-21 Task 5 scope.)

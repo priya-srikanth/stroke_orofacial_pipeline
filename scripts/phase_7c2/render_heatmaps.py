@@ -79,12 +79,15 @@ ALL_FAMILIES = tuple(EXPECTED_TONE_ALIGNED_FAMILIES.keys())
 
 SCOPES = ("tone_aligned", "whole_session")
 
-# Per-bin grid-summary bin sizes, shared by proportion_differences
-# (Addendum #11 Q2.B) and unbalanced_ot (Addendum #14 Q3d.B). One SVG per
-# bin_size for each plot type; current cohort-wide config is the union of
-# small-animal (2d) + big-animal (7d) bin sizes. Each animal produces 2
-# proportion_diff + 2 unbalanced_ot SVGs per (family, scope).
-BIN_SIZES_DAYS: tuple[int, ...] = (2, 7)
+# Phase 7c.2 Addendum #22 Q23: per-animal bin_size singleton.
+# Previously this constant was (2, 7) — the union of both small-animal
+# (PS46-50: 2d) and big-animal (PS51-54: 7d) bin sizes. Per Priya
+# 2026-05-15, each animal should emit ONLY its YAML-configured bin_days
+# (animal_info.bin_days from configs/animals.yaml). The driver resolves
+# the singleton list at per-animal scope. Kept as a fallback constant
+# in case `animal_info.bin_days` is unavailable (it shouldn't be — every
+# animal in animals.yaml has bin_days set).
+_FALLBACK_BIN_SIZES_DAYS: tuple[int, ...] = (2,)
 
 # Task 3/4 cohort enumeration constants.
 CANON_BP_CM = "tongue_spout_midpoint"
@@ -273,6 +276,9 @@ def _process_animal(
     anomalies: list[str] = []
     skip_is_bs = only_pd_ot or only_pd
     skip_uot = only_pd
+    # Phase 7c.2 Addendum #22 Q23: per-animal bin_size singleton.
+    bin_sizes_days = (int(animal_info.bin_days),)
+    log.info(f"  Q23 bin_sizes_days = {bin_sizes_days} (animal_info.bin_days={animal_info.bin_days})")
     for family_entry in ALL_FAMILIES:
         for scope in SCOPES:
             # ----- Q18 Pass 1 (per (family, scope)) — bucket-shared
@@ -313,7 +319,7 @@ def _process_animal(
                         log.error(f"    ERR {msg}")
                 # ----- BS bucket (one per bin_size). Per-bin_size shared
                 # LogNorm. -----
-                for bin_size_days in BIN_SIZES_DAYS:
+                for bin_size_days in bin_sizes_days:
                     try:
                         bs_arrays = precompute_binned_sessions_h_proportions(
                             animal, family_entry, scope, bin_size_days, dates,
@@ -352,7 +358,7 @@ def _process_animal(
             # ----- PD bucket (Q18: per (family, bin_size, scope); supersedes
             # Q14 per-SVG scope per Addendum #17). One symmetric vmax across
             # all bins × trial_groups in the bucket. -----
-            for bin_size_days in BIN_SIZES_DAYS:
+            for bin_size_days in bin_sizes_days:
                 try:
                     pd_arrays = precompute_proportion_diffs(
                         animal, family_entry, scope, bin_size_days, dates, resolver,
@@ -403,7 +409,7 @@ def _process_animal(
                 "unbalanced_ot", {}
             ) or {}
             uot_thr_mult = float(unb_cfg.get("threshold_pct50_multiplier", 0.1))
-            for bin_size_days in BIN_SIZES_DAYS:
+            for bin_size_days in bin_sizes_days:
                 try:
                     uot_plans = precompute_unbalanced_ot_plans(
                         animal, family_entry, scope, bin_size_days, dates, resolver,
