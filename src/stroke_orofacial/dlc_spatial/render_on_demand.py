@@ -492,6 +492,8 @@ def render_h_counts_panel(
     figsize: tuple[float, float] = (8, 6),
     ax: plt.Axes | None = None,
     n_total_frames: int | None = None,
+    shared_vmin: float | None = None,
+    shared_vmax: float | None = None,
 ) -> plt.Figure | plt.Axes:
     """Public render-only variant.
 
@@ -504,6 +506,11 @@ def render_h_counts_panel(
     normalization (H_proportion = H_counts / n_total_frames). When None,
     fall back to legacy passed-count normalization (H_proportion =
     H_counts / H_counts.sum()).
+
+    ``shared_vmin`` / ``shared_vmax`` (Q18 Addendum #17): when both given,
+    use these as LogNorm bounds (per-bucket shared scale). When None,
+    fall back to per-panel data-derived range (legacy Q14 per-SVG scope,
+    preserved for unit-test + standalone callers).
     """
     if defaults is None:
         defaults = load_defaults()
@@ -541,13 +548,21 @@ def render_h_counts_panel(
         cmap = plt.get_cmap(cmap_name)
     except ValueError:
         cmap = plt.get_cmap("viridis")
-    finite_nonzero = H_prop[np.isfinite(H_prop) & (H_prop > 0)]
-    if finite_nonzero.size > 0:
-        vmin = float(finite_nonzero.min())
-        vmax = float(H_prop.max())
-        norm = mcolors.LogNorm(vmin=max(vmin, 1e-10), vmax=vmax)
+    # Q18 Addendum #17: bucket-shared (vmin, vmax) when both given;
+    # otherwise per-panel data-derived range (legacy Q14 per-SVG scope).
+    if shared_vmin is not None and shared_vmax is not None and shared_vmax > 0:
+        norm = mcolors.LogNorm(
+            vmin=max(float(shared_vmin), 1e-10),
+            vmax=float(shared_vmax),
+        )
     else:
-        norm = None
+        finite_nonzero = H_prop[np.isfinite(H_prop) & (H_prop > 0)]
+        if finite_nonzero.size > 0:
+            vmin = float(finite_nonzero.min())
+            vmax = float(H_prop.max())
+            norm = mcolors.LogNorm(vmin=max(vmin, 1e-10), vmax=vmax)
+        else:
+            norm = None
     ax.imshow(
         H_prop.T,
         origin="lower",
@@ -780,13 +795,20 @@ def _assemble_panel_figure(
     suptitle: str,
     *,
     defaults: dict[str, Any],
+    shared_vmin: float | None = None,
+    shared_vmax: float | None = None,
 ) -> plt.Figure:
     """Render the per-trial-group panels as one Figure.
 
     Tone-aligned scope: 1×3 grid (all, L, R). Whole-session scope: 1×1.
     Each panel's title carries n_sessions / n_tones depending on the
-    panel payload shape (3-tuple for single-session, 4-tuple for
+    panel payload shape (4-tuple for single-session, 5-tuple for
     bin-aggregated).
+
+    Q18 Addendum #17: ``shared_vmin`` / ``shared_vmax`` (when both given)
+    enforce a bucket-shared LogNorm range across all panels in the
+    figure (and across other figures in the same bucket if the driver
+    re-uses the values).
     """
     if scope == "tone_aligned":
         trial_groups = TASK5_TRIAL_GROUPS_TONE_ALIGNED
@@ -831,6 +853,7 @@ def _assemble_panel_figure(
             H, ext, bodypart, center_mode,
             title=panel_title, defaults=defaults, ax=ax,
             n_total_frames=n_total,
+            shared_vmin=shared_vmin, shared_vmax=shared_vmax,
         )
     fig.suptitle(suptitle, fontsize=12)
     return fig
@@ -932,6 +955,8 @@ def _render_composite_panel_axis(
     family_bodyparts: list[str],
     family_center_mode: str,
     panel_title: str,
+    shared_vmin: float | None = None,
+    shared_vmax: float | None = None,
 ) -> None:
     """Render N sequential layered ``imshow`` plots on one axes — one per
     bodypart in the composite family, each with its own cmap + LogNorm +
@@ -942,6 +967,9 @@ def _render_composite_panel_axis(
 
     Q17 Addendum #16: H_proportion normalization uses ``n_total_frames``
     (per-bp total in-window frames) instead of ``H.sum()`` (legacy).
+
+    Q18 Addendum #17: ``shared_vmin`` / ``shared_vmax`` (when both given)
+    override the per-bp LogNorm bounds with the bucket-shared range.
     """
     extent_first: list[float] | None = None
     n_layered = 0
@@ -954,8 +982,13 @@ def _render_composite_panel_axis(
         finite_nonzero = H_prop[np.isfinite(H_prop) & (H_prop > 0)]
         if finite_nonzero.size == 0:
             continue
-        vmin = float(finite_nonzero.min())
-        vmax = float(H_prop.max())
+        # Q18 Addendum #17: bucket-shared range when given, else per-bp range.
+        if shared_vmin is not None and shared_vmax is not None and shared_vmax > 0:
+            norm_vmin = max(float(shared_vmin), 1e-10)
+            norm_vmax = float(shared_vmax)
+        else:
+            norm_vmin = max(float(finite_nonzero.min()), 1e-10)
+            norm_vmax = float(H_prop.max())
         try:
             cmap = plt.get_cmap(_get_bodypart_cmap(spatial_config, bp))
         except ValueError:
@@ -967,7 +1000,7 @@ def _render_composite_panel_axis(
             cmap=cmap,
             alpha=_COMPOSITE_ALPHA,
             aspect="auto",
-            norm=mcolors.LogNorm(vmin=max(vmin, 1e-10), vmax=vmax),
+            norm=mcolors.LogNorm(vmin=norm_vmin, vmax=norm_vmax),
         )
         n_layered += 1
 
@@ -1033,6 +1066,8 @@ def _assemble_composite_figure(
     family_center_mode: str,
     family_label: str,
     defaults: dict[str, Any],
+    shared_vmin: float | None = None,
+    shared_vmax: float | None = None,
 ) -> plt.Figure:
     """Render the multi-bp composite figure — 1×3 grid (tone_aligned) /
     1×1 (whole_session), each panel layering N bodyparts via
@@ -1078,6 +1113,7 @@ def _assemble_composite_figure(
             family_bodyparts=family_bodyparts,
             family_center_mode=family_center_mode,
             panel_title=panel_title,
+            shared_vmin=shared_vmin, shared_vmax=shared_vmax,
         )
     _attach_composite_legend(
         fig, family_bodyparts, spatial_config, family_label=family_label,
@@ -1097,6 +1133,8 @@ def render_individual_session_heatmap(
     *,
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
+    shared_vmin: float | None = None,
+    shared_vmax: float | None = None,
 ) -> plt.Figure:
     """Render the per-session heatmap figure for one (animal, family,
     date, scope) cell.
@@ -1108,6 +1146,10 @@ def render_individual_session_heatmap(
     Composite families (whiskers + fiducial bilateral pairs; any family
     with > 1 bodypart) dispatch to the Pattern B layered-overlay
     renderer (Addendum #10 Q1, generalized in Addendum #13).
+
+    Q18 Addendum #17: ``shared_vmin`` / ``shared_vmax`` propagate
+    bucket-shared LogNorm bounds into the panel renderers (used by the
+    cohort driver's two-pass-per-bucket flow).
     """
     if defaults is None:
         defaults = load_defaults()
@@ -1130,6 +1172,7 @@ def render_individual_session_heatmap(
             family_center_mode=center_mode,
             family_label=family_entry,
             defaults=defaults,
+            shared_vmin=shared_vmin, shared_vmax=shared_vmax,
         )
     bp = bodyparts[0]
 
@@ -1139,10 +1182,11 @@ def render_individual_session_heatmap(
     )
     return _assemble_panel_figure(
         panels, bp, center_mode, scope, suptitle, defaults=defaults,
+        shared_vmin=shared_vmin, shared_vmax=shared_vmax,
     )
 
 
-def render_binned_sessions_heatmap(
+def render_binned_sessions_heatmap(  # noqa: D401
     animal: str,
     family_entry: str,
     rel_day_bin_label: str,
@@ -1152,6 +1196,8 @@ def render_binned_sessions_heatmap(
     *,
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
+    shared_vmin: float | None = None,
+    shared_vmax: float | None = None,
 ) -> plt.Figure:
     """Render the per-(rel_day_bin) heatmap figure for one (animal,
     family, rel_day_bin, scope) cell.
@@ -1163,6 +1209,10 @@ def render_binned_sessions_heatmap(
     Panel layout same as :func:`render_individual_session_heatmap`.
     Composite families (any family with > 1 bodypart) dispatch to the
     Pattern B layered-overlay renderer.
+
+    Q18 Addendum #17: ``shared_vmin`` / ``shared_vmax`` propagate
+    bucket-shared LogNorm bounds (driver uses them across all bins ×
+    trial-groups in the (family, bin_size, scope) bucket).
     """
     if defaults is None:
         defaults = load_defaults()
@@ -1185,6 +1235,7 @@ def render_binned_sessions_heatmap(
             family_center_mode=center_mode,
             family_label=family_entry,
             defaults=defaults,
+            shared_vmin=shared_vmin, shared_vmax=shared_vmax,
         )
     bp = bodyparts[0]
 
@@ -1194,6 +1245,7 @@ def render_binned_sessions_heatmap(
     )
     return _assemble_panel_figure(
         panels, bp, center_mode, scope, suptitle, defaults=defaults,
+        shared_vmin=shared_vmin, shared_vmax=shared_vmax,
     )
 
 
@@ -1438,6 +1490,7 @@ def render_proportion_difference_heatmap(
     dates: list[dt.date] | None = None,
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
+    shared_vmax: float | None = None,
 ) -> plt.Figure:
     """Render the per-(animal, family, scope, bin_size, trial_group)
     proportion-difference grid-summary SVG per Addendum #11 Q2.B +
@@ -1545,15 +1598,20 @@ def render_proportion_difference_heatmap(
             trial_group=trial_group,
         )
         bin_results.append((bin_label, D, ext, n_sess))
-    # Shared vmax = max |D| across all bins with finite data.
-    abs_maxes: list[float] = []
-    for _label, D, _ext, _n in bin_results:
-        if D is None:
-            continue
-        finite_abs = np.abs(D[np.isfinite(D)])
-        if finite_abs.size:
-            abs_maxes.append(float(finite_abs.max()))
-    shared_vmax = max(abs_maxes) if abs_maxes else 1e-12
+    # Q14 per-SVG vmax (within-file). Q18 supersedes this when driver
+    # supplies shared_vmax (bucket-shared across all 3 tg-SVGs in the
+    # (family, bin_size, scope) bucket).
+    if shared_vmax is None:
+        abs_maxes: list[float] = []
+        for _label, D, _ext, _n in bin_results:
+            if D is None:
+                continue
+            finite_abs = np.abs(D[np.isfinite(D)])
+            if finite_abs.size:
+                abs_maxes.append(float(finite_abs.max()))
+        local_shared_vmax = max(abs_maxes) if abs_maxes else 1e-12
+    else:
+        local_shared_vmax = float(shared_vmax)
 
     bp_for_axis = bodyparts[0]  # reference for spatial_config axis lookup
     n_bins = len(bin_labels)
@@ -1576,15 +1634,16 @@ def render_proportion_difference_heatmap(
             ax, D, ext, bp_for_axis, center_mode,
             spatial_config=spatial_config,
             cmap_name=cmap_name, title=title,
-            shared_vmax=shared_vmax,
+            shared_vmax=local_shared_vmax,
         )
     for ax in axes[len(bin_labels):]:
         ax.set_axis_off()
+    bucket_label = "bucket" if shared_vmax is not None else "file"
     fig.suptitle(
         f"{animal}  {family_entry}  {scope}  proportion_differences  "
         f"bin{int(bin_size_days)}d  tg={trial_group}  "
         f"vs all-pre-stroke pool (n_pre_sess={n_pre_sess})  "
-        f"shared |vmax|={shared_vmax:.3g}",
+        f"{bucket_label} |vmax|={local_shared_vmax:.3g}",
         fontsize=11,
     )
     return fig
@@ -1749,18 +1808,24 @@ def _render_ot_mass_change_panels(
     *,
     spatial_config: dict[str, Any],
     bin_label: str,
+    shared_destroy_vmax: float | None = None,
+    shared_create_vmax: float | None = None,
 ) -> None:
     """Render the 2 mass-change heatmaps onto a pair of Axes —
     ``mass_destroy`` (Reds cmap) + ``mass_create`` (Blues cmap). Linear
     imshow per legacy lines 6411-6441. Y-axis inverted to match heatmap
     convention.
+
+    Q18 Addendum #17: ``shared_destroy_vmax`` / ``shared_create_vmax``
+    (when given) pin the linear vmax for each cmap — used by the driver
+    to share color scales across all bins × tg in the UOT bucket.
     """
     per_mode = _get_per_center_mode_params(spatial_config, bodypart, center_mode)
     xl = per_mode["xlim"] if per_mode["xlim"] else (extent[0], extent[1])
     yl = per_mode["ylim"] if per_mode["ylim"] else (extent[2], extent[3])
-    for ax, arr, cmap_name, kind in (
-        (ax_destroy, mass_destroy, _OT_MASS_DESTROY_CMAP, "destroy"),
-        (ax_create, mass_create, _OT_MASS_CREATE_CMAP, "create"),
+    for ax, arr, cmap_name, kind, shared_v in (
+        (ax_destroy, mass_destroy, _OT_MASS_DESTROY_CMAP, "destroy", shared_destroy_vmax),
+        (ax_create, mass_create, _OT_MASS_CREATE_CMAP, "create", shared_create_vmax),
     ):
         if arr is None or float(arr.sum()) == 0.0:
             ax.text(0.5, 0.5, f"{kind}\n(no mass change)",
@@ -1771,9 +1836,13 @@ def _render_ot_mass_change_panels(
             cmap = plt.get_cmap(cmap_name)
         except ValueError:
             cmap = plt.get_cmap("viridis")
+        imshow_kwargs: dict[str, Any] = {}
+        if shared_v is not None and shared_v > 0:
+            imshow_kwargs["vmin"] = 0.0
+            imshow_kwargs["vmax"] = float(shared_v)
         im = ax.imshow(
             arr.T, origin="lower", extent=extent,
-            cmap=cmap, aspect="auto",
+            cmap=cmap, aspect="auto", **imshow_kwargs,
         )
         ax.set_xlim(xl)
         ax.set_ylim(yl[1], yl[0])  # inverted Y
@@ -1793,11 +1862,18 @@ def _render_ot_arrows_panel(
     *,
     spatial_config: dict[str, Any],
     title: str,
+    shared_arrow_logmag_lo: float | None = None,
+    shared_arrow_logmag_hi: float | None = None,
 ) -> None:
     """Render the UNBALANCED-OT displacement-field arrows on one Axes per
     legacy lines 6443-6565: threshold by 50th-pct × 0.1 of mass + mag,
     log10-scaled linewidth + head + alpha + color, ``YlGnBu`` cmap.
     Head dimensions scale with histogram dx/dy (legacy lines 6175-6178).
+
+    Q18 Addendum #17: ``shared_arrow_logmag_lo/hi`` (when both given)
+    pin the log10-mass normalization bounds — drives arrow linewidth /
+    head dimensions / alpha / color uniformly across all bins × tg in
+    the UOT bucket. When None, fall back to per-panel 1st/99th percentile.
     """
     if plan is None or extent is None:
         ax.text(0.5, 0.5, f"{title}\n(no OT data)",
@@ -1844,10 +1920,20 @@ def _render_ot_arrows_panel(
         return
     eps_mass = float(np.percentile(pos_mass, 1) * 0.1)
     logM = np.log10(M_plot + eps_mass)
-    lo_m = float(np.percentile(logM, 1))
-    hi_m = float(np.percentile(logM, 99))
-    if hi_m <= lo_m:
-        hi_m = lo_m + 1e-6
+    # Q18 Addendum #17: bucket-shared logmag range when given, else
+    # per-panel 1st/99th percentile (legacy / Q14 per-SVG scope).
+    if (
+        shared_arrow_logmag_lo is not None
+        and shared_arrow_logmag_hi is not None
+        and shared_arrow_logmag_hi > shared_arrow_logmag_lo
+    ):
+        lo_m = float(shared_arrow_logmag_lo)
+        hi_m = float(shared_arrow_logmag_hi)
+    else:
+        lo_m = float(np.percentile(logM, 1))
+        hi_m = float(np.percentile(logM, 99))
+        if hi_m <= lo_m:
+            hi_m = lo_m + 1e-6
     frac_m = np.clip((logM - lo_m) / (hi_m - lo_m), 0.0, 1.0)
     lw_vals = _ARROW_LW_MIN + frac_m * (_ARROW_LW_MAX - _ARROW_LW_MIN)
     # Head dimensions scale with histogram cell width/height per legacy.
@@ -1971,6 +2057,10 @@ def render_unbalanced_ot_displacement_field(
     trial_group: str = "all",
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
+    shared_mass_destroy_vmax: float | None = None,
+    shared_mass_create_vmax: float | None = None,
+    shared_arrow_logmag_lo: float | None = None,
+    shared_arrow_logmag_hi: float | None = None,
 ) -> plt.Figure:
     """Render the UNBALANCED-OT per-bin grid summary SVG per Addendum #14
     Q3d.B (mirrors proportion_differences per-bin pattern from
@@ -2146,11 +2236,15 @@ def render_unbalanced_ot_displacement_field(
             bp_for_axis, center_mode,
             spatial_config=spatial_config,
             bin_label=f"{bin_label} {bin_n_sess_title}",
+            shared_destroy_vmax=shared_mass_destroy_vmax,
+            shared_create_vmax=shared_mass_create_vmax,
         )
         _render_ot_arrows_panel(
             ax_arrows, plan, ext, bp_for_axis, center_mode,
             spatial_config=spatial_config,
             title=f"bin {bin_label} arrows {bin_n_sess_title}",
+            shared_arrow_logmag_lo=shared_arrow_logmag_lo,
+            shared_arrow_logmag_hi=shared_arrow_logmag_hi,
         )
 
     fig.suptitle(
@@ -2163,11 +2257,373 @@ def render_unbalanced_ot_displacement_field(
     return fig
 
 
+# ---------------------------------------------------------------------------
+# Phase 7c.2 Addendum #17 Q18 — bucket-shared colormap precompute helpers.
+#
+# The cohort driver calls these in Pass 1 to derive bucket-shared
+# (vmin, vmax) ranges, then re-invokes the per-SVG render_* functions
+# in Pass 2 with the shared kwargs filled in. Each helper returns just
+# the value arrays needed for range derivation — figures are NOT
+# rendered (the driver re-issues the render_* calls).
+#
+# Memory budget: typical PS46 IS bucket = 21 dates × 3 tgs × 1 bp at
+# 100×100 = ~5 MB / bucket. Trivial.
+# ---------------------------------------------------------------------------
+
+
+def precompute_individual_session_h_proportions(
+    animal: str,
+    family_entry: str,
+    scope: Scope,
+    dates: list[dt.date],
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+) -> list[np.ndarray]:
+    """Collect H_proportion arrays across the IS bucket = (family, scope)
+    for one animal. Iterates all (date × trial_group [× bp for composite])
+    cells. Returns flat list of np.ndarray suitable for range derivation.
+    """
+    if defaults is None:
+        defaults = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+    bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
+    arrays: list[np.ndarray] = []
+    for date in dates:
+        if len(bodyparts) > 1:
+            panels = _compute_composite_panels(
+                animal, [date], bodyparts, center_mode, scope, resolver,
+                defaults=defaults, animal_info=animal_info,
+            )
+            for _tg, per_tg in panels.items():
+                for _bp, H, _ext, _n_sess, _n_tones, n_total in per_tg:
+                    if H is None or n_total == 0:
+                        continue
+                    arrays.append(H / float(n_total))
+        else:
+            bp = bodyparts[0]
+            panels = _compute_panels_for_session(
+                animal, date, bp, center_mode, scope, resolver,
+                defaults=defaults, animal_info=animal_info,
+            )
+            for _tg, payload in panels.items():
+                H, _ext, _n_tones, n_total = payload
+                if H is None or n_total == 0:
+                    continue
+                arrays.append(H / float(n_total))
+    return arrays
+
+
+def precompute_binned_sessions_h_proportions(
+    animal: str,
+    family_entry: str,
+    scope: Scope,
+    bin_size_days: int,
+    dates: list[dt.date],
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+) -> list[np.ndarray]:
+    """Collect H_proportion arrays across the BS bucket = (family, bin_size,
+    scope). Iterates all (rel_day_bin × trial_group [× bp]) cells."""
+    if defaults is None:
+        defaults = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+    bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
+    from stroke_orofacial.dlc_kinematics._day_binned import _compute_rel_day_bin_label
+    bins: dict[str, list[dt.date]] = {}
+    for d in dates:
+        label = _compute_rel_day_bin_label(
+            session_date=d, d0=animal_info.stroke_date, bin_days=int(bin_size_days),
+        )
+        bins.setdefault(label, []).append(d)
+    arrays: list[np.ndarray] = []
+    for _label, bin_dates in bins.items():
+        if len(bodyparts) > 1:
+            panels = _compute_composite_panels(
+                animal, bin_dates, bodyparts, center_mode, scope, resolver,
+                defaults=defaults, animal_info=animal_info,
+            )
+            for _tg, per_tg in panels.items():
+                for _bp, H, _ext, _n_sess, _n_tones, n_total in per_tg:
+                    if H is None or n_total == 0:
+                        continue
+                    arrays.append(H / float(n_total))
+        else:
+            bp = bodyparts[0]
+            panels = _compute_panels_for_dates(
+                animal, bin_dates, bp, center_mode, scope, resolver,
+                defaults=defaults, animal_info=animal_info,
+            )
+            for _tg, payload in panels.items():
+                H, _ext, _n_sess, _n_tones, n_total = payload
+                if H is None or n_total == 0:
+                    continue
+                arrays.append(H / float(n_total))
+    return arrays
+
+
+def precompute_proportion_diffs(
+    animal: str,
+    family_entry: str,
+    scope: Scope,
+    bin_size_days: int,
+    dates: list[dt.date],
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+) -> list[np.ndarray]:
+    """Collect per-bin D = H_bin_prop - H_pre_pool_prop arrays across the
+    PD bucket = (family, bin_size, scope). Iterates over (trial_group ×
+    rel_day_bin). Used to derive bucket-shared symmetric vmax."""
+    if defaults is None:
+        defaults = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+    bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
+    pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
+    from stroke_orofacial.dlc_kinematics._day_binned import _compute_rel_day_bin_label
+
+    arrays: list[np.ndarray] = []
+    trial_groups = (
+        TASK5_TRIAL_GROUPS_TONE_ALIGNED if scope == "tone_aligned"
+        else TASK5_TRIAL_GROUPS_WHOLE_SESSION
+    )
+    for tg in trial_groups:
+        # Compute pre-pool for this tg.
+        if len(bodyparts) > 1:
+            H_pre_pool, _ext_pre, _n_pre, n_total_pre = (
+                _aggregate_for_dates_pooled_bodyparts(
+                    animal, pre_dates, bodyparts, center_mode, scope, resolver,
+                    defaults=defaults, animal_info=animal_info,
+                    trial_group=tg,
+                )
+            )
+        else:
+            tg_arg = tg if scope == "tone_aligned" else None
+            window_ms = TASK5_TONE_WINDOW_MS if scope == "tone_aligned" else None
+            H_pre_pool, _ext_pre, _n_pre, _, n_total_pre = (
+                compute_animal_aggregated_histogram(
+                    animal, pre_dates, bodyparts[0], center_mode, resolver,
+                    trial_group=tg_arg, window_ms=window_ms,
+                    defaults=defaults, animal_info=animal_info,
+                )
+            )
+        if H_pre_pool is None or n_total_pre == 0:
+            continue
+        H_pre_pool_prop = H_pre_pool / float(n_total_pre)
+        # Iterate bins.
+        bins: dict[str, list[dt.date]] = {}
+        for d in dates:
+            label = _compute_rel_day_bin_label(
+                session_date=d, d0=animal_info.stroke_date,
+                bin_days=int(bin_size_days),
+            )
+            bins.setdefault(label, []).append(d)
+        for _label, bin_dates in bins.items():
+            D, _ext, _n_sess = _compute_proportion_diff_for_bin(
+                animal, bin_dates, H_pre_pool_prop, list(_ext_pre or []),
+                bodyparts, center_mode, scope, resolver,
+                defaults=defaults, animal_info=animal_info,
+                trial_group=tg,
+            )
+            if D is None:
+                continue
+            arrays.append(D)
+    return arrays
+
+
+def precompute_unbalanced_ot_plans(
+    animal: str,
+    family_entry: str,
+    scope: Scope,
+    bin_size_days: int,
+    dates: list[dt.date],
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+) -> list[dict[str, Any]]:
+    """Collect UOT plan dicts across the UOT bucket = (family, bin_size,
+    scope). Iterates (trial_group × rel_day_bin). Used to derive the
+    bucket-shared mass_destroy_vmax / mass_create_vmax / arrow_logmag
+    ranges in Pass 1."""
+    if defaults is None:
+        defaults = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+    bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
+    tone_config = defaults["dlc_spatial_tone_aligned"]
+    unb_nbins = int(((tone_config.get("unbalanced_ot") or {}).get("nbins")) or 50)
+    pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
+    from stroke_orofacial.dlc_kinematics._day_binned import _compute_rel_day_bin_label
+
+    plans: list[dict[str, Any]] = []
+    trial_groups = (
+        TASK5_TRIAL_GROUPS_TONE_ALIGNED if scope == "tone_aligned"
+        else TASK5_TRIAL_GROUPS_WHOLE_SESSION
+    )
+    for tg in trial_groups:
+        tg_arg = tg if scope == "tone_aligned" else None
+        window_ms = TASK5_TONE_WINDOW_MS if scope == "tone_aligned" else None
+        # Pre-pool.
+        if len(bodyparts) == 1:
+            H_pre_pool, ext_pre, _n_pre, _, n_total_pre = (
+                compute_animal_aggregated_histogram(
+                    animal, pre_dates, bodyparts[0], center_mode, resolver,
+                    trial_group=tg_arg, window_ms=window_ms,
+                    defaults=defaults, animal_info=animal_info,
+                    nbins_override=unb_nbins,
+                )
+            )
+        else:
+            H_pre_pool, ext_pre, _n_pre, n_total_pre = (
+                _aggregate_for_dates_pooled_bodyparts(
+                    animal, pre_dates, bodyparts, center_mode, scope, resolver,
+                    defaults=defaults, animal_info=animal_info,
+                    trial_group=tg, nbins_override=unb_nbins,
+                )
+            )
+        if H_pre_pool is None or n_total_pre == 0:
+            continue
+        H_pre_pool_prop = H_pre_pool / float(n_total_pre)
+        # Iterate bins.
+        bins: dict[str, list[dt.date]] = {}
+        for d in dates:
+            label = _compute_rel_day_bin_label(
+                session_date=d, d0=animal_info.stroke_date,
+                bin_days=int(bin_size_days),
+            )
+            bins.setdefault(label, []).append(d)
+        for _label, bin_dates in bins.items():
+            if len(bodyparts) == 1:
+                H_bin, ext_b, _n_sess, _, n_total_bin = (
+                    compute_animal_aggregated_histogram(
+                        animal, bin_dates, bodyparts[0], center_mode, resolver,
+                        trial_group=tg_arg, window_ms=window_ms,
+                        defaults=defaults, animal_info=animal_info,
+                        nbins_override=unb_nbins,
+                    )
+                )
+            else:
+                H_bin, ext_b, _n_sess, n_total_bin = (
+                    _aggregate_for_dates_pooled_bodyparts(
+                        animal, bin_dates, bodyparts, center_mode, scope, resolver,
+                        defaults=defaults, animal_info=animal_info,
+                        trial_group=tg, nbins_override=unb_nbins,
+                    )
+                )
+            if H_bin is None or n_total_bin == 0:
+                continue
+            ext = ext_pre or ext_b
+            H_bin_prop = H_bin / float(n_total_bin)
+            plan = _compute_unbalanced_ot_plan(H_pre_pool_prop, H_bin_prop, ext)
+            if plan is not None:
+                plans.append(plan)
+    return plans
+
+
+def derive_log_norm_range(arrays: list[np.ndarray]) -> tuple[float, float]:
+    """Q18 (vmin, vmax) for LogNorm shared across a bucket. ``vmin`` =
+    min of strictly-positive finite values; ``vmax`` = max."""
+    vmin_candidates: list[float] = []
+    vmax_candidates: list[float] = []
+    for arr in arrays:
+        if arr is None or arr.size == 0:
+            continue
+        finite_nonzero = arr[np.isfinite(arr) & (arr > 0)]
+        if finite_nonzero.size == 0:
+            continue
+        vmin_candidates.append(float(finite_nonzero.min()))
+        vmax_candidates.append(float(arr.max()))
+    if not vmax_candidates:
+        return 1e-10, 1e-9
+    return min(vmin_candidates), max(vmax_candidates)
+
+
+def derive_symmetric_diff_vmax(arrays: list[np.ndarray]) -> float:
+    """Q18 symmetric vmax for PD bucket. ``vmax`` = max(|D|.max()) across
+    arrays; per-panel renderer uses (vmin=-vmax, vmax=+vmax)."""
+    maxes: list[float] = []
+    for arr in arrays:
+        if arr is None or arr.size == 0:
+            continue
+        finite_abs = np.abs(arr[np.isfinite(arr)])
+        if finite_abs.size:
+            maxes.append(float(finite_abs.max()))
+    return max(maxes) if maxes else 1e-12
+
+
+def derive_uot_bucket_ranges(
+    plans: list[dict[str, Any]],
+) -> tuple[float, float, float, float]:
+    """Q18 UOT bucket-shared ranges: ``(mass_destroy_vmax, mass_create_vmax,
+    arrow_logmag_lo, arrow_logmag_hi)``. Mass values use linear vmax >
+    0 over plans' mass_destroy / mass_create arrays. Arrow logmag uses
+    1st/99th percentile of log10(mass_grid + eps) across plans (with
+    the mass_thr + mag_thr mask applied per `_render_ot_arrows_panel`).
+    """
+    destroy_vmaxes: list[float] = []
+    create_vmaxes: list[float] = []
+    all_logM: list[np.ndarray] = []
+    for plan in plans:
+        md = plan.get("mass_destroy")
+        if md is not None and float(md.sum()) > 0:
+            destroy_vmaxes.append(float(np.max(md)))
+        mc = plan.get("mass_create")
+        if mc is not None and float(mc.sum()) > 0:
+            create_vmaxes.append(float(np.max(mc)))
+        # Arrow logmag bucket aggregation: mirror the _render_ot_arrows_panel
+        # threshold logic to pick the same masked subset of arrows.
+        mag = plan.get("mag")
+        mass_grid = plan.get("mass_grid")
+        if mag is None or mass_grid is None:
+            continue
+        if not np.any(mag > 0):
+            continue
+        mass_pos = mass_grid[mass_grid > 0]
+        mag_pos = mag[mag > 0]
+        if mass_pos.size == 0 or mag_pos.size == 0:
+            continue
+        mass_thr = float(np.percentile(mass_pos, 50) * 0.1)
+        mag_thr = float(np.percentile(mag_pos, 50) * 0.1)
+        mask = (mass_grid > mass_thr) & (mag > mag_thr)
+        M_masked = mass_grid[mask]
+        pos = M_masked[M_masked > 0]
+        if pos.size == 0:
+            continue
+        eps = float(np.percentile(pos, 1) * 0.1)
+        all_logM.append(np.log10(M_masked + eps))
+    destroy_vmax = max(destroy_vmaxes) if destroy_vmaxes else 0.0
+    create_vmax = max(create_vmaxes) if create_vmaxes else 0.0
+    if all_logM:
+        flat_logM = np.concatenate(all_logM)
+        logmag_lo = float(np.percentile(flat_logM, 1))
+        logmag_hi = float(np.percentile(flat_logM, 99))
+        if logmag_hi <= logmag_lo:
+            logmag_hi = logmag_lo + 1e-6
+    else:
+        logmag_lo, logmag_hi = -10.0, -9.0
+    return destroy_vmax, create_vmax, logmag_lo, logmag_hi
+
+
 __all__ = [
     "TASK5_TONE_WINDOW_MS",
     "TASK5_TRIAL_GROUPS_TONE_ALIGNED",
     "TASK5_TRIAL_GROUPS_WHOLE_SESSION",
     "compute_animal_aggregated_histogram",
+    "derive_log_norm_range",
+    "derive_symmetric_diff_vmax",
+    "derive_uot_bucket_ranges",
+    "precompute_binned_sessions_h_proportions",
+    "precompute_individual_session_h_proportions",
+    "precompute_proportion_diffs",
+    "precompute_unbalanced_ot_plans",
     "render_animal_aggregated_heatmap",
     "render_binned_sessions_heatmap",
     "render_h_counts_panel",

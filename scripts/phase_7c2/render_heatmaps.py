@@ -56,6 +56,13 @@ from stroke_orofacial.config_loader import (
 )
 from stroke_orofacial.dlc_kinematics._day_binned import _compute_rel_day_bin_label
 from stroke_orofacial.dlc_spatial.render_on_demand import (
+    derive_log_norm_range,
+    derive_symmetric_diff_vmax,
+    derive_uot_bucket_ranges,
+    precompute_binned_sessions_h_proportions,
+    precompute_individual_session_h_proportions,
+    precompute_proportion_diffs,
+    precompute_unbalanced_ot_plans,
     render_binned_sessions_heatmap,
     render_individual_session_heatmap,
     render_proportion_difference_heatmap,
@@ -259,13 +266,28 @@ def _process_animal(
     anomalies: list[str] = []
     for family_entry in ALL_FAMILIES:
         for scope in SCOPES:
+            # ----- Q18 Pass 1 (per (family, scope)) — bucket-shared
+            # LogNorm range for IS + BS. Derived from Q17-normalized
+            # H_proportion arrays across ALL dates × tg [× bp]. -----
             if not only_pd_ot:
+                try:
+                    is_arrays = precompute_individual_session_h_proportions(
+                        animal, family_entry, scope, dates, resolver,
+                        defaults=defaults, animal_info=animal_info,
+                    )
+                    is_vmin, is_vmax = derive_log_norm_range(is_arrays)
+                except Exception as ex:
+                    log.error(f"    pre1/IS/{family_entry}/{scope}: {ex!r}")
+                    is_vmin, is_vmax = None, None
+                # ----- Pass 2 — render IS for each (date) with the shared
+                # IS bucket range. -----
                 for date in dates:
                     try:
                         fig = render_individual_session_heatmap(
                             animal=animal, family_entry=family_entry,
                             date=date, scope=scope, resolver=resolver,
                             defaults=defaults, animal_info=animal_info,
+                            shared_vmin=is_vmin, shared_vmax=is_vmax,
                         )
                         out = _individual_session_out_path(
                             resolver, scope, animal, family_entry, date,
@@ -280,33 +302,59 @@ def _process_animal(
                         )
                         anomalies.append(msg)
                         log.error(f"    ERR {msg}")
-                for bin_label, bin_dates in sorted(bins.items()):
+                # ----- BS bucket (one per bin_size). Per-bin_size shared
+                # LogNorm. -----
+                for bin_size_days in BIN_SIZES_DAYS:
                     try:
-                        fig = render_binned_sessions_heatmap(
-                            animal=animal, family_entry=family_entry,
-                            rel_day_bin_label=bin_label,
-                            dates_in_bin=bin_dates,
-                            scope=scope, resolver=resolver,
+                        bs_arrays = precompute_binned_sessions_h_proportions(
+                            animal, family_entry, scope, bin_size_days, dates,
+                            resolver,
                             defaults=defaults, animal_info=animal_info,
                         )
-                        out = _binned_sessions_out_path(
-                            resolver, scope, animal, family_entry, bin_label,
-                        )
-                        fig.savefig(out, format="svg")
-                        plt.close(fig)
-                        n_bs += 1
+                        bs_vmin, bs_vmax = derive_log_norm_range(bs_arrays)
                     except Exception as ex:
-                        n_err += 1
-                        msg = (
-                            f"bs/{family_entry}/{scope}/{bin_label}: {ex!r}"
+                        log.error(
+                            f"    pre1/BS/{family_entry}/{scope}/bin{bin_size_days}d: {ex!r}"
                         )
-                        anomalies.append(msg)
-                        log.error(f"    ERR {msg}")
-            # ----- proportion_differences (Addendum #11 Q2.B per-bin grid +
-            # Addendum #15 Q14 shared symmetric colormap + Q16 trial-group
-            # fanout: 3 SVGs per (family, tone_aligned, bin_size), 1 SVG per
-            # whole_session bin_size) -----
+                        bs_vmin, bs_vmax = None, None
+                    for bin_label, bin_dates in sorted(bins.items()):
+                        try:
+                            fig = render_binned_sessions_heatmap(
+                                animal=animal, family_entry=family_entry,
+                                rel_day_bin_label=bin_label,
+                                dates_in_bin=bin_dates,
+                                scope=scope, resolver=resolver,
+                                defaults=defaults, animal_info=animal_info,
+                                shared_vmin=bs_vmin, shared_vmax=bs_vmax,
+                            )
+                            out = _binned_sessions_out_path(
+                                resolver, scope, animal, family_entry, bin_label,
+                            )
+                            fig.savefig(out, format="svg")
+                            plt.close(fig)
+                            n_bs += 1
+                        except Exception as ex:
+                            n_err += 1
+                            msg = (
+                                f"bs/{family_entry}/{scope}/bin{bin_size_days}d/{bin_label}: {ex!r}"
+                            )
+                            anomalies.append(msg)
+                            log.error(f"    ERR {msg}")
+            # ----- PD bucket (Q18: per (family, bin_size, scope); supersedes
+            # Q14 per-SVG scope per Addendum #17). One symmetric vmax across
+            # all bins × trial_groups in the bucket. -----
             for bin_size_days in BIN_SIZES_DAYS:
+                try:
+                    pd_arrays = precompute_proportion_diffs(
+                        animal, family_entry, scope, bin_size_days, dates, resolver,
+                        defaults=defaults, animal_info=animal_info,
+                    )
+                    pd_vmax = derive_symmetric_diff_vmax(pd_arrays)
+                except Exception as ex:
+                    log.error(
+                        f"    pre1/PD/{family_entry}/{scope}/bin{bin_size_days}d: {ex!r}"
+                    )
+                    pd_vmax = None
                 for tg in _trial_groups_for_scope(scope):
                     try:
                         fig = render_proportion_difference_heatmap(
@@ -316,6 +364,7 @@ def _process_animal(
                             trial_group=tg,
                             dates=dates,
                             defaults=defaults, animal_info=animal_info,
+                            shared_vmax=pd_vmax,
                         )
                         out = _proportion_diff_out_path(
                             resolver, scope, animal, family_entry,
@@ -332,10 +381,26 @@ def _process_animal(
                         anomalies.append(msg)
                         log.error(f"    ERR {msg}")
 
-            # ----- unbalanced_ot per-bin grid (Addendum #14 Q3d.B per-bin
-            # vs all-pre-stroke pool + Addendum #15 Q15 nbins=50 + Q16
-            # trial-group fanout) -----
+            # ----- UOT bucket (Q18: per (family, bin_size, scope, value_type);
+            # 3 independent ranges for mass_destroy, mass_create, arrow_logmag.
+            # Supersedes Q14 per-SVG framing per Addendum #17). -----
             for bin_size_days in BIN_SIZES_DAYS:
+                try:
+                    uot_plans = precompute_unbalanced_ot_plans(
+                        animal, family_entry, scope, bin_size_days, dates, resolver,
+                        defaults=defaults, animal_info=animal_info,
+                    )
+                    destroy_vmax, create_vmax, logmag_lo, logmag_hi = (
+                        derive_uot_bucket_ranges(uot_plans)
+                    )
+                except Exception as ex:
+                    log.error(
+                        f"    pre1/UOT/{family_entry}/{scope}/bin{bin_size_days}d: {ex!r}"
+                    )
+                    destroy_vmax = None
+                    create_vmax = None
+                    logmag_lo = None
+                    logmag_hi = None
                 for tg in _trial_groups_for_scope(scope):
                     try:
                         fig = render_unbalanced_ot_displacement_field(
@@ -345,6 +410,10 @@ def _process_animal(
                             trial_group=tg,
                             dates=dates,
                             defaults=defaults, animal_info=animal_info,
+                            shared_mass_destroy_vmax=destroy_vmax,
+                            shared_mass_create_vmax=create_vmax,
+                            shared_arrow_logmag_lo=logmag_lo,
+                            shared_arrow_logmag_hi=logmag_hi,
                         )
                         out = _unbalanced_ot_out_path(
                             resolver, scope, animal, family_entry,
