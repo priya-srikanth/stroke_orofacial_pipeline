@@ -1967,3 +1967,97 @@ Q30 swatch legend (one row per layer, sampled from cmap middle) unchanged. Swatc
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q32, Addendum #9-28 Task 5 scope.)
+
+---
+
+## Addendum #30 — Combine UOT mass_destroy + mass_create into one diverging-cmap panel (Priya 2026-05-15)
+
+### Q33 LOCKED — Replace 3-panel UOT row (destroy + create + arrows) with 2-panel row (mass_change + arrows)
+
+Q27 split UOT into two single-signed panels (mass_destroy = Blues, mass_create = Reds). Priya 2026-05-15: collapse those into one diverging-cmap panel showing net mass change per bin. Visually consistent with Q25 proportion_diff convention (red = increased, blue = decreased) + halves horizontal panel count.
+
+**Compute combined mass-change array:**
+
+```python
+# Net mass flux per spatial bin: positive = mass created (post-stroke density increase),
+# negative = mass destroyed (post-stroke density decrease)
+H_mass_change = H_mass_create - H_mass_destroy
+```
+
+UOT conservation guarantees `sum(H_mass_create) ≈ sum(H_mass_destroy)` per bin (modulo unbalanced regularization slack), so the difference is meaningful and zero-centered.
+
+**Diverging cmap matching Q25 proportion-diff convention:**
+
+```python
+_MASS_CHANGE_CMAP = mcolors.LinearSegmentedColormap.from_list(
+    "rgb_diverging_mass_change",
+    [(0.0, "blue"), (0.5, "#d0d0d0"), (1.0, "red")],   # mirrors Q25 proportion-diff cmap
+    N=256,
+)
+_MASS_CHANGE_CMAP.set_bad("white")
+```
+
+(Can reuse `_PROPORTION_DIFF_CMAP` directly — they share definition; or keep parallel cmap object for clarity.)
+
+**Symmetric vmin/vmax around zero per Q14 shared-scale bucket:**
+
+```python
+# Across all bins in (animal, family_entry, scope, bin_size, trial_group) bucket
+vmax_abs_per_bucket = max(
+    abs(H_mass_change.min()) for H_mass_change in bucket_arrays,
+    abs(H_mass_change.max()) for H_mass_change in bucket_arrays,
+)
+```
+
+**Magnitude floor + NaN mask (analog of Q29 mass_floor_fraction, but on `|H_mass_change|`):**
+
+```python
+mass_change_floor_fraction = config_block.get("mass_change_floor_fraction", 0.05)
+mass_change_floor = vmax_abs_per_bucket * mass_change_floor_fraction
+
+H_mass_change_masked = np.where(
+    np.abs(H_mass_change) >= mass_change_floor, H_mass_change, np.nan
+)
+```
+
+**Render:**
+
+```python
+im = ax.imshow(
+    H_mass_change_masked, cmap=_MASS_CHANGE_CMAP, origin="lower",
+    vmin=-vmax_abs_per_bucket, vmax=+vmax_abs_per_bucket,
+)
+cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+cbar.set_label("mass change (created − destroyed)", fontsize=12)
+```
+
+### Layout impact
+
+- **Per-bin UOT row:** 2 panels (`mass_change | arrows`), down from 3 (`mass_destroy | mass_create | arrows`).
+- **Grid SVG:** N rows × 2 cols (one row per bin within bin_size). Filename unchanged: `unbalanced_ot_grid_bin<N>d.svg`.
+- **Colorbar count:** ONE diverging colorbar per UOT grid SVG (supersedes Q24-resolution / Q27 / Q28 two-colorbars-for-mass-panels lock).
+
+### Config knob
+
+New: `configs/defaults.yaml dlc_spatial_tone_aligned.unbalanced_ot.mass_change_floor_fraction = 0.05`.
+
+Old `mass_floor_fraction` from Q29 can be deprecated since it applied to single-signed mass_destroy / mass_create panels which no longer exist. CC removes that knob OR keeps it for backward-compat if removing is risky; document choice in Task 8 DECISIONS.
+
+### Supersedes from prior locks
+
+- **Q27 (Blues mass_destroy + Reds mass_create):** SUPERSEDED. Both panels collapsed into a single diverging panel using the Q25 red/blue convention.
+- **Q24 "two colorbars per UOT grid":** SUPERSEDED. Now one diverging colorbar.
+- **Q28 (mass_destroy/mass_create white-zero background):** ADAPTED. Zero-magnitude bins in diverging space sit at the gray midpoint (`#d0d0d0`) — visually distinguishable from blue (destroyed) / red (created). Sub-magnitude-floor bins mask to NaN → white via `set_bad`.
+- **Q29 mass_floor_fraction:** RENAMED to `mass_change_floor_fraction` and applied to `|H_mass_change|` instead of separate destroy/create floors.
+
+### Q27/Q28/Q29 retain relevance for any future plot type that displays single-signed mass
+
+Q27/Q28/Q29 logic could still be relevant if any future UOT-style plot needs to show mass_destroy or mass_create in isolation (not as a combined diff). Currently no such plot is in Task 5 scope, but the locks remain as reference for future phases. The kickoff doc's Q22-Q29 chain is intact; Q33 introduces a new render path on top.
+
+### Q5.F cleanup absorbs pre-Q33 stale outputs
+
+The pre-Addendum-#30 UOT SVGs with 3-panel-per-bin layout (mass_destroy + mass_create + arrows) become stale. Q5.F's `rm -rf pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/ pipeline_outputs/dlc_kinematics/whole_session_heatmaps/` BEFORE Step 7's final cohort re-render handles cleanup; no additional per-pattern enumeration needed.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q33, Addendum #9-29 Task 5 scope. Q27/Q28 superseded by Q33 for UOT-specific rendering.)
