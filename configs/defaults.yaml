@@ -375,32 +375,39 @@ dlc_spatial_tone_aligned:
   vmin_log_prop: 1.0e-5
   share_xy_within_mouse: true
   fps: 250.0
-  # Phase 7c.2 Addendum #15 Q15 + Addendum #20 Q21: UOT spatial resolution
-  # decoupled from heatmap_nbins, plus arrow-size scaling knob.
+  # Phase 7c.2 Addendum #15 Q15 + Addendum #20 Q21 + Addendum #23 Q21
+  # re-lock: UOT spatial resolution decoupled from heatmap_nbins, plus
+  # arrow-size scaling knob.
   #
-  # Legacy renderer (cells 6300-6680 of 20251202_DLC_analysis_all_bodyparts_
-  # stats_pixelbin.ipynb, line 6434) uses NBINS = 50. Q15 originally
-  # pinned this here. Q21 (2026-05-15, Priya) drops to 15 after PS46
-  # spot-checks showed the displacement field was still too crowded at
-  # nbins=50 (and at an intermediate nbins=25). 15×15 = 225 grid cells →
-  # max ~225 arrows per panel (most thresholded out by the mass/mag gate
-  # at render time), trims visual density to a readable level.
+  # History:
+  # - Legacy renderer (cells 6300-6680 of 20251202_DLC_analysis_all_bodyparts_
+  #   stats_pixelbin.ipynb, line 6434) used NBINS = 50.
+  # - Q15 originally pinned 50 here.
+  # - Q21 (Addendum #20, 2026-05-15): dropped to 15 after PS46 spot-checks
+  #   showed nbins=50 and an intermediate 25 still too crowded.
+  # - Q21 re-lock (Addendum #23, 2026-05-15): bumped 15 → 20 — nbins=15
+  #   under-aggregated the density structure. 20 is the working midpoint
+  #   (20×20 = 400 grid cells → ~400 max arrows per panel before mass/mag
+  #   thresholding).
   #
-  # ``arrow_size_factor`` (Q21): multiplier applied to head_w / head_l /
-  # linewidth arrays in the arrow rendering. Default 0.5 halves the
-  # legacy-default arrow dimensions; alpha is unchanged. Combined with
-  # nbins=15 the displacement field reads cleanly per Priya's PS46
-  # spot-check intent.
+  # Tuning recipe if PS46 spot-check at nbins=20 still imperfect:
+  # - Bins still too coarse / under-aggregating → 22.
+  # - Arrows still too crowded → first bump threshold_pct50_multiplier
+  #   0.1 → 0.15 (suppresses lower-magnitude arrows); only drop nbins
+  #   back if threshold tuning isn't enough.
   #
-  # ``threshold_pct50_multiplier`` (Q21 escape hatch): multiplier on the
-  # 50th-percentile mass + mag thresholds in `_render_ot_arrows_panel`.
-  # Default 0.1 matches the legacy convention. Bump to 0.25 to suppress
-  # lower-magnitude arrows if 15-bin + 0.5-size still too dense; do NOT
-  # pre-emptively dial up — leave at 0.1 and verify visually first.
+  # ``arrow_size_factor`` (Q21, unchanged from Addendum #20): multiplier
+  # on head_w / head_l / linewidth arrays in the arrow rendering. Default
+  # 0.5 halves the legacy-default arrow dimensions; alpha is unchanged.
+  #
+  # ``threshold_pct50_multiplier``: multiplier on the 50th-percentile
+  # mass + mag thresholds in `_render_ot_arrows_panel`. Default 0.1
+  # matches legacy convention. Bump to 0.15 if 20-bin + 0.5-size still
+  # too dense.
   #
   # Other plot types continue to use default_nbins (heatmap resolution).
   unbalanced_ot:
-    nbins: 15
+    nbins: 20
     arrow_size_factor: 0.5
     threshold_pct50_multiplier: 0.1
   families:

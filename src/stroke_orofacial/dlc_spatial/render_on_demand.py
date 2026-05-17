@@ -2228,7 +2228,7 @@ def render_unbalanced_ot_displacement_field(
     spatial_config = defaults["dlc_spatial"]
     tone_config = defaults["dlc_spatial_tone_aligned"]
     unb_cfg = tone_config.get("unbalanced_ot") or {}
-    unb_nbins = int(unb_cfg.get("nbins") or 15)  # Q21: default 15
+    unb_nbins = int(unb_cfg.get("nbins") or 20)  # Q21 re-lock (Addendum #23): default 20
     arrow_size_factor = float(unb_cfg.get("arrow_size_factor", 0.5))
     threshold_pct50_multiplier = float(unb_cfg.get("threshold_pct50_multiplier", 0.1))
 

@@ -1604,3 +1604,27 @@ All prior Q5.E cleanup categories continue to apply (legacy `spatial_reward_alig
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup [supersedes Q5.E with cross-config bin-size mismatch removal], Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q22, Addendum #9-21 Task 5 scope.)
+
+---
+
+## Addendum #23 — UOT bin size tweak: 15 was too coarse (Priya 2026-05-15)
+
+### Q21 RE-LOCKED — Bump UOT `nbins` default from 15 → 20
+
+After Q21's reduction to `nbins=15` + `arrow_size_factor=0.5`, the spatial bins are visually a little too coarse — the underlying density structure is over-aggregated. Bump back up:
+
+- **New default `dlc_spatial_tone_aligned.unbalanced_ot.nbins = 20`** (up from 15 set in Addendum #20; was 25 originally).
+- **Keep `arrow_size_factor = 0.5`** (unchanged from Q21).
+- **Keep `threshold_pct50_multiplier = 0.1`** unless arrows are still too dense at 20 bins (then tune up to 0.15 or 0.2).
+
+20 is the working midpoint between original 25 (too dense) and Addendum #20 15 (too coarse). CC iterates from there if PS46 spot-check shows either over-density or over-aggregation:
+- If still too coarse → bump to 22.
+- If arrows get too crowded again → keep `nbins=20` but bump `threshold_pct50_multiplier` to 0.15 first; only tune `nbins` back down if threshold tuning isn't enough.
+
+### Stale-output cleanup unchanged
+
+Q5.F's `rm -rf` simplification handles cleanup of the Addendum-#20-era `nbins=15` SVGs alongside all other intermediate Task 5 stale outputs. No separate cleanup step needed.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q23, Addendum #9-22 Task 5 scope.)
