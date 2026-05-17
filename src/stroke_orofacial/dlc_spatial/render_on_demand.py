@@ -1004,6 +1004,7 @@ def _render_composite_panel_axis(
     panel_title: str,
     shared_vmin: float | None = None,
     shared_vmax: float | None = None,
+    layered_overlay_floor_fraction: float = 0.05,
 ) -> None:
     """Render N sequential layered ``imshow`` plots on one axes — one per
     bodypart in the composite family, each with its own cmap + LogNorm +
@@ -1017,7 +1018,19 @@ def _render_composite_panel_axis(
 
     Q18 Addendum #17: ``shared_vmin`` / ``shared_vmax`` (when both given)
     override the per-bp LogNorm bounds with the bucket-shared range.
+
+    Q32 Addendum #29:
+      - Per-layer magnitude floor (``layered_overlay_floor_fraction``,
+        default 0.05). Bins with H_prop < (layer_vmax × fraction) are
+        NaN-masked so blank regions render invisible.
+      - NaN bins set to TRANSPARENT (RGBA (1,1,1,0)) — opaque-white
+        NaN caused lower layers to be washed out under alpha blending.
+        Single-cmap callers keep set_bad("white") elsewhere; composite
+        layering is the only place transparency is needed.
+      - Axes facecolor set to white so the canvas background showing
+        through transparent NaN cells is consistent.
     """
+    ax.set_facecolor("white")  # Q32: showthrough color for transparent NaN.
     extent_first: list[float] | None = None
     n_layered = 0
     for bp, H, ext, _n_sess, _n_tones, n_total in composite_panels:
@@ -1036,18 +1049,24 @@ def _render_composite_panel_axis(
         else:
             norm_vmin = max(float(finite_nonzero.min()), 1e-10)
             norm_vmax = float(H_prop.max())
+        # Q32 Addendum #29: per-layer magnitude floor + transparent NaN.
+        layer_floor = norm_vmax * float(layered_overlay_floor_fraction)
+        H_prop_masked = np.where(
+            H_prop >= layer_floor, H_prop, np.nan,
+        ) if layer_floor > 0 else H_prop
         try:
-            cmap = plt.get_cmap(_get_bodypart_cmap(spatial_config, bp))
+            cmap = plt.get_cmap(_get_bodypart_cmap(spatial_config, bp)).copy()
         except ValueError:
-            cmap = plt.get_cmap(_COMPOSITE_FALLBACK_CMAP)
+            cmap = plt.get_cmap(_COMPOSITE_FALLBACK_CMAP).copy()
+        cmap.set_bad((1.0, 1.0, 1.0, 0.0))  # Q32: transparent for NaN.
         ax.imshow(
-            H_prop.T,
+            H_prop_masked.T,
             origin="lower",
             extent=ext,
             cmap=cmap,
             alpha=_COMPOSITE_ALPHA,
             aspect="auto",
-            norm=mcolors.LogNorm(vmin=norm_vmin, vmax=norm_vmax),
+            norm=mcolors.LogNorm(vmin=max(norm_vmin, layer_floor), vmax=norm_vmax),
         )
         n_layered += 1
 
@@ -1093,36 +1112,63 @@ def _attach_composite_colorbars(
     shared_vmin: float | None,
     shared_vmax: float | None,
 ) -> None:
-    """Q24 Addendum #24: stacked per-bp colorbars on figure right.
+    """Pattern B composite legend / colorbar block on figure right.
 
-    For Pattern B layered overlays (whiskers, fiducial bilateral pairs),
-    each bp has its own cmap (config-driven via ``_get_bodypart_cmap``)
-    and a shared LogNorm range across the bucket (Q18). One colorbar
-    per bp is the unambiguous way to convey which color belongs to
-    which bp at which intensity.
+    Q24 Addendum #24 (original): per-bp colorbars stacked vertically.
+    Q30 Addendum #28 (refinement): switch to a swatch legend when n_bps
+    ≥ 3 (whiskers = 6 bps overlapped labels at stacked-cbar density).
+    For n_bps = 2 (fiducial bilateral pairs spout / eye) keep the
+    stacked-colorbar path with Q31 layout fixes.
 
-    Replaces the prior text-only ``_attach_composite_legend``; the text
-    legend listed cmap NAMES (e.g., ``plasma``) which gave a reader
-    only the abstract identity, not the visual scale.
+    Trade-off: swatch legend loses per-bp density quantitation but
+    gains readability. Acceptable for whiskers since the layered
+    overlay is primarily about spatial extent + which-whisker-is-where,
+    not per-whisker density.
 
-    When ``shared_vmin`` / ``shared_vmax`` are missing (e.g., standalone
-    smoke without a bucket precompute pass), the colorbar block is
-    skipped — falls back to silent rendering rather than picking a
-    misleading scale.
+    When ``shared_vmin`` / ``shared_vmax`` are missing (standalone
+    smoke without a bucket precompute pass), the colorbar / legend
+    block is skipped silently.
     """
     if shared_vmin is None or shared_vmax is None or shared_vmax <= 0:
         return
-    norm = mcolors.LogNorm(
-        vmin=max(float(shared_vmin), 1e-10), vmax=float(shared_vmax),
-    )
     n_bps = len(family_bodyparts)
     if n_bps == 0:
         return
+    if n_bps >= 3:
+        # Q30 Addendum #28: swatch legend (no quantitative scale, just
+        # which-bp-is-which-color). Sample at 0.7 of each cmap so the
+        # swatch reads as a saturated middle shade rather than the
+        # near-white low end.
+        import matplotlib.patches as mpatches
+        handles: list[Any] = []
+        for bp in family_bodyparts:
+            cmap_name = _get_bodypart_cmap(spatial_config, bp)
+            try:
+                cmap = plt.get_cmap(cmap_name)
+            except ValueError:
+                cmap = plt.get_cmap(_COMPOSITE_FALLBACK_CMAP)
+            handles.append(mpatches.Patch(color=cmap(0.7), label=bp))
+        # Attach to the figure (anchored to the right edge) so the
+        # legend persists across the 3 trial-group sub-axes.
+        fig.legend(
+            handles=handles,
+            loc="center left",
+            bbox_to_anchor=(0.86, 0.5),
+            fontsize=_Q22_PANEL_TITLE_FONTSIZE,
+            framealpha=0.9, frameon=True,
+            title=family_label,
+            title_fontsize=_Q22_AXIS_LABELSIZE,
+        )
+        return
+    # n_bps < 3 → keep stacked per-bp colorbars (Q24 original path).
+    norm = mcolors.LogNorm(
+        vmin=max(float(shared_vmin), 1e-10), vmax=float(shared_vmax),
+    )
     # Allocate stacked axes at fig right (one row per bp).
     cbar_left = 0.88
     cbar_width = 0.018
     total_height = 0.7
-    spacing = 0.01
+    spacing = 0.04  # Q31 Addendum #28: generous spacing to prevent label overlap.
     block_height = (total_height - spacing * (n_bps - 1)) / n_bps
     base_bottom = 0.5 - total_height / 2.0
     for i, bp in enumerate(family_bodyparts):
@@ -1157,14 +1203,26 @@ def _assemble_composite_figure(
     1×1 (whole_session), each panel layering N bodyparts via
     :func:`_render_composite_panel_axis`. Per-trial-group panel title
     includes session count + tone-event count when tone-aligned.
+
+    Q31 Addendum #28: figsize bumped wider for the right-anchored
+    swatch legend / stacked colorbar block. Manual subplots_adjust
+    reserves room; ``constrained_layout=False`` preserved per the
+    matplotlib API note below.
     """
     spatial_config = defaults["dlc_spatial"]
+    tone_cfg = defaults.get("dlc_spatial_tone_aligned", {}) or {}
+    # Q32 Addendum #29: per-layer magnitude floor for Pattern B overlays.
+    layered_overlay_floor_fraction = float(
+        tone_cfg.get("layered_overlay_floor_fraction", 0.05),
+    )
     if scope == "tone_aligned":
         trial_groups = TASK5_TRIAL_GROUPS_TONE_ALIGNED
-        figsize = (18.0, 5.0)
+        # Q31 Addendum #28: width 18 → 20 to accommodate the right-anchored
+        # swatch legend / stacked cbar block.
+        figsize = (20.0, 5.0)
     else:
         trial_groups = TASK5_TRIAL_GROUPS_WHOLE_SESSION
-        figsize = (8.0, 6.0)
+        figsize = (10.0, 6.0)
 
     # NOTE: constrained_layout=False here — the right-edge legend needs
     # manual room reserved via fig.subplots_adjust(right=...) at the
@@ -1198,6 +1256,7 @@ def _assemble_composite_figure(
             family_center_mode=family_center_mode,
             panel_title=panel_title,
             shared_vmin=shared_vmin, shared_vmax=shared_vmax,
+            layered_overlay_floor_fraction=layered_overlay_floor_fraction,
         )
     # Q24 Addendum #24: stacked per-bp colorbars on figure right.
     _attach_composite_colorbars(

@@ -1843,3 +1843,127 @@ CC applies these other-plot floors only if PS46 spot-check shows the tinted-back
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q29, Addendum #9-26 Task 5 scope.)
+
+---
+
+## Addendum #28 — Whiskers plot cut-off + colorbar-stack overlap fix (Priya 2026-05-15)
+
+### Q30 LOCKED — Whiskers Pattern B layout uses swatch legend, not 6 stacked colorbars
+
+PS46 spot-check shows whiskers plots cut off at edges AND the 6 stacked colorbar labels overlapping with each other. Both issues trace to Q24's Pattern B colorbar handling — "one colorbar per layer stacked vertically" works for 2 layers (spout, eye) but breaks down at 6 layers (whiskers).
+
+Fix: use a layer-count-aware legend strategy:
+
+1. **Pattern B with ≥3 layers (whiskers = 6):** replace per-layer colorbars with a single **swatch legend** (matplotlib `Patch` proxy artists). Each row in the legend = one small colored swatch (sampled from the middle of the layer's cmap) + label text identifying the bodypart. Use one swatch per layer, 6 rows total for whiskers, positioned to the right of (or below) the plot.
+
+   ```python
+   import matplotlib.patches as mpatches
+
+   whisker_cmaps = {
+       "L_whiskers_1": "plasma",
+       "L_whiskers_2": "inferno",
+       "L_whiskers_3": "viridis",
+       "R_whiskers_1": "Reds",     # or whatever the configured R cmaps are
+       "R_whiskers_2": "Blues",
+       "R_whiskers_3": "Greens",
+   }
+   handles = []
+   for bp, cmap_name in whisker_cmaps.items():
+       color = plt.get_cmap(cmap_name)(0.7)  # representative mid-to-darker shade
+       handles.append(mpatches.Patch(color=color, label=bp))
+
+   ax.legend(
+       handles=handles,
+       loc="center left", bbox_to_anchor=(1.02, 0.5),
+       fontsize=10, framealpha=0.9, frameon=True,
+   )
+   ```
+
+   Lose density-magnitude information in exchange for readability. Acceptable trade-off because whiskers Pattern B is primarily about showing spatial extent + which whisker is where, not per-whisker density quantitation.
+
+2. **Pattern B with 2 layers (spout_spout_midpoint, eye_eye_midpoint):** keep 2 small colorbars stacked vertically per Q24. With only 2 entries, overlap risk is minimal — but apply Q31 layout fixes below to prevent cut-off.
+
+3. **Single-cmap plots (single bodypart, individual_session, binned_sessions, proportion_diff per bodypart):** keep one colorbar per Q24. No change.
+
+### Q31 LOCKED — Layout fixes to prevent cut-off across all Task 5 SVGs
+
+Apply uniformly to every Task 5 plot to prevent cut-off:
+
+1. **`fig.savefig(..., bbox_inches="tight")`** at every savefig call. Expands the bounding box to include all artists (axes, colorbars, legends, labels) regardless of figure size. This alone resolves most cut-off cases.
+
+2. **`constrained_layout=True` at figure creation:** `fig, axes = plt.subplots(..., constrained_layout=True)`. matplotlib's constrained_layout engine automatically computes padding between axes/colorbars/legends/titles to prevent overlap. Strongly recommended for grid-summary plots and multi-panel UOT layouts.
+
+3. **Increase figure size for layered Pattern B plots:** for whiskers (and any future 4+ layer Pattern B family entries), bump `figsize` proportional to the legend's vertical extent. E.g., for a square plot with a 6-row legend to the right, use `figsize=(8, 6)` instead of `figsize=(6, 6)` so the legend has room without squashing the plot.
+
+4. **Pad colorbars from the plot:** use `pad=0.1` or higher on colorbar creation to give breathing room between plot area and colorbar. For stacked colorbars (Pattern B with 2 layers), separate them with adequate vertical pad too — e.g., `cbar = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.06)` for first, larger `pad` for second.
+
+5. **Tick label rotation if needed:** if long colorbar tick labels still overlap (e.g., scientific notation `1.0e-04` taking too much horizontal space), use `cbar.ax.tick_params(rotation=0, labelsize=10)` — drop fontsize from Q22's 12pt to 10pt specifically for whiskers/spout/eye plots if needed.
+
+### Optional swatch legend extension to spout/eye plots
+
+If 2 stacked colorbars on spout_spout_midpoint or eye_eye_midpoint still produce overlap after the Q31 fixes, switch them to the same swatch legend pattern as whiskers (Q30). CC picks based on PS46 spot-check. Document in Task 8 DECISIONS.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q31, Addendum #9-27 Task 5 scope.)
+
+---
+
+## Addendum #29 — Pattern B layered overlay: NaN bins must be TRANSPARENT, not white (Priya 2026-05-15)
+
+### Q32 LOCKED — `set_bad(alpha=0)` for layered overlay plots
+
+PS46 spot-check on whiskers (Pattern B with 6 layers) shows each layer appears faded — the underlying signal looks washed out. Root cause: `cmap.set_bad("white")` (locked Q28/Q26/Q22) renders NaN bins as OPAQUE WHITE pixels. When layer N's NaN regions are stacked on top of layers 1..N-1 with alpha blending, the opaque-white NaN pixels obscure the lower layers — every layer adds another opaque-white wash, fading everything beneath.
+
+Fix: for Pattern B LAYERED OVERLAY plots specifically, make NaN bins TRANSPARENT instead of opaque-white:
+
+```python
+import matplotlib.pyplot as plt
+
+# Pattern B layered overlay — NaN must be transparent so lower layers show through
+for bp, cmap_name in pattern_b_cmaps.items():
+    cmap = plt.get_cmap(cmap_name).copy()
+    cmap.set_bad((1.0, 1.0, 1.0, 0.0))  # white with alpha=0 → fully transparent
+    # equivalent form: cmap.set_bad("none")
+
+    H_layer_masked = np.where(H_layer >= layer_floor, H_layer, np.nan)
+    ax.imshow(
+        H_layer_masked,
+        cmap=cmap,
+        alpha=layer_alpha,  # legacy per-layer alpha for the layered overlay
+        origin="lower", ...,
+    )
+
+# What shows through transparent NaN pixels = axis facecolor
+ax.set_facecolor("white")  # explicit white background
+```
+
+Result: each layer's blank regions become invisible, allowing the underlying signal in other layers to render at its true color/density. No washing-out artifact.
+
+### Q32 applies ONLY to Pattern B (layered overlay) families
+
+- **Pattern B layered families** (whiskers, spout_spout_midpoint, eye_eye_midpoint): apply `set_bad(alpha=0)` per-layer. NaN renders transparent.
+- **Single-cmap plots** (single bodypart families: tongue_eye_midpoint, tongue_spout_midpoint, jaw_eye_midpoint, nose_eye_midpoint, all proportion_diff plots, all UOT mass panels, all individual_session/binned_sessions): keep `set_bad("white")` per Q22/Q25/Q26/Q28. No layering, no washing-out risk; opaque-white NaN renders cleanly.
+
+### Q32 corollary: magnitude-floor masking is more important than ever for Pattern B
+
+With transparent-NaN, the only way to make a Pattern B layer's blank region invisible is to mask sub-signal bins as NaN. So the Q29 magnitude-floor pattern (mask bins where `H < vmax × floor_fraction` as NaN) is essential for Pattern B layered plots too:
+
+```python
+# Per-layer floor — independent magnitude floor per (bodypart, cmap) layer
+layer_floor_fraction = config_block.get("layered_overlay_floor_fraction", 0.05)
+layer_floor = vmax_per_layer * layer_floor_fraction
+H_layer_masked = np.where(H_layer >= layer_floor, H_layer, np.nan)
+```
+
+Per-layer vmax computed per-layer per Q14 shared-scale rule (each layer's cmap normalizes independently because they're different cmaps stacked).
+
+Add config knob `configs/defaults.yaml dlc_spatial_tone_aligned.layered_overlay_floor_fraction` (default 0.05; tune visually).
+
+### Q32 interaction with Q30 swatch legend
+
+Q30 swatch legend (one row per layer, sampled from cmap middle) unchanged. Swatch color samples from cmap remain opaque (legend swatches don't need transparency). The transparency lock is only on the imshow rendering of the heatmap layers themselves.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q32, Addendum #9-28 Task 5 scope.)

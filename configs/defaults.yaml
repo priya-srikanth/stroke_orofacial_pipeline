@@ -420,6 +420,13 @@ dlc_spatial_tone_aligned:
     # 0.05 (5% of bucket vmax). Tune: 0.10 if background still tinted,
     # 0.02 if signal regions clipped.
     mass_floor_fraction: 0.05
+
+  # Q32 Addendum #29: per-layer magnitude floor for Pattern B layered
+  # overlays (whiskers, spout_spout_midpoint, eye_eye_midpoint). Each
+  # layer's bins below ``vmax_layer × layered_overlay_floor_fraction``
+  # are masked NaN; set_bad transparent so lower layers show through
+  # cleanly. Default 0.05 (5% of per-layer vmax). Tune visually.
+  layered_overlay_floor_fraction: 0.05
   families:
     tongue_spout_midpoint:
       bodyparts: ["tongue"]

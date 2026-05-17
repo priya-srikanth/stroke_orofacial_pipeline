@@ -307,7 +307,10 @@ def _process_animal(
                         out = _individual_session_out_path(
                             resolver, scope, animal, family_entry, date,
                         )
-                        fig.savefig(out, format="svg")
+                        # Q31 Addendum #28: bbox_inches="tight" prevents
+                        # cut-off legends/colorbars from extending past
+                        # the figure bbox at SVG export.
+                        fig.savefig(out, format="svg", bbox_inches="tight")
                         plt.close(fig)
                         n_is += 1
                     except Exception as ex:
@@ -345,7 +348,10 @@ def _process_animal(
                             out = _binned_sessions_out_path(
                                 resolver, scope, animal, family_entry, bin_label,
                             )
-                            fig.savefig(out, format="svg")
+                            # Q31 Addendum #28: bbox_inches="tight" prevents
+                            # cut-off legends/colorbars from extending past
+                            # the figure bbox at SVG export.
+                            fig.savefig(out, format="svg", bbox_inches="tight")
                             plt.close(fig)
                             n_bs += 1
                         except Exception as ex:
@@ -385,7 +391,10 @@ def _process_animal(
                             resolver, scope, animal, family_entry,
                             bin_size_days, tg,
                         )
-                        fig.savefig(out, format="svg")
+                        # Q31 Addendum #28: bbox_inches="tight" prevents
+                        # cut-off legends/colorbars from extending past
+                        # the figure bbox at SVG export.
+                        fig.savefig(out, format="svg", bbox_inches="tight")
                         plt.close(fig)
                         n_pd += 1
                     except Exception as ex:
@@ -453,7 +462,10 @@ def _process_animal(
                             resolver, scope, animal, family_entry,
                             bin_size_days, tg,
                         )
-                        fig.savefig(out, format="svg")
+                        # Q31 Addendum #28: bbox_inches="tight" prevents
+                        # cut-off legends/colorbars from extending past
+                        # the figure bbox at SVG export.
+                        fig.savefig(out, format="svg", bbox_inches="tight")
                         plt.close(fig)
                         n_ot += 1
                     except Exception as ex:
