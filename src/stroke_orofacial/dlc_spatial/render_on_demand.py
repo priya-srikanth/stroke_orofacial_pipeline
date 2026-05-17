@@ -1257,9 +1257,32 @@ def render_binned_sessions_heatmap(  # noqa: D401
 # pre-stroke sessions (rel_day <= 0).
 # ---------------------------------------------------------------------------
 
-# Divergent cmaps per legacy lines 1376-1381 of
-# 20251202_..._pixelbin.ipynb. Used for whisker-composite proportion-diff.
-_WHISKER_DIVERGENT_CMAPS: dict[str, str] = {
+# Phase 7c.2 Addendum #19 Q20: proportion_differences uses a custom
+# red→gray→blue diverging cmap with `set_bad("white")` for NaN /
+# no-data cells; figure + panel facecolor set to "white" so NaN cells
+# blend into the background. Supersedes the legacy ``RdBu_r``
+# white-at-zero convention from the 3 bodypart-specific notebooks
+# (20260111_tongue, 20251117_nose, 20251117_jaw, DIFF_CMAP_NAME = "RdBu_r")
+# and the whisker-composite ``_WHISKER_DIVERGENT_CMAPS`` dispatch from
+# 20251202_..._pixelbin.ipynb. Gray-at-zero gives near-zero diffs a
+# visible neutral color against the white background (white-at-zero
+# would blend them into the no-data cells).
+#
+# Sign convention: 0.0 → red (negative diffs), 0.5 → gray (zero),
+# 1.0 → blue (positive diffs). Matches Q20 statement; legacy "RdBu_r"
+# was already (red=negative, blue=positive) so the sign convention is
+# inherited from legacy.
+_PROPORTION_DIFF_CMAP = mcolors.LinearSegmentedColormap.from_list(
+    "rgb_diverging",
+    [(0.0, "red"), (0.5, "gray"), (1.0, "blue")],
+    N=256,
+)
+_PROPORTION_DIFF_CMAP.set_bad("white")
+
+# Legacy whisker-composite per-bp divergent cmaps (lines 1376-1381 of
+# 20251202_..._pixelbin.ipynb). Retained for reference; superseded by
+# the Q20 uniform cmap.
+_WHISKER_DIVERGENT_CMAPS_LEGACY: dict[str, str] = {
     "L_whiskers_1": "BrBG",
     "L_whiskers_2": "coolwarm",
     "L_whiskers_3": "bwr",
@@ -1268,7 +1291,7 @@ _WHISKER_DIVERGENT_CMAPS: dict[str, str] = {
     "R_whiskers_3": "bwr",
 }
 
-_PROPORTION_DIFF_DEFAULT_CMAP = "coolwarm"
+_PROPORTION_DIFF_DEFAULT_CMAP_LEGACY = "coolwarm"
 _PROPORTION_DIFF_VMAX_PERCENTILE = 99.0
 
 
@@ -1366,20 +1389,27 @@ def _render_proportion_diff_panel(
     center_mode: str,
     *,
     spatial_config: dict[str, Any],
-    cmap_name: str = _PROPORTION_DIFF_DEFAULT_CMAP,
+    cmap_name: str | None = None,
     title: str = "",
     shared_vmax: float | None = None,
 ) -> None:
     """Render one (bodypart, center_mode) proportion-diff D array onto an
     Axes.
 
-    Per Phase 7c.2 Addendum #15 Q14: when ``shared_vmax`` is supplied,
-    use it as the symmetric colormap saturation point so every panel in
-    the SVG shares one diverging color scale (vmin=-shared_vmax,
+    Phase 7c.2 Addendum #19 Q20: cmap = custom red→gray→blue diverging,
+    ``set_bad("white")`` for NaN/no-data cells, panel facecolor white.
+    The legacy ``cmap_name`` kwarg is retained for backward compat with
+    callers that explicitly supply a name (will be passed through
+    ``plt.get_cmap`` with the legacy 0.85-grey ``set_bad`` extreme).
+
+    Phase 7c.2 Addendum #15 Q14: ``shared_vmax`` (when supplied) is the
+    symmetric colormap saturation point so every panel in the SVG
+    shares one diverging color scale (vmin=-shared_vmax,
     vmax=+shared_vmax). When ``shared_vmax`` is None, fall back to the
-    legacy per-panel 99th-percentile-of-|D| TwoSlopeNorm. Diverging cmap
-    default ``coolwarm``.
+    legacy per-panel 99th-percentile-of-|D| TwoSlopeNorm.
     """
+    # Q20: white panel background — NaN/no-data cells blend in.
+    ax.set_facecolor("white")
     if D is None or extent is None:
         ax.text(0.5, 0.5, f"{title}\n(no data)",
                 ha="center", va="center", transform=ax.transAxes)
@@ -1398,10 +1428,14 @@ def _render_proportion_diff_panel(
         vmax = float(np.percentile(finite_abs, _PROPORTION_DIFF_VMAX_PERCENTILE))
         vmax = max(vmax, 1e-12)
         norm = mcolors.TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax)
-    try:
-        cmap = plt.get_cmap(cmap_name).with_extremes(bad="0.85")
-    except (ValueError, AttributeError):
-        cmap = plt.get_cmap("coolwarm")
+    if cmap_name is None:
+        # Q20 default: red→gray→blue with white-for-bad.
+        cmap = _PROPORTION_DIFF_CMAP
+    else:
+        try:
+            cmap = plt.get_cmap(cmap_name).with_extremes(bad="0.85")
+        except (ValueError, AttributeError):
+            cmap = _PROPORTION_DIFF_CMAP
     D_plot = np.ma.array(D, mask=~np.isfinite(D))
     im = ax.imshow(
         D_plot.T, origin="lower", extent=extent,
@@ -1564,6 +1598,8 @@ def render_proportion_difference_heatmap(
 
     if H_pre_pool is None or n_total_pre == 0:
         fig, ax = plt.subplots(figsize=(8, 6))
+        fig.patch.set_facecolor("white")
+        ax.set_facecolor("white")
         ax.text(
             0.5, 0.5,
             f"{animal}/{family_entry}/{scope}/bin{bin_size_days}d/tg={trial_group}\n"
@@ -1622,18 +1658,20 @@ def render_proportion_difference_heatmap(
         figsize=(ncols * 5.0, nrows * 4.0),
         constrained_layout=True,
     )
+    # Q20 Addendum #19: figure background white (panel background also
+    # set to white inside `_render_proportion_diff_panel`).
+    fig.patch.set_facecolor("white")
     axes = list(axes_obj.flat) if hasattr(axes_obj, "flat") else [axes_obj]
     for (bin_label, D, ext, n_sess), ax in zip(bin_results, axes, strict=False):
-        cmap_name = (
-            _WHISKER_DIVERGENT_CMAPS.get(bodyparts[0], _PROPORTION_DIFF_DEFAULT_CMAP)
-            if len(bodyparts) > 1
-            else _PROPORTION_DIFF_DEFAULT_CMAP
-        )
+        # Q20 Addendum #19: uniform red→gray→blue cmap with white-for-bad
+        # across all families (drops legacy per-bp whisker-composite cmap
+        # dispatch + the legacy "coolwarm" default).
         title = f"bin {bin_label}  n_sess={n_sess}"
         _render_proportion_diff_panel(
             ax, D, ext, bp_for_axis, center_mode,
             spatial_config=spatial_config,
-            cmap_name=cmap_name, title=title,
+            cmap_name=None,  # Q20 default cmap
+            title=title,
             shared_vmax=local_shared_vmax,
         )
     for ax in axes[len(bin_labels):]:

@@ -1451,3 +1451,50 @@ If the alignment template isn't available at wrapper invocation time, the wrappe
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q18, Addendum #9-17 Task 5 scope.)
+
+---
+
+## Addendum #19 — proportion_differences: gray-at-zero diverging cmap + white background (Priya 2026-05-15)
+
+### Q20 LOCKED — proportion_differences plot styling
+
+Standard diverging colormaps (`coolwarm`, `bwr`, `RdBu`) put WHITE at zero, making zero-diff bins visually indistinguishable from plot background + no-data cells. Switch to gray-at-zero diverging cmap + explicit white background so zero-diff bins render as visible gray and no-data regions render as white.
+
+**Implementation:**
+
+1. **Custom diverging cmap with gray midpoint.** Define `red_gray_blue` cmap via `matplotlib.colors.LinearSegmentedColormap.from_list("rgb_diverging", [(0.0, "red"), (0.5, "gray"), (1.0, "blue")])` (or `(0.0, "blue"), (0.5, "gray"), (1.0, "red")` depending on the desired sign convention — match legacy if specified, otherwise CC picks: red=positive=more-post-stroke-presence is the common ecology convention).
+2. **Set axes facecolor to white** for proportion_differences panels: `ax.set_facecolor("white")`.
+3. **Mark NaN/no-data cells explicitly white.** Use `cmap.set_bad("white")` so any masked cells render as white background, distinct from gray (zero-diff).
+4. **Symmetric vmin/vmax** per Q18 (bucket-shared) — unchanged.
+5. **Affects only `proportion_differences/` plot type.** Other plot types (individual_session, binned_sessions, unbalanced_ot mass_destroy/mass_create) keep their respective cmaps.
+
+**Visual contract:**
+
+- Strong negative diff → saturated red (or blue, per sign convention).
+- Strong positive diff → saturated blue (or red).
+- Near-zero diff → gray.
+- No-data / NaN → white (background-matching).
+- Plot background → white.
+
+### Legacy convention check
+
+Legacy notebooks for proportion-diff (`20260111_..._tongue.ipynb`, `20251117_..._nose.ipynb`, `20251117_..._jaw.ipynb`) may already use this gray-at-zero pattern (legacy diverging cmaps `RdGy_r` or custom segmented cmaps). CC verifies legacy convention; if legacy uses a specific gray-at-zero cmap (e.g., `RdGy_r`, `seismic` with set_bad, or a custom segmented cmap), port that as the default. If legacy uses `coolwarm`/`bwr` (white-at-zero), CC overrides with the custom red-gray-blue cmap per Q20 spec above.
+
+### Implementation note
+
+Likely lives in `dlc_spatial/render_on_demand.py` as a constant or factory function:
+
+```python
+_PROPORTION_DIFF_CMAP = mcolors.LinearSegmentedColormap.from_list(
+    "rgb_diverging",
+    [(0.0, "red"), (0.5, "gray"), (1.0, "blue")],
+    N=256,
+)
+_PROPORTION_DIFF_CMAP.set_bad("white")
+```
+
+The proportion_differences rendering function uses this cmap + sets `ax.set_facecolor("white")` per panel.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q19, Addendum #9-18 Task 5 scope.)

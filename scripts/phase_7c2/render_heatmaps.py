@@ -235,7 +235,7 @@ def _append_manifest(row: dict) -> None:
 
 def _process_animal(
     animal: str, resolver: PathResolver, defaults: dict,
-    *, only_pd_ot: bool = False,
+    *, only_pd_ot: bool = False, only_pd: bool = False,
 ) -> dict:
     """Render all 4 plot types × 2 scopes × 7 families for one animal.
 
@@ -248,9 +248,16 @@ def _process_animal(
     spec); useful for the post-Addendum-15 catch-up pass where IS+BS
     were already emitted in the prior cohort run.
 
+    ``only_pd=True``: even narrower — render PD only, skip IS + BS + UOT.
+    For the Addendum #19 Q20 catch-up where Q20 changes ONLY PD styling
+    (cmap + facecolor) and UOT is unaffected.
+
     Returns manifest row dict.
     """
-    log.info(f"=== animal={animal}: render_heatmaps Task 5 (only_pd_ot={only_pd_ot}) ===")
+    log.info(
+        f"=== animal={animal}: render_heatmaps Task 5 "
+        f"(only_pd_ot={only_pd_ot}, only_pd={only_pd}) ==="
+    )
     animal_t0 = time.perf_counter()
     animal_info = get_animal(animal)
     dates = _enumerate_yaml_filtered_dates(animal, resolver)
@@ -264,12 +271,14 @@ def _process_animal(
     n_ot = 0
     n_err = 0
     anomalies: list[str] = []
+    skip_is_bs = only_pd_ot or only_pd
+    skip_uot = only_pd
     for family_entry in ALL_FAMILIES:
         for scope in SCOPES:
             # ----- Q18 Pass 1 (per (family, scope)) — bucket-shared
             # LogNorm range for IS + BS. Derived from Q17-normalized
             # H_proportion arrays across ALL dates × tg [× bp]. -----
-            if not only_pd_ot:
+            if not skip_is_bs:
                 try:
                     is_arrays = precompute_individual_session_h_proportions(
                         animal, family_entry, scope, dates, resolver,
@@ -384,6 +393,8 @@ def _process_animal(
             # ----- UOT bucket (Q18: per (family, bin_size, scope, value_type);
             # 3 independent ranges for mass_destroy, mass_create, arrow_logmag.
             # Supersedes Q14 per-SVG framing per Addendum #17). -----
+            if skip_uot:
+                continue
             for bin_size_days in BIN_SIZES_DAYS:
                 try:
                     uot_plans = precompute_unbalanced_ot_plans(
@@ -470,6 +481,14 @@ def main(argv: list[str] | None = None) -> int:
         "Addendum-15 catch-up pass (PD+UOT spec changed; IS+BS unchanged).",
     )
     parser.add_argument(
+        "--only-pd",
+        action="store_true",
+        help="Even narrower than --only-pd-ot: re-emit ONLY "
+        "proportion_differences. Used by the post-Addendum-19 (Q20) "
+        "catch-up pass (cmap + facecolor styling changed for PD only; "
+        "IS + BS + UOT unaffected).",
+    )
+    parser.add_argument(
         "--no-skip",
         action="store_true",
         help="Disable resumability — process every animal even if its prior "
@@ -485,7 +504,10 @@ def main(argv: list[str] | None = None) -> int:
         f"{{tone_aligned,whole_session}}_heatmaps/"
     )
     log.info(f"manifest: {MANIFEST_PATH.resolve()}")
-    log.info(f"only_pd_ot={args.only_pd_ot}  no_skip={args.no_skip}")
+    log.info(
+        f"only_pd_ot={args.only_pd_ot}  only_pd={args.only_pd}  "
+        f"no_skip={args.no_skip}"
+    )
 
     animals = [args.animal] if args.animal else list(COHORT_ORDER)
     prior = _load_manifest_so_far()
@@ -496,7 +518,8 @@ def main(argv: list[str] | None = None) -> int:
             log.info(f"  [skip] {animal} already OK in prior manifest")
             continue
         row = _process_animal(
-            animal, resolver, defaults, only_pd_ot=args.only_pd_ot,
+            animal, resolver, defaults,
+            only_pd_ot=args.only_pd_ot, only_pd=args.only_pd,
         )
         _append_manifest(row)
 
