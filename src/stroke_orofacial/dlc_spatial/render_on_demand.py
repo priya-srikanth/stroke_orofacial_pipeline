@@ -1845,8 +1845,12 @@ _ARROW_HEAD_W_MAX_FRAC_DX = 0.65
 _ARROW_HEAD_L_MIN_FRAC_DY = 0.1
 _ARROW_HEAD_L_MAX_FRAC_DY = 0.65
 _OT_ARROW_CMAP = "YlGnBu"
-_OT_MASS_DESTROY_CMAP = "Reds"
-_OT_MASS_CREATE_CMAP = "Blues"
+# Q27 Addendum #25/#26: cmaps flipped to match PD red=increase / blue=decrease.
+# mass_destroy ≈ "mass leaving from pre positions" ≈ density decrease → Blues.
+# mass_create  ≈ "mass arriving at post positions" ≈ density increase → Reds.
+# (Pre-Q27: destroy=Reds, create=Blues — opposite convention from PD.)
+_OT_MASS_DESTROY_CMAP = "Blues"
+_OT_MASS_CREATE_CMAP = "Reds"
 
 
 def _compute_unbalanced_ot_plan(
@@ -1965,40 +1969,69 @@ def _render_ot_mass_change_panels(
     *,
     spatial_config: dict[str, Any],
     bin_label: str,
+    shared_destroy_vmin: float | None = None,
     shared_destroy_vmax: float | None = None,
+    shared_create_vmin: float | None = None,
     shared_create_vmax: float | None = None,
 ) -> None:
     """Render the 2 mass-change heatmaps onto a pair of Axes —
-    ``mass_destroy`` (Reds cmap) + ``mass_create`` (Blues cmap). Linear
-    imshow per legacy lines 6411-6441. Y-axis inverted to match heatmap
-    convention.
+    ``mass_destroy`` (Blues cmap per Q27) + ``mass_create`` (Reds per
+    Q27). Linear imshow per legacy lines 6411-6441. Y-axis inverted to
+    match heatmap convention.
 
-    Q18 Addendum #17: ``shared_destroy_vmax`` / ``shared_create_vmax``
-    (when given) pin the linear vmax for each cmap — used by the driver
-    to share color scales across all bins × tg in the UOT bucket.
+    Q18 Addendum #17: ``shared_*_vmax`` (when given) pin the linear vmax
+    for each cmap — used by the driver to share color scales across all
+    bins × tg in the UOT bucket.
+
+    Q28 Addendum #26: zero-mass bins are NaN-masked before imshow so they
+    render via ``set_bad("white")`` instead of the cmap's near-white
+    low-intensity tint (Blues / Reds at index 0 is a faint colored shade,
+    not white). ``shared_*_vmin`` (smallest positive across bucket)
+    pins the colorbar low end; ``vmin=0`` is replaced with this so the
+    visible color range starts at the first physical data value.
     """
     per_mode = _get_per_center_mode_params(spatial_config, bodypart, center_mode)
     xl = per_mode["xlim"] if per_mode["xlim"] else (extent[0], extent[1])
     yl = per_mode["ylim"] if per_mode["ylim"] else (extent[2], extent[3])
-    for ax, arr, cmap_name, kind, shared_v in (
-        (ax_destroy, mass_destroy, _OT_MASS_DESTROY_CMAP, "destroy", shared_destroy_vmax),
-        (ax_create, mass_create, _OT_MASS_CREATE_CMAP, "create", shared_create_vmax),
+    for ax, arr, cmap_name, kind, shared_lo, shared_hi in (
+        (ax_destroy, mass_destroy, _OT_MASS_DESTROY_CMAP, "destroy",
+         shared_destroy_vmin, shared_destroy_vmax),
+        (ax_create, mass_create, _OT_MASS_CREATE_CMAP, "create",
+         shared_create_vmin, shared_create_vmax),
     ):
         if arr is None or float(arr.sum()) == 0.0:
-            ax.text(0.5, 0.5, f"{kind}\n(no mass change)",
+            ax.text(0.5, 0.5, f"mass {kind}\n(no mass change)",
                     ha="center", va="center", transform=ax.transAxes)
             ax.set_axis_off()
             continue
         try:
-            cmap = plt.get_cmap(cmap_name)
+            # Q28: copy + set_bad("white") so NaN-masked cells render
+            # as the white panel background rather than the cmap's
+            # near-white low end.
+            cmap = plt.get_cmap(cmap_name).copy()
+            cmap.set_bad("white")
         except ValueError:
-            cmap = plt.get_cmap("viridis")
+            cmap = plt.get_cmap("viridis").copy()
+            cmap.set_bad("white")
+        # Q28: mask zero-mass bins → NaN → white background.
+        arr_masked = np.where(arr > 0, arr.astype(float), np.nan)
         imshow_kwargs: dict[str, Any] = {}
-        if shared_v is not None and shared_v > 0:
-            imshow_kwargs["vmin"] = 0.0
-            imshow_kwargs["vmax"] = float(shared_v)
+        if shared_hi is not None and shared_hi > 0:
+            # Q28: bucket-shared vmin (smallest positive) when given;
+            # falls back to numpy's behavior (effectively the smallest
+            # nonzero in this panel) if the driver didn't pass it.
+            if shared_lo is not None and shared_lo > 0:
+                imshow_kwargs["vmin"] = float(shared_lo)
+            else:
+                pos = arr_masked[np.isfinite(arr_masked)]
+                imshow_kwargs["vmin"] = float(pos.min()) if pos.size else 0.0
+            imshow_kwargs["vmax"] = float(shared_hi)
+        # Q22 Addendum #21: white facecolor so the NaN-masked white
+        # cells from Q28 blend in (otherwise the default axes facecolor
+        # — usually white anyway — but explicit is safer).
+        ax.set_facecolor("white")
         ax.imshow(
-            arr.T, origin="lower", extent=extent,
+            arr_masked.T, origin="lower", extent=extent,
             cmap=cmap, aspect="auto", **imshow_kwargs,
         )
         ax.set_xlim(xl)
@@ -2242,7 +2275,9 @@ def render_unbalanced_ot_displacement_field(
     trial_group: str = "all",
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
+    shared_mass_destroy_vmin: float | None = None,
     shared_mass_destroy_vmax: float | None = None,
+    shared_mass_create_vmin: float | None = None,
     shared_mass_create_vmax: float | None = None,
     shared_arrow_logmag_lo: float | None = None,
     shared_arrow_logmag_hi: float | None = None,
@@ -2424,7 +2459,9 @@ def render_unbalanced_ot_displacement_field(
             bp_for_axis, center_mode,
             spatial_config=spatial_config,
             bin_label=f"{bin_label} {bin_n_sess_title}",
+            shared_destroy_vmin=shared_mass_destroy_vmin,
             shared_destroy_vmax=shared_mass_destroy_vmax,
+            shared_create_vmin=shared_mass_create_vmin,
             shared_create_vmax=shared_mass_create_vmax,
         )
         _render_ot_arrows_panel(
@@ -2450,13 +2487,13 @@ def render_unbalanced_ot_displacement_field(
         cbar_d = fig.colorbar(
             destroy_im, ax=destroy_axes, shrink=0.7, pad=0.02,
         )
-        cbar_d.set_label("mass_destroy", fontsize=_Q22_AXIS_LABELSIZE)
+        cbar_d.set_label("mass destroyed", fontsize=_Q22_AXIS_LABELSIZE)
         _apply_q22_colorbar_polish(cbar_d)
     if create_im is not None:
         cbar_c = fig.colorbar(
             create_im, ax=create_axes, shrink=0.7, pad=0.02,
         )
-        cbar_c.set_label("mass_create", fontsize=_Q22_AXIS_LABELSIZE)
+        cbar_c.set_label("mass created", fontsize=_Q22_AXIS_LABELSIZE)
         _apply_q22_colorbar_polish(cbar_c)
     # Q22 Addendum #21 title spec: animal | family | UOT | scope | trial_group.
     fig.suptitle(
@@ -2774,12 +2811,16 @@ def derive_uot_bucket_ranges(
     plans: list[dict[str, Any]],
     *,
     threshold_pct50_multiplier: float = 0.1,
-) -> tuple[float, float, float, float]:
-    """Q18 UOT bucket-shared ranges: ``(mass_destroy_vmax, mass_create_vmax,
-    arrow_logmag_lo, arrow_logmag_hi)``. Mass values use linear vmax >
-    0 over plans' mass_destroy / mass_create arrays. Arrow logmag uses
-    1st/99th percentile of log10(mass_grid + eps) across plans (with
-    the mass_thr + mag_thr mask applied per `_render_ot_arrows_panel`).
+) -> tuple[float, float, float, float, float, float]:
+    """Q18 UOT bucket-shared ranges: ``(mass_destroy_vmin,
+    mass_destroy_vmax, mass_create_vmin, mass_create_vmax,
+    arrow_logmag_lo, arrow_logmag_hi)``.
+
+    Mass vmin = smallest strictly-positive mass across bucket (per Q28
+    Addendum #26; zero values are NaN-masked at render time and don't
+    contribute). vmax = max. Arrow logmag uses 1st/99th percentile of
+    log10(mass_grid + eps) across plans (with the mass_thr + mag_thr
+    mask applied per `_render_ot_arrows_panel`).
 
     Q21 Addendum #20: ``threshold_pct50_multiplier`` matches the same
     knob in `_render_ot_arrows_panel` — Pass-1 and Pass-2 must apply
@@ -2787,16 +2828,24 @@ def derive_uot_bucket_ranges(
     to the arrows that actually render. Default 0.1 matches legacy.
     """
     destroy_vmaxes: list[float] = []
+    destroy_vmins: list[float] = []
     create_vmaxes: list[float] = []
+    create_vmins: list[float] = []
     all_logM: list[np.ndarray] = []
     thr_mult = float(threshold_pct50_multiplier)
     for plan in plans:
         md = plan.get("mass_destroy")
         if md is not None and float(md.sum()) > 0:
             destroy_vmaxes.append(float(np.max(md)))
+            pos = md[md > 0]
+            if pos.size:
+                destroy_vmins.append(float(pos.min()))
         mc = plan.get("mass_create")
         if mc is not None and float(mc.sum()) > 0:
             create_vmaxes.append(float(np.max(mc)))
+            pos = mc[mc > 0]
+            if pos.size:
+                create_vmins.append(float(pos.min()))
         # Arrow logmag bucket aggregation: mirror the _render_ot_arrows_panel
         # threshold logic to pick the same masked subset of arrows.
         mag = plan.get("mag")
@@ -2820,6 +2869,11 @@ def derive_uot_bucket_ranges(
         all_logM.append(np.log10(M_masked + eps))
     destroy_vmax = max(destroy_vmaxes) if destroy_vmaxes else 0.0
     create_vmax = max(create_vmaxes) if create_vmaxes else 0.0
+    # Q28 Addendum #26: smallest-positive vmin so the cbar low end maps
+    # to the smallest real value in the bucket, not 0 (which gets
+    # NaN-masked at render time → white).
+    destroy_vmin = min(destroy_vmins) if destroy_vmins else 0.0
+    create_vmin = min(create_vmins) if create_vmins else 0.0
     if all_logM:
         flat_logM = np.concatenate(all_logM)
         logmag_lo = float(np.percentile(flat_logM, 1))
@@ -2828,7 +2882,11 @@ def derive_uot_bucket_ranges(
             logmag_hi = logmag_lo + 1e-6
     else:
         logmag_lo, logmag_hi = -10.0, -9.0
-    return destroy_vmax, create_vmax, logmag_lo, logmag_hi
+    return (
+        destroy_vmin, destroy_vmax,
+        create_vmin, create_vmax,
+        logmag_lo, logmag_hi,
+    )
 
 
 __all__ = [

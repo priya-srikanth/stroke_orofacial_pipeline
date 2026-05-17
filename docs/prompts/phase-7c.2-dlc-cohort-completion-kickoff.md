@@ -1689,3 +1689,93 @@ CC can revisit if PS46 spot-check shows the linear proportion_diff colorbar is w
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Addendum #9-23 Task 5 scope.)
+
+---
+
+## Addendum #25 — UOT mass_destroy = blue cmap, mass_create = red cmap (Priya 2026-05-15)
+
+### Q27 LOCKED — UOT mass panel cmap direction matches proportion-diff convention
+
+The Q25 lock established red=increased / blue=decreased semantics for proportion_differences. Extend the same visual convention to the UOT per-bin mass panels:
+
+- **`mass_destroy` panel** (mass leaving from pre-stroke positions; conceptually = "decrease in density at that location") → **`Blues` sequential cmap** (matplotlib built-in: light-blue → dark-blue, white at zero/NaN via `set_bad`).
+- **`mass_create` panel** (mass arriving at post-stroke positions; conceptually = "increase in density at that location") → **`Reds` sequential cmap** (matplotlib built-in: light-red → dark-red, white at zero/NaN).
+
+Both are single-signed (mass values ≥ 0 by conservation), so sequential cmaps are appropriate — no diverging cmap needed for the mass panels.
+
+**Implementation in `dlc_spatial/render_on_demand.py`:**
+
+```python
+mass_destroy_im = ax_destroy.imshow(
+    H_mass_destroy, cmap="Blues", origin="lower", ...,
+    vmin=0, vmax=mass_destroy_vmax_per_bucket,
+)
+mass_create_im = ax_create.imshow(
+    H_mass_create, cmap="Reds", origin="lower", ...,
+    vmin=0, vmax=mass_create_vmax_per_bucket,
+)
+```
+
+Apply `set_bad("white")` on both cmaps via:
+```python
+blues_cmap = plt.get_cmap("Blues").copy()
+blues_cmap.set_bad("white")
+reds_cmap = plt.get_cmap("Reds").copy()
+reds_cmap.set_bad("white")
+```
+
+### Q24 RE-LOCKED — UOT mass panels need TWO separate colorbars (resolves Q24 deferred choice)
+
+Q24 left the UOT mass-panel colorbar count open ("two colorbars per row or one shared if scale-matched"). With Q27 putting mass_destroy on `Blues` and mass_create on `Reds`, the two cmaps differ, so one shared colorbar would be misleading. Resolution: **two colorbars per UOT grid SVG** — one `Blues` colorbar (for all mass_destroy panels across bins) and one `Reds` colorbar (for all mass_create panels across bins). The arrows column needs no colorbar.
+
+Colorbar scale is still shared WITHIN each cmap across all bins in the bucket per Q14:
+- One `Blues` colorbar normalized to `[0, max(H_mass_destroy across all bins in (animal, family, scope, bin_size, trial_group))]`.
+- One `Reds` colorbar normalized to `[0, max(H_mass_create across all bins in bucket)]`.
+
+Layout suggestion: stack the two colorbars vertically on the right of the grid, with `cbar.set_label("mass destroyed", fontsize=12)` on the Blues bar and `cbar.set_label("mass created", fontsize=12)` on the Reds bar.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q27, Addendum #9-24 Task 5 scope.)
+
+---
+
+## Addendum #26 — UOT mass plots: white background for zero-mass bins (Priya 2026-05-15)
+
+### Q28 LOCKED — Zero-mass bins render white, not light-blue / light-red
+
+After Q27's `Blues` / `Reds` cmap lock, the mass_destroy / mass_create panels render with a faint blue / red tint across the full plot area — even for bins with zero mass — because matplotlib's `Blues` and `Reds` sequential cmaps map their lowest value to a very light shade of color rather than to pure white. Fix: mask zero-mass bins as NaN before `imshow`, so they render via the cmap's `set_bad("white")` setting:
+
+```python
+# Mass conservation guarantees H_mass_* values ≥ 0; treat zero as "no mass here" → white
+H_mass_destroy_masked = np.where(H_mass_destroy > 0, H_mass_destroy, np.nan)
+H_mass_create_masked = np.where(H_mass_create > 0, H_mass_create, np.nan)
+
+blues_cmap = plt.get_cmap("Blues").copy()
+blues_cmap.set_bad("white")
+reds_cmap = plt.get_cmap("Reds").copy()
+reds_cmap.set_bad("white")
+
+mass_destroy_im = ax_destroy.imshow(
+    H_mass_destroy_masked, cmap=blues_cmap, origin="lower", ...,
+    vmin=mass_destroy_vmin_per_bucket,  # smallest positive value in bucket, NOT zero
+    vmax=mass_destroy_vmax_per_bucket,
+)
+mass_create_im = ax_create.imshow(
+    H_mass_create_masked, cmap=reds_cmap, origin="lower", ...,
+    vmin=mass_create_vmin_per_bucket,
+    vmax=mass_create_vmax_per_bucket,
+)
+```
+
+**`vmin` selection:** with zero-mass bins masked out, `vmin` for the colorbar should be the smallest POSITIVE mass value in the (animal, family, scope, bin_size, trial_group) bucket — not zero. Otherwise the colorbar wastes its low end on a value that no longer appears on the plot. CC computes `vmin = np.nanmin(H_mass_*_masked across all bins in bucket)` for the Q14 shared-scale calculation.
+
+Optional refinement: if `vmin` rounds to a very small number that produces visually invisible colors at the low end, CC can clip to a percentile floor (e.g., 2nd percentile of nonzero mass values in the bucket). Document any clipping choice in Task 8 DECISIONS.
+
+**Apply the same masking pattern to other plot types that show "absence of signal" as a meaningful state:**
+- Proportion-difference heatmaps with `set_bad("white")` per Q22/Q25 already render NaN bins as white. No change needed — they already use the NaN-mask pattern from likelihood-threshold filtering.
+- Raw count heatmaps (individual_session, binned_sessions): the lowest count is typically 0 across most bins. If the legacy log-scale `LogNorm` already handles this (via `LogNorm` zero-handling or `set_bad("white")`), no change needed. If the current renders also have a faint tinted background where counts are zero, apply the same `np.where(H > 0, H, np.nan)` mask pattern. CC checks PS46 spot-check for this — if the heatmap background is white, leave as-is; if tinted, mask.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q28, Addendum #9-25 Task 5 scope.)

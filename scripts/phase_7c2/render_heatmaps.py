@@ -415,17 +415,21 @@ def _process_animal(
                         animal, family_entry, scope, bin_size_days, dates, resolver,
                         defaults=defaults, animal_info=animal_info,
                     )
-                    destroy_vmax, create_vmax, logmag_lo, logmag_hi = (
-                        derive_uot_bucket_ranges(
-                            uot_plans,
-                            threshold_pct50_multiplier=uot_thr_mult,
-                        )
+                    (
+                        destroy_vmin, destroy_vmax,
+                        create_vmin, create_vmax,
+                        logmag_lo, logmag_hi,
+                    ) = derive_uot_bucket_ranges(
+                        uot_plans,
+                        threshold_pct50_multiplier=uot_thr_mult,
                     )
                 except Exception as ex:
                     log.error(
                         f"    pre1/UOT/{family_entry}/{scope}/bin{bin_size_days}d: {ex!r}"
                     )
+                    destroy_vmin = None
                     destroy_vmax = None
+                    create_vmin = None
                     create_vmax = None
                     logmag_lo = None
                     logmag_hi = None
@@ -438,7 +442,9 @@ def _process_animal(
                             trial_group=tg,
                             dates=dates,
                             defaults=defaults, animal_info=animal_info,
+                            shared_mass_destroy_vmin=destroy_vmin,
                             shared_mass_destroy_vmax=destroy_vmax,
+                            shared_mass_create_vmin=create_vmin,
                             shared_mass_create_vmax=create_vmax,
                             shared_arrow_logmag_lo=logmag_lo,
                             shared_arrow_logmag_hi=logmag_hi,
