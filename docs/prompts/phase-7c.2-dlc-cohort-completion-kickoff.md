@@ -1779,3 +1779,67 @@ Optional refinement: if `vmin` rounds to a very small number that produces visua
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q28, Addendum #9-25 Task 5 scope.)
+
+---
+
+## Addendum #27 — UOT mass panel magnitude floor for noise-floor suppression (Priya 2026-05-15)
+
+### Q29 LOCKED — Mask sub-threshold UOT mass values as NaN; not just exactly-zero
+
+PS46 spot-check shows the Q28 `H > 0` strict-zero mask doesn't produce a clean white background. Root cause: POT's `sinkhorn_unbalanced` solver returns a numerically dense transport matrix where most bins have tiny-but-nonzero mass (~1e-8 to 1e-4) from the regularization, not exactly zero. The marginalized `H_mass_destroy` / `H_mass_create` panels inherit this noise floor — most bins have small positive mass rather than zero, and `Blues`/`Reds` cmaps map even tiny positive values to a light tint of color.
+
+Fix: apply a magnitude-fraction floor analogous to the Q21/Addendum #20 `threshold_pct50_multiplier` already used for arrow filtering:
+
+1. **New config knob:** `configs/defaults.yaml dlc_spatial_tone_aligned.unbalanced_ot.mass_floor_fraction` (default `0.05` = 5% of bucket vmax). CC tunes visually: increase to 0.1 if still too tinted; decrease to 0.02 if signal regions are getting clipped.
+
+2. **Apply threshold per-bucket using shared Q14 vmax:**
+
+   ```python
+   mass_floor_fraction = config_block.get("mass_floor_fraction", 0.05)
+
+   # vmax_destroy / vmax_create computed across the (animal, family, scope,
+   # bin_size, trial_group) bucket per Q14 shared-scale rule
+   destroy_floor = vmax_destroy * mass_floor_fraction
+   create_floor = vmax_create * mass_floor_fraction
+
+   H_mass_destroy_masked = np.where(
+       H_mass_destroy >= destroy_floor, H_mass_destroy, np.nan
+   )
+   H_mass_create_masked = np.where(
+       H_mass_create >= create_floor, H_mass_create, np.nan
+   )
+   ```
+
+3. **Colorbar `vmin` = floor (not zero):**
+
+   ```python
+   mass_destroy_im = ax_destroy.imshow(
+       H_mass_destroy_masked, cmap=blues_cmap, origin="lower",
+       vmin=destroy_floor,
+       vmax=vmax_destroy,
+   )
+   mass_create_im = ax_create.imshow(
+       H_mass_create_masked, cmap=reds_cmap, origin="lower",
+       vmin=create_floor,
+       vmax=vmax_create,
+   )
+   ```
+
+   This makes the colorbar span only the visually-meaningful range (`[floor, vmax]`) rather than wasting its low end on UOT noise-floor.
+
+4. **Cmap `set_bad("white")`** (already locked Q28) now correctly renders all sub-floor bins as pure white.
+
+Result: most of the panel renders white (UOT noise-floor); only meaningful mass-change regions retain visible color, matching the visual cleanliness Priya wants.
+
+### Same principle applies to other plot types showing noise-floor tint
+
+If PS46 spot-check shows similar tinted-background issues on other plot types:
+
+- **Raw heatmaps (individual_session, binned_sessions):** add `dlc_spatial_tone_aligned.heatmap_count_floor` (default 1; tune to 2 or higher if needed). Mask bins with counts below floor as NaN, render via `set_bad("white")`.
+- **Proportion-differences:** with diverging cmap, masking sub-magnitude bins as NaN works the same — mask where `|H_diff| < (max(|H_diff|) × proportion_diff_floor_fraction)`. Default `proportion_diff_floor_fraction = 0.02`. Render NaN as white via `set_bad("white")` (Q22/Q25 already set this).
+
+CC applies these other-plot floors only if PS46 spot-check shows the tinted-background issue on those plot types; if backgrounds already render clean white at full bucket scale, no change needed.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q29, Addendum #9-26 Task 5 scope.)

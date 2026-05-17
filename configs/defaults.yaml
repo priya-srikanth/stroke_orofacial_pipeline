@@ -410,6 +410,16 @@ dlc_spatial_tone_aligned:
     nbins: 20
     arrow_size_factor: 0.5
     threshold_pct50_multiplier: 0.1
+    # Q29 Addendum #27: mass-panel magnitude floor. POT's
+    # sinkhorn_unbalanced returns a dense transport matrix where every
+    # bin has tiny-but-nonzero mass (~1e-13 to 1e-8) from the regularizer
+    # — this rendered as a faint colored background under Q28's
+    # strict-zero NaN mask. Q29 raises the threshold to a fractional of
+    # bucket vmax: bins with mass < (vmax × mass_floor_fraction) get
+    # NaN-masked → set_bad("white") → pure-white background. Default
+    # 0.05 (5% of bucket vmax). Tune: 0.10 if background still tinted,
+    # 0.02 if signal regions clipped.
+    mass_floor_fraction: 0.05
   families:
     tongue_spout_midpoint:
       bodyparts: ["tongue"]

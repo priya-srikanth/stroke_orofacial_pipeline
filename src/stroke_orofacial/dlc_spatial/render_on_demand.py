@@ -1973,6 +1973,7 @@ def _render_ot_mass_change_panels(
     shared_destroy_vmax: float | None = None,
     shared_create_vmin: float | None = None,
     shared_create_vmax: float | None = None,
+    mass_floor_fraction: float = 0.05,
 ) -> None:
     """Render the 2 mass-change heatmaps onto a pair of Axes —
     ``mass_destroy`` (Blues cmap per Q27) + ``mass_create`` (Reds per
@@ -1986,9 +1987,18 @@ def _render_ot_mass_change_panels(
     Q28 Addendum #26: zero-mass bins are NaN-masked before imshow so they
     render via ``set_bad("white")`` instead of the cmap's near-white
     low-intensity tint (Blues / Reds at index 0 is a faint colored shade,
-    not white). ``shared_*_vmin`` (smallest positive across bucket)
-    pins the colorbar low end; ``vmin=0`` is replaced with this so the
-    visible color range starts at the first physical data value.
+    not white).
+
+    Q29 Addendum #27: ``mass_floor_fraction`` raises the NaN mask threshold
+    from strict-zero to ``floor = shared_vmax × mass_floor_fraction``
+    (default 0.05 = 5% of bucket vmax). POT's sinkhorn_unbalanced
+    returns a dense transport matrix where every bin has tiny-but-nonzero
+    mass (~1e-13 to 1e-8) from the regularizer — Q28's strict-zero gate
+    let this through and rendered as a faint colored background. Q29
+    floors at a fraction of the bucket-shared vmax so only meaningful
+    mass-change regions retain visible color. Colorbar ``vmin=floor``
+    (instead of bucket_vmin near-zero) so the cbar covers only the
+    visually-meaningful range.
     """
     per_mode = _get_per_center_mode_params(spatial_config, bodypart, center_mode)
     xl = per_mode["xlim"] if per_mode["xlim"] else (extent[0], extent[1])
@@ -2013,22 +2023,31 @@ def _render_ot_mass_change_panels(
         except ValueError:
             cmap = plt.get_cmap("viridis").copy()
             cmap.set_bad("white")
-        # Q28: mask zero-mass bins → NaN → white background.
-        arr_masked = np.where(arr > 0, arr.astype(float), np.nan)
+        # Q29 Addendum #27: floor = bucket_vmax × mass_floor_fraction.
+        # Falls back to per-panel arr.max()-based floor when bucket vmax
+        # is missing (e.g., standalone smoke without Pass-1).
+        if shared_hi is not None and shared_hi > 0:
+            floor = float(shared_hi) * float(mass_floor_fraction)
+        else:
+            arr_max = float(arr.max()) if arr.size else 0.0
+            floor = arr_max * float(mass_floor_fraction) if arr_max > 0 else 0.0
+        # Q28+Q29: mask sub-floor (incl. zero) bins → NaN → white bg.
+        arr_masked = np.where(
+            arr >= floor, arr.astype(float), np.nan,
+        ) if floor > 0 else np.where(
+            arr > 0, arr.astype(float), np.nan,
+        )
         imshow_kwargs: dict[str, Any] = {}
         if shared_hi is not None and shared_hi > 0:
-            # Q28: bucket-shared vmin (smallest positive) when given;
-            # falls back to numpy's behavior (effectively the smallest
-            # nonzero in this panel) if the driver didn't pass it.
-            if shared_lo is not None and shared_lo > 0:
-                imshow_kwargs["vmin"] = float(shared_lo)
-            else:
-                pos = arr_masked[np.isfinite(arr_masked)]
-                imshow_kwargs["vmin"] = float(pos.min()) if pos.size else 0.0
+            # Q29: cbar vmin = floor (not bucket smallest-positive) so the
+            # color scale only covers the above-floor magnitude range.
+            imshow_kwargs["vmin"] = floor if floor > 0 else (
+                float(shared_lo) if (shared_lo is not None and shared_lo > 0) else 0.0
+            )
             imshow_kwargs["vmax"] = float(shared_hi)
         # Q22 Addendum #21: white facecolor so the NaN-masked white
-        # cells from Q28 blend in (otherwise the default axes facecolor
-        # — usually white anyway — but explicit is safer).
+        # cells from Q28/Q29 blend in (axes facecolor defaults to
+        # white but explicit is safer).
         ax.set_facecolor("white")
         ax.imshow(
             arr_masked.T, origin="lower", extent=extent,
@@ -2337,6 +2356,8 @@ def render_unbalanced_ot_displacement_field(
     unb_nbins = int(unb_cfg.get("nbins") or 20)  # Q21 re-lock (Addendum #23): default 20
     arrow_size_factor = float(unb_cfg.get("arrow_size_factor", 0.5))
     threshold_pct50_multiplier = float(unb_cfg.get("threshold_pct50_multiplier", 0.1))
+    # Q29 Addendum #27: mass-panel magnitude floor (5% of bucket vmax by default).
+    mass_floor_fraction = float(unb_cfg.get("mass_floor_fraction", 0.05))
 
     pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
     if not pre_dates:
@@ -2463,6 +2484,7 @@ def render_unbalanced_ot_displacement_field(
             shared_destroy_vmax=shared_mass_destroy_vmax,
             shared_create_vmin=shared_mass_create_vmin,
             shared_create_vmax=shared_mass_create_vmax,
+            mass_floor_fraction=mass_floor_fraction,
         )
         _render_ot_arrows_panel(
             ax_arrows, plan, ext, bp_for_axis, center_mode,
