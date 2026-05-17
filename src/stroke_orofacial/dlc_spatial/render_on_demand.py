@@ -1228,30 +1228,81 @@ def _render_proportion_diff_panel(
     cbar.ax.tick_params(labelsize=6)
 
 
+def _compute_proportion_diff_for_bin(
+    animal: str,
+    bin_dates: list[dt.date],
+    H_pre_pool_prop: np.ndarray,
+    extent_pre: list[float],
+    bodyparts: list[str],
+    center_mode: str,
+    scope: Scope,
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any],
+    animal_info: AnimalInfo,
+) -> tuple[np.ndarray | None, list[float] | None, int]:
+    """Compute D = H_bin_prop - H_pre_pool_prop for one rel_day_bin.
+
+    For single-bp family: per-bp histogram. For whisker family: pooled
+    6-whisker pseudo-histogram (matches UOT whisker handling per
+    legacy 'Pool all six whiskers as one part' pattern).
+
+    Returns ``(D, extent, n_sessions_in_bin)``.
+    """
+    if len(bodyparts) > 1:
+        # Whiskers family: pooled-6-whisker pseudo-bp.
+        H_bin, ext, n_sess = _aggregate_for_dates_pooled_whiskers(
+            animal, bin_dates, bodyparts, center_mode, scope, resolver,
+            defaults=defaults, animal_info=animal_info,
+        )
+    else:
+        if scope == "tone_aligned":
+            tg_arg: str | None = "all"
+            window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
+        else:
+            tg_arg = None
+            window_ms = None
+        bp = bodyparts[0]
+        H_bin, ext, n_sess, _ = compute_animal_aggregated_histogram(
+            animal, bin_dates, bp, center_mode, resolver,
+            trial_group=tg_arg, window_ms=window_ms,
+            defaults=defaults, animal_info=animal_info,
+        )
+    if H_bin is None or float(H_bin.sum()) == 0.0:
+        return None, None, n_sess
+    H_bin_prop = H_bin / float(H_bin.sum())
+    D = H_bin_prop - H_pre_pool_prop
+    no_data = (H_pre_pool_prop == 0) & (H_bin == 0)
+    if no_data.any():
+        D = np.where(no_data, np.nan, D)
+    return D, list(ext) if ext is not None else extent_pre, n_sess
+
+
 def render_proportion_difference_heatmap(
     animal: str,
     family_entry: str,
     scope: Scope,
     resolver: PathResolver,
     *,
+    bin_size_days: int,
     dates: list[dt.date] | None = None,
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
 ) -> plt.Figure:
-    """Render the per-(animal, family, scope) proportion-difference SVG.
+    """Render the per-(animal, family, scope, bin_size) proportion-
+    difference grid-summary SVG per Addendum #11 Q2.B.
 
-    Math: ``D = H_post_prop - H_pre_prop`` where pre = all rel_day <= 0
-    sessions pooled (animal-level baseline per Addendum #10 Q2a), post =
-    all rel_day >= 1 sessions pooled. Both as proportion-normalized
-    histograms. Divergent cmap centered on 0 (``TwoSlopeNorm``).
+    Animal-level pre-stroke baseline (pool of all rel_day <= 0 sessions)
+    is fixed; one panel per rel_day_bin at the requested ``bin_size_days``
+    showing ``D_bin = H_bin_prop - H_pre_pool_prop``. Both pre-stroke
+    bins (within-pre variability) and post-stroke bins (stroke-induced
+    departure) get panels.
 
-    Non-whiskers families: 1×1 panel.
-    Whiskers family: 2×3 subplot grid with per-whisker divergent cmap
-    (BrBG / coolwarm / bwr cycle per whisker index; legacy lines
-    1376-1381 of 20251202_..._pixelbin.ipynb).
+    Non-whiskers families: per-bp single-bodypart D per panel.
+    Whiskers family: pooled-6-whisker pseudo-bp per panel (matches
+    UOT whisker treatment).
 
-    ``dates`` is the YAML-filtered in-range date list. If None, the
-    caller must provide it (driver always passes it).
+    Layout: 4-col grid (analogous to UOT grid summary); rows = ceil(N_bins / 4).
     """
     if defaults is None:
         defaults = load_defaults()
@@ -1265,55 +1316,99 @@ def render_proportion_difference_heatmap(
 
     bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
     spatial_config = defaults["dlc_spatial"]
-    pre_dates, post_dates = _split_pre_post_dates(dates, animal_info)
+    pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
 
-    suptitle = (
-        f"{animal}  {family_entry}  {scope}  proportion_differences  "
-        f"post − pre  (n_pre={len(pre_dates)}, n_post={len(post_dates)})"
-    )
-
-    if len(bodyparts) == 1:
-        bp = bodyparts[0]
-        D, ext, n_pre, n_post = _compute_proportion_diff(
-            animal, pre_dates, post_dates, bp, center_mode, scope, resolver,
+    # Compute fixed reference: animal-level pre-stroke pool, proportion-
+    # normalized.
+    if len(bodyparts) > 1:
+        H_pre_pool, ext_pre, n_pre_sess = _aggregate_for_dates_pooled_whiskers(
+            animal, pre_dates, bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
         )
-        fig, ax = plt.subplots(figsize=(8, 6), constrained_layout=True)
-        title = f"{bp}/{center_mode}  n_pre_sess={n_pre} n_post_sess={n_post}"
-        _render_proportion_diff_panel(
-            ax, D, ext, bp, center_mode,
-            spatial_config=spatial_config,
-            cmap_name=_PROPORTION_DIFF_DEFAULT_CMAP,
-            title=title,
+    else:
+        if scope == "tone_aligned":
+            tg_arg: str | None = "all"
+            window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
+        else:
+            tg_arg = None
+            window_ms = None
+        bp = bodyparts[0]
+        H_pre_pool, ext_pre, n_pre_sess, _ = compute_animal_aggregated_histogram(
+            animal, pre_dates, bp, center_mode, resolver,
+            trial_group=tg_arg, window_ms=window_ms,
+            defaults=defaults, animal_info=animal_info,
         )
-        fig.suptitle(suptitle, fontsize=11)
+
+    if H_pre_pool is None or float(H_pre_pool.sum()) == 0.0:
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.text(
+            0.5, 0.5,
+            f"{animal}/{family_entry}/{scope}/bin{bin_size_days}d\n"
+            f"empty pre-stroke pool (n_pre={len(pre_dates)})",
+            ha="center", va="center", transform=ax.transAxes,
+        )
+        ax.set_axis_off()
         return fig
 
-    # Whiskers composite — 2×3 grid, per-whisker divergent cmap.
-    nrows, ncols = 2, 3
+    H_pre_pool_prop = H_pre_pool / float(H_pre_pool.sum())
+
+    # Group ALL dates (pre + post) by rel_day_bin at the requested bin_size.
+    bins: dict[str, list[dt.date]] = {}
+    from stroke_orofacial.dlc_kinematics._day_binned import _compute_rel_day_bin_label
+    for d in dates:
+        label = _compute_rel_day_bin_label(
+            session_date=d, d0=animal_info.stroke_date, bin_days=int(bin_size_days),
+        )
+        bins.setdefault(label, []).append(d)
+    bin_labels = sorted(bins.keys(), key=_bin_label_sort_key)
+
+    bp_for_axis = bodyparts[0]  # reference for spatial_config axis lookup
+    n_bins = len(bin_labels)
+    ncols = min(4, max(1, n_bins))
+    nrows = max(1, int(np.ceil(n_bins / ncols)))
     fig, axes_obj = plt.subplots(
         nrows=nrows, ncols=ncols,
         figsize=(ncols * 5.0, nrows * 4.0),
         constrained_layout=True,
     )
-    axes = list(axes_obj.flat)
-    for bp, ax in zip(bodyparts, axes, strict=False):
-        D, ext, n_pre, n_post = _compute_proportion_diff(
-            animal, pre_dates, post_dates, bp, center_mode, scope, resolver,
+    axes = list(axes_obj.flat) if hasattr(axes_obj, "flat") else [axes_obj]
+    for bin_label, ax in zip(bin_labels, axes, strict=False):
+        bin_dates = bins[bin_label]
+        D, ext, n_sess = _compute_proportion_diff_for_bin(
+            animal, bin_dates, H_pre_pool_prop, ext_pre,
+            bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
         )
-        cmap_name = _WHISKER_DIVERGENT_CMAPS.get(bp, _PROPORTION_DIFF_DEFAULT_CMAP)
-        title = f"{bp}  n_pre_sess={n_pre} n_post_sess={n_post}"
+        cmap_name = (
+            _WHISKER_DIVERGENT_CMAPS.get(bodyparts[0], _PROPORTION_DIFF_DEFAULT_CMAP)
+            if len(bodyparts) > 1
+            else _PROPORTION_DIFF_DEFAULT_CMAP
+        )
+        title = f"bin {bin_label}  n_sess={n_sess}"
         _render_proportion_diff_panel(
-            ax, D, ext, bp, center_mode,
+            ax, D, ext, bp_for_axis, center_mode,
             spatial_config=spatial_config,
             cmap_name=cmap_name, title=title,
         )
-    # Hide any trailing axes if bodyparts < 6.
-    for ax in axes[len(bodyparts):]:
+    for ax in axes[len(bin_labels):]:
         ax.set_axis_off()
-    fig.suptitle(suptitle, fontsize=12)
+    fig.suptitle(
+        f"{animal}  {family_entry}  {scope}  proportion_differences  "
+        f"bin{int(bin_size_days)}d  vs all-pre-stroke pool "
+        f"(n_pre_sess={n_pre_sess})",
+        fontsize=11,
+    )
     return fig
+
+
+def _bin_label_sort_key(label: str) -> tuple[int, int]:
+    """Sort key for ``f"{lo}..{hi}"`` rel_day_bin labels — chronological
+    by ``lo`` so the grid reads pre→post left-to-right."""
+    try:
+        lo_str, _hi_str = label.split("..")
+        return (int(lo_str), 0)
+    except (ValueError, AttributeError):
+        return (10**9, 0)
 
 
 # ---------------------------------------------------------------------------

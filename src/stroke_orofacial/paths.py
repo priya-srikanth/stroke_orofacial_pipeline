@@ -558,19 +558,22 @@ class PathResolver:
         return out
 
     def tone_aligned_heatmap_proportion_differences_path(
-        self, animal: str, family_entry: str,
+        self, animal: str, family_entry: str, bin_size_days: int,
     ) -> Path:
-        """Return the per-(animal, family) tone-aligned proportion-difference
-        SVG path.
+        """Return the per-(animal, family, bin_size) tone-aligned
+        proportion-difference grid-summary SVG path.
 
-        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/proportion_differences/post_minus_pre_stroke.svg``.
+        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/proportion_differences/bin2d.svg``.
 
-        Filename is fixed at ``post_minus_pre_stroke.svg`` per Q12.B layout
-        spec. Parent directory is created eagerly.
+        Per Phase 7c.2 Addendum #11 Q2.B (supersedes prior single-figure
+        framing): one SVG per configured bin_size, containing a grid of
+        per-bin diff panels (one panel per day-bin within that bin_size).
+        Filename ``bin{N}d.svg`` where N is the bin size in days. Parent
+        directory is created eagerly.
         """
         out = self._tone_aligned_heatmap_dir(
             animal, family_entry, "proportion_differences",
-        ) / "post_minus_pre_stroke.svg"
+        ) / f"bin{int(bin_size_days)}d.svg"
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 
@@ -617,14 +620,15 @@ class PathResolver:
         return out
 
     def whole_session_heatmap_proportion_differences_path(
-        self, animal: str, family_entry: str,
+        self, animal: str, family_entry: str, bin_size_days: int,
     ) -> Path:
-        """Return the per-(animal, family) whole-session proportion-difference SVG path.
-
-        Filename ``post_minus_pre_stroke.svg`` (matches tone-aligned sibling)."""
+        """Return the per-(animal, family, bin_size) whole-session
+        proportion-difference grid-summary SVG path. Filename
+        ``bin{N}d.svg`` (matches tone-aligned sibling per Addendum #11
+        Q2.B)."""
         out = self._whole_session_heatmap_dir(
             animal, family_entry, "proportion_differences",
-        ) / "post_minus_pre_stroke.svg"
+        ) / f"bin{int(bin_size_days)}d.svg"
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 

@@ -1038,3 +1038,165 @@ If CC's investigation reveals that ONLY the balanced `ot.sinkhorn` code at line 
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.B 5-family allowlist, Q11 driver patch, Addendum #9 Task 5 scope.)
+
+---
+
+## Addendum #11 — proportion_differences refined to per-bin-vs-all-pre-stroke + legacy plotting-params faithfulness (Priya 2026-05-15, mid-Task-5)
+
+Refines Addendum #10's Q2 proportion_differences spec. Two changes:
+
+### Q2 RE-LOCKED Q2.B (supersedes Addendum #10 Q2 single-figure framing)
+
+**Proportion differences = per-bin departures from animal-level pre-stroke pool.** For each animal × (family entry):
+
+1. **Compute fixed reference:** Animal-level pool of all pre-stroke sessions (`rel_day <= 0`) → one aggregated `H_all_pre_stroke_proportion` histogram per (animal, family entry).
+2. **Per-bin difference panels:** For EACH day-bin in the animal's configured `bin_sizes_days` (e.g., `2d` and `7d` bins per `configs/defaults.yaml mean_sem_visual.bin_sizes_days` or wherever the bin sizes live), compute the per-bin aggregated histogram → subtract animal-level pre-stroke pool → diff figure for that bin. Both pre-stroke bins and post-stroke bins get diff figures (pre-stroke bins show within-pre-stroke variability from the pool; post-stroke bins show stroke-induced departure).
+3. **Grid-summary SVG:** All bins' diff panels laid out in one grid-summary SVG per (animal, family entry, bin_size). Mirror Q3c grid-summary convention.
+
+So proportion_differences output per (animal, family entry):
+- One SVG per configured bin_size (e.g., `2d`, `7d`).
+- Each SVG contains N panels (one per day-bin within that bin_size).
+- Panels are color-coded showing `H_bin - H_all_pre_stroke` per the diverging colormap (per Q2b math).
+
+Filename convention suggestion: `<family_entry>_proportion_diff_bin<bin_size>d.svg` (e.g., `tongue_eye_midpoint_proportion_diff_bin2d.svg`, `tongue_eye_midpoint_proportion_diff_bin7d.svg`).
+
+### Q13 LOCKED — legacy plotting parameter faithfulness
+
+Tongue/jaw/nose/whiskers heatmap rendering uses legacy plotting parameters wherever they exist, including:
+
+- **Colormaps:** legacy per-bodypart cmap values (e.g., `gist_ncar` for nose, `gnuplot2` for jaw, `viridis`-family for tongue per existing `configs/defaults.yaml dlc_spatial_tone_aligned.bodyparts.<bp>.cmap` entries). Diverging colormaps for proportion-difference panels (per Addendum #10 Q2b; check legacy cells 1376-1381 for the divergent cmap dict — `coolwarm`, `BrBG`, `bwr`).
+- **Log scaling:** if legacy heatmap renders apply log scaling (e.g., `LogNorm` for colorbar), port that. CC checks the legacy cells to identify per-plot-type scaling decisions.
+- **Axis limits:** per `dlc_spatial_tone_aligned.bodyparts.<bp>.per_center_mode.<mode>.xlim`/`ylim` config (already in place).
+- **Likelihood threshold:** per `dlc_spatial_tone_aligned.bodyparts.<bp>.likelihood_threshold` config.
+- **Bin counts:** per `dlc_spatial_tone_aligned.heatmap_nbins` config (currently 100).
+- **Other params:** alpha, marker style, axis labels, title format — port legacy convention faithfully.
+
+When CC encounters a legacy plotting-param choice that's ambiguous or seems wrong (e.g., a hardcoded value that should be configurable), STOP-and-ask Priya for adjudication rather than silently inventing.
+
+### Implementation expansion — Step 4 (proportion_differences) becomes 2 sub-steps
+
+CC's Step 4 now:
+- **4a:** Implement the per-bin aggregation logic (read centered parquets for sessions falling in each bin, aggregate to one per-bin histogram, subtract animal-level pre-stroke pool).
+- **4b:** Render the grid-summary SVG (multiple bin panels per file; one file per bin_size). Use diverging colormap; apply legacy log scaling / axis limits / likelihood threshold per Q13.
+
+Same legacy file references (tongue: `20260111_..._tongue.ipynb`; jaw: `20251117_..._jaw.ipynb`; nose: `20251117_..._nose.ipynb`).
+
+### Path layout adjustment
+
+Adjusted `proportion_differences/` subdir per Q2.B-revised:
+
+```
+tone_aligned_heatmaps/<animal>/<family_entry>/proportion_differences/
+├── bin2d.svg     # 2-day-bin grid summary of per-bin diffs vs all-pre-stroke
+└── bin7d.svg     # 7-day-bin grid summary
+
+whole_session_heatmaps/<animal>/<family_entry>/proportion_differences/
+├── bin2d.svg     # same scope; whole-session windowing
+└── bin7d.svg
+```
+
+(Or whatever canonical filename CC picks; the above is suggested.)
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.B 5-family allowlist, Q11 driver patch, Addendum #9-10 Task 5 scope, except Q2 supersession noted above.)
+
+---
+
+## Addendum #12 — Q3a flips to UNBALANCED OT cells (with mass gained/lost rendering) (Priya 2026-05-15, post-Task-5 first-render review)
+
+Priya inspected CC's first Task 5 unbalanced_ot render and reports: the generated plots are NOT useful. She wants the variant with arrows showing distribution changes + mass gained/lost rendering. This is the UNBALANCED OT variant (`ot_unb.sinkhorn_unbalanced`), not the balanced `ot.sinkhorn` at line 6937+ that CC ported. Addendum #10 Q3a's Read-X-vs-Read-Y resolution flips to Read Y.
+
+### Q3a RE-LOCKED Q3a.B (supersedes Q3a.A / Read-X-default from Addendum #10)
+
+**Port from the UNBALANCED-sinkhorn cells of `20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb`:**
+
+- Cells 3624-3641
+- Cells 5014-5018
+- Cells 5404-5444
+
+These cells use `ot_unb.sinkhorn_unbalanced` (or equivalent unbalanced sinkhorn API). CC re-investigates these cells to find:
+
+1. **Displacement-field arrow rendering** — vector arrows showing where mass moved (per-bin or per-displacement-vector). Likely uses `ax.quiver()`, `ax.arrow()`, `FancyArrow`, or `Annotation` primitives.
+2. **Mass gained/lost rendering** — separate plot element(s) showing WHERE mass increased (post > pre) vs decreased (post < pre). Could be:
+   - Color-coded scatter overlay (red for gained, blue for lost)
+   - Separate side-by-side panel for "mass change"
+   - Filled-region overlay on the heatmap (semi-transparent areas of gain/loss)
+   - Per-bin signed magnitude with diverging colormap
+
+CC's investigation should identify the precise rendering primitives + filename conventions + grouping structure.
+
+### Discard prior unbalanced_ot output
+
+CC's first Task 5 render generated unbalanced_ot SVGs from the WRONG legacy cells (balanced sinkhorn at line 6937+). Those outputs are discarded. The next Task 5 render uses the unbalanced-sinkhorn-variant cells per Q3a.B.
+
+If CC's earlier port committed code that consumed the balanced sinkhorn variant, revert or rewrite that code in the next commit. Don't carry the wrong implementation forward.
+
+### Anticipated additional STOP-and-ask points
+
+If the unbalanced cells (3624-3641 / 5014-5018 / 5404-5444) produce MULTIPLE different rendering variants (e.g., one cell produces arrows-only, another produces mass-change-only, a third produces both combined), STOP-and-ask Priya which is canonical for the `unbalanced_ot/` plot type. She wants both arrows AND mass-change in the same figure (or grid-summary set), but the legacy code may split them.
+
+If the unbalanced cells use the same `ax.quiver()`-style arrow rendering as the balanced variant (just with different OT math producing slightly different vectors), the rendering primitives port cleanly + the difference is in OT params + outputs.
+
+### Q3b adjustment — port unbalanced OT params verbatim from the unbalanced cells (not balanced)
+
+Per Addendum #10 Q3b "OT params verbatim from legacy as defaults" — but the source cells flip from balanced @ 6937+ to unbalanced @ 3624-3641/etc. CC ports `reg`, `reg_m`, and cost-matrix C from the unbalanced cells (default values from whichever specific cell becomes the canonical entry point for unbalanced_ot plot type).
+
+### Filename + output structure unchanged
+
+Per Addendum #10 Q3c: grid-summary SVG (multiple days per file). Per Addendum #10 Q3d: per-session vs animal-level pre-stroke baseline (one OT computation per post-stroke session against the animal-level pool). Per Addendum #11 (proportion_differences): same animal-level pre-stroke pool serves as the baseline for OT comparison.
+
+The `unbalanced_ot/` subdir contains the grid-summary SVG per (animal, family entry, scope). Filename suggested: `unbalanced_ot_displacement_and_mass_change.svg` (or whatever canonical name CC picks reflecting both arrows + mass-change rendering).
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.B 5-family allowlist, Q11 driver patch, Addendum #9-11 Task 5 scope except Q3a supersession + Q3b unbalanced-source clarification noted above.)
+
+---
+
+## Addendum #13 — add spout_spout_midpoint + eye_eye_midpoint reference family entries (Priya 2026-05-15, mid-Task-5)
+
+Priya 2026-05-15 adds 2 new family entries to the spatial allowlist as reference / sanity-check plots. These confirm centering is working — a bodypart centered on its own midpoint should show minimal spread with L/R sub-bodyparts on appropriate sides.
+
+### Q10 RE-EXPANDED Q10.C (supersedes Q10.B — 5 → 7 family entries)
+
+| Family entry | Sub-bodyparts | Center mode | Purpose |
+|---|---|---|---|
+| `tongue_spout_midpoint` | tongue | spout_midpoint | Tongue-spatial analysis (production) |
+| `tongue_eye_midpoint` | tongue | eye_midpoint | Tongue-spatial analysis (production) |
+| `jaw_eye_midpoint` | jaw | eye_midpoint | Jaw-spatial analysis (production) |
+| `nose_eye_midpoint` | nose | eye_midpoint | Nose-spatial analysis (production) |
+| `whiskers_eye_midpoint` | L_whiskers_1, L_whiskers_2, L_whiskers_3, R_whiskers_1, R_whiskers_2, R_whiskers_3 | eye_midpoint | Whiskers-spatial (production; layered overlay) |
+| **`spout_spout_midpoint`** (NEW) | L_spout, R_spout | spout_midpoint | **Reference / sanity-check**: spout location centered on spout midpoint → expect tight clusters on L/R halves |
+| **`eye_eye_midpoint`** (NEW) | L_eye, R_eye | eye_midpoint | **Reference / sanity-check**: eye location centered on eye midpoint → expect tight clusters on L/R halves |
+
+Total: **7 family entries**. The 2 new entries are reference plots — small-spread distributions confirming the centering pipeline emits sensible coordinates.
+
+### Rendering layout for new family entries
+
+`spout_spout_midpoint` and `eye_eye_midpoint` each encapsulate 2 sub-bodyparts (L and R) — analogous to whiskers but smaller. Layout follows the whiskers pattern (per Addendum #10 Q1 Pattern B locked):
+
+**Layered overlay on one axis** — 2 sequential `hist2d` calls (one per L/R sub-bodypart) with their own cmaps + alpha. CC picks distinct cmaps from the legacy palette (e.g., `Reds` for L, `Blues` for R; or `plasma`/`viridis` for visual consistency with whiskers L/R coloring).
+
+For all 4 plot types (`individual_session`, `binned_sessions`, `proportion_differences`, `unbalanced_ot`), reference family entries render the same way as production family entries.
+
+### Config additions needed
+
+CC adds new entries to `configs/defaults.yaml dlc_spatial_tone_aligned.bodyparts.` for:
+
+- **`L_spout`** and **`R_spout`**: `likelihood_threshold` (suggested 0.80 default; CC verifies against legacy spout-tracking convention if any); `center_mode: spout_midpoint`; `cmap` per L/R distinct choice; `per_center_mode.spout_midpoint.{xlim, ylim, x_range}` per cohort-pooled quantiles + 40% pad pattern (Phase 4.5-lite convention). Reference range likely ~tight (e.g., xlim `[-50, 50]`, ylim `[-30, 30]` since spouts are fixed in space). CC computes from one canonical session if no legacy precedent.
+- **`L_eye`** and **`R_eye`**: same pattern, with `center_mode: eye_midpoint` and reference range expected to be similar tight ranges. Likelihood threshold likely 0.80 (eyes are usually well-tracked).
+
+If CC finds existing config entries for L_spout / R_spout / L_eye / R_eye (the centering pipeline reads these to compute midpoints), CC can reference the existing values; only adds new entries under `dlc_spatial_tone_aligned` scope if missing there.
+
+### Cleanup-scope adjustment
+
+Q5.D expanded-cleanup scope per Addendum #6 already enumerates all legacy `spatial_reward_aligned/<bodypart>/...` and `rewardAligned_*` dirs — no adjustment needed for the new reference entries (they were never emitted under the legacy schema since reference plots are new).
+
+### Verification
+
+Reference family entries are sanity checks; their plots should look like tight clusters near zero (modulo L/R offset). CC's Task 6 spot-check verifies the reference plots produce expected shapes — if `spout_spout_midpoint`'s heatmap shows scatter all over the image rather than tight L/R clusters, that's a centering bug worth surfacing.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist [supersedes Q10.B], Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Addendum #9-12 Task 5 scope.)

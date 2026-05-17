@@ -1306,15 +1306,19 @@ class TestTask5HeatmapPathResolvers:
         assert p.parent.exists()
 
     def test_tone_aligned_proportion_differences_path(self, resolver, tmp_path):
-        p = resolver.tone_aligned_heatmap_proportion_differences_path(
-            "PS46", "nose_eye_midpoint",
+        # Addendum #11 Q2.B: filename bin{N}d.svg per bin_size.
+        p2 = resolver.tone_aligned_heatmap_proportion_differences_path(
+            "PS46", "nose_eye_midpoint", 2,
         )
-        assert p == (
+        assert p2 == (
             tmp_path / "dlc_kinematics" / "tone_aligned_heatmaps" / "PS46"
-            / "nose_eye_midpoint" / "proportion_differences"
-            / "post_minus_pre_stroke.svg"
+            / "nose_eye_midpoint" / "proportion_differences" / "bin2d.svg"
         )
-        assert p.parent.exists()
+        p7 = resolver.tone_aligned_heatmap_proportion_differences_path(
+            "PS46", "nose_eye_midpoint", 7,
+        )
+        assert p7.name == "bin7d.svg"
+        assert p2.parent.exists()
 
     def test_tone_aligned_unbalanced_ot_path(self, resolver, tmp_path):
         p = resolver.tone_aligned_heatmap_unbalanced_ot_path(
@@ -1352,11 +1356,16 @@ class TestTask5HeatmapPathResolvers:
         )
 
     def test_whole_session_proportion_differences_path(self, resolver, tmp_path):
-        p = resolver.whole_session_heatmap_proportion_differences_path(
-            "PS54", "jaw_eye_midpoint",
+        # Addendum #11 Q2.B.
+        p7 = resolver.whole_session_heatmap_proportion_differences_path(
+            "PS54", "jaw_eye_midpoint", 7,
         )
-        assert p.name == "post_minus_pre_stroke.svg"
-        assert p.parent.name == "proportion_differences"
+        assert p7.name == "bin7d.svg"
+        assert p7.parent.name == "proportion_differences"
+        p2 = resolver.whole_session_heatmap_proportion_differences_path(
+            "PS54", "jaw_eye_midpoint", 2,
+        )
+        assert p2.name == "bin2d.svg"
 
     def test_whole_session_unbalanced_ot_path(self, resolver, tmp_path):
         p = resolver.whole_session_heatmap_unbalanced_ot_path(

@@ -72,6 +72,12 @@ ALL_FAMILIES = tuple(EXPECTED_TONE_ALIGNED_FAMILIES.keys())
 
 SCOPES = ("tone_aligned", "whole_session")
 
+# Proportion-diff bin sizes per Addendum #11 Q2.B: render one SVG per
+# bin_size; current cohort-wide config is the union of small-animal (2d)
+# + big-animal (7d) bin sizes. Each animal produces 2 proportion_diff
+# SVGs per (family, scope).
+PROPORTION_DIFF_BIN_SIZES: tuple[int, ...] = (2, 7)
+
 # Task 3/4 cohort enumeration constants.
 CANON_BP_CM = "tongue_spout_midpoint"
 CANON_WIN = "trials-all_-100to1000ms"
@@ -168,13 +174,14 @@ def _binned_sessions_out_path(
 
 def _proportion_diff_out_path(
     resolver: PathResolver, scope: str, animal: str, family_entry: str,
+    bin_size_days: int,
 ) -> Path:
     if scope == "tone_aligned":
         return resolver.tone_aligned_heatmap_proportion_differences_path(
-            animal, family_entry,
+            animal, family_entry, bin_size_days,
         )
     return resolver.whole_session_heatmap_proportion_differences_path(
-        animal, family_entry,
+        animal, family_entry, bin_size_days,
     )
 
 
@@ -272,25 +279,28 @@ def _process_animal(animal: str, resolver: PathResolver, defaults: dict) -> dict
                     )
                     anomalies.append(msg)
                     log.error(f"    ERR {msg}")
-            # ----- proportion_differences (1 SVG per family × scope) -----
-            try:
-                fig = render_proportion_difference_heatmap(
-                    animal=animal, family_entry=family_entry,
-                    scope=scope, resolver=resolver,
-                    dates=dates,
-                    defaults=defaults, animal_info=animal_info,
-                )
-                out = _proportion_diff_out_path(
-                    resolver, scope, animal, family_entry,
-                )
-                fig.savefig(out, format="svg")
-                plt.close(fig)
-                n_pd += 1
-            except Exception as ex:
-                n_err += 1
-                msg = f"pd/{family_entry}/{scope}: {ex!r}"
-                anomalies.append(msg)
-                log.error(f"    ERR {msg}")
+            # ----- proportion_differences (Addendum #11 Q2.B: 1 SVG per
+            # family × scope × bin_size) -----
+            for bin_size_days in PROPORTION_DIFF_BIN_SIZES:
+                try:
+                    fig = render_proportion_difference_heatmap(
+                        animal=animal, family_entry=family_entry,
+                        scope=scope, resolver=resolver,
+                        bin_size_days=bin_size_days,
+                        dates=dates,
+                        defaults=defaults, animal_info=animal_info,
+                    )
+                    out = _proportion_diff_out_path(
+                        resolver, scope, animal, family_entry, bin_size_days,
+                    )
+                    fig.savefig(out, format="svg")
+                    plt.close(fig)
+                    n_pd += 1
+                except Exception as ex:
+                    n_err += 1
+                    msg = f"pd/{family_entry}/{scope}/bin{bin_size_days}d: {ex!r}"
+                    anomalies.append(msg)
+                    log.error(f"    ERR {msg}")
 
             # ----- unbalanced_ot displacement field (1 SVG per family × scope) -----
             try:
