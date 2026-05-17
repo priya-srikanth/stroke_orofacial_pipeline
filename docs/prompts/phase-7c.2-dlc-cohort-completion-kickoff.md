@@ -1498,3 +1498,48 @@ The proportion_differences rendering function uses this cmap + sets `ax.set_face
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q19, Addendum #9-18 Task 5 scope.)
+
+---
+
+## Addendum #20 — UOT arrow crowding further reduction + Task 7 stale intermediate output cleanup (Priya 2026-05-15)
+
+### Q21 LOCKED — UOT arrow rendering: smaller arrowheads + bigger bins
+
+Priya 2026-05-15: even with `unbalanced_ot.nbins = 25` (Q15 default), the UOT arrow plots are still too crowded. Two reductions:
+
+1. **Bigger bins:** reduce `dlc_spatial_tone_aligned.unbalanced_ot.nbins` from 25 to **15** as the new default. CC tunes from there if still crowded; can go to 12 or 10 if 15 is still too dense.
+2. **Smaller arrowheads:** add a global scaling factor for arrow style dimensions in the rendering. New config knob `dlc_spatial_tone_aligned.unbalanced_ot.arrow_size_factor` (default 0.5) that multiplies the legacy-default `head_w_vals`, `head_l_vals`, and `lw_vals` arrays by this factor before rendering.
+
+**Implementation in `dlc_spatial/render_on_demand.py`:**
+
+```python
+ARROW_SIZE_FACTOR = config_block.get("arrow_size_factor", 0.5)
+head_w_vals = legacy_default_head_w * ARROW_SIZE_FACTOR
+head_l_vals = legacy_default_head_l * ARROW_SIZE_FACTOR
+lw_vals = legacy_default_lw * ARROW_SIZE_FACTOR
+# arrow alpha unchanged from legacy (visibility, not crowding)
+```
+
+CC adjusts default visually: start with `arrow_size_factor=0.5`, render PS46 spot-check, iterate if still crowded. Priya can override.
+
+**Optional further reduction lever (if 15 bins + 0.5 arrow_size_factor still crowded):** apply a more aggressive magnitude threshold for arrow plotting — increase the existing `(mass_pos > pct50×0.1) & (mag_pos > pct50×0.1)` threshold to `pct50×0.25` or higher. Config knob `dlc_spatial_tone_aligned.unbalanced_ot.threshold_pct50_multiplier` (default 0.1; tune to 0.25 if needed). Adjust only if the first two reductions don't get visual density to acceptable level.
+
+### Q5 RE-EXPANDED Q5.E (supersedes Q5.D) — Task 7 cleanup explicitly enumerates intermediate stale Task 5 outputs
+
+Task 7 cleanup driver enumerates and deletes ALL stale intermediate Task 5 output artifacts from the iterative legacy-port work, in addition to the prior Q5.D scope. New cleanup categories:
+
+1. **Pre-Addendum-#9 Task 5 outputs** with redundant inner bodypart subdirs and flat-no-plot-type layouts. Find via `find pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps -type d -name 'tongue' -path '*/tongue_*/tongue'` (and analogous for other bodyparts under bodypart-named family subdirs) + any SVG file directly under `<family_entry>/` rather than nested under one of the 4 plot-type subdirs.
+2. **Pre-Addendum-#12 unbalanced_ot SVGs** generated from balanced sinkhorn variant (incorrect rendering source). Distinguishable by absence of the per-bin grid + 3-panel structure introduced in Addendum #12 Layout A.
+3. **Pre-Addendum-#15 single-window UOT outputs** without per-bin grid layout. Distinguishable by filename pattern lacking `_bin<N>d_` infix.
+4. **Pre-Addendum-#17 single-trial-group UOT/proportion_diff SVGs** (filename without `_<trial_group>` suffix for tone_aligned scope).
+5. **Pre-Addendum-#19 white-at-zero proportion_diff SVGs.** Distinguishable by mtime (files written before Q20 patch).
+
+**Simplification:** the cleanest implementation for the Task 5 stale cleanup is **delete the entire `tone_aligned_heatmaps/` + `whole_session_heatmaps/` trees BEFORE Step 7's final cohort re-render**, then let Step 7 populate fresh canonical output. Avoids per-pattern enumeration; treats the final Step 7 re-render as the authoritative output. Done via `rm -rf` of the two trees (after Task 6 verification of intermediate state if needed; before Step 7 if you're confident in the canonical scope).
+
+CC picks: per-pattern enumeration vs full-tree-wipe-before-Step-7. Either is fine; full-tree-wipe is simpler. Document the choice in Task 8 DECISIONS prose.
+
+**Plus all previously-enumerated cleanup items:** legacy `spatial_reward_aligned/` tree, legacy `spatial_tone_aligned/` cache from 7c.1 pilot, figure suffix variants `mouseLrewards`/`mouseRrewards`, multi-half-leftover parent-level half-B parquets for PS48/2025-03-14, pre-rename `dlc_kinematics/figures_qc/`, pre-rename `dlc_kinematics/tongue_jaw_mismatch/figures_qc/`, pre-rename `dlc_kinematics/tongue_angle/<animal>/<date>/` (without `within_session/` interstitial), pre-rename `dlc_kinematics/tongue_angle_cohort/<animal>/`, orphan kinematics outputs for the 9 out-of-YAML-range sessions, all legacy `rewardAligned_*` window directories under `dlc_kinematics/mean_sem/<bodypart>/<center_mode>/`.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.E expanded cleanup [supersedes Q5.D with intermediate Task 5 stale output additions], Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Addendum #9-19 Task 5 scope.)

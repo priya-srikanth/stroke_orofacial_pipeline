@@ -395,6 +395,14 @@ def _process_animal(
             # Supersedes Q14 per-SVG framing per Addendum #17). -----
             if skip_uot:
                 continue
+            # Q21 Addendum #20: pull threshold_pct50_multiplier from config
+            # so derive_uot_bucket_ranges applies the same mask the
+            # renderer will use (default 0.1; tunable to 0.25 to suppress
+            # more low-magnitude arrows).
+            unb_cfg = (defaults.get("dlc_spatial_tone_aligned", {}) or {}).get(
+                "unbalanced_ot", {}
+            ) or {}
+            uot_thr_mult = float(unb_cfg.get("threshold_pct50_multiplier", 0.1))
             for bin_size_days in BIN_SIZES_DAYS:
                 try:
                     uot_plans = precompute_unbalanced_ot_plans(
@@ -402,7 +410,10 @@ def _process_animal(
                         defaults=defaults, animal_info=animal_info,
                     )
                     destroy_vmax, create_vmax, logmag_lo, logmag_hi = (
-                        derive_uot_bucket_ranges(uot_plans)
+                        derive_uot_bucket_ranges(
+                            uot_plans,
+                            threshold_pct50_multiplier=uot_thr_mult,
+                        )
                     )
                 except Exception as ex:
                     log.error(

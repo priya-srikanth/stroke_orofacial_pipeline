@@ -1902,16 +1902,29 @@ def _render_ot_arrows_panel(
     title: str,
     shared_arrow_logmag_lo: float | None = None,
     shared_arrow_logmag_hi: float | None = None,
+    arrow_size_factor: float = 1.0,
+    threshold_pct50_multiplier: float = 0.1,
 ) -> None:
     """Render the UNBALANCED-OT displacement-field arrows on one Axes per
-    legacy lines 6443-6565: threshold by 50th-pct × 0.1 of mass + mag,
-    log10-scaled linewidth + head + alpha + color, ``YlGnBu`` cmap.
-    Head dimensions scale with histogram dx/dy (legacy lines 6175-6178).
+    legacy lines 6443-6565: threshold by 50th-pct × ``threshold_pct50_multiplier``
+    of mass + mag, log10-scaled linewidth + head + alpha + color,
+    ``YlGnBu`` cmap. Head dimensions scale with histogram dx/dy (legacy
+    lines 6175-6178).
 
     Q18 Addendum #17: ``shared_arrow_logmag_lo/hi`` (when both given)
     pin the log10-mass normalization bounds — drives arrow linewidth /
     head dimensions / alpha / color uniformly across all bins × tg in
     the UOT bucket. When None, fall back to per-panel 1st/99th percentile.
+
+    Q21 Addendum #20:
+      - ``arrow_size_factor``: scalar multiplier on the legacy-default
+        ``head_w_vals``, ``head_l_vals``, ``lw_vals`` arrays. Driver
+        passes the value from
+        ``defaults['dlc_spatial_tone_aligned']['unbalanced_ot']['arrow_size_factor']``
+        (default 0.5 per Priya 2026-05-15). Alpha is unchanged.
+      - ``threshold_pct50_multiplier``: multiplier on the 50th-percentile
+        of mass + mag for the rendering threshold. Default 0.1 matches
+        legacy; tune to 0.25 to suppress more low-magnitude arrows.
     """
     if plan is None or extent is None:
         ax.text(0.5, 0.5, f"{title}\n(no OT data)",
@@ -1935,8 +1948,9 @@ def _render_ot_arrows_panel(
 
     mass_pos = mass_grid[mass_grid > 0]
     mag_pos = mag[mag > 0]
-    mass_thr = float(np.percentile(mass_pos, 50) * 0.1) if mass_pos.size > 0 else 0.0
-    mag_thr = float(np.percentile(mag_pos, 50) * 0.1) if mag_pos.size > 0 else 0.0
+    thr_mult = float(threshold_pct50_multiplier)
+    mass_thr = float(np.percentile(mass_pos, 50) * thr_mult) if mass_pos.size > 0 else 0.0
+    mag_thr = float(np.percentile(mag_pos, 50) * thr_mult) if mag_pos.size > 0 else 0.0
     mask = (mass_grid > mass_thr) & (mag > mag_thr)
     if not np.any(mask):
         ax.text(0.5, 0.5, f"{title}\n(below threshold)",
@@ -1982,6 +1996,14 @@ def _render_ot_arrows_panel(
     head_w_vals = head_w_min + frac_m * (head_w_max - head_w_min)
     head_l_vals = head_l_min + frac_m * (head_l_max - head_l_min)
     alphas = _ARROW_ALPHA_MIN + frac_m * (_ARROW_ALPHA_MAX - _ARROW_ALPHA_MIN)
+
+    # Q21 Addendum #20: scale head_w/head_l/lw uniformly by
+    # arrow_size_factor (default 0.5 from config; alpha unchanged).
+    size_factor = float(arrow_size_factor)
+    if size_factor != 1.0:
+        head_w_vals = head_w_vals * size_factor
+        head_l_vals = head_l_vals * size_factor
+        lw_vals = lw_vals * size_factor
 
     cmap = plt.get_cmap(_OT_ARROW_CMAP)
     norm = mcolors.Normalize(vmin=lo_m, vmax=hi_m)
@@ -2151,7 +2173,10 @@ def render_unbalanced_ot_displacement_field(
     bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
     spatial_config = defaults["dlc_spatial"]
     tone_config = defaults["dlc_spatial_tone_aligned"]
-    unb_nbins = int(((tone_config.get("unbalanced_ot") or {}).get("nbins")) or 50)
+    unb_cfg = tone_config.get("unbalanced_ot") or {}
+    unb_nbins = int(unb_cfg.get("nbins") or 15)  # Q21: default 15
+    arrow_size_factor = float(unb_cfg.get("arrow_size_factor", 0.5))
+    threshold_pct50_multiplier = float(unb_cfg.get("threshold_pct50_multiplier", 0.1))
 
     pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
     if not pre_dates:
@@ -2283,6 +2308,8 @@ def render_unbalanced_ot_displacement_field(
             title=f"bin {bin_label} arrows {bin_n_sess_title}",
             shared_arrow_logmag_lo=shared_arrow_logmag_lo,
             shared_arrow_logmag_hi=shared_arrow_logmag_hi,
+            arrow_size_factor=arrow_size_factor,
+            threshold_pct50_multiplier=threshold_pct50_multiplier,
         )
 
     fig.suptitle(
@@ -2599,16 +2626,24 @@ def derive_symmetric_diff_vmax(arrays: list[np.ndarray]) -> float:
 
 def derive_uot_bucket_ranges(
     plans: list[dict[str, Any]],
+    *,
+    threshold_pct50_multiplier: float = 0.1,
 ) -> tuple[float, float, float, float]:
     """Q18 UOT bucket-shared ranges: ``(mass_destroy_vmax, mass_create_vmax,
     arrow_logmag_lo, arrow_logmag_hi)``. Mass values use linear vmax >
     0 over plans' mass_destroy / mass_create arrays. Arrow logmag uses
     1st/99th percentile of log10(mass_grid + eps) across plans (with
     the mass_thr + mag_thr mask applied per `_render_ot_arrows_panel`).
+
+    Q21 Addendum #20: ``threshold_pct50_multiplier`` matches the same
+    knob in `_render_ot_arrows_panel` — Pass-1 and Pass-2 must apply
+    the same mask so the bucket-shared arrow logmag range corresponds
+    to the arrows that actually render. Default 0.1 matches legacy.
     """
     destroy_vmaxes: list[float] = []
     create_vmaxes: list[float] = []
     all_logM: list[np.ndarray] = []
+    thr_mult = float(threshold_pct50_multiplier)
     for plan in plans:
         md = plan.get("mass_destroy")
         if md is not None and float(md.sum()) > 0:
@@ -2628,8 +2663,8 @@ def derive_uot_bucket_ranges(
         mag_pos = mag[mag > 0]
         if mass_pos.size == 0 or mag_pos.size == 0:
             continue
-        mass_thr = float(np.percentile(mass_pos, 50) * 0.1)
-        mag_thr = float(np.percentile(mag_pos, 50) * 0.1)
+        mass_thr = float(np.percentile(mass_pos, 50) * thr_mult)
+        mag_thr = float(np.percentile(mag_pos, 50) * thr_mult)
         mask = (mass_grid > mass_thr) & (mag > mag_thr)
         M_masked = mass_grid[mask]
         pos = M_masked[M_masked > 0]
