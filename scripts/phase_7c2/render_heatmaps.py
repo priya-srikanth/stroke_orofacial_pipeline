@@ -63,7 +63,7 @@ from stroke_orofacial.dlc_spatial.render_on_demand import (
     precompute_individual_session_h_proportions,
     precompute_proportion_diffs,
     precompute_unbalanced_ot_plans,
-    render_binned_sessions_heatmap,
+    render_binned_sessions_grid,  # Q36 Addendum #34
     render_individual_session_heatmap,
     render_proportion_difference_heatmap,
     render_unbalanced_ot_displacement_field,
@@ -170,16 +170,18 @@ def _individual_session_out_path(
     )
 
 
-def _binned_sessions_out_path(
+def _binned_sessions_grid_out_path(
     resolver: PathResolver, scope: str, animal: str,
-    family_entry: str, rel_day_bin_label: str,
+    family_entry: str, bin_size_days: int, trial_group: str,
 ) -> Path:
+    """Q36 Addendum #34: binned_sessions grid SVG path. Tone-aligned has
+    per-trial-group fanout; whole_session has only 'all'."""
     if scope == "tone_aligned":
         return resolver.tone_aligned_heatmap_binned_sessions_path(
-            animal, family_entry, rel_day_bin_label,
+            animal, family_entry, bin_size_days, trial_group,
         )
     return resolver.whole_session_heatmap_binned_sessions_path(
-        animal, family_entry, rel_day_bin_label,
+        animal, family_entry, bin_size_days,
     )
 
 
@@ -320,8 +322,11 @@ def _process_animal(
                         )
                         anomalies.append(msg)
                         log.error(f"    ERR {msg}")
-                # ----- BS bucket (one per bin_size). Per-bin_size shared
-                # LogNorm. -----
+                # ----- BS bucket (Q36 Addendum #34: one grid SVG per
+                # (family, bin_size, scope, trial_group), collapsing
+                # all N_bins into a near-square grid layout). Per-tg
+                # fanout (3 SVGs for tone_aligned, 1 for whole_session).
+                # Q14/Q18 bucket-shared LogNorm across all bins × tgs. -----
                 for bin_size_days in bin_sizes_days:
                     try:
                         bs_arrays = precompute_binned_sessions_h_proportions(
@@ -335,18 +340,21 @@ def _process_animal(
                             f"    pre1/BS/{family_entry}/{scope}/bin{bin_size_days}d: {ex!r}"
                         )
                         bs_vmin, bs_vmax = None, None
-                    for bin_label, bin_dates in sorted(bins.items()):
+                    for tg in _trial_groups_for_scope(scope):
                         try:
-                            fig = render_binned_sessions_heatmap(
+                            fig = render_binned_sessions_grid(
                                 animal=animal, family_entry=family_entry,
-                                rel_day_bin_label=bin_label,
-                                dates_in_bin=bin_dates,
-                                scope=scope, resolver=resolver,
+                                scope=scope,
+                                bin_size_days=bin_size_days,
+                                trial_group=tg,
+                                dates=dates,
+                                resolver=resolver,
                                 defaults=defaults, animal_info=animal_info,
                                 shared_vmin=bs_vmin, shared_vmax=bs_vmax,
                             )
-                            out = _binned_sessions_out_path(
-                                resolver, scope, animal, family_entry, bin_label,
+                            out = _binned_sessions_grid_out_path(
+                                resolver, scope, animal, family_entry,
+                                bin_size_days, tg,
                             )
                             # Q31 Addendum #28: bbox_inches="tight" prevents
                             # cut-off legends/colorbars from extending past
@@ -357,7 +365,7 @@ def _process_animal(
                         except Exception as ex:
                             n_err += 1
                             msg = (
-                                f"bs/{family_entry}/{scope}/bin{bin_size_days}d/{bin_label}: {ex!r}"
+                                f"bs/{family_entry}/{scope}/bin{bin_size_days}d/tg={tg}: {ex!r}"
                             )
                             anomalies.append(msg)
                             log.error(f"    ERR {msg}")

@@ -2061,3 +2061,377 @@ The pre-Addendum-#30 UOT SVGs with 3-panel-per-bin layout (mass_destroy + mass_c
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q33, Addendum #9-29 Task 5 scope. Q27/Q28 superseded by Q33 for UOT-specific rendering.)
+
+---
+
+## Addendum #31 — Missing tongue eye_midpoint x_range pre-filter + targeted re-emit (Priya 2026-05-15)
+
+### Q34 LOCKED — tongue.per_center_mode.eye_midpoint needs x_range pre-filter
+
+PS46 tongue_eye_midpoint heatmap spot-check shows tongue points outside the expected anatomical range. Root cause: the current consolidated `configs/defaults.yaml` has an asymmetric DLC mis-detection filter:
+
+- `tongue.per_center_mode.spout_midpoint` HAS `x_range: [-175, 175]` pre-histogram filter (cited from `20260323_DLC_build-parquet_reward-aligned X_MIN,X_MAX=-175,175`).
+- `tongue.per_center_mode.eye_midpoint` HAS NO `x_range` filter — only `xlim: [-420, 420]` / `ylim: [-70, 540]` display range that's suspiciously wide (matches the nose-centered fallback).
+
+DLC's tongue inference produces a picket-fence mis-detection pattern spanning ±600 px in raw coordinates. The spout-centered filter drops them; the eye-centered filter is missing, so mis-detections pass through into the eye-centered tongue heatmaps.
+
+For comparison: `jaw.per_center_mode.eye_midpoint` correctly has `x_range: [-80, 80]` (cited from `20251117_DLC_analysis_jaw.ipynb`). The convention exists but was never applied for tongue eye-centered.
+
+### Fix
+
+1. **Find legacy filter values.** Search for X_MIN / X_MAX / `x_range` / clip-filter constants in tongue-related legacy notebooks — candidates: `20260111_DLC_analysis_build-parquet_tongue.ipynb` (likely contains the eye-centered build-parquet filter) and `20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb` (the cells that render tongue eye-centered heatmaps). The filter is in the eye-midpoint-CENTERED coordinate space (not raw or spout-centered).
+
+2. **Update `configs/defaults.yaml` tongue.per_center_mode.eye_midpoint:**
+   ```yaml
+   eye_midpoint:
+     xlim: [<legacy_X_MIN>, <legacy_X_MAX>]    # tighten from current [-420, 420]
+     ylim: [<legacy_Y_MIN>, <legacy_Y_MAX>]    # tighten from current [-70, 540] if legacy specifies
+     x_range: [<legacy_X_MIN>, <legacy_X_MAX>]  # NEW: pre-histogram filter, matches xlim
+   ```
+
+3. **If legacy doesn't specify Y filter** (jaw's eye-centered case has X filter only), keep current `ylim` but tighten if it's clearly too wide.
+
+4. **If legacy doesn't specify the filter explicitly**, derive analogously to spout-centered: use cohort-pooled q00001_9999 + 40% pad on the eye-centered tongue X distribution (the Phase 4.5-lite convention used for the other per_center_mode entries). Document derivation in Task 8 DECISIONS.
+
+### Targeted re-emit (NOT a full cohort restart)
+
+Q33 / Q21-Q32 polish work continues uninterrupted. After all polish locks land + cohort re-render completes at Step 7, run a targeted secondary re-emit covering ONLY the `tongue_eye_midpoint` family entry:
+
+1. Phase 4 centered parquets DON'T change (filter applies at the histogram-build / render stage, not the parquet stage). No re-emit of upstream layers.
+2. Re-render scope: tongue_eye_midpoint × all 4 plot types × both scopes × all trial groups × per-animal singleton bin_size, across the full 248-session cohort.
+3. Wall-time estimate: ~1/7 of the full Task 5 wall-time (one of 7 family entries; though tongue is one of the most-data-dense bodyparts, so weight slightly higher → ~15-20% of Task 5 wall-time).
+4. Pattern: a minimal `render_tongue_eye_midpoint_only.py` script that calls the existing rendering wrappers in a tight loop over the cohort manifest, gated by family_entry filter. Reuse the per-animal sub-batching pattern from Q7.A.
+5. Step 7 cohort re-render does NOT need to re-do this — the targeted re-emit IS the canonical fix-render for tongue_eye_midpoint.
+
+**Ordering:** Q34 patch + targeted re-emit lands AFTER the in-flight Q21-Q33 polish locks + Step 7 cohort re-render. Do NOT interrupt the cohort re-render mid-flight. Sequence:
+- Steps 1-7 complete on current state (with the tongue_eye_midpoint x_range bug).
+- Q34 config patch.
+- Targeted tongue_eye_midpoint re-emit overwrites just those SVGs.
+- Task 6 verification covers both the cohort-level outputs + the targeted re-emit.
+- Task 8 DECISIONS documents the Q34 fix + targeted re-emit pattern.
+
+### Audit other (bodypart, center_mode) combos for the same asymmetry
+
+While CC is fixing tongue eye_midpoint, audit the rest of the config table:
+
+| Bodypart | spout_midpoint x_range | eye_midpoint x_range | nose x_range | Status |
+|---|---|---|---|---|
+| nose | n/a | (configured but no filter) | n/a | likely fine — anatomically bounded |
+| jaw | (none currently) | [-80, 80] | n/a | spout-centered jaw also missing filter? |
+| tongue | [-175, 175] ✓ | MISSING ← Q34 | (display only) | tongue eye_midpoint Q34 fix |
+| L/R whiskers (6) | (null) | (display only) | (varies) | not yet validated; whiskers are anatomically tight |
+| L/R spout (Pattern B) | (display only) | (display only) | n/a | TBD per Addendum #13 |
+| L/R eye (Pattern B) | (display only) | (display only) | n/a | TBD per Addendum #13 |
+
+CC's audit during the Q34 fix:
+- Confirm jaw spout_midpoint either has the filter or doesn't need it (jaw doesn't have the same DLC picket-fence pattern; lower likelihood of needing).
+- Confirm whiskers / spout / eye don't have analogous mis-detection issues by reviewing PS46 spot-check outputs for those family entries.
+- Flag any additional gaps as new sub-locks of Q34 (e.g., Q34.B for jaw spout_midpoint if it also lacks needed filter).
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q34, Addendum #9-30 Task 5 scope. Q27/Q28 superseded by Q33.)
+
+---
+
+## Addendum #32 — UOT displacement plot legend (color + length reference) + jaw spout_midpoint filter audit (Priya 2026-05-15)
+
+### Q35 LOCKED — Arrow panel encodes color and length explicitly via on-plot legend
+
+Q24 excluded the UOT arrow panel from colorbar treatment on the grounds that quiver plots don't need one. That was wrong when arrow color encodes mass magnitude — readers need a legend to interpret the visual encoding. Add explicit annotations for both color and length:
+
+1. **Color legend (mass magnitude):** small colorbar attached to the arrow panel showing the arrow-color → mass-magnitude mapping. Use the SAME cmap normalization as the per-arrow color array.
+
+   ```python
+   # Quiver call returns the Quiver collection; matplotlib can colorbar it directly
+   quiver_obj = ax_arrows.quiver(
+       x_starts, y_starts, dx, dy,
+       arrow_mass_values,        # per-arrow scalar driving color
+       cmap=arrow_cmap,
+       scale=...,
+       headwidth=head_w_vals,
+       headlength=head_l_vals,
+       linewidth=lw_vals,
+       alpha=arrow_alpha,
+   )
+   cbar_arrows = fig.colorbar(quiver_obj, ax=ax_arrows, fraction=0.046, pad=0.04)
+   cbar_arrows.set_label("transported mass", fontsize=12)
+   ```
+
+2. **Length reference (`quiverkey`):** standard matplotlib `quiverkey` showing a reference arrow of known displacement magnitude. Anchor in a corner of the arrow panel (e.g., upper-right) with a text label like `"100 px"`.
+
+   ```python
+   reference_displacement_px = 100   # tune to a reasonable round number per spot-check
+   ax_arrows.quiverkey(
+       quiver_obj, X=0.85, Y=1.05,
+       U=reference_displacement_px,
+       label=f"{reference_displacement_px} px",
+       labelpos="E",
+       fontproperties={"size": 10},
+   )
+   ```
+
+   CC adjusts `reference_displacement_px` from PS46 spot-check (pick a value comparable to typical arrow lengths in the plot — e.g., the median displacement magnitude rounded to a nice number).
+
+3. **Combined: both annotations on every arrow panel.** Colorbar to the right of the axis (consistent with mass_change panel's colorbar position from Q33); quiverkey anchored above-right of the plot area.
+
+### Q35 supersedes Q24's "arrows column needs no colorbar"
+
+Q24 currently says: "the arrows panel is a quiver plot and doesn't need one [colorbar]." Q35 supersedes that — the arrows panel DOES get a colorbar for mass-magnitude-color encoding, plus a quiverkey for length-magnitude scaling.
+
+### UOT grid SVG colorbar count after Q35
+
+Per UOT grid SVG (one per `animal, family_entry, scope, bin_size, trial_group`):
+- **mass_change panel column:** ONE diverging colorbar (Q33).
+- **arrows panel column:** ONE sequential colorbar for mass-magnitude (Q35) + ONE quiverkey for displacement scale (Q35).
+
+If colorbars in adjacent columns crowd each other in the grid layout, use `constrained_layout=True` (Q31) — matplotlib automatically computes padding.
+
+### Q34.B LOCKED — jaw.per_center_mode.spout_midpoint x_range filter audit
+
+`jaw.per_center_mode.spout_midpoint` (lines 198-200 of `configs/defaults.yaml`) currently has `xlim: [-400, 300]` / `ylim: [-220, 110]` but NO `x_range` pre-histogram filter. The wide `xlim` matches the nose-centered fallback pattern (same anti-pattern as the original tongue eye_midpoint gap Q34 addresses).
+
+Whether this matters depends on whether jaw DLC inference produces outliers in raw or spout-centered coordinates that need filtering. Jaw is anatomically more constrained than tongue, so the picket-fence mis-detection pattern is unlikely — but the wide `xlim` allows whatever outliers DO exist to pass through.
+
+**Audit during Q34 fix:**
+1. Check PS46 jaw_spout_midpoint spot-check for outlier jaw points outside the anatomical range.
+2. If outliers visible: find legacy jaw spout-centered X filter constants (search the legacy notebooks for jaw spout-centered cells; candidates include `20251117_DLC_analysis_jaw.ipynb` (might have spout-centered subcells), `20260323_DLC_build-parquet_reward-aligned.ipynb` (jaw spout-centered build), or `20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb`).
+3. If legacy specifies a filter: add `x_range: [<X_MIN>, <X_MAX>]` to `jaw.per_center_mode.spout_midpoint` and tighten `xlim`/`ylim` accordingly. Targeted re-emit of `jaw_spout_midpoint` family entry (analog of Q34 targeted re-emit for tongue_eye_midpoint).
+4. If legacy doesn't specify and no outliers are visible in PS46 spot-check: leave as-is; document in Task 8 DECISIONS that jaw spout-centered didn't need a pre-filter.
+5. If outliers are visible but legacy doesn't specify: derive analogously to Phase 4.5-lite cohort-pooled q00001_9999 + 40% pad. Document.
+
+### Audit other (bodypart, center_mode) combos similarly during Q34 fix
+
+Continue the Q34 audit table (Addendum #31) for any other family entries showing PS46 spot-check outliers — whiskers, spout, eye Pattern B families especially. Flag as Q34.C / Q34.D etc. as needed.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q35, Addendum #9-31 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35.)
+
+---
+
+## Addendum #33 — Q34.B descoped: jaw_spout_midpoint not in Task 5 plot scope (Priya 2026-05-15)
+
+### Q34.B DESCOPED — jaw_spout_midpoint filter gap is moot for Phase 7c.2
+
+Q10.C 7-family allowlist confirms jaw is plotted ONLY as `jaw_eye_midpoint` (which already has `x_range: [-80, 80]`). `jaw_spout_midpoint` is NOT in Phase 7c.2 Task 5 plot scope.
+
+The missing `x_range` filter on `jaw.per_center_mode.spout_midpoint` in `configs/defaults.yaml` doesn't affect any Phase 7c.2 rendered output:
+
+- Spatial histograms / heatmaps: not generated for jaw_spout_midpoint (not in allowlist).
+- Phase 4 centered parquets: not affected (filter applies at histogram-build stage, not parquet stage).
+- Kinematics outputs (per_trial endpoints, per_frame data): use Phase 4 parquets directly, bypassing the histogram-stage filter.
+
+**Q34.B descoped from "audit + targeted re-emit" to docs-only forward-pointer:**
+
+1. CC does NOT need to audit PS46 jaw_spout_midpoint outputs (no such outputs exist for this phase).
+2. CC does NOT need to search legacy notebooks for a jaw spout-centered filter.
+3. CC does NOT need to patch the config or run a targeted re-emit.
+
+**Forward-pointer added to Task 8 DECISIONS:** if a future phase (Phase 9 stats, pub-figures) adds `jaw_spout_midpoint` to plot or stats scope, the `x_range` pre-filter gap must be addressed BEFORE rendering. Same fix shape as Q34 (tongue_eye_midpoint): find legacy filter values in jaw notebooks, add `x_range` to config, tighten `xlim`/`ylim`, then render. Document this forward-pointer in Task 8 DECISIONS prose.
+
+### Q34 (tongue_eye_midpoint) and Q34.C+ (other allowlisted family entries) remain in scope
+
+- **Q34 tongue_eye_midpoint:** tongue_eye_midpoint IS in the allowlist; the fix + targeted re-emit are required (Addendum #31).
+- **Q34.C+:** any other Task 5 allowlisted family entry (whiskers, spout, eye Pattern B) showing outlier issues in PS46 spot-check needs the same audit-and-patch treatment. CC flags these as discovered.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q35, Addendum #9-32 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33.)
+
+---
+
+## Addendum #34 — binned_sessions grid-summary SVG (combine all bins into one plot) (Priya 2026-05-15)
+
+### Q36 LOCKED — binned_sessions emits a grid SVG combining all N_bins into one file
+
+Current binned_sessions emit pattern (per Addendum #15 fanout table):
+- Tone_aligned: `M_bins SVGs per (animal, family_entry, scope=tone_aligned, bin_size)`, each containing 3 trial-group sub-panels.
+- Whole_session: `M_bins SVGs per (animal, family_entry, scope=whole_session, bin_size)`, each containing 1 panel (all-trial-group only).
+
+This produces 6-10+ separate SVGs per (animal, family, scope, bin_size) — hard to scan, doesn't preserve cross-bin visual comparison.
+
+Lock the parallel structure already used by proportion_differences (Addendum #14 Q3c) and unbalanced_ot (Addendum #15 Q3d.B): combine all N_bins into a single grid-summary SVG with one shared colorbar.
+
+**New emit pattern:**
+
+| Scope | SVGs per (animal, family, scope, bin_size) | Grid layout per SVG |
+|---|---|---|
+| tone_aligned | **3 SVGs** (one per trial_group: all/L/R) | N_bins panels in a near-square grid, all sharing colormap per Q14 |
+| whole_session | **1 SVG** (all-trial-group only per Q16 restriction to tone_aligned trial fanout) | N_bins panels in a near-square grid |
+
+**Filename convention:** mirror proportion_differences naming:
+- `binned_sessions_grid_bin<N>d_<trial_group>.svg` for tone_aligned scope (3 files: `_all.svg`, `_L.svg`, `_R.svg`).
+- `binned_sessions_grid_bin<N>d.svg` for whole_session scope (1 file).
+
+(If `<bin_size>` is already implied by per-animal config singleton per Q23, the `bin<N>d` suffix becomes redundant — CC can drop it. Filename convention: confirm via PS46 spot-check; document choice in Task 8 DECISIONS.)
+
+**Layout details:**
+
+- Grid arrangement: near-square (`int(np.ceil(np.sqrt(N_bins)))` cols × similar rows) OR a fixed wide-row layout (`N_bins × 1` row) for ≤4 bins. CC picks per readability.
+- Per-panel title: `f"{bin_label}"` (e.g., `"days -2 to 0"`) per Q22 title spec. Figure-level suptitle: `f"{animal} | {family_entry} | binned_sessions | {scope} | {trial_group}"`.
+- One shared colorbar per grid SVG (Q24): right of the grid, normalized to Q14 bucket-shared scale across all bins.
+- Q31 `constrained_layout=True` + `bbox_inches="tight"` applies.
+- Per-bin axis labels: only on left-column / bottom-row panels (matplotlib auto via `sharex=True, sharey=True` + `constrained_layout` handles label de-duplication).
+
+### Supersedes (per-bin-SVG portions of) Addendum #15 binned_sessions fanout
+
+Old Addendum #15 fanout row for binned_sessions ("M_bins SVGs each with 3 trial-group panels") is SUPERSEDED. New row reads:
+| `binned_sessions/` | YES (3 trial-group grid SVGs per bin_size, each N_bins panels) | YES (1 grid SVG per bin_size, N_bins panels) | 1 grid SVG per (bin_size, trial_group) for tone_aligned; 1 per bin_size for whole_session |
+
+### Cohort fanout impact
+
+Per (animal, family_entry) tone_aligned scope, binned_sessions output count drops from `M_bins × 1` (with internal 3-panel structure) → `3` (one per trial_group, each with M_bins panels). Major SVG-count reduction. Same heatmap data; new layout.
+
+Per (animal, family_entry) whole_session scope: drops from `M_bins` → `1`. Even bigger compaction.
+
+### Q5.F cleanup absorbs pre-Q36 per-bin binned_sessions SVGs
+
+Q5.F's `rm -rf pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/ pipeline_outputs/dlc_kinematics/whole_session_heatmaps/` BEFORE Step 7's final cohort re-render handles cleanup of all pre-Q36 per-bin binned_sessions SVGs. The final re-render emits canonical Q36-shape grid SVGs from scratch.
+
+### Implementation site
+
+`dlc_spatial/render_on_demand.py` (or wherever the binned_sessions rendering wrapper lives). Add a `render_binned_sessions_grid` function that:
+1. Loops over all bins in the bin_size for the (animal, family_entry, scope, trial_group) bucket.
+2. Computes Q14-shared colormap normalization across all bins.
+3. Renders each bin's heatmap into a grid-positioned subplot.
+4. Adds one shared colorbar + figure-level suptitle.
+5. Saves as `binned_sessions_grid_bin<N>d_<trial_group>.svg` per the path resolver.
+
+The existing per-bin rendering function can stay as a helper (called per-cell within the grid loop) OR can be refactored into the grid function. CC's call.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q36, Addendum #9-33 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36.)
+
+---
+
+## Addendum #35 — whiskers_eye_midpoint Pattern B fixes + targeted skip-and-rerun (Priya 2026-05-15)
+
+### Context: PS47 spot-check surfaces three coupled whiskers bugs
+
+PS47 whiskers_eye_midpoint binned_sessions plot shows:
+
+1. **X-axis one-sided** (~20-125) — visible range matches L_whiskers_1's xlim [15, 135] only. R_whiskers (xlim [-185, -15] across the 3 R bodyparts) are off the displayed range.
+2. **Only positive-X blobs visible** — either R_whiskers aren't being iterated in the Pattern B layered overlay, or they're rendered off-frame because of Issue 1.
+3. **Swatch legend colors aren't visually distinct** — L1/L2 both look orange because `plasma(0.7)` and `inferno(0.7)` are both red-orange middle shades; only L3/R3 = `viridis(0.7)` is green.
+
+### Q37 LOCKED — Whiskers Pattern B composite axis: unified bilateral xlim/ylim
+
+The per-whisker xlim config is correct (L on positive X, R on negative X), but the Pattern B composite axis lookup keys on the FIRST whisker (L_whiskers_1) and uses its one-sided xlim. This is the same anti-pattern Addendum #13 fixed for spout/eye Pattern B by using UNIFIED bilateral xlim values on the first-bp's per_center_mode entry. Apply the same fix for whiskers.
+
+**Option A (config-level fix; preferred for symmetry with Addendum #13):** override L_whiskers_1's `per_center_mode.eye_midpoint.xlim/ylim` to the UNIFIED bilateral ranges spanning all 6 whiskers. Add an explanatory comment matching Addendum #13's convention.
+
+```yaml
+L_whiskers_1:
+  per_center_mode:
+    eye_midpoint:
+      # Q37 (Addendum #35): unified bilateral range covering all 6 whiskers
+      # (L_whiskers_1/2/3 + R_whiskers_1/2/3). Composite axis lookup keys on
+      # first bp per legacy whiskers convention; this entry's xlim/ylim must
+      # span both sides to render all 6 whiskers in the Pattern B layered
+      # overlay. Individual per-whisker xlim values preserved on L_whiskers_2/3,
+      # R_whiskers_1/2/3 for use in non-composite single-whisker plots if any.
+      xlim: [-200, 200]   # symmetric about 0: max(|R xlim|, |L xlim|) + small pad
+      ylim: [50, 360]     # union of all 6 whiskers' ylim ranges
+```
+
+**Option B (render-time computation):** compute the composite xlim/ylim at render time from `union(per-whisker xlim)` and `union(per-whisker ylim)` (with optional symmetric override on X via `max(|min|, |max|)`). Cleaner but requires modifying the Pattern B axis-lookup helper. Either A or B is fine; CC picks; document choice in Task 8 DECISIONS.
+
+**Symmetric-about-zero on X:** Priya's spec was "symmetric about 0." Use `xlim_max = max(abs(min(per-whisker xlim)), abs(max(per-whisker xlim))) + small_pad` and set `xlim = [-xlim_max, +xlim_max]`. For the current whisker config that's `max(|-185|, |165|) + 15 = 200`, giving `xlim = [-200, 200]`.
+
+### Q38 LOCKED — Verify all 6 whiskers iterate in the Pattern B family entry definition
+
+Audit the `whiskers_eye_midpoint` family entry definition to confirm it includes all 6 bodyparts:
+
+```python
+EXPECTED_TONE_ALIGNED_FAMILIES = {
+    ...,
+    "whiskers_eye_midpoint": {
+        "center_mode": "eye_midpoint",
+        "bodyparts": [
+            "L_whiskers_1", "L_whiskers_2", "L_whiskers_3",
+            "R_whiskers_1", "R_whiskers_2", "R_whiskers_3",
+        ],
+        "pattern": "B",  # layered overlay
+    },
+    ...,
+}
+```
+
+If R_whiskers are missing from the list, add them. If the Pattern B render loop iterates over `family_entry.bodyparts` correctly, just fixing the list resolves Issue 2.
+
+If the family entry list is correct but the render loop short-circuits at 3 or 4 layers (e.g., legacy bug from the original L-only whiskers code), debug + fix the render loop to iterate all 6.
+
+### Q39 LOCKED — Swatch legend uses 6 visually-distinct base colors, not 6 same-position-cmap-samples
+
+PS47 spot-check shows only 2 visually distinct hues in the 6-swatch legend (orange × 4 + green × 2). Root cause: L_whiskers and R_whiskers use the SAME 3 cmaps (plasma/inferno/viridis) and the swatch sampling at `cmap(0.7)` gives identical orange for plasma+inferno and identical green for viridis. The legend conveys neither which whisker nor L-vs-R.
+
+**Requirements for the fix:**
+- All 6 swatches must be visually distinct from each other.
+- L_whiskers_{1,2,3} must be a visually-coherent group (e.g., 3 warm colors) distinct from R_whiskers_{1,2,3} (e.g., 3 cool colors), so reader can immediately identify L vs R.
+- Within each side, the 3 whiskers should be differentiable.
+
+Replace with 6 explicitly distinct colors:
+
+**Option (i): use 6 distinct base colors from a categorical palette.**
+
+```python
+WHISKER_LEGEND_COLORS = {
+    "L_whiskers_1": "#d62728",  # red
+    "L_whiskers_2": "#ff7f0e",  # orange
+    "L_whiskers_3": "#ffbb78",  # light orange (or pick a 3rd warm)
+    "R_whiskers_1": "#1f77b4",  # blue
+    "R_whiskers_2": "#17becf",  # cyan
+    "R_whiskers_3": "#9467bd",  # purple (or pick a 3rd cool)
+}
+```
+
+Or any matplotlib categorical palette (`tab10`, `Set1`, etc.) sampled at 6 distinct indices. Apply colors to the swatch legend `Patch` proxies (Q30) AND to the actual layer cmaps if desired (then each layer would use a single-color cmap derived from its swatch color).
+
+**Option (ii): sample 6 distinct positions across the existing cmaps.** E.g., L_whiskers_1=`plasma(0.3)`, L_whiskers_2=`plasma(0.6)`, L_whiskers_3=`plasma(0.9)` (all from plasma but at 3 positions); same for R with `viridis`. Gives intra-L gradients + intra-R gradients with clear L/R cmap contrast. Could read better than 6 arbitrary categorical colors if the visual gradient is meaningful.
+
+CC picks Option (i) or (ii); document in Task 8 DECISIONS. Option (i) is simpler; Option (ii) is more legible for "which whisker is which row."
+
+### Q40 LOCKED — Targeted skip-and-rerun for whiskers
+
+Priya 2026-05-15: instead of letting the current Step 7 cohort re-emit complete with broken whisker plots and then targeted-re-emit, **interrupt only the whiskers_eye_midpoint family entry in the current re-emit** and continue with the other 6 family entries. Targeted whiskers re-emit lands after Q37/Q38/Q39 patch.
+
+**Implementation:**
+
+1. **Skip whiskers_eye_midpoint in the current Step 7 driver loop.** Modify `scripts/phase_7c2/render_heatmaps.py` (or equivalent) to skip the `whiskers_eye_midpoint` family entry mid-run by adding an early-`continue` at the family iteration:
+
+   ```python
+   SKIP_FAMILY_ENTRIES = {"whiskers_eye_midpoint"}  # Q40: skip for in-flight re-emit;
+                                                    # fixed + re-emitted post-Q37/Q38/Q39
+   for family_entry in EXPECTED_TONE_ALIGNED_FAMILIES:
+       if family_entry in SKIP_FAMILY_ENTRIES:
+           continue
+       ...
+   ```
+
+   CC can apply this patch immediately to the running re-emit (CC's current Step 7 invocation; the loop should pick up the patch on its next family-entry iteration, OR CC can checkpoint-restart from the next animal after whiskers if the patch applies mid-animal).
+
+2. **Continue current Step 7 re-emit** through the other 6 family entries (tongue_spout_midpoint, tongue_eye_midpoint, jaw_eye_midpoint, nose_eye_midpoint, spout_spout_midpoint, eye_eye_midpoint).
+
+3. **After Step 7 completes:** apply Q37 + Q38 + Q39 patches (config update + family-entry verification + swatch legend revamp). Plus any additional whiskers-render-code fixes surfaced by Q38 audit.
+
+4. **Targeted whiskers re-emit:** run a scoped re-emit covering ONLY `whiskers_eye_midpoint` across the 248-session cohort. Pattern parallels Q34 tongue_eye_midpoint targeted re-emit:
+   - Phase 4 centered parquets unchanged.
+   - Render scope: whiskers_eye_midpoint × 4 plot types × 2 scopes × 3 trial groups (tone_aligned) / 1 (whole_session) × per-animal singleton bin_size × 248 sessions.
+   - Wall-time: ~15-20% of full Task 5 wall-time (similar order to tongue_eye_midpoint targeted re-emit).
+   - Minimal driver: `render_whiskers_eye_midpoint_only.py`, family_entry filter.
+
+5. **Bundle with Q34 tongue_eye_midpoint targeted re-emit** if both are queued post-Step-7: run them sequentially in the same post-Step-7 chore. They share infrastructure (filter-by-family-entry pattern); a unified `render_targeted_family_entries.py` script with `--family-entry` CLI flag covers both.
+
+### Q5.F cleanup absorbs pre-Q37 whisker SVGs
+
+Q5.F's `rm -rf` simplification handles cleanup of the broken whisker SVGs from the current re-emit run (any partial output before the skip patch took effect). The targeted re-emit produces canonical Q37/Q38/Q39 output from scratch.
+
+### Q34.C+ continued audit during whiskers fix
+
+While CC is auditing whiskers Pattern B, verify spout_spout_midpoint and eye_eye_midpoint Pattern B families don't have analogous issues (they use Addendum #13's unified-bilateral xlim already, so they should be fine — but spot-check PS47 outputs to confirm).
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q40, Addendum #9-34 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36.)

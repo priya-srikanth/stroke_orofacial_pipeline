@@ -934,6 +934,20 @@ def _assemble_panel_figure(
 _COMPOSITE_FALLBACK_CMAP: str = "viridis"
 _COMPOSITE_ALPHA: float = 0.5  # Slight softening vs legacy 0.8 for multi-bp overlay readability.
 
+# Q39 Addendum #35: 6 visually distinct, L/R-grouped categorical colors for
+# the whiskers swatch legend (Option (i) per Priya 2026-05-17). Warm-family
+# (red/orange/yellow-olive) for L; cool-family (blue/cyan/purple) for R.
+# Single-color sequential cmaps derived from these base colors so the
+# layered heatmaps in Pattern B match what the legend says.
+_WHISKER_LAYER_COLORS: dict[str, str] = {
+    "L_whiskers_1": "#d62728",  # red          (L = warm)
+    "L_whiskers_2": "#ff7f0e",  # orange
+    "L_whiskers_3": "#bcbd22",  # yellow-olive
+    "R_whiskers_1": "#1f77b4",  # blue         (R = cool)
+    "R_whiskers_2": "#17becf",  # cyan
+    "R_whiskers_3": "#9467bd",  # purple
+}
+
 
 def _get_bodypart_cmap(spatial_config: dict[str, Any], bp: str) -> str:
     """Look up the per-bp cmap from ``dlc_spatial.bodyparts.{bp}.cmap``.
@@ -941,6 +955,24 @@ def _get_bodypart_cmap(spatial_config: dict[str, Any], bp: str) -> str:
     incomplete configs)."""
     cmap = (spatial_config.get("bodyparts", {}).get(bp, {}) or {}).get("cmap")
     return str(cmap) if cmap else _COMPOSITE_FALLBACK_CMAP
+
+
+def _resolve_layer_cmap(spatial_config: dict[str, Any], bp: str):
+    """Q39 Addendum #35: layer-specific cmap resolution for Pattern B
+    composite renderers. For whiskers, return a single-color sequential
+    cmap derived from the Q39 categorical palette so the heatmap layer
+    visually matches the swatch legend. For other bps, fall back to the
+    config-driven ``_get_bodypart_cmap`` name.
+    """
+    if bp in _WHISKER_LAYER_COLORS:
+        return mcolors.LinearSegmentedColormap.from_list(
+            f"{bp}_layer", ["white", _WHISKER_LAYER_COLORS[bp]], N=256,
+        )
+    name = _get_bodypart_cmap(spatial_config, bp)
+    try:
+        return plt.get_cmap(name)
+    except ValueError:
+        return plt.get_cmap(_COMPOSITE_FALLBACK_CMAP)
 
 
 def _compute_composite_panels(
@@ -1054,10 +1086,10 @@ def _render_composite_panel_axis(
         H_prop_masked = np.where(
             H_prop >= layer_floor, H_prop, np.nan,
         ) if layer_floor > 0 else H_prop
-        try:
-            cmap = plt.get_cmap(_get_bodypart_cmap(spatial_config, bp)).copy()
-        except ValueError:
-            cmap = plt.get_cmap(_COMPOSITE_FALLBACK_CMAP).copy()
+        # Q39 Addendum #35: whiskers use the Q39 categorical palette
+        # (single-color sequential cmaps so layer color matches legend
+        # swatch); other bps fall back to config-driven cmap.
+        cmap = _resolve_layer_cmap(spatial_config, bp).copy()
         cmap.set_bad((1.0, 1.0, 1.0, 0.0))  # Q32: transparent for NaN.
         ax.imshow(
             H_prop_masked.T,
@@ -1139,9 +1171,18 @@ def _attach_composite_colorbars(
         # which-bp-is-which-color). Sample at 0.7 of each cmap so the
         # swatch reads as a saturated middle shade rather than the
         # near-white low end.
+        # Q39 Addendum #35: whiskers use the categorical palette directly
+        # for the swatch color (matches the single-color sequential
+        # cmap used in `_resolve_layer_cmap`); other bps sample
+        # cmap(0.7).
         import matplotlib.patches as mpatches
         handles: list[Any] = []
         for bp in family_bodyparts:
+            if bp in _WHISKER_LAYER_COLORS:
+                handles.append(mpatches.Patch(
+                    color=_WHISKER_LAYER_COLORS[bp], label=bp,
+                ))
+                continue
             cmap_name = _get_bodypart_cmap(spatial_config, bp)
             try:
                 cmap = plt.get_cmap(cmap_name)
@@ -1396,6 +1437,160 @@ def render_binned_sessions_heatmap(  # noqa: D401
         panels, bp, center_mode, scope, suptitle, defaults=defaults,
         shared_vmin=shared_vmin, shared_vmax=shared_vmax,
     )
+
+
+def render_binned_sessions_grid(
+    animal: str,
+    family_entry: str,
+    scope: Scope,
+    bin_size_days: int,
+    trial_group: str,
+    dates: list[dt.date],
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    shared_vmin: float | None = None,
+    shared_vmax: float | None = None,
+) -> plt.Figure:
+    """Q36 Addendum #34 (Priya 2026-05-17): render binned_sessions as ONE
+    grid SVG combining all N_bins for the (animal, family, scope,
+    bin_size, trial_group) bucket. Each subplot = one bin_label.
+    Supersedes the prior per-bin-label SVG fanout (where each SVG had
+    3 trial-group sub-panels for tone_aligned).
+
+    New emit pattern:
+      - tone_aligned: 3 SVGs per (animal, family, bin_size) — one per
+        trial_group ∈ {all, L, R}. Each SVG has N_bins panels.
+      - whole_session: 1 SVG (trial_group='all' only). N_bins panels.
+
+    Parallel structure to proportion_differences + unbalanced_ot grids.
+    Q14/Q18 bucket-shared colormap normalization + ONE shared colorbar.
+
+    Single-bp families: each subplot is one bin's H_proportion heatmap.
+    Composite families (whiskers, fiducial pairs): each subplot stacks
+    N bp layers per the Pattern B convention; the per-bp swatch
+    legend / stacked cbar block sits to the right of the entire grid.
+    """
+    if defaults is None:
+        defaults = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+    bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
+    spatial_config = defaults["dlc_spatial"]
+
+    # Group dates by rel_day_bin.
+    from stroke_orofacial.dlc_kinematics._day_binned import (
+        _compute_rel_day_bin_label,
+    )
+    bins: dict[str, list[dt.date]] = {}
+    for d in dates:
+        label = _compute_rel_day_bin_label(
+            session_date=d, d0=animal_info.stroke_date, bin_days=int(bin_size_days),
+        )
+        bins.setdefault(label, []).append(d)
+    bin_labels = sorted(bins.keys(), key=_bin_label_sort_key)
+    n_bins = len(bin_labels)
+    if n_bins == 0:
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.text(
+            0.5, 0.5,
+            f"{animal}/{family_entry}/{scope}/bin{bin_size_days}d/{trial_group}\n"
+            "binned_sessions grid: no bins",
+            ha="center", va="center", transform=ax.transAxes,
+        )
+        ax.set_axis_off()
+        return fig
+
+    # Q22 suptitle convention.
+    suptitle = (
+        f"{animal} | {family_entry} | binned_sessions bin{int(bin_size_days)}d "
+        f"| {scope} | trial_group={trial_group}"
+    )
+
+    # Near-square grid: ceil(sqrt(N)) cols.
+    ncols = max(1, int(np.ceil(np.sqrt(n_bins))))
+    nrows = int(np.ceil(n_bins / ncols))
+
+    # Window + tg_arg selection per scope.
+    if scope == "tone_aligned":
+        tg_arg: str | None = trial_group
+        window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
+    elif scope == "whole_session":
+        tg_arg = None
+        window_ms = None
+    else:
+        raise ValueError(f"scope must be 'tone_aligned' or 'whole_session'; got {scope!r}")
+
+    # Layout: composite families need room for the right-edge cbar/legend.
+    if len(bodyparts) > 1:
+        figsize = (ncols * 4.5 + 3.0, nrows * 4.0)
+        fig, axes_obj = plt.subplots(
+            nrows=nrows, ncols=ncols,
+            figsize=figsize, constrained_layout=False,
+            sharex=True, sharey=True,
+        )
+    else:
+        figsize = (ncols * 4.0, nrows * 3.5)
+        fig, axes_obj = plt.subplots(
+            nrows=nrows, ncols=ncols,
+            figsize=figsize, constrained_layout=True,
+            sharex=True, sharey=True,
+        )
+    axes = (
+        np.array([[axes_obj]]) if (nrows == 1 and ncols == 1)
+        else np.atleast_2d(axes_obj)
+    )
+    axes_flat = axes.flatten()
+
+    for i, bin_label in enumerate(bin_labels):
+        ax = axes_flat[i]
+        bin_dates = bins[bin_label]
+        panel_title = f"bin {bin_label}  n_dates={len(bin_dates)}"
+        if len(bodyparts) > 1:
+            # Composite Pattern B layered overlay.
+            composite_panels = _compute_composite_panels(
+                animal, bin_dates, bodyparts, center_mode, scope, resolver,
+                defaults=defaults, animal_info=animal_info,
+            )
+            # Pull just this trial_group's per-bp tuples.
+            per_tg = composite_panels.get(tg_arg or "all", [])
+            _render_composite_panel_axis(
+                ax, per_tg, spatial_config,
+                family_bodyparts=bodyparts,
+                family_center_mode=center_mode,
+                panel_title=panel_title,
+                shared_vmin=shared_vmin, shared_vmax=shared_vmax,
+            )
+        else:
+            bp = bodyparts[0]
+            H, ext, n_sess, _, n_total = compute_animal_aggregated_histogram(
+                animal, bin_dates, bp, center_mode, resolver,
+                trial_group=tg_arg, window_ms=window_ms,
+                defaults=defaults, animal_info=animal_info,
+            )
+            render_h_counts_panel(
+                H, ext, bp, center_mode,
+                title=panel_title, defaults=defaults, ax=ax,
+                n_total_frames=int(n_total),
+                shared_vmin=shared_vmin, shared_vmax=shared_vmax,
+            )
+    # Hide unused subplot slots.
+    for j in range(n_bins, len(axes_flat)):
+        axes_flat[j].set_axis_off()
+
+    if len(bodyparts) > 1:
+        # Composite — stacked cbars / swatch legend on figure right.
+        _attach_composite_colorbars(
+            fig, bodyparts, spatial_config,
+            family_label=family_entry,
+            shared_vmin=shared_vmin, shared_vmax=shared_vmax,
+        )
+        # Q31 manual room reservation since constrained_layout was off.
+        fig.subplots_adjust(right=0.83)
+
+    fig.suptitle(suptitle, fontsize=_Q22_SUPTITLE_FONTSIZE)
+    return fig
 
 
 # ---------------------------------------------------------------------------
@@ -2930,6 +3125,7 @@ __all__ = [
     "precompute_proportion_diffs",
     "precompute_unbalanced_ot_plans",
     "render_animal_aggregated_heatmap",
+    "render_binned_sessions_grid",
     "render_binned_sessions_heatmap",
     "render_h_counts_panel",
     "render_individual_session_heatmap",

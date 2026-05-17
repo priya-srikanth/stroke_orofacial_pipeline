@@ -1296,14 +1296,22 @@ class TestTask5HeatmapPathResolvers:
         assert p.name == "20250620b.svg"
 
     def test_tone_aligned_binned_sessions_path(self, resolver, tmp_path):
-        p = resolver.tone_aligned_heatmap_binned_sessions_path(
-            "PS46", "jaw_eye_midpoint", "1..7",
+        # Q36 Addendum #34: binned_sessions emits ONE grid SVG per
+        # (bin_size, trial_group). Filename
+        # `binned_sessions_grid_bin{N}d_{tg}.svg`.
+        p_all = resolver.tone_aligned_heatmap_binned_sessions_path(
+            "PS46", "jaw_eye_midpoint", 2, "all",
         )
-        assert p == (
+        assert p_all == (
             tmp_path / "dlc_kinematics" / "tone_aligned_heatmaps" / "PS46"
-            / "jaw_eye_midpoint" / "binned_sessions" / "1..7.svg"
+            / "jaw_eye_midpoint" / "binned_sessions"
+            / "binned_sessions_grid_bin2d_all.svg"
         )
-        assert p.parent.exists()
+        p_L = resolver.tone_aligned_heatmap_binned_sessions_path(
+            "PS46", "jaw_eye_midpoint", 7, "L",
+        )
+        assert p_L.name == "binned_sessions_grid_bin7d_L.svg"
+        assert p_all.parent.exists()
 
     def test_tone_aligned_proportion_differences_path(self, resolver, tmp_path):
         # Addendum #11 Q2.B + Addendum #15 Q16: filename
@@ -1356,12 +1364,15 @@ class TestTask5HeatmapPathResolvers:
         assert p.parent.exists()
 
     def test_whole_session_binned_sessions_path(self, resolver, tmp_path):
+        # Q36 Addendum #34: whole_session has no trial-group fanout per
+        # Q16; filename `binned_sessions_grid_bin{N}d.svg` (no _tg suffix).
         p = resolver.whole_session_heatmap_binned_sessions_path(
-            "PS51", "whiskers_eye_midpoint", "-6..0",
+            "PS51", "whiskers_eye_midpoint", 7,
         )
         assert p == (
             tmp_path / "dlc_kinematics" / "whole_session_heatmaps" / "PS51"
-            / "whiskers_eye_midpoint" / "binned_sessions" / "-6..0.svg"
+            / "whiskers_eye_midpoint" / "binned_sessions"
+            / "binned_sessions_grid_bin7d.svg"
         )
 
     def test_whole_session_proportion_differences_path(self, resolver, tmp_path):

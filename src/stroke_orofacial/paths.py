@@ -541,19 +541,24 @@ class PathResolver:
         return out
 
     def tone_aligned_heatmap_binned_sessions_path(
-        self, animal: str, family_entry: str, rel_day_bin_label: str,
+        self, animal: str, family_entry: str,
+        bin_size_days: int, trial_group: str,
     ) -> Path:
-        """Return the per-(rel_day_bin) tone-aligned binned-sessions SVG path.
+        """Return the per-(animal, family, bin_size, trial_group) tone-aligned
+        binned-sessions GRID SVG path.
 
-        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/binned_sessions/1..7.svg``.
+        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/binned_sessions/binned_sessions_grid_bin2d_all.svg``.
 
-        ``rel_day_bin_label`` follows the legacy ``f"{lo}..{hi}"``
-        convention from :func:`stroke_orofacial.dlc_kinematics._day_binned._compute_rel_day_bin_label`.
-        Parent directory is created eagerly.
+        Per Phase 7c.2 Addendum #34 Q36 (2026-05-17): supersedes the prior
+        per-bin-label SVG fanout — all N_bins for one (bin_size, trial_group)
+        combine into ONE grid SVG. Each subplot = one bin_label;
+        Q14/Q18 shared colormap normalization + ONE shared colorbar.
+        Filename ``binned_sessions_grid_bin{N}d_{trial_group}.svg`` where
+        N is the bin size in days, trial_group ∈ {all, L, R}.
         """
         out = self._tone_aligned_heatmap_dir(
             animal, family_entry, "binned_sessions",
-        ) / f"{rel_day_bin_label}.svg"
+        ) / f"binned_sessions_grid_bin{int(bin_size_days)}d_{trial_group}.svg"
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 
@@ -617,12 +622,18 @@ class PathResolver:
         return out
 
     def whole_session_heatmap_binned_sessions_path(
-        self, animal: str, family_entry: str, rel_day_bin_label: str,
+        self, animal: str, family_entry: str, bin_size_days: int,
     ) -> Path:
-        """Return the per-(rel_day_bin) whole-session binned-sessions SVG path."""
+        """Return the per-(animal, family, bin_size) whole-session
+        binned-sessions GRID SVG path (Q36 Addendum #34). Combines all
+        N_bins into one grid SVG with shared colormap (1 trial-group
+        only: 'all'). Filename
+        ``binned_sessions_grid_bin{N}d.svg`` (no _tg suffix; whole_session
+        has no trial-group fanout per Q16).
+        """
         out = self._whole_session_heatmap_dir(
             animal, family_entry, "binned_sessions",
-        ) / f"{rel_day_bin_label}.svg"
+        ) / f"binned_sessions_grid_bin{int(bin_size_days)}d.svg"
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 

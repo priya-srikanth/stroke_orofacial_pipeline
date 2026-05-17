@@ -217,9 +217,18 @@ dlc_spatial:
           ylim: [-235, 225]           # 20260323_DLC_build-parquet_reward-aligned X_MIN,X_MAX=-175,175).
           x_range: [-175, 175]        # Pre-histogram filter: drops DLC mis-detections
                                       # (picket-fence pattern spanning ±600 px otherwise).
-        eye_midpoint:
-          xlim: [-420, 420]
-          ylim: [-70, 540]
+        eye_midpoint:                 # Q34 Addendum #31 (Priya 2026-05-17):
+          xlim: [-175, 175]           # legacy hardcoded ±175 (matches spout_midpoint
+          ylim: [230, 600]            # x_range from 20260111_DLC_analysis_build-parquet_tongue.ipynb
+          x_range: [-175, 175]        # L1093 globally-scoped X_MIN, X_MAX = -175, 175).
+                                      # ylim derived from PS46 8-session pooled q01/q99 +
+                                      # 40% pad (no legacy ylim spec for eye-centered).
+                                      # Median tongue X in eye-centered = +18.5 px (slight
+                                      # rightward bias; effective range with ±175 is
+                                      # [-193, +156] which still covers legitimate motion).
+                                      # Pre-Q34 config had xlim=[-420,420], ylim=[-70,540],
+                                      # NO x_range — picket-fence DLC mis-detections passed
+                                      # through, contaminating tongue_eye_midpoint heatmaps.
     L_whiskers_1:
       likelihood_threshold: 0.80
       center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
@@ -229,9 +238,17 @@ dlc_spatial:
           xlim: [-380, 220]
           ylim: [-150, 80]
         spout_midpoint: null  # Phase 6+ will fill in
-        eye_midpoint:                 # Phase 4.5-lite: cohort-pooled q00001_9999 + 40% pad
-          xlim: [15, 135]
-          ylim: [55, 250]
+        eye_midpoint:                 # Q37 Addendum #35 (Priya 2026-05-17): unified
+          xlim: [-200, 200]            # bilateral range covering all 6 whiskers. The
+          ylim: [50, 360]              # composite-axis lookup keys on the first bp per
+                                       # legacy whiskers convention; this entry must span
+                                       # both L (15-165) and R (-185 to -15) sides + their
+                                       # ylim union (55-355) for Pattern B to render all 6
+                                       # whiskers visibly. Pre-Q37 was [15,135]/[55,250]
+                                       # (L_whiskers_1's own range) — clipped R off frame.
+                                       # Individual L/R per_center_mode entries on
+                                       # L_whiskers_2/3 and R_whiskers_1/2/3 preserved
+                                       # for non-composite hypothetical uses.
     L_whiskers_2:
       likelihood_threshold: 0.80
       center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
