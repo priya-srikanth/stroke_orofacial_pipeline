@@ -68,6 +68,34 @@ class TestBuildHistogram:
         result = build_histogram(df, "tongue", config, x_limits=(-50, 50), y_limits=(-50, 50))
         assert result is None
 
+    def test_q17_total_frames_normalization(self):
+        """Phase 7c.2 Addendum #16 Q17: when ``n_total_frames`` is given,
+        H_proportion = H_counts / n_total_frames (sum ≤ 1.0 = passed/total).
+        When omitted, legacy normalization preserved (H/H.sum() sums to 1)."""
+        df = _make_dlc_df()
+        config = {"heatmap_nbins": 50, "bodyparts": {"nose": {"likelihood_threshold": 0.80}}}
+        # Q17 path: n_total_frames > H_counts.sum() → H_proportion sums to < 1.0
+        n_total = 2 * len(df)  # synthesized: total includes 2x as many "frames"
+        result_q17 = build_histogram(
+            df, "nose", config,
+            x_limits=(-50, 50), y_limits=(-50, 50), nbins=50,
+            n_total_frames=n_total,
+        )
+        assert result_q17 is not None
+        passed = float(result_q17["H_counts"].sum())
+        expected_sum = passed / n_total
+        assert result_q17["H_proportion"].sum() == pytest.approx(expected_sum, abs=1e-6)
+        assert result_q17["H_proportion"].sum() <= 1.0
+        assert result_q17["n_total_frames"] == n_total
+
+        # Legacy path: no n_total_frames → H_proportion sums to 1.0
+        result_legacy = build_histogram(
+            df, "nose", config,
+            x_limits=(-50, 50), y_limits=(-50, 50), nbins=50,
+        )
+        assert result_legacy["H_proportion"].sum() == pytest.approx(1.0, abs=1e-6)
+        assert result_legacy["n_total_frames"] is None
+
 
 class TestBuildStatsGrid:
     def test_grid_dimensions(self):

@@ -1252,3 +1252,202 @@ This means CC's planned `_compute_unbalanced_ot_plan` invocation runs once per (
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Addendum #9-13 Task 5 scope except Q3d supersession noted above.)
+
+---
+
+## Addendum #15 — proportion_diff shared colormap scale + UOT spatial resolution + trial-group fanout for ALL tone-aligned plot types (Priya 2026-05-15, mid-Task-5)
+
+Three corrections to Task 5 rendering specs.
+
+### Q14 LOCKED — proportion_differences colormap scale shared across bins within (animal, family, scope, bin_size, trial_group)
+
+For each `proportion_differences/bin<N>d_<trial_group>.svg`, compute global `vmin` and `vmax` across ALL bin panels in the SVG, then pass `vmin=global_vmin, vmax=global_vmax` to each panel's `imshow`. This makes per-bin diff intensities visually comparable across the grid.
+
+**Implementation:** in the proportion_differences renderer, pre-compute the per-bin `H_bin - H_all_pre_stroke` arrays first; then `vmax = max(abs(arr).max() for arr in arrays)`; symmetric diverging colormap with `vmin=-vmax, vmax=+vmax` (since diff is signed).
+
+Apply to BOTH scopes (tone_aligned + whole_session) for proportion_differences.
+
+### Q15 LOCKED — UOT spatial resolution decoupled from heatmap resolution
+
+CC's first UOT render with `heatmap_nbins=100` produced arrow-too-crowded displacement plots (potentially up to 100×100 = 10,000 arrows per panel). Reduce the SPATIAL histogram resolution used for UOT computation + arrow rendering specifically.
+
+**Implementation:**
+
+1. Add new config knob `configs/defaults.yaml dlc_spatial_tone_aligned.unbalanced_ot.nbins: <N>` — default to whatever value the legacy cells at lines 6300-6680 of `20251202_..._pixelbin.ipynb` use (likely 20-30 per axis; CC pins from the actual `np.linspace` or `hist2d(bins=N)` call in the rendering cell). Treat as default; can tune.
+2. UOT renderer uses this `unbalanced_ot.nbins` value instead of the heatmap-level `dlc_spatial_tone_aligned.heatmap_nbins: 100`.
+3. Reduces arrow count from O(100²) to O(N²) where N << 100; visual crowding resolved.
+
+Other plot types (individual_session, binned_sessions, proportion_differences) keep using `heatmap_nbins: 100` — they're hist2d rendering, not arrow rendering, so high resolution is desirable.
+
+If legacy default isn't easily pinned (e.g., multiple values across cells), CC starts with `unbalanced_ot.nbins: 25` and Priya tunes visually.
+
+### Q16 LOCKED — trial-group fanout extends to ALL 4 tone-aligned plot types
+
+Addendum #9 + Addendum #11 had 3-trial-group panels only for `individual_session/` + `binned_sessions/` files (grid summaries for `proportion_differences/` and `unbalanced_ot/` were bin-aggregated without trial-group fanout). Priya 2026-05-15 extends 3-trial-group fanout to ALL 4 plot types under tone_aligned scope.
+
+**Updated output structure per (animal, family entry):**
+
+| Plot type | tone_aligned/ count | whole_session/ count |
+|---|---|---|
+| `individual_session/` | N_dates SVGs, each with 3 trial-group panels (per-file all/L/R panels — UNCHANGED) | N_dates SVGs, 1 panel (all only — UNCHANGED) |
+| `binned_sessions/` | 2 bin_sizes × M_bins SVGs each with 3 trial-group panels (UNCHANGED) | 2 bin_sizes × M_bins SVGs, 1 panel each (UNCHANGED) |
+| `proportion_differences/` | **2 bin_sizes × 3 trial_groups = 6 SVGs (NEW; expanded from 2)** | 2 bin_sizes × 1 (all only) = 2 SVGs (UNCHANGED) |
+| `unbalanced_ot/` | **2 bin_sizes × 3 trial_groups = 6 SVGs (NEW; expanded from 2)** | 2 bin_sizes × 1 (all only) = 2 SVGs (UNCHANGED) |
+
+**Filename convention for trial-group-fanout grid-summary SVGs:**
+
+- `proportion_differences/bin<N>d_<trial_group>.svg` (e.g., `bin2d_all.svg`, `bin2d_L.svg`, `bin2d_R.svg`, `bin7d_*.svg`)
+- `unbalanced_ot/unbalanced_ot_grid_bin<N>d_<trial_group>.svg` (e.g., `unbalanced_ot_grid_bin2d_all.svg`)
+
+**Per-trial-group filtering** at compute time: for each `trial_group ∈ {all, L, R}`, filter the frames to that trial-group's subset (or all frames for `all`) BEFORE aggregating into per-bin histograms. Then proceed with the per-bin aggregation + diff/OT computation + grid rendering.
+
+For whole_session scope: trial_group still collapses to "all" only — non-trial time included; trial-group split doesn't apply.
+
+### Implementation notes
+
+- **Generic renderer:** CC's renderer already iterates `trial_group ∈ {all, L, R}` for `individual_session/` + `binned_sessions/`. Same iteration extends to `proportion_differences/` + `unbalanced_ot/` for tone_aligned scope.
+- **Compute cost:** per-trial-group fanout triples the per-bin aggregation + OT compute count for the 2 affected plot types. Expected cohort wall-time delta: ~30-60% increase for tone_aligned scope (no impact on whole_session).
+- **Symmetric colormap (Q14):** applies per-(SVG-file). Each of the 3 trial-group SVGs has its OWN local `vmin/vmax` shared across its own bins — NOT shared across the 3 trial-group SVGs. This keeps within-SVG comparison meaningful while allowing trial-group SVGs to scale independently (since L/R distributions may have very different magnitudes).
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Addendum #9-14 Task 5 scope.)
+
+---
+
+## Addendum #16 — H_proportion normalization switches to total-frame-count denominator (universal change) (Priya 2026-05-15, mid-Task-5)
+
+### Q17 LOCKED — universal switch to total-frame-count normalization
+
+`H_proportion` normalization switches from passed-count to total-frame-count denominator across ALL plot types that use it.
+
+**Before (current implementation per `pixel_bins.py:189-190`):**
+
+```python
+total = H_counts.sum()  # passed-count after likelihood + x_range filter
+H_proportion = H_counts / total if total > 0 else H_counts
+```
+
+**After (universal switch per Priya 2026-05-15):**
+
+```python
+total = n_total_frames_in_window  # ALL frames in window, BEFORE likelihood filter
+H_proportion = H_counts / total if total > 0 else H_counts
+```
+
+Where `n_total_frames_in_window` is:
+
+- **For tone-aligned scope:** number of frames within the `(0, 8000)ms` post-tone window across all tone events for the requested trial_group. Computed from the WindowSelector's `n_selected_frames` count BEFORE the per-bin likelihood filter (or equivalently from the centered parquet's row count restricted to the window).
+- **For whole-session scope:** total frames in the session (`len(df)` of the centered parquet).
+
+**Implementation:**
+
+- Modify `dlc_spatial/pixel_bins.py:build_histogram` to take a `n_total_frames` parameter (or similar). Callers compute the appropriate total based on scope + trial_group filter + window selector.
+- Update all callers (`tone_aligned.py:build_tone_aligned_analysis`, `render_on_demand.py:render_tone_aligned_heatmap`, the Task 5 wrappers for individual_session / binned_sessions / proportion_differences / unbalanced_ot).
+- Update unit tests in `tests/test_pixel_bins.py` and `tests/test_tone_aligned.py` to assert the new normalization semantics.
+- The `H_proportion` array sum will no longer equal 1.0 — it equals `n_passed / n_total` ≤ 1.0 (per-trial-group tracking-rate fraction).
+
+**Scope:**
+
+- All plot types under `dlc_spatial/` consume the change uniformly: individual_session, binned_sessions, proportion_differences, unbalanced_ot.
+- Task 4 mean_sem cohort outputs (`mean_xy_overlays/` mean-trace + mean-video) also use `H_proportion` if they call `build_histogram` (CC checks). If yes, those are affected too — flag whether to re-render Task 4 mean_sem outputs post-Q17 fix; Priya adjudicates.
+
+### Implications
+
+- **Per-bin proportion values become smaller** (since denominator grows). Colormap normalization for proportion_differences (Q14 symmetric `vmin/vmax`) auto-adjusts because the values across all bins scale together.
+- **Diff plots capture detection-rate change** alongside spatial change. If post-stroke tracking is poorer (fewer high-likelihood frames), the diff shows uniformly-negative regions on top of any genuine spatial shift.
+- **Whole-session vs tone-aligned `H_proportion` values become directly comparable** — both normalized by their respective total-frame denominators (session-total vs tone-window-total).
+- **Legacy parity break:** if the legacy notebook code (the 4 reference files at MICROSCOPE) uses passed-count normalization, the consolidated pipeline now diverges from legacy on this axis. Priya 2026-05-15 accepts this divergence (universal switch is her stated intent regardless of legacy convention). CC documents the divergence in Task 8 DECISIONS prose; no parity expectation against legacy for this normalization.
+
+### Existing legacy outputs unaffected
+
+The legacy `spatial_reward_aligned/` tree is being deleted in Task 7 per Q5.D — no consumers of legacy `H_proportion` values remain post-Task-7. No backward-compat shim needed.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q16 from Addendum #15, Addendum #9-15 Task 5 scope.)
+
+---
+
+## Addendum #17 — colormap scale shared per (animal, family_entry, plot_type, scope) — Q14 supersession (Priya 2026-05-15)
+
+Q14 from Addendum #15 locked shared vmin/vmax across bins within ONE SVG (per file). Q18 now extends that to: shared vmin/vmax across ALL SVGs of the same plot type within (animal, family_entry, scope).
+
+### Q18 LOCKED — broader scale-sharing scope
+
+For each `(animal, family_entry, plot_type, scope)` bucket, compute ONE shared `(vmin, vmax)` range that applies to every SVG in that bucket. Within-bucket SVGs have visually comparable color intensities at the same proportion value.
+
+**Bucket structure:**
+
+| Plot type | Scale-shared grouping (per animal) |
+|---|---|
+| `individual_session/` (tone_aligned) | per (family_entry, scope=tone_aligned) across all session dates × 3 trial-groups |
+| `individual_session/` (whole_session) | per (family_entry, scope=whole_session) across all session dates × 1 trial-group |
+| `binned_sessions/` (tone_aligned) | per (family_entry, bin_size, scope=tone_aligned) across all bins × 3 trial-groups |
+| `binned_sessions/` (whole_session) | per (family_entry, bin_size, scope=whole_session) across all bins × 1 trial-group |
+| `proportion_differences/` (tone_aligned) | per (family_entry, bin_size, scope=tone_aligned) across all bins × 3 trial-groups (supersedes Q14 per-file scope) |
+| `proportion_differences/` (whole_session) | per (family_entry, bin_size, scope=whole_session) across all bins × 1 trial-group |
+| `unbalanced_ot/` (tone_aligned) | per (family_entry, bin_size, scope=tone_aligned, value_type) across all bins × 3 trial-groups — see note below |
+| `unbalanced_ot/` (whole_session) | per (family_entry, bin_size, scope=whole_session, value_type) across all bins × 1 trial-group |
+
+**Note on unbalanced_ot value_types:** UOT panels contain THREE distinct value types per bin (mass_destroy, mass_create, arrow magnitude). Each value type gets its own shared scale within the bucket:
+
+- `mass_destroy` (Reds cmap): shared vmin=0 / vmax=max(mass_destroy across all bins in bucket).
+- `mass_create` (Blues cmap): shared vmin=0 / vmax=max(mass_create across all bins in bucket).
+- `arrow_magnitude` (YlGnBu cmap on arrows): shared `log10(mass moved out of bin)` range across all bins in bucket; arrow style scaling (`lw_vals/head_w_vals/alphas`) uses this shared range.
+
+Three independent shared scales per UOT bucket (one per value_type).
+
+### Implementation — two-pass rendering
+
+CC's renderer per (animal, family_entry, plot_type, scope) bucket:
+
+1. **Pass 1 — value-range computation.** Iterate all to-be-rendered SVGs in the bucket; compute H_proportion (or diff / mass_destroy / mass_create / arrow_magnitude per plot type) per SVG without rendering. Find global vmin/vmax across the bucket. For diff plots, use symmetric `vmax = max(abs(diff).max() for diff in all_diffs)` with `vmin = -vmax`.
+2. **Pass 2 — rendering.** Render each SVG with the bucket's shared `(vmin, vmax)` passed to `imshow` (or equivalent for arrow scaling).
+
+Memory: Pass-1 holds all per-SVG arrays in memory simultaneously. For a typical PS46 individual_session/tone_aligned bucket = 21 dates × 3 trial-groups = 63 arrays at 100×100 = 0.63M values × 8 bytes = ~5MB. Trivial.
+
+### Why per-family-entry, not cross-family
+
+Different family entries have different bodyparts with different per-bodypart cmaps (tongue=jet, jaw=gnuplot2, nose=gist_ncar, etc. per `configs/defaults.yaml dlc_spatial_tone_aligned.bodyparts.<bp>.cmap`). Sharing scale across families would conflate different cmap interpretations + different anatomical norms. Per-family scope keeps within-bodypart comparisons meaningful without forcing cross-bodypart compatibility.
+
+### Why per-scope, not cross-scope
+
+Tone-aligned (0, 8000ms window) and whole_session have different denominator scales under Q17 universal switch (different `n_total_frames_in_window`). Per-bin proportion values differ in magnitude between the two scopes. Sharing scale would compress one or the other. Per-scope keeps each scope's intensity range meaningful.
+
+### Q14 superseded
+
+Q14 (Addendum #15) said "shared vmin/vmax across bins within one SVG." Q18 now says "shared vmin/vmax across all SVGs of same plot_type within (animal, family_entry, scope) bucket." Q14's per-file scope is a subset of Q18's per-bucket scope; Q18 supersedes for proportion_differences specifically.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q15-Q17, Addendum #9-16 Task 5 scope.)
+
+---
+
+## Addendum #18 — whole_session scope restricted to WS-session duration (Priya 2026-05-15)
+
+### Q19 LOCKED — whole_session frames limited to wavesurfer session window
+
+Per Priya 2026-05-15: whole_session plots should plot ONLY time during the wavesurfer (WS) session — NOT camera time before WS start or after WS end. The centered parquet may contain camera frames captured outside the WS recording window; those frames are excluded from whole_session aggregation.
+
+**Implementation:**
+
+1. **Determine WS session start + end in camera frame indices** via the Phase 3 alignment template for the session. The alignment template maps WS sample indices to camera frame indices; the WS session has a known start sample (typically 0) and end sample (last sample in the WS .h5 file).
+2. **Convert to camera frame index range:** `[ws_start_cam_idx, ws_end_cam_idx]` using the alignment template's WS→cam mapping.
+3. **Filter centered parquet** to rows where `frame_idx ∈ [ws_start_cam_idx, ws_end_cam_idx]` BEFORE histogram aggregation.
+4. **Update n_total_frames denominator** (Q17 universal switch) to use the FILTERED frame count, not the full parquet length. `n_total_frames = ws_end_cam_idx - ws_start_cam_idx + 1` (or equivalent count of rows in the filtered parquet).
+
+**Affects whole_session scope only** (tone_aligned scope is already bounded by the (0, 8000)ms post-tone window which lives strictly within the WS session).
+
+**For unbalanced_ot whole_session:** the per-bin aggregation uses the WS-bounded frame set; OT computation operates on WS-bounded distributions.
+
+### Implementation note for compute-on-demand wrappers
+
+The whole_session wrapper currently treats `window=None` as "use full centered parquet." Q19 changes this to "use centered parquet restricted to WS session window." The wrapper takes an additional reference to the alignment template (or a precomputed `(ws_start_cam_idx, ws_end_cam_idx)` tuple) and applies the filter before passing to `build_histogram`.
+
+If the alignment template isn't available at wrapper invocation time, the wrapper STOP-and-asks (or falls back to full parquet with a clear warning). For Pattern A multi-half sessions (PS48/2025-03-14), the merged alignment template from Phase 7-pre-multi-half is the WS-session reference.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.D expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q18, Addendum #9-17 Task 5 scope.)

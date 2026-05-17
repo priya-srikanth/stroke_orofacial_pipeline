@@ -366,19 +366,30 @@ def compute_animal_aggregated_histogram(
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
     nbins_override: int | None = None,
-) -> tuple[np.ndarray | None, list[float] | None, int, int]:
+) -> tuple[np.ndarray | None, list[float] | None, int, int, int]:
     """Compute-only variant of :func:`render_animal_aggregated_heatmap`.
 
-    Returns ``(H_total, extent, n_sessions_contributing, n_total_tones)``
-    so a caller can cache the histogram + render multiple SVG layouts
-    (per-animal panel + cohort tile-grid subplot) from one compute pass.
+    Returns ``(H_total, extent, n_sessions_contributing, n_total_tones,
+    n_total_frames_aggregated)`` so a caller can cache the histogram +
+    render multiple SVG layouts (per-animal panel + cohort tile-grid
+    subplot) from one compute pass, AND compute the Q17 H_proportion
+    via ``H_total / n_total_frames_aggregated``.
 
-    Returns ``(None, None, 0, 0)`` when no session contributes data
+    Returns ``(None, None, 0, 0, 0)`` when no session contributes data
     (no parquets, no tone events for the trial_group, etc.).
 
     ``nbins_override`` (Phase 7c.2 Addendum #15 Q15) lets the UOT
     renderer request a coarser histogram resolution than the
     config-level default (legacy NBINS=50 vs default_nbins=80×80).
+
+    ``n_total_frames_aggregated`` (Phase 7c.2 Addendum #16 Q17/Q19):
+    sum across contributing sessions of the per-session denominator.
+    Per-session denominator = ``window.n_selected`` for tone_aligned
+    scope (frames within the (pre, post)ms window after dedup) or
+    ``len(df)`` for whole_session (all frames in the centered parquet).
+    Used as the universal proportion denominator: ``H_total /
+    n_total_frames_aggregated`` instead of legacy ``H_total /
+    H_total.sum()``.
     """
     if (trial_group is None) != (window_ms is None):
         raise ValueError(
@@ -416,6 +427,7 @@ def compute_animal_aggregated_histogram(
     extent: list[float] | None = None
     n_sessions_contributing = 0
     n_total_tones = 0
+    n_total_frames_aggregated = 0  # Q17 denominator (sum over sessions)
     for date in dates:
         try:
             manifest = build_manifest(
@@ -438,8 +450,14 @@ def compute_animal_aggregated_histogram(
             if window is None:
                 continue
             n_total_tones += window.n_events
+            # Q17/Q19: tone-aligned denominator = frames within window
+            # (after dedup of overlapping windows).
+            session_n_total = int(window.n_selected)
         else:
             window = None
+            # Q17/Q19: whole_session denominator = ALL frames in the
+            # centered parquet (the WS-bounded session length).
+            session_n_total = int(len(df))
 
         hist = build_histogram(
             df, bodypart, config_for_hist,
@@ -447,15 +465,20 @@ def compute_animal_aggregated_histogram(
             x_range=bp_x_range,
             nbins=nbins,
             window=window,
+            n_total_frames=session_n_total,
         )
         n_sessions_contributing += 1
+        n_total_frames_aggregated += session_n_total
         if H_total is None:
             H_total = hist["H_counts"].copy()
             extent = list(hist["extent"])
         else:
             H_total += hist["H_counts"]
 
-    return H_total, extent, n_sessions_contributing, n_total_tones
+    return (
+        H_total, extent, n_sessions_contributing, n_total_tones,
+        n_total_frames_aggregated,
+    )
 
 
 def render_h_counts_panel(
@@ -468,6 +491,7 @@ def render_h_counts_panel(
     defaults: dict[str, Any] | None = None,
     figsize: tuple[float, float] = (8, 6),
     ax: plt.Axes | None = None,
+    n_total_frames: int | None = None,
 ) -> plt.Figure | plt.Axes:
     """Public render-only variant.
 
@@ -475,6 +499,11 @@ def render_h_counts_panel(
     ``ax`` is provided, renders into the existing Axes (subplot layout)
     and returns the Axes. Empty-data path (``H_counts is None``) renders
     a "no data" placeholder.
+
+    ``n_total_frames`` (Q17 Addendum #16): when given, use total-frame
+    normalization (H_proportion = H_counts / n_total_frames). When None,
+    fall back to legacy passed-count normalization (H_proportion =
+    H_counts / H_counts.sum()).
     """
     if defaults is None:
         defaults = load_defaults()
@@ -501,7 +530,12 @@ def render_h_counts_panel(
     x_limits = per_mode["xlim"] or (extent[0], extent[1])
     y_limits = per_mode["ylim"] or (extent[2], extent[3])
 
-    total = float(H_counts.sum())
+    # Q17 Addendum #16: total-frame denominator when provided; legacy
+    # H_counts.sum() fallback otherwise.
+    if n_total_frames is not None and n_total_frames > 0:
+        total = float(n_total_frames)
+    else:
+        total = float(H_counts.sum())
     H_prop = H_counts / total
     try:
         cmap = plt.get_cmap(cmap_name)
@@ -586,22 +620,24 @@ def render_animal_aggregated_heatmap(
     """
     if defaults is None:
         defaults = load_defaults()
-    H_total, extent, n_sessions, n_tones = compute_animal_aggregated_histogram(
-        animal, dates, bodypart, center_mode, resolver,
-        trial_group=trial_group, window_ms=window_ms,
-        defaults=defaults, animal_info=animal_info,
+    H_total, extent, n_sessions, n_tones, n_total_frames = (
+        compute_animal_aggregated_histogram(
+            animal, dates, bodypart, center_mode, resolver,
+            trial_group=trial_group, window_ms=window_ms,
+            defaults=defaults, animal_info=animal_info,
+        )
     )
     if window_ms is not None:
         win_label = f"[{int(window_ms[0])}, {int(window_ms[1])}] ms"
         title = (
             f"{animal}  {bodypart}/{center_mode}  tg={trial_group}  "
             f"win={win_label}  n_sessions={n_sessions}  "
-            f"n_tones={n_tones}"
+            f"n_tones={n_tones}  n_total_frames={n_total_frames}"
         )
     else:
         title = (
             f"{animal}  {bodypart}/{center_mode}  WHOLE SESSION pooled  "
-            f"n_sessions={n_sessions}"
+            f"n_sessions={n_sessions}  n_total_frames={n_total_frames}"
         )
     return render_h_counts_panel(
         H_total, extent, bodypart, center_mode,
@@ -656,48 +692,16 @@ def _compute_panels_for_session(
     *,
     defaults: dict[str, Any],
     animal_info: AnimalInfo,
-) -> dict[str, tuple[np.ndarray | None, list[float] | None, int]]:
+) -> dict[str, tuple[np.ndarray | None, list[float] | None, int, int]]:
     """Compute per-trial-group histograms for a single (animal, date) cell.
 
-    Returns ``{tg: (H_counts, extent, n_tones)}`` for every trial group in
-    the scope-specific panel set. Missing-data panels (no tone events for
-    a trial_group) map to ``(None, None, 0)``.
-    """
-    if scope == "tone_aligned":
-        trial_groups = TASK5_TRIAL_GROUPS_TONE_ALIGNED
-        window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
-    elif scope == "whole_session":
-        trial_groups = TASK5_TRIAL_GROUPS_WHOLE_SESSION
-        window_ms = None
-    else:
-        raise ValueError(f"scope must be 'tone_aligned' or 'whole_session'; got {scope!r}")
+    Returns ``{tg: (H_counts, extent, n_tones, n_total_frames)}`` for every
+    trial group in the scope-specific panel set. Missing-data panels (no
+    tone events for a trial_group) map to ``(None, None, 0, 0)``.
 
-    panels: dict[str, tuple[np.ndarray | None, list[float] | None, int]] = {}
-    for tg in trial_groups:
-        tg_arg = tg if window_ms is not None else None
-        H, ext, _n_sess, n_tones = compute_animal_aggregated_histogram(
-            animal, [date], bodypart, center_mode, resolver,
-            trial_group=tg_arg, window_ms=window_ms,
-            defaults=defaults, animal_info=animal_info,
-        )
-        panels[tg] = (H, ext, int(n_tones) if window_ms is not None else 0)
-    return panels
-
-
-def _compute_panels_for_dates(
-    animal: str,
-    dates: list[dt.date],
-    bodypart: str,
-    center_mode: str,
-    scope: Scope,
-    resolver: PathResolver,
-    *,
-    defaults: dict[str, Any],
-    animal_info: AnimalInfo,
-) -> dict[str, tuple[np.ndarray | None, list[float] | None, int, int]]:
-    """Compute per-trial-group aggregated histograms for a date set
-    (e.g., one rel_day_bin's sessions). Returns
-    ``{tg: (H_counts, extent, n_sessions, n_tones)}``.
+    ``n_total_frames`` (Q17 Addendum #16) is the per-tg denominator for
+    proportion normalization (sum of per-session window.n_selected or
+    len(df) across the date set — always 1 session here).
     """
     if scope == "tone_aligned":
         trial_groups = TASK5_TRIAL_GROUPS_TONE_ALIGNED
@@ -711,12 +715,60 @@ def _compute_panels_for_dates(
     panels: dict[str, tuple[np.ndarray | None, list[float] | None, int, int]] = {}
     for tg in trial_groups:
         tg_arg = tg if window_ms is not None else None
-        H, ext, n_sess, n_tones = compute_animal_aggregated_histogram(
+        H, ext, _n_sess, n_tones, n_total = compute_animal_aggregated_histogram(
+            animal, [date], bodypart, center_mode, resolver,
+            trial_group=tg_arg, window_ms=window_ms,
+            defaults=defaults, animal_info=animal_info,
+        )
+        panels[tg] = (
+            H, ext,
+            int(n_tones) if window_ms is not None else 0,
+            int(n_total),
+        )
+    return panels
+
+
+def _compute_panels_for_dates(
+    animal: str,
+    dates: list[dt.date],
+    bodypart: str,
+    center_mode: str,
+    scope: Scope,
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any],
+    animal_info: AnimalInfo,
+) -> dict[str, tuple[np.ndarray | None, list[float] | None, int, int, int]]:
+    """Compute per-trial-group aggregated histograms for a date set
+    (e.g., one rel_day_bin's sessions). Returns
+    ``{tg: (H_counts, extent, n_sessions, n_tones, n_total_frames)}``.
+
+    ``n_total_frames`` (Q17 Addendum #16) is the per-tg denominator for
+    proportion normalization (sum of per-session window.n_selected or
+    len(df) across all sessions in the bin).
+    """
+    if scope == "tone_aligned":
+        trial_groups = TASK5_TRIAL_GROUPS_TONE_ALIGNED
+        window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
+    elif scope == "whole_session":
+        trial_groups = TASK5_TRIAL_GROUPS_WHOLE_SESSION
+        window_ms = None
+    else:
+        raise ValueError(f"scope must be 'tone_aligned' or 'whole_session'; got {scope!r}")
+
+    panels: dict[str, tuple[np.ndarray | None, list[float] | None, int, int, int]] = {}
+    for tg in trial_groups:
+        tg_arg = tg if window_ms is not None else None
+        H, ext, n_sess, n_tones, n_total = compute_animal_aggregated_histogram(
             animal, dates, bodypart, center_mode, resolver,
             trial_group=tg_arg, window_ms=window_ms,
             defaults=defaults, animal_info=animal_info,
         )
-        panels[tg] = (H, ext, int(n_sess), int(n_tones) if window_ms is not None else 0)
+        panels[tg] = (
+            H, ext, int(n_sess),
+            int(n_tones) if window_ms is not None else 0,
+            int(n_total),
+        )
     return panels
 
 
@@ -755,22 +807,30 @@ def _assemble_panel_figure(
                     ha="center", va="center", transform=ax.transAxes)
             ax.set_axis_off()
             continue
-        if len(payload) == 3:
-            H, ext, n_tones = payload
+        if len(payload) == 4:
+            # individual_session: (H, ext, n_tones, n_total_frames)
+            H, ext, n_tones, n_total = payload
             panel_title = (
                 f"tg={tg} n_tones={n_tones}"
                 if scope == "tone_aligned"
                 else "whole session"
             )
-        else:
-            H, ext, n_sess, n_tones = payload
+        elif len(payload) == 5:
+            # binned_sessions: (H, ext, n_sess, n_tones, n_total_frames)
+            H, ext, n_sess, n_tones, n_total = payload
             if scope == "tone_aligned":
                 panel_title = f"tg={tg} n_sess={n_sess} n_tones={n_tones}"
             else:
                 panel_title = f"whole session n_sess={n_sess}"
+        else:
+            raise ValueError(
+                f"_assemble_panel_figure: unexpected payload length "
+                f"{len(payload)} for tg={tg} (expected 4 or 5)"
+            )
         render_h_counts_panel(
             H, ext, bodypart, center_mode,
             title=panel_title, defaults=defaults, ax=ax,
+            n_total_frames=n_total,
         )
     fig.suptitle(suptitle, fontsize=12)
     return fig
@@ -823,13 +883,18 @@ def _compute_composite_panels(
     *,
     defaults: dict[str, Any],
     animal_info: AnimalInfo,
-) -> dict[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int]]]:
+) -> dict[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int, int]]]:
     """Per-trial-group + per-bodypart histogram compute for a composite family.
 
-    Returns ``{tg: [(bp, H_counts, extent, n_sessions, n_tones), ...]}`` —
-    one entry per (trial_group, bp). For whole_session scope the only
-    trial_group key is ``"all"`` and ``n_tones`` is 0. Used by all
-    composite families (whiskers + fiducial bilateral pairs).
+    Returns ``{tg: [(bp, H_counts, extent, n_sessions, n_tones,
+    n_total_frames), ...]}`` — one entry per (trial_group, bp). For
+    whole_session scope the only trial_group key is ``"all"`` and
+    ``n_tones`` is 0. Used by all composite families (whiskers + fiducial
+    bilateral pairs).
+
+    ``n_total_frames`` (Q17 Addendum #16): per-bp denominator for the
+    Q17 proportion normalization (sum of per-session window.n_selected
+    or len(df) across the date set).
     """
     if scope == "tone_aligned":
         trial_groups = TASK5_TRIAL_GROUPS_TONE_ALIGNED
@@ -840,12 +905,12 @@ def _compute_composite_panels(
     else:
         raise ValueError(f"scope must be 'tone_aligned' or 'whole_session'; got {scope!r}")
 
-    panels: dict[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int]]] = {}
+    panels: dict[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int, int]]] = {}
     for tg in trial_groups:
         tg_arg = tg if window_ms is not None else None
-        per_tg: list[tuple[str, np.ndarray | None, list[float] | None, int, int]] = []
+        per_tg: list[tuple[str, np.ndarray | None, list[float] | None, int, int, int]] = []
         for bp in bodyparts:
-            H, ext, n_sess, n_tones = compute_animal_aggregated_histogram(
+            H, ext, n_sess, n_tones, n_total = compute_animal_aggregated_histogram(
                 animal, dates, bp, center_mode, resolver,
                 trial_group=tg_arg, window_ms=window_ms,
                 defaults=defaults, animal_info=animal_info,
@@ -853,6 +918,7 @@ def _compute_composite_panels(
             per_tg.append((
                 bp, H, ext, int(n_sess),
                 int(n_tones) if window_ms is not None else 0,
+                int(n_total),
             ))
         panels[tg] = per_tg
     return panels
@@ -860,7 +926,7 @@ def _compute_composite_panels(
 
 def _render_composite_panel_axis(
     ax: plt.Axes,
-    composite_panels: list[tuple[str, np.ndarray | None, list[float] | None, int, int]],
+    composite_panels: list[tuple[str, np.ndarray | None, list[float] | None, int, int, int]],
     spatial_config: dict[str, Any],
     *,
     family_bodyparts: list[str],
@@ -873,15 +939,18 @@ def _render_composite_panel_axis(
     20251202_..._pixelbin.ipynb, adapted to consume precomputed
     ``H_counts`` arrays (vs hist2d which consumes raw xy). cmap lookup
     is config-driven via ``_get_bodypart_cmap``.
+
+    Q17 Addendum #16: H_proportion normalization uses ``n_total_frames``
+    (per-bp total in-window frames) instead of ``H.sum()`` (legacy).
     """
     extent_first: list[float] | None = None
     n_layered = 0
-    for bp, H, ext, _n_sess, _n_tones in composite_panels:
-        if H is None or float(H.sum()) == 0.0:
+    for bp, H, ext, _n_sess, _n_tones, n_total in composite_panels:
+        if H is None or n_total == 0:
             continue
         if extent_first is None:
             extent_first = ext
-        H_prop = H / float(H.sum())
+        H_prop = H / float(n_total)
         finite_nonzero = H_prop[np.isfinite(H_prop) & (H_prop > 0)]
         if finite_nonzero.size == 0:
             continue
@@ -996,7 +1065,7 @@ def _assemble_composite_figure(
         # within a tg, modulo missing data; use first non-empty for title).
         n_sess = 0
         n_tones = 0
-        for _bp, H, _ext, ns, nt in composite_panels:
+        for _bp, H, _ext, ns, nt, _n_total in composite_panels:
             if H is not None and float(H.sum()) > 0:
                 n_sess = max(n_sess, ns)
                 n_tones = max(n_tones, nt)
@@ -1201,12 +1270,12 @@ def _compute_proportion_diff(
     else:
         raise ValueError(f"scope must be 'tone_aligned' or 'whole_session'; got {scope!r}")
 
-    H_pre, ext_pre, n_pre, _ = compute_animal_aggregated_histogram(
+    H_pre, ext_pre, n_pre, _, n_total_pre = compute_animal_aggregated_histogram(
         animal, pre_dates, bodypart, center_mode, resolver,
         trial_group=tg_arg, window_ms=window_ms,
         defaults=defaults, animal_info=animal_info,
     )
-    H_post, ext_post, n_post, _ = compute_animal_aggregated_histogram(
+    H_post, ext_post, n_post, _, n_total_post = compute_animal_aggregated_histogram(
         animal, post_dates, bodypart, center_mode, resolver,
         trial_group=tg_arg, window_ms=window_ms,
         defaults=defaults, animal_info=animal_info,
@@ -1214,8 +1283,12 @@ def _compute_proportion_diff(
 
     if H_pre is None or H_post is None:
         return None, None, n_pre, n_post
-    pre_sum = float(H_pre.sum())
-    post_sum = float(H_post.sum())
+    # Q17 (Phase 7c.2 Addendum #16): denominators are total in-window
+    # frame counts, not H_counts.sum(). Same shift applied everywhere
+    # downstream — proportion = "tracking_rate × spatial_distribution"
+    # composite (sum ≤ 1.0 = passed_frames / total_frames).
+    pre_sum = float(n_total_pre)
+    post_sum = float(n_total_post)
     if pre_sum == 0.0 or post_sum == 0.0:
         return None, None, n_pre, n_post
 
@@ -1324,7 +1397,7 @@ def _compute_proportion_diff_for_bin(
     """
     if len(bodyparts) > 1:
         # Composite family: pooled N-bp pseudo-bp.
-        H_bin, ext, n_sess = _aggregate_for_dates_pooled_bodyparts(
+        H_bin, ext, n_sess, n_total_bin = _aggregate_for_dates_pooled_bodyparts(
             animal, bin_dates, bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
             trial_group=trial_group,
@@ -1337,14 +1410,16 @@ def _compute_proportion_diff_for_bin(
             tg_arg = None
             window_ms = None
         bp = bodyparts[0]
-        H_bin, ext, n_sess, _ = compute_animal_aggregated_histogram(
+        H_bin, ext, n_sess, _, n_total_bin = compute_animal_aggregated_histogram(
             animal, bin_dates, bp, center_mode, resolver,
             trial_group=tg_arg, window_ms=window_ms,
             defaults=defaults, animal_info=animal_info,
         )
-    if H_bin is None or float(H_bin.sum()) == 0.0:
+    if H_bin is None or n_total_bin == 0:
         return None, None, n_sess
-    H_bin_prop = H_bin / float(H_bin.sum())
+    # Q17 Addendum #16: denominator = total in-window frames (sum across
+    # sessions + bps), not H_bin.sum().
+    H_bin_prop = H_bin / float(n_total_bin)
     D = H_bin_prop - H_pre_pool_prop
     no_data = (H_pre_pool_prop == 0) & (H_bin == 0)
     if no_data.any():
@@ -1408,13 +1483,15 @@ def render_proportion_difference_heatmap(
     pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
 
     # Compute fixed reference: animal-level pre-stroke pool, proportion-
-    # normalized. Apply the same trial_group filter so the per-bin
-    # comparison is apples-to-apples.
+    # normalized via Q17 total-frame denominator. Apply the same
+    # trial_group filter so the per-bin comparison is apples-to-apples.
     if len(bodyparts) > 1:
-        H_pre_pool, ext_pre, n_pre_sess = _aggregate_for_dates_pooled_bodyparts(
-            animal, pre_dates, bodyparts, center_mode, scope, resolver,
-            defaults=defaults, animal_info=animal_info,
-            trial_group=trial_group,
+        H_pre_pool, ext_pre, n_pre_sess, n_total_pre = (
+            _aggregate_for_dates_pooled_bodyparts(
+                animal, pre_dates, bodyparts, center_mode, scope, resolver,
+                defaults=defaults, animal_info=animal_info,
+                trial_group=trial_group,
+            )
         )
     else:
         if scope == "tone_aligned":
@@ -1424,13 +1501,15 @@ def render_proportion_difference_heatmap(
             tg_arg = None
             window_ms = None
         bp = bodyparts[0]
-        H_pre_pool, ext_pre, n_pre_sess, _ = compute_animal_aggregated_histogram(
-            animal, pre_dates, bp, center_mode, resolver,
-            trial_group=tg_arg, window_ms=window_ms,
-            defaults=defaults, animal_info=animal_info,
+        H_pre_pool, ext_pre, n_pre_sess, _, n_total_pre = (
+            compute_animal_aggregated_histogram(
+                animal, pre_dates, bp, center_mode, resolver,
+                trial_group=tg_arg, window_ms=window_ms,
+                defaults=defaults, animal_info=animal_info,
+            )
         )
 
-    if H_pre_pool is None or float(H_pre_pool.sum()) == 0.0:
+    if H_pre_pool is None or n_total_pre == 0:
         fig, ax = plt.subplots(figsize=(8, 6))
         ax.text(
             0.5, 0.5,
@@ -1441,7 +1520,8 @@ def render_proportion_difference_heatmap(
         ax.set_axis_off()
         return fig
 
-    H_pre_pool_prop = H_pre_pool / float(H_pre_pool.sum())
+    # Q17 Addendum #16: total-frame denominator (not H_pre_pool.sum()).
+    H_pre_pool_prop = H_pre_pool / float(n_total_pre)
 
     # Group ALL dates (pre + post) by rel_day_bin at the requested bin_size.
     bins: dict[str, list[dt.date]] = {}
@@ -1821,17 +1901,22 @@ def _aggregate_for_dates_pooled_bodyparts(
     animal_info: AnimalInfo,
     trial_group: str = "all",
     nbins_override: int | None = None,
-) -> tuple[np.ndarray | None, list[float] | None, int]:
+) -> tuple[np.ndarray | None, list[float] | None, int, int]:
     """Sum N per-bp histograms cell-wise (pseudo-pooling) for any
     composite family.
 
-    Returns ``(H_sum, extent, n_sessions)``. The pooling approximates the
-    legacy "Pool all six whiskers as one part" pattern (line 2174 of
-    20251202_..._pixelbin.ipynb cited by Addendum #10). The per-bp
-    histograms share the same extent because we use the first bp's
-    per_center_mode block as the shared axis range. Generalized in
-    Phase 7c.2 Addendum #13 to also serve the fiducial bilateral-pair
-    composite families.
+    Returns ``(H_sum, extent, n_sessions, n_total_frames_summed)``. The
+    pooling approximates the legacy "Pool all six whiskers as one part"
+    pattern (line 2174 of 20251202_..._pixelbin.ipynb cited by
+    Addendum #10). The per-bp histograms share the same extent because
+    we use the first bp's per_center_mode block as the shared axis
+    range. Generalized in Phase 7c.2 Addendum #13 to also serve the
+    fiducial bilateral-pair composite families.
+
+    ``n_total_frames_summed`` (Phase 7c.2 Addendum #16 Q17): summed
+    in-window frame counts across all (bp, session) tuples that
+    contributed to H_sum. Used as the Q17 proportion denominator
+    downstream (H_sum / n_total_frames_summed).
 
     ``trial_group`` (Phase 7c.2 Addendum #15 Q16) selects the
     tone-aligned trial-group filter; ignored when ``scope='whole_session'``
@@ -1855,8 +1940,9 @@ def _aggregate_for_dates_pooled_bodyparts(
     H_total: np.ndarray | None = None
     extent: list[float] | None = None
     n_sess_max = 0
+    n_total_summed = 0
     for bp in bodyparts:
-        H, ext, n_sess, _ = compute_animal_aggregated_histogram(
+        H, ext, n_sess, _, n_total = compute_animal_aggregated_histogram(
             animal, dates, bp, center_mode, resolver,
             trial_group=tg_arg, window_ms=window_ms,
             defaults=defaults, animal_info=animal_info,
@@ -1870,7 +1956,8 @@ def _aggregate_for_dates_pooled_bodyparts(
         else:
             H_total += H
         n_sess_max = max(n_sess_max, n_sess)
-    return H_total, extent, n_sess_max
+        n_total_summed += int(n_total)
+    return H_total, extent, n_sess_max, n_total_summed
 
 
 def render_unbalanced_ot_displacement_field(
@@ -1950,28 +2037,32 @@ def render_unbalanced_ot_displacement_field(
         ax.set_axis_off()
         return fig
 
-    # Compute fixed reference: animal-level pre-stroke pool, proportion-
-    # normalized. Apply the same trial_group filter so the per-bin
-    # comparison is apples-to-apples.
+    # Compute fixed reference: animal-level pre-stroke pool, Q17-normalized
+    # via total-frame denominator. Apply same trial_group filter so the
+    # per-bin comparison is apples-to-apples.
     tg_arg = trial_group if scope == "tone_aligned" else None
     window_ms = TASK5_TONE_WINDOW_MS if scope == "tone_aligned" else None
     if len(bodyparts) == 1:
         bp_for_axis = bodyparts[0]
-        H_pre_pool, ext_pre, n_pre_sess, _ = compute_animal_aggregated_histogram(
-            animal, pre_dates, bp_for_axis, center_mode, resolver,
-            trial_group=tg_arg, window_ms=window_ms,
-            defaults=defaults, animal_info=animal_info,
-            nbins_override=unb_nbins,
+        H_pre_pool, ext_pre, n_pre_sess, _, n_total_pre = (
+            compute_animal_aggregated_histogram(
+                animal, pre_dates, bp_for_axis, center_mode, resolver,
+                trial_group=tg_arg, window_ms=window_ms,
+                defaults=defaults, animal_info=animal_info,
+                nbins_override=unb_nbins,
+            )
         )
     else:
         bp_for_axis = bodyparts[0]
-        H_pre_pool, ext_pre, n_pre_sess = _aggregate_for_dates_pooled_bodyparts(
-            animal, pre_dates, bodyparts, center_mode, scope, resolver,
-            defaults=defaults, animal_info=animal_info,
-            trial_group=trial_group, nbins_override=unb_nbins,
+        H_pre_pool, ext_pre, n_pre_sess, n_total_pre = (
+            _aggregate_for_dates_pooled_bodyparts(
+                animal, pre_dates, bodyparts, center_mode, scope, resolver,
+                defaults=defaults, animal_info=animal_info,
+                trial_group=trial_group, nbins_override=unb_nbins,
+            )
         )
 
-    if H_pre_pool is None or float(H_pre_pool.sum()) == 0.0:
+    if H_pre_pool is None or n_total_pre == 0:
         fig, ax = plt.subplots(figsize=(8, 6))
         ax.text(
             0.5, 0.5,
@@ -1982,7 +2073,8 @@ def render_unbalanced_ot_displacement_field(
         ax.set_axis_off()
         return fig
 
-    H_pre_pool_prop = H_pre_pool / float(H_pre_pool.sum())
+    # Q17 Addendum #16: total-frame denominator.
+    H_pre_pool_prop = H_pre_pool / float(n_total_pre)
 
     # Group ALL dates by rel_day_bin at the requested bin_size_days.
     from stroke_orofacial.dlc_kinematics._day_binned import _compute_rel_day_bin_label
@@ -2012,29 +2104,34 @@ def render_unbalanced_ot_displacement_field(
     for row_idx, bin_label in enumerate(bin_labels):
         bin_dates = bins[bin_label]
         if len(bodyparts) == 1:
-            H_bin, ext_b, n_sess, _ = compute_animal_aggregated_histogram(
-                animal, bin_dates, bp_for_axis, center_mode, resolver,
-                trial_group=tg_arg, window_ms=window_ms,
-                defaults=defaults, animal_info=animal_info,
-                nbins_override=unb_nbins,
+            H_bin, ext_b, n_sess, _, n_total_bin = (
+                compute_animal_aggregated_histogram(
+                    animal, bin_dates, bp_for_axis, center_mode, resolver,
+                    trial_group=tg_arg, window_ms=window_ms,
+                    defaults=defaults, animal_info=animal_info,
+                    nbins_override=unb_nbins,
+                )
             )
         else:
-            H_bin, ext_b, n_sess = _aggregate_for_dates_pooled_bodyparts(
-                animal, bin_dates, bodyparts, center_mode, scope, resolver,
-                defaults=defaults, animal_info=animal_info,
-                trial_group=trial_group, nbins_override=unb_nbins,
+            H_bin, ext_b, n_sess, n_total_bin = (
+                _aggregate_for_dates_pooled_bodyparts(
+                    animal, bin_dates, bodyparts, center_mode, scope, resolver,
+                    defaults=defaults, animal_info=animal_info,
+                    trial_group=trial_group, nbins_override=unb_nbins,
+                )
             )
         ax_destroy = axes[row_idx, 0]
         ax_create = axes[row_idx, 1]
         ax_arrows = axes[row_idx, 2]
-        if H_bin is None or float(H_bin.sum()) == 0.0:
+        if H_bin is None or n_total_bin == 0:
             for ax in (ax_destroy, ax_create, ax_arrows):
                 ax.text(0.5, 0.5, f"bin {bin_label}\n(no data)",
                         ha="center", va="center", transform=ax.transAxes)
                 ax.set_axis_off()
             continue
         ext = ext_pre or ext_b
-        H_bin_prop = H_bin / float(H_bin.sum())
+        # Q17 Addendum #16: total-frame denominator (not H_bin.sum()).
+        H_bin_prop = H_bin / float(n_total_bin)
         plan = _compute_unbalanced_ot_plan(H_pre_pool_prop, H_bin_prop, ext)
         if plan is None:
             for ax in (ax_destroy, ax_create, ax_arrows):

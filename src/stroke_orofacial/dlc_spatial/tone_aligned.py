@@ -486,12 +486,16 @@ def build_tone_aligned_analysis(
     # Phase 5's value otherwise by passing x_range=None to build_histogram.
     x_range_override = tuple(bp_x_range_tone) if bp_x_range_tone is not None else None
 
+    # Q17 Addendum #16: pass total-frame denominator (window.n_selected
+    # for tone-aligned scope). The returned hist["H_proportion"] is then
+    # H_counts / n_total_frames — the universal Q17 normalization.
     histogram = build_histogram(
         df, bodypart, config_for_hist,
         center_mode=center_mode,
         x_range=x_range_override,
         nbins=nbins,
         window=window,
+        n_total_frames=int(window.n_selected),
     )
 
     # NOTE: dict keys ``"n_tones"``, ``"n_selected_frames"`` are
