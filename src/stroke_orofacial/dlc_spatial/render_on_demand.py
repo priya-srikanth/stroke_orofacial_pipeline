@@ -529,6 +529,15 @@ def compute_animal_aggregated_histogram(
         )
         n_sessions_contributing += 1
         n_total_frames_aggregated += session_n_total
+        if hist is None:
+            # No (bp, session) detections passed the likelihood +
+            # x_range filter (e.g., PS50 L_eye on 2025-03-24, where all
+            # in-window frames had likelihood < 0.8). Session still
+            # contributes to the Q17 proportion denominator
+            # ``n_total_frames_aggregated`` (Addendum #16: total in-
+            # window frames, pre-likelihood filter); H_counts numerator
+            # picks up zero counts from this session.
+            continue
         if H_total is None:
             H_total = hist["H_counts"].copy()
             extent = list(hist["extent"])
