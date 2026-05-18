@@ -37,6 +37,7 @@ only via ``lookup_tone_family`` for per-family parameters.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from typing import Any
 
 import matplotlib.colors as mcolors
@@ -56,6 +57,8 @@ from stroke_orofacial.dlc_spatial.tone_aligned import (
 )
 from stroke_orofacial.manifest import SessionManifest, build_manifest
 from stroke_orofacial.paths import PathResolver
+
+logger = logging.getLogger(__name__)
 
 
 def _load_centered_df_for(
@@ -480,6 +483,11 @@ def compute_animal_aggregated_histogram(
     n_sessions_contributing = 0
     n_total_tones = 0
     n_total_frames_aggregated = 0  # Q17 denominator (sum over sessions)
+    # Q51 Addendum #43 (2026-05-18): session-drop audit. Track skips
+    # so the cohort-driver log surfaces silent likelihood-filter drops
+    # for downstream skip_audit.csv aggregation (Q51.C, Task 6).
+    n_sessions_skipped = 0
+    skipped_dates: list[dt.date] = []
     for date in dates:
         try:
             manifest = build_manifest(
@@ -537,12 +545,41 @@ def compute_animal_aggregated_histogram(
             # ``n_total_frames_aggregated`` (Addendum #16: total in-
             # window frames, pre-likelihood filter); H_counts numerator
             # picks up zero counts from this session.
+            n_sessions_skipped += 1
+            skipped_dates.append(date)
+            # Q51.A Addendum #43: per-skip WARNING for the cohort-driver
+            # log → drives the Task 6 skip_audit.csv aggregation.
+            logger.warning(
+                "compute_animal_aggregated_histogram: skipping %s/%s "
+                "(bodypart=%s, center_mode=%s, trial_group=%s): "
+                "build_histogram returned None (zero frames passed "
+                "likelihood threshold %.2f).",
+                animal, date.isoformat(), bodypart, center_mode,
+                str(trial_group) if trial_group is not None else "whole_session",
+                lik_thr,
+            )
             continue
         if H_total is None:
             H_total = hist["H_counts"].copy()
             extent = list(hist["extent"])
         else:
             H_total += hist["H_counts"]
+
+    # Q51.B Addendum #43: per-(animal, bp, center_mode) session-drop
+    # summary at end of aggregation. Emitted only when at least one
+    # skip occurred (silent otherwise).
+    if n_sessions_skipped > 0:
+        logger.info(
+            "compute_animal_aggregated_histogram: %s aggregation for "
+            "(bp=%s, center_mode=%s, trial_group=%s) complete. "
+            "Sessions: contributed=%d, skipped=%d, total=%d. "
+            "Skipped sessions: %s",
+            animal, bodypart, center_mode,
+            str(trial_group) if trial_group is not None else "whole_session",
+            n_sessions_contributing, n_sessions_skipped,
+            n_sessions_contributing + n_sessions_skipped,
+            [d.isoformat() for d in skipped_dates],
+        )
 
     return (
         H_total, extent, n_sessions_contributing, n_total_tones,
