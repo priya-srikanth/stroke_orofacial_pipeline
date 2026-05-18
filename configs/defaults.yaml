@@ -449,6 +449,18 @@ dlc_spatial_tone_aligned:
   # are masked NaN; set_bad transparent so lower layers show through
   # cleanly. Default 0.05 (5% of per-layer vmax). Tune visually.
   layered_overlay_floor_fraction: 0.05
+
+  # Q42 Addendum #38 (2026-05-15): proportion_differences rendering
+  # config. ``vmax_percentile`` controls the bucket-shared symmetric
+  # vmax derivation in `derive_symmetric_diff_vmax`. Previously vmax
+  # was ``max(|D|.max())`` across the bucket; 1-2 picket-fence DLC
+  # mis-detection bins dominated the scale and washed out the bulk
+  # of the diverging cmap range. Percentile clipping (95th by
+  # default) lets the bulk of the structure render at usable contrast
+  # while extreme outliers auto-saturate. Tune-down (e.g. 90) for
+  # families that still wash out.
+  proportion_differences:
+    vmax_percentile: 95.0
   families:
     tongue_spout_midpoint:
       bodyparts: ["tongue"]

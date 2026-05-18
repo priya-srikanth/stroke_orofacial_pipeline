@@ -3029,17 +3029,42 @@ def derive_log_norm_range(arrays: list[np.ndarray]) -> tuple[float, float]:
     return min(vmin_candidates), max(vmax_candidates)
 
 
-def derive_symmetric_diff_vmax(arrays: list[np.ndarray]) -> float:
-    """Q18 symmetric vmax for PD bucket. ``vmax`` = max(|D|.max()) across
-    arrays; per-panel renderer uses (vmin=-vmax, vmax=+vmax)."""
-    maxes: list[float] = []
+def derive_symmetric_diff_vmax(
+    arrays: list[np.ndarray],
+    *,
+    vmax_percentile: float = 95.0,
+) -> float:
+    """Q18 symmetric vmax for PD bucket; per-panel renderer uses
+    (vmin=-vmax, vmax=+vmax) with the Q25 diverging cmap.
+
+    Q42 Addendum #38 (2026-05-15): switch from ``max(|D|.max())`` to a
+    percentile-based vmax across the bucket. The bucket-wide
+    `max-absolute` rule was dominated by 1-2 picket-fence DLC mis-
+    detection bins per family, compressing the dynamic range of the
+    diverging cmap so the bulk of the structure rendered in near-
+    midpoint gray. Using a high percentile (default 95th) clips those
+    extremes; per-panel imshow auto-saturates anything above vmax,
+    which is the desired behavior for outliers.
+
+    ``vmax_percentile`` is sourced from
+    ``defaults['dlc_spatial_tone_aligned']['proportion_differences']
+    ['vmax_percentile']`` by the cohort driver (Q42). 95.0 is the
+    locked default; tune-down (e.g., 90) compresses extremes further
+    if PD panels still wash out.
+    """
+    abs_pieces: list[np.ndarray] = []
     for arr in arrays:
         if arr is None or arr.size == 0:
             continue
         finite_abs = np.abs(arr[np.isfinite(arr)])
         if finite_abs.size:
-            maxes.append(float(finite_abs.max()))
-    return max(maxes) if maxes else 1e-12
+            abs_pieces.append(finite_abs)
+    if not abs_pieces:
+        return 1e-12
+    abs_concat = np.concatenate(abs_pieces)
+    pct = float(vmax_percentile)
+    vmax = float(np.percentile(abs_concat, pct))
+    return vmax if vmax > 0 else 1e-12
 
 
 def derive_uot_bucket_ranges(

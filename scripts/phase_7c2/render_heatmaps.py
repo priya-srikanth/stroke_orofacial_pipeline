@@ -372,13 +372,22 @@ def _process_animal(
             # ----- PD bucket (Q18: per (family, bin_size, scope); supersedes
             # Q14 per-SVG scope per Addendum #17). One symmetric vmax across
             # all bins × trial_groups in the bucket. -----
+            # Q42 Addendum #38: bucket-shared symmetric vmax now uses the
+            # configured percentile (default 95th) instead of max(|D|.max()).
+            pd_vmax_pct = float(
+                defaults.get("dlc_spatial_tone_aligned", {})
+                .get("proportion_differences", {})
+                .get("vmax_percentile", 95.0)
+            )
             for bin_size_days in bin_sizes_days:
                 try:
                     pd_arrays = precompute_proportion_diffs(
                         animal, family_entry, scope, bin_size_days, dates, resolver,
                         defaults=defaults, animal_info=animal_info,
                     )
-                    pd_vmax = derive_symmetric_diff_vmax(pd_arrays)
+                    pd_vmax = derive_symmetric_diff_vmax(
+                        pd_arrays, vmax_percentile=pd_vmax_pct,
+                    )
                 except Exception as ex:
                     log.error(
                         f"    pre1/PD/{family_entry}/{scope}/bin{bin_size_days}d: {ex!r}"
