@@ -443,12 +443,21 @@ dlc_spatial_tone_aligned:
     # consumed by the post-Q33 renderer.
     mass_floor_fraction: 0.05
 
-  # Q32 Addendum #29: per-layer magnitude floor for Pattern B layered
-  # overlays (whiskers, spout_spout_midpoint, eye_eye_midpoint). Each
-  # layer's bins below ``vmax_layer × layered_overlay_floor_fraction``
-  # are masked NaN; set_bad transparent so lower layers show through
-  # cleanly. Default 0.05 (5% of per-layer vmax). Tune visually.
-  layered_overlay_floor_fraction: 0.05
+  # Q48 verdict (Addendum #43, 2026-05-18): Pattern B layered overlay
+  # histogram resolution. Reverted from the tone_aligned
+  # ``default_nbins`` (80) to legacy 100 — matches both the legacy
+  # 20251202 pixelbin notebook (cell 11 ``NBINS = 100``) and the
+  # top-level ``dlc_spatial.heatmap_nbins=100`` convention for
+  # non-tone-aligned heatmaps. Applied via ``nbins_override`` in
+  # ``_compute_composite_panels``; Pattern A single-cmap callers
+  # (PD, UOT pooled, per-bp non-Pattern-B) continue to use
+  # ``default_nbins`` unchanged.
+  pattern_b_nbins: 100
+  # NOTE Q48 verdict (Addendum #43): ``layered_overlay_floor_fraction``
+  # (Q32 corollary, default 0.05) was a Phase-7c.2 speculation; legacy
+  # Pattern B has no magnitude floor. Removed from the renderer per
+  # Addendum #43 Part A.2. The config key is intentionally NOT kept as
+  # a deprecation shim — no production code consumes it.
 
   # Q42 Addendum #38 (2026-05-15): proportion_differences rendering
   # config. ``vmax_percentile`` controls the bucket-shared symmetric

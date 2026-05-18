@@ -1001,7 +1001,7 @@ def _assemble_panel_figure(
 # index). Fiducial bilateral-pair cmaps were added Phase 7c.2 Addendum #13
 # (L=Reds, R=Blues; clear visual L/R contrast).
 _COMPOSITE_FALLBACK_CMAP: str = "viridis"
-_COMPOSITE_ALPHA: float = 0.5  # Slight softening vs legacy 0.8 for multi-bp overlay readability.
+_COMPOSITE_ALPHA: float = 0.5  # Q48 verdict (Addendum #43): locked 0.5 for Pattern B (vs legacy 0.8); combined with opaque-white set_bad gives clean overlay readability.
 
 # Q39 Addendum #35: 6 visually distinct, L/R-grouped categorical colors for
 # the whiskers swatch legend (Option (i) per Priya 2026-05-17). Warm-family
@@ -1076,6 +1076,13 @@ def _compute_composite_panels(
     else:
         raise ValueError(f"scope must be 'tone_aligned' or 'whole_session'; got {scope!r}")
 
+    # Q48 verdict (Addendum #43): Pattern B layered overlay uses
+    # nbins=100 (config: dlc_spatial_tone_aligned.pattern_b_nbins),
+    # reverting from default_nbins=80 to legacy + heatmap_nbins
+    # convention. Applied as nbins_override here; Pattern A pooled +
+    # single-bp callers in PD/UOT keep default_nbins=80 unchanged.
+    tone_cfg = defaults.get("dlc_spatial_tone_aligned", {}) or {}
+    pattern_b_nbins = int(tone_cfg.get("pattern_b_nbins", 100))
     panels: dict[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int, int]]] = {}
     for tg in trial_groups:
         tg_arg = tg if window_ms is not None else None
@@ -1085,6 +1092,7 @@ def _compute_composite_panels(
                 animal, dates, bp, center_mode, resolver,
                 trial_group=tg_arg, window_ms=window_ms,
                 defaults=defaults, animal_info=animal_info,
+                nbins_override=pattern_b_nbins,
             )
             per_tg.append((
                 bp, H, ext, int(n_sess),
@@ -1095,6 +1103,42 @@ def _compute_composite_panels(
     return panels
 
 
+_PATTERN_B_LEGACY_VMIN: float = 1e-6
+_PATTERN_B_VMAX_PERCENTILE: float = 99.0
+
+
+def _derive_pattern_b_per_bp_norms(
+    panels_flat: list[tuple[str, np.ndarray | None, Any, Any, Any, int]],
+) -> dict[str, tuple[float, float]]:
+    """Q48 verdict (Addendum #43): per-bp LogNorm bounds for Pattern B
+    layered overlays. Legacy convention: ``vmin = 1e-6`` (matches Cell
+    13 ``VMIN_LOG_PROP``); ``vmax = max-across-panels of np.percentile(
+    H_prop[H_prop > 0], 99)`` per bp. The vmax-aggregation step gives
+    panels within one SVG a SHARED-per-bp scale so stacked colorbars
+    (n_bps<3) and visual comparability across trial groups are
+    preserved; Q14 cross-SVG sharing is intentionally dropped per
+    Q48 verdict item 3.
+
+    ``panels_flat`` is a flat list of ``(bp, H_counts, extent, n_sess,
+    n_tones, n_total_frames)`` tuples — caller flattens across whatever
+    panel dimension applies (trial groups for IS/BS-per-bin,
+    bin×trial-group for BS-grid).
+    """
+    per_bp_max_99: dict[str, float] = {}
+    for bp, H, _ext, _n_sess, _n_tones, n_total in panels_flat:
+        if H is None or n_total == 0:
+            continue
+        H_prop = H / float(n_total)
+        finite_pos = H_prop[np.isfinite(H_prop) & (H_prop > 0)]
+        if finite_pos.size == 0:
+            continue
+        pct = float(np.percentile(finite_pos, _PATTERN_B_VMAX_PERCENTILE))
+        prev = per_bp_max_99.get(bp, 0.0)
+        per_bp_max_99[bp] = max(prev, pct)
+    floor = _PATTERN_B_LEGACY_VMIN * 10.0
+    return {bp: (_PATTERN_B_LEGACY_VMIN, max(v, floor)) for bp, v in per_bp_max_99.items()}
+
+
 def _render_composite_panel_axis(
     ax: plt.Axes,
     composite_panels: list[tuple[str, np.ndarray | None, list[float] | None, int, int, int]],
@@ -1103,35 +1147,40 @@ def _render_composite_panel_axis(
     family_bodyparts: list[str],
     family_center_mode: str,
     panel_title: str,
-    shared_vmin: float | None = None,
-    shared_vmax: float | None = None,
-    layered_overlay_floor_fraction: float = 0.05,
+    per_bp_norms: dict[str, tuple[float, float]] | None = None,
 ) -> None:
     """Render N sequential layered ``imshow`` plots on one axes — one per
     bodypart in the composite family, each with its own cmap + LogNorm +
     alpha. Mirrors the legacy ``ax.hist2d`` loop at lines 676-697 of
     20251202_..._pixelbin.ipynb, adapted to consume precomputed
-    ``H_counts`` arrays (vs hist2d which consumes raw xy). cmap lookup
-    is config-driven via ``_get_bodypart_cmap``.
+    ``H_counts`` arrays (vs hist2d which consumes raw xy).
 
     Q17 Addendum #16: H_proportion normalization uses ``n_total_frames``
     (per-bp total in-window frames) instead of ``H.sum()`` (legacy).
 
-    Q18 Addendum #17: ``shared_vmin`` / ``shared_vmax`` (when both given)
-    override the per-bp LogNorm bounds with the bucket-shared range.
+    Q48 verdict (Addendum #43, 2026-05-18):
+      - ``per_bp_norms[bp] = (vmin, vmax)`` is the legacy per-bp
+        LogNorm range (vmin=1e-6 / vmax=per-bp-99th-pct), pre-computed
+        across panels in the figure by
+        :func:`_derive_pattern_b_per_bp_norms` so trial-group panels
+        within one SVG share the same per-bp scale (stacked-colorbar
+        meaningful for n_bps<3). When missing for a bp (e.g., bp had
+        no data in the precompute pass), falls back to that panel's
+        own 99th-pct.
+      - Floor mask DROPPED (Q32 ``layered_overlay_floor_fraction``
+        speculation reverted per Q48 verdict item 2).
+      - ``cmap.set_bad("white")`` opaque NaN (Q32 transparent reverted
+        per Q48 verdict item 5). With ``alpha=0.5`` the opaque-white
+        bins render as ~50% transparent in the composite, sufficient
+        for clean layering without true alpha=0.
+      - ``alpha=_COMPOSITE_ALPHA=0.5`` (Q48 verdict item 1).
 
-    Q32 Addendum #29:
-      - Per-layer magnitude floor (``layered_overlay_floor_fraction``,
-        default 0.05). Bins with H_prop < (layer_vmax × fraction) are
-        NaN-masked so blank regions render invisible.
-      - NaN bins set to TRANSPARENT (RGBA (1,1,1,0)) — opaque-white
-        NaN caused lower layers to be washed out under alpha blending.
-        Single-cmap callers keep set_bad("white") elsewhere; composite
-        layering is the only place transparency is needed.
-      - Axes facecolor set to white so the canvas background showing
-        through transparent NaN cells is consistent.
+    Q39 / Q47 retained: whiskers use the Q39 categorical palette with
+    Q47 ``white → categorical-hex`` LinearSegmentedColormap (per-layer
+    cmap matches swatch-legend color); other bps fall back to
+    config-driven cmaps via ``_get_bodypart_cmap``.
     """
-    ax.set_facecolor("white")  # Q32: showthrough color for transparent NaN.
+    ax.set_facecolor("white")
     extent_first: list[float] | None = None
     n_layered = 0
     for bp, H, ext, _n_sess, _n_tones, n_total in composite_panels:
@@ -1140,34 +1189,31 @@ def _render_composite_panel_axis(
         if extent_first is None:
             extent_first = ext
         H_prop = H / float(n_total)
-        finite_nonzero = H_prop[np.isfinite(H_prop) & (H_prop > 0)]
-        if finite_nonzero.size == 0:
+        finite_pos = H_prop[np.isfinite(H_prop) & (H_prop > 0)]
+        if finite_pos.size == 0:
             continue
-        # Q18 Addendum #17: bucket-shared range when given, else per-bp range.
-        if shared_vmin is not None and shared_vmax is not None and shared_vmax > 0:
-            norm_vmin = max(float(shared_vmin), 1e-10)
-            norm_vmax = float(shared_vmax)
+        # Q48 verdict (Addendum #43 item 3): legacy per-bp LogNorm
+        # range. Prefer the figure-aggregated per_bp_norms (max-across-
+        # panels per bp); fall back to this panel's own 99th-pct when
+        # the aggregate isn't supplied.
+        if per_bp_norms and bp in per_bp_norms:
+            norm_vmin, norm_vmax = per_bp_norms[bp]
         else:
-            norm_vmin = max(float(finite_nonzero.min()), 1e-10)
-            norm_vmax = float(H_prop.max())
-        # Q32 Addendum #29: per-layer magnitude floor + transparent NaN.
-        layer_floor = norm_vmax * float(layered_overlay_floor_fraction)
-        H_prop_masked = np.where(
-            H_prop >= layer_floor, H_prop, np.nan,
-        ) if layer_floor > 0 else H_prop
-        # Q39 Addendum #35: whiskers use the Q39 categorical palette
-        # (single-color sequential cmaps so layer color matches legend
-        # swatch); other bps fall back to config-driven cmap.
+            norm_vmin = _PATTERN_B_LEGACY_VMIN
+            norm_vmax = max(
+                float(np.percentile(finite_pos, _PATTERN_B_VMAX_PERCENTILE)),
+                _PATTERN_B_LEGACY_VMIN * 10.0,
+            )
         cmap = _resolve_layer_cmap(spatial_config, bp).copy()
-        cmap.set_bad((1.0, 1.0, 1.0, 0.0))  # Q32: transparent for NaN.
+        cmap.set_bad("white")  # Q48 verdict item 5: opaque white NaN.
         ax.imshow(
-            H_prop_masked.T,
+            H_prop.T,
             origin="lower",
             extent=ext,
             cmap=cmap,
             alpha=_COMPOSITE_ALPHA,
             aspect="auto",
-            norm=mcolors.LogNorm(vmin=max(norm_vmin, layer_floor), vmax=norm_vmax),
+            norm=mcolors.LogNorm(vmin=norm_vmin, vmax=norm_vmax),
         )
         n_layered += 1
 
@@ -1210,40 +1256,37 @@ def _attach_composite_colorbars(
     spatial_config: dict[str, Any],
     *,
     family_label: str,
-    shared_vmin: float | None,
-    shared_vmax: float | None,
+    per_bp_norms: dict[str, tuple[float, float]] | None,
 ) -> None:
     """Pattern B composite legend / colorbar block on figure right.
 
     Q24 Addendum #24 (original): per-bp colorbars stacked vertically.
-    Q30 Addendum #28 (refinement): switch to a swatch legend when n_bps
-    ≥ 3 (whiskers = 6 bps overlapped labels at stacked-cbar density).
-    For n_bps = 2 (fiducial bilateral pairs spout / eye) keep the
-    stacked-colorbar path with Q31 layout fixes.
+    Q30 Addendum #28 (refinement): switch to a swatch legend when
+    n_bps ≥ 3 (whiskers = 6 bps overlapped labels at stacked-cbar
+    density). For n_bps = 2 (fiducial bilateral pairs spout / eye)
+    keep the stacked-colorbar path with Q31 layout fixes.
 
-    Trade-off: swatch legend loses per-bp density quantitation but
-    gains readability. Acceptable for whiskers since the layered
-    overlay is primarily about spatial extent + which-whisker-is-where,
-    not per-whisker density.
+    Q48 verdict (Addendum #43, 2026-05-18): the n_bps<3 stacked
+    colorbar reads its (vmin, vmax) from ``per_bp_norms[bp]`` (legacy
+    per-bp 1e-6 / max-of-99th-pct-across-panels-in-figure). The Q14
+    bucket-shared (shared_vmin, shared_vmax) plumbing is dropped — the
+    new per-bp aggregate is figure-scoped (per
+    :func:`_derive_pattern_b_per_bp_norms`), not bucket-scoped.
 
-    When ``shared_vmin`` / ``shared_vmax`` are missing (standalone
-    smoke without a bucket precompute pass), the colorbar / legend
-    block is skipped silently.
+    When ``per_bp_norms`` is empty or missing entries for the bp's in
+    ``family_bodyparts`` (e.g., standalone smoke / no data),
+    the n_bps<3 stacked-colorbar path is skipped silently for the
+    missing bps.
     """
-    if shared_vmin is None or shared_vmax is None or shared_vmax <= 0:
-        return
     n_bps = len(family_bodyparts)
     if n_bps == 0:
         return
     if n_bps >= 3:
         # Q30 Addendum #28: swatch legend (no quantitative scale, just
-        # which-bp-is-which-color). Sample at 0.7 of each cmap so the
-        # swatch reads as a saturated middle shade rather than the
-        # near-white low end.
-        # Q39 Addendum #35: whiskers use the categorical palette directly
-        # for the swatch color (matches the single-color sequential
-        # cmap used in `_resolve_layer_cmap`); other bps sample
-        # cmap(0.7).
+        # which-bp-is-which-color). Q39 Addendum #35: whiskers use the
+        # categorical palette directly for the swatch color (matches
+        # the Q47 single-color sequential cmap in `_resolve_layer_cmap`);
+        # other bps sample cmap(0.7).
         import matplotlib.patches as mpatches
         handles: list[Any] = []
         for bp in family_bodyparts:
@@ -1270,10 +1313,9 @@ def _attach_composite_colorbars(
             title_fontsize=_Q22_AXIS_LABELSIZE,
         )
         return
-    # n_bps < 3 → keep stacked per-bp colorbars (Q24 original path).
-    norm = mcolors.LogNorm(
-        vmin=max(float(shared_vmin), 1e-10), vmax=float(shared_vmax),
-    )
+    # n_bps < 3 → stacked per-bp colorbars (Q24 original path).
+    if not per_bp_norms:
+        return
     # Allocate stacked axes at fig right (one row per bp).
     cbar_left = 0.88
     cbar_width = 0.018
@@ -1282,12 +1324,14 @@ def _attach_composite_colorbars(
     block_height = (total_height - spacing * (n_bps - 1)) / n_bps
     base_bottom = 0.5 - total_height / 2.0
     for i, bp in enumerate(family_bodyparts):
-        cmap_name = _get_bodypart_cmap(spatial_config, bp)
-        try:
-            cmap = plt.get_cmap(cmap_name)
-        except ValueError:
-            cmap = plt.get_cmap(_COMPOSITE_FALLBACK_CMAP)
+        norm_pair = per_bp_norms.get(bp)
+        if norm_pair is None:
+            continue
+        vmin_bp, vmax_bp = norm_pair
+        norm = mcolors.LogNorm(vmin=max(float(vmin_bp), 1e-10), vmax=float(vmax_bp))
         # Top → bottom in the order of family_bodyparts (visual reading order).
+        cmap = _resolve_layer_cmap(spatial_config, bp).copy()
+        cmap.set_bad("white")
         bottom = base_bottom + (n_bps - 1 - i) * (block_height + spacing)
         cax = fig.add_axes([cbar_left, bottom, cbar_width, block_height])
         sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
@@ -1306,25 +1350,25 @@ def _assemble_composite_figure(
     family_center_mode: str,
     family_label: str,
     defaults: dict[str, Any],
-    shared_vmin: float | None = None,
-    shared_vmax: float | None = None,
 ) -> plt.Figure:
     """Render the multi-bp composite figure — 1×3 grid (tone_aligned) /
     1×1 (whole_session), each panel layering N bodyparts via
     :func:`_render_composite_panel_axis`. Per-trial-group panel title
     includes session count + tone-event count when tone-aligned.
 
-    Q31 Addendum #28: figsize bumped wider for the right-anchored
-    swatch legend / stacked colorbar block. Manual subplots_adjust
-    reserves room; ``constrained_layout=False`` preserved per the
-    matplotlib API note below.
+    Q48 verdict (Addendum #43, 2026-05-18): per-bp LogNorm bounds
+    derived figure-locally via
+    :func:`_derive_pattern_b_per_bp_norms` (legacy 1e-6 / max-of-99th-
+    pct across trial-group panels per bp). Bucket-shared scale
+    plumbing (Q14 / Q18 ``shared_vmin``/``shared_vmax``) is dropped
+    for Pattern B; cross-SVG visual comparability is intentionally
+    sacrificed for legacy-faithful per-layer dynamic range.
+
+    Q31 Addendum #28: figsize wider for the right-anchored swatch
+    legend / stacked colorbar block; manual ``subplots_adjust`` reserves
+    room (``constrained_layout=False``).
     """
     spatial_config = defaults["dlc_spatial"]
-    tone_cfg = defaults.get("dlc_spatial_tone_aligned", {}) or {}
-    # Q32 Addendum #29: per-layer magnitude floor for Pattern B overlays.
-    layered_overlay_floor_fraction = float(
-        tone_cfg.get("layered_overlay_floor_fraction", 0.05),
-    )
     if scope == "tone_aligned":
         trial_groups = TASK5_TRIAL_GROUPS_TONE_ALIGNED
         # Q31 Addendum #28: width 18 → 20 to accommodate the right-anchored
@@ -1333,6 +1377,15 @@ def _assemble_composite_figure(
     else:
         trial_groups = TASK5_TRIAL_GROUPS_WHOLE_SESSION
         figsize = (10.0, 6.0)
+
+    # Q48 verdict (Addendum #43): pre-aggregate per-bp LogNorm bounds
+    # across the trial-group panels in this figure so each layer's
+    # scale is consistent across panels (stacked-colorbar meaningful
+    # for n_bps<3; cmap-mapping stable across trial-group axes).
+    panels_flat: list[tuple[str, np.ndarray | None, Any, Any, Any, int]] = []
+    for tg in trial_groups:
+        panels_flat.extend(panels.get(tg, []))
+    per_bp_norms = _derive_pattern_b_per_bp_norms(panels_flat)
 
     # NOTE: constrained_layout=False here — the right-edge legend needs
     # manual room reserved via fig.subplots_adjust(right=...) at the
@@ -1365,14 +1418,13 @@ def _assemble_composite_figure(
             family_bodyparts=family_bodyparts,
             family_center_mode=family_center_mode,
             panel_title=panel_title,
-            shared_vmin=shared_vmin, shared_vmax=shared_vmax,
-            layered_overlay_floor_fraction=layered_overlay_floor_fraction,
+            per_bp_norms=per_bp_norms,
         )
-    # Q24 Addendum #24: stacked per-bp colorbars on figure right.
+    # Q24 / Q48: stacked per-bp colorbars (n_bps<3) or swatch legend (n_bps>=3).
     _attach_composite_colorbars(
         fig, family_bodyparts, spatial_config,
         family_label=family_label,
-        shared_vmin=shared_vmin, shared_vmax=shared_vmax,
+        per_bp_norms=per_bp_norms,
     )
     fig.suptitle(suptitle, fontsize=_Q22_SUPTITLE_FONTSIZE)
     # Make room for the right-edge colorbar block.
@@ -1419,6 +1471,8 @@ def render_individual_session_heatmap(
     )
     if len(bodyparts) > 1:
         # Composite family — Pattern B layered overlay (Addenda #10/#13).
+        # Q48 verdict (Addendum #43): Pattern B uses figure-local per-bp
+        # LogNorm bounds; bucket-shared shared_vmin/shared_vmax IGNORED.
         composite_panels = _compute_composite_panels(
             animal, [date], bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
@@ -1429,7 +1483,6 @@ def render_individual_session_heatmap(
             family_center_mode=center_mode,
             family_label=family_entry,
             defaults=defaults,
-            shared_vmin=shared_vmin, shared_vmax=shared_vmax,
         )
     bp = bodyparts[0]
 
@@ -1484,6 +1537,8 @@ def render_binned_sessions_heatmap(  # noqa: D401
     )
     if len(bodyparts) > 1:
         # Composite family — Pattern B layered overlay (Addenda #10/#13).
+        # Q48 verdict (Addendum #43): Pattern B uses figure-local per-bp
+        # LogNorm bounds; bucket-shared shared_vmin/shared_vmax IGNORED.
         composite_panels = _compute_composite_panels(
             animal, dates_in_bin, bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
@@ -1494,7 +1549,6 @@ def render_binned_sessions_heatmap(  # noqa: D401
             family_center_mode=center_mode,
             family_label=family_entry,
             defaults=defaults,
-            shared_vmin=shared_vmin, shared_vmax=shared_vmax,
         )
     bp = bodyparts[0]
 
@@ -1612,27 +1666,45 @@ def render_binned_sessions_grid(
     )
     axes_flat = axes.flatten()
 
-    for i, bin_label in enumerate(bin_labels):
-        ax = axes_flat[i]
-        bin_dates = bins[bin_label]
-        panel_title = f"bin {bin_label}  n_dates={len(bin_dates)}"
-        if len(bodyparts) > 1:
-            # Composite Pattern B layered overlay.
-            composite_panels = _compute_composite_panels(
+    # Q48 verdict (Addendum #43): Pattern B uses figure-local per-bp
+    # LogNorm bounds. Two-pass compute → derive per-bp norms across
+    # ALL bins → render. Pattern A keeps the existing one-pass +
+    # bucket-shared scale via shared_vmin/shared_vmax.
+    if len(bodyparts) > 1:
+        composite_panels_per_bin: list[
+            tuple[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int, int]]]
+        ] = []
+        for bin_label in bin_labels:
+            bin_dates = bins[bin_label]
+            panels_all_tg = _compute_composite_panels(
                 animal, bin_dates, bodyparts, center_mode, scope, resolver,
                 defaults=defaults, animal_info=animal_info,
             )
-            # Pull just this trial_group's per-bp tuples.
-            per_tg = composite_panels.get(tg_arg or "all", [])
+            per_tg = panels_all_tg.get(tg_arg or "all", [])
+            composite_panels_per_bin.append((bin_label, per_tg))
+        # Aggregate per-bp norms across all bins in this figure.
+        all_panels_flat: list[
+            tuple[str, np.ndarray | None, Any, Any, Any, int]
+        ] = []
+        for _label, per_tg in composite_panels_per_bin:
+            all_panels_flat.extend(per_tg)
+        per_bp_norms = _derive_pattern_b_per_bp_norms(all_panels_flat)
+        for i, (bin_label, per_tg) in enumerate(composite_panels_per_bin):
+            ax = axes_flat[i]
+            panel_title = f"bin {bin_label}  n_dates={len(bins[bin_label])}"
             _render_composite_panel_axis(
                 ax, per_tg, spatial_config,
                 family_bodyparts=bodyparts,
                 family_center_mode=center_mode,
                 panel_title=panel_title,
-                shared_vmin=shared_vmin, shared_vmax=shared_vmax,
+                per_bp_norms=per_bp_norms,
             )
-        else:
-            bp = bodyparts[0]
+    else:
+        bp = bodyparts[0]
+        for i, bin_label in enumerate(bin_labels):
+            ax = axes_flat[i]
+            bin_dates = bins[bin_label]
+            panel_title = f"bin {bin_label}  n_dates={len(bin_dates)}"
             H, ext, n_sess, _, n_total = compute_animal_aggregated_histogram(
                 animal, bin_dates, bp, center_mode, resolver,
                 trial_group=tg_arg, window_ms=window_ms,
@@ -1653,7 +1725,7 @@ def render_binned_sessions_grid(
         _attach_composite_colorbars(
             fig, bodyparts, spatial_config,
             family_label=family_entry,
-            shared_vmin=shared_vmin, shared_vmax=shared_vmax,
+            per_bp_norms=per_bp_norms,
         )
         # Q31 manual room reservation since constrained_layout was off.
         fig.subplots_adjust(right=0.83)
