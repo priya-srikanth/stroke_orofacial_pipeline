@@ -93,6 +93,54 @@ def _load_centered_df_for(
     return read_centered_parquet(parquet_path)
 
 
+def _ws_cam_frame_bounds(
+    manifest: SessionManifest,
+    resolver: PathResolver,
+    n_cam_frames: int,
+) -> tuple[int, int]:
+    """Q19 Addendum #41 / Q49: derive ``[cam_lo, cam_hi]`` cam-frame
+    bounds for the wavesurfer-covered session window from the Phase 3
+    alignment template.
+
+    Phase 4 centered parquets retain every DLC/camera frame — including
+    pre-WS-start and post-WS-end frames — so the whole_session render
+    scope must clamp to the cam-frame range that the wavesurfer
+    recording actually covers. The alignment template's
+    ``sig_camIdx__idx_ws`` is a LUT (length n_ws; index = WS sample,
+    value = cam-frame the interp1d maps to); its finite min/max define
+    the cam-frame coverage. Bounds are clamped to
+    ``[0, n_cam_frames - 1]`` (the LUT can extrapolate negative or
+    past-end cam-frame values for WS edges outside cam coverage).
+
+    Falls back to ``(0, n_cam_frames - 1)`` (no-op filter) if the LUT
+    has no finite entries (degenerate alignment) — caller logs the row
+    counts so a malformed template surfaces in the per-animal summary.
+    """
+    align_path = manifest.alignment_template
+    if align_path is None or not align_path.exists():
+        align_path = resolver.alignment_template_legacy_read(
+            manifest.animal, manifest.date, cam="cam2",
+        )
+    if not align_path.exists():
+        raise FileNotFoundError(
+            f"{manifest.session_id}: cam2 alignment template missing at "
+            f"{align_path}."
+        )
+    aln = np.load(str(align_path), allow_pickle=True)
+    lut = np.asarray(aln["sig_camIdx__idx_ws"], dtype=float)
+    if n_cam_frames <= 0:
+        return 0, 0
+    finite = np.isfinite(lut)
+    if not finite.any():
+        return 0, n_cam_frames - 1
+    valid = lut[finite]
+    lo = int(np.clip(np.floor(valid.min()), 0, n_cam_frames - 1))
+    hi = int(np.clip(np.ceil(valid.max()), 0, n_cam_frames - 1))
+    if hi < lo:
+        return 0, n_cam_frames - 1
+    return lo, hi
+
+
 def _build_tone_window(
     manifest: SessionManifest,
     trial_group: str,
@@ -320,6 +368,10 @@ def render_whole_session_heatmap(
         analysis_context="dlc.spatial",
     )
     df = _load_centered_df_for(manifest, center_mode, resolver)
+    # Q19 Addendum #41 / Q49 (2026-05-17): WS-session-time cam-frame
+    # filter for the whole_session scope; see ``_ws_cam_frame_bounds``.
+    ws_lo, ws_hi = _ws_cam_frame_bounds(manifest, resolver, len(df))
+    df = df.iloc[ws_lo : ws_hi + 1]
 
     family = _resolve_family_params(tone_config, bodypart, center_mode)
     bp_x_range = (
@@ -455,8 +507,16 @@ def compute_animal_aggregated_histogram(
             session_n_total = int(window.n_selected)
         else:
             window = None
-            # Q17/Q19: whole_session denominator = ALL frames in the
-            # centered parquet (the WS-bounded session length).
+            # Q19 Addendum #41 / Q49 (2026-05-17): restrict to WS-session-
+            # time cam frames. The centered parquet retains every cam
+            # frame including pre-WS-start and post-WS-end; whole_session
+            # scope must clamp to the cam-frame range that the
+            # wavesurfer recording actually covers per the Phase 3
+            # alignment template. Both the H_counts histogram and the
+            # Q17 universal proportion denominator now use the
+            # WS-bounded df.
+            ws_lo, ws_hi = _ws_cam_frame_bounds(manifest, resolver, len(df))
+            df = df.iloc[ws_lo : ws_hi + 1]
             session_n_total = int(len(df))
 
         hist = build_histogram(
