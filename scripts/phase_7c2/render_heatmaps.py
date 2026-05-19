@@ -62,6 +62,7 @@ from stroke_orofacial.dlc_spatial.render_on_demand import (
     precompute_binned_sessions_h_proportions,
     precompute_individual_session_h_proportions,
     precompute_pattern_b_bucket_per_bp_norms_is,  # Q52 Addendum #44
+    precompute_pattern_b_pd_bucket_per_layer_vmax,  # Q58 Addendum #48
     precompute_proportion_diffs,
     precompute_unbalanced_ot_plans,
     render_binned_sessions_grid,  # Q36 Addendum #34
@@ -404,20 +405,45 @@ def _process_animal(
                 .get("vmax_percentile", 95.0)
             )
             for bin_size_days in bin_sizes_days:
-                try:
-                    pd_arrays = precompute_proportion_diffs(
-                        animal, family_entry, scope, bin_size_days, dates, resolver,
-                        defaults=defaults, animal_info=animal_info,
-                    )
-                    pd_vmax = derive_symmetric_diff_vmax(
-                        pd_arrays, vmax_percentile=pd_vmax_pct,
-                    )
-                except Exception as ex:
-                    log.error(
-                        f"    pre1/PD/{family_entry}/{scope}/bin{bin_size_days}d: {ex!r}"
-                    )
-                    pd_vmax = None
+                # Q58 Addendum #48: Pattern B PD uses per-(layer-key)
+                # bucket vmax dict (computed PER trial_group since
+                # filtered diffs differ across tg); single-bp Pattern A
+                # continues to use the Q42 scalar pre-pass.
+                if is_pattern_b:
+                    pd_vmax = None  # Pattern B doesn't use scalar
+                    pattern_b_pd_per_tg: dict[str, dict[str, float]] = {}
+                else:
+                    pattern_b_pd_per_tg = {}
+                    try:
+                        pd_arrays = precompute_proportion_diffs(
+                            animal, family_entry, scope, bin_size_days, dates, resolver,
+                            defaults=defaults, animal_info=animal_info,
+                        )
+                        pd_vmax = derive_symmetric_diff_vmax(
+                            pd_arrays, vmax_percentile=pd_vmax_pct,
+                        )
+                    except Exception as ex:
+                        log.error(
+                            f"    pre1/PD/{family_entry}/{scope}/bin{bin_size_days}d: {ex!r}"
+                        )
+                        pd_vmax = None
                 for tg in _trial_groups_for_scope(scope):
+                    if is_pattern_b and tg not in pattern_b_pd_per_tg:
+                        try:
+                            pattern_b_pd_per_tg[tg] = (
+                                precompute_pattern_b_pd_bucket_per_layer_vmax(
+                                    animal, family_entry, scope,
+                                    bin_size_days, dates, resolver,
+                                    trial_group=tg,
+                                    defaults=defaults, animal_info=animal_info,
+                                )
+                            )
+                        except Exception as ex:
+                            log.error(
+                                f"    pre1/PD-PatternB/{family_entry}/{scope}/"
+                                f"bin{bin_size_days}d/tg={tg}: {ex!r}"
+                            )
+                            pattern_b_pd_per_tg[tg] = {}
                     try:
                         fig = render_proportion_difference_heatmap(
                             animal=animal, family_entry=family_entry,
@@ -427,6 +453,9 @@ def _process_animal(
                             dates=dates,
                             defaults=defaults, animal_info=animal_info,
                             shared_vmax=pd_vmax,
+                            bucket_per_layer_vmax=(
+                                pattern_b_pd_per_tg.get(tg) if is_pattern_b else None
+                            ),
                         )
                         out = _proportion_diff_out_path(
                             resolver, scope, animal, family_entry,

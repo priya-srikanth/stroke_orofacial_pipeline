@@ -1059,6 +1059,62 @@ _WHISKER_LAYER_COLORS: dict[str, str] = {
 }
 
 
+# Q56 Addendum #48 (Priya 2026-05-19): short legend labels for Pattern
+# B per-layer colorbars. Long bp names (``L_whiskers_2`` /
+# ``R_whiskers_3``) collide vertically when 6 colorbars are stacked
+# tightly per Q55.D geometry. Display-only mapping; internal data
+# structures, config keys, file paths, manifest entries all retain
+# the full bp names.
+_PATTERN_B_LEGEND_LABELS: dict[str, str] = {
+    "L_whiskers_1": "L_w1", "L_whiskers_2": "L_w2", "L_whiskers_3": "L_w3",
+    "R_whiskers_1": "R_w1", "R_whiskers_2": "R_w2", "R_whiskers_3": "R_w3",
+}
+
+
+def _short_legend_label(bp: str) -> str:
+    """Q56 Addendum #48: display-only short label for Pattern B per-layer
+    colorbars; falls through unchanged for bps not in the mapping
+    (fiducial L_spout/R_spout/L_eye/R_eye and any single-bp family)."""
+    return _PATTERN_B_LEGEND_LABELS.get(bp, bp)
+
+
+# Q58 Addendum #48: Pattern B PD layered overlay — per-layer diverging
+# cmap dispatch. Whiskers share cmap by index (L_wN + R_wN both use
+# the same cmap, distinguished only by spatial position); fiducial
+# pairs use distinct cmaps per side. Diverging cmaps with white-at-
+# center mean diff≈0 bins render light, so per-layer compositing
+# requires the Pattern-B-PD magnitude floor below to remain readable.
+_PATTERN_B_PD_CMAPS: dict[str, str] = {
+    # Whiskers: per widx (L+R share).
+    "w1": "RdBu",
+    "w2": "PuOr",
+    "w3": "BrBG",
+    # Fiducial pairs: per bp (L/R distinct).
+    "L_spout": "RdBu", "R_spout": "PuOr",
+    "L_eye": "RdBu", "R_eye": "PuOr",
+}
+
+# Q58: 95th-percentile of |D| pooled across bucket; matches the Q42
+# vmax_percentile knob for Pattern A PD.
+_PATTERN_B_PD_VMAX_PERCENTILE: float = 95.0
+
+# Q58: per-layer magnitude floor (fraction of layer vmax). Sub-floor
+# bins NaN-masked → set_bad transparent so diverging-cmap midpoint
+# pixels don't compound across layers. Pattern-B-PD-specific deviation
+# from Q43.B (Pattern A PD has no magnitude floor); scope is composite
+# families only. Tune visually during PS47 spot-check.
+_PATTERN_B_PD_FLOOR_FRACTION_DEFAULT: float = 0.05
+
+
+def _pattern_b_pd_layer_key(bp: str) -> str:
+    """Q58 Addendum #48: layer-key for the per-(bp) → cmap +
+    bucket-vmax dispatch. Whiskers map to ``w1``/``w2``/``w3`` (L+R
+    share key by index); fiducials use the bp name directly."""
+    if bp.startswith("L_whiskers_") or bp.startswith("R_whiskers_"):
+        return f"w{bp.rsplit('_', 1)[-1]}"
+    return bp
+
+
 def _get_bodypart_cmap(spatial_config: dict[str, Any], bp: str) -> str:
     """Look up the per-bp cmap from ``dlc_spatial.bodyparts.{bp}.cmap``.
     Returns a fallback when missing (so callers stay robust against
@@ -1366,7 +1422,7 @@ def _attach_composite_colorbars(
         sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
         sm.set_array([])
         cbar = fig.colorbar(sm, cax=cax)
-        cbar.set_label(bp, fontsize=_Q22_AXIS_LABELSIZE - 3)
+        cbar.set_label(_short_legend_label(bp), fontsize=_Q22_AXIS_LABELSIZE - 3)
         cbar.ax.tick_params(labelsize=_Q22_TICK_LABELSIZE - 3)
 
 
@@ -2097,6 +2153,370 @@ def _compute_proportion_diff_for_bin(
     return D, list(ext) if ext is not None else extent_pre, n_sess
 
 
+def _render_pattern_b_pd_panel(
+    ax: plt.Axes,
+    per_bp_diffs: dict[str, np.ndarray],
+    extent: list[float] | None,
+    *,
+    family_bodyparts: list[str],
+    family_center_mode: str,
+    spatial_config: dict[str, Any],
+    per_layer_vmax: dict[str, float],
+    title: str,
+) -> None:
+    """Q58 Addendum #48: render one rel_day_bin's per-bp diff arrays as
+    a layered overlay on one Axes. Each layer uses its
+    ``_PATTERN_B_PD_CMAPS[key]`` diverging cmap with symmetric
+    ``Normalize(-vmax_key, +vmax_key)``; sub-floor / no-data bins are
+    NaN-masked → transparent via ``set_bad((1,1,1,0))``.
+
+    For whiskers, L_wN and R_wN both render under the same per-widx
+    cmap; their spatial positions distinguish L from R within the
+    panel (matches the Q55 IS convention where L and R also share a
+    cmap per widx).
+    """
+    ax.set_facecolor("white")
+    if extent is None or not per_bp_diffs:
+        ax.text(0.5, 0.5, f"{title}\n(no data)",
+                ha="center", va="center", transform=ax.transAxes)
+        ax.set_axis_off()
+        return
+    n_layered = 0
+    for bp in family_bodyparts:
+        D = per_bp_diffs.get(bp)
+        if D is None:
+            continue
+        key = _pattern_b_pd_layer_key(bp)
+        vmax_abs = per_layer_vmax.get(key)
+        if vmax_abs is None or vmax_abs <= 0:
+            continue
+        cmap_name = _PATTERN_B_PD_CMAPS.get(key, "RdBu")
+        try:
+            cmap = plt.get_cmap(cmap_name).copy()
+        except ValueError:
+            cmap = plt.get_cmap("RdBu").copy()
+        cmap.set_bad((1.0, 1.0, 1.0, 0.0))
+        norm = mcolors.Normalize(vmin=-float(vmax_abs), vmax=float(vmax_abs))
+        D_plot = np.ma.array(D, mask=~np.isfinite(D))
+        ax.imshow(
+            D_plot.T,
+            origin="lower",
+            extent=extent,
+            cmap=cmap,
+            alpha=1.0,
+            aspect="auto",
+            norm=norm,
+        )
+        n_layered += 1
+    per_mode = _get_per_center_mode_params(
+        spatial_config, family_bodyparts[0], family_center_mode,
+    )
+    if per_mode["xlim"]:
+        ax.set_xlim(per_mode["xlim"])
+    else:
+        ax.set_xlim(extent[0], extent[1])
+    if per_mode["ylim"]:
+        ax.set_ylim(per_mode["ylim"])
+    else:
+        ax.set_ylim(extent[2], extent[3])
+    ax.invert_yaxis()
+    _apply_q22_panel_polish(ax)
+    ax.set_title(title, fontsize=_Q22_PANEL_TITLE_FONTSIZE)
+
+
+def _attach_pattern_b_pd_colorbars(
+    fig: plt.Figure,
+    family_bodyparts: list[str],
+    *,
+    per_layer_vmax: dict[str, float],
+    family_label: str,
+) -> None:
+    """Q58 Addendum #48: per-layer-key stacked diverging colorbars on
+    figure right. Whiskers get 3 cbars (one per widx; L+R share);
+    fiducial pairs get 2 cbars (per bp). Labels use Q56 short labels
+    where applicable; whiskers widx cbars label as ``{wN} (L+R)``.
+    """
+    # Deduplicate layer keys preserving the family_bodyparts order
+    # (since L_w1/R_w1 share key "w1", we want one cbar per unique key).
+    seen_keys: list[str] = []
+    for bp in family_bodyparts:
+        key = _pattern_b_pd_layer_key(bp)
+        if key not in seen_keys:
+            seen_keys.append(key)
+    if not seen_keys:
+        return
+    n = len(seen_keys)
+    cbar_left = 0.88
+    cbar_width = 0.012
+    total_height = 0.7
+    spacing = 0.025 if n <= 3 else 0.015
+    block_height = max(0.04, (total_height - spacing * (n - 1)) / n)
+    base_bottom = 0.5 - total_height / 2.0
+    for i, key in enumerate(seen_keys):
+        vmax_abs = per_layer_vmax.get(key)
+        if vmax_abs is None or vmax_abs <= 0:
+            continue
+        cmap_name = _PATTERN_B_PD_CMAPS.get(key, "RdBu")
+        try:
+            cmap = plt.get_cmap(cmap_name).copy()
+        except ValueError:
+            cmap = plt.get_cmap("RdBu").copy()
+        cmap.set_bad((1.0, 1.0, 1.0, 0.0))
+        norm = mcolors.Normalize(vmin=-float(vmax_abs), vmax=float(vmax_abs))
+        bottom = base_bottom + (n - 1 - i) * (block_height + spacing)
+        cax = fig.add_axes([cbar_left, bottom, cbar_width, block_height])
+        sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
+        sm.set_array([])
+        cbar = fig.colorbar(sm, cax=cax)
+        # Whiskers: "w1 (L+R)" / "w2 (L+R)" / "w3 (L+R)".
+        # Fiducials: short label (Q56 maps whiskers bp names, but
+        # fiducial bp names pass through unchanged).
+        if key in {"w1", "w2", "w3"}:
+            label = f"{key} (L+R)"
+        else:
+            label = _short_legend_label(key)
+        cbar.set_label(label, fontsize=_Q22_AXIS_LABELSIZE - 3)
+        cbar.ax.tick_params(labelsize=_Q22_TICK_LABELSIZE - 3)
+
+
+def _compute_pattern_b_pd_per_bp_diffs_for_bin(
+    animal: str,
+    bin_dates: list[dt.date],
+    H_pre_pool_prop_per_bp: dict[str, np.ndarray],
+    bodyparts: list[str],
+    center_mode: str,
+    scope: Scope,
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any],
+    animal_info: AnimalInfo,
+    trial_group: str,
+    per_layer_vmax: dict[str, float],
+    floor_fraction: float,
+) -> tuple[dict[str, np.ndarray], list[float] | None, int]:
+    """Q58 Addendum #48: per-bp D arrays for one rel_day_bin. Each D
+    is masked by:
+      - Q43.B no-data mask: (H_pre == 0) & (H_bin == 0) → NaN.
+      - Q58 Pattern-B-PD-specific magnitude floor: |D| < vmax × fraction
+        → NaN (deviation from Q43.B for Pattern A PD; without this
+        floor the diverging-cmap midpoint compounds across layers and
+        the composite washes out).
+
+    Returns ``({bp: D_masked, ...}, extent_first, n_sess_max)``.
+    """
+    if scope == "tone_aligned":
+        tg_arg: str | None = trial_group
+        window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
+    else:
+        tg_arg = None
+        window_ms = None
+    out: dict[str, np.ndarray] = {}
+    extent_first: list[float] | None = None
+    n_sess_max = 0
+    for bp in bodyparts:
+        H_pre_prop = H_pre_pool_prop_per_bp.get(bp)
+        if H_pre_prop is None:
+            continue
+        H_bin, ext, n_sess, _, n_total_bin = (
+            compute_animal_aggregated_histogram(
+                animal, bin_dates, bp, center_mode, resolver,
+                trial_group=tg_arg, window_ms=window_ms,
+                defaults=defaults, animal_info=animal_info,
+            )
+        )
+        if H_bin is None or n_total_bin == 0:
+            continue
+        H_bin_prop = H_bin / float(n_total_bin)
+        D = H_bin_prop - H_pre_prop
+        no_data = (H_pre_prop == 0) & (H_bin == 0)
+        D = np.where(no_data, np.nan, D)
+        # Q58 magnitude floor.
+        key = _pattern_b_pd_layer_key(bp)
+        vmax_abs = per_layer_vmax.get(key, 0.0)
+        if vmax_abs > 0 and floor_fraction > 0:
+            floor = float(vmax_abs) * float(floor_fraction)
+            below_floor = np.abs(D) < floor
+            D = np.where(below_floor, np.nan, D)
+        out[bp] = D
+        if extent_first is None and ext is not None:
+            extent_first = list(ext)
+        n_sess_max = max(n_sess_max, n_sess)
+    return out, extent_first, n_sess_max
+
+
+def _render_pattern_b_pd_heatmap(
+    animal: str,
+    family_entry: str,
+    bodyparts: list[str],
+    center_mode: str,
+    scope: Scope,
+    resolver: PathResolver,
+    *,
+    bin_size_days: int,
+    trial_group: str,
+    dates: list[dt.date],
+    defaults: dict[str, Any],
+    animal_info: AnimalInfo,
+    bucket_per_layer_vmax: dict[str, float] | None,
+    floor_fraction: float,
+) -> plt.Figure:
+    """Q58 Addendum #48 (2026-05-19): layered Pattern B PD heatmap.
+    Renders ONE figure with N_bins panels; each panel overlays per-bp
+    diff layers (6 for whiskers, 2 for fiducial pairs) under their
+    per-layer-key diverging cmaps. Output filename + suptitle
+    structure unchanged from the Pattern A PD path; only the panel
+    content changes.
+
+    ``bucket_per_layer_vmax`` is the cohort-driver Pass 1 dict
+    (per-layer-key 95th-percentile of pooled |D| across bucket); when
+    None, computes figure-locally over the bins in this SVG.
+    """
+    spatial_config = defaults["dlc_spatial"]
+    if scope == "tone_aligned":
+        tg_arg: str | None = trial_group
+        window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
+    else:
+        tg_arg = None
+        window_ms = None
+
+    pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
+    H_pre_pool_prop_per_bp: dict[str, np.ndarray] = {}
+    ext_pre_any: list[float] | None = None
+    n_pre_sess_max = 0
+    for bp in bodyparts:
+        H_pre, ext_bp, n_pre_sess, _, n_total_pre = (
+            compute_animal_aggregated_histogram(
+                animal, pre_dates, bp, center_mode, resolver,
+                trial_group=tg_arg, window_ms=window_ms,
+                defaults=defaults, animal_info=animal_info,
+            )
+        )
+        if H_pre is None or n_total_pre == 0:
+            continue
+        H_pre_pool_prop_per_bp[bp] = H_pre / float(n_total_pre)
+        if ext_pre_any is None and ext_bp is not None:
+            ext_pre_any = list(ext_bp)
+        n_pre_sess_max = max(n_pre_sess_max, n_pre_sess)
+
+    if not H_pre_pool_prop_per_bp:
+        fig, ax = plt.subplots(figsize=(8, 6))
+        fig.patch.set_facecolor("white")
+        ax.set_facecolor("white")
+        ax.text(
+            0.5, 0.5,
+            f"{animal}/{family_entry}/{scope}/bin{bin_size_days}d/tg={trial_group}\n"
+            f"empty Pattern B pre-stroke pool (n_pre={len(pre_dates)})",
+            ha="center", va="center", transform=ax.transAxes,
+        )
+        ax.set_axis_off()
+        return fig
+
+    # Bin grouping.
+    from stroke_orofacial.dlc_kinematics._day_binned import (
+        _compute_rel_day_bin_label,
+    )
+    bins: dict[str, list[dt.date]] = {}
+    for d in dates:
+        label = _compute_rel_day_bin_label(
+            session_date=d, d0=animal_info.stroke_date,
+            bin_days=int(bin_size_days),
+        )
+        bins.setdefault(label, []).append(d)
+    bin_labels = sorted(bins.keys(), key=_bin_label_sort_key)
+
+    # If driver didn't supply bucket vmax dict, compute figure-locally
+    # over the bins in this SVG (matches the Q14 fallback for
+    # Pattern A PD).
+    if bucket_per_layer_vmax is None:
+        # Pre-pass: compute raw diffs (without floor mask) to derive
+        # per-layer-key vmax from the bins-in-this-SVG pool.
+        raw_per_bp_per_bin: list[dict[str, np.ndarray]] = []
+        for bin_label in bin_labels:
+            raw_diffs, _ext, _ns = _compute_pattern_b_pd_per_bp_diffs_for_bin(
+                animal, bins[bin_label], H_pre_pool_prop_per_bp,
+                bodyparts, center_mode, scope, resolver,
+                defaults=defaults, animal_info=animal_info,
+                trial_group=trial_group,
+                per_layer_vmax={},  # no floor yet
+                floor_fraction=0.0,
+            )
+            raw_per_bp_per_bin.append(raw_diffs)
+        accumulator: dict[str, list[np.ndarray]] = {}
+        for per_bp in raw_per_bp_per_bin:
+            for bp, D in per_bp.items():
+                key = _pattern_b_pd_layer_key(bp)
+                accumulator.setdefault(key, []).append(np.abs(D))
+        bucket_per_layer_vmax = {}
+        for key, arrs in accumulator.items():
+            pooled = np.concatenate(
+                [a[np.isfinite(a)].flatten() for a in arrs]
+            )
+            if pooled.size == 0:
+                bucket_per_layer_vmax[key] = 1e-12
+                continue
+            v = float(np.percentile(pooled, _PATTERN_B_PD_VMAX_PERCENTILE))
+            bucket_per_layer_vmax[key] = max(v, 1e-12)
+
+    # Pass 2: compute floor-masked diffs per bin, render.
+    per_bin_diffs: list[
+        tuple[str, dict[str, np.ndarray], list[float] | None, int]
+    ] = []
+    for bin_label in bin_labels:
+        per_bp, ext, n_sess = _compute_pattern_b_pd_per_bp_diffs_for_bin(
+            animal, bins[bin_label], H_pre_pool_prop_per_bp,
+            bodyparts, center_mode, scope, resolver,
+            defaults=defaults, animal_info=animal_info,
+            trial_group=trial_group,
+            per_layer_vmax=bucket_per_layer_vmax,
+            floor_fraction=floor_fraction,
+        )
+        per_bin_diffs.append((bin_label, per_bp, ext or ext_pre_any, n_sess))
+
+    n_bins = len(bin_labels)
+    ncols = min(4, max(1, n_bins))
+    nrows = max(1, int(np.ceil(n_bins / ncols)))
+    fig, axes_obj = plt.subplots(
+        nrows=nrows, ncols=ncols,
+        figsize=(ncols * 5.0, nrows * 4.0),
+        constrained_layout=False,
+    )
+    fig.patch.set_facecolor("white")
+    axes = list(axes_obj.flat) if hasattr(axes_obj, "flat") else [axes_obj]
+    for (bin_label, per_bp, ext, n_sess), ax in zip(
+        per_bin_diffs, axes, strict=False,
+    ):
+        title = f"bin {bin_label}  n_sess={n_sess}"
+        _render_pattern_b_pd_panel(
+            ax, per_bp, ext,
+            family_bodyparts=bodyparts,
+            family_center_mode=center_mode,
+            spatial_config=spatial_config,
+            per_layer_vmax=bucket_per_layer_vmax,
+            title=title,
+        )
+    for ax in axes[len(bin_labels):]:
+        ax.set_axis_off()
+
+    # Stacked per-layer-key colorbars on figure right.
+    _attach_pattern_b_pd_colorbars(
+        fig, bodyparts,
+        per_layer_vmax=bucket_per_layer_vmax,
+        family_label=family_entry,
+    )
+    # Q31 right-edge band for the colorbar block.
+    fig.subplots_adjust(right=0.85)
+
+    # Suptitle: same convention as Pattern A PD + Q52 bucket-shared tag.
+    fig.suptitle(
+        f"{animal} | {family_entry} | bin{int(bin_size_days)}d − all_pre_stroke "
+        f"| {scope} | trial_group={trial_group} | scale: bucket-shared  "
+        f"(n_pre_sess={n_pre_sess_max}, layer |vmax| keys="
+        f"{sorted(bucket_per_layer_vmax.keys())})",
+        fontsize=_Q22_SUPTITLE_FONTSIZE,
+    )
+    return fig
+
+
 def render_proportion_difference_heatmap(
     animal: str,
     family_entry: str,
@@ -2109,6 +2529,8 @@ def render_proportion_difference_heatmap(
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
     shared_vmax: float | None = None,
+    bucket_per_layer_vmax: dict[str, float] | None = None,
+    pattern_b_pd_floor_fraction: float = _PATTERN_B_PD_FLOOR_FRACTION_DEFAULT,
 ) -> plt.Figure:
     """Render the per-(animal, family, scope, bin_size, trial_group)
     proportion-difference grid-summary SVG per Addendum #11 Q2.B +
@@ -2128,14 +2550,21 @@ def render_proportion_difference_heatmap(
     meaningful (no trial-group split).
 
     Single-bp families: per-bp D per panel.
-    Composite families (whiskers + fiducial bilateral pairs, any family
-    with > 1 bp): pooled N-bp pseudo-bp per panel (matches UOT composite
-    treatment per Addendum #13 generalization).
 
-    Addendum #15 Q14: per-bin D arrays are pre-computed; global
-    ``vmax = max(|D|.max() across bins)`` is shared across all panels in
-    the SVG; symmetric diverging colormap normalization (vmin=-vmax,
-    vmax=+vmax) makes inter-bin diff intensities visually comparable.
+    Composite families (whiskers + fiducial bilateral pairs, any family
+    with > 1 bp): Q58 Addendum #48 (2026-05-19) — N-layer overlay per
+    panel (one ``imshow`` per bp), each with its own diverging cmap
+    and bucket-shared symmetric ``|vmax|`` from
+    ``bucket_per_layer_vmax[layer_key]``. Layer key is the whisker
+    index (``w1``/``w2``/``w3``) for whiskers (L+R share key) or the
+    bp name for fiducial pairs (L/R distinct). SUPERSEDES the prior
+    pooled N-bp pseudo-bp render for composites (which collapsed
+    per-bp info into a single diff).
+
+    Addendum #15 Q14 / Q42: Pattern A path uses a scalar
+    ``shared_vmax`` (95th-percentile of pooled |D|) across all panels;
+    composite path uses a per-layer-key dict ``bucket_per_layer_vmax``
+    (Q58 Pass 1).
 
     Layout: 4-col grid (analogous to UOT grid summary); rows = ceil(N_bins / 4).
     """
@@ -2151,34 +2580,43 @@ def render_proportion_difference_heatmap(
 
     bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
     spatial_config = defaults["dlc_spatial"]
-    pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
 
-    # Compute fixed reference: animal-level pre-stroke pool, proportion-
-    # normalized via Q17 total-frame denominator. Apply the same
-    # trial_group filter so the per-bin comparison is apples-to-apples.
+    # Q58 Addendum #48: composite families take the layered Pattern B PD
+    # render path; single-bp families fall through to the existing
+    # Pattern A path below.
     if len(bodyparts) > 1:
-        H_pre_pool, ext_pre, n_pre_sess, n_total_pre = (
-            _aggregate_for_dates_pooled_bodyparts(
-                animal, pre_dates, bodyparts, center_mode, scope, resolver,
-                defaults=defaults, animal_info=animal_info,
-                trial_group=trial_group,
-            )
+        return _render_pattern_b_pd_heatmap(
+            animal=animal,
+            family_entry=family_entry,
+            bodyparts=bodyparts,
+            center_mode=center_mode,
+            scope=scope,
+            resolver=resolver,
+            bin_size_days=bin_size_days,
+            trial_group=trial_group,
+            dates=dates,
+            defaults=defaults,
+            animal_info=animal_info,
+            bucket_per_layer_vmax=bucket_per_layer_vmax,
+            floor_fraction=pattern_b_pd_floor_fraction,
         )
+
+    # Single-bp Pattern A path: per-bp baseline + scalar shared_vmax.
+    pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
+    if scope == "tone_aligned":
+        tg_arg: str | None = trial_group
+        window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
     else:
-        if scope == "tone_aligned":
-            tg_arg: str | None = trial_group
-            window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
-        else:
-            tg_arg = None
-            window_ms = None
-        bp = bodyparts[0]
-        H_pre_pool, ext_pre, n_pre_sess, _, n_total_pre = (
-            compute_animal_aggregated_histogram(
-                animal, pre_dates, bp, center_mode, resolver,
-                trial_group=tg_arg, window_ms=window_ms,
-                defaults=defaults, animal_info=animal_info,
-            )
+        tg_arg = None
+        window_ms = None
+    bp = bodyparts[0]
+    H_pre_pool, ext_pre, n_pre_sess, _, n_total_pre = (
+        compute_animal_aggregated_histogram(
+            animal, pre_dates, bp, center_mode, resolver,
+            trial_group=tg_arg, window_ms=window_ms,
+            defaults=defaults, animal_info=animal_info,
         )
+    )
 
     if H_pre_pool is None or n_total_pre == 0:
         fig, ax = plt.subplots(figsize=(8, 6))
@@ -3053,6 +3491,121 @@ def precompute_pattern_b_bucket_per_bp_norms_is(
             vmax = float(np.percentile(pooled, _PATTERN_B_VMAX_PERCENTILE))
             tg_out[bp] = (vmin_floor, max(vmax, vmin_floor * 10.0))
         out[tg] = tg_out
+    return out
+
+
+def precompute_pattern_b_pd_bucket_per_layer_vmax(
+    animal: str,
+    family_entry: str,
+    scope: Scope,
+    bin_size_days: int,
+    dates: list[dt.date],
+    resolver: PathResolver,
+    *,
+    trial_group: str = "all",
+    defaults: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+) -> dict[str, float]:
+    """Q58 Addendum #48 (Priya 2026-05-19) — Pattern B PD bucket-shared
+    per-layer-key ``|vmax|``. Pass 1 of the layered Pattern B PD
+    render flow.
+
+    Bucket = ``(animal, family_entry, PD, scope, bin_size, trial_group)``.
+    For each rel_day_bin in the bucket × each bp in the family,
+    compute ``D_bp = H_bin_bp_prop − H_pre_pool_bp_prop`` (Q17
+    normalization), pool ``|D|`` across (bin × bp) per layer key,
+    and take the 95th percentile as the symmetric ``|vmax|`` for that
+    layer.
+
+    Whiskers: layer key = ``w1``/``w2``/``w3``; L+R bps with the same
+    widx share a layer key (per Q58 spec — L and R distinguished only
+    by spatial position, not cmap or scale).
+
+    Fiducial pairs: layer key = bp name (L/R use distinct keys + cmaps
+    per Q58).
+
+    Single-bp families return ``{}`` (Pattern A PD continues to use
+    the Q42 scalar ``shared_vmax`` path).
+    """
+    if defaults is None:
+        defaults = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+    bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
+    if len(bodyparts) <= 1:
+        return {}
+    pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
+    from stroke_orofacial.dlc_kinematics._day_binned import (
+        _compute_rel_day_bin_label,
+    )
+    if scope == "tone_aligned":
+        tg_arg: str | None = trial_group
+        window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
+    else:
+        tg_arg = None
+        window_ms = None
+
+    # Per-bp pre-stroke baseline proportion histograms.
+    H_pre_pool_prop_per_bp: dict[str, np.ndarray] = {}
+    for bp in bodyparts:
+        H_pre, _ext, _n_sess, _, n_total_pre = (
+            compute_animal_aggregated_histogram(
+                animal, pre_dates, bp, center_mode, resolver,
+                trial_group=tg_arg, window_ms=window_ms,
+                defaults=defaults, animal_info=animal_info,
+            )
+        )
+        if H_pre is None or n_total_pre == 0:
+            continue
+        H_pre_pool_prop_per_bp[bp] = H_pre / float(n_total_pre)
+
+    if not H_pre_pool_prop_per_bp:
+        return {}
+
+    # Group post-stroke + pre-stroke dates by rel_day_bin (PD spec
+    # includes within-pre variability bins, per Addendum #11 Q2.B).
+    bins: dict[str, list[dt.date]] = {}
+    for d in dates:
+        label = _compute_rel_day_bin_label(
+            session_date=d, d0=animal_info.stroke_date,
+            bin_days=int(bin_size_days),
+        )
+        bins.setdefault(label, []).append(d)
+
+    # Accumulate |D| arrays per layer key across all bins × bps.
+    accumulator: dict[str, list[np.ndarray]] = {}
+    for _bin_label, bin_dates in bins.items():
+        for bp, H_pre_prop in H_pre_pool_prop_per_bp.items():
+            H_bin, _ext_b, _n_sess, _, n_total_bin = (
+                compute_animal_aggregated_histogram(
+                    animal, bin_dates, bp, center_mode, resolver,
+                    trial_group=tg_arg, window_ms=window_ms,
+                    defaults=defaults, animal_info=animal_info,
+                )
+            )
+            if H_bin is None or n_total_bin == 0:
+                continue
+            H_bin_prop = H_bin / float(n_total_bin)
+            D = H_bin_prop - H_pre_prop
+            # Q43.B no-data mask (same convention as Pattern A PD): bins
+            # where both pre and post counts are zero are excluded from
+            # the vmax pool so empty-tongue-silhouette bins don't drag
+            # the percentile.
+            no_data = (H_pre_prop == 0) & (H_bin == 0)
+            D = np.where(no_data, np.nan, D)
+            key = _pattern_b_pd_layer_key(bp)
+            accumulator.setdefault(key, []).append(np.abs(D))
+
+    out: dict[str, float] = {}
+    for key, arrs in accumulator.items():
+        pooled = np.concatenate(
+            [a[np.isfinite(a)].flatten() for a in arrs]
+        )
+        if pooled.size == 0:
+            out[key] = 1e-12
+            continue
+        vmax = float(np.percentile(pooled, _PATTERN_B_PD_VMAX_PERCENTILE))
+        out[key] = max(vmax, 1e-12)
     return out
 
 
