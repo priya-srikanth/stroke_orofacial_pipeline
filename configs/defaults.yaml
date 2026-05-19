@@ -321,7 +321,7 @@ dlc_spatial:
     L_eye:
       likelihood_threshold: 0.80
       center_mode: eye_midpoint
-      cmap: "Reds"
+      cmap: "Reds_r"   # Q55.A Addendum #46: dark-low-end (revert from "Reds" / Q53)
       per_center_mode:
         eye_midpoint:
           xlim: [-160, 160]
@@ -329,7 +329,7 @@ dlc_spatial:
     R_eye:
       likelihood_threshold: 0.80
       center_mode: eye_midpoint
-      cmap: "Blues"
+      cmap: "Blues_r"  # Q55.A Addendum #46: dark-low-end (revert from "Blues" / Q53)
       per_center_mode:
         eye_midpoint:
           xlim: [-160, 160]
@@ -337,7 +337,7 @@ dlc_spatial:
     L_spout:
       likelihood_threshold: 0.80
       center_mode: spout_midpoint
-      cmap: "Reds"
+      cmap: "Reds_r"   # Q55.A Addendum #46: dark-low-end (revert from "Reds" / Q53)
       per_center_mode:
         spout_midpoint:
           xlim: [-100, 100]
@@ -345,7 +345,7 @@ dlc_spatial:
     R_spout:
       likelihood_threshold: 0.80
       center_mode: spout_midpoint
-      cmap: "Blues"
+      cmap: "Blues_r"  # Q55.A Addendum #46: dark-low-end (revert from "Blues" / Q53)
       per_center_mode:
         spout_midpoint:
           xlim: [-100, 100]
