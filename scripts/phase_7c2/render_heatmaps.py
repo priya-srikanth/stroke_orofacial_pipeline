@@ -243,6 +243,7 @@ def _append_manifest(row: dict) -> None:
 def _process_animal(
     animal: str, resolver: PathResolver, defaults: dict,
     *, only_pd_ot: bool = False, only_pd: bool = False,
+    families_filter: tuple[str, ...] | None = None,
 ) -> dict:
     """Render all 4 plot types × 2 scopes × 7 families for one animal.
 
@@ -259,11 +260,18 @@ def _process_animal(
     For the Addendum #19 Q20 catch-up where Q20 changes ONLY PD styling
     (cmap + facecolor) and UOT is unaffected.
 
+    ``families_filter`` (Q59 Addendum #49, 2026-05-19): restrict to a
+    subset of family entries. When None, iterates all 7 families.
+    Used by the Q59 targeted Pattern B PD re-emit so we only re-render
+    the 12 affected PD SVGs instead of the full ~378-SVG PS47 set.
+
     Returns manifest row dict.
     """
+    families_iter = families_filter or ALL_FAMILIES
     log.info(
         f"=== animal={animal}: render_heatmaps Task 5 "
-        f"(only_pd_ot={only_pd_ot}, only_pd={only_pd}) ==="
+        f"(only_pd_ot={only_pd_ot}, only_pd={only_pd}, "
+        f"families={list(families_iter)}) ==="
     )
     animal_t0 = time.perf_counter()
     animal_info = get_animal(animal)
@@ -283,7 +291,7 @@ def _process_animal(
     # Phase 7c.2 Addendum #22 Q23: per-animal bin_size singleton.
     bin_sizes_days = (int(animal_info.bin_days),)
     log.info(f"  Q23 bin_sizes_days = {bin_sizes_days} (animal_info.bin_days={animal_info.bin_days})")
-    for family_entry in ALL_FAMILIES:
+    for family_entry in families_iter:
         for scope in SCOPES:
             # ----- Q18 Pass 1 (per (family, scope)) — bucket-shared
             # LogNorm range for IS + BS. Q18 path uses scalar
@@ -592,6 +600,14 @@ def main(argv: list[str] | None = None) -> int:
         "manifest status is OK. Required when re-emitting after a spec "
         "change (e.g., Addendum #15 PD+UOT signatures).",
     )
+    parser.add_argument(
+        "--family-entry",
+        action="append",
+        choices=list(ALL_FAMILIES),
+        help="Restrict rendering to one or more family_entries (repeat the "
+        "flag for multiple). Q59 Addendum #49 targeted-re-emit support: "
+        "skip families not in the supplied set. Default: all 7 families.",
+    )
     args = parser.parse_args(argv)
 
     resolver = PathResolver()
@@ -601,9 +617,12 @@ def main(argv: list[str] | None = None) -> int:
         f"{{tone_aligned,whole_session}}_heatmaps/"
     )
     log.info(f"manifest: {MANIFEST_PATH.resolve()}")
+    families_filter: tuple[str, ...] | None = (
+        tuple(args.family_entry) if args.family_entry else None
+    )
     log.info(
         f"only_pd_ot={args.only_pd_ot}  only_pd={args.only_pd}  "
-        f"no_skip={args.no_skip}"
+        f"no_skip={args.no_skip}  family_entry_filter={families_filter}"
     )
 
     animals = [args.animal] if args.animal else list(COHORT_ORDER)
@@ -617,8 +636,18 @@ def main(argv: list[str] | None = None) -> int:
         row = _process_animal(
             animal, resolver, defaults,
             only_pd_ot=args.only_pd_ot, only_pd=args.only_pd,
+            families_filter=families_filter,
         )
-        _append_manifest(row)
+        # Q59 Addendum #49: targeted re-emit (--family-entry set) skips
+        # the manifest write so a partial-coverage row doesn't shadow
+        # the prior full-cohort row's last-wins resume-skip status.
+        if families_filter is None:
+            _append_manifest(row)
+        else:
+            log.info(
+                "  [targeted re-emit] not appending manifest row "
+                "(family_entry filter active)"
+            )
 
     return 0
 

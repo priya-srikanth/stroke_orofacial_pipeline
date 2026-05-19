@@ -2155,8 +2155,7 @@ def _compute_proportion_diff_for_bin(
 
 def _render_pattern_b_pd_panel(
     ax: plt.Axes,
-    per_bp_diffs: dict[str, np.ndarray],
-    extent: list[float] | None,
+    per_bp_diffs: dict[str, tuple[np.ndarray, list[float]]],
     *,
     family_bodyparts: list[str],
     family_center_mode: str,
@@ -2164,28 +2163,45 @@ def _render_pattern_b_pd_panel(
     per_layer_vmax: dict[str, float],
     title: str,
 ) -> None:
-    """Q58 Addendum #48: render one rel_day_bin's per-bp diff arrays as
-    a layered overlay on one Axes. Each layer uses its
-    ``_PATTERN_B_PD_CMAPS[key]`` diverging cmap with symmetric
-    ``Normalize(-vmax_key, +vmax_key)``; sub-floor / no-data bins are
-    NaN-masked → transparent via ``set_bad((1,1,1,0))``.
+    """Q58 Addendum #48 + Q59 Addendum #49: render one rel_day_bin's
+    per-bp diff arrays as a layered overlay on one Axes. Each layer
+    uses:
+      - ``_PATTERN_B_PD_CMAPS[key]`` diverging cmap with symmetric
+        ``Normalize(-vmax_key, +vmax_key)``.
+      - ``cmap.set_bad((1, 1, 1, 0))`` transparent NaN — sub-floor /
+        no-data bins are invisible (Q58).
+      - ``alpha=1.0`` per Q55.C Pattern B convention.
+      - **Per-bp imshow extent** (``per_bp_diffs[bp][1]``) — Q59 fix
+        for the alignment bug where the pre-Q59 code reused the first
+        bp's extent for all layers, stretching other bps' diff arrays
+        across the wrong physical region (whiskers have distinct
+        per-bp ``xlim/ylim`` in defaults.yaml so the layered render
+        without per-bp extent put diff regions at the wrong
+        anatomical positions).
 
     For whiskers, L_wN and R_wN both render under the same per-widx
     cmap; their spatial positions distinguish L from R within the
-    panel (matches the Q55 IS convention where L and R also share a
-    cmap per widx).
+    panel (matches Q55 IS convention).
+
+    The axes' display xlim/ylim is set from ``family_bodyparts[0]``'s
+    per_center_mode (the Q37 unified bilateral range for whiskers);
+    bins outside that band are clipped by matplotlib display.
     """
     ax.set_facecolor("white")
-    if extent is None or not per_bp_diffs:
+    if not per_bp_diffs:
         ax.text(0.5, 0.5, f"{title}\n(no data)",
                 ha="center", va="center", transform=ax.transAxes)
         ax.set_axis_off()
         return
     n_layered = 0
+    extent_first: list[float] | None = None
     for bp in family_bodyparts:
-        D = per_bp_diffs.get(bp)
-        if D is None:
+        entry = per_bp_diffs.get(bp)
+        if entry is None:
             continue
+        D, ext_bp = entry
+        if extent_first is None:
+            extent_first = ext_bp
         key = _pattern_b_pd_layer_key(bp)
         vmax_abs = per_layer_vmax.get(key)
         if vmax_abs is None or vmax_abs <= 0:
@@ -2201,24 +2217,29 @@ def _render_pattern_b_pd_panel(
         ax.imshow(
             D_plot.T,
             origin="lower",
-            extent=extent,
+            extent=ext_bp,
             cmap=cmap,
             alpha=1.0,
             aspect="auto",
             norm=norm,
         )
         n_layered += 1
+    if extent_first is None:
+        ax.text(0.5, 0.5, f"{title}\n(no rendered layers)",
+                ha="center", va="center", transform=ax.transAxes)
+        ax.set_axis_off()
+        return
     per_mode = _get_per_center_mode_params(
         spatial_config, family_bodyparts[0], family_center_mode,
     )
     if per_mode["xlim"]:
         ax.set_xlim(per_mode["xlim"])
     else:
-        ax.set_xlim(extent[0], extent[1])
+        ax.set_xlim(extent_first[0], extent_first[1])
     if per_mode["ylim"]:
         ax.set_ylim(per_mode["ylim"])
     else:
-        ax.set_ylim(extent[2], extent[3])
+        ax.set_ylim(extent_first[2], extent_first[3])
     ax.invert_yaxis()
     _apply_q22_panel_polish(ax)
     ax.set_title(title, fontsize=_Q22_PANEL_TITLE_FONTSIZE)
@@ -2293,16 +2314,27 @@ def _compute_pattern_b_pd_per_bp_diffs_for_bin(
     trial_group: str,
     per_layer_vmax: dict[str, float],
     floor_fraction: float,
-) -> tuple[dict[str, np.ndarray], list[float] | None, int]:
-    """Q58 Addendum #48: per-bp D arrays for one rel_day_bin. Each D
-    is masked by:
+) -> tuple[dict[str, tuple[np.ndarray, list[float]]], int]:
+    """Q58 Addendum #48 + Q59 Addendum #49: per-bp D arrays + per-bp
+    extents for one rel_day_bin. Each D is masked by:
       - Q43.B no-data mask: (H_pre == 0) & (H_bin == 0) → NaN.
       - Q58 Pattern-B-PD-specific magnitude floor: |D| < vmax × fraction
         → NaN (deviation from Q43.B for Pattern A PD; without this
         floor the diverging-cmap midpoint compounds across layers and
         the composite washes out).
 
-    Returns ``({bp: D_masked, ...}, extent_first, n_sess_max)``.
+    Q59 Addendum #49 (Priya 2026-05-19): the returned dict now carries
+    each bp's OWN imshow extent alongside its D array
+    (``{bp: (D, ext_bp)}``). Each whisker bp's histogram is on its own
+    per-bp ``xlim/ylim`` grid (see ``dlc_spatial.bodyparts.{bp}
+    .per_center_mode.{mode}`` in defaults.yaml — whiskers have
+    different per-bp anatomical xlim/ylim each), so the per-layer
+    imshow extent MUST match that bp's grid. The pre-Q59 code captured
+    only the first bp's extent and reused it for all layers, which
+    stretched / squished other layers across the wrong physical region
+    in the composite.
+
+    Returns ``({bp: (D_masked, ext_bp), ...}, n_sess_max)``.
     """
     if scope == "tone_aligned":
         tg_arg: str | None = trial_group
@@ -2310,8 +2342,7 @@ def _compute_pattern_b_pd_per_bp_diffs_for_bin(
     else:
         tg_arg = None
         window_ms = None
-    out: dict[str, np.ndarray] = {}
-    extent_first: list[float] | None = None
+    out: dict[str, tuple[np.ndarray, list[float]]] = {}
     n_sess_max = 0
     for bp in bodyparts:
         H_pre_prop = H_pre_pool_prop_per_bp.get(bp)
@@ -2324,7 +2355,7 @@ def _compute_pattern_b_pd_per_bp_diffs_for_bin(
                 defaults=defaults, animal_info=animal_info,
             )
         )
-        if H_bin is None or n_total_bin == 0:
+        if H_bin is None or n_total_bin == 0 or ext is None:
             continue
         H_bin_prop = H_bin / float(n_total_bin)
         D = H_bin_prop - H_pre_prop
@@ -2337,11 +2368,9 @@ def _compute_pattern_b_pd_per_bp_diffs_for_bin(
             floor = float(vmax_abs) * float(floor_fraction)
             below_floor = np.abs(D) < floor
             D = np.where(below_floor, np.nan, D)
-        out[bp] = D
-        if extent_first is None and ext is not None:
-            extent_first = list(ext)
+        out[bp] = (D, list(ext))
         n_sess_max = max(n_sess_max, n_sess)
-    return out, extent_first, n_sess_max
+    return out, n_sess_max
 
 
 def _render_pattern_b_pd_heatmap(
@@ -2381,10 +2410,9 @@ def _render_pattern_b_pd_heatmap(
 
     pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
     H_pre_pool_prop_per_bp: dict[str, np.ndarray] = {}
-    ext_pre_any: list[float] | None = None
     n_pre_sess_max = 0
     for bp in bodyparts:
-        H_pre, ext_bp, n_pre_sess, _, n_total_pre = (
+        H_pre, _ext_bp, n_pre_sess, _, n_total_pre = (
             compute_animal_aggregated_histogram(
                 animal, pre_dates, bp, center_mode, resolver,
                 trial_group=tg_arg, window_ms=window_ms,
@@ -2394,8 +2422,6 @@ def _render_pattern_b_pd_heatmap(
         if H_pre is None or n_total_pre == 0:
             continue
         H_pre_pool_prop_per_bp[bp] = H_pre / float(n_total_pre)
-        if ext_pre_any is None and ext_bp is not None:
-            ext_pre_any = list(ext_bp)
         n_pre_sess_max = max(n_pre_sess_max, n_pre_sess)
 
     if not H_pre_pool_prop_per_bp:
@@ -2430,9 +2456,11 @@ def _render_pattern_b_pd_heatmap(
     if bucket_per_layer_vmax is None:
         # Pre-pass: compute raw diffs (without floor mask) to derive
         # per-layer-key vmax from the bins-in-this-SVG pool.
-        raw_per_bp_per_bin: list[dict[str, np.ndarray]] = []
+        raw_per_bp_per_bin: list[
+            dict[str, tuple[np.ndarray, list[float]]]
+        ] = []
         for bin_label in bin_labels:
-            raw_diffs, _ext, _ns = _compute_pattern_b_pd_per_bp_diffs_for_bin(
+            raw_diffs, _ns = _compute_pattern_b_pd_per_bp_diffs_for_bin(
                 animal, bins[bin_label], H_pre_pool_prop_per_bp,
                 bodyparts, center_mode, scope, resolver,
                 defaults=defaults, animal_info=animal_info,
@@ -2443,7 +2471,7 @@ def _render_pattern_b_pd_heatmap(
             raw_per_bp_per_bin.append(raw_diffs)
         accumulator: dict[str, list[np.ndarray]] = {}
         for per_bp in raw_per_bp_per_bin:
-            for bp, D in per_bp.items():
+            for bp, (D, _ext_bp) in per_bp.items():
                 key = _pattern_b_pd_layer_key(bp)
                 accumulator.setdefault(key, []).append(np.abs(D))
         bucket_per_layer_vmax = {}
@@ -2458,11 +2486,13 @@ def _render_pattern_b_pd_heatmap(
             bucket_per_layer_vmax[key] = max(v, 1e-12)
 
     # Pass 2: compute floor-masked diffs per bin, render.
+    # Q59 (Addendum #49): each entry now carries per-bp extent
+    # alongside the D array.
     per_bin_diffs: list[
-        tuple[str, dict[str, np.ndarray], list[float] | None, int]
+        tuple[str, dict[str, tuple[np.ndarray, list[float]]], int]
     ] = []
     for bin_label in bin_labels:
-        per_bp, ext, n_sess = _compute_pattern_b_pd_per_bp_diffs_for_bin(
+        per_bp, n_sess = _compute_pattern_b_pd_per_bp_diffs_for_bin(
             animal, bins[bin_label], H_pre_pool_prop_per_bp,
             bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
@@ -2470,7 +2500,7 @@ def _render_pattern_b_pd_heatmap(
             per_layer_vmax=bucket_per_layer_vmax,
             floor_fraction=floor_fraction,
         )
-        per_bin_diffs.append((bin_label, per_bp, ext or ext_pre_any, n_sess))
+        per_bin_diffs.append((bin_label, per_bp, n_sess))
 
     n_bins = len(bin_labels)
     ncols = min(4, max(1, n_bins))
@@ -2482,12 +2512,12 @@ def _render_pattern_b_pd_heatmap(
     )
     fig.patch.set_facecolor("white")
     axes = list(axes_obj.flat) if hasattr(axes_obj, "flat") else [axes_obj]
-    for (bin_label, per_bp, ext, n_sess), ax in zip(
+    for (bin_label, per_bp, n_sess), ax in zip(
         per_bin_diffs, axes, strict=False,
     ):
         title = f"bin {bin_label}  n_sess={n_sess}"
         _render_pattern_b_pd_panel(
-            ax, per_bp, ext,
+            ax, per_bp,
             family_bodyparts=bodyparts,
             family_center_mode=center_mode,
             spatial_config=spatial_config,
