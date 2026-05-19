@@ -217,10 +217,13 @@ dlc_spatial:
           ylim: [-235, 225]           # 20260323_DLC_build-parquet_reward-aligned X_MIN,X_MAX=-175,175).
           x_range: [-175, 175]        # Pre-histogram filter: drops DLC mis-detections
                                       # (picket-fence pattern spanning ±600 px otherwise).
-        eye_midpoint:                 # Q34 Addendum #31 (Priya 2026-05-17):
-          xlim: [-175, 175]           # legacy hardcoded ±175 (matches spout_midpoint
-          ylim: [230, 600]            # x_range from 20260111_DLC_analysis_build-parquet_tongue.ipynb
-          x_range: [-175, 175]        # L1093 globally-scoped X_MIN, X_MAX = -175, 175).
+        eye_midpoint:                 # Q34 Addendum #31 (Priya 2026-05-17) +
+          xlim: [-200, 200]           # Q54 Addendum #45 (Priya 2026-05-19): widen
+          ylim: [230, 600]            # display xlim to [-200, 200] (Q34 was [-175, 175])
+          x_range: [-175, 175]        # to add ~25px margin past the legacy x_range filter
+                                      # so cohort distributions are not clipped at the plot
+                                      # edge. ``x_range`` (pre-histogram filter) stays at
+                                      # legacy ±175 — Q54 only affects the rendered axis.
                                       # ylim derived from PS46 8-session pooled q01/q99 +
                                       # 40% pad (no legacy ylim spec for eye-centered).
                                       # Median tongue X in eye-centered = +18.5 px (slight

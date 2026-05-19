@@ -1040,11 +1040,12 @@ def _assemble_panel_figure(
 _COMPOSITE_FALLBACK_CMAP: str = "viridis"
 _COMPOSITE_ALPHA: float = 0.5  # Q48 verdict (Addendum #43): locked 0.5 for Pattern B (vs legacy 0.8); combined with opaque-white set_bad gives clean overlay readability.
 
-# Q39 Addendum #35: 6 visually distinct, L/R-grouped categorical colors for
-# the whiskers swatch legend (Option (i) per Priya 2026-05-17). Warm-family
-# (red/orange/yellow-olive) for L; cool-family (blue/cyan/purple) for R.
-# Single-color sequential cmaps derived from these base colors so the
-# layered heatmaps in Pattern B match what the legend says.
+# Q39 Addendum #35 (superseded by Q53 Addendum #45 for whiskers): 6
+# visually distinct, L/R-grouped categorical colors for the whiskers
+# layered overlay + swatch legend. Retained as fallback for any future
+# ≥3-layer Pattern B family per Q48 verdict item 5 + Q53 wording;
+# whiskers itself now collapses to 2 sides under Q53 (see
+# ``_WHISKER_SIDE_GROUPS`` below) and does not consume this palette.
 _WHISKER_LAYER_COLORS: dict[str, str] = {
     "L_whiskers_1": "#d62728",  # red          (L = warm)
     "L_whiskers_2": "#ff7f0e",  # orange
@@ -1052,6 +1053,24 @@ _WHISKER_LAYER_COLORS: dict[str, str] = {
     "R_whiskers_1": "#1f77b4",  # blue         (R = cool)
     "R_whiskers_2": "#17becf",  # cyan
     "R_whiskers_3": "#9467bd",  # purple
+}
+
+# Q53 Addendum #45 (Priya 2026-05-19): whiskers Pattern B is rendered
+# as 2 sides (Reds for L, Blues for R), with each side's H_counts =
+# elementwise sum of its 3 per-whisker histograms. The 6 raw bps from
+# the family config remain the canonical compute-layer keys (each
+# per-whisker H_counts is fetched separately from
+# ``compute_animal_aggregated_histogram``); collapse happens at the
+# render boundary via :func:`_maybe_collapse_to_sides`. Reds/Blues
+# matches the spout_spout_midpoint / eye_eye_midpoint convention from
+# Addendum #13.
+_WHISKER_SIDE_GROUPS: dict[str, tuple[str, ...]] = {
+    "L_whiskers": ("L_whiskers_1", "L_whiskers_2", "L_whiskers_3"),
+    "R_whiskers": ("R_whiskers_1", "R_whiskers_2", "R_whiskers_3"),
+}
+_WHISKER_SIDE_CMAPS: dict[str, str] = {
+    "L_whiskers": "Reds",
+    "R_whiskers": "Blues",
 }
 
 
@@ -1064,12 +1083,24 @@ def _get_bodypart_cmap(spatial_config: dict[str, Any], bp: str) -> str:
 
 
 def _resolve_layer_cmap(spatial_config: dict[str, Any], bp: str):
-    """Q39 Addendum #35: layer-specific cmap resolution for Pattern B
-    composite renderers. For whiskers, return a single-color sequential
-    cmap derived from the Q39 categorical palette so the heatmap layer
-    visually matches the swatch legend. For other bps, fall back to the
-    config-driven ``_get_bodypart_cmap`` name.
+    """Layer-specific cmap resolution for Pattern B composite renderers.
+
+    Q53 Addendum #45 (2026-05-19): the whiskers collapsed-side pseudo-
+    bps ``L_whiskers`` and ``R_whiskers`` map to matplotlib built-in
+    ``Reds`` and ``Blues``, matching the fiducial-pair convention
+    from Addendum #13.
+
+    Q39 Addendum #35 (still applies in principle): for any other
+    bp in the Q39 categorical palette
+    (``_WHISKER_LAYER_COLORS``), construct a single-color sequential
+    cmap from white to that hex anchor. Reserved for any future
+    ≥3-layer Pattern B family not collapsed under Q53.
+
+    Otherwise fall back to the config-driven ``_get_bodypart_cmap``
+    name.
     """
+    if bp in _WHISKER_SIDE_CMAPS:
+        return plt.get_cmap(_WHISKER_SIDE_CMAPS[bp])
     if bp in _WHISKER_LAYER_COLORS:
         return mcolors.LinearSegmentedColormap.from_list(
             f"{bp}_layer", ["white", _WHISKER_LAYER_COLORS[bp]], N=256,
@@ -1079,6 +1110,70 @@ def _resolve_layer_cmap(spatial_config: dict[str, Any], bp: str):
         return plt.get_cmap(name)
     except ValueError:
         return plt.get_cmap(_COMPOSITE_FALLBACK_CMAP)
+
+
+def _maybe_collapse_to_sides(
+    family_entry: str,
+    panels: dict[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int, int]]],
+) -> dict[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int, int]]]:
+    """Q53 Addendum #45: collapse a per-bp composite panels dict to
+    per-side pseudo-bp tuples for ``whiskers_eye_midpoint``. For other
+    family_entries, returns ``panels`` unchanged.
+
+    Within a side: H_counts = element-wise SUM of the 3 per-whisker
+    H_counts arrays. Other tuple fields (extent, n_sess, n_tones,
+    n_total_frames) take the first non-None / max value across the
+    contributing bps — ``n_total_frames`` is the Q17 proportion
+    denominator and is by construction bp-invariant within a session
+    (same in-window frames regardless of which bp is being
+    histogrammed); we use ``max`` defensively in case any bp dropped
+    out via the Q51 likelihood skip.
+    """
+    if family_entry != "whiskers_eye_midpoint":
+        return panels
+    out: dict[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int, int]]] = {}
+    for tg, per_tg in panels.items():
+        by_bp = {t[0]: t for t in per_tg}
+        new_per_tg: list[tuple[str, np.ndarray | None, list[float] | None, int, int, int]] = []
+        for side, side_bps in _WHISKER_SIDE_GROUPS.items():
+            H_sum: np.ndarray | None = None
+            ext_first: list[float] | None = None
+            n_sess_max = 0
+            n_tones_max = 0
+            n_total_max = 0
+            for bp in side_bps:
+                t = by_bp.get(bp)
+                if t is None:
+                    continue
+                _, H, ext_bp, ns, nt, ntf = t
+                n_sess_max = max(n_sess_max, ns)
+                n_tones_max = max(n_tones_max, nt)
+                n_total_max = max(n_total_max, ntf)
+                if H is None:
+                    continue
+                if H_sum is None:
+                    H_sum = H.copy()
+                    ext_first = ext_bp
+                else:
+                    H_sum = H_sum + H
+            new_per_tg.append((
+                side, H_sum, ext_first, n_sess_max, n_tones_max, n_total_max,
+            ))
+        out[tg] = new_per_tg
+    return out
+
+
+def _effective_pattern_b_bodyparts(
+    family_entry: str, raw_bodyparts: list[str],
+) -> list[str]:
+    """Q53 Addendum #45: post-collapse bodypart-axis list passed to
+    Pattern B render / colorbar functions. For
+    ``whiskers_eye_midpoint`` returns ``["L_whiskers",
+    "R_whiskers"]``; otherwise echoes ``raw_bodyparts``.
+    """
+    if family_entry == "whiskers_eye_midpoint":
+        return list(_WHISKER_SIDE_GROUPS.keys())
+    return list(raw_bodyparts)
 
 
 def _compute_composite_panels(
@@ -1551,13 +1646,17 @@ def render_individual_session_heatmap(
         # Q48 verdict (Addendum #43) + Q52 (Addendum #44): per-bp LogNorm
         # bounds come from the driver Pass 1 bucket precompute when
         # supplied; figure-local aggregation otherwise.
+        # Q53 Addendum #45: whiskers collapse to L/R sides (Reds/Blues)
+        # at the render boundary; other Pattern B families pass through.
         composite_panels = _compute_composite_panels(
             animal, [date], bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
         )
+        composite_panels = _maybe_collapse_to_sides(family_entry, composite_panels)
+        effective_bodyparts = _effective_pattern_b_bodyparts(family_entry, bodyparts)
         return _assemble_composite_figure(
             composite_panels, scope, suptitle,
-            family_bodyparts=bodyparts,
+            family_bodyparts=effective_bodyparts,
             family_center_mode=center_mode,
             family_label=family_entry,
             defaults=defaults,
@@ -1622,13 +1721,17 @@ def render_binned_sessions_heatmap(  # noqa: D401
         # figure-local aggregation (this code path is BS-per-bin, not
         # used by the Phase 7c.2 cohort driver post-Q36; kept for
         # backward-compat smoke runners and ad-hoc callers).
+        # Q53 Addendum #45: whiskers collapse to L/R sides at render
+        # boundary.
         composite_panels = _compute_composite_panels(
             animal, dates_in_bin, bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
         )
+        composite_panels = _maybe_collapse_to_sides(family_entry, composite_panels)
+        effective_bodyparts = _effective_pattern_b_bodyparts(family_entry, bodyparts)
         return _assemble_composite_figure(
             composite_panels, scope, suptitle,
-            family_bodyparts=bodyparts,
+            family_bodyparts=effective_bodyparts,
             family_center_mode=center_mode,
             family_label=family_entry,
             defaults=defaults,
@@ -1759,7 +1862,11 @@ def render_binned_sessions_grid(
     # LogNorm bounds. Two-pass compute → derive per-bp norms across
     # ALL bins → render. Pattern A keeps the existing one-pass +
     # bucket-shared scale via shared_vmin/shared_vmax.
+    # Q53 Addendum #45: whiskers panels collapse to L/R sides before
+    # per-bp norm derivation; effective_bodyparts for the colorbar
+    # path is the side list.
     if len(bodyparts) > 1:
+        effective_bodyparts = _effective_pattern_b_bodyparts(family_entry, bodyparts)
         composite_panels_per_bin: list[
             tuple[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int, int]]]
         ] = []
@@ -1769,6 +1876,7 @@ def render_binned_sessions_grid(
                 animal, bin_dates, bodyparts, center_mode, scope, resolver,
                 defaults=defaults, animal_info=animal_info,
             )
+            panels_all_tg = _maybe_collapse_to_sides(family_entry, panels_all_tg)
             per_tg = panels_all_tg.get(tg_arg or "all", [])
             composite_panels_per_bin.append((bin_label, per_tg))
         # Aggregate per-bp norms across all bins in this figure.
@@ -1783,7 +1891,7 @@ def render_binned_sessions_grid(
             panel_title = f"bin {bin_label}  n_dates={len(bins[bin_label])}"
             _render_composite_panel_axis(
                 ax, per_tg, spatial_config,
-                family_bodyparts=bodyparts,
+                family_bodyparts=effective_bodyparts,
                 family_center_mode=center_mode,
                 panel_title=panel_title,
                 per_bp_norms=per_bp_norms,
@@ -1811,8 +1919,11 @@ def render_binned_sessions_grid(
 
     if len(bodyparts) > 1:
         # Composite — stacked cbars / swatch legend on figure right.
+        # Q53 (Addendum #45): use the post-collapse effective bodyparts
+        # so the legend / colorbar reflects the 2-layer side structure
+        # for whiskers (Reds / Blues) instead of the 6 raw whiskers.
         _attach_composite_colorbars(
-            fig, bodyparts, spatial_config,
+            fig, effective_bodyparts, spatial_config,
             family_label=family_entry,
             per_bp_norms=per_bp_norms,
         )
@@ -3026,13 +3137,17 @@ def precompute_pattern_b_bucket_per_bp_norms_is(
     bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
     if len(bodyparts) <= 1:
         return {}
-    # Accumulator: {tg: {bp: list[np.ndarray]}}.
+    # Accumulator: {tg: {bp_or_side: list[np.ndarray]}}.
+    # Q53 Addendum #45: whiskers panels collapse to L_whiskers /
+    # R_whiskers pseudo-bps before per-bp pooling so the bucket norm
+    # axis matches the render axis.
     accumulator: dict[str, dict[str, list[np.ndarray]]] = {}
     for date in dates:
         panels = _compute_composite_panels(
             animal, [date], bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
         )
+        panels = _maybe_collapse_to_sides(family_entry, panels)
         for tg, per_tg in panels.items():
             tg_acc = accumulator.setdefault(tg, {})
             for bp, H, _ext, _n_sess, _n_tones, n_total in per_tg:
