@@ -1802,6 +1802,9 @@ def render_binned_sessions_grid(
             figsize=figsize, constrained_layout=True,
             sharex=True, sharey=True,
         )
+        # Q60 Addendum #50 (2026-05-19): bump vertical row spacing so
+        # x-axis labels don't overlap titles of the next row.
+        fig.set_constrained_layout_pads(h_pad=0.3, hspace=0.05)
     axes = (
         np.array([[axes_obj]]) if (nrows == 1 and ncols == 1)
         else np.atleast_2d(axes_obj)
@@ -1872,7 +1875,9 @@ def render_binned_sessions_grid(
             per_bp_norms=per_bp_norms,
         )
         # Q31 manual room reservation since constrained_layout was off.
-        fig.subplots_adjust(right=0.83)
+        # Q60 Addendum #50: bump hspace so x-axis labels don't overlap
+        # next-row panel titles.
+        fig.subplots_adjust(right=0.83, hspace=0.4)
 
     fig.suptitle(suptitle, fontsize=_Q22_SUPTITLE_FONTSIZE)
     return fig
@@ -2534,7 +2539,9 @@ def _render_pattern_b_pd_heatmap(
         family_label=family_entry,
     )
     # Q31 right-edge band for the colorbar block.
-    fig.subplots_adjust(right=0.85)
+    # Q60 Addendum #50: bump hspace so x-axis labels don't overlap
+    # next-row panel titles.
+    fig.subplots_adjust(right=0.85, hspace=0.4)
 
     # Suptitle: same convention as Pattern A PD + Q52 bucket-shared tag.
     fig.suptitle(
@@ -2710,6 +2717,9 @@ def render_proportion_difference_heatmap(
         figsize=(ncols * 5.0, nrows * 4.0),
         constrained_layout=True,
     )
+    # Q60 Addendum #50: bump vertical row spacing so x-axis labels
+    # don't overlap titles of the next row.
+    fig.set_constrained_layout_pads(h_pad=0.3, hspace=0.05)
     # Q20 Addendum #19: figure background white (panel background also
     # set to white inside `_render_proportion_diff_panel`).
     fig.patch.set_facecolor("white")
@@ -3202,6 +3212,570 @@ def _aggregate_for_dates_pooled_bodyparts(
     return H_total, extent, n_sess_max, n_total_summed
 
 
+def _compute_pattern_b_uot_per_bp_plans_for_bin(
+    animal: str,
+    bin_dates: list[dt.date],
+    H_pre_pool_prop_per_bp: dict[str, np.ndarray],
+    bodyparts: list[str],
+    center_mode: str,
+    scope: Scope,
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any],
+    animal_info: AnimalInfo,
+    trial_group: str,
+    unb_nbins: int,
+) -> tuple[dict[str, dict[str, Any]], int]:
+    """Q61 Addendum #51 (2026-05-19): per-bp UOT plans for one
+    rel_day_bin. Each plan is solved INDEPENDENTLY for each bp via
+    :func:`_compute_unbalanced_ot_plan` on the per-bp histogram grid
+    (matching Q59 per-bp grid + per-bp extent architecture for PD).
+
+    Returns ``({bp: plan_dict, ...}, n_sess_max)``. Each plan_dict
+    additionally carries ``"extent"`` (the per-bp x/y limits used to
+    build the UOT spatial grid) and ``"H_pre_counts"`` /
+    ``"H_bin_counts"`` (raw counts for the Q43.B no-data mask). Bps
+    whose UOT solver returned None are omitted.
+    """
+    if scope == "tone_aligned":
+        tg_arg: str | None = trial_group
+        window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
+    else:
+        tg_arg = None
+        window_ms = None
+    out: dict[str, dict[str, Any]] = {}
+    n_sess_max = 0
+    for bp in bodyparts:
+        H_pre_prop = H_pre_pool_prop_per_bp.get(bp)
+        if H_pre_prop is None:
+            continue
+        H_bin, ext_bp, n_sess, _, n_total_bin = (
+            compute_animal_aggregated_histogram(
+                animal, bin_dates, bp, center_mode, resolver,
+                trial_group=tg_arg, window_ms=window_ms,
+                defaults=defaults, animal_info=animal_info,
+                nbins_override=unb_nbins,
+            )
+        )
+        if H_bin is None or ext_bp is None or n_total_bin == 0:
+            continue
+        H_bin_prop = H_bin / float(n_total_bin)
+        plan = _compute_unbalanced_ot_plan(H_pre_prop, H_bin_prop, list(ext_bp))
+        if plan is None:
+            continue
+        plan["extent"] = list(ext_bp)
+        # Carry raw counts for the Q43.B no-data mask in the renderer.
+        # H_pre_prop is already proportion-normalized; we keep the
+        # boolean "was H_pre_counts zero here?" via the property that
+        # H_pre_prop == 0 iff the underlying counts were zero (same
+        # equivalence used by Q43.B in PD).
+        plan["H_pre_zero_mask"] = (H_pre_prop == 0)
+        plan["H_bin_zero_mask"] = (H_bin == 0)
+        out[bp] = plan
+        n_sess_max = max(n_sess_max, n_sess)
+    return out, n_sess_max
+
+
+def precompute_pattern_b_uot_bucket_per_layer_vmax(
+    animal: str,
+    family_entry: str,
+    scope: Scope,
+    bin_size_days: int,
+    dates: list[dt.date],
+    resolver: PathResolver,
+    *,
+    trial_group: str = "all",
+    defaults: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+) -> dict[str, float]:
+    """Q61 Addendum #51 (2026-05-19) — Pattern B UOT mass_change
+    bucket-shared per-layer-key ``|vmax|``. Pass 1 of the layered
+    Pattern B UOT render flow (parallel to
+    :func:`precompute_pattern_b_pd_bucket_per_layer_vmax`).
+
+    Bucket = ``(animal, family_entry, UOT, scope, bin_size,
+    trial_group)``. For each rel_day_bin × bp, solves UOT
+    independently, computes mass_change_bp = mass_create_bp −
+    mass_destroy_bp, pools ``|mass_change_bp|`` per layer key (widx
+    for whiskers, bp name for fiducials), takes the 95th percentile.
+
+    Single-bp families return ``{}`` (Pattern A UOT keeps the Q14
+    bucket-shared scalar via :func:`derive_uot_bucket_ranges`).
+    """
+    if defaults is None:
+        defaults = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+    bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
+    if len(bodyparts) <= 1:
+        return {}
+    tone_config = defaults.get("dlc_spatial_tone_aligned", {}) or {}
+    unb_cfg = tone_config.get("unbalanced_ot") or {}
+    unb_nbins = int(unb_cfg.get("nbins") or 20)
+
+    pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
+    from stroke_orofacial.dlc_kinematics._day_binned import (
+        _compute_rel_day_bin_label,
+    )
+    if scope == "tone_aligned":
+        tg_arg: str | None = trial_group
+        window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
+    else:
+        tg_arg = None
+        window_ms = None
+
+    # Per-bp pre-stroke baseline proportion histograms (UOT-nbins grid).
+    H_pre_pool_prop_per_bp: dict[str, np.ndarray] = {}
+    for bp in bodyparts:
+        H_pre, _ext, _n_sess, _, n_total_pre = (
+            compute_animal_aggregated_histogram(
+                animal, pre_dates, bp, center_mode, resolver,
+                trial_group=tg_arg, window_ms=window_ms,
+                defaults=defaults, animal_info=animal_info,
+                nbins_override=unb_nbins,
+            )
+        )
+        if H_pre is None or n_total_pre == 0:
+            continue
+        H_pre_pool_prop_per_bp[bp] = H_pre / float(n_total_pre)
+
+    if not H_pre_pool_prop_per_bp:
+        return {}
+
+    bins: dict[str, list[dt.date]] = {}
+    for d in dates:
+        label = _compute_rel_day_bin_label(
+            session_date=d, d0=animal_info.stroke_date,
+            bin_days=int(bin_size_days),
+        )
+        bins.setdefault(label, []).append(d)
+
+    accumulator: dict[str, list[np.ndarray]] = {}
+    for _bin_label, bin_dates in bins.items():
+        plans, _n_sess = _compute_pattern_b_uot_per_bp_plans_for_bin(
+            animal, bin_dates, H_pre_pool_prop_per_bp,
+            bodyparts, center_mode, scope, resolver,
+            defaults=defaults, animal_info=animal_info,
+            trial_group=trial_group, unb_nbins=unb_nbins,
+        )
+        for bp, plan in plans.items():
+            mass_change = (
+                plan["mass_create"].astype(float)
+                - plan["mass_destroy"].astype(float)
+            )
+            key = _pattern_b_pd_layer_key(bp)
+            accumulator.setdefault(key, []).append(np.abs(mass_change))
+
+    out: dict[str, float] = {}
+    for key, arrs in accumulator.items():
+        pooled = np.concatenate(
+            [a[np.isfinite(a)].flatten() for a in arrs]
+        )
+        if pooled.size == 0:
+            out[key] = 1e-12
+            continue
+        vmax = float(np.percentile(pooled, _PATTERN_B_PD_VMAX_PERCENTILE))
+        out[key] = max(vmax, 1e-12)
+    return out
+
+
+def _render_pattern_b_uot_mass_change_panel(
+    ax: plt.Axes,
+    per_bp_plans: dict[str, dict[str, Any]],
+    *,
+    family_bodyparts: list[str],
+    family_center_mode: str,
+    spatial_config: dict[str, Any],
+    per_layer_vmax: dict[str, float],
+    floor_fraction: float,
+    bin_label: str,
+) -> None:
+    """Q61 Addendum #51: layered mass_change panel for Pattern B UOT.
+    Mirrors Q58 PD layered overlay — each bp renders as a separate
+    diverging-cmap imshow at its per-bp extent. Sub-floor /
+    no-data bins masked NaN → transparent.
+    """
+    ax.set_facecolor("white")
+    if not per_bp_plans:
+        ax.text(0.5, 0.5, f"bin {bin_label}\n(no plans)",
+                ha="center", va="center", transform=ax.transAxes)
+        ax.set_axis_off()
+        return
+    extent_first: list[float] | None = None
+    n_layered = 0
+    for bp in family_bodyparts:
+        plan = per_bp_plans.get(bp)
+        if plan is None:
+            continue
+        ext_bp = plan["extent"]
+        if extent_first is None:
+            extent_first = ext_bp
+        key = _pattern_b_pd_layer_key(bp)
+        vmax_abs = per_layer_vmax.get(key)
+        if vmax_abs is None or vmax_abs <= 0:
+            continue
+        cmap_name = _PATTERN_B_PD_CMAPS.get(key, "RdBu")
+        try:
+            cmap = plt.get_cmap(cmap_name).copy()
+        except ValueError:
+            cmap = plt.get_cmap("RdBu").copy()
+        cmap.set_bad((1.0, 1.0, 1.0, 0.0))
+        H_mass_change = (
+            plan["mass_create"].astype(float)
+            - plan["mass_destroy"].astype(float)
+        )
+        # Q43.B no-data mask.
+        no_data = plan["H_pre_zero_mask"] & plan["H_bin_zero_mask"]
+        H_masked = np.where(no_data, np.nan, H_mass_change)
+        # Q58 / Q61 magnitude floor.
+        if floor_fraction > 0:
+            floor = float(vmax_abs) * float(floor_fraction)
+            below_floor = np.abs(H_masked) < floor
+            H_masked = np.where(below_floor, np.nan, H_masked)
+        norm = mcolors.Normalize(vmin=-float(vmax_abs), vmax=float(vmax_abs))
+        ax.imshow(
+            H_masked.T,
+            origin="lower",
+            extent=ext_bp,
+            cmap=cmap,
+            alpha=1.0,
+            aspect="auto",
+            norm=norm,
+        )
+        n_layered += 1
+    if extent_first is None:
+        ax.text(0.5, 0.5, f"bin {bin_label}\n(no layers)",
+                ha="center", va="center", transform=ax.transAxes)
+        ax.set_axis_off()
+        return
+    per_mode = _get_per_center_mode_params(
+        spatial_config, family_bodyparts[0], family_center_mode,
+    )
+    if per_mode["xlim"]:
+        ax.set_xlim(per_mode["xlim"])
+    else:
+        ax.set_xlim(extent_first[0], extent_first[1])
+    if per_mode["ylim"]:
+        ylim_lo, ylim_hi = per_mode["ylim"]
+        ax.set_ylim(ylim_hi, ylim_lo)
+    else:
+        ax.set_ylim(extent_first[3], extent_first[2])
+    _apply_q22_panel_polish(ax)
+    ax.set_title(
+        f"bin {bin_label} | mass change",
+        fontsize=_Q22_PANEL_TITLE_FONTSIZE,
+    )
+
+
+def _render_pattern_b_uot_arrows_panel(
+    ax: plt.Axes,
+    per_bp_plans: dict[str, dict[str, Any]],
+    *,
+    family_bodyparts: list[str],
+    family_center_mode: str,
+    spatial_config: dict[str, Any],
+    title: str,
+    arrow_size_factor: float = 0.5,
+    threshold_pct50_multiplier: float = 0.1,
+) -> None:
+    """Q61 Addendum #51: layered arrows panel for Pattern B UOT.
+    Each bp renders its own set of arrows colored by the bp's per-
+    layer cmap (sampled at 0.7 for a saturated single hue per bp;
+    log-mass continues to drive arrow size + alpha per the legacy
+    convention). Mirrors :func:`_render_ot_arrows_panel` per-arrow
+    geometry but overlays per-bp arrow sets.
+    """
+    ax.set_facecolor("white")
+    if not per_bp_plans:
+        ax.text(0.5, 0.5, f"{title}\n(no plans)",
+                ha="center", va="center", transform=ax.transAxes)
+        ax.set_axis_off()
+        return
+    extent_first: list[float] | None = None
+    n_layered = 0
+    for bp in family_bodyparts:
+        plan = per_bp_plans.get(bp)
+        if plan is None:
+            continue
+        ext_bp = plan["extent"]
+        if extent_first is None:
+            extent_first = ext_bp
+        Xg = plan["Xg"]
+        Yg = plan["Yg"]
+        Ux = plan["Ux"]
+        Uy = plan["Uy"]
+        mag = plan["mag"]
+        mass_grid = plan["mass_grid"]
+        dx_cell = plan["dx"]
+        dy_cell = plan["dy"]
+        if not np.any(mag > 0):
+            continue
+        mass_pos = mass_grid[mass_grid > 0]
+        mag_pos = mag[mag > 0]
+        thr_mult = float(threshold_pct50_multiplier)
+        mass_thr = (
+            float(np.percentile(mass_pos, 50) * thr_mult)
+            if mass_pos.size > 0 else 0.0
+        )
+        mag_thr = (
+            float(np.percentile(mag_pos, 50) * thr_mult)
+            if mag_pos.size > 0 else 0.0
+        )
+        mask = (mass_grid > mass_thr) & (mag > mag_thr)
+        if not np.any(mask):
+            continue
+        X_plot = Xg[mask]
+        Y_plot = Yg[mask]
+        U_plot = Ux[mask]
+        V_plot = Uy[mask]
+        M_plot = mass_grid[mask]
+        pos_mass = M_plot[M_plot > 0]
+        if pos_mass.size == 0:
+            continue
+        eps_mass = float(np.percentile(pos_mass, 1) * 0.1)
+        logM = np.log10(M_plot + eps_mass)
+        lo_m = float(np.percentile(logM, 1))
+        hi_m = float(np.percentile(logM, 99))
+        if hi_m <= lo_m:
+            hi_m = lo_m + 1e-6
+        frac_m = np.clip((logM - lo_m) / (hi_m - lo_m), 0.0, 1.0)
+        lw_vals = _ARROW_LW_MIN + frac_m * (_ARROW_LW_MAX - _ARROW_LW_MIN)
+        head_w_vals = (
+            _ARROW_HEAD_W_MIN_FRAC_DX * dx_cell
+            + frac_m * (
+                _ARROW_HEAD_W_MAX_FRAC_DX - _ARROW_HEAD_W_MIN_FRAC_DX
+            ) * dx_cell
+        )
+        head_l_vals = (
+            _ARROW_HEAD_L_MIN_FRAC_DY * dy_cell
+            + frac_m * (
+                _ARROW_HEAD_L_MAX_FRAC_DY - _ARROW_HEAD_L_MIN_FRAC_DY
+            ) * dy_cell
+        )
+        alphas = _ARROW_ALPHA_MIN + frac_m * (
+            _ARROW_ALPHA_MAX - _ARROW_ALPHA_MIN
+        )
+        if arrow_size_factor != 1.0:
+            head_w_vals = head_w_vals * arrow_size_factor
+            head_l_vals = head_l_vals * arrow_size_factor
+            lw_vals = lw_vals * arrow_size_factor
+        # Per-bp solid color: sample 0.7 of the layer's diverging cmap
+        # for a single saturated hue (avoids the white center of the
+        # diverging cmap). For RdBu @ 0.7 → red shade; PuOr @ 0.7 →
+        # orange; BrBG @ 0.7 → green-teal. Visually distinct per bp.
+        key = _pattern_b_pd_layer_key(bp)
+        cmap_name = _PATTERN_B_PD_CMAPS.get(key, "RdBu")
+        try:
+            cmap = plt.get_cmap(cmap_name)
+        except ValueError:
+            cmap = plt.get_cmap("RdBu")
+        arrow_color = cmap(0.85)
+        for x, y, u, v, lw, hw, hl, al in zip(
+            X_plot, Y_plot, U_plot, V_plot,
+            lw_vals, head_w_vals, head_l_vals, alphas,
+            strict=False,
+        ):
+            ax.arrow(
+                float(x), float(y), float(u), float(v),
+                length_includes_head=True,
+                head_width=float(hw),
+                head_length=float(hl),
+                linewidth=float(lw),
+                color=arrow_color,
+                alpha=float(al),
+            )
+        n_layered += 1
+    if extent_first is None:
+        ax.text(0.5, 0.5, f"{title}\n(no arrows)",
+                ha="center", va="center", transform=ax.transAxes)
+        ax.set_axis_off()
+        return
+    per_mode = _get_per_center_mode_params(
+        spatial_config, family_bodyparts[0], family_center_mode,
+    )
+    if per_mode["xlim"]:
+        ax.set_xlim(per_mode["xlim"])
+    else:
+        ax.set_xlim(extent_first[0], extent_first[1])
+    if per_mode["ylim"]:
+        ylim_lo, ylim_hi = per_mode["ylim"]
+        ax.set_ylim(ylim_hi, ylim_lo)
+    else:
+        ax.set_ylim(extent_first[3], extent_first[2])
+    _apply_q22_panel_polish(ax)
+    ax.set_title(title, fontsize=_Q22_PANEL_TITLE_FONTSIZE)
+
+
+def _render_pattern_b_uot_displacement(
+    animal: str,
+    family_entry: str,
+    bodyparts: list[str],
+    center_mode: str,
+    scope: Scope,
+    resolver: PathResolver,
+    *,
+    bin_size_days: int,
+    trial_group: str,
+    dates: list[dt.date],
+    defaults: dict[str, Any],
+    animal_info: AnimalInfo,
+    bucket_per_layer_vmax: dict[str, float] | None,
+    arrow_size_factor: float,
+    threshold_pct50_multiplier: float,
+    mass_change_floor_fraction: float,
+    unb_nbins: int,
+) -> plt.Figure:
+    """Q61 Addendum #51: layered Pattern B UOT figure (composite
+    families). Per-bin grid with mass_change + arrows columns; each
+    panel layers N per-bp imshow / arrow sets under per-(widx or bp)
+    cmaps.
+    """
+    spatial_config = defaults["dlc_spatial"]
+    pre_dates, _ = _split_pre_post_dates(dates, animal_info)
+    if scope == "tone_aligned":
+        tg_arg: str | None = trial_group
+        window_ms: tuple[float, float] | None = TASK5_TONE_WINDOW_MS
+    else:
+        tg_arg = None
+        window_ms = None
+
+    H_pre_pool_prop_per_bp: dict[str, np.ndarray] = {}
+    n_pre_sess_max = 0
+    for bp in bodyparts:
+        H_pre, _ext, n_pre_sess, _, n_total_pre = (
+            compute_animal_aggregated_histogram(
+                animal, pre_dates, bp, center_mode, resolver,
+                trial_group=tg_arg, window_ms=window_ms,
+                defaults=defaults, animal_info=animal_info,
+                nbins_override=unb_nbins,
+            )
+        )
+        if H_pre is None or n_total_pre == 0:
+            continue
+        H_pre_pool_prop_per_bp[bp] = H_pre / float(n_total_pre)
+        n_pre_sess_max = max(n_pre_sess_max, n_pre_sess)
+
+    if not H_pre_pool_prop_per_bp:
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.text(
+            0.5, 0.5,
+            f"{animal}/{family_entry}/{scope}/bin{bin_size_days}d/tg={trial_group}\n"
+            f"Pattern B UOT skipped (empty pre-stroke pool)",
+            ha="center", va="center", transform=ax.transAxes,
+        )
+        ax.set_axis_off()
+        return fig
+
+    from stroke_orofacial.dlc_kinematics._day_binned import (
+        _compute_rel_day_bin_label,
+    )
+    bins: dict[str, list[dt.date]] = {}
+    for d in dates:
+        label = _compute_rel_day_bin_label(
+            session_date=d, d0=animal_info.stroke_date,
+            bin_days=int(bin_size_days),
+        )
+        bins.setdefault(label, []).append(d)
+    bin_labels = sorted(bins.keys(), key=_bin_label_sort_key)
+
+    # Pass-1 fallback when driver didn't supply bucket dict: compute
+    # figure-locally over bins-in-this-SVG.
+    if bucket_per_layer_vmax is None:
+        raw_accumulator: dict[str, list[np.ndarray]] = {}
+        for bin_label in bin_labels:
+            plans, _ns = _compute_pattern_b_uot_per_bp_plans_for_bin(
+                animal, bins[bin_label], H_pre_pool_prop_per_bp,
+                bodyparts, center_mode, scope, resolver,
+                defaults=defaults, animal_info=animal_info,
+                trial_group=trial_group, unb_nbins=unb_nbins,
+            )
+            for bp, plan in plans.items():
+                key = _pattern_b_pd_layer_key(bp)
+                mc = (
+                    plan["mass_create"].astype(float)
+                    - plan["mass_destroy"].astype(float)
+                )
+                raw_accumulator.setdefault(key, []).append(np.abs(mc))
+        bucket_per_layer_vmax = {}
+        for key, arrs in raw_accumulator.items():
+            pooled = np.concatenate(
+                [a[np.isfinite(a)].flatten() for a in arrs]
+            )
+            if pooled.size == 0:
+                bucket_per_layer_vmax[key] = 1e-12
+                continue
+            v = float(np.percentile(pooled, _PATTERN_B_PD_VMAX_PERCENTILE))
+            bucket_per_layer_vmax[key] = max(v, 1e-12)
+
+    # Pass 2: render.
+    n_bins = len(bin_labels)
+    nrows = max(1, n_bins)
+    ncols = 2
+    fig, axes_obj = plt.subplots(
+        nrows=nrows, ncols=ncols,
+        figsize=(ncols * 5.0, nrows * 3.8),
+        constrained_layout=False,
+    )
+    if nrows == 1:
+        axes = np.array(axes_obj).reshape(1, ncols)
+    else:
+        axes = axes_obj
+    fig.patch.set_facecolor("white")
+    n_sess_max = 0
+    for row_idx, bin_label in enumerate(bin_labels):
+        plans, n_sess = _compute_pattern_b_uot_per_bp_plans_for_bin(
+            animal, bins[bin_label], H_pre_pool_prop_per_bp,
+            bodyparts, center_mode, scope, resolver,
+            defaults=defaults, animal_info=animal_info,
+            trial_group=trial_group, unb_nbins=unb_nbins,
+        )
+        n_sess_max = max(n_sess_max, n_sess)
+        ax_mass = axes[row_idx, 0]
+        ax_arrows = axes[row_idx, 1]
+        if not plans:
+            for ax in (ax_mass, ax_arrows):
+                ax.text(0.5, 0.5, f"bin {bin_label}\n(no data)",
+                        ha="center", va="center", transform=ax.transAxes)
+                ax.set_axis_off()
+            continue
+        _render_pattern_b_uot_mass_change_panel(
+            ax_mass, plans,
+            family_bodyparts=bodyparts,
+            family_center_mode=center_mode,
+            spatial_config=spatial_config,
+            per_layer_vmax=bucket_per_layer_vmax,
+            floor_fraction=mass_change_floor_fraction,
+            bin_label=f"{bin_label} n_sess={n_sess}",
+        )
+        _render_pattern_b_uot_arrows_panel(
+            ax_arrows, plans,
+            family_bodyparts=bodyparts,
+            family_center_mode=center_mode,
+            spatial_config=spatial_config,
+            title=f"bin {bin_label} arrows n_sess={n_sess}",
+            arrow_size_factor=arrow_size_factor,
+            threshold_pct50_multiplier=threshold_pct50_multiplier,
+        )
+
+    # Stacked per-layer-key mass_change colorbars on figure right.
+    _attach_pattern_b_pd_colorbars(
+        fig, bodyparts,
+        per_layer_vmax=bucket_per_layer_vmax,
+        family_label=family_entry,
+    )
+    # Q60 / Q31: room for right-edge colorbars + row spacing.
+    fig.subplots_adjust(right=0.85, hspace=0.4)
+
+    fig.suptitle(
+        f"{animal} | {family_entry} | UOT bin{int(bin_size_days)}d "
+        f"| {scope} | trial_group={trial_group} | scale: bucket-shared  "
+        f"(n_pre_sess={n_pre_sess_max}, nbins={unb_nbins}, "
+        f"layer |vmax| keys={sorted(bucket_per_layer_vmax.keys())})",
+        fontsize=_Q22_SUPTITLE_FONTSIZE,
+    )
+    return fig
+
+
 def render_unbalanced_ot_displacement_field(
     animal: str,
     family_entry: str,
@@ -3216,6 +3790,7 @@ def render_unbalanced_ot_displacement_field(
     shared_mass_change_vmax_abs: float | None = None,
     shared_arrow_logmag_lo: float | None = None,
     shared_arrow_logmag_hi: float | None = None,
+    bucket_per_layer_vmax: dict[str, float] | None = None,
 ) -> plt.Figure:
     """Render the UNBALANCED-OT per-bin grid summary SVG per Addendum #14
     Q3d.B (mirrors proportion_differences per-bin pattern from
@@ -3279,6 +3854,30 @@ def render_unbalanced_ot_displacement_field(
         unb_cfg.get("mass_change_floor_fraction", 0.05)
     )
 
+    # Q61 Addendum #51 (2026-05-19): composite families take the
+    # layered Pattern B UOT path (per-bp UOT solve + per-bp imshow
+    # overlay for mass_change + per-bp arrows). Single-bp families
+    # fall through to the Pattern A path below.
+    if len(bodyparts) > 1:
+        return _render_pattern_b_uot_displacement(
+            animal=animal,
+            family_entry=family_entry,
+            bodyparts=bodyparts,
+            center_mode=center_mode,
+            scope=scope,
+            resolver=resolver,
+            bin_size_days=bin_size_days,
+            trial_group=trial_group,
+            dates=dates,
+            defaults=defaults,
+            animal_info=animal_info,
+            bucket_per_layer_vmax=bucket_per_layer_vmax,
+            arrow_size_factor=arrow_size_factor,
+            threshold_pct50_multiplier=threshold_pct50_multiplier,
+            mass_change_floor_fraction=mass_change_floor_fraction,
+            unb_nbins=unb_nbins,
+        )
+
     pre_dates, _post_dates = _split_pre_post_dates(dates, animal_info)
     if not pre_dates:
         fig, ax = plt.subplots(figsize=(8, 6))
@@ -3293,28 +3892,19 @@ def render_unbalanced_ot_displacement_field(
 
     # Compute fixed reference: animal-level pre-stroke pool, Q17-normalized
     # via total-frame denominator. Apply same trial_group filter so the
-    # per-bin comparison is apples-to-apples.
+    # per-bin comparison is apples-to-apples. Composite families went
+    # through the Q61 layered path above; here we know len(bodyparts) == 1.
     tg_arg = trial_group if scope == "tone_aligned" else None
     window_ms = TASK5_TONE_WINDOW_MS if scope == "tone_aligned" else None
-    if len(bodyparts) == 1:
-        bp_for_axis = bodyparts[0]
-        H_pre_pool, ext_pre, n_pre_sess, _, n_total_pre = (
-            compute_animal_aggregated_histogram(
-                animal, pre_dates, bp_for_axis, center_mode, resolver,
-                trial_group=tg_arg, window_ms=window_ms,
-                defaults=defaults, animal_info=animal_info,
-                nbins_override=unb_nbins,
-            )
+    bp_for_axis = bodyparts[0]
+    H_pre_pool, ext_pre, n_pre_sess, _, n_total_pre = (
+        compute_animal_aggregated_histogram(
+            animal, pre_dates, bp_for_axis, center_mode, resolver,
+            trial_group=tg_arg, window_ms=window_ms,
+            defaults=defaults, animal_info=animal_info,
+            nbins_override=unb_nbins,
         )
-    else:
-        bp_for_axis = bodyparts[0]
-        H_pre_pool, ext_pre, n_pre_sess, n_total_pre = (
-            _aggregate_for_dates_pooled_bodyparts(
-                animal, pre_dates, bodyparts, center_mode, scope, resolver,
-                defaults=defaults, animal_info=animal_info,
-                trial_group=trial_group, nbins_override=unb_nbins,
-            )
-        )
+    )
 
     if H_pre_pool is None or n_total_pre == 0:
         fig, ax = plt.subplots(figsize=(8, 6))
@@ -3351,6 +3941,9 @@ def render_unbalanced_ot_displacement_field(
         figsize=(ncols * 5.0, nrows * 3.8),
         constrained_layout=True,
     )
+    # Q60 Addendum #50: bump vertical row spacing so x-axis labels
+    # don't overlap titles of the next row.
+    fig.set_constrained_layout_pads(h_pad=0.3, hspace=0.05)
     # Normalize axes layout to 2D (nrows, 2).
     if nrows == 1:
         axes = np.array(axes_obj).reshape(1, ncols)
@@ -3359,23 +3952,16 @@ def render_unbalanced_ot_displacement_field(
 
     for row_idx, bin_label in enumerate(bin_labels):
         bin_dates = bins[bin_label]
-        if len(bodyparts) == 1:
-            H_bin, ext_b, n_sess, _, n_total_bin = (
-                compute_animal_aggregated_histogram(
-                    animal, bin_dates, bp_for_axis, center_mode, resolver,
-                    trial_group=tg_arg, window_ms=window_ms,
-                    defaults=defaults, animal_info=animal_info,
-                    nbins_override=unb_nbins,
-                )
+        # Q61 Addendum #51: composite families took the Q61 layered
+        # path above; this code path is single-bp only.
+        H_bin, ext_b, n_sess, _, n_total_bin = (
+            compute_animal_aggregated_histogram(
+                animal, bin_dates, bp_for_axis, center_mode, resolver,
+                trial_group=tg_arg, window_ms=window_ms,
+                defaults=defaults, animal_info=animal_info,
+                nbins_override=unb_nbins,
             )
-        else:
-            H_bin, ext_b, n_sess, n_total_bin = (
-                _aggregate_for_dates_pooled_bodyparts(
-                    animal, bin_dates, bodyparts, center_mode, scope, resolver,
-                    defaults=defaults, animal_info=animal_info,
-                    trial_group=trial_group, nbins_override=unb_nbins,
-                )
-            )
+        )
         ax_mass_change = axes[row_idx, 0]
         ax_arrows = axes[row_idx, 1]
         if H_bin is None or n_total_bin == 0:

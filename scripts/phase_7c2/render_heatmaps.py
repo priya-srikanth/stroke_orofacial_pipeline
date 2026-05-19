@@ -63,6 +63,7 @@ from stroke_orofacial.dlc_spatial.render_on_demand import (
     precompute_individual_session_h_proportions,
     precompute_pattern_b_bucket_per_bp_norms_is,  # Q52 Addendum #44
     precompute_pattern_b_pd_bucket_per_layer_vmax,  # Q58 Addendum #48
+    precompute_pattern_b_uot_bucket_per_layer_vmax,  # Q61 Addendum #51
     precompute_proportion_diffs,
     precompute_unbalanced_ot_plans,
     render_binned_sessions_grid,  # Q36 Addendum #34
@@ -78,6 +79,15 @@ COHORT_ORDER = ("PS46", "PS47", "PS48", "PS49", "PS50", "PS51", "PS54", "PS55")
 # All 5 family entries iterate (whiskers dispatches to the composite
 # overlay renderer per Addendum #10 Q1 / commit-to-follow).
 ALL_FAMILIES = tuple(EXPECTED_TONE_ALIGNED_FAMILIES.keys())
+
+# Q60 Addendum #50 (2026-05-19): per-plot-type filter — fine-grained
+# alternative to the legacy ``--only-pd-ot``/``--only-pd`` flags.
+PLOT_TYPES = (
+    "individual_session",
+    "binned_sessions",
+    "proportion_differences",
+    "unbalanced_ot",
+)
 
 SCOPES = ("tone_aligned", "whole_session")
 
@@ -244,6 +254,7 @@ def _process_animal(
     animal: str, resolver: PathResolver, defaults: dict,
     *, only_pd_ot: bool = False, only_pd: bool = False,
     families_filter: tuple[str, ...] | None = None,
+    plot_types_filter: tuple[str, ...] | None = None,
 ) -> dict:
     """Render all 4 plot types × 2 scopes × 7 families for one animal.
 
@@ -286,8 +297,24 @@ def _process_animal(
     n_ot = 0
     n_err = 0
     anomalies: list[str] = []
-    skip_is_bs = only_pd_ot or only_pd
-    skip_uot = only_pd
+    # Q60 Addendum #50: per-plot-type emit gating. When
+    # plot_types_filter is supplied, it overrides the legacy
+    # ``only_pd_ot``/``only_pd`` binary flags. Otherwise the legacy
+    # flags map to the same set semantics.
+    if plot_types_filter:
+        plot_set = set(plot_types_filter)
+    elif only_pd:
+        plot_set = {"proportion_differences"}
+    elif only_pd_ot:
+        plot_set = {"proportion_differences", "unbalanced_ot"}
+    else:
+        plot_set = set(PLOT_TYPES)
+    emit_is = "individual_session" in plot_set
+    emit_bs = "binned_sessions" in plot_set
+    emit_pd = "proportion_differences" in plot_set
+    emit_ot = "unbalanced_ot" in plot_set
+    # Legacy ``skip_uot`` retained for the UOT-section continue check.
+    skip_uot = not emit_ot
     # Phase 7c.2 Addendum #22 Q23: per-animal bin_size singleton.
     bin_sizes_days = (int(animal_info.bin_days),)
     log.info(f"  Q23 bin_sizes_days = {bin_sizes_days} (animal_info.bin_days={animal_info.bin_days})")
@@ -302,7 +329,11 @@ def _process_animal(
             # (family, scope) depending on family arity. -----
             family_meta = EXPECTED_TONE_ALIGNED_FAMILIES[family_entry]
             is_pattern_b = len(family_meta["bodyparts"]) > 1
-            if not skip_is_bs:
+            # Q60 Addendum #50: IS rendered only when emit_is. The
+            # IS Pass 1 precompute is now scoped to the IS render so
+            # we don't pay its cost when only BS / PD / UOT is
+            # requested.
+            if emit_is:
                 is_vmin: float | None = None
                 is_vmax: float | None = None
                 is_bucket_per_bp_norms: dict[str, dict[str, tuple[float, float]]] | None = None
@@ -355,11 +386,12 @@ def _process_animal(
                         )
                         anomalies.append(msg)
                         log.error(f"    ERR {msg}")
-                # ----- BS bucket (Q36 Addendum #34: one grid SVG per
-                # (family, bin_size, scope, trial_group), collapsing
-                # all N_bins into a near-square grid layout). Per-tg
-                # fanout (3 SVGs for tone_aligned, 1 for whole_session).
-                # Q14/Q18 bucket-shared LogNorm across all bins × tgs. -----
+            # ----- BS bucket (Q36 Addendum #34: one grid SVG per
+            # (family, bin_size, scope, trial_group), collapsing
+            # all N_bins into a near-square grid layout). Per-tg
+            # fanout (3 SVGs for tone_aligned, 1 for whole_session).
+            # Q14/Q18 bucket-shared LogNorm across all bins × tgs. -----
+            if emit_bs:
                 for bin_size_days in bin_sizes_days:
                     try:
                         bs_arrays = precompute_binned_sessions_h_proportions(
@@ -407,12 +439,13 @@ def _process_animal(
             # all bins × trial_groups in the bucket. -----
             # Q42 Addendum #38: bucket-shared symmetric vmax now uses the
             # configured percentile (default 95th) instead of max(|D|.max()).
+            # Q60 Addendum #50: gated by emit_pd.
             pd_vmax_pct = float(
                 defaults.get("dlc_spatial_tone_aligned", {})
                 .get("proportion_differences", {})
                 .get("vmax_percentile", 95.0)
             )
-            for bin_size_days in bin_sizes_days:
+            for bin_size_days in (bin_sizes_days if emit_pd else ()):
                 # Q58 Addendum #48: Pattern B PD uses per-(layer-key)
                 # bucket vmax dict (computed PER trial_group since
                 # filtered diffs differ across tg); single-bp Pattern A
@@ -497,25 +530,52 @@ def _process_animal(
             ) or {}
             uot_thr_mult = float(unb_cfg.get("threshold_pct50_multiplier", 0.1))
             for bin_size_days in bin_sizes_days:
-                try:
-                    uot_plans = precompute_unbalanced_ot_plans(
-                        animal, family_entry, scope, bin_size_days, dates, resolver,
-                        defaults=defaults, animal_info=animal_info,
-                    )
-                    (
-                        mass_change_vmax_abs, logmag_lo, logmag_hi,
-                    ) = derive_uot_bucket_ranges(
-                        uot_plans,
-                        threshold_pct50_multiplier=uot_thr_mult,
-                    )
-                except Exception as ex:
-                    log.error(
-                        f"    pre1/UOT/{family_entry}/{scope}/bin{bin_size_days}d: {ex!r}"
-                    )
+                # Q61 Addendum #51: Pattern B UOT uses per-(layer-key)
+                # mass_change |vmax| (computed PER tg); Pattern A keeps
+                # the scalar derive_uot_bucket_ranges path.
+                if is_pattern_b:
                     mass_change_vmax_abs = None
                     logmag_lo = None
                     logmag_hi = None
+                    pattern_b_uot_per_tg: dict[str, dict[str, float]] = {}
+                else:
+                    pattern_b_uot_per_tg = {}
+                    try:
+                        uot_plans = precompute_unbalanced_ot_plans(
+                            animal, family_entry, scope, bin_size_days, dates,
+                            resolver,
+                            defaults=defaults, animal_info=animal_info,
+                        )
+                        (
+                            mass_change_vmax_abs, logmag_lo, logmag_hi,
+                        ) = derive_uot_bucket_ranges(
+                            uot_plans,
+                            threshold_pct50_multiplier=uot_thr_mult,
+                        )
+                    except Exception as ex:
+                        log.error(
+                            f"    pre1/UOT/{family_entry}/{scope}/bin{bin_size_days}d: {ex!r}"
+                        )
+                        mass_change_vmax_abs = None
+                        logmag_lo = None
+                        logmag_hi = None
                 for tg in _trial_groups_for_scope(scope):
+                    if is_pattern_b and tg not in pattern_b_uot_per_tg:
+                        try:
+                            pattern_b_uot_per_tg[tg] = (
+                                precompute_pattern_b_uot_bucket_per_layer_vmax(
+                                    animal, family_entry, scope,
+                                    bin_size_days, dates, resolver,
+                                    trial_group=tg,
+                                    defaults=defaults, animal_info=animal_info,
+                                )
+                            )
+                        except Exception as ex:
+                            log.error(
+                                f"    pre1/UOT-PatternB/{family_entry}/{scope}/"
+                                f"bin{bin_size_days}d/tg={tg}: {ex!r}"
+                            )
+                            pattern_b_uot_per_tg[tg] = {}
                     try:
                         fig = render_unbalanced_ot_displacement_field(
                             animal=animal, family_entry=family_entry,
@@ -527,6 +587,9 @@ def _process_animal(
                             shared_mass_change_vmax_abs=mass_change_vmax_abs,
                             shared_arrow_logmag_lo=logmag_lo,
                             shared_arrow_logmag_hi=logmag_hi,
+                            bucket_per_layer_vmax=(
+                                pattern_b_uot_per_tg.get(tg) if is_pattern_b else None
+                            ),
                         )
                         out = _unbalanced_ot_out_path(
                             resolver, scope, animal, family_entry,
@@ -608,6 +671,14 @@ def main(argv: list[str] | None = None) -> int:
         "flag for multiple). Q59 Addendum #49 targeted-re-emit support: "
         "skip families not in the supplied set. Default: all 7 families.",
     )
+    parser.add_argument(
+        "--plot-type",
+        action="append",
+        choices=list(PLOT_TYPES),
+        help="Q60 Addendum #50: restrict to one or more plot types (repeat "
+        "the flag for multiple). When set, overrides --only-pd-ot / --only-pd. "
+        "Default: all 4 plot types.",
+    )
     args = parser.parse_args(argv)
 
     resolver = PathResolver()
@@ -620,9 +691,13 @@ def main(argv: list[str] | None = None) -> int:
     families_filter: tuple[str, ...] | None = (
         tuple(args.family_entry) if args.family_entry else None
     )
+    plot_types_filter: tuple[str, ...] | None = (
+        tuple(args.plot_type) if args.plot_type else None
+    )
     log.info(
         f"only_pd_ot={args.only_pd_ot}  only_pd={args.only_pd}  "
-        f"no_skip={args.no_skip}  family_entry_filter={families_filter}"
+        f"no_skip={args.no_skip}  family_entry_filter={families_filter}  "
+        f"plot_type_filter={plot_types_filter}"
     )
 
     animals = [args.animal] if args.animal else list(COHORT_ORDER)
@@ -637,16 +712,18 @@ def main(argv: list[str] | None = None) -> int:
             animal, resolver, defaults,
             only_pd_ot=args.only_pd_ot, only_pd=args.only_pd,
             families_filter=families_filter,
+            plot_types_filter=plot_types_filter,
         )
-        # Q59 Addendum #49: targeted re-emit (--family-entry set) skips
-        # the manifest write so a partial-coverage row doesn't shadow
-        # the prior full-cohort row's last-wins resume-skip status.
-        if families_filter is None:
+        # Q59 + Q60 Addenda #49 + #50: targeted re-emit (--family-entry
+        # or --plot-type) skips the manifest write so a
+        # partial-coverage row doesn't shadow the prior full-cohort
+        # row's last-wins resume-skip status.
+        if families_filter is None and plot_types_filter is None:
             _append_manifest(row)
         else:
             log.info(
                 "  [targeted re-emit] not appending manifest row "
-                "(family_entry filter active)"
+                "(family_entry or plot_type filter active)"
             )
 
     return 0
