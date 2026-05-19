@@ -61,6 +61,7 @@ from stroke_orofacial.dlc_spatial.render_on_demand import (
     derive_uot_bucket_ranges,
     precompute_binned_sessions_h_proportions,
     precompute_individual_session_h_proportions,
+    precompute_pattern_b_bucket_per_bp_norms_is,  # Q52 Addendum #44
     precompute_proportion_diffs,
     precompute_unbalanced_ot_plans,
     render_binned_sessions_grid,  # Q36 Addendum #34
@@ -284,18 +285,40 @@ def _process_animal(
     for family_entry in ALL_FAMILIES:
         for scope in SCOPES:
             # ----- Q18 Pass 1 (per (family, scope)) — bucket-shared
-            # LogNorm range for IS + BS. Derived from Q17-normalized
-            # H_proportion arrays across ALL dates × tg [× bp]. -----
+            # LogNorm range for IS + BS. Q18 path uses scalar
+            # shared_vmin/shared_vmax for Pattern A single-cmap
+            # callers; Q52 (Addendum #44) adds per-(tg, bp) bucket
+            # norms for Pattern B composite families (whiskers +
+            # fiducial pairs). One of the two precomputes runs per
+            # (family, scope) depending on family arity. -----
+            family_meta = EXPECTED_TONE_ALIGNED_FAMILIES[family_entry]
+            is_pattern_b = len(family_meta["bodyparts"]) > 1
             if not skip_is_bs:
-                try:
-                    is_arrays = precompute_individual_session_h_proportions(
-                        animal, family_entry, scope, dates, resolver,
-                        defaults=defaults, animal_info=animal_info,
-                    )
-                    is_vmin, is_vmax = derive_log_norm_range(is_arrays)
-                except Exception as ex:
-                    log.error(f"    pre1/IS/{family_entry}/{scope}: {ex!r}")
-                    is_vmin, is_vmax = None, None
+                is_vmin: float | None = None
+                is_vmax: float | None = None
+                is_bucket_per_bp_norms: dict[str, dict[str, tuple[float, float]]] | None = None
+                if is_pattern_b:
+                    try:
+                        is_bucket_per_bp_norms = (
+                            precompute_pattern_b_bucket_per_bp_norms_is(
+                                animal, family_entry, scope, dates, resolver,
+                                defaults=defaults, animal_info=animal_info,
+                            )
+                        )
+                    except Exception as ex:
+                        log.error(
+                            f"    pre1/IS-PatternB/{family_entry}/{scope}: {ex!r}"
+                        )
+                        is_bucket_per_bp_norms = None
+                else:
+                    try:
+                        is_arrays = precompute_individual_session_h_proportions(
+                            animal, family_entry, scope, dates, resolver,
+                            defaults=defaults, animal_info=animal_info,
+                        )
+                        is_vmin, is_vmax = derive_log_norm_range(is_arrays)
+                    except Exception as ex:
+                        log.error(f"    pre1/IS/{family_entry}/{scope}: {ex!r}")
                 # ----- Pass 2 — render IS for each (date) with the shared
                 # IS bucket range. -----
                 for date in dates:
@@ -305,6 +328,7 @@ def _process_animal(
                             date=date, scope=scope, resolver=resolver,
                             defaults=defaults, animal_info=animal_info,
                             shared_vmin=is_vmin, shared_vmax=is_vmax,
+                            bucket_per_bp_norms=is_bucket_per_bp_norms,
                         )
                         out = _individual_session_out_path(
                             resolver, scope, animal, family_entry, date,

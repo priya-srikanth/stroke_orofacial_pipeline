@@ -1378,6 +1378,25 @@ def _attach_composite_colorbars(
         cbar.ax.tick_params(labelsize=_Q22_TICK_LABELSIZE - 2)
 
 
+def _aggregate_per_tg_norms(
+    bucket_per_bp_norms_per_tg: dict[str, dict[str, tuple[float, float]]],
+) -> dict[str, tuple[float, float]]:
+    """Q52 colorbar-side reduction: collapse ``{tg: {bp: (vmin, vmax)}}``
+    into a single ``{bp: (vmin, max-vmax-across-tg)}`` for the
+    figure-level stacked colorbars (n_bps<3 path). The composite
+    figure shows ONE colorbar per bp shared across all tg panels;
+    using the max-vmax-across-tg gives a single conservative scale
+    that no panel exceeds.
+    """
+    out: dict[str, tuple[float, float]] = {}
+    for _tg, per_bp in bucket_per_bp_norms_per_tg.items():
+        for bp, (vmin, vmax) in per_bp.items():
+            prev = out.get(bp)
+            if prev is None or vmax > prev[1]:
+                out[bp] = (vmin, vmax)
+    return out
+
+
 def _assemble_composite_figure(
     panels: dict[str, list[tuple[str, np.ndarray | None, list[float] | None, int, int]]],
     scope: Scope,
@@ -1387,19 +1406,24 @@ def _assemble_composite_figure(
     family_center_mode: str,
     family_label: str,
     defaults: dict[str, Any],
+    bucket_per_bp_norms: dict[str, dict[str, tuple[float, float]]] | None = None,
 ) -> plt.Figure:
     """Render the multi-bp composite figure — 1×3 grid (tone_aligned) /
     1×1 (whole_session), each panel layering N bodyparts via
     :func:`_render_composite_panel_axis`. Per-trial-group panel title
     includes session count + tone-event count when tone-aligned.
 
-    Q48 verdict (Addendum #43, 2026-05-18): per-bp LogNorm bounds
-    derived figure-locally via
-    :func:`_derive_pattern_b_per_bp_norms` (legacy 1e-6 / max-of-99th-
-    pct across trial-group panels per bp). Bucket-shared scale
-    plumbing (Q14 / Q18 ``shared_vmin``/``shared_vmax``) is dropped
-    for Pattern B; cross-SVG visual comparability is intentionally
-    sacrificed for legacy-faithful per-layer dynamic range.
+    Q48 verdict (Addendum #43, 2026-05-18) → Q52 (Addendum #44):
+    per-bp LogNorm bounds prefer the cohort-driver-supplied
+    ``bucket_per_bp_norms`` (per-trial-group bucket-wide vmax across
+    ALL SVGs in the (animal, family_entry, plot_type, scope,
+    trial_group) bucket) when available. When ``bucket_per_bp_norms``
+    is ``None`` (single-SVG-bucket cases like Q36 BS-grid, or
+    standalone smoke without a driver Pass 1), falls back to
+    figure-local aggregation via
+    :func:`_derive_pattern_b_per_bp_norms` over the panels in this
+    figure — semantically identical to bucket-shared when bucket =
+    SVG.
 
     Q31 Addendum #28: figsize wider for the right-anchored swatch
     legend / stacked colorbar block; manual ``subplots_adjust`` reserves
@@ -1415,14 +1439,18 @@ def _assemble_composite_figure(
         trial_groups = TASK5_TRIAL_GROUPS_WHOLE_SESSION
         figsize = (10.0, 6.0)
 
-    # Q48 verdict (Addendum #43): pre-aggregate per-bp LogNorm bounds
-    # across the trial-group panels in this figure so each layer's
-    # scale is consistent across panels (stacked-colorbar meaningful
-    # for n_bps<3; cmap-mapping stable across trial-group axes).
-    panels_flat: list[tuple[str, np.ndarray | None, Any, Any, Any, int]] = []
-    for tg in trial_groups:
-        panels_flat.extend(panels.get(tg, []))
-    per_bp_norms = _derive_pattern_b_per_bp_norms(panels_flat)
+    # Q52 (Addendum #44): prefer driver-supplied bucket norms (per-tg);
+    # fall back to figure-local Q48 aggregation when bucket = SVG.
+    if bucket_per_bp_norms:
+        per_tg_norms = bucket_per_bp_norms
+        cbar_norms = _aggregate_per_tg_norms(per_tg_norms)
+    else:
+        panels_flat: list[tuple[str, np.ndarray | None, Any, Any, Any, int]] = []
+        for tg in trial_groups:
+            panels_flat.extend(panels.get(tg, []))
+        figure_local = _derive_pattern_b_per_bp_norms(panels_flat)
+        per_tg_norms = {tg: figure_local for tg in trial_groups}
+        cbar_norms = figure_local
 
     # NOTE: constrained_layout=False here — the right-edge legend needs
     # manual room reserved via fig.subplots_adjust(right=...) at the
@@ -1455,13 +1483,15 @@ def _assemble_composite_figure(
             family_bodyparts=family_bodyparts,
             family_center_mode=family_center_mode,
             panel_title=panel_title,
-            per_bp_norms=per_bp_norms,
+            per_bp_norms=per_tg_norms.get(tg, {}),
         )
-    # Q24 / Q48: stacked per-bp colorbars (n_bps<3) or swatch legend (n_bps>=3).
+    # Q24 / Q48 / Q52: stacked per-bp colorbars (n_bps<3) or swatch legend
+    # (n_bps>=3). Colorbars use the per-tg-max aggregate so a single
+    # scale per bp covers the worst-case panel without clipping.
     _attach_composite_colorbars(
         fig, family_bodyparts, spatial_config,
         family_label=family_label,
-        per_bp_norms=per_bp_norms,
+        per_bp_norms=cbar_norms,
     )
     fig.suptitle(suptitle, fontsize=_Q22_SUPTITLE_FONTSIZE)
     # Make room for the right-edge colorbar block.
@@ -1480,6 +1510,7 @@ def render_individual_session_heatmap(
     animal_info: AnimalInfo | None = None,
     shared_vmin: float | None = None,
     shared_vmax: float | None = None,
+    bucket_per_bp_norms: dict[str, dict[str, tuple[float, float]]] | None = None,
 ) -> plt.Figure:
     """Render the per-session heatmap figure for one (animal, family,
     date, scope) cell.
@@ -1493,8 +1524,15 @@ def render_individual_session_heatmap(
     renderer (Addendum #10 Q1, generalized in Addendum #13).
 
     Q18 Addendum #17: ``shared_vmin`` / ``shared_vmax`` propagate
-    bucket-shared LogNorm bounds into the panel renderers (used by the
-    cohort driver's two-pass-per-bucket flow).
+    bucket-shared LogNorm bounds into Pattern A single-cmap panels.
+
+    Q52 Addendum #44 (2026-05-18): ``bucket_per_bp_norms`` carries the
+    Pattern B IS-bucket per-(tg, bp) shared LogNorm bounds from the
+    cohort driver's Pass 1 (so SVGs across all dates in the
+    (animal, family_entry, IS, scope, trial_group) bucket render
+    each layer against the same vmax for cross-SVG comparability).
+    When None (standalone smoke or non-cohort callers), the composite
+    renderer falls back to figure-local Q48 aggregation.
     """
     if defaults is None:
         defaults = load_defaults()
@@ -1502,14 +1540,17 @@ def render_individual_session_heatmap(
         animal_info = get_animal(animal)
     bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
     # Q22 Addendum #21 title spec: animal | family | date | scope | plot_type.
+    is_pattern_b = len(bodyparts) > 1
+    scale_tag = " | scale: bucket-shared" if is_pattern_b else ""
     suptitle = (
         f"{animal} | {family_entry} | {date.isoformat()} | {scope} "
-        f"| individual_session"
+        f"| individual_session{scale_tag}"
     )
-    if len(bodyparts) > 1:
+    if is_pattern_b:
         # Composite family — Pattern B layered overlay (Addenda #10/#13).
-        # Q48 verdict (Addendum #43): Pattern B uses figure-local per-bp
-        # LogNorm bounds; bucket-shared shared_vmin/shared_vmax IGNORED.
+        # Q48 verdict (Addendum #43) + Q52 (Addendum #44): per-bp LogNorm
+        # bounds come from the driver Pass 1 bucket precompute when
+        # supplied; figure-local aggregation otherwise.
         composite_panels = _compute_composite_panels(
             animal, [date], bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
@@ -1520,6 +1561,7 @@ def render_individual_session_heatmap(
             family_center_mode=center_mode,
             family_label=family_entry,
             defaults=defaults,
+            bucket_per_bp_norms=bucket_per_bp_norms,
         )
     bp = bodyparts[0]
 
@@ -1567,15 +1609,19 @@ def render_binned_sessions_heatmap(  # noqa: D401
         animal_info = get_animal(animal)
     bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
     # Q22 Addendum #21 title spec: animal | family | bin_label | scope | plot_type.
+    is_pattern_b = len(bodyparts) > 1
+    scale_tag = " | scale: bucket-shared" if is_pattern_b else ""
     suptitle = (
         f"{animal} | {family_entry} | rel_day_bin={rel_day_bin_label} "
-        f"| {scope} | binned_sessions  "
+        f"| {scope} | binned_sessions{scale_tag}  "
         f"(n_dates_in_bin={len(dates_in_bin)})"
     )
-    if len(bodyparts) > 1:
+    if is_pattern_b:
         # Composite family — Pattern B layered overlay (Addenda #10/#13).
-        # Q48 verdict (Addendum #43): Pattern B uses figure-local per-bp
-        # LogNorm bounds; bucket-shared shared_vmin/shared_vmax IGNORED.
+        # Q48 verdict + Q52 (Addenda #43, #44): per-bp norms come from
+        # figure-local aggregation (this code path is BS-per-bin, not
+        # used by the Phase 7c.2 cohort driver post-Q36; kept for
+        # backward-compat smoke runners and ad-hoc callers).
         composite_panels = _compute_composite_panels(
             animal, dates_in_bin, bodyparts, center_mode, scope, resolver,
             defaults=defaults, animal_info=animal_info,
@@ -1663,9 +1709,15 @@ def render_binned_sessions_grid(
         return fig
 
     # Q22 suptitle convention.
+    # Q52 Addendum #44: tag Pattern B SVGs with "scale: bucket-shared"
+    # (the BS-grid SVG IS its own bucket per (animal, family, scope,
+    # bin_size, trial_group), so figure-local aggregation = bucket-
+    # shared by construction).
+    is_pattern_b = len(bodyparts) > 1
+    scale_tag = " | scale: bucket-shared" if is_pattern_b else ""
     suptitle = (
         f"{animal} | {family_entry} | binned_sessions bin{int(bin_size_days)}d "
-        f"| {scope} | trial_group={trial_group}"
+        f"| {scope} | trial_group={trial_group}{scale_tag}"
     )
 
     # Near-square grid: ceil(sqrt(N)) cols.
@@ -2930,6 +2982,77 @@ def render_unbalanced_ot_displacement_field(
 # Memory budget: typical PS46 IS bucket = 21 dates × 3 tgs × 1 bp at
 # 100×100 = ~5 MB / bucket. Trivial.
 # ---------------------------------------------------------------------------
+
+
+def precompute_pattern_b_bucket_per_bp_norms_is(
+    animal: str,
+    family_entry: str,
+    scope: Scope,
+    dates: list[dt.date],
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+) -> dict[str, dict[str, tuple[float, float]]]:
+    """Q52 Addendum #44 (2026-05-18) — Pattern B IS bucket-shared per-bp
+    norms. Pass 1 of the two-pass IS Pattern B render flow.
+
+    The IS Pattern B bucket = ``(animal, family_entry, IS, scope,
+    trial_group)`` — same Q14 bucket as Pattern A's IS shared-vmin/
+    vmax (Q23 drops bin_size; IS has no bin dimension). For each
+    ``trial_group`` independently, this function pools the
+    per-(date, bp) H_proportion arrays across all dates in the
+    bucket, then derives the per-bp LogNorm vmax as the 99th
+    percentile of pooled positive values. ``vmin`` is the legacy
+    ``1e-6`` floor (matches Cell 13 ``VMIN_LOG_PROP``).
+
+    Returned dict structure:
+        ``{trial_group: {bp: (vmin=1e-6, vmax=99th-pct-bucket)}}``
+
+    Used by the cohort driver as Pass 1 for IS Pattern B; Pass 2 is
+    the per-date ``render_individual_session_heatmap(...,
+    bucket_per_bp_norms=...)`` call. Single-bp families return ``{}``
+    (Pattern A goes through the scalar shared_vmin/shared_vmax path
+    instead).
+
+    Supersedes Q48 verdict item 3's figure-local norm scope. BS-grid
+    Pattern B (Q36) is already bucket-shared by virtue of one-SVG-
+    per-bucket, so this function is IS-only.
+    """
+    if defaults is None:
+        defaults = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+    bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
+    if len(bodyparts) <= 1:
+        return {}
+    # Accumulator: {tg: {bp: list[np.ndarray]}}.
+    accumulator: dict[str, dict[str, list[np.ndarray]]] = {}
+    for date in dates:
+        panels = _compute_composite_panels(
+            animal, [date], bodyparts, center_mode, scope, resolver,
+            defaults=defaults, animal_info=animal_info,
+        )
+        for tg, per_tg in panels.items():
+            tg_acc = accumulator.setdefault(tg, {})
+            for bp, H, _ext, _n_sess, _n_tones, n_total in per_tg:
+                if H is None or n_total == 0:
+                    continue
+                tg_acc.setdefault(bp, []).append(H / float(n_total))
+    vmin_floor = _PATTERN_B_LEGACY_VMIN
+    out: dict[str, dict[str, tuple[float, float]]] = {}
+    for tg, bp_arrays in accumulator.items():
+        tg_out: dict[str, tuple[float, float]] = {}
+        for bp, arrs in bp_arrays.items():
+            pooled = np.concatenate([
+                a[np.isfinite(a) & (a > 0)].flatten() for a in arrs
+            ])
+            if pooled.size == 0:
+                continue
+            vmax = float(np.percentile(pooled, _PATTERN_B_VMAX_PERCENTILE))
+            tg_out[bp] = (vmin_floor, max(vmax, vmin_floor * 10.0))
+        out[tg] = tg_out
+    return out
 
 
 def precompute_individual_session_h_proportions(
