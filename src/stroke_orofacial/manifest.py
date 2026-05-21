@@ -190,12 +190,19 @@ class SessionManifest:
         (Phase 7-pre-multi-half). ``None`` for single-half sessions —
         every existing single-half code path runs unchanged when
         ``halves is None``. When non-None, the parent-level
-        ``wavesurfer_file`` / ``video_files`` / ``dlc_h5_files`` /
-        ``dlc_csv_files`` are intentionally LEFT EMPTY/None and
-        downstream consumers must read per-half data from
-        ``halves[i]``. The ``alignment_template`` field still resolves
-        to the parent-level merged path (populated by Phase 3 once
-        the merge is run); per-half templates live in
+        ``wavesurfer_file`` / ``video_files`` are intentionally LEFT
+        EMPTY/None and downstream consumers must read per-half data
+        from ``halves[i]``. ``dlc_h5_files`` / ``dlc_csv_files`` carry
+        ``[halves[0].dlc_h5_file]`` / ``[halves[0].dlc_csv_file]``
+        (half-A's DLC paths) per the Phase 7c.2 Task 2 F-P-5 wiring
+        fix so Phase 7a consumers locate the merged centered parquet
+        via half-A's H5 filename (which is what
+        :func:`stroke_orofacial.dlc_io.parquet._build_centered_parquet_multi_half`
+        uses to name the merged-parquet output). When half-A's DLC
+        inference hasn't run, both lists remain empty (consumers
+        raise ``FileNotFoundError``). The ``alignment_template`` field
+        still resolves to the parent-level merged path (populated by
+        Phase 3 once the merge is run); per-half templates live in
         ``halves[i].alignment_template``.
     session_suffix : str or None
         Optional letter suffix for Pattern B secondary-spout sessions
@@ -748,12 +755,22 @@ def build_manifest(
         phase-scoped error message.
 
         For multi-half sessions (``halves is not None``), the
-        parent-level ``wavesurfer_file`` / ``video_files`` /
-        ``dlc_h5_files`` / ``dlc_csv_files`` are intentionally left
-        empty/None — per-half data lives in ``halves[i]``.
-        ``alignment_template`` continues to point at the parent-level
-        merged file path (populated by Phase 3 once the merge is run);
-        per-half templates live in ``halves[i].alignment_template``.
+        parent-level ``wavesurfer_file`` / ``video_files`` are
+        intentionally left empty/None — per-half data lives in
+        ``halves[i]``. ``dlc_h5_files`` / ``dlc_csv_files`` are
+        populated with ``[halves[0].dlc_h5_file]`` /
+        ``[halves[0].dlc_csv_file]`` (half-A's DLC paths) so Phase 7a
+        consumers find the merged centered parquet at the parent-level
+        path ``{output_root}/centered_{mode}/{ANIMAL}/{half_a_h5_name}.intermediate.{sig}.parquet``
+        — named after half-A's H5 per
+        :func:`stroke_orofacial.dlc_io.parquet._build_centered_parquet_multi_half`.
+        When half-A's DLC inference hasn't run
+        (``halves[0].dlc_h5_file is None``), both lists remain empty
+        so downstream ``FileNotFoundError`` surfaces an actionable
+        message. ``alignment_template`` continues to point at the
+        parent-level merged file path (populated by Phase 3 once the
+        merge is run); per-half templates live in
+        ``halves[i].alignment_template``.
 
     Raises
     ------
@@ -928,11 +945,32 @@ def build_manifest(
         except (FileNotFoundError, RuntimeError):
             pass  # camera data not available
     else:
-        # Multi-half: clear parent-level DLC results too. Per-half DLC
-        # files live in halves[i].dlc_h5_file / .dlc_csv_file. The
-        # parent-level lists matter only for single-half manifests.
-        dlc_h5_files = []
-        dlc_csv_files = []
+        # Multi-half (Pattern A): populate parent-level dlc_h5_files /
+        # dlc_csv_files with [halves[0].dlc_h5_file] / [halves[0].dlc_csv_file]
+        # so downstream Phase 7a consumers (build_interpolated_trace,
+        # dlc_spatial.tone_aligned.build_tone_aligned_analysis) find the
+        # merged centered parquet via the half-A H5 filename. The merged
+        # parquet's name is f"{halves[0].dlc_h5_file.name}.intermediate.{sig}.parquet"
+        # per _build_centered_parquet_multi_half (dlc_io/parquet.py line 213);
+        # those consumers read manifest.dlc_h5_files[0].name to compute
+        # the same expected path. Phase 4 routing still dispatches on
+        # `halves is not None` before reaching the dlc_h5_files iteration,
+        # so the parent-level Path doesn't pollute the per-half compute
+        # loop. Phase 7c.2 Task 2 F-P-5 wiring fix.
+        if halves[0].dlc_h5_file is not None:
+            dlc_h5_files = [halves[0].dlc_h5_file]
+            dlc_csv_files = (
+                [halves[0].dlc_csv_file]
+                if halves[0].dlc_csv_file is not None
+                else []
+            )
+        else:
+            # Half-A DLC inference hasn't run yet — leave parent-level
+            # empty so consumers raise FileNotFoundError with an
+            # actionable message (same failure mode as pre-fix Pattern A
+            # and as a single-half session with no DLC).
+            dlc_h5_files = []
+            dlc_csv_files = []
 
     return SessionManifest(
         session_id=session_id,

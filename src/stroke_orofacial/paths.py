@@ -487,6 +487,184 @@ class PathResolver:
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 
+    # ---------------- Phase 7c.2 Addendum #9 — Task 5 heatmaps ----------------
+    # Output path layout per Q12.B:
+    #   tone_aligned_heatmaps/<animal>/<family_entry>/<plot_type>/<filename>.svg
+    #   whole_session_heatmaps/<animal>/<family_entry>/<plot_type>/<filename>.svg
+    # Plot types: individual_session, binned_sessions, proportion_differences,
+    # unbalanced_ot. Single (0, 8000)ms tone-aligned window per Issue 4.
+    # whiskers_eye_midpoint family produces a composite figure rather than
+    # per-bodypart fanout — same resolver path; caller's renderer decides
+    # composite vs single-bodypart layout.
+
+    def _tone_aligned_heatmap_dir(
+        self, animal: str, family_entry: str, plot_type: str,
+    ) -> Path:
+        """Internal shared root for tone-aligned heatmap plot-type subdir."""
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "tone_aligned_heatmaps"
+            / animal
+            / family_entry
+            / plot_type
+        )
+
+    def _whole_session_heatmap_dir(
+        self, animal: str, family_entry: str, plot_type: str,
+    ) -> Path:
+        """Internal shared root for whole-session heatmap plot-type subdir."""
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "whole_session_heatmaps"
+            / animal
+            / family_entry
+            / plot_type
+        )
+
+    def tone_aligned_heatmap_individual_session_path(
+        self, animal: str, family_entry: str, date: datetime.date,
+        *, session_suffix: str | None = None,
+    ) -> Path:
+        """Return the per-(session date) tone-aligned heatmap SVG path.
+
+        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/individual_session/20250307.svg``.
+
+        Filename uses ``%Y%m%d`` to match the Phase 7a per-session output
+        conventions (interpolated_traces, tongue_pertrial endpoints, etc).
+        Parent directory is created eagerly.
+        """
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
+        out = self._tone_aligned_heatmap_dir(
+            animal, family_entry, "individual_session",
+        ) / f"{date_str}.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def tone_aligned_heatmap_binned_sessions_path(
+        self, animal: str, family_entry: str,
+        bin_size_days: int, trial_group: str,
+    ) -> Path:
+        """Return the per-(animal, family, bin_size, trial_group) tone-aligned
+        binned-sessions GRID SVG path.
+
+        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/binned_sessions/binned_sessions_grid_bin2d_all.svg``.
+
+        Per Phase 7c.2 Addendum #34 Q36 (2026-05-17): supersedes the prior
+        per-bin-label SVG fanout — all N_bins for one (bin_size, trial_group)
+        combine into ONE grid SVG. Each subplot = one bin_label;
+        Q14/Q18 shared colormap normalization + ONE shared colorbar.
+        Filename ``binned_sessions_grid_bin{N}d_{trial_group}.svg`` where
+        N is the bin size in days, trial_group ∈ {all, L, R}.
+        """
+        out = self._tone_aligned_heatmap_dir(
+            animal, family_entry, "binned_sessions",
+        ) / f"binned_sessions_grid_bin{int(bin_size_days)}d_{trial_group}.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def tone_aligned_heatmap_proportion_differences_path(
+        self, animal: str, family_entry: str, bin_size_days: int,
+        trial_group: str,
+    ) -> Path:
+        """Return the per-(animal, family, bin_size, trial_group) tone-aligned
+        proportion-difference grid-summary SVG path.
+
+        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/proportion_differences/bin2d_all.svg``.
+
+        Per Phase 7c.2 Addendum #11 Q2.B (one SVG per configured bin_size,
+        containing a grid of per-bin diff panels) + Addendum #15 Q16 (3
+        trial-group SVGs per bin_size; previous bin{N}d.svg superseded).
+        Filename ``bin{N}d_{trial_group}.svg`` where N is the bin size in
+        days and trial_group ∈ {all, L, R}. Parent directory is created
+        eagerly.
+        """
+        out = self._tone_aligned_heatmap_dir(
+            animal, family_entry, "proportion_differences",
+        ) / f"bin{int(bin_size_days)}d_{trial_group}.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def tone_aligned_heatmap_unbalanced_ot_path(
+        self, animal: str, family_entry: str, bin_size_days: int,
+        trial_group: str,
+    ) -> Path:
+        """Return the per-(animal, family, bin_size, trial_group) tone-aligned
+        Unbalanced-OT grid-summary SVG path.
+
+        E.g. ``<outputs>/dlc_kinematics/tone_aligned_heatmaps/PS46/tongue_eye_midpoint/unbalanced_ot/unbalanced_ot_grid_bin2d_all.svg``.
+
+        Per Phase 7c.2 Addendum #14 Q3d.B (per-bin grid summary, one SVG
+        per configured bin_size) + Addendum #15 Q16 (3 trial-group SVGs
+        per bin_size; previous unbalanced_ot_grid_bin{N}d.svg superseded).
+        Filename ``unbalanced_ot_grid_bin{N}d_{trial_group}.svg`` where N
+        is the bin size in days and trial_group ∈ {all, L, R}. Parent
+        directory is created eagerly.
+        """
+        out = self._tone_aligned_heatmap_dir(
+            animal, family_entry, "unbalanced_ot",
+        ) / f"unbalanced_ot_grid_bin{int(bin_size_days)}d_{trial_group}.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def whole_session_heatmap_individual_session_path(
+        self, animal: str, family_entry: str, date: datetime.date,
+        *, session_suffix: str | None = None,
+    ) -> Path:
+        """Return the per-(session date) whole-session heatmap SVG path.
+
+        E.g. ``<outputs>/dlc_kinematics/whole_session_heatmaps/PS46/tongue_eye_midpoint/individual_session/20250307.svg``.
+        """
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
+        out = self._whole_session_heatmap_dir(
+            animal, family_entry, "individual_session",
+        ) / f"{date_str}.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def whole_session_heatmap_binned_sessions_path(
+        self, animal: str, family_entry: str, bin_size_days: int,
+    ) -> Path:
+        """Return the per-(animal, family, bin_size) whole-session
+        binned-sessions GRID SVG path (Q36 Addendum #34). Combines all
+        N_bins into one grid SVG with shared colormap (1 trial-group
+        only: 'all'). Filename
+        ``binned_sessions_grid_bin{N}d.svg`` (no _tg suffix; whole_session
+        has no trial-group fanout per Q16).
+        """
+        out = self._whole_session_heatmap_dir(
+            animal, family_entry, "binned_sessions",
+        ) / f"binned_sessions_grid_bin{int(bin_size_days)}d.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def whole_session_heatmap_proportion_differences_path(
+        self, animal: str, family_entry: str, bin_size_days: int,
+    ) -> Path:
+        """Return the per-(animal, family, bin_size) whole-session
+        proportion-difference grid-summary SVG path. Filename
+        ``bin{N}d.svg`` (matches tone-aligned sibling per Addendum #11
+        Q2.B)."""
+        out = self._whole_session_heatmap_dir(
+            animal, family_entry, "proportion_differences",
+        ) / f"bin{int(bin_size_days)}d.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def whole_session_heatmap_unbalanced_ot_path(
+        self, animal: str, family_entry: str, bin_size_days: int,
+    ) -> Path:
+        """Return the per-(animal, family, bin_size) whole-session
+        Unbalanced-OT grid-summary SVG path. Filename
+        ``unbalanced_ot_grid_bin{N}d.svg`` (matches tone-aligned sibling
+        per Addendum #14 Q3d.B)."""
+        out = self._whole_session_heatmap_dir(
+            animal, family_entry, "unbalanced_ot",
+        ) / f"unbalanced_ot_grid_bin{int(bin_size_days)}d.svg"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    # ---------------- end Task 5 heatmap resolvers ----------------
+
     def tongue_angle_within_session_dir(
         self, animal: str, date: datetime.date,
         *, session_suffix: str | None = None,

@@ -263,12 +263,19 @@ class TestPatternAMultiHalf:
         assert manifest.halves[0].cam_subdir == "20250314a"
         assert manifest.halves[0].file_timestamp == "2025-03-14T12_31_07"
 
-    def test_parent_level_fields_cleared_when_multi_half(
+    def test_parent_level_ws_and_video_cleared_when_multi_half(
         self, pattern_a_layout, pattern_a_overrides, ps48_info
     ):
         """Per the manifest contract, when halves is populated the parent
-        level wavesurfer_file / video_files / dlc_*_files are empty —
-        downstream consumers must read per-half data from halves[i]."""
+        level wavesurfer_file / video_files are empty — downstream Phase
+        2/3 consumers read per-half WS + video from halves[i].
+
+        Phase 7c.2 Task 2 F-P-5 wiring fix: parent-level dlc_h5_files /
+        dlc_csv_files now carry [halves[0].dlc_h5_file] /
+        [halves[0].dlc_csv_file] (half-A's DLC paths) so Phase 7a
+        consumers find the merged centered parquet via half-A's H5
+        filename — see ``TestPatternAMultiHalfDlcFilesWiring`` below.
+        """
         resolver = _make_resolver_for_layout(**pattern_a_layout)
         manifest = build_manifest(
             "PS48",
@@ -280,8 +287,6 @@ class TestPatternAMultiHalf:
         )
         assert manifest.wavesurfer_file is None
         assert manifest.video_files == []
-        assert manifest.dlc_h5_files == []
-        assert manifest.dlc_csv_files == []
 
     def test_per_half_ws_discovery(
         self, pattern_a_layout, pattern_a_overrides, ps48_info
@@ -372,6 +377,160 @@ class TestPatternAMultiHalf:
         # populates them when Phase 3 emits per-half output).
         assert manifest.halves is not None
         assert all(h.alignment_template is None for h in manifest.halves)
+
+
+# ---------- Phase 7c.2 Task 2 F-P-5: Pattern A dlc_h5_files wiring ----------
+
+
+@pytest.fixture()
+def pattern_a_layout_no_dlc(tmp_path: Path) -> dict[str, Path]:
+    """Pattern A layout with WS + camera per-half but NO DLC inference
+    output. Mirrors the pre-DLC state for a multi-half session — used to
+    verify the half-A-DLC-missing branch of the F-P-5 wiring fix.
+    """
+    ws_root = tmp_path / "wavesurfer"
+    dlc_root = tmp_path / "dlc"
+    cam_root = tmp_path / "camera"
+    _touch_ws_subdir(ws_root, "20250314a", "PS48", "stroke_0001.h5")
+    _touch_ws_subdir(ws_root, "20250314b", "PS48", "stroke_0002.h5")
+    # DLC dir exists but no H5/CSV files (Pattern A signal absent).
+    (dlc_root / "PS48").mkdir(parents=True, exist_ok=True)
+    _touch_camera_subdir(
+        cam_root, "20250314a", "PS48",
+        video_ts="2025-03-14T12_31_07", timestamp_ts="2025-03-14T12_31_07",
+    )
+    _touch_camera_subdir(
+        cam_root, "20250314b", "PS48",
+        video_ts="2025-03-14T13_09_29", timestamp_ts="2025-03-14T13_09_28",
+    )
+    return {"ws_root": ws_root, "dlc_root": dlc_root, "cam_root": cam_root}
+
+
+class TestPatternAMultiHalfDlcFilesWiring:
+    """Phase 7c.2 Task 2 F-P-5: Pattern A multi-half manifests carry
+    ``[halves[0].dlc_h5_file]`` / ``[halves[0].dlc_csv_file]`` on the
+    parent-level ``dlc_h5_files`` / ``dlc_csv_files`` lists so Phase 7a
+    consumers locate the merged centered parquet via half-A's H5
+    filename. Pre-fix these lists were empty by design, blocking
+    ``build_interpolated_trace`` + ``build_tone_aligned_analysis`` on
+    PS48/20250314.
+    """
+
+    def test_dlc_h5_files_carries_half_a_path(
+        self, pattern_a_layout, pattern_a_overrides, ps48_info
+    ):
+        resolver = _make_resolver_for_layout(**pattern_a_layout)
+        manifest = build_manifest(
+            "PS48",
+            datetime.date(2025, 3, 14),
+            resolver,
+            ps48_info,
+            analysis_context="dlc.kinematics.tongue",
+            overrides_config=pattern_a_overrides,
+        )
+        assert manifest.halves is not None
+        assert len(manifest.dlc_h5_files) == 1
+        assert manifest.dlc_h5_files[0] == manifest.halves[0].dlc_h5_file
+        # The half-A H5 path identifies the half-A acquisition timestamp.
+        assert "2025-03-14T12_31_07" in manifest.dlc_h5_files[0].name
+
+    def test_dlc_csv_files_carries_half_a_path(
+        self, pattern_a_layout, pattern_a_overrides, ps48_info
+    ):
+        resolver = _make_resolver_for_layout(**pattern_a_layout)
+        manifest = build_manifest(
+            "PS48",
+            datetime.date(2025, 3, 14),
+            resolver,
+            ps48_info,
+            analysis_context="dlc.kinematics.tongue",
+            overrides_config=pattern_a_overrides,
+        )
+        assert manifest.halves is not None
+        assert len(manifest.dlc_csv_files) == 1
+        assert manifest.dlc_csv_files[0] == manifest.halves[0].dlc_csv_file
+        assert "2025-03-14T12_31_07" in manifest.dlc_csv_files[0].name
+
+    def test_dlc_h5_files_basename_matches_merged_parquet_naming(
+        self, pattern_a_layout, pattern_a_overrides, ps48_info
+    ):
+        """The merged centered parquet's filename in
+        ``_build_centered_parquet_multi_half`` is
+        ``f"{halves[0].dlc_h5_file.name}.intermediate.{sig}.parquet"``.
+        Downstream consumers (Phase 7a.2 interpolation,
+        ``dlc_spatial.tone_aligned``) build the parquet glob target
+        from ``manifest.dlc_h5_files[0].name`` — so the two ``.name``
+        strings MUST be byte-equal for the consumer to find the
+        producer's output.
+        """
+        resolver = _make_resolver_for_layout(**pattern_a_layout)
+        manifest = build_manifest(
+            "PS48",
+            datetime.date(2025, 3, 14),
+            resolver,
+            ps48_info,
+            analysis_context="dlc.kinematics.tongue",
+            overrides_config=pattern_a_overrides,
+        )
+        assert manifest.halves is not None
+        # Byte-equal name => merged-parquet path resolves identically
+        # on producer side (_build_centered_parquet_multi_half) and
+        # consumer side (interpolation._load_centered_df).
+        assert (
+            manifest.dlc_h5_files[0].name
+            == manifest.halves[0].dlc_h5_file.name
+        )
+
+    def test_dlc_files_empty_when_half_a_dlc_missing(
+        self, pattern_a_layout_no_dlc, pattern_a_overrides, ps48_info
+    ):
+        """When the per-half DLC inference hasn't run for half-A, the
+        parent-level lists remain empty so consumers raise
+        ``FileNotFoundError`` with an actionable message (same failure
+        mode as a single-half session with no DLC)."""
+        resolver = _make_resolver_for_layout(**pattern_a_layout_no_dlc)
+        manifest = build_manifest(
+            "PS48",
+            datetime.date(2025, 3, 14),
+            resolver,
+            ps48_info,
+            analysis_context="dlc.kinematics.tongue",
+            overrides_config=pattern_a_overrides,
+        )
+        assert manifest.halves is not None
+        # Per-half DLC fields are None (no inference output).
+        assert manifest.halves[0].dlc_h5_file is None
+        assert manifest.halves[0].dlc_csv_file is None
+        # Parent-level lists remain empty.
+        assert manifest.dlc_h5_files == []
+        assert manifest.dlc_csv_files == []
+
+    def test_dlc_h5_files_does_not_contain_half_b(
+        self, pattern_a_layout, pattern_a_overrides, ps48_info
+    ):
+        """Parent-level list carries ONLY half-A's DLC path. Half-B's
+        DLC path is reachable via ``manifest.halves[1].dlc_h5_file``
+        — it's intentionally absent from the parent-level list because
+        the merged parquet is named after half-A only (per
+        ``_build_centered_parquet_multi_half`` keep-keyA-drop-keyB
+        convention from legacy notebook cell 13)."""
+        resolver = _make_resolver_for_layout(**pattern_a_layout)
+        manifest = build_manifest(
+            "PS48",
+            datetime.date(2025, 3, 14),
+            resolver,
+            ps48_info,
+            analysis_context="dlc.kinematics.tongue",
+            overrides_config=pattern_a_overrides,
+        )
+        assert manifest.halves is not None
+        assert len(manifest.dlc_h5_files) == 1
+        # Half-B's DLC path lives on halves[1], not on the parent list.
+        assert manifest.halves[1].dlc_h5_file is not None
+        assert (
+            manifest.halves[1].dlc_h5_file
+            not in manifest.dlc_h5_files
+        )
 
 
 # ---------- Defensive check: Pattern A undeclared raises ----------

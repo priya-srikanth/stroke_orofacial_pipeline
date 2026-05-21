@@ -217,9 +217,21 @@ dlc_spatial:
           ylim: [-235, 225]           # 20260323_DLC_build-parquet_reward-aligned X_MIN,X_MAX=-175,175).
           x_range: [-175, 175]        # Pre-histogram filter: drops DLC mis-detections
                                       # (picket-fence pattern spanning ±600 px otherwise).
-        eye_midpoint:
-          xlim: [-420, 420]
-          ylim: [-70, 540]
+        eye_midpoint:                 # Q34 Addendum #31 (Priya 2026-05-17) +
+          xlim: [-200, 200]           # Q54 Addendum #45 (Priya 2026-05-19): widen
+          ylim: [230, 600]            # display xlim to [-200, 200] (Q34 was [-175, 175])
+          x_range: [-175, 175]        # to add ~25px margin past the legacy x_range filter
+                                      # so cohort distributions are not clipped at the plot
+                                      # edge. ``x_range`` (pre-histogram filter) stays at
+                                      # legacy ±175 — Q54 only affects the rendered axis.
+                                      # ylim derived from PS46 8-session pooled q01/q99 +
+                                      # 40% pad (no legacy ylim spec for eye-centered).
+                                      # Median tongue X in eye-centered = +18.5 px (slight
+                                      # rightward bias; effective range with ±175 is
+                                      # [-193, +156] which still covers legitimate motion).
+                                      # Pre-Q34 config had xlim=[-420,420], ylim=[-70,540],
+                                      # NO x_range — picket-fence DLC mis-detections passed
+                                      # through, contaminating tongue_eye_midpoint heatmaps.
     L_whiskers_1:
       likelihood_threshold: 0.80
       center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
@@ -229,9 +241,17 @@ dlc_spatial:
           xlim: [-380, 220]
           ylim: [-150, 80]
         spout_midpoint: null  # Phase 6+ will fill in
-        eye_midpoint:                 # Phase 4.5-lite: cohort-pooled q00001_9999 + 40% pad
-          xlim: [15, 135]
-          ylim: [55, 250]
+        eye_midpoint:                 # Q37 Addendum #35 (Priya 2026-05-17): unified
+          xlim: [-200, 200]            # bilateral range covering all 6 whiskers. The
+          ylim: [50, 360]              # composite-axis lookup keys on the first bp per
+                                       # legacy whiskers convention; this entry must span
+                                       # both L (15-165) and R (-185 to -15) sides + their
+                                       # ylim union (55-355) for Pattern B to render all 6
+                                       # whiskers visibly. Pre-Q37 was [15,135]/[55,250]
+                                       # (L_whiskers_1's own range) — clipped R off frame.
+                                       # Individual L/R per_center_mode entries on
+                                       # L_whiskers_2/3 and R_whiskers_1/2/3 preserved
+                                       # for non-composite hypothetical uses.
     L_whiskers_2:
       likelihood_threshold: 0.80
       center_mode: eye_midpoint   # Phase 4.5-lite: sweep winner for face-anchored bodyparts
@@ -284,30 +304,85 @@ dlc_spatial:
           ylim: [95, 265]
     # Fiducial bodyparts — null-baseline controls for Phase 9 significance testing
     # (DECISIONS 2026-04-19 Phase 4.5-lite §Constraints). Each fiducial is centered
-    # under its own regime. No cmap / per_center_mode: no heatmaps for fiducials today.
+    # under its own regime.
+    #
+    # Phase 7c.2 Addendum #13 (2026-05-15) extends these entries with cmap +
+    # per_center_mode blocks for the two new composite-family heatmaps
+    # (``spout_spout_midpoint`` = {L_spout, R_spout}@spout_midpoint, and
+    # ``eye_eye_midpoint`` = {L_eye, R_eye}@eye_midpoint). cmaps: "Reds" for
+    # L, "Blues" for R — bilateral pairs with clear L/R visual contrast.
+    # per_center_mode.xlim/ylim values are UNIFIED bilateral ranges (cover
+    # both L and R bodyparts) so the composite axis lookup (which keys on
+    # the first bp per legacy whiskers convention) renders both bilateral
+    # bodyparts visibly. Tight ~3-6 px DLC clusters (estimated from PS46/
+    # 2025-03-07; see .scratch_phase_7c2/estimate_fiducial_ranges.py output)
+    # get generous padding (~±20 px on Y, full bilateral span on X) for
+    # plot readability.
     L_eye:
       likelihood_threshold: 0.80
       center_mode: eye_midpoint
+      cmap: "Reds_r"   # Q55.A Addendum #46: dark-low-end (revert from "Reds" / Q53)
+      per_center_mode:
+        eye_midpoint:
+          xlim: [-160, 160]
+          ylim: [-20, 20]
     R_eye:
       likelihood_threshold: 0.80
       center_mode: eye_midpoint
+      cmap: "Blues_r"  # Q55.A Addendum #46: dark-low-end (revert from "Blues" / Q53)
+      per_center_mode:
+        eye_midpoint:
+          xlim: [-160, 160]
+          ylim: [-20, 20]
     L_spout:
       likelihood_threshold: 0.80
       center_mode: spout_midpoint
+      cmap: "Reds_r"   # Q55.A Addendum #46: dark-low-end (revert from "Reds" / Q53)
+      per_center_mode:
+        spout_midpoint:
+          xlim: [-100, 100]
+          ylim: [-20, 20]
     R_spout:
       likelihood_threshold: 0.80
       center_mode: spout_midpoint
+      cmap: "Blues_r"  # Q55.A Addendum #46: dark-low-end (revert from "Blues" / Q53)
+      per_center_mode:
+        spout_midpoint:
+          xlim: [-100, 100]
+          ylim: [-20, 20]
 
 # ---- DLC spatial (tone-aligned) ----
-# Per-bodypart tone-aligned config. Tongue has legacy values from
-# 20260323 cell 16 (legacy filename preserved as historical citation).
-# All others are sanity-check-only defaults — first tone-aligned runs
-# require visual inspection. (Phase 7b-light: YAML key renamed from
-# ``dlc_spatial_reward_aligned`` per Q7 hard rename; on-disk output
-# subdir `spatial_reward_aligned/` PRESERVED per Addendum #1 through
-# Phase 7b-light; **Phase 7c.1 renamed source-side to `spatial_tone_aligned/`
-# in lockstep with the 3-session pilot re-emit. Legacy `spatial_reward_aligned/`
-# tree remains on-disk; retired in Phase 7c.2 cohort completion.**)
+# Per-family tone-aligned config — Phase 7c.2 Addendum #3 Q10.A.
+#
+# Schema restructured 2026-05-15: the prior `bodyparts:` flat per-bodypart
+# block (which implicitly allowed all bodypart × center_mode combinations)
+# is replaced by a `families:` allowlist. Each family entry pins explicit
+# (bodyparts, center_mode) pairs, scoped tighter than the Phase 4.5-lite
+# sweep covered. Out-of-allowlist combinations (e.g., jaw_spout_midpoint,
+# nose_spout_midpoint) are explicitly removed. ``config_loader``
+# validates the loaded structure against the locked 7-family allowlist
+# at load time; out-of-allowlist combos raise at YAML-load.
+#
+# Yields 14 heatmaps per (trial_group, window, session):
+#   tongue_spout_midpoint = 1
+#   tongue_eye_midpoint = 1
+#   jaw_eye_midpoint = 1
+#   nose_eye_midpoint = 1
+#   whiskers_eye_midpoint = 6 (one per individual whisker; no aggregation)
+#   spout_spout_midpoint = 2 (L_spout + R_spout; layered composite — Add. #13)
+#   eye_eye_midpoint = 2 (L_eye + R_eye; layered composite — Add. #13)
+#
+# Per Phase 7c.2 Addendum #3 Interpretation 1 lock, this config drives
+# compute-on-demand tone-aligned rendering (Task 5 ``render_tone_aligned_heatmap``
+# wrapper). NO cached NPZ tree emission by default — the cohort re-emit
+# driver in scripts/phase_7c2/reemit_cohort.py drops Category A entirely.
+# ``build_tone_aligned_analysis(emit_cache=True)`` is the opt-in escape
+# hatch for notebook 12 / one-off inspection cases that still want the
+# NPZ on disk.
+#
+# History: YAML key renamed from ``dlc_spatial_reward_aligned`` in
+# Phase 7b-light per Q7 hard rename; per-bodypart -> per-family restructure
+# in Phase 7c.2 Task 2.5 per Q10.A.
 
 dlc_spatial_tone_aligned:
   tone_windows_ms:
@@ -320,40 +395,133 @@ dlc_spatial_tone_aligned:
   vmin_log_prop: 1.0e-5
   share_xy_within_mouse: true
   fps: 250.0
-  bodyparts:
-    tongue:
+  # Phase 7c.2 Addendum #15 Q15 + Addendum #20 Q21 + Addendum #23 Q21
+  # re-lock: UOT spatial resolution decoupled from heatmap_nbins, plus
+  # arrow-size scaling knob.
+  #
+  # History:
+  # - Legacy renderer (cells 6300-6680 of 20251202_DLC_analysis_all_bodyparts_
+  #   stats_pixelbin.ipynb, line 6434) used NBINS = 50.
+  # - Q15 originally pinned 50 here.
+  # - Q21 (Addendum #20, 2026-05-15): dropped to 15 after PS46 spot-checks
+  #   showed nbins=50 and an intermediate 25 still too crowded.
+  # - Q21 re-lock (Addendum #23, 2026-05-15): bumped 15 → 20 — nbins=15
+  #   under-aggregated the density structure. 20 is the working midpoint
+  #   (20×20 = 400 grid cells → ~400 max arrows per panel before mass/mag
+  #   thresholding).
+  #
+  # Tuning recipe if PS46 spot-check at nbins=20 still imperfect:
+  # - Bins still too coarse / under-aggregating → 22.
+  # - Arrows still too crowded → first bump threshold_pct50_multiplier
+  #   0.1 → 0.15 (suppresses lower-magnitude arrows); only drop nbins
+  #   back if threshold tuning isn't enough.
+  #
+  # ``arrow_size_factor`` (Q21, unchanged from Addendum #20): multiplier
+  # on head_w / head_l / linewidth arrays in the arrow rendering. Default
+  # 0.5 halves the legacy-default arrow dimensions; alpha is unchanged.
+  #
+  # ``threshold_pct50_multiplier``: multiplier on the 50th-percentile
+  # mass + mag thresholds in `_render_ot_arrows_panel`. Default 0.1
+  # matches legacy convention. Bump to 0.15 if 20-bin + 0.5-size still
+  # too dense.
+  #
+  # Other plot types continue to use default_nbins (heatmap resolution).
+  unbalanced_ot:
+    nbins: 20
+    arrow_size_factor: 0.5
+    threshold_pct50_multiplier: 0.1
+    # Q33 Addendum #30: collapsed two single-signed mass panels
+    # (mass_destroy Blues + mass_create Reds, per Q27) into ONE
+    # diverging mass_change panel: H_mass_change = create − destroy.
+    # Symmetric vmin/vmax around 0 per Q14 bucket. Uses the Q25 PD
+    # cmap (blue=decreased, gray midpoint=#d0d0d0, red=increased).
+    # ``mass_change_floor_fraction``: floor on |H_mass_change|;
+    # sub-floor bins NaN-masked → white via set_bad. Default 0.05
+    # matches Q29 mass_floor_fraction convention. Supersedes
+    # ``mass_floor_fraction`` (single-signed panels no longer rendered).
+    mass_change_floor_fraction: 0.05
+    # DEPRECATED post-Q33: mass_floor_fraction governed the separate
+    # destroy + create panels which no longer exist. Kept here for
+    # config-schema backward compat / explicit deprecation notice; not
+    # consumed by the post-Q33 renderer.
+    mass_floor_fraction: 0.05
+
+  # Q48 verdict (Addendum #43, 2026-05-18): Pattern B layered overlay
+  # histogram resolution. Reverted from the tone_aligned
+  # ``default_nbins`` (80) to legacy 100 — matches both the legacy
+  # 20251202 pixelbin notebook (cell 11 ``NBINS = 100``) and the
+  # top-level ``dlc_spatial.heatmap_nbins=100`` convention for
+  # non-tone-aligned heatmaps. Applied via ``nbins_override`` in
+  # ``_compute_composite_panels``; Pattern A single-cmap callers
+  # (PD, UOT pooled, per-bp non-Pattern-B) continue to use
+  # ``default_nbins`` unchanged.
+  pattern_b_nbins: 100
+  # NOTE Q48 verdict (Addendum #43): ``layered_overlay_floor_fraction``
+  # (Q32 corollary, default 0.05) was a Phase-7c.2 speculation; legacy
+  # Pattern B has no magnitude floor. Removed from the renderer per
+  # Addendum #43 Part A.2. The config key is intentionally NOT kept as
+  # a deprecation shim — no production code consumes it.
+
+  # Q42 Addendum #38 (2026-05-15): proportion_differences rendering
+  # config. ``vmax_percentile`` controls the bucket-shared symmetric
+  # vmax derivation in `derive_symmetric_diff_vmax`. Previously vmax
+  # was ``max(|D|.max())`` across the bucket; 1-2 picket-fence DLC
+  # mis-detection bins dominated the scale and washed out the bulk
+  # of the diverging cmap range. Percentile clipping (95th by
+  # default) lets the bulk of the structure render at usable contrast
+  # while extreme outliers auto-saturate. Tune-down (e.g. 90) for
+  # families that still wash out.
+  proportion_differences:
+    vmax_percentile: 95.0
+  families:
+    tongue_spout_midpoint:
+      bodyparts: ["tongue"]
+      center_mode: "spout_midpoint"
       likelihood_thresholds: [0.5, 0.7]
       x_range: [-150, 150]
       parity_status: "legacy-ported"
-    jaw:
+    tongue_eye_midpoint:
+      bodyparts: ["tongue"]
+      center_mode: "eye_midpoint"
+      likelihood_thresholds: [0.5, 0.7]
+      x_range: null
+      parity_status: "sanity-check-only"
+    jaw_eye_midpoint:
+      bodyparts: ["jaw"]
+      center_mode: "eye_midpoint"
       likelihood_thresholds: [0.5]
       x_range: null
       parity_status: "sanity-check-only"
-    nose:
+    nose_eye_midpoint:
+      bodyparts: ["nose"]
+      center_mode: "eye_midpoint"
       likelihood_thresholds: [0.7]
       x_range: null
       parity_status: "sanity-check-only"
-    L_whiskers_1:
+    whiskers_eye_midpoint:
+      # One heatmap per individual whisker bodypart — no aggregation.
+      # Six entries fan out at the render layer; lookup_tone_family
+      # returns this family entry for each (whisker_bp, eye_midpoint) probe.
+      bodyparts: ["L_whiskers_1", "L_whiskers_2", "L_whiskers_3",
+                  "R_whiskers_1", "R_whiskers_2", "R_whiskers_3"]
+      center_mode: "eye_midpoint"
       likelihood_thresholds: [0.8]
       x_range: null
       parity_status: "sanity-check-only"
-    L_whiskers_2:
+    # Phase 7c.2 Addendum #13 (2026-05-15) — fiducial bilateral-pair
+    # composites. Pair the L/R fiducial bodyparts under their respective
+    # self-anchored center modes. Same Pattern B layered-overlay treatment
+    # as whiskers (per-bp cmap from dlc_spatial.bodyparts.{bp}.cmap;
+    # composite axis = first-bp's per_center_mode block).
+    spout_spout_midpoint:
+      bodyparts: ["L_spout", "R_spout"]
+      center_mode: "spout_midpoint"
       likelihood_thresholds: [0.8]
       x_range: null
       parity_status: "sanity-check-only"
-    L_whiskers_3:
-      likelihood_thresholds: [0.8]
-      x_range: null
-      parity_status: "sanity-check-only"
-    R_whiskers_1:
-      likelihood_thresholds: [0.8]
-      x_range: null
-      parity_status: "sanity-check-only"
-    R_whiskers_2:
-      likelihood_thresholds: [0.8]
-      x_range: null
-      parity_status: "sanity-check-only"
-    R_whiskers_3:
+    eye_eye_midpoint:
+      bodyparts: ["L_eye", "R_eye"]
+      center_mode: "eye_midpoint"
       likelihood_thresholds: [0.8]
       x_range: null
       parity_status: "sanity-check-only"

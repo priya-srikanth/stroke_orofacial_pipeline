@@ -280,6 +280,73 @@ class TestIntegrationToneAlignedWithManifest:
         assert result["histogram"]["H_counts"].sum() > 0
 
 
+class TestEmitCacheParameterPlumbing:
+    """Phase 7c.2 Task 2.5 (Addendum #3 Q2.B): the new ``emit_cache``
+    parameter defaults to False (no NPZ written). The by_animal_date
+    wrapper forwards the kwarg to the primary entry point."""
+
+    def test_primary_signature_has_emit_cache_default_false(self):
+        import inspect
+        from stroke_orofacial.dlc_spatial.tone_aligned import (
+            build_tone_aligned_analysis,
+        )
+        sig = inspect.signature(build_tone_aligned_analysis)
+        assert "emit_cache" in sig.parameters
+        assert sig.parameters["emit_cache"].default is False
+
+    def test_wrapper_signature_has_emit_cache_default_false(self):
+        import inspect
+        from stroke_orofacial.dlc_spatial.tone_aligned import (
+            build_tone_aligned_analysis_by_animal_date,
+        )
+        sig = inspect.signature(build_tone_aligned_analysis_by_animal_date)
+        assert "emit_cache" in sig.parameters
+        assert sig.parameters["emit_cache"].default is False
+
+    @pytest.mark.parametrize("emit_cache_value", [False, True])
+    def test_wrapper_forwards_emit_cache(self, emit_cache_value):
+        """``build_tone_aligned_analysis_by_animal_date(emit_cache=...)``
+        forwards the kwarg verbatim to the primary entry point."""
+        import datetime
+        from unittest.mock import MagicMock, patch
+
+        captured: dict = {}
+
+        def _capture(*args, **kwargs):
+            captured.update(kwargs)
+            return None  # short-circuit; we only check kwarg forwarding
+
+        info = MagicMock()
+        info.wavesurfer_sides_match_mouse_sides = False
+        info.session_start = datetime.date(2026, 1, 1)
+        info.session_end = datetime.date(2026, 1, 31)
+        info.stroke_date = datetime.date(2026, 1, 15)
+        info.exclusions = []
+
+        from stroke_orofacial.dlc_spatial.tone_aligned import (
+            build_tone_aligned_analysis_by_animal_date,
+        )
+
+        with patch(
+            "stroke_orofacial.dlc_spatial.tone_aligned.get_animal",
+            return_value=info,
+        ), patch(
+            "stroke_orofacial.dlc_spatial.tone_aligned.build_manifest",
+            return_value=MagicMock(),
+        ), patch(
+            "stroke_orofacial.dlc_spatial.tone_aligned.build_tone_aligned_analysis",
+            side_effect=_capture,
+        ):
+            build_tone_aligned_analysis_by_animal_date(
+                "PS99", "20260115", "tongue", "spout_midpoint", "all",
+                (-500.0, 5000.0), MagicMock(),
+                spatial_config={}, tone_config={},
+                emit_cache=emit_cache_value,
+            )
+
+        assert captured["emit_cache"] is emit_cache_value
+
+
 class TestBuildToneAlignedAnalysisRaisesOnEmptyDlc:
     """Phase 6 is DLC-required (per Phase 6.7 architectural decision).
     build_tone_aligned_analysis must raise on empty manifest.dlc_h5_files."""

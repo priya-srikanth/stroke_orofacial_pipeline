@@ -121,6 +121,7 @@ def build_histogram(
     x_range: tuple[float, float] | None = None,
     nbins: int | None = None,
     window: Any | None = None,
+    n_total_frames: int | None = None,
 ) -> dict[str, Any] | None:
     """Build a fine-resolution 2D histogram for visualization.
 
@@ -150,12 +151,26 @@ def build_histogram(
         Number of bins per axis. Defaults to ``config["heatmap_nbins"]``.
     window : WindowSelector, optional
         Frame selection window. Default None = whole session (all frames).
+    n_total_frames : int, optional
+        Q17 (Phase 7c.2 Addendum #16) normalization denominator. When given,
+        ``H_proportion = H_counts / n_total_frames`` — yields a "tracking
+        rate × spatial distribution" composite whose sum equals
+        ``n_passed / n_total ≤ 1.0``. When None (legacy), falls back to
+        ``H_proportion = H_counts / H_counts.sum()`` (sums to 1.0; pure
+        spatial-distribution-of-passed-frames probability).
+
+        Task 5 callers MUST pass this explicitly (tone_aligned scope:
+        ``window.n_selected``; whole_session scope: ``len(df)``). Pre-Q17
+        callers (legacy NPZ reader scripts, notebook 12 first-emit) keep
+        the None default and retain legacy semantics.
 
     Returns
     -------
     dict or None
-        ``{"H_counts", "H_proportion", "xedges", "yedges", "extent"}`` or
-        None if no valid points.
+        ``{"H_counts", "H_proportion", "xedges", "yedges", "extent",
+        "n_total_frames"}`` or None if no valid points. ``n_total_frames``
+        echoes the kwarg back so downstream aggregators can sum properly
+        (the in-window total over all aggregated sessions).
     """
     bp_config = config.get("bodyparts", {}).get(bodypart, {})
     lik_thr = bp_config.get("likelihood_threshold", 0.80)
@@ -186,8 +201,14 @@ def build_histogram(
     H_counts, xedges, yedges = np.histogram2d(
         x, y, bins=nbins, range=[list(x_limits), list(y_limits)]
     )
-    total = H_counts.sum()
-    H_proportion = H_counts / total if total > 0 else H_counts
+    if n_total_frames is not None:
+        # Q17 Addendum #16: total-frame denominator (pre-likelihood filter).
+        denom = float(n_total_frames)
+        H_proportion = H_counts / denom if denom > 0 else H_counts
+    else:
+        # Legacy: passed-count denominator (post-filter).
+        denom = float(H_counts.sum())
+        H_proportion = H_counts / denom if denom > 0 else H_counts
 
     return {
         "H_counts": H_counts,
@@ -195,6 +216,7 @@ def build_histogram(
         "xedges": xedges,
         "yedges": yedges,
         "extent": [x_limits[0], x_limits[1], y_limits[0], y_limits[1]],
+        "n_total_frames": int(n_total_frames) if n_total_frames is not None else None,
     }
 
 

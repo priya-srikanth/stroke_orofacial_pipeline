@@ -30,6 +30,24 @@ These rules bind every Claude Code session working on this project.
 5. **Default migration pattern: copy, do not move.** Legacy notebook → new module = implement in this repo; legacy notebook stays untouched.
 6. **Output writes go to new output directories under `stroke_orofacial_pipeline_outputs/`** (e.g. `stroke_orofacial_pipeline_outputs/spout_behavior/`, `stroke_orofacial_pipeline_outputs/dlc_analysis/`) — never on top of existing `session_processing3/` or existing per-animal analysis folders on the server.
 7. **Before any large refactor or delete-like operation**, use plan mode (Shift+Tab → Plan) and show the plan for approval.
+   - **Destructive operations on `pipeline_outputs/` trees** (`rm -rf`, `find -delete`,
+     `shutil.rmtree`, equivalent Python destructive calls) require explicit
+     Priya approval **per-invocation**, even if covered by a phase plan or
+     kickoff-doc Q-lock. Do NOT pre-wipe to "force re-emit" — relaunches with
+     `overwrite="force"` handle stale outputs at write time without a separate
+     destructive step.
+   - **Multiple destructive invocations within a single session is an
+     anti-pattern.** If you find yourself running the same wipe command across
+     multiple kill+relaunch cycles in one session, STOP and ask Priya whether
+     the wipe is needed at all — the relaunch's per-write overwrite IS the
+     cleanup mechanism.
+   - **When a destructive op IS authorized**, atomically reset any companion
+     scratch/manifest state (e.g., `.scratch_phase_*/cohort_*_manifest.csv`) so
+     resume-logic doesn't skip animals whose disk outputs were just deleted.
+     Reference incident: Phase 7c.2 2026-05-15 8-round `rm -rf` cycle deleted
+     PS46 + most PS47 outputs via misinterpreted "before Step 7 final re-render"
+     wording; remediated via Q5.G + Q41 locks in Addendum #36 of
+     `docs/prompts/phase-7c.2-dlc-cohort-completion-kickoff.md`.
 8. **Git discipline:**
    - Every change lands as a commit on a feature branch. Never force-push.
    - **Before every `git commit`, run `git branch --show-current` and confirm

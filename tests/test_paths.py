@@ -1264,6 +1264,142 @@ class TestPhase7a5Paths:
         assert path.exists() and path.is_dir()
 
 
+# ---- Phase 7c.2 Addendum #9 — Task 5 heatmap path resolvers ----
+
+
+class TestTask5HeatmapPathResolvers:
+    """8 new path resolvers per Addendum #9 Q12.B. Both tone_aligned and
+    whole_session variants for each of 4 plot types (individual_session,
+    binned_sessions, proportion_differences, unbalanced_ot)."""
+
+    @pytest.fixture()
+    def resolver(self, tmp_path):
+        return PathResolver(output_root=tmp_path)
+
+    def test_tone_aligned_individual_session_path(self, resolver, tmp_path):
+        import datetime
+        p = resolver.tone_aligned_heatmap_individual_session_path(
+            "PS46", "tongue_eye_midpoint", datetime.date(2025, 3, 7),
+        )
+        assert p == (
+            tmp_path / "dlc_kinematics" / "tone_aligned_heatmaps" / "PS46"
+            / "tongue_eye_midpoint" / "individual_session" / "20250307.svg"
+        )
+        assert p.parent.exists()  # mkdir eager
+
+    def test_tone_aligned_individual_session_path_session_suffix(self, resolver, tmp_path):
+        import datetime
+        p = resolver.tone_aligned_heatmap_individual_session_path(
+            "PS54", "tongue_spout_midpoint", datetime.date(2025, 6, 20),
+            session_suffix="b",
+        )
+        assert p.name == "20250620b.svg"
+
+    def test_tone_aligned_binned_sessions_path(self, resolver, tmp_path):
+        # Q36 Addendum #34: binned_sessions emits ONE grid SVG per
+        # (bin_size, trial_group). Filename
+        # `binned_sessions_grid_bin{N}d_{tg}.svg`.
+        p_all = resolver.tone_aligned_heatmap_binned_sessions_path(
+            "PS46", "jaw_eye_midpoint", 2, "all",
+        )
+        assert p_all == (
+            tmp_path / "dlc_kinematics" / "tone_aligned_heatmaps" / "PS46"
+            / "jaw_eye_midpoint" / "binned_sessions"
+            / "binned_sessions_grid_bin2d_all.svg"
+        )
+        p_L = resolver.tone_aligned_heatmap_binned_sessions_path(
+            "PS46", "jaw_eye_midpoint", 7, "L",
+        )
+        assert p_L.name == "binned_sessions_grid_bin7d_L.svg"
+        assert p_all.parent.exists()
+
+    def test_tone_aligned_proportion_differences_path(self, resolver, tmp_path):
+        # Addendum #11 Q2.B + Addendum #15 Q16: filename
+        # bin{N}d_{trial_group}.svg per (bin_size, trial_group).
+        p_all_2 = resolver.tone_aligned_heatmap_proportion_differences_path(
+            "PS46", "nose_eye_midpoint", 2, "all",
+        )
+        assert p_all_2 == (
+            tmp_path / "dlc_kinematics" / "tone_aligned_heatmaps" / "PS46"
+            / "nose_eye_midpoint" / "proportion_differences" / "bin2d_all.svg"
+        )
+        p_L_7 = resolver.tone_aligned_heatmap_proportion_differences_path(
+            "PS46", "nose_eye_midpoint", 7, "L",
+        )
+        assert p_L_7.name == "bin7d_L.svg"
+        p_R_2 = resolver.tone_aligned_heatmap_proportion_differences_path(
+            "PS46", "nose_eye_midpoint", 2, "R",
+        )
+        assert p_R_2.name == "bin2d_R.svg"
+        assert p_all_2.parent.exists()
+
+    def test_tone_aligned_unbalanced_ot_path(self, resolver, tmp_path):
+        # Addendum #14 Q3d.B + Addendum #15 Q16: per-bin + per-trial-group fanout.
+        p_all_2 = resolver.tone_aligned_heatmap_unbalanced_ot_path(
+            "PS46", "whiskers_eye_midpoint", 2, "all",
+        )
+        assert p_all_2 == (
+            tmp_path / "dlc_kinematics" / "tone_aligned_heatmaps" / "PS46"
+            / "whiskers_eye_midpoint" / "unbalanced_ot"
+            / "unbalanced_ot_grid_bin2d_all.svg"
+        )
+        p_L_7 = resolver.tone_aligned_heatmap_unbalanced_ot_path(
+            "PS46", "whiskers_eye_midpoint", 7, "L",
+        )
+        assert p_L_7.name == "unbalanced_ot_grid_bin7d_L.svg"
+        p_R_2 = resolver.tone_aligned_heatmap_unbalanced_ot_path(
+            "PS46", "whiskers_eye_midpoint", 2, "R",
+        )
+        assert p_R_2.name == "unbalanced_ot_grid_bin2d_R.svg"
+
+    def test_whole_session_individual_session_path(self, resolver, tmp_path):
+        import datetime
+        p = resolver.whole_session_heatmap_individual_session_path(
+            "PS50", "tongue_spout_midpoint", datetime.date(2025, 3, 25),
+        )
+        assert p == (
+            tmp_path / "dlc_kinematics" / "whole_session_heatmaps" / "PS50"
+            / "tongue_spout_midpoint" / "individual_session" / "20250325.svg"
+        )
+        assert p.parent.exists()
+
+    def test_whole_session_binned_sessions_path(self, resolver, tmp_path):
+        # Q36 Addendum #34: whole_session has no trial-group fanout per
+        # Q16; filename `binned_sessions_grid_bin{N}d.svg` (no _tg suffix).
+        p = resolver.whole_session_heatmap_binned_sessions_path(
+            "PS51", "whiskers_eye_midpoint", 7,
+        )
+        assert p == (
+            tmp_path / "dlc_kinematics" / "whole_session_heatmaps" / "PS51"
+            / "whiskers_eye_midpoint" / "binned_sessions"
+            / "binned_sessions_grid_bin7d.svg"
+        )
+
+    def test_whole_session_proportion_differences_path(self, resolver, tmp_path):
+        # Addendum #11 Q2.B.
+        p7 = resolver.whole_session_heatmap_proportion_differences_path(
+            "PS54", "jaw_eye_midpoint", 7,
+        )
+        assert p7.name == "bin7d.svg"
+        assert p7.parent.name == "proportion_differences"
+        p2 = resolver.whole_session_heatmap_proportion_differences_path(
+            "PS54", "jaw_eye_midpoint", 2,
+        )
+        assert p2.name == "bin2d.svg"
+
+    def test_whole_session_unbalanced_ot_path(self, resolver, tmp_path):
+        # Addendum #14 Q3d.B: bin-fanout filename.
+        p2 = resolver.whole_session_heatmap_unbalanced_ot_path(
+            "PS55", "tongue_eye_midpoint", 2,
+        )
+        assert p2.name == "unbalanced_ot_grid_bin2d.svg"
+        assert p2.parent.name == "unbalanced_ot"
+        p7 = resolver.whole_session_heatmap_unbalanced_ot_path(
+            "PS55", "tongue_eye_midpoint", 7,
+        )
+        assert p7.name == "unbalanced_ot_grid_bin7d.svg"
+
+
 # ---- Integration test (requires real mount) ----
 
 _MOUNT = Path("/Volumes/Neurobio/MICROSCOPE/Priya")

@@ -39,8 +39,7 @@ After this script finishes, validate the fan-out with::
     "
 
 Then re-run ``scripts/run_notebook_12_first_emit.py --overwrite force``
-on Windows to consume the new centered parquets, and
-``scripts/phase_6_8a_first_run_health_report.py --verbose`` to gate.
+on Windows to consume the new centered parquets.
 
 Exit codes:
     0 — loop completed (per-session failures are logged, not fatal)
@@ -192,11 +191,6 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"\nDone: Written={n_written} Skipped={n_skipped} Errors={n_error}"
         f" (output_root={output_root})"
-    )
-    print(
-        "Next: re-run scripts/run_notebook_12_first_emit.py --overwrite force "
-        "(or --overwrite skip if you only want to fill missing NPZs), then "
-        "scripts/phase_6_8a_first_run_health_report.py --verbose"
     )
     return 0
 
