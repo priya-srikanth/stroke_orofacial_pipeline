@@ -31,10 +31,6 @@ drive-by edits) or wrapping in papermill (extra dep, no other uses in
 the repo). A dedicated runner keeps the one-time migration auditable
 as a committed artifact and is trivial to re-run per-animal later.
 
-After this script finishes, run the health report to validate::
-
-    python scripts/phase_6_8a_first_run_health_report.py --verbose
-
 Exit codes:
     0 — loop completed (individual session failures are logged, not fatal)
     1 — unrecoverable setup error (bad args, missing config, etc.)
@@ -348,9 +344,6 @@ def main(argv: list[str] | None = None) -> int:
         f"skip_no_tones={grand_skip_no_tones} "
         f"skip_no_frames={grand_skip_no_frames} err={grand_err} "
         f"(output_root={output_root})"
-    )
-    print(
-        "Next: python scripts/phase_6_8a_first_run_health_report.py --verbose"
     )
     return 0
 
