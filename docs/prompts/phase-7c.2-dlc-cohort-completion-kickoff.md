@@ -2435,3 +2435,2474 @@ While CC is auditing whiskers Pattern B, verify spout_spout_midpoint and eye_eye
 ### ALL OTHER LOCKS UNCHANGED
 
 (Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.F expanded cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q40, Addendum #9-34 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36.)
+
+---
+
+## Addendum #36 — Q5.F re-locked: ONE-TIME-ONLY, not per-cycle + manifest-reset requirement (Priya 2026-05-15)
+
+### Incident (2026-05-15)
+
+Across rounds 1-8 of "kill cohort + apply new addendum + wipe + relaunch" cycles, CC ran `rm -rf pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/ pipeline_outputs/dlc_kinematics/whole_session_heatmaps/` 8 times — once per cycle, before each relaunch. Each invocation deleted disk outputs that had already been canonically rendered. By round 8 (~30 min before incident report), all PS46 outputs gone + most PS47 outputs gone + cohort cumulative state lost.
+
+**Root cause (shared responsibility):**
+
+1. **Ambiguous addendum wording (mine):** Q5.F's "rm -rf … BEFORE Step 7's final cohort re-render" was a one-time-pre-final-canonical-render simplification, but the phrasing read as compatible with a per-cycle pattern. Every subsequent addendum (#22, #24, #34, #35) reaffirmed the same wording, reinforcing the per-cycle interpretation.
+
+2. **Missed cumulative-pattern flag (CC):** running `rm -rf` 8 times in one session without surfacing "we have wiped 8x in this session — is that intended?" let the cycle pattern continue. Cleanup ops with broad blast radius should trigger a "this seems unusual" sanity check.
+
+3. **Manifest-reset bug:** `.scratch_phase_7c2/cohort_heatmaps_manifest.csv` was never reset between wipes. Stale `PS46,OK` row from a pre-Q36 cohort run survived all 8 wipes → driver's resume logic skipped PS46 in the round-8 relaunch → PS46 stays empty even though it's wiped.
+
+### Q5.G LOCKED (supersedes Q5.F) — Stale-output cleanup is ONE-TIME, runs in Task 7 ONLY
+
+Replace Q5.F's ambiguous wording with explicit timing + safety guard:
+
+**Cleanup runs EXACTLY ONCE, in Task 7, AFTER Steps 1-6 are confirmed complete:**
+
+- Step 7 (cohort re-emit) has completed for ALL animals + all 6 (or 7 if whiskers fix landed) family entries.
+- Task 6 (verification) has spot-checked the outputs.
+- Priya has explicitly approved running the cleanup before CC invokes `rm -rf` or equivalent.
+
+**DO NOT run `rm -rf` or any destructive cleanup operation:**
+
+- Before Step 7 starts.
+- Mid-Step-7 (between animals, between family entries, between sub-batches).
+- After Step 7 completes but before Task 6 verification.
+- After Task 6 but before Priya's explicit approval.
+- "To clean stale outputs from a previous addendum" — that's no longer authorized; the in-flight render path is canonical and overwrites at write time. Don't wipe to "force re-emit."
+
+**If you find yourself wanting to wipe between cycles** to apply new locks (the round 1-8 pattern), DO NOT WIPE. Instead:
+
+- Let the in-flight cohort continue (or kill it cleanly), then relaunch.
+- The relaunch's per-animal `overwrite="force"` (or equivalent) handles overwriting stale outputs at write time. No pre-wipe needed.
+- For Q5.G mid-phase iterative re-emits across addendum bundles, the relaunch's overwrite IS the cleanup mechanism. `rm -rf` is reserved for Task 7 post-verification only.
+
+### Q41 LOCKED — Manifest must be reset whenever destructive wipe runs
+
+If a destructive operation (Task 7 cleanup, or any rare authorized wipe) is run on the output trees, `.scratch_phase_7c2/cohort_heatmaps_manifest.csv` MUST be reset in the same operation:
+
+```bash
+# Together with cleanup (Task 7 only):
+rm -rf pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/ \
+       pipeline_outputs/dlc_kinematics/whole_session_heatmaps/
+
+# Reset manifest in the same atomic operation
+python -c "
+import pandas as pd
+df = pd.read_csv('.scratch_phase_7c2/cohort_heatmaps_manifest.csv')
+df['status'] = 'PENDING'
+df.to_csv('.scratch_phase_7c2/cohort_heatmaps_manifest.csv', index=False)
+"
+```
+
+Otherwise the driver's resume logic will skip animals marked OK in the surviving manifest even though the corresponding disk outputs are gone. This is exactly the bug that left PS46 empty after round 8.
+
+### PS46 recovery from incident
+
+After `bs2o2pohl` (in-flight cohort) completes for PS47-PS55:
+
+1. **Reset PS46's manifest row:**
+   ```bash
+   python -c "
+   import pandas as pd
+   df = pd.read_csv('.scratch_phase_7c2/cohort_heatmaps_manifest.csv')
+   df.loc[df['animal'] == 'PS46', 'status'] = 'PENDING'
+   df.to_csv('.scratch_phase_7c2/cohort_heatmaps_manifest.csv', index=False)
+   "
+   ```
+
+2. **Targeted PS46 re-emit:** `python scripts/phase_7c2/render_heatmaps.py --animal PS46 --no-skip`. ~100 min wall-time. Renders all 6 non-skipped family entries for PS46.
+
+3. **Audit PS47-PS55:** spot-check every animal has expected SVG count per family entry. If any animal got partially processed during an earlier wipe, schedule per-animal targeted re-emit for that one (same pattern as PS46).
+
+4. **Whiskers targeted re-emit:** still queued post-Q37/Q38/Q39 fixes. Bundle with PS46 recovery if convenient.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, **Q5.G** one-time-cleanup [supersedes Q5.F entirely; per-cycle rm -rf is DISALLOWED], Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q41, Addendum #9-35 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36. Q5.F superseded by Q5.G + Q41.)
+
+---
+
+## Addendum #41 — Q19 WS-bounded whole_session restriction NEVER IMPLEMENTED in render code (Priya 2026-05-15)
+
+### Finding
+
+Priya 2026-05-15 asked whether `bs2o2pohl` whole_session_heatmaps actually restrict to WS session time per Q19. Code audit reveals **Q19 was locked in addenda but never implemented in the rendering code.**
+
+**Evidence:**
+
+1. **Phase 4 centered parquets are NOT WS-bounded.** `src/stroke_orofacial/dlc_io/parquet.py:build_centered_parquet` calls `_center_one_h5(h5_path, center_mode, lik_thr)` and writes every row from the DLC H5 with no frame-range filter. No `ws_start_cam_idx` / `ws_end_cam_idx` reference anywhere in `parquet.py`. The parquet contains all DLC frames including pre-WS-start and post-WS-end.
+
+2. **Whole_session render path doesn't filter.** `src/stroke_orofacial/dlc_spatial/render_on_demand.py:458-460`:
+   ```python
+   else:
+       window = None
+       # Q17/Q19: whole_session denominator = ALL frames in the
+       # centered parquet (the WS-bounded session length).      ← INCORRECT CLAIM
+       session_n_total = int(len(df))                           ← REALITY: full parquet length
+   ```
+   CC's comment assumes the centered parquet is already WS-bounded; it's not.
+
+**Consequence:**
+
+- Whole_session_heatmaps include pre-WS-start and post-WS-end DLC frames.
+- Q17 proportion denominator (`H_counts / session_n_total`) uses full-video-length as denominator instead of WS-bounded length → all proportion values scaled SMALLER than they should be.
+- Inherits into proportion_diff (which subtracts wrong-normalized post from wrong-normalized pre) and UOT (which builds on the wrong-normalized base histograms).
+- Tone_aligned plots are UNAFFECTED — those use `window.n_selected` from the tone-window machinery, correctly bounded by tone events.
+
+### Q49 LOCKED — Apply WS-frame filter at whole_session render entry; complete Q17/Q19 for whole_session scope
+
+Fix in `dlc_spatial/render_on_demand.py` whole_session render path:
+
+```python
+# At the whole_session branch of compute_animal_aggregated_histogram (and any other
+# whole_session compute path), apply the WS-bound filter BEFORE histogramming:
+
+else:
+    window = None
+    # Q19 LOCK (Addendum #41): restrict to WS-session-time frames.
+    # Centered parquet contains all DLC frames including pre-WS-start
+    # and post-WS-end; the Q19 lock requires whole_session to use only
+    # frames within [ws_start_cam_idx, ws_end_cam_idx] from the Phase 3
+    # alignment template.
+    template_path = resolver.alignment_template_for_reading(animal, date, cam="cam2")
+    template = load_alignment_template(template_path)  # or whatever the load helper is
+    ws_start = int(template["ws_start_cam_idx"])
+    ws_end = int(template["ws_end_cam_idx"])
+    df = df[(df["cam_frame_idx"] >= ws_start) & (df["cam_frame_idx"] <= ws_end)].copy()
+    # Q17/Q19 (now correctly): whole_session denominator = WS-bounded frame count.
+    session_n_total = int(len(df))
+```
+
+CC verifies the actual column name (`cam_frame_idx`? `frame_idx`? `frame`?) in the centered parquet schema during implementation. Likewise the alignment template loader (whatever helper is canonical post-F-P-7 cutover, or the legacy reader pre-cutover).
+
+**Also update the corresponding docstring/comment in `render_on_demand.py`** to reflect that the WS filter IS now applied; remove the misleading "(the WS-bounded session length)" claim from the pre-Q49 code if leaving the comment in for reference.
+
+### Re-emit scope
+
+Targeted whole_session re-emit (NOT a full cohort restart):
+
+- Phase 4 centered parquets unchanged (they intentionally retain all frames for any future analysis that wants pre-WS or post-WS context).
+- Render scope: whole_session × 4 plot types × 7 family entries × 9 animals × 1 trial group (whole_session is all-trial-only per Q16) × per-animal singleton bin_size.
+- Estimated ~252 SVGs total.
+- Wall-time: ~15-25% of full Task 5 (whole_session is one of two scopes; render-code-only fix).
+- Pattern: parallel to Q34 tongue_eye_midpoint targeted re-emit. Reuse the `render_targeted_*` chore-script pattern with a `--scope whole_session` filter.
+
+### Ordering
+
+Bundle with the post-cohort recovery sequence per Addendum #36:
+
+1. `bs2o2pohl` completes uninterrupted.
+2. Step B per-animal SVG audit (Addendum #36).
+3. PS46 targeted recovery.
+4. Q42 + Q43.B proportion_diff render patches.
+5. Q48 legacy Pattern B audit + Q37/Q38/Q39 whisker config fixes.
+6. **Q49 WS-frame filter patch + targeted whole_session re-emit (this addendum).**
+7. Q34 tongue_eye_midpoint x_range fix + targeted re-emit.
+8. Task 6 verification.
+9. Task 7 cleanup (Q5.G + Q41 with explicit Priya approval).
+
+All targeted re-emits can share a unified `render_targeted_family_entries.py` script with `--family-entry`, `--plot-type`, `--scope` CLI filters; the various post-cohort fixes parameterize the script differently.
+
+### Tone_aligned plots unaffected
+
+Q19 lock applied only to whole_session scope; tone_aligned plots use `window.n_selected` from `_build_tone_window` which correctly bounds frames within the tone (pre, post)ms window. No re-emit needed for tone_aligned. The Q49 fix is whole_session-only.
+
+### Why this slipped
+
+Q19 was locked in Addendum #15 (2026-05-15) as part of the proportion_diff + UOT spec, with the WS-bound restriction described in prose but never converted into an explicit implementation lock. CC implemented Q17 (universal proportion denominator) correctly but left the underlying df unfiltered for whole_session — the misleading comment at line 458-460 papered over the gap. Subsequent addenda iterated on cmap/normalization/floor/layout decisions without revisiting the df-filtering question.
+
+**Sibling-pattern to `feedback_scratch_path_validation_not_production_state.md`:** "lock language" describes intended behavior; production code may or may not match. Future kickoffs that lock scope-restriction behavior need to either (a) include explicit implementation-site lock language ("apply at `dlc_spatial/render_on_demand.py:X`"), or (b) require a post-implementation spot-check that the filter actually applied. Save lesson to memory.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q49, Addendum #9-40 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36. Q5.F superseded by Q5.G + Q41. Q43 superseded by Q43.B. Q45-Q47 demoted to fallback per Q48. Q49 added per Addendum #41.)
+
+---
+
+## Addendum #42 — Consolidate post-cohort recovery into single unified re-emit (Priya 2026-05-15)
+
+### Motivation
+
+The accumulated post-cohort fix queue (PS46 recovery + Q42/Q43.B proportion_diff + Q34 tongue_eye_midpoint + Q37/Q38/Q39 + Q48 whiskers + Q49 whole_session) was originally planned as 5+ separate targeted re-emits running in sequence. Cumulative wall-time = PS46 full (~100 min) + proportion_diff cohort (~25% of Task 5) + whiskers cohort (~15%) + whole_session cohort (~25%) + tongue_eye_midpoint cohort (~15%) ≈ roughly equivalent to one full Task 5 run AND each affected animal × family-entry tuple gets re-emitted multiple times (PS46 could be re-emitted up to 5x).
+
+Priya 2026-05-15: consolidate all patches into a SINGLE unified re-emit pass to avoid multiple re-emits of the same animal × family-entry × scope tuples.
+
+### Q50 LOCKED — Land ALL patches BEFORE any re-emit; then single fresh full cohort re-emit
+
+Consolidated sequence (supersedes per-fix targeted re-emit chunks in Addenda #31, #35, #38, #41):
+
+**Phase A — `bs2o2pohl` resolution (Priya picks):**
+
+- **Option (a) — Kill `bs2o2pohl` now.** Saves remaining ~hours of compute that would be overwritten by Phase D. Requires explicit Priya go-ahead before CC kills the in-flight cohort.
+- **Option (b) — Let `bs2o2pohl` finish.** Preserves a pre-fix checkpoint on disk for diff comparison (useful for verifying patches in Phase C). Wastes the remaining compute (gets overwritten by Phase D).
+
+Recommend (a) for efficiency unless Priya wants the pre-fix checkpoint.
+
+**Phase B — Apply ALL code patches (no re-emit yet):**
+
+1. **Q42 + Q43.B** — proportion_differences render patches in `dlc_spatial/render_on_demand.py`:
+   - Percentile-95 vmax for `H_diff` across Q14 bucket.
+   - Mask only `(H_pre_counts == 0) & (H_post_counts == 0)` as NaN; preserve grey-for-no-change.
+   - Add config knob `dlc_spatial_tone_aligned.proportion_differences.vmax_percentile = 95.0`.
+2. **Q34** — `configs/defaults.yaml tongue.per_center_mode.eye_midpoint` gains `x_range` pre-filter + tightened `xlim`/`ylim`. CC finds legacy values via tongue notebook audit (per Addendum #31).
+3. **Q48 legacy Pattern B audit** — CC reads `20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb` Pattern B render cells + reports parameter table (per-layer alpha, cmap dict, masking, vmin/vmax, axis facecolor) to Priya for review BEFORE applying. Priya approves Q39 cmap-vs-swatch trade-off Option A or B.
+4. **Q37 + Q38 + Q39** — whiskers `configs/defaults.yaml L_whiskers_1.per_center_mode.eye_midpoint` unified bilateral xlim (e.g., `[-200, 200]`) + verify 6-whisker iteration + apply Q48-audit-derived render params (or Q45/Q46/Q47 fallback if audit yields no portable values).
+5. **Q49** — WS-frame filter in `dlc_spatial/render_on_demand.py` whole_session branch(es):
+   - Load alignment template; slice `df = df[df["cam_frame_idx"].between(ws_start, ws_end)]`.
+   - Update misleading comment at line 458-460.
+   - Apply at every whole_session compute path (search `scope == "whole_session"` branches).
+6. **Q40 skip patch REMOVAL** — remove `SKIP_FAMILY_ENTRIES = {"whiskers_eye_midpoint"}` from the Task 5 driver. With Q37/Q38/Q39 patches landed, whiskers can re-emit normally.
+
+All patches land as separate commits with clear messages. Run `pytest -x` after each patch group to confirm no regressions; CI-equivalent test suite passes.
+
+**Phase C — Spot-check patches on PS47 BEFORE cohort re-emit:**
+
+Targeted PS47 single-animal render of all affected family entries + plot types + scopes to verify each patch visually:
+
+```bash
+# Reset PS47 manifest row first
+python -c "
+import pandas as pd
+df = pd.read_csv('.scratch_phase_7c2/cohort_heatmaps_manifest.csv')
+df.loc[df['animal'] == 'PS47', 'status'] = 'PENDING'
+df.to_csv('.scratch_phase_7c2/cohort_heatmaps_manifest.csv', index=False)
+"
+
+# Then PS47-only re-emit
+python scripts/phase_7c2/render_heatmaps.py --animal PS47 --no-skip
+```
+
+PS47 outputs (with patches landed) are the verification gate. Priya eyeballs the spot-check before authorizing Phase D full cohort re-emit. Check:
+- proportion_diff plots show meaningful red/blue signal (Q42 percentile vmax + Q43.B grey-for-no-change).
+- whiskers Pattern B shows 6 distinct whisker blobs with bilateral spatial extent + matching legend swatches (Q37/Q38/Q39/Q48).
+- whole_session heatmaps qualitatively different from in-flight (frames count decreased; bin density concentrated in WS-window; Q49).
+- tongue_eye_midpoint plots no longer show outlier tongue points outside anatomical range (Q34).
+
+If any spot-check fails: iterate the patch (don't proceed to Phase D until PS47 visually accepted by Priya).
+
+**Phase D — Single fresh full cohort re-emit:**
+
+1. Reset entire manifest:
+   ```bash
+   python -c "
+   import pandas as pd
+   df = pd.read_csv('.scratch_phase_7c2/cohort_heatmaps_manifest.csv')
+   df['status'] = 'PENDING'
+   df.to_csv('.scratch_phase_7c2/cohort_heatmaps_manifest.csv', index=False)
+   "
+   ```
+
+2. Run full cohort re-emit covering ALL 9 animals × all 7 family entries × all 4 plot types × both scopes:
+   ```bash
+   python scripts/phase_7c2/render_heatmaps.py
+   ```
+
+   Wall-time: equivalent to `bs2o2pohl` (~hours). Single pass; PS46 emit happens naturally as the first animal.
+
+3. Per CLAUDE.md Rule 6: writes go to existing `pipeline_outputs/dlc_kinematics/{tone_aligned_heatmaps,whole_session_heatmaps}/` paths via `overwrite="force"` (or equivalent). Existing in-flight `bs2o2pohl` SVGs (if Phase A option (b) was chosen) get overwritten at write time — no pre-wipe needed (Q5.G enforced).
+
+**Phase E — Verification + close:**
+
+7. Task 6 spot-check verification per cohort: per-animal SVG count audit + Priya scientific review of sampled outputs.
+8. Task 7 cleanup with explicit Priya approval per Q5.G + Q41 manifest reset.
+9. Task 8 DECISIONS + MIGRATION_LOG + phase-close PR + tag.
+
+### Supersedes per-fix targeted re-emit chunks in prior addenda
+
+The following targeted-re-emit chunks from earlier addenda are SUPERSEDED by Q50's unified Phase D:
+
+- Addendum #31 Q34 tongue_eye_midpoint targeted re-emit → folds into Phase D.
+- Addendum #35 Q40 targeted whiskers re-emit → folds into Phase D (Q40 skip patch REMOVED in Phase B step 6).
+- Addendum #38 Q42 + Q43.B targeted proportion_diff re-emit → folds into Phase D.
+- Addendum #41 Q49 targeted whole_session re-emit → folds into Phase D.
+- Addendum #36 PS46 targeted recovery → folds into Phase D (PS46 emit happens naturally).
+
+The patches themselves (Q34, Q37/Q38/Q39, Q42, Q43.B, Q48, Q49) are unchanged; only their re-emit invocation strategy consolidates.
+
+### Tradeoff captured
+
+| Strategy | Wall-time | Animal × family-entry re-emit count | Risk |
+|---|---|---|---|
+| Per-fix targeted re-emits (original plan) | ~5 × per-fix cost ≈ 1× full cohort | PS46 up to 5×; other animals 2-3× each | Complex orchestration; manifest churn across runs |
+| **Consolidated unified re-emit (Q50)** | **1× full cohort** | **1× each** | **Simpler orchestration; clean overwrite-at-write semantics** |
+
+Q50 wins on both wall-time AND simplicity. The trade-off is forfeiting the option to verify each patch independently against the in-flight pre-fix output, but Phase C's PS47 spot-check covers patch-level verification.
+
+### Why this matters: lesson alongside `feedback_lock_language_is_not_implementation_verification.md`
+
+The original per-fix targeted-re-emit plan accumulated incrementally as each bug surfaced. Each "targeted re-emit" felt scope-bounded at the moment of locking, but the cumulative effect was N independent re-emits with massive overlap. Consolidating into a single unified re-emit is the natural endpoint when the affected output set approaches the full cohort.
+
+Future kickoffs that accumulate multiple targeted-re-emit chunks should periodically audit: "what's the union of affected outputs?" If it approaches full-cohort, consolidate into a single fresh re-emit and reset the manifest, rather than chaining N targeted re-emits.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q50, Addendum #9-41 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36. Q5.F superseded by Q5.G + Q41. Q43 superseded by Q43.B. Q45-Q47 demoted to fallback per Q48. Q49 added per Addendum #41. Q50 consolidates re-emit strategy per Addendum #42.)
+
+---
+
+## Addendum #43 — Q48 verdict (Pattern B legacy port) + Q51 likelihood-skip logging + audit (Priya 2026-05-15)
+
+### Q48 verdict from Q48 audit report (Priya 2026-05-15)
+
+CC's Phase B Q48 audit (per Addendum #42 Phase B.3) surfaced 5 divergences from legacy Pattern B convention. Priya's verdict:
+
+| # | Divergence | Verdict |
+|---|---|---|
+| 1 | Alpha 0.8 (current) → 0.5 (legacy) | **PORT LEGACY → 0.5** |
+| 2 | 5%-of-vmax floor (Q32 corollary) → no floor (legacy) | **PORT LEGACY → drop `layered_overlay_floor_fraction` for Pattern B** |
+| 3 | Auto vmin/vmax (Q14 bucket-shared) → 1e-6 / per-layer-99th-pct (legacy) | **PORT LEGACY for Pattern B specifically; Pattern A keeps Q14 bucket-shared** |
+| 4 | nbins 80 → 100 (legacy) | **PORT LEGACY → 100 for Pattern B (also matches `heatmap_nbins=100` for other plot types)** |
+| 5 | Q39 categorical hex swatches vs legacy plasma/inferno/viridis multi-hue | **KEEP Q39 categorical swatch + Q47 white-to-categorical-color cmaps. Acknowledged Phase-7c.2 deviation for legend readability; document in DECISIONS.** |
+
+Plus one revert chain implication captured in the verdict:
+
+**Q32 transparent-NaN REVERTED for Pattern B specifically** (still applies to single-cmap plots where there's no layering). Legacy alpha=0.5 makes opaque-white NaN ~50% transparent in composite — sufficient for clean overlay without needing actual alpha=0 transparency on NaN bins. Single-cmap plots (non-Pattern-B) keep `set_bad("white")` opaque NaN per Q22/Q25/Q26/Q28 — no layering, no washing-out risk.
+
+### Q51 LOCKED — Likelihood-skip logging + per-animal session-drop audit
+
+CC's Phase B PS50 fix (commit 66aa4d6c) — `compute_animal_aggregated_histogram` skipping `hist=None` sessions — is a generic aggregation-level fix that applies to ANY (animal, family entry, session) tuple where zero frames pass the likelihood threshold for the bodypart × center_mode combination. PS50/eye_eye_midpoint/2025-03-24 was the first surfaced case; many others may silently drop without explicit instrumentation.
+
+**Why this matters:** silent session drops affect per-animal pre-stroke baseline pools + Phase 9.1 phenotype-pooled aggregates + cohort-level interpretation. Without audit data, drops are untraceable.
+
+**Q51.A — Per-skip WARNING log:**
+
+At each `hist is None` skip site in `dlc_spatial/render_on_demand.py` (the `compute_animal_aggregated_histogram` function + any sibling aggregation function with the same pattern), emit a structured WARNING:
+
+```python
+if hist is None:
+    logger.warning(
+        "compute_animal_aggregated_histogram: skipping %s/%s "
+        "(bodypart=%s, center_mode=%s, family_entry=%s): "
+        "build_histogram returned None (zero frames passed likelihood "
+        "threshold %.2f).",
+        animal, date.isoformat(), bodypart, center_mode,
+        family_entry, lik_thr,
+    )
+    continue
+```
+
+**Q51.B — Per-animal session-drop summary:**
+
+At the end of each animal's aggregation pass, emit a session-drop summary line:
+
+```python
+logger.info(
+    "compute_animal_aggregated_histogram: %s/%s aggregation complete. "
+    "Sessions: contributed=%d, skipped=%d, total=%d. "
+    "Skipped session list: %s",
+    animal, family_entry,
+    n_sessions_contributing, n_sessions_skipped,
+    n_sessions_contributing + n_sessions_skipped,
+    skipped_session_list,  # list of (date, bodypart) tuples
+)
+```
+
+**Q51.C — Cohort-level skip audit at Task 6 verification:**
+
+During Task 6 verification, generate `.scratch_phase_7c2/skip_audit.csv` with columns (animal, family_entry, date, bodypart, center_mode, likelihood_threshold, reason). Aggregate from the Phase D run logs. Compute per-family-entry skip rates:
+
+```
+family_entry           skip_rate    most-skipped-bodypart
+tongue_spout_midpoint  0.5%         tongue
+eye_eye_midpoint       12.3%        L_eye (high DLC inference uncertainty)
+whiskers_eye_midpoint  3.1%         R_whiskers_3
+...
+```
+
+Pattern B families (especially eye_eye_midpoint per the PS50 case) likely have higher skip rates due to multi-bodypart conjunction requirements.
+
+**Q51.D — Feed into Phase 9.1 pre-stroke baseline pool reasoning:**
+
+The cohort-level skip audit (Q51.C) becomes input data for Phase 9.1 OPEN-Q 6 ("include ALL pre-stroke sessions per animal, or restrict to recent pre-stroke?"). If certain (animal, family_entry) combos have high skip rates, the effective baseline pool is smaller than `n_pre_stroke_sessions` count suggests — Phase 9.1 should report the EFFECTIVE pool size (contributing-session count) alongside the nominal pre-stroke session count.
+
+### Phase B finalization
+
+CC's Phase B is incomplete pending the Q48-verdict 6 changes + Q51 logging additions. After landing those:
+
+1. Pattern B alpha = 0.5 (revert from 0.8).
+2. Pattern B `layered_overlay_floor_fraction` removed entirely.
+3. Pattern B vmin = 1e-6, vmax = per-layer-99th-pct (revert Q14 bucket-shared for Pattern B).
+4. Pattern B nbins = 100 (revert from 80).
+5. Pattern B `set_bad("white")` opaque NaN (revert Q32 transparent-NaN for Pattern B specifically).
+6. Pattern B keeps Q39 categorical swatch + Q47 white-to-categorical-color cmaps.
+7. Q51.A/B WARNING + INFO logging at all `hist is None` skip sites in `compute_animal_aggregated_histogram` + sibling functions.
+
+Test suite must remain clean (`pytest -x` → 1450+ pass, 0 fail). After Phase B finalization complete + tests pass: STOP-and-report to Priya for Phase C PS47 spot-check authorization.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q51, Addendum #9-42 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36. Q5.F superseded by Q5.G + Q41. Q43 superseded by Q43.B. Q45-Q47 demoted to fallback per Q48 but Q47 white-to-color cmaps RESTORED to scope per Q48 verdict item 5. Q49 added per Addendum #41. Q50 consolidates re-emit strategy per Addendum #42. Q32 transparent-NaN reverted for Pattern B per Q48 verdict item 1+2; still applies to single-cmap plots. Q14 bucket-shared scale applies to Pattern A only; Pattern B uses legacy per-layer-99th-pct per Q48 verdict item 3.)
+
+---
+
+## Addendum #44 — Q52: cross-SVG comparability for Pattern B (supersedes Q48 verdict item 3) (Priya 2026-05-15)
+
+### Motivation
+
+Q48 verdict item 3 locked Pattern B per-bp normalization as "figure-local" — each SVG self-normalizes per-bp via max-of-99th-pct-across-panels-per-bp. This DROPS cross-SVG visual comparability: a session-1 individual_session SVG and a session-2 individual_session SVG for the same (animal, family_entry, plot_type, scope, trial_group) bucket use different scales, so the same color intensity does NOT correspond to the same density between SVGs.
+
+Priya 2026-05-15: cross-SVG comparability matters within (animal, family_entry, plot_type, scope, trial_group). Pattern B should use bucket-local per-bp normalization instead.
+
+### Q52 LOCKED — Pattern B per-bp normalization aggregates across the full Q14 bucket
+
+For Pattern B render in `dlc_spatial/render_on_demand.py`, change per-bp normalization scope from "per-SVG figure-local" to "per-bucket per-bp":
+
+**New bucket:** (animal, family_entry, plot_type, scope, trial_group). Same dimensions as Q14 bucket EXCLUDING bin_size (which is per-animal singleton per Q23 anyway).
+
+**Per-layer normalization within bucket:**
+
+```python
+# Two-pass rendering pattern (analog of Q18 for Pattern B):
+
+# Pass 1: compute per-bp bucket norms across all SVGs in the (animal, family,
+#         plot_type, scope, trial_group) bucket. For each bodypart layer,
+#         aggregate the 99th-pct value across ALL data arrays that will be
+#         rendered into ANY SVG in the bucket.
+bucket_per_bp_vmax = {}  # bp -> vmax for that layer's cmap across bucket
+for bp in family.bodyparts:
+    all_bucket_data_for_bp = collect_all_data_for_bp_across_bucket_svgs(
+        animal, family, plot_type, scope, trial_group, bp
+    )
+    pooled = np.concatenate([arr[arr > 0].flatten() for arr in all_bucket_data_for_bp])
+    bucket_per_bp_vmax[bp] = (
+        np.percentile(pooled, 99) if len(pooled) > 0 else 1.0
+    )
+
+# Pass 2: render each SVG in the bucket using the shared bucket_per_bp_vmax
+for svg_target in bucket_svg_targets:
+    for bp in family.bodyparts:
+        ax.imshow(
+            data_for_this_svg_bp, cmap=layer_cmap, alpha=0.5,
+            vmin=1e-6, vmax=bucket_per_bp_vmax[bp], origin="lower", ...,
+        )
+```
+
+**Each LAYER (bp) within Pattern B normalizes independently across the bucket.** The composite SVG renders 6 layers, each with its own bucket-wide vmax for that bp. Cross-SVG comparability: any SVG within the bucket renders L_whiskers_1 against the same bucket-wide max-99th-pct for L_whiskers_1.
+
+Per Q22 plot polish locks: a small annotation in each SVG (in the colorbar label OR the suptitle) should mention "bucket-shared" or similar so the viewer knows the scale is bucket-wide (not per-SVG). CC can decide the wording during the Phase B finalization commit.
+
+### Supersedes Q48 verdict item 3
+
+| Q48 verdict item | Status after Q52 |
+|---|---|
+| 1 — alpha 0.5 | UNCHANGED |
+| 2 — drop layered_overlay_floor_fraction | UNCHANGED |
+| **3 — per-bp figure-local norm** | **SUPERSEDED by Q52 per-bp bucket-local norm** |
+| 4 — nbins 100 | UNCHANGED |
+| 5 — Q39 categorical + Q47 white-to-color | UNCHANGED |
+
+The other 4 Q48 verdict items remain as locked in Addendum #43.
+
+### Implementation note
+
+Two-pass rendering mirrors Q18's Pass 1 (compute bucket-wide norm) + Pass 2 (render at shared scale). The existing Q18 infrastructure for Pattern A bucket-shared scale (used for proportion_diff, single-cmap individual_session, etc.) is the architectural reference; Q52 generalizes the same pattern to Pattern B's per-bp layered render.
+
+If CC's current Pattern B render code processes one SVG at a time (no awareness of other SVGs in the bucket), the change adds a Pass 1 enumeration step that pre-computes `bucket_per_bp_vmax` before any rendering, then passes that dict into the per-SVG render functions. Similar to how Pass 1 for proportion_diff Q42 enumerates the H_diff arrays across the bucket before computing the percentile.
+
+### Trade-off acknowledged
+
+Q52 sacrifices "legacy faithful per-bp norm" for "cross-SVG comparability within bucket." The legacy convention was per-SVG figure-local because legacy notebooks rendered SVGs in isolation; Q52 takes the more analytically-useful bucket-shared approach because Phase 7c.2 outputs are intended for cross-SVG comparison in subsequent analyses.
+
+This sits alongside the other intentional Phase-7c.2 deviations from legacy (Q39 categorical swatches + Q47 white-to-color cmaps + Q14 bucket-shared scale for Pattern A) — coherent set of acknowledged Phase-7c.2 improvements over legacy. Document in Task 8 DECISIONS prose.
+
+### Phase B finalization (Q52 patch)
+
+Q52 adds one more commit to Phase B BEFORE Phase C kickoff:
+
+1. Modify Pattern B render path in `dlc_spatial/render_on_demand.py` to add Pass 1 enumeration of bucket-wide per-bp norms.
+2. Modify per-SVG render to consume the pre-computed `bucket_per_bp_vmax[bp]` dict.
+3. Optionally annotate SVGs with a "scale: bucket-shared" indicator.
+4. Run `pytest -x` — expect 1450+ pass.
+5. Smoke check: re-run `.scratch_phase_7c2/smoke_q37_q39.py` on PS47 to confirm Q39 colors still present + verify two PS47 individual_session SVGs from the same bucket show similar scales (where they didn't before).
+6. STOP-and-report to Priya for Phase C kickoff authorization.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q52, Addendum #9-43 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36. Q5.F superseded by Q5.G + Q41. Q43 superseded by Q43.B. Q45-Q47 demoted to fallback per Q48 but Q47 white-to-color cmaps RESTORED per Q48 verdict item 5. Q49 added per Addendum #41. Q50 consolidates re-emit strategy per Addendum #42. Q32 transparent-NaN reverted for Pattern B per Q48 verdict item 1+2. Q48 verdict item 3 SUPERSEDED by Q52 (Addendum #44) — Pattern B now uses bucket-local per-bp norm, restoring cross-SVG comparability within Q14 bucket.)
+
+---
+
+## Addendum #45 — Q53 whiskers Pattern B collapse to 2 layers (L + R) + Q54 tongue eye_midpoint xlim widening (Priya 2026-05-15)
+
+### Motivation
+
+PS47 spot-check revealed:
+
+1. **Whiskers Pattern B is washed out** even with the Q48 verdict locked. Root cause: Q47 white-to-categorical-hex cmaps have low-end = near-white; combined with set_bad("white") opaque NaN + alpha=0.5 per-layer + 6 layers compositing, low-density blob pixels become indistinguishable from accumulated white background. The 6-layer compositing is the multiplier; reducing layers reduces washout.
+
+2. **Tongue_eye_midpoint x-axis is clipping data.** Q34's `xlim` matched `x_range` filter (or was tighter); some data renders at the plot edge.
+
+### Q53 LOCKED — Collapse whiskers Pattern B from 6 layers to 2 (L + R sides)
+
+For `whiskers_eye_midpoint` family entry specifically:
+
+**Before (6-layer):** bodyparts = [L_whiskers_1, L_whiskers_2, L_whiskers_3, R_whiskers_1, R_whiskers_2, R_whiskers_3]; 6 cmaps; 6-layer composite.
+
+**After (2-layer):** logically two layers — `L` (collapsed from L_whiskers_1/2/3) and `R` (collapsed from R_whiskers_1/2/3). 2 cmaps; 2-layer composite. Matches existing Pattern B 2-layer convention used by `spout_spout_midpoint` (L_spout + R_spout) and `eye_eye_midpoint` (L_eye + R_eye) per Addendum #13.
+
+**Aggregation method:** element-wise SUM of histograms within each side.
+
+```python
+# Pseudocode for the whiskers 2-layer render
+L_bodyparts = ["L_whiskers_1", "L_whiskers_2", "L_whiskers_3"]
+R_bodyparts = ["R_whiskers_1", "R_whiskers_2", "R_whiskers_3"]
+
+H_L = sum(build_histogram(df, bp, ...) for bp in L_bodyparts)
+H_R = sum(build_histogram(df, bp, ...) for bp in R_bodyparts)
+
+# Q52 per-side bucket-shared norm: aggregate H_L across bucket dates → vmax_L_bucket
+#                                 aggregate H_R across bucket dates → vmax_R_bucket
+
+ax.imshow(H_L, cmap="Reds",  alpha=0.5, vmin=1e-6, vmax=vmax_L_bucket, origin="lower", ...)
+ax.imshow(H_R, cmap="Blues", alpha=0.5, vmin=1e-6, vmax=vmax_R_bucket, origin="lower", ...)
+```
+
+**Cmap choice:** L = `"Reds"`, R = `"Blues"` (matplotlib built-in sequential cmaps). Matches spout_spout_midpoint and eye_eye_midpoint Pattern B convention. Drops Q47's white-to-categorical-hex cmap construction for whiskers specifically (still applies to other Pattern B families if they have ≥3 layers; currently only spout/eye remain in Pattern B and they're already 2-layer with Reds/Blues).
+
+**Q39 swatch legend collapses to 2 entries:** "L_whiskers (red)" + "R_whiskers (blue)". Matches the 2-layer cmap convention. No more 6-color categorical palette for whiskers.
+
+### Q53 interaction with Q52 bucket-shared norm
+
+Q52 Pass 1 enumeration now operates on **per-side** (not per-bp) for whiskers:
+
+```python
+# Pass 1 for whiskers Pattern B (post-Q53)
+bucket_per_side_vmax = {}
+for side in ["L", "R"]:
+    side_bodyparts = L_bodyparts if side == "L" else R_bodyparts
+    all_bucket_H_side = []
+    for svg_target in bucket_svg_targets:
+        H_side = sum(load_or_compute_H_layer(svg_target, bp) for bp in side_bodyparts)
+        all_bucket_H_side.append(H_side)
+    pooled = np.concatenate([arr[arr > 0].flatten() for arr in all_bucket_H_side])
+    bucket_per_side_vmax[side] = np.percentile(pooled, 99) if len(pooled) > 0 else 1.0
+```
+
+For other Pattern B families (spout, eye — also 2-layer), Q52 already operates per-bp (L_spout vs R_spout, L_eye vs R_eye) — the "per-bp" concept naturally maps to "per-side" for those families since each side has only one bodypart. No code change needed for spout/eye; whiskers gets the Q53 collapse pre-Pass-1.
+
+### Q53 trade-offs
+
+| Property | 6-layer (Q39+Q47) | 2-layer collapsed (Q53) |
+|---|---|---|
+| L/R asymmetry visible | ✓ | ✓ |
+| Inter-whisker distinction within side (L_1 vs L_2 vs L_3) | ✓ | ✗ (collapsed) |
+| Visual readability (avoid washout) | ✗ (washed out) | ✓ |
+| Pattern B convention alignment with spout/eye | ✗ | ✓ |
+| Swatch legend complexity | 6 categorical hex colors | 2 cmap labels |
+
+Bilateral asymmetry is the primary scientific signal for unilateral stroke; inter-whisker specificity within a side is rarely the headline result. Trade-off accepted.
+
+### Q53 supersedes Q39 + Q47 specifically for whiskers
+
+For `whiskers_eye_midpoint`:
+- **Q39 (6 categorical hex swatches) → SUPERSEDED by Q53** for whiskers. Q39 still applies in principle for any future Pattern B family with ≥3 layers; whiskers no longer qualifies after Q53.
+- **Q47 (white-to-categorical-color cmaps) → SUPERSEDED by Q53** for whiskers. Q47 still applies in principle but no current family uses it after Q53.
+
+For spout_spout_midpoint and eye_eye_midpoint: no change — they were already 2-layer Pattern B with Reds/Blues cmaps per Addendum #13.
+
+### Q54 LOCKED — tongue_eye_midpoint xlim widened to (-200, 200)
+
+Patch `configs/defaults.yaml`:
+
+```yaml
+tongue:
+  per_center_mode:
+    eye_midpoint:
+      xlim: [-200, 200]     # widened from prior Q34 value to add display margin
+      ylim: [<unchanged>]   # Q34 ylim retained
+      x_range: [-175, 175]  # Q34 x_range pre-filter retained (or whatever Q34 landed)
+```
+
+`x_range` (pre-histogram filter) stays at whatever Q34 landed (likely [-175, 175] per legacy). `xlim` (display range) widens to [-200, 200] so data within x_range filter has ~25-pixel margin on each side at the plot edge.
+
+Verify by inspecting CC's Q34 commit for the actual landed values. If Q34's `x_range` was different from [-175, 175], adjust `xlim` proportionally to give comparable margin.
+
+### Phase B finalization (Q53 + Q54 patches)
+
+Add to Phase B finalization commits BEFORE the second PS47 spot-check:
+
+1. **Q53 patch:** modify Pattern B whiskers render to use 2-layer collapsed (L + R) instead of 6-layer; sum histograms within each side; use `Reds` for L, `Blues` for R; update Pass 1 enumeration to operate per-side; update swatch legend to 2 entries.
+2. **Q54 patch:** widen `tongue.per_center_mode.eye_midpoint.xlim` to `[-200, 200]` in `configs/defaults.yaml`.
+3. Run `pytest -x` — expect 1450+ pass.
+4. Smoke check: re-run `.scratch_phase_7c2/smoke_q37_q39.py` or analog on PS47 whiskers. Verify:
+   - 2-layer composite produces visibly denser blob colors (not washed out).
+   - L_whiskers blob on positive X; R_whiskers blob on negative X (bilateral spatial asymmetry preserved).
+   - Swatch legend shows 2 entries (L_whiskers Reds + R_whiskers Blues).
+5. STOP-and-report. Re-authorize Phase C PS47 spot-check (second pass).
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q54, Addendum #9-44 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36. Q5.F superseded by Q5.G + Q41. Q43 superseded by Q43.B. Q45-Q47 demoted to fallback per Q48 but Q47 white-to-color cmaps RESTORED per Q48 verdict item 5; Q47 then SUPERSEDED for whiskers specifically by Q53 per Addendum #45. Q49 added per Addendum #41. Q50 consolidates re-emit strategy per Addendum #42. Q32 transparent-NaN reverted for Pattern B per Q48 verdict item 1+2. Q48 verdict item 3 superseded by Q52 per Addendum #44. Q39 superseded for whiskers specifically by Q53 per Addendum #45. Q34 xlim updated by Q54 per Addendum #45.)
+
+---
+
+## Addendum #46 — Q55 full legacy port for Pattern B render (recapitulate all-bodyparts overlay design) (Priya 2026-05-15)
+
+### Motivation
+
+Priya 2026-05-15 supplied the legacy "all bodyparts" plot as the design target. Legacy overlays many bodyparts (nose, jaw, tongue, 6 whiskers — 9 total) with NO washout AND no alpha-compositing issue. The legacy works because of architectural choices we've been progressively diverging from:
+
+| Property | Legacy | Phase 7c.2 current state |
+|---|---|---|
+| Per-bp cmap | Multi-hue with DARK low-end (plasma/inferno/viridis or similar) | Q47 white-to-categorical-color (LIGHT low-end → near-invisible at low density) |
+| set_bad | Transparent (axis background shows through) | Q48 opaque-white (NaN pixels compound across layers) |
+| Per-layer alpha | High (likely 1.0; transparent NaN doesn't compound) | 0.5 (semi-transparent compositing accumulates white from NaN) |
+| Legend | Per-layer colorbar stacked compactly | Q30 categorical swatch (loses cmap quantitation) |
+| Layer count | All bodyparts visible (6+ whiskers) | Q53 collapse to 2 (loses inter-whisker distinction) |
+
+Every Phase 7c.2 deviation from legacy on Pattern B contributed to the washout. Reverting all of them to legacy convention should reproduce the working legacy visual.
+
+### Q55 LOCKED — Full legacy port for Pattern B render path
+
+Apply universally to Pattern B family entries (whiskers_eye_midpoint, spout_spout_midpoint, eye_eye_midpoint). Five coupled changes:
+
+**Q55.A — Cmaps: legacy multi-hue with dark low-end (revert Q47)**
+
+- **whiskers_eye_midpoint:** revert Q53 collapse → 6 separate layers (L_whiskers_1/2/3 + R_whiskers_1/2/3). Use legacy cmaps per CC's Q48 audit (`plasma`, `inferno`, `viridis` × L+R sides) OR whichever cmap names the legacy "all bodyparts" cell actually uses. If CC can locate the specific legacy cell that produced Priya's screenshot, port its exact cmap dict verbatim.
+- **spout_spout_midpoint:** keep current `Reds` (L_spout) + `Blues` (R_spout) cmaps from Addendum #13, BUT switch to the `_r` reverse variants OR construct custom dark-to-color cmaps so the low-end is dark (visible at low density).
+  - Recommended: `Reds_r` for L_spout, `Blues_r` for R_spout (matplotlib built-in reverse variants — start dark, end light).
+  - Note: `_r` versions might flip the colorbar direction; verify visually + adjust direction if needed.
+- **eye_eye_midpoint:** same treatment as spout — switch to dark-low-end variants of L=red-family / R=blue-family.
+
+**Q55.B — Transparent NaN (restore Q32 for Pattern B; revert Q48 verdict item 5 for Pattern B specifically)**
+
+```python
+for bp, cmap_name in pattern_b_cmaps.items():
+    cmap = plt.get_cmap(cmap_name).copy()
+    cmap.set_bad((1.0, 1.0, 1.0, 0.0))   # transparent (legacy convention)
+    ...
+ax.set_facecolor("white")   # axis background visible through transparent NaN
+```
+
+Single-cmap (Pattern A) plots keep `set_bad("white")` opaque — no layering means no compounding issue.
+
+**Q55.C — Per-layer alpha = 1.0 (or near-1.0)**
+
+```python
+ax.imshow(H_layer_masked, cmap=layer_cmap, alpha=1.0, ...,
+          vmin=1e-6, vmax=bucket_per_bp_vmax[bp])
+```
+
+With transparent NaN, layers don't compound at non-data pixels — each pixel either renders one layer's data (transparent-NaN regions of OTHER layers don't paint white over it) or renders the axis background (where no layer has data). alpha=1.0 makes the saturated colors maximally visible.
+
+If 1.0 produces "too dense" overlap at pixels where multiple layers have data, CC can tune to 0.8 or 0.9 during the second-round PS47 spot-check. But default 1.0 first.
+
+**Q55.D — Per-layer stacked colorbars with compact sizing (revert Q30 swatch legend)**
+
+```python
+# For each layer, attach a compact colorbar to the right of the axis
+for bp, im in zip(family.bodyparts, im_handles):
+    cbar = fig.colorbar(im, ax=ax, fraction=0.025, pad=0.01,
+                        shrink=0.15, aspect=10)
+    cbar.set_label(bp, fontsize=8)
+    cbar.ax.tick_params(labelsize=7)
+```
+
+Use `constrained_layout=True` at figure creation; matplotlib auto-handles vertical stacking. For 6 whisker colorbars, `shrink=0.15` (15% of axis height each) gives 6 × 15% = 90% total vertical extent with small gaps. Adjust per visual spot-check.
+
+If 6 colorbars don't fit cleanly stacked, alternative: 2 columns × 3 rows (matplotlib supports multi-cbar layouts via `colorbar_axes` placement). CC picks the better layout.
+
+**Q55.E — Restore 6-layer rendering for whiskers (revert Q53 collapse)**
+
+For `whiskers_eye_midpoint`, render each of the 6 bodyparts as a separate layer (per Q55.A cmaps). Q52 Pass 1 enumeration restores to per-bp (6 entries: L_whiskers_1, ..., R_whiskers_3) instead of per-side (2 entries).
+
+For spout_spout_midpoint and eye_eye_midpoint: already 2-layer per-bp; no collapse to revert.
+
+### Q55 summary chain of supersedes
+
+| Prior lock | Status after Q55 |
+|---|---|
+| Q39 (6 categorical hex swatches) | SUPERSEDED for whiskers — per-layer colorbars now |
+| Q30 (swatch legend for ≥3 layers) | SUPERSEDED for Pattern B — per-layer colorbars (with compact sizing) |
+| Q47 (white-to-categorical-color cmaps) | SUPERSEDED for Pattern B — legacy multi-hue dark-low-end cmaps |
+| Q48 verdict item 5 (set_bad("white") opaque) | SUPERSEDED for Pattern B — transparent NaN restored. Single-cmap plots still use opaque. |
+| Q53 (whiskers 2-layer collapse) | SUPERSEDED — restore 6-layer per-bp rendering |
+| Q48 verdict item 1 (alpha 0.5) | SUPERSEDED for Pattern B — alpha = 1.0 (transparent NaN means no compounding) |
+
+Q52 bucket-shared per-bp norm UNCHANGED (preserves cross-SVG comparability). Q14 bucket-shared scale for Pattern A UNCHANGED. Q22 plot polish UNCHANGED.
+
+### Trade-off acknowledged + locked
+
+Q55 is a near-total revert to legacy convention for Pattern B render. The Phase 7c.2 deviations (Q39/Q47/Q30/Q53) were attempts to improve legend readability + simplify the layered overlay, but each introduced visual artifacts that compounded. The legacy convention is genuinely better-designed for many-layer overlay. Adopt it verbatim.
+
+The one Phase-7c.2 win retained: **Q52 bucket-shared per-bp norm.** Legacy did per-SVG self-normalization; Q52 extends to bucket-shared for cross-SVG comparability. This is a legitimate analytical improvement orthogonal to the cmap/alpha/NaN choices.
+
+Document in Task 8 DECISIONS: "Phase 7c.2 Pattern B render reverts to legacy convention per Q55 (Addendum #46) after iterative attempts at improvements (Q39/Q47/Q30/Q53) each introduced visual artifacts. Q52 bucket-shared norm retained as the one Phase-7c.2 improvement that doesn't conflict with legacy."
+
+### Phase B finalization round 3
+
+1. Apply Q55.A — revert Pattern B cmaps to legacy multi-hue dark-low-end.
+2. Apply Q55.B — restore transparent NaN for Pattern B.
+3. Apply Q55.C — set alpha = 1.0 per Pattern B layer.
+4. Apply Q55.D — restore per-layer stacked colorbars with compact sizing.
+5. Apply Q55.E — revert Q53 whiskers collapse; restore 6-layer rendering.
+6. Run `pytest -x` — expect 1450+ pass.
+7. Smoke check on PS47 whiskers: verify visible saturated blobs (no washout) + 6 distinct whisker layers + per-layer colorbars present + transparent NaN renders axis background.
+8. STOP-and-report. Phase C round 3 PS47 spot-check awaits Priya re-authorization.
+
+### Trail of lessons captured
+
+This series of Pattern B render iterations (Q39 → Q47 → Q30 → Q48 → Q53 → Q55) is exactly the speculation-vs-audit anti-pattern from `feedback_audit_legacy_before_speculating_on_render_params.md`. The right reflex when Priya pointed at the legacy plot AT THE START would have been to read the specific legacy cell that produced it + port verbatim. Instead we iterated through 5 partial fixes before reaching the legacy convention.
+
+Future kickoffs: if Priya supplies a reference visual ("recapitulate this design"), the FIRST step is reading the producing legacy cell + porting verbatim. Speculation comes only after that fails.
+
+Save this as a refinement to the existing audit-first feedback memory.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q55, Addendum #9-45 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36. Q5.F superseded by Q5.G + Q41. Q43 superseded by Q43.B. Q39/Q47/Q30/Q53 SUPERSEDED for Pattern B by Q55 per Addendum #46 — full legacy port for Pattern B render. Q49 added per Addendum #41. Q50 consolidates re-emit strategy per Addendum #42. Q48 verdict items 1+5 superseded for Pattern B by Q55 (alpha 1.0 + transparent NaN). Q48 verdict items 2+3+4 unchanged. Q52 bucket-shared norm UNCHANGED (one Phase-7c.2 improvement retained). Q54 tongue xlim unchanged.)
+
+---
+
+## Addendum #47 — Q56 short whisker labels + Q57 per-whisker PD render (Priya 2026-05-15)
+
+### Context
+
+PS47 round 3 spot-check verdict:
+- whiskers IS + BS: ✓ (Q55 legacy port works; saturated blobs at correct spatial positions; no washout).
+- spout_spout + eye_eye: ✓ (acknowledged fine).
+- Tongue eye_midpoint xlim: ✓ (Q54).
+- **whiskers PD: ✗** — current render aggregates all 6 whiskers into a single diverging diff; shows only 2 broad red/blue regions instead of per-whisker diff.
+- Legend labels for Pattern B colorbars overlap each other (e.g., "R_whiskers_1" + "R_whiskers_2" labels visually collide on the stacked colorbars).
+
+### Q56 LOCKED — Shorten Pattern B legend labels
+
+Update `cbar.set_label(...)` for Pattern B per-layer colorbars to use abbreviated bodypart names:
+
+| Long name | Short label |
+|---|---|
+| `L_whiskers_1` | `L_w1` |
+| `L_whiskers_2` | `L_w2` |
+| `L_whiskers_3` | `L_w3` |
+| `R_whiskers_1` | `R_w1` |
+| `R_whiskers_2` | `R_w2` |
+| `R_whiskers_3` | `R_w3` |
+| `L_spout` | `L_spout` (unchanged; short enough) |
+| `R_spout` | `R_spout` (unchanged) |
+| `L_eye` | `L_eye` (unchanged) |
+| `R_eye` | `R_eye` (unchanged) |
+
+Implementation: small helper function to map full bodypart name to short label for colorbar display only. Internal data structures, file paths, and config keys remain the full `L_whiskers_1` etc. names — Q56 is display-only.
+
+```python
+PATTERN_B_LEGEND_LABELS = {
+    "L_whiskers_1": "L_w1",
+    "L_whiskers_2": "L_w2",
+    "L_whiskers_3": "L_w3",
+    "R_whiskers_1": "R_w1",
+    "R_whiskers_2": "R_w2",
+    "R_whiskers_3": "R_w3",
+    # Others use the same name as the bodypart key
+}
+
+def _short_legend_label(bp: str) -> str:
+    return PATTERN_B_LEGEND_LABELS.get(bp, bp)
+
+# Apply in cbar.set_label:
+cbar.set_label(_short_legend_label(bp), fontsize=8)
+```
+
+### Q57 LOCKED — Per-whisker PD: 6 separate SVGs instead of single aggregate
+
+Current Pattern B PD render aggregates all 6 whisker layers into a single diverging diff array. Priya 2026-05-15: she wants per-whisker diff (L_w1 post − L_w1 pre, L_w2 post − L_w2 pre, ..., 6 separate diffs).
+
+Render path: **6 separate PD SVGs per (animal, family, bin_size, trial_group), one per whisker.** Each SVG follows the existing M_bins grid layout for proportion_differences (same as current Pattern A PD render). Q52 bucket-shared per-bp norm applied per-whisker — each whisker's PD bucket-wide |vmax| computed independently across the per-whisker diff arrays.
+
+**Filename convention:**
+
+```
+pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/<animal>/
+  whiskers_eye_midpoint/proportion_differences/
+    L_w1_bin2d_all.svg
+    L_w1_bin2d_L.svg
+    L_w1_bin2d_R.svg
+    L_w2_bin2d_all.svg
+    ...
+    R_w3_bin2d_R.svg
+```
+
+= 6 whiskers × 3 trial_groups × 1 bin_size (per-animal singleton per Q23) = 18 SVGs per animal per scope. Plus whole_session (1 trial_group): 6 whiskers × 1 = 6 SVGs. Total whiskers PD per animal = 24 SVGs.
+
+Existing current state: 1 aggregate PD SVG per (bin_size, trial_group) for whiskers = 3 tone_aligned + 1 whole_session = 4 SVGs per animal. Q57 expands to 24. Acceptable fanout — each SVG is small + readable.
+
+**Filename uses short labels (Q56)** so paths are concise. Internal data + config keys stay full names.
+
+**Apply analogously to spout_spout_midpoint and eye_eye_midpoint Pattern B families:** 2 whiskers per family × 3 trial_groups × 1 bin_size = 6 SVGs per scope; 2 × 1 = 2 SVGs whole_session. Each Pattern B family gets per-bp PD rendering. CC verifies during implementation whether spout/eye PD currently aggregates (likely yes, since the same Pattern B render path is used); if so, apply Q57 to them too.
+
+**Single-bp Pattern A families unaffected** — single bodypart already means PD is naturally per-bp.
+
+### Q57 Pass 1 + Pass 2 mechanics
+
+Q52 Pass 1 enumeration extends to PD:
+
+```python
+# Pass 1: per-whisker bucket-wide |vmax| for PD
+bucket_per_bp_pd_vmax = {}
+for bp in family.bodyparts:
+    all_bucket_H_diff_for_bp = []
+    for bin_target in bucket_bins:
+        H_pre_bp = aggregate_baseline_for_bp(bp, ...)  # all_pre_stroke baseline per-bp
+        H_post_bp = aggregate_post_for_bp(bp, bin_target, ...)
+        H_diff_bp = H_post_bp - H_pre_bp
+        all_bucket_H_diff_for_bp.append(H_diff_bp)
+    pooled = np.concatenate([
+        np.abs(arr).flatten() for arr in all_bucket_H_diff_for_bp
+    ])
+    pooled_finite = pooled[np.isfinite(pooled)]
+    bucket_per_bp_pd_vmax[bp] = (
+        np.percentile(pooled_finite, 95) if len(pooled_finite) > 0 else 1.0
+    )
+
+# Pass 2: render each per-bp PD SVG using bucket-wide |vmax|
+for bp in family.bodyparts:
+    # Standard PD grid layout (M_bins panels in near-square grid)
+    fig = render_pd_grid(
+        bp=bp,
+        diffs=[diff_for_each_bin_for_bp(bp, bin) for bin in bins],
+        vmax_abs=bucket_per_bp_pd_vmax[bp],
+        cmap=PROPORTION_DIFF_CMAP,  # standard red-grey-blue diverging
+        ...,
+    )
+    fig.savefig(f"...{short_label(bp)}_proportion_diff_*.svg")
+```
+
+Standard diverging cmap (red=increased, blue=decreased, grey at midpoint, white via set_bad for no-data) applies — no Pattern-B-special cmap treatment for PD. Each per-whisker PD is a standard Pattern A-style PD plot.
+
+### Targeted re-emit scope (Priya request)
+
+Priya 2026-05-15: do NOT run a full cohort re-emit to test Q56/Q57. Targeted re-emit:
+
+**Scope:** PS47 × `whiskers_eye_midpoint` × proportion_differences × all 3 trial_groups × 1 bin_size × tone_aligned scope only.
+
+Expected output: 6 whiskers × 3 trial_groups = **18 SVGs** under `pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/PS47/whiskers_eye_midpoint/proportion_differences/`.
+
+Plus optionally the IS + BS SVGs (re-render with Q56 short labels). 3 IS SVGs + 1 BS-grid SVG = 4 SVGs. Total ~22 SVGs.
+
+Wall-time: ~5-10 minutes (single animal, single family entry, restricted plot types). Manifest reset to PENDING for the targeted scope only; existing PS47 outputs from round 3 preserved for non-touched plot types/family entries.
+
+### Implementation order
+
+1. Apply Q56 label shortening (small helper + cbar.set_label calls).
+2. Apply Q57 PD per-bp rendering in `dlc_spatial/render_on_demand.py`:
+   - Add Pass 1 enumeration of bucket_per_bp_pd_vmax for Pattern B families.
+   - Add Pass 2 per-bp PD SVG render loop.
+   - Filename uses short labels.
+   - Apply analogously to spout/eye Pattern B if their current PD also aggregates.
+3. Run `pytest -x` — expect 1450+ pass.
+4. Targeted re-emit: PS47 × whiskers_eye_midpoint × proportion_diff + IS + BS only. CC writes a small driver invocation or extends existing driver with --family-entry + --plot-types filters.
+5. STOP and report. Priya reviews the 18 per-whisker PD SVGs + the 4 IS/BS SVGs with short labels.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q57, Addendum #9-46 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36. Q5.F superseded by Q5.G + Q41. Q43 superseded by Q43.B. Q39/Q47/Q30/Q53 superseded for Pattern B by Q55 per Addendum #46. Q49 added per Addendum #41. Q50 consolidates re-emit strategy per Addendum #42. Q48 verdict items 1+5 superseded for Pattern B by Q55. Q52 bucket-shared norm extended to Q57 PD render. Q54 tongue xlim unchanged. Q56 short legend labels + Q57 per-bp PD added per Addendum #47.)
+
+---
+
+## Addendum #48 — Q58: Pattern B PD layered-overlay rendering (supersedes Q57's per-bp separate SVGs) (Priya 2026-05-15)
+
+### Motivation
+
+Q57 (Addendum #47) proposed 6 separate PD SVGs per whisker for the per-whisker PD diff. Priya 2026-05-15: prefer the IS/BS convention — all 6 diffs on ONE plot with 3 different cmaps for w1/w2/w3 (shared between L and R sides, matching the IS/BS cmap structure).
+
+### Q58 LOCKED — Pattern B PD layered-overlay: 3 diverging cmaps × N layers in one SVG
+
+For Pattern B PD render path, replace Q57's per-bp separate SVG approach with a single layered-overlay SVG analogous to the Pattern B IS render.
+
+**Whiskers (6-layer with 3 shared cmaps):**
+
+- **3 diverging cmaps per whisker index** — shared between L and R sides:
+  - `w1` (L_whiskers_1 + R_whiskers_1): cmap A (e.g., `RdBu` red-blue diverging — the canonical PD convention).
+  - `w2` (L_whiskers_2 + R_whiskers_2): cmap B (e.g., `PuOr` purple-orange diverging).
+  - `w3` (L_whiskers_3 + R_whiskers_3): cmap C (e.g., `BrBG` brown-green diverging).
+- L and R distinguished by SPATIAL POSITION only (same as IS convention). L_w1 renders at positive X with RdBu palette; R_w1 renders at negative X with RdBu palette. Spatial separation means L_w1 and R_w1 don't usually overlap, so visual ambiguity is minimal.
+
+Final cmap choice (RdBu vs coolwarm vs bwr; PuOr vs PiYG; BrBG vs PRGn) is CC's call during implementation — try the first set + tune visually if needed. Use matplotlib built-in diverging cmaps (no custom construction needed unless visibility issues).
+
+**Spout / Eye (2-layer with 2 cmaps):**
+
+For `spout_spout_midpoint` + `eye_eye_midpoint` (Pattern B 2-bp families): 2 diverging cmaps, one per side. E.g., L_spout = RdBu, R_spout = PuOr. Same logic as whiskers — distinct hue families per side make L vs R immediately distinguishable in overlap regions.
+
+CC's first cmap pick:
+- L_spout: RdBu, R_spout: PuOr
+- L_eye: RdBu, R_eye: PuOr
+
+Tune visually during PS47 spot-check if needed.
+
+### Q58 architectural details
+
+**Q52 Pass 1 extends to PD with per-whisker-index pooling (NOT per-bp):**
+
+For whiskers, pool L_wN + R_wN data together when computing bucket-wide vmax for the cmap shared between sides:
+
+```python
+bucket_per_widx_pd_vmax = {}
+for widx in [1, 2, 3]:
+    pair = (f"L_whiskers_{widx}", f"R_whiskers_{widx}")
+    all_bucket_H_diff_for_widx = []
+    for bp in pair:
+        for bin_target in bucket_bins:
+            H_pre_bp = aggregate_baseline_for_bp(bp, ...)
+            H_post_bp = aggregate_post_for_bp(bp, bin_target, ...)
+            all_bucket_H_diff_for_widx.append(H_post_bp - H_pre_bp)
+    pooled = np.concatenate([
+        np.abs(arr).flatten() for arr in all_bucket_H_diff_for_widx
+    ])
+    pooled_finite = pooled[np.isfinite(pooled)]
+    bucket_per_widx_pd_vmax[widx] = (
+        np.percentile(pooled_finite, 95) if len(pooled_finite) > 0 else 1.0
+    )
+```
+
+For spout/eye, pool per-bp (each side has its own cmap + own scale) as in Q57:
+
+```python
+bucket_per_bp_pd_vmax = {bp: ... percentile-95 across bucket ... for bp in family.bodyparts}
+```
+
+So Pass 1 enumeration produces per-whisker-index norms for whiskers (3 entries) + per-bp norms for spout/eye (2 entries each).
+
+**Magnitude floor for transparent compositing** (Pattern-B-PD-specific deviation from Q43.B):
+
+Without a magnitude floor, the diverging cmap's MIDPOINT (where diff ≈ 0) renders as light-grey opaque at alpha=1.0. With 6 layers overlaid, layers with diff ≈ 0 at a pixel paint opaque light-grey over layers with meaningful diff → washes out. Apply Pattern-B-PD-specific magnitude floor to mask near-zero diffs as NaN → transparent:
+
+```python
+pattern_b_pd_floor_fraction = config_block.get(
+    "pattern_b_pd_floor_fraction", 0.05
+)
+floor = vmax_for_this_layer * pattern_b_pd_floor_fraction
+H_diff_masked = np.where(np.abs(H_diff) >= floor, H_diff, np.nan)
+
+# Q43.B no-data mask still applies on top
+no_data = (H_pre_counts == 0) & (H_post_counts == 0)
+H_diff_masked = np.where(no_data, np.nan, H_diff_masked)
+```
+
+This DEVIATES from Q43.B's "no magnitude floor for PD" rule. Scope: Pattern B PD ONLY. Pattern A PD (single-cmap families) keeps Q43.B no-magnitude-floor. The deviation acknowledged because Pattern B layering requires transparency where Pattern A doesn't.
+
+**Pass 2 render per layer:**
+
+```python
+ax.set_facecolor("white")
+
+for bp in family.bodyparts:
+    cmap_for_bp = get_pattern_b_pd_cmap(bp)  # RdBu/PuOr/BrBG/etc.
+    cmap_for_bp.set_bad((1.0, 1.0, 1.0, 0.0))  # transparent NaN
+    
+    vmax_for_bp = (
+        bucket_per_widx_pd_vmax[widx_of(bp)]   # whiskers: per-whisker-index
+        if family == "whiskers_eye_midpoint"
+        else bucket_per_bp_pd_vmax[bp]          # spout/eye: per-bp
+    )
+    
+    ax.imshow(
+        H_diff_masked_for_bp,
+        cmap=cmap_for_bp,
+        alpha=1.0,
+        vmin=-vmax_for_bp,
+        vmax=+vmax_for_bp,
+        origin="lower",
+        ...,
+    )
+```
+
+**Colorbars: 3 for whiskers, 2 for spout/eye:**
+
+Whiskers PD: 3 stacked colorbars (one per whisker index) labeled "w1 (L+R)", "w2 (L+R)", "w3 (L+R)" or similar — short labels per Q56 convention. Each shows the cmap → |diff| mapping for that whisker index.
+
+Spout/eye PD: 2 stacked colorbars (one per side) labeled "L_spout" / "R_spout" or "L_eye" / "R_eye".
+
+**Output naming: revert to Q57's family-level naming (NOT per-bp filenames):**
+
+```
+pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/<animal>/
+  whiskers_eye_midpoint/proportion_differences/
+    bin2d_all.svg     ← 6-layer composite in one SVG
+    bin2d_L.svg
+    bin2d_R.svg
+  spout_spout_midpoint/proportion_differences/
+    bin2d_all.svg     ← 2-layer composite
+    bin2d_L.svg
+    bin2d_R.svg
+  eye_eye_midpoint/proportion_differences/
+    bin2d_all.svg     ← 2-layer composite
+    bin2d_L.svg
+    bin2d_R.svg
+```
+
+= 3 SVGs per Pattern B family per scope (one per trial_group) × 1 bin_size = 3 SVGs per family tone_aligned + 1 whole_session = 4 SVGs per family. Total: 4 × 3 Pattern B families = 12 SVGs Pattern B PD per animal. Significant reduction from Q57's 24 + 6 per family.
+
+### Q58 supersedes Q57
+
+Q57's per-bp separate PD SVG approach is SUPERSEDED. Q56 short legend labels still apply (now used for the 3-colorbar / 2-colorbar legend entries).
+
+### Targeted re-emit (per Priya's prior request, unchanged scope)
+
+PS47 × whiskers_eye_midpoint + spout_spout_midpoint + eye_eye_midpoint × proportion_differences only. Expected: 4 SVGs whiskers PD + 4 SVGs spout PD + 4 SVGs eye PD = 12 SVGs per scope × 2 scopes = ~24 SVGs total.
+
+Wall-time: ~5-10 minutes. CC verifies the 3-cmap (or 2-cmap) overlay reads cleanly in PS47 spot-check.
+
+### Implementation order
+
+1. Apply Q56 short labels (small helper + cbar calls).
+2. Apply Q58 Pattern B PD layered overlay:
+   - Pass 1: per-whisker-index pool for whiskers (3 vmax entries); per-bp pool for spout/eye (2 vmax entries each).
+   - Pass 2: render each layer with appropriate cmap + magnitude-floor mask + Q43.B no-data mask.
+   - Output naming reverts to family-level (one SVG per trial_group, not per-bp).
+   - 3-colorbar / 2-colorbar layout per family.
+3. Run `pytest -x` — expect 1450+ pass.
+4. Targeted re-emit: PS47 × whiskers + spout + eye × proportion_differences only.
+5. STOP-and-report. Priya reviews the 3 Pattern B families' PD SVGs.
+
+### Spot-check criteria for PS47 round 4
+
+- **Whiskers PD overlay (bin2d_all.svg):**
+  - 3 distinct cmap families visible across the composite (e.g., red-blue for w1, purple-orange for w2, brown-green for w3).
+  - L vs R distinguished by spatial position (L on positive X, R on negative X).
+  - 3 colorbars stacked compactly to the right, short labels.
+  - Suptitle includes "scale: bucket-shared" (Q52 still applied).
+  - Sub-floor bins render as transparent (Pattern-B-PD-specific magnitude floor); no-data bins render as transparent (Q43.B). Both produce visible axis background (white).
+- **Spout / Eye PD (bin2d_all.svg):** 2 cmap families (e.g., RdBu for L, PuOr for R), 2 colorbars.
+
+If cmap choice produces visual conflict (e.g., overlapping red+blue diffs from different whiskers blend into murky purple), CC iterates cmap selection. Q58 lock specifies the architectural pattern; exact cmap choice is tunable.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q58, Addendum #9-47 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36. Q5.F superseded by Q5.G + Q41. Q43 superseded by Q43.B. Q39/Q47/Q30/Q53 superseded for Pattern B by Q55. Q49 added per Addendum #41. Q50 consolidates re-emit strategy per Addendum #42. Q48 verdict items 1+5 superseded for Pattern B by Q55. Q52 bucket-shared norm extended for Q58 with per-whisker-index pooling. Q54 tongue xlim unchanged. Q56 short labels per Addendum #47. Q57 SUPERSEDED by Q58 per Addendum #48 — Pattern B PD is now single SVG with N-layer overlay using 3-or-2 diverging cmaps. Q43.B no-magnitude-floor rule applies to Pattern A PD only; Pattern B PD deviates with magnitude floor for transparent compositing per Q58.)
+
+---
+
+## Addendum #49 — Q59: Pattern B PD spatial alignment bug — histogram grid vs imshow extent mismatch (Priya 2026-05-15)
+
+### Finding
+
+PS47 Q58 PD spot-check shows the colored diff regions for each whisker are NOT at the same anatomical locations as the corresponding whisker blobs in the IS plot. The PD render is "moving whiskers around in a weird way" (Priya 2026-05-15).
+
+Root cause (hypothesis pending CC audit): histogram-grid-vs-imshow-extent mismatch. Each bodypart layer's diff array must be rendered on a coordinate grid that AGREES with the imshow extent used for that layer. If they disagree (e.g., diff computed on a unified bilateral grid but imshow extent set to per-bp anatomical range, or vice versa), matplotlib stretches the array into a region it doesn't cover and the rendering smears.
+
+Per-bp xlim values in config (per Q37 + legacy):
+
+| Bodypart | xlim | ylim |
+|---|---|---|
+| L_whiskers_1 | [15, 135] | [55, 250] |
+| L_whiskers_2 | [15, 165] | [145, 355] |
+| L_whiskers_3 | [60, 165] | [75, 270] |
+| R_whiskers_1 | [-140, -15] | [70, 235] |
+| R_whiskers_2 | [-165, 0] | [155, 350] |
+| R_whiskers_3 | [-185, -40] | [95, 265] |
+
+Plus L_whiskers_1 Q37 override: [-200, 200] (unified bilateral) for the FAMILY-LEVEL axis lookup.
+
+Possible mismatches:
+
+| Bug shape | Symptom |
+|---|---|
+| H_diff computed on unified [-200, 200] grid; imshow extent set to per-bp anatomical range | Each layer's array gets stretched into its small anatomical region → smeared diff signal across compressed extent |
+| H_diff computed on per-bp grid; imshow extent set to unified [-200, 200] | Each layer's small anatomical array gets stretched across the whole axis → blob misplacement |
+| H_pre and H_post computed on different grids for same bp | Diff shape undefined; render bug |
+
+CC investigates the actual render path to identify which mismatch is present.
+
+### Q59 LOCKED — Pattern B PD must use grid-extent agreement; pick architectural option A or B
+
+CC chooses the architectural option that matches the IS rendering convention (so IS and PD are consistent):
+
+**Option A — Per-bp grid + per-bp extent (matches IS convention if IS uses per-bp grid):**
+
+Each bodypart's H_pre, H_post, H_diff computed on that bodypart's own xedges/yedges grid (based on per-bp xlim/ylim from config). Render each imshow with `extent=[bp_xmin, bp_xmax, bp_ymin, bp_ymax]` matching that grid. Each layer occupies only its anatomical region in the composite axis. Transparent NaN handles bins outside the bp's range (sub-floor magnitude per Q58 PD floor).
+
+```python
+for bp in family.bodyparts:
+    bp_cfg = bodyparts_config[bp]["per_center_mode"][center_mode]
+    xlim_bp = bp_cfg["xlim"]
+    ylim_bp = bp_cfg["ylim"]
+    nbins = 100  # or family-level config
+    
+    xedges = np.linspace(xlim_bp[0], xlim_bp[1], nbins + 1)
+    yedges = np.linspace(ylim_bp[0], ylim_bp[1], nbins + 1)
+    
+    H_pre_bp, _, _ = np.histogram2d(pre_x_bp, pre_y_bp, bins=[xedges, yedges])
+    H_post_bp, _, _ = np.histogram2d(post_x_bp, post_y_bp, bins=[xedges, yedges])
+    H_diff_bp = H_post_bp.T - H_pre_bp.T  # transpose for matplotlib (Y, X)
+    
+    # Apply Q58 magnitude floor + Q43.B no-data mask
+    ...
+    
+    ax.imshow(
+        H_diff_bp_masked, cmap=cmap_for_bp, alpha=1.0,
+        vmin=-vmax_bp, vmax=+vmax_bp,
+        extent=[xlim_bp[0], xlim_bp[1], ylim_bp[0], ylim_bp[1]],
+        origin="lower",
+        ...,
+    )
+```
+
+**Option B — Unified family grid + unified extent:**
+
+All bodyparts compute on the SAME family-level unified grid (based on Q37 first-bp unified bilateral xlim + union of per-bp ylim). Each H_diff array has identical shape (same nbins). Render with imshow extent = unified grid. Transparent NaN renders no-data regions of each bp's array (where the bp doesn't anatomically reach) as transparent in the composite.
+
+```python
+family_xlim = family_config["unified_xlim"]  # e.g., [-200, 200]
+family_ylim = family_config["unified_ylim"]  # e.g., [50, 360]
+nbins = 100
+
+xedges = np.linspace(family_xlim[0], family_xlim[1], nbins + 1)
+yedges = np.linspace(family_ylim[0], family_ylim[1], nbins + 1)
+
+for bp in family.bodyparts:
+    # Use bp's likelihood threshold + per-bp x_range filter, but compute on unified grid
+    H_pre_bp, _, _ = np.histogram2d(pre_x_bp, pre_y_bp, bins=[xedges, yedges])
+    H_post_bp, _, _ = np.histogram2d(post_x_bp, post_y_bp, bins=[xedges, yedges])
+    H_diff_bp = H_post_bp.T - H_pre_bp.T
+    
+    # Mask bins outside bp's anatomical range as NaN (transparent)
+    bp_xlim = bodyparts_config[bp]["per_center_mode"][center_mode]["xlim"]
+    bp_ylim = bodyparts_config[bp]["per_center_mode"][center_mode]["ylim"]
+    x_outside = (xedges[:-1] < bp_xlim[0]) | (xedges[1:] > bp_xlim[1])
+    y_outside = (yedges[:-1] < bp_ylim[0]) | (yedges[1:] > bp_ylim[1])
+    H_diff_bp[np.ix_(y_outside, x_outside)] = np.nan  # or similar mask
+    
+    # Apply Q58 magnitude floor + Q43.B no-data mask
+    ...
+    
+    ax.imshow(
+        H_diff_bp_masked, cmap=cmap_for_bp, alpha=1.0,
+        vmin=-vmax_bp, vmax=+vmax_bp,
+        extent=[family_xlim[0], family_xlim[1], family_ylim[0], family_ylim[1]],
+        origin="lower",
+        ...,
+    )
+```
+
+### CC chooses — match the IS convention
+
+CC audits how the IS render handles per-bp grid vs extent. Whichever option IS uses, PD should match for visual consistency. The IS plot looks correct (per Priya's PS47 round 3 accept), so the existing IS convention is the target.
+
+CC reports findings + implementation choice before applying the fix.
+
+### Apply analogously to all Pattern B PD plots (whiskers + spout + eye)
+
+If the alignment bug exists in whiskers PD, it likely exists in spout/eye PD too. CC verifies + applies the fix to all 3 Pattern B family entries.
+
+Also worth checking: does the alignment issue exist in Pattern B BS-grid render too? If BS-grid uses similar logic to PD (grid + extent + transparent NaN), it might also be subtly misaligned. Priya hasn't flagged BS issues, but CC should spot-check during the fix.
+
+### Targeted re-emit (same scope as Addendum #48)
+
+After Q59 fix lands: PS47 × whiskers + spout + eye × proportion_differences only.
+
+If the fix also touches Pattern B IS or BS rendering (architectural symmetry), include those plot types in the targeted re-emit too.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q59, Addendum #9-48 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36. Q5.F superseded by Q5.G + Q41. Q43 superseded by Q43.B. Q39/Q47/Q30/Q53 superseded for Pattern B by Q55. Q49 added per Addendum #41. Q50 consolidates re-emit strategy per Addendum #42. Q48 verdict items 1+5 superseded for Pattern B by Q55. Q52 bucket-shared norm extended for Q58 with per-whisker-index pooling. Q54 tongue xlim unchanged. Q56 short labels per Addendum #47. Q57 superseded by Q58 per Addendum #48. Q43.B no-magnitude-floor rule applies to Pattern A PD only; Pattern B PD deviates with magnitude floor per Q58. Q59 fixes Pattern B PD spatial alignment per Addendum #49 — grid + extent must agree across layers in a Pattern B PD composite.)
+
+---
+
+## Addendum #50 — Q60: Grid-summary SVG row spacing (Priya 2026-05-15)
+
+### Finding
+
+PS47 round 5 whiskers PD bin2d_all.svg shows the x-axis labels of one row overlapping with the panel titles of the row below. The Q31 layout fix (Addendum #28) locked `constrained_layout=True` and `bbox_inches="tight"`, but matplotlib's default constrained_layout vertical padding isn't sufficient for the longer x-axis label + title combination at the current figure size.
+
+### Q60 LOCKED — Increase vertical spacing between rows for ALL grid-summary SVGs
+
+Applies to all grid-summary SVG layouts (binned_sessions grid, proportion_differences grid, unbalanced_ot grid) across both Pattern A and Pattern B family entries.
+
+**Implementation:** at figure creation for grid-summary plots, tune constrained_layout padding to give extra vertical room between rows:
+
+```python
+fig, axes = plt.subplots(
+    n_rows, n_cols,
+    constrained_layout=True,
+    figsize=(fig_w, fig_h),
+)
+fig.set_constrained_layout_pads(h_pad=0.3, hspace=0.05)
+# OR if constrained_layout doesn't take h_pad cleanly:
+fig.subplots_adjust(hspace=0.4)  # explicit hspace fraction
+```
+
+CC picks the cleaner API for the current matplotlib version. Tune the value visually:
+- Start with `hspace=0.4` (or `h_pad=0.3`).
+- If still overlapping → bump to `hspace=0.5` / `h_pad=0.4`.
+- If excessive whitespace → drop to `hspace=0.3` / `h_pad=0.2`.
+
+**Apply universally to all grid-summary plots:**
+
+- Pattern A + Pattern B binned_sessions grid (Q36 layout).
+- Pattern A + Pattern B proportion_differences grid (Q3c layout + Q58 Pattern B overlay).
+- Pattern A + Pattern B unbalanced_ot grid (Q3d.B layout).
+
+This is a render-time matplotlib layout tweak only — no data changes, no scientific impact. All affected outputs need re-rendering to pick up the new spacing.
+
+### Targeted re-emit — ONLY grid-summary plot types
+
+PS47 only, restricted to grid-summary plot types: binned_sessions + proportion_differences + unbalanced_ot across all 7 family entries × both scopes.
+
+Estimated SVG count:
+- binned_sessions grid: 7 families × (3 trial_groups tone_aligned + 1 whole_session) = 28 SVGs
+- proportion_differences grid: 7 families × 4 = 28 SVGs
+- unbalanced_ot grid: 7 families × 4 = 28 SVGs
+- Total: ~84 SVGs
+
+Wall-time: ~20-30 min. Manifest reset is per-(animal, plot_type) so only the grid-summary rows get marked PENDING; individual_session SVGs preserved.
+
+If the driver doesn't support `--plot-type` filtering at this granularity, EXTEND the driver per Q59 prompt or write a scratch script per Q59 prompt. Don't fall back to full PS47 re-emit.
+
+### Spot-check criteria for PS47 round 6
+
+- Whiskers PD bin2d_all.svg: x-axis labels of one row no longer overlap titles of next row.
+- Same fix visible across other grid-summary SVGs (binned_sessions, UOT) for all family entries.
+- All other Q-locks (Q56 short labels, Q58 layered overlay, Q59 spatial alignment, Q42/Q43.B PD diverging cmap convention) preserved.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q60, Addendum #9-49 Task 5 scope. All prior supersession chains unchanged. Q60 layout tweak added per Addendum #50 — grid-summary SVG row spacing increased to prevent x-label vs next-row-title overlap.)
+
+---
+
+## Addendum #51 — Q61: Pattern B UOT per-bp computation + layered overlay (parallel to Q58/Q59 for PD) (Priya 2026-05-15)
+
+### Finding
+
+PS47 round 5 whiskers UOT (unbalanced_ot_grid) renders a single diverging mass_change panel + single arrow panel per bin. The computation aggregates all 6 whiskers into a single transport plan, losing per-whisker spatial transport info. Same architectural bug as Q58 PD pre-fix.
+
+### Q61 LOCKED — Pattern B UOT layered overlay matching Q58 PD convention
+
+For Pattern B families' UOT render path:
+
+**Per-bp UOT computation:**
+
+For each Pattern B layer (e.g., L_w1, L_w2, L_w3, R_w1, R_w2, R_w3 for whiskers; L_spout + R_spout for spout; L_eye + R_eye for eye), solve unbalanced OT independently:
+
+```python
+for bp in family.bodyparts:
+    # Compute H_pre and H_post per bp on the grid that matches Q59's grid+extent choice
+    H_pre_bp = aggregate_baseline_for_bp(bp, ...)
+    H_post_bp = aggregate_post_for_bp(bp, bin_target, ...)
+    
+    # Solve unbalanced OT per bp (per-whisker transport plan)
+    transport_plan_bp = solve_unbalanced_ot(
+        source=H_pre_bp,
+        target=H_post_bp,
+        reg=UNB_REG,
+        reg_m=UNB_REG_M,
+        ...,
+    )
+    
+    # Derive per-bp mass_change + arrow plan
+    H_mass_create_bp, H_mass_destroy_bp = derive_mass_change(transport_plan_bp, H_pre_bp, H_post_bp)
+    H_mass_change_bp = H_mass_create_bp - H_mass_destroy_bp
+    
+    arrow_plan_bp = derive_arrow_plan(transport_plan_bp, threshold=...)
+```
+
+**Mass change panel: 6-layer (or 2-layer) overlay matching Q58 PD:**
+
+```python
+# Whiskers: 3 cmaps shared between L+R
+# w1 (L+R) → RdBu, w2 (L+R) → PuOr, w3 (L+R) → BrBG
+# Spout: L_spout → RdBu, R_spout → PuOr
+# Eye: L_eye → RdBu, R_eye → PuOr
+
+for bp in family.bodyparts:
+    cmap = get_pattern_b_uot_mass_cmap(bp)   # same 3-or-2 cmap convention as Q58 PD
+    cmap.set_bad((1.0, 1.0, 1.0, 0.0))       # transparent NaN
+    
+    # Apply Q33's mass_change_floor_fraction + Q43.B no-data mask
+    floor = bucket_per_widx_uot_vmax[widx_of(bp)] * mass_change_floor_fraction
+    H_mass_change_bp_masked = np.where(
+        np.abs(H_mass_change_bp) >= floor, H_mass_change_bp, np.nan
+    )
+    no_data = (H_pre_counts_bp == 0) & (H_post_counts_bp == 0)
+    H_mass_change_bp_masked = np.where(no_data, np.nan, H_mass_change_bp_masked)
+    
+    # Render with grid+extent agreement per Q59
+    vmax = bucket_per_widx_uot_vmax[widx_of(bp)] if family == "whiskers" else bucket_per_bp_uot_vmax[bp]
+    ax_mass.imshow(
+        H_mass_change_bp_masked, cmap=cmap, alpha=1.0,
+        vmin=-vmax, vmax=+vmax,
+        extent=[bp_xlim[0], bp_xlim[1], bp_ylim[0], bp_ylim[1]],  # per-bp extent if Option A
+        # OR extent=[family_xlim[0], family_xlim[1], family_ylim[0], family_ylim[1]] if Option B
+        origin="lower",
+    )
+```
+
+**Arrow panel: 6-layer (or 2-layer) overlay with per-bp arrow color cmap:**
+
+```python
+for bp in family.bodyparts:
+    arrow_cmap = get_pattern_b_uot_arrow_cmap(bp)   # same per-whisker-index cmap
+    arrow_mass_values_bp = ...  # per-arrow mass magnitudes
+    
+    quiver = ax_arrows.quiver(
+        x_starts_bp, y_starts_bp, dx_bp, dy_bp,
+        arrow_mass_values_bp,    # per-arrow scalar driving color
+        cmap=arrow_cmap,
+        scale=..., headwidth=...,
+        alpha=arrow_alpha,
+    )
+```
+
+For arrows, each layer's quiver plot uses the SAME cmap as its corresponding mass_change layer (RdBu for w1, etc.). Arrows at each bp's anatomical position (no overlap between L and R; w1/w2/w3 might partially overlap within each side but cmap differentiation handles it).
+
+**Q35 quiverkey** (length reference) and **per-layer mass colorbar** (Q35 colorbar showing arrow-color → mass-magnitude) extend to per-bp:
+- 3 quiverkeys for whiskers (one per whisker index) OR 1 quiverkey representative; CC picks based on visual clutter.
+- 3 mass colorbars for whiskers (one per whisker index, shared between L+R) stacked compactly. 2 for spout/eye.
+
+### Q61 Pass 1 enumeration
+
+Pre-compute bucket-wide vmax per whisker-index (whiskers) or per-bp (spout/eye) for mass_change normalization:
+
+```python
+bucket_per_widx_uot_vmax = {}
+for widx in [1, 2, 3]:   # for whiskers
+    pair = (f"L_whiskers_{widx}", f"R_whiskers_{widx}")
+    all_bucket_H_mass_change_for_widx = []
+    for bp in pair:
+        for bin_target in bucket_bins:
+            ... compute H_mass_change_bp at bin_target ...
+            all_bucket_H_mass_change_for_widx.append(H_mass_change_bp)
+    pooled = np.concatenate([np.abs(arr).flatten() for arr in all_bucket_H_mass_change_for_widx])
+    pooled_finite = pooled[np.isfinite(pooled)]
+    bucket_per_widx_uot_vmax[widx] = (
+        np.percentile(pooled_finite, 95) if len(pooled_finite) > 0 else 1.0
+    )
+
+# Spout/eye: per-bp pooling
+bucket_per_bp_uot_vmax = {
+    bp: np.percentile(...all bin H_mass_change for bp..., 95)
+    for bp in (spout_or_eye_family.bodyparts)
+}
+```
+
+### Q61 grid + extent agreement (Q59 propagation)
+
+Apply the same grid+extent fix from Q59 to UOT: histogram and transport plan grids must agree with imshow extent. Use the SAME architectural option (A or B) that Q59 chose for PD. If Q59 audit found IS uses per-bp grid + per-bp extent, Q61 UOT does the same. Otherwise unified grid.
+
+### Q61 magnitude floor + no-data mask
+
+Q33's `mass_change_floor_fraction` (default 0.05) applied per-layer. Q43.B-style no-data mask `(H_pre_counts == 0) & (H_post_counts == 0)` masked as NaN per-bp.
+
+### Apply to all 3 Pattern B families
+
+Whiskers (6-layer), spout (2-layer), eye (2-layer). All three families' UOT render gets the per-bp + layered overlay treatment.
+
+### Output naming (unchanged from Q33)
+
+```
+pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/<animal>/
+  whiskers_eye_midpoint/unbalanced_ot/
+    bin2d_all.svg   ← 6-layer composite (mass_change + arrows columns)
+    bin2d_L.svg
+    bin2d_R.svg
+  spout_spout_midpoint/unbalanced_ot/
+    bin2d_all.svg   ← 2-layer composite
+    ...
+  eye_eye_midpoint/unbalanced_ot/
+    bin2d_all.svg
+    ...
+```
+
+= 3 SVGs per Pattern B family per scope × 1 bin_size + 1 whole_session = 4 SVGs per family. 12 SVGs Pattern B UOT total per animal.
+
+### Targeted re-emit — ONLY Pattern B UOT plots
+
+Same scope-restriction principle as Q59 + Q60. PS47 only, restricted to Pattern B families × unbalanced_ot plot type only.
+
+Estimated SVG count: 3 Pattern B families × 4 (3 trial_groups tone_aligned + 1 whole_session) = 12 SVGs.
+
+Wall-time: ~10-15 min (UOT computation per-bp adds some compute compared to PD; 6 transport-plan solves per bin vs 1 for aggregate).
+
+```bash
+python scripts/phase_7c2/render_heatmaps.py \
+    --animal PS47 --no-skip \
+    --family-entry whiskers_eye_midpoint,spout_spout_midpoint,eye_eye_midpoint \
+    --plot-type unbalanced_ot
+```
+
+Or extend driver / scratch script per the Q59/Q60 approach.
+
+### Spot-check criteria for PS47 round 7
+
+- Whiskers UOT bin2d_all.svg per-bin row: mass_change panel shows 6 overlaid diverging cmaps (3 distinct hue families: RdBu/PuOr/BrBG); each layer at its anatomical position matching IS. Arrows panel shows 6 sets of arrows colored by per-whisker-index cmap.
+- Spout/eye UOT: 2 diverging cmaps × 2 sides.
+- Cross-bin scale consistency: bucket_per_widx_uot_vmax shared across bins per Q14.
+- Q60 spacing fix already in effect (no row overlap).
+
+DO NOT proceed to Phase D until Priya accepts PS47 round 7.
+
+### Universal Pattern-B-fix pattern emerging
+
+Q58 (PD), Q59 (PD spatial alignment), Q61 (UOT) all apply the same architectural principle: Pattern B plot types should compute per-bp + render as layered overlay matching IS convention. The architectural pattern is now generalizable:
+
+**Pattern B plot type architectural template:**
+1. Per-bp data computation (histogram, diff, transport plan, etc.) using per-bp grid (or unified grid with per-bp mask).
+2. Layered overlay rendering: N cmaps (3 for whiskers w1/w2/w3 shared L+R; 2 for spout/eye L vs R).
+3. Grid + extent agreement.
+4. Magnitude floor + no-data mask for transparent compositing.
+5. alpha=1.0 + transparent NaN per Q55.
+6. Per-cmap colorbar (compact stacked, Q56 short labels).
+7. Bucket-shared norm per Q52 (per-widx pooling for whiskers, per-bp for spout/eye).
+
+Any future Pattern B plot type should follow this template by default. Document in DECISIONS prose at Task 8.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q61, Addendum #9-50 Task 5 scope. All prior supersession chains unchanged. Q61 added per Addendum #51 — Pattern B UOT per-bp + layered overlay matching Q58/Q59 architecture for PD.)
+
+---
+
+## Addendum #52 — Q62: PS50/2025-03-24 likelihood-threshold experiment (Priya 2026-05-20)
+
+### Motivation
+
+Phase D cohort run completed with 1 unique Q51 skip: PS50/2025-03-24/R_eye/eye_midpoint/trial_group=R (zero frames passed likelihood threshold 0.80). Before accepting + closing the phase, test whether lowering the threshold to 0.70 recovers the missing data — informs whether the Phase D output for PS50/2025-03-24 represents a fundamental data gap or a tuning gap.
+
+### Q62 LOCKED — One-off PS50/2025-03-24 likelihood-threshold comparison
+
+**Scope:**
+- Single session: PS50/2025-03-24
+- 5 eye_midpoint family entries: nose_eye_midpoint, jaw_eye_midpoint, tongue_eye_midpoint, whiskers_eye_midpoint, eye_eye_midpoint
+- Single plot type: individual_session (IS only — single-session, no bucket aggregation needed)
+- All 3 trial_groups (all/L/R) for tone_aligned + 1 (all) for whole_session = 4 SVGs per family
+
+**Threshold modification:**
+- Test threshold: 0.70 (uniform across all bodyparts in the eye_midpoint families).
+- Note that `tongue.likelihood_threshold` is already 0.70 in defaults.yaml → no effective change for tongue.
+- Change is effectively 0.80 → 0.70 for nose, jaw, L_whiskers_1/2/3, R_whiskers_1/2/3, L_eye, R_eye bodyparts.
+
+**Implementation:** standalone scratch script that imports the rendering functions and runs them with a programmatic threshold override. DO NOT modify `configs/defaults.yaml` (risk of forgetting to revert; risk of contaminating Task 7 verification).
+
+Output goes to a scratch directory:
+```
+.scratch_phase_7c2/likelihood_test_0p7/
+  PS50/2025-03-24/
+    nose_eye_midpoint_IS_all.svg
+    nose_eye_midpoint_IS_L.svg
+    nose_eye_midpoint_IS_R.svg
+    nose_eye_midpoint_IS_whole_session.svg
+    jaw_eye_midpoint_IS_all.svg
+    ...
+    eye_eye_midpoint_IS_R.svg
+```
+
+= 5 families × 4 SVGs = 20 SVGs at threshold 0.70.
+
+**Comparison side-by-side:**
+
+For each family entry × trial_group, CC provides BOTH paths in the report:
+- Current canonical Phase D output: `pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/PS50/<family>/individual_session/20250324.svg`
+- Test 0.7 threshold output: `.scratch_phase_7c2/likelihood_test_0p7/PS50/2025-03-24/<family>_IS_<trial_group>.svg`
+
+Plus Q51 logging comparison: how many WARNINGs / skips fire at 0.80 vs 0.70 for this session? Report numerically.
+
+### Wall-time
+
+Single session × 5 families × 4 trial_groups × IS only ≈ 1-3 minutes total. Negligible.
+
+### Possible outcomes after Priya reviews the comparison
+
+| Outcome | Implication |
+|---|---|
+| (a) Lower threshold recovers good data → R_eye blob visible + spatial pattern sensible | Priya considers permanent `likelihood_threshold = 0.7` for eye_midpoint families. Requires partial cohort re-emit. Decide separately. |
+| (b) Lower threshold introduces noise → R_eye blob smeary / spatial pattern degraded | Keep 0.80 default. Accept PS50/2025-03-24/R_eye/R skip as data-quality noise. Document in Task 8 DECISIONS. |
+| (c) Mixed result → R_eye recovers cleanly but other bodyparts look noisier | Consider per-bodypart threshold tuning (e.g., R_eye 0.7, others 0.8). Defer to a follow-on phase or chore-PR. |
+
+If (a) → Q62 triggers a follow-on Q63 lock for permanent config change + partial re-emit. If (b) → close out as-is. If (c) → discuss before committing.
+
+### Scientific trade-off to flag during Priya's review
+
+Lower threshold = more low-confidence DLC detections accepted = greater spatial coverage BUT potentially more noise. The Q51 skip at 0.80 is correct defensive behavior; recovering skipped data via lower threshold may include detections that don't reflect true bodypart positions.
+
+Priya's eyeball assessment of the 0.7-threshold SVGs vs 0.8-threshold SVGs decides whether the trade-off is favorable for this session.
+
+### Sequencing relative to Task 7
+
+Q62 happens BEFORE Task 7 cleanup. If outcome is (a) and triggers a permanent config change + partial re-emit, that work blocks Task 7. If outcome is (b) or (c) with deferred follow-on, Task 7 proceeds.
+
+DO NOT run Task 7 cleanup until Q62 outcome is reviewed + adjudicated.
+
+### Q62 is one-off, not a lock change
+
+This experiment is exploratory. Q62 doesn't change the canonical 0.80 likelihood threshold; it just tests an alternative for one session. The canonical config stays as-is unless a follow-on Q63 explicitly changes it.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q62, Addendum #9-51 Task 5 scope. All prior supersession chains unchanged. Q62 added per Addendum #52 — one-off PS50/2025-03-24 likelihood-threshold experiment before Task 7 cleanup.)
+
+---
+
+## Addendum #53 — Q63: Cohort-wide pass-rate audit (Priya 2026-05-20)
+
+### Motivation
+
+Q51 logging caught the extreme PS50/R_eye/2025-03-24 case (0% frames pass). Less extreme cases — sessions where, e.g., R_spout has 5% of frames passing — wouldn't trigger hist=None but would still produce sparse/unreliable per-bodypart data. Priya 2026-05-20: are there other sessions where one bodypart (especially spout) was poorly tracked for an entire session?
+
+### Q63 LOCKED — Cohort-wide pass-rate audit across all bodyparts
+
+Audit task BEFORE Task 7 cleanup. CC produces `.scratch_phase_7c2/pass_rate_audit.csv` with columns:
+
+| animal | date | bodypart | center_mode | trial_group | total_frames_in_window | passed_frames | pass_rate |
+
+For each (animal, date) session in the Q1.C 248-session cohort, for each bodypart in the 7 family entries' bodypart lists, for each trial_group (all/L/R for tone_aligned, "all" for whole_session):
+- Total frames in the window (per the Q49 WS-bound + tone-window machinery already locked).
+- Frames passing the current likelihood threshold (per-bodypart from config).
+- Pass rate = passed / total.
+
+Sort by pass_rate ascending. Flag tuples with pass_rate below thresholds:
+
+- **Critical (< 5%)**: probably should be excluded or flagged for data-quality review.
+- **Low (5-25%)**: likely sparse data; spatial pattern may be unreliable.
+- **Moderate (25-50%)**: reduced coverage but probably interpretable.
+- **OK (> 50%)**: normal data quality.
+
+### Q63 implementation: standalone audit script
+
+Standalone script that:
+1. Iterates the 248-session cohort manifest.
+2. For each (animal, date, bodypart, trial_group): loads centered parquet, applies likelihood threshold, counts passed/total frames.
+3. Writes the CSV.
+4. Reports summary statistics:
+   - Total (animal, date, bp, trial_group) tuples audited.
+   - Count per pass-rate category (critical / low / moderate / OK).
+   - Top 10 worst (bp × session × trial_group) tuples by pass_rate (ascending).
+   - Per-bodypart pass-rate distribution: how often does each bodypart fall into critical / low / moderate?
+
+### Spout-focused breakdown (Priya's specific question)
+
+Since Priya specifically asked about spout, report a focused breakdown:
+- All (animal, date, trial_group) tuples for L_spout: list any with pass_rate < 25%.
+- Same for R_spout.
+- Cross-reference: any sessions where BOTH spouts have low pass-rate (potential session-wide DLC failure)?
+
+The spout audit is the highlighted section; other bodyparts are the broader sweep.
+
+### Wall-time
+
+~5-15 minutes (no rendering; just histogram counts + CSV output across 248 sessions × ~10 bodyparts × 4 trial_groups ≈ 10000 tuples).
+
+### Q63 informs Q62 adjudication
+
+Pairing Q62 + Q63:
+- Q62 = "what if we lower threshold to 0.7 for PS50/2025-03-24?"
+- Q63 = "are there OTHER sessions with similar data-quality issues?"
+
+If Q63 reveals many low-pass-rate (bp, session, trial_group) tuples across the cohort, the discussion shifts from "PS50 one-off" to "cohort-wide threshold tuning needed." Q62's outcome (a) (permanent threshold change) becomes more likely.
+
+If Q63 confirms PS50 is an isolated outlier, Q62's outcome (b) (accept the one skip) is supported.
+
+### Implementation order
+
+1. Run Q62 (PS50 threshold experiment) + Q63 (cohort pass-rate audit) in parallel. Both are quick (~5-15 min each).
+2. STOP-and-report both together. Combined report: Q62 PS50 visual comparison + Q63 cohort audit CSV + summary stats.
+3. Priya reviews both. Decides on threshold policy + adjudicates Task 7 path.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q63, Addendum #9-52 Task 5 scope. All prior supersession chains unchanged. Q62 + Q63 added per Addenda #52 + #53 — likelihood-threshold experiment + cohort-wide pass-rate audit before Task 7 cleanup.)
+
+---
+
+## Addendum #54 — Q64: Cross-regime alignment comparison (PS46 + PS48 revisit of 2026-04-19 sweep) (Priya 2026-05-20)
+
+### Motivation
+
+The 2026-04-19 alignment sweep (`notebooks/experiments/cross_session_alignment_sweep.ipynb`) tested 4 regimes (`eye_affine`, `eye_rigid`, `eye_centered`, `spout_centered`) cohort-wide via Pearson r + JS divergence per (animal, bodypart). Result: `eye_centered` won 8 of 9 movement bodyparts; `spout_centered` won for tongue; `eye_affine` and `eye_rigid` rejected due to fiducial-detection noise amplification. Locked in 2026-04-19 DECISIONS entry.
+
+Priya 2026-05-20: revisit with both NUMERICAL (resurrect the sweep methodology) AND VISUAL (use Phase 7c.2 rendering pipeline) comparison. Focus on PS46 (clear phenotype) + PS48 (subtle phenotype) to test whether the visual lens confirms the 2026-04-19 numerical conclusions or surfaces patterns metrics aggregate away.
+
+### Q64 LOCKED — Alignment regime comparison: PS46 + PS48, 4 regimes, 13 bodyparts, visual + numerical
+
+**Animals:** PS46 (clear phenotype, ~10 dates) + PS48 (subtle phenotype, ~10 dates).
+
+**Regimes:** `eye_affine`, `eye_rigid`, `eye_centered`, `spout_centered` — all 4 from the 2026-04-19 sweep.
+
+**Bodyparts:** 13 total — 9 movement (nose, jaw, tongue, L_whiskers_1/2/3, R_whiskers_1/2/3) + 4 fiducials (L_eye, R_eye, L_spout, R_spout).
+
+**Plot types:** tone-aligned individual_session AND binned_sessions, each with 3 trial_groups (all/L/R).
+
+**Output: one SVG per comparison unit, showing all 4 regimes side-by-side.**
+
+- **IS regime-comparison SVG layout:** 1×4 horizontal row, one panel per regime (eye_affine | eye_rigid | eye_centered | spout_centered). One SVG per (animal, bodypart, date, trial_group). 13 bp × 3 trial_groups × ~10 dates × 2 animals ≈ ~780 SVGs.
+
+- **BS regime-comparison SVG layout:** 4 sub-grids stacked (or arranged 2×2), each sub-grid containing M_bins panels for that regime. One SVG per (animal, bodypart, trial_group). 13 bp × 3 trial_groups × 2 animals = 78 SVGs (each with 4 × M_bins panels ≈ ~24 panels per SVG).
+
+**Numerical metrics:** resurrect the 2026-04-19 sweep methodology — Pearson r + JS divergence per (animal, regime, bodypart, trial_group) measured across sessions within the animal. Output as CSV at `.scratch_phase_7c2_alignment_test/numerical_metrics.csv` with columns:
+
+| animal | regime | bodypart | trial_group | pearson_r | js_divergence | n_session_pairs |
+
+Compare side-by-side with the 2026-04-19 cohort-wide values for PS46 and PS48 specifically (if those values are in the prior sweep's output cache at `notebooks/experiments/outputs/alignment_sweep/`; if not, the new values are standalone).
+
+### Implementation approach: resurrect the sweep notebook
+
+1. **Locate prior sweep code:** `notebooks/experiments/cross_session_alignment_sweep.ipynb` + `notebooks/experiments/outputs/alignment_sweep/`. Extract the eye_affine + eye_rigid implementation (transform math + fiducial pair construction).
+
+2. **Add test-only centering modes** to `dlc_io/centering.py` OR to a scratch module `.scratch_phase_7c2_alignment_test/alignment_modes.py`. Two new modes: `eye_affine`, `eye_rigid`. These are TEST-ONLY, NOT shipped to production config. Add a temporary config knob or pass via CLI flag to enable test modes.
+
+3. **Build centered parquets** for PS46 + PS48 under all 4 regimes:
+   - 4 regimes × 2 animals × ~10 dates × 13 bodyparts × Phase 4 build_centered_parquet
+   - Output to scratch: `.scratch_phase_7c2_alignment_test/centered_parquets/<regime>/<animal>/...`
+   - Estimated wall-time: ~30-60 min
+
+4. **Render comparison SVGs** for each (animal, bodypart, trial_group, plot_type):
+   - For IS: 4-regime row, 1 SVG per (animal, bp, date, trial_group).
+   - For BS: 4-sub-grids meta-SVG, 1 SVG per (animal, bp, trial_group).
+   - Reuse Phase 7c.2 rendering wrappers with regime parameter override.
+   - Outputs to `.scratch_phase_7c2_alignment_test/svg_comparison/<animal>/<bp>/...`
+   - Estimated wall-time: ~2-3 hr (significant — ~780 IS SVGs each with 4 hist2d sub-panels + 78 BS meta-SVGs with 4 × ~6 panels each).
+
+5. **Compute numerical metrics** per (animal, regime, bp, trial_group):
+   - Pearson r across-sessions within (animal, regime, bp, trial_group) — pairwise across session distributions.
+   - JS divergence similarly.
+   - Write CSV.
+   - Estimated wall-time: minutes.
+
+6. **Report comparison summary:** for each (animal, bodypart), which regime wins on Pearson and JS? Compare to the 2026-04-19 cohort-wide winners. Highlight discrepancies (e.g., "PS46 nose winner now is X; cohort-wide 2026-04-19 was eye_centered").
+
+### Total wall-time
+
+~30-60 min build + ~2-3 hr render + ~few min metrics = **~3-4 hr autonomous**.
+
+### Ordering: PARALLEL with Task 7 + Task 8 (Priya 2026-05-20 LOCKED)
+
+Q64 runs as a side-experiment in parallel with the Phase 7c.2 close-out (Task 6 → Task 7 → Task 8 → PR merge). Phase 7c.2 canonical outputs at `pipeline_outputs/dlc_kinematics/` are LOCKED at `eye_centered` + `spout_centered` per Phase 4.5-lite. Q64 outcomes inform FUTURE-phase architecture (especially Phase 9.1 phenotype-pooled figures + any cross-session-comparison phases) but do NOT block Phase 7c.2 close.
+
+If Q64 outcomes overturn the 2026-04-19 conclusions, the follow-on production change (re-emit cohort under different centering regime) ships as a separate phase post-Phase-7c.2 — not bundled into the current close-out.
+
+### Resource isolation
+
+All Q64 outputs go to `.scratch_phase_7c2_alignment_test/` — NOT to `pipeline_outputs/dlc_kinematics/` or any other canonical path. The test-only `eye_affine` + `eye_rigid` centering modes do NOT ship to production code; they live in a scratch module that's deleted post-Q64.
+
+### Possible Q64 outcomes
+
+| Outcome | Implication |
+|---|---|
+| (a) Visual + numerical CONFIRM 2026-04-19 conclusions: eye_centered wins for movement bodyparts; spout_centered for tongue; affine/rigid reject | Document in DECISIONS as a 2026-05-20 revisit-confirmation; no action needed on production code. |
+| (b) Visual reveals patterns metrics aggregate away — e.g., affine looks better for SOME bodyparts on SOME sessions despite worse aggregate metrics | Lock as Q65: per-(bodypart, regime) tuning OR additional regimes for specific use cases. May trigger follow-on partial re-emit if production scheme changes. |
+| (c) PS48 (subtle phenotype) reveals a different winner than PS46 (clear phenotype) | Cohort-level vs per-animal-phenotype regime choice — possibly a stratified default. |
+| (d) Confirms 2026-04-19 conclusions + flags the PS54-style scale-drift limitation as worth a separate scale-correction follow-on phase | Lock as forward-pointer to a future scale-correction phase (e.g., post-Phase-7c.2 follow-on). |
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q64, Addendum #9-53 Task 5 scope. All prior supersession chains unchanged. Q62 + Q63 added per Addenda #52 + #53. Q64 added per Addendum #54 — alignment-regime comparison test (PS46 + PS48 × 4 regimes × 13 bodyparts × visual + numerical) revisit of 2026-04-19 sweep, scratch-only, doesn't touch production.)
+
+---
+
+## Addendum #55 — Q65: Binned proportion-difference comparison across 4 alignment regimes (Priya 2026-05-20)
+
+### Motivation
+
+Q64 lightweight produced 14 IS-style 4-regime comparison SVGs (PS46+PS48 × 7 family entries × 1 SVG each). Priya 2026-05-20 reviewed and wants additional output: per-bin proportion-difference comparison plots so the regime effect on the SCIENTIFIC quantity (post−pre diff) is directly visible at each post-stroke time point, not just the raw pooled distribution.
+
+### Q65 LOCKED — Per-bin PD comparison plots across 4 regimes
+
+**Scope:** Same animals (PS46 + PS48) and same family entries (7 per animal) as Q64. Additional plot type: proportion_differences at the per-bin granularity.
+
+**Layout per SVG:**
+- One SVG per (animal, family_entry, trial_group).
+- N_bins rows × 4 columns.
+- Each row = one rel_day_bin (per-animal singleton bin_size; PS46 + PS48 both at 2d bins per Q23).
+- Each column = one regime: `eye_affine` | `eye_rigid` | `eye_centered` | `spout_centered`.
+- Each cell = per-bin PD heatmap (post bin distribution − all_pre_stroke baseline) using that regime's centered parquets.
+- Row labels: bin date range (e.g., "days 1-2 (n_sess=2)").
+- Column headers: regime name.
+
+**Colormap scale: per-row shared across the 4 regimes (Option a)** — each bin's row has its own |vmax|, computed via Q42 percentile-95 of |H_diff| pooled across the 4 regimes for that bin. Makes regime comparison cleanest WITHIN each bin (apples-to-apples per row). Cross-bin comparison sacrificed (different bins use different scales).
+
+Diverging red-grey-blue cmap per Q25 (red=increased, blue=decreased, grey #d0d0d0 at zero). Q43.B no-data mask `(H_pre_counts == 0) & (H_post_counts == 0)` → white via `set_bad`.
+
+### Output naming
+
+```
+.scratch_phase_7c2_alignment_test/svg_comparison/<animal>/
+  <family_entry>_PD_4_regime_comparison_<trial_group>.svg
+```
+
+= 7 families × 3 trial_groups × 2 animals = 42 SVGs total. Each SVG has N_bins × 4 cells ≈ ~40 panels.
+
+For Pattern B family entries (whiskers, spout, eye) where N_bodyparts > 1, the PD computation collapses to per-family (sum across bodyparts, or use the same Pattern B aggregation that Phase 7c.2 currently uses) — same handling as the IS comparison in Q64 lightweight.
+
+### Implementation
+
+Extend the existing Q64 lightweight script. Per-regime centered parquets are already cached at `.scratch_phase_7c2_alignment_test/centered_parquets/<regime>/<animal>/...` from Q64 lightweight. No need to rebuild.
+
+For each (animal, family, trial_group):
+1. Compute H_pre_baseline per regime: pool all pre-stroke session histograms.
+2. For each rel_day_bin (post-stroke), compute H_post_bin per regime.
+3. Compute H_diff = H_post_bin − H_pre_baseline per regime.
+4. Compute per-row |vmax| = 95th-percentile of `|H_diff|` pooled across the 4 regimes for that bin.
+5. Render N_bins × 4 grid SVG.
+
+Use Phase 7c.2 PD render primitives (diverging cmap, no-data mask, Q60 row-spacing) with regime parameter override.
+
+### Wall-time
+
+~30-60 min (centered parquets cached; PD compute + render is bounded).
+
+### Parallel with Task 7
+
+Q65 runs as a continuation of the Q64 side-experiment. DOES NOT touch Task 7 work or canonical outputs. All outputs under `.scratch_phase_7c2_alignment_test/svg_comparison/`.
+
+CC is currently working on Task 7 dry-run/execution; Q65 can run in a separate shell concurrently.
+
+### Spot-check criteria
+
+For each (animal, family, trial_group) PD comparison SVG:
+- 4 regime columns clearly labeled.
+- N_bins rows, each with row label (date range, n_sess).
+- Within each bin row, the 4 regime panels are directly comparable (shared per-row |vmax|).
+- Diverging cmap renders correctly (red/blue meaningful diffs; grey midpoint for near-zero; white for no-data).
+- Differences between regimes should be visible especially in PS46 bodyparts where eye_affine numerically wins (jaw, L_w1, L_w3, R_w2 per the 2026-04-19 cohort data).
+
+### Possible outcomes
+
+- (a) Regime differences are small visually → confirms 2026-04-19 numerical conclusions, eye_affine's "wins" are statistical noise that doesn't translate to scientifically meaningful spatial differences.
+- (b) Regime differences are visually striking for some (bp, bin) → flags real scientific implications, warrants follow-on consideration.
+- (c) Per-bin patterns reveal a TIME-DEPENDENT regime preference (e.g., eye_affine better acute, eye_centered better chronic) → suggests bin-stratified regime selection.
+
+Document outcome in Q64 follow-up report.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q65, Addendum #9-54 Task 5 scope. All prior supersession chains unchanged. Q64 + Q65 added per Addenda #54 + #55 — alignment-regime comparison (visual + PD per-bin), scratch-only, parallel with Task 7.)
+
+---
+
+## Addendum #56 — Q66: Include pre-stroke bins in Q65 PD comparison SVGs (Priya 2026-05-21)
+
+### Motivation
+
+Q65 PD-comparison SVGs include post-stroke rel_day bins only — the default since PD is "post − all_pre_stroke baseline" and post-stroke is where the meaningful signal lives. Priya 2026-05-21: include pre-stroke bins too as a visual sanity-check / null reference. Pre-stroke rows should show near-zero diffs across all 4 regimes (since each pre-stroke bin's data IS part of the baseline pool being subtracted) — provides calibration for "what does no-signal look like" vs the post-stroke bins.
+
+### Q66 LOCKED — Extend Q65 bin enumeration to include pre-stroke bins
+
+For each (animal, family_entry, trial_group) PD comparison SVG, include ALL rel_day bins (pre-stroke + post-stroke) within the cohort range, not just post-stroke. Bin layout per Q23 per-animal singleton bin_size (PS46+PS48 both at 2d bins).
+
+**Default baseline mode: (a) include-bin baseline.**
+
+Baseline is `all_pre_stroke` per Q3d.B unchanged. For pre-stroke bins, the bin's own data is included in the baseline pool → diff inherently biased toward zero. Pre-stroke rows render with very pale / mostly-grey appearance — acts as "best-case noise floor" visual reference.
+
+This is the simpler implementation (single baseline computation per regime; same baseline used for both pre and post bin diffs). Aligns with the existing Q3d.B "bins-vs-all-pre-stroke" semantic.
+
+**Alternative mode: (b) leave-one-out baseline** — for each pre-stroke bin's diff, exclude that bin's data from the baseline pool. Statistically cleaner; pre-stroke rows show TRUE noise floor (session-to-session variance). More compute (different baseline per pre-stroke bin). NOT the default per Q66; CC could add as a config flag if Priya later requests the unbiased estimate.
+
+### Updated layout per SVG
+
+For each (animal, family_entry, trial_group):
+- (N_pre + N_post) rows × 4 regime columns.
+- Pre-stroke bins on top (rel_day negative), post-stroke bins below (rel_day positive). Sorted by rel_day ascending.
+- Row labels: bin date range + n_sess (e.g., "days -5 to -4 (n_sess=2)" / "days 1 to 2 (n_sess=2)").
+- Optional: thin horizontal separator (e.g., dashed line) between the last pre-stroke row and first post-stroke row, visually marking stroke onset.
+
+### Per-row shared vmax unchanged (Q65)
+
+Each row still has its own |vmax| = 95th-percentile of |H_diff| pooled across the 4 regimes for that bin. Pre-stroke bins will naturally have LOWER vmax values than post-stroke bins (because their diffs are inherently smaller). That's expected; per-row scaling preserves regime comparability within each row.
+
+### Output naming (unchanged from Q65)
+
+Same paths as Q65; the SVGs are extended with additional rows for pre-stroke bins. Overwrite Q65 outputs in `.scratch_phase_7c2_alignment_test/svg_comparison/<animal>/<family>_PD_4_regime_comparison_<trial_group>.svg`.
+
+### Wall-time
+
+Trivial extension to the existing Q65 script. Additional N_pre rows per SVG; ~5-10 extra min total render time.
+
+### Implementation tweak from Q65
+
+Change:
+```python
+for rel_day_bin in get_post_stroke_bins(animal, bin_size=2):
+    ...
+```
+
+To:
+```python
+for rel_day_bin in get_all_bins(animal, bin_size=2):   # pre + post
+    ...
+```
+
+Plus add the visual separator between pre and post rows (optional matplotlib `axhline` between the rows in the figure-level coordinates).
+
+### Spot-check criteria for Q66
+
+- Each SVG has (N_pre + N_post) rows × 4 columns.
+- Pre-stroke rows render pale / mostly-grey across all 4 regimes (expected if baseline aggregation is meaningful).
+- Post-stroke rows render with visible red/blue signal where stroke recovery effects manifest.
+- Separator (if added) clearly delineates stroke onset.
+
+### Parallel with Task 7
+
+Same parallelism rules as Q65. Q66 runs as continued side-experiment; doesn't touch canonical outputs or block Task 7.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q66, Addendum #9-55 Task 5 scope. All prior supersession chains unchanged. Q66 extends Q65 bin enumeration to include pre-stroke bins per Addendum #56.)
+
+---
+
+## Addendum #57 — Q67/Q68/Q69: YAML-enumeration refactor + health-report retirement + Cat 1 unblock (Priya 2026-05-21)
+
+### Motivation
+
+Task 7.A Cat 1 pre-flight grep surfaced 4 production consumers of `spatial_reward_aligned/`. Priya 2026-05-21 chose Option (a): refactor the cohort drivers to YAML-driven enumeration WITHIN Phase 7c.2 Task 7 before executing Cat 1 deletion. Pulls the queued forward-pointer (`project_cohort_enumeration_should_be_yaml_driven_forward_pointer.md`) into Phase 7c.2 close instead of deferring as a follow-on.
+
+### Q67 LOCKED — Refactor 3 cohort drivers to YAML-driven enumeration
+
+Replace filesystem-walk enumeration with YAML-driven date iteration in:
+
+1. `scripts/phase_7c2/render_heatmaps.py:130` (Phase D cohort driver)
+2. `scripts/phase_7c2/reemit_cohort.py:152` (Phase 7c.2 Task 3 driver)
+3. `scripts/phase_7c2/reemit_cohort_aggregates.py:167` (Phase 7c.2 Task 4 driver)
+
+**Pattern (replacement for the existing filesystem walk):**
+
+```python
+# Before — filesystem walk + post-hoc YAML filter:
+canon_dir = output_root / "spatial_reward_aligned" / CANON_BP_CM / CANON_WIN / animal
+dates_from_walk = [
+    parse_date_from_npz_name(npz.name)
+    for npz in canon_dir.glob("heatmap_*.npz")
+]
+dates = [d for d in dates_from_walk if start <= d <= end and d.isoformat() not in excluded]
+
+# After — YAML-driven direct iteration:
+import datetime
+from stroke_orofacial.config import get_animal
+
+animal_info = get_animal(animal)
+start = animal_info.sessions.start
+end = animal_info.sessions.end
+excluded = set(animal_info.excluded_sessions or [])
+
+dates = []
+date = start
+while date <= end:
+    if date.isoformat() not in excluded:
+        dates.append(date)
+    date += datetime.timedelta(days=1)
+
+# Pattern A multi-half inclusion (preserved from current behavior):
+# PS48/2025-03-14 explicitly included if not in excluded_sessions
+if animal == "PS48":
+    pattern_a_date = datetime.date(2025, 3, 14)
+    if pattern_a_date.isoformat() not in excluded and pattern_a_date not in dates:
+        dates.append(pattern_a_date)
+```
+
+Factor the enumeration into a shared helper (e.g., `stroke_orofacial.cohort_enumeration.yaml_driven_session_dates(animal, animal_info)`) so all 3 drivers call the same function. Single source of truth.
+
+Per the memory file's scope estimate: ~3-5 line driver change per file + shared helper module. Total source change small.
+
+### Q68 LOCKED — Retire `scripts/phase_6_8a_first_run_health_report.py`
+
+Per Phase 7c.1 audit §5.1: "PRESERVE health-report script with inline-comment breadcrumb (retires alongside legacy tree in Phase 7c.2 Task 5)." The legacy tree is being deleted via Cat 1; the audit decision was that this script retires with it.
+
+Deletion path:
+1. Delete `scripts/phase_6_8a_first_run_health_report.py` entirely.
+2. If any tests import this script, drop those tests (per Phase 7c.1 §5.1 decision — the script is a one-off health-report, not a production analysis).
+3. Document retirement in Task 8 DECISIONS prose.
+
+If CC discovers an unanticipated consumer (e.g., a CI job that still calls the health-report), STOP and report — Priya adjudicates whether to delete vs preserve with deprecated marker.
+
+### Q69 LOCKED — Cat 1 unblock criteria
+
+After Q67 + Q68 land:
+
+1. Re-run the Cat 1 pre-flight grep (same command as before):
+   ```bash
+   grep -rn "spatial_reward_aligned\|spatial_tone_aligned" \
+       src/ scripts/ tests/ notebooks/ configs/ \
+       2>/dev/null \
+       | grep -v ".scratch_\|\.pyc$\|_deprecated/\|\.ipynb_checkpoints" \
+       > .scratch_phase_7c2/cat1_consumer_grep_post_refactor.txt
+   ```
+
+2. Expected: 0 production read sites. Acceptable remaining matches: comments, docstrings, migration log entries, tests asserting the rename happened, the cleanup script itself.
+
+3. If grep is clean: Cat 1 unblocked. Execute the deletion per the original Cat 1 protocol (5 sample paths re-confirmed, rm -rf, post-deletion verification finds 0 matches).
+
+4. If grep still shows production reads: STOP. Report which consumer was missed. Refactor it before re-attempting Cat 1.
+
+### Test coverage for Q67
+
+Add tests in `tests/test_cohort_enumeration.py` (or wherever the YAML-driven helper lives):
+
+1. **Parity vs Phase D manifest:** for each of the 8 cohort animals, the YAML-driven enumeration should produce the EXACT set of (animal, date) tuples that produced Phase D outputs. Use `.scratch_phase_7c2/cohort_heatmaps_manifest.csv` as ground truth — for each animal, the date list from YAML should equal the actual date list emitted by Phase D.
+2. **Excluded sessions handling:** any (animal, date) in `excluded_sessions` is correctly skipped.
+3. **Pattern A inclusion:** PS48/2025-03-14 is included unless explicitly excluded.
+4. **Boundary correctness:** start date and end date are both included (inclusive range).
+5. **Empty animals:** an animal with start > end produces empty list.
+
+Run `pytest -x` — expect 1450+ pass after Q67 patch + new tests.
+
+### Q67/Q68/Q69 sequencing within Task 7
+
+Updated Task 7 sequence:
+
+1. **Cats 2 + 4 + 5 + 8 + 9** (already approved; Cat 2 needs re-execution from mid-flight state; others execute sequentially per prior approval).
+2. **Cat 6 investigation** (still pending per Addendum #56 carry-over).
+3. **Q67 refactor** — refactor 3 cohort drivers; factor shared helper; add tests; `pytest -x` clean.
+4. **Q68 retirement** — delete `phase_6_8a_first_run_health_report.py`; drop any tests.
+5. **Q69 Cat 1 unblock** — re-run pre-flight grep; if clean, execute Cat 1 deletion.
+6. **Task 7.C** — manifest collapse (one row per animal).
+7. **Task 7.D** — verification.
+
+### Wall-time estimate
+
+- Q67 refactor: ~1-2 hr (3 driver files + shared helper + 5-7 tests + parity check).
+- Q68 retirement: ~10 min (single file delete + test prune).
+- Q69 Cat 1 unblock + execute: ~5 min verification + Cat 1 rm + post-verify.
+- Cats 2/4/5/8/9: ~10-15 min total.
+- Cat 6 investigation: ~15-30 min depending on what CC finds.
+
+Total Task 7: ~2-4 hr (vs ~1 hr if we'd skipped Q67). Phase 7c.2 close pushed back ~1-3 hr. Acceptable trade-off for atomic Cat 1 + refactor delivery.
+
+### Document in Task 8 DECISIONS prose
+
+Add to Phase 7c.2 DECISIONS scaffold (Addendum #43):
+- **Decision 23 (new) — Q67/Q68/Q69 YAML-enumeration refactor bundled into Phase 7c.2 Task 7:** in-phase delivery instead of post-close chore-PR; rationale per Priya 2026-05-21 Option (a) adjudication on Cat 1 pre-flight grep findings; eliminates the `project_cohort_enumeration_should_be_yaml_driven_forward_pointer.md` forward-pointer at phase close (the work shipped in-phase rather than as a follow-on).
+- Reference: this addendum + the memory file + the original 2026-04-19 DECISIONS entry.
+
+### MIGRATION_LOG entry
+
+Phase 7c.2 close MIGRATION_LOG entry mentions Q67 refactor as part of Task 7 scope (vs original kickoff Task 7 which was cleanup-only).
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q69, Addendum #9-56 Task 5 scope. All prior supersession chains unchanged. Q67/Q68/Q69 added per Addendum #57 — YAML-enumeration refactor + health-report retirement + Cat 1 unblock bundled into Task 7 per Priya 2026-05-21 Option (a). Cohort-enumeration forward-pointer in memory file is now discharged within Phase 7c.2 rather than as a post-close chore-PR.)
+
+---
+
+## Addendum #58 — Q70: Alignment comparison scope expansion (all 8 animals + drop tongue_spout_midpoint) (Priya 2026-05-21)
+
+### Motivation
+
+In-flight Q65/Q66 PD-comparison work is currently scoped to PS46 + PS48 (per Q64 original scope) × 7 family entries × 4 alignment regimes. Two scope refinements from Priya 2026-05-21:
+
+1. **tongue_spout_midpoint and tongue_eye_midpoint comparisons are IDENTICAL** — both use the same underlying tongue data, just labeled with different family-entry names. For the alignment-regime comparison purpose (how does each of 4 regimes look for the tongue bodypart?), only ONE tongue family entry needs to be in scope. Prioritize tongue_eye_midpoint; drop tongue_spout_midpoint from the Q64/Q65/Q66 comparison work.
+
+2. **Expand to all 8 cohort animals** (not just PS46 + PS48). Want the complete cohort picture for the alignment-regime test.
+
+### Q70 LOCKED — Updated Q64/Q65/Q66 scope
+
+**Family entries:** 6 (was 7) — drop tongue_spout_midpoint.
+- tongue_eye_midpoint (kept — represents tongue)
+- jaw_eye_midpoint
+- nose_eye_midpoint
+- whiskers_eye_midpoint
+- spout_spout_midpoint
+- eye_eye_midpoint
+
+**Animals:** 8 (was 2) — full cohort.
+- PS46, PS47, PS48, PS49, PS50, PS51, PS54, PS55
+
+**Other dimensions unchanged:**
+- 4 regimes: eye_affine, eye_rigid, eye_centered, spout_centered
+- 3 trial groups for tone_aligned (all/L/R)
+- Plot types: Q64 IS-style + Q65/Q66 PD-comparison (with pre-stroke bins per Q66)
+
+### Updated output count
+
+- **Q64 IS-style** (4-regime side-by-side per representative date): 6 families × 8 animals = 48 SVGs (was 14).
+- **Q65/Q66 PD-comparison** (N_bins × 4 regimes per SVG, pre + post bins): 6 families × 3 trial_groups × 8 animals = 144 SVGs (was 42).
+
+Total ~192 SVGs (was 56). ~3.4× more than original Q64/Q65/Q66 scope.
+
+### Wall-time impact
+
+- **Centered parquets build (extension):** PS46 + PS48 already cached at `.scratch_phase_7c2_alignment_test/centered_parquets/`. Extend to PS47, PS49, PS50, PS51, PS54, PS55 (6 new animals × 4 regimes ≈ 24 build runs). Estimated ~2-4 hr build (per-animal-cohort scale, longer for PS51/PS54/PS55 due to ~2x more dates each).
+- **Render (extension):** 144 PD-comparison SVGs (was 42, +102) + 48 IS-style (was 14, +34) ≈ 136 additional SVGs. Estimated ~2-3 hr render.
+- **Total Q64/Q65/Q66 wall-time (extension only):** ~4-7 hr autonomous.
+- **Reuse existing PS46 + PS48 cached artifacts** — don't rebuild parquets that already exist.
+
+### Implementation notes
+
+1. Update the family entry list in the Q64/Q65/Q66 scratch script: remove `tongue_spout_midpoint` from the iterated set.
+2. Existing PS46 + PS48 SVGs for `tongue_spout_midpoint`: can DELETE (they're redundant with `tongue_eye_midpoint` versions). Or leave them as historical artifact in `.scratch_phase_7c2_alignment_test/svg_comparison/<animal>/`. CC's call.
+3. Extend the animal list iteration from `["PS46", "PS48"]` to all 8 cohort animals: `["PS46", "PS47", "PS48", "PS49", "PS50", "PS51", "PS54", "PS55"]`.
+4. Centered parquet cache: skip rebuild for (regime, animal) tuples already cached.
+5. Run Q65/Q66 PD-comparison for all 6 families × 8 animals × 3 trial_groups.
+
+### Parallel with Task 7
+
+Q70 continues the Q64/Q65/Q66 side-experiment. DOES NOT touch Task 7 work, canonical Phase D outputs, or production code. All outputs remain under `.scratch_phase_7c2_alignment_test/`.
+
+CC can run Q70 work as a background extension while Task 7 (Q67 refactor + Cats 2/4/5/8/9 + Cat 6 investigation + Q69 Cat 1 deletion) proceeds in another shell.
+
+### Possible Q70 outcomes (extends Q64 outcome scenarios)
+
+The 4 outcome scenarios from Q64 (Addendum #54) apply per-animal:
+- (a) Visual + numerical CONFIRM 2026-04-19 conclusions for all 8 animals.
+- (b) Visual reveals patterns metrics aggregate away (per-animal level).
+- (c) PS48 subtle phenotype vs PS46 clear phenotype winner pattern divergence — now generalizable across the 6 mild/mod-severe/severe phenotype animals.
+- (d) PS51/PS54/PS55 scale-drift signature shows up clearly in visual comparison; confirms the Phase 10 limitation flagged in 2026-04-19.
+
+Plus a new possible outcome unique to cohort-scale:
+- (e) Cross-animal heterogeneity: different animals prefer different regimes for the SAME bodypart, suggesting per-animal regime selection rather than cohort-wide. (Would have major implications for any future centering-scheme decision.)
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q70, Addendum #9-57 Task 5 scope. All prior supersession chains unchanged. Q70 expands Q64/Q65/Q66 scope per Addendum #58 — all 8 animals + drop tongue_spout_midpoint from comparison families.)
+
+---
+
+## Addendum #59 — Q71: Whole_session PD-comparison alignment-regime scope (Priya 2026-05-21)
+
+### Motivation
+
+Q65/Q66/Q70 PD-comparison work covers tone_aligned scope (3 trial_groups: all/L/R, per-bin × 4 regimes layered). Add whole_session scope as a complementary view — Q49 WS-bounded whole-session frames per regime are MORE sensitive to spatial alignment than tone-aligned windowed frames (more frames per session → more statistical power for detecting drift between regimes).
+
+### Q71 LOCKED — Whole_session PD-comparison SVGs for all 6 families × 8 animals
+
+**Scope:**
+- Same 6 family entries as Q70 (tongue_eye_midpoint, jaw_eye_midpoint, nose_eye_midpoint, whiskers_eye_midpoint, spout_spout_midpoint, eye_eye_midpoint).
+- Same 8 animals as Q70 (PS46, PS47, PS48, PS49, PS50, PS51, PS54, PS55).
+- Single trial_group: "all" only (per Q16 whole_session restriction — no L/R fanout for whole_session scope).
+- Same 4 regimes as Q64/Q65/Q66: eye_affine, eye_rigid, eye_centered, spout_centered.
+
+### Layout per SVG (mirrors Q66 tone_aligned layout)
+
+For each (animal, family_entry):
+- (N_pre + N_post) rows × 4 regime columns.
+- Each row = one rel_day_bin (per-animal singleton bin_size per Q23).
+- Each cell = per-bin PD heatmap using WS-bounded whole-session frames under that regime.
+- Row labels: bin date range + n_sess (e.g., "days -5 to -4 (n_sess=2)" for pre; "days 1 to 2 (n_sess=2)" for post).
+- Optional horizontal separator between pre and post sections.
+- Per-row shared |vmax| = 95th-percentile pooled across the 4 regimes for that bin.
+- Standard diverging cmap (red-grey-blue per Q25); Q43.B no-data mask `(H_pre_counts == 0) & (H_post_counts == 0)` → white.
+
+Each cell's data is WS-bounded (per Q49) — uses frames in `[ws_start_cam_idx, ws_end_cam_idx]` from the Phase 3 alignment template, NOT the full DLC frame range.
+
+### Output naming
+
+To distinguish from Q70 tone_aligned variants:
+
+```
+.scratch_phase_7c2_alignment_test/svg_comparison/<animal>/
+  <family>_PD_4_regime_comparison_tone_aligned_all.svg     (Q66/Q70)
+  <family>_PD_4_regime_comparison_tone_aligned_L.svg       (Q66/Q70)
+  <family>_PD_4_regime_comparison_tone_aligned_R.svg       (Q66/Q70)
+  <family>_PD_4_regime_comparison_whole_session_all.svg    (Q71 NEW)
+```
+
+OR rename Q70 outputs from current `<family>_PD_4_regime_comparison_<trial_group>.svg` → `<family>_PD_4_regime_comparison_tone_aligned_<trial_group>.svg` to make scope explicit. CC's call; consistency over surprise.
+
+### Output count
+
+- Q71 adds: 6 families × 8 animals × 1 trial_group (whole_session "all" only) = **48 new SVGs**.
+- Q70 already producing: 144 tone_aligned PD-comparison SVGs.
+- Combined Q70 + Q71 PD-comparison total: **192 SVGs**.
+
+### Wall-time
+
+- Centered parquets ALREADY cached from Q70 build (same regime × animal × bodypart matrix). NO additional build needed.
+- Render only: 48 SVGs × ~30-60 sec each = ~30-60 min.
+
+### Implementation
+
+Extend the Q65/Q66/Q70 scratch script with a scope loop:
+
+```python
+SCOPES = ["tone_aligned", "whole_session"]
+
+for scope in SCOPES:
+    if scope == "tone_aligned":
+        trial_groups = ["all", "L", "R"]
+    else:  # whole_session
+        trial_groups = ["all"]
+    
+    for animal in ALL_8_ANIMALS:
+        for family in SIX_FAMILY_ENTRIES:
+            for trial_group in trial_groups:
+                # Compute PD per regime per bin using scope-appropriate frame filter
+                # tone_aligned: use _build_tone_window for windowed frames
+                # whole_session: use _ws_cam_frame_bounds for WS-bounded frames (per Q49)
+                
+                # Render N_bins × 4 grid SVG
+                fig = render_pd_4_regime_comparison(
+                    animal, family, trial_group, scope,
+                    centered_parquets_by_regime=cached_parquets,
+                )
+                fig.savefig(
+                    f".scratch_phase_7c2_alignment_test/svg_comparison/{animal}/"
+                    f"{family}_PD_4_regime_comparison_{scope}_{trial_group}.svg"
+                )
+```
+
+Per-regime data source within each cell:
+- Centered parquet from `.scratch_phase_7c2_alignment_test/centered_parquets/<regime>/<animal>/<date>...`
+- For whole_session cells: apply Q49 WS-frame filter on the parquet's `cam_frame_idx` column before histogram computation.
+- For tone_aligned cells: apply the tone-window filter (same as Q70 implementation).
+
+### Parallel with Task 7
+
+Q71 continues the side-experiment. DOES NOT touch Task 7 work or canonical outputs.
+
+### STOP-and-report
+
+Report 48 additional SVG paths + sample for visual review. Update q70_report.txt (or append q71_report.txt) with cohort-wide whole_session regime preference summary alongside the tone_aligned summary.
+
+### Possible Q71-specific outcomes
+
+In addition to the Q64/Q70 outcomes (a-e from Addendum #58):
+- (f) **Whole_session vs tone_aligned regime preference divergence:** if a (animal, bodypart) pair prefers regime X under tone_aligned but regime Y under whole_session, that's a window-dependent regime sensitivity worth flagging.
+- (g) **Whole_session more clearly reveals scale-drift signature** in PS51/PS54/PS55 due to more frames per session.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q71, Addendum #9-58 Task 5 scope. All prior supersession chains unchanged. Q71 adds whole_session PD-comparison scope per Addendum #59 — 6 families × 8 animals × 1 trial_group ≈ 48 new SVGs, reuses Q70 cached centered parquets.)
+
+---
+
+## Addendum #37 — proportion_diff "grey-fog" fix: percentile vmax + magnitude floor (Priya 2026-05-15)
+
+### Symptom (PS47 spot-check)
+
+PS47 tongue_spout_midpoint proportion_differences (tone_aligned, R trials, 2d bins, all_pre_stroke baseline) renders almost entirely gray with very faint red/blue. Bucket vmax shown as 0.0111. Two coupled root causes:
+
+1. **`vmax_abs = max(|min|, |max|) across bucket` is set by a single outlier bin** — one bin in any of the 11 panels pushes vmax_abs to 0.0111, and every other bin's diff (typically a small fraction of that) renders at near-gray midtones. Q26 anticipated this scenario and pointed at percentile-based clipping as fallback; never became default.
+
+2. **Bins outside the tongue distribution render gray, not white.** Bins where pre and post counts are both zero compute as `proportion_diff = 0 - 0 = 0`. Zero isn't NaN, so `set_bad("white")` doesn't catch them — they hit the cmap's midpoint (`#d0d0d0`) and render gray. Visible as "tongue silhouette in gray fog" — most of the gray area is true-zero bins outside the tongue rendering at the cmap midpoint instead of white.
+
+### Q42 LOCKED — Percentile-based `vmax_abs` for proportion_differences
+
+Replace `vmax_abs = max(|min|, |max|) across bucket` with percentile-based:
+
+```python
+# Compute across all H_diff arrays in the (animal, family, scope, bin_size, trial_group) bucket
+abs_diffs_concat = np.concatenate([
+    np.abs(H_diff_masked.flatten())
+    for H_diff_masked in bucket_arrays
+])
+abs_diffs_finite = abs_diffs_concat[np.isfinite(abs_diffs_concat)]
+
+vmax_percentile = config_block.get("vmax_percentile", 95.0)
+vmax_abs = np.percentile(abs_diffs_finite, vmax_percentile)
+```
+
+- New config knob: `configs/defaults.yaml dlc_spatial_tone_aligned.proportion_differences.vmax_percentile = 95.0`.
+- 95th percentile typically captures the meaningful signal range without being driven by 1-2 outlier bins. Tune visually: 90 if still washed out; 99 if too many bins clip to vmax.
+- Anything beyond `vmax_abs` clips to the cmap extremes (deep red / deep blue). Matplotlib `imshow(..., vmin=-vmax_abs, vmax=+vmax_abs)` clips by default unless `clip=False` is passed.
+
+### Q43 LOCKED — Magnitude floor mask for proportion_differences (analog of Q33 mass_change_floor_fraction)
+
+Apply a magnitude floor to mask sub-floor bins as NaN → render white via `set_bad("white")`:
+
+```python
+floor_fraction = config_block.get("floor_fraction", 0.05)
+floor = vmax_abs * floor_fraction
+
+H_diff_masked = np.where(np.abs(H_diff) >= floor, H_diff, np.nan)
+```
+
+- New config knob: `configs/defaults.yaml dlc_spatial_tone_aligned.proportion_differences.floor_fraction = 0.05`.
+- Bins where `|H_diff| < floor` (typically: zero-pre + zero-post OR tiny noise-floor diffs) → masked to NaN → render white.
+- Existing `set_bad("white")` lock (Q22/Q25) handles the NaN → white rendering.
+- Tune visually: 0.1 if still too gray; 0.02 if too aggressive masking.
+
+### Result
+
+Combined Q42 + Q43:
+- Most meaningful diffs occupy most of the colormap dynamic range (no outlier-driven washout).
+- Zero-data bins outside the distribution + sub-noise-floor bins inside the distribution all render white (clean background).
+- Only meaningfully-different bins show red/blue color.
+- Reader can quickly see WHERE the proportion changed, not "everything is roughly the same."
+
+### Same pattern applies to mass_change panels (Q33) for consistency
+
+Q33's `mass_change_floor_fraction = 0.05` already locks the analog for UOT mass_change panels. Now Q43 brings proportion_differences into the same convention. Both use percentile-based vmax (Q42 lock; consider extending to mass_change in a future addendum if PS47 spot-check on UOT shows similar outlier-driven washout — currently mass_change uses `max(|min|, |max|)` per Q33).
+
+For now, leave mass_change's vmax_abs as `max(|min|, |max|)` until PS47 spot-check on UOT confirms whether percentile clipping is also needed there. If yes, lock as Q44 in a follow-on addendum.
+
+### Apply via targeted re-emit (not cohort restart)
+
+Since `bs2o2pohl` is still in flight rendering canonical Q21-Q36 outputs, do NOT restart for Q42/Q43. Apply the proportion_diff render-time patches mid-flight if the driver supports config hot-reload, OR apply as a post-cohort targeted re-emit of just proportion_differences across all 6 non-skipped family entries × 9 animals (cheaper than full cohort since proportion_differences is one of 4 plot types per family-entry).
+
+CC picks: hot-reload mid-flight (if architecturally clean) vs post-cohort targeted re-emit. Document choice in Task 8 DECISIONS.
+
+If targeted re-emit, queue alongside Q34 tongue_eye_midpoint + Q40 whisker fixes as part of the post-cohort recovery sequence.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q43, Addendum #9-36 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36. Q5.F superseded by Q5.G + Q41.)
+
+---
+
+## Addendum #38 — Q43 revised: no-data mask only, preserve grey-for-no-change semantic (Priya 2026-05-15)
+
+### Q43.B LOCKED (supersedes Q43) — Mask ONLY "no data" bins, not "no change" bins
+
+Q43 as originally locked applied a magnitude floor `|H_diff| < (vmax_abs × floor_fraction)` → NaN → white. This over-masks: bins INSIDE the tongue silhouette where pre and post are both nonzero but similar (legitimate "data present, no meaningful change") get masked to white alongside bins OUTSIDE the silhouette where pre and post are both zero (truly "no data"). The diverging cmap's grey midpoint is informative — it carries the "tongue was there but proportion didn't shift here" signal. Q43 throws that away.
+
+Revise: mask ONLY true "no data" bins.
+
+```python
+# Bin is "no data" iff there's no DLC data above likelihood threshold in either
+# the per-bin baseline OR the comparison bin AT THAT SPATIAL LOCATION.
+# Use the upstream per-frame-count arrays before histogram normalization:
+no_data = (H_pre_counts == 0) & (H_post_counts == 0)
+H_diff_masked = np.where(no_data, np.nan, H_diff)
+```
+
+- Existing `set_bad("white")` (Q22/Q25) renders the NaN bins as white.
+- Bins where pre and post both have data but the diff is small render at the cmap midtones (grey to pale-red/pale-blue depending on the small diff sign).
+- Bins where pre and post both have data and the diff is large render at deep red/blue (clipped at Q42 percentile vmax).
+- Bins outside the tongue silhouette (no DLC data in either condition) render white.
+
+**Drop the `floor_fraction` config knob** (or keep it but default to `0.0` for backward compat — `0.0` means "don't apply magnitude floor"; user can opt in to magnitude-based masking by setting a positive value if they ever want it). Recommend: just remove the knob, keep the lock clean.
+
+### Semantic distinction preserved
+
+| Spatial bin | Pre | Post | Q43.B behavior |
+|---|---|---|---|
+| Outside tongue silhouette | 0 | 0 | NaN → WHITE (no data) |
+| Inside tongue, no change | nonzero | similar nonzero | small |diff| → GREY (no change) |
+| Inside tongue, increased proportion | smaller | larger | positive diff → RED |
+| Inside tongue, decreased proportion | larger | smaller | negative diff → BLUE |
+
+Reader interpretation: white = "nothing here in either condition"; grey = "something here in both, but proportion is similar"; red/blue = "proportion shifted."
+
+### Q42 (percentile vmax) unchanged
+
+Q42 still compresses outlier-driven dynamic range. With Q42 + Q43.B together:
+- Outliers (bins with diff > 95th-percentile of |H_diff|) clip to cmap extremes.
+- Typical-magnitude diffs occupy most of the cmap range (visible as pale-red / pale-blue).
+- No-change bins inside the silhouette stay grey (informative).
+- No-data bins outside the silhouette stay white (cleanly blank).
+
+### Apply identically to mass_change panels (Q33) — but only if PS47 spot-check shows same outlier issue
+
+Q33's mass_change panels currently use `max(|min|, |max|)` for vmax. If PS47 UOT spot-check shows similar outlier-driven washout, lock Q42 extension for mass_change in a follow-on addendum (Q44 placeholder). For now leave Q33 as-is until evidence demands the change.
+
+Mass_change panels already use Q33's `mass_change_floor_fraction = 0.05` magnitude floor — that's appropriate for UOT because UOT solver noise floor is genuinely non-meaningful (all bins have tiny nonzero mass even where physically nothing happened). The proportion_diff case is different: zero-pre + zero-post is genuine no-data, not noise-floor. Different semantics → different masking strategies.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Addendum #9-37 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36. Q5.F superseded by Q5.G + Q41. Q43 superseded by Q43.B.)
+
+---
+
+## Addendum #39 — Pattern B render density fixes: alpha + floor + cmap-swatch alignment (Priya 2026-05-15)
+
+### Symptom (PS47/2025-03-08 individual_session whiskers spot-check)
+
+Q37 (bilateral xlim) + Q38 (all 6 whiskers iterate) + Q39 (6 distinct legend swatch colors) all landed correctly. Remaining issue: the Pattern B render is too faint to interpret. Three coupled causes:
+
+1. **Q32 transparent-NaN + low per-layer alpha:** legacy per-layer alpha (~0.4-0.5) was tuned for opaque-white-NaN rendering. With Q32's transparent NaN + 6-layer composite, the effective per-blob opacity drops too low.
+
+2. **Q32 corollary `layered_overlay_floor_fraction = 0.05` is too aggressive for sparse single-session data** (`n_sess=1, n_tones=96`). 5% of per-layer vmax masks legitimate low-magnitude signal as NaN/transparent.
+
+3. **Cmap-vs-swatch color mismatch:** Q39 swatches use categorical hex (`#d62728`, `#ff7f0e`, etc.) — but the imshow layers still use the original `plasma`/`inferno`/`viridis` cmaps from `configs/defaults.yaml`. Visible blob colors don't match legend swatch colors, breaking the legend's identification function.
+
+### Q45 LOCKED — Pattern B per-layer alpha bumped + scope-aware
+
+Increase Pattern B per-layer alpha:
+
+```python
+# Was: per-layer alpha from legacy (~0.4-0.5)
+# Now: alpha pulled from config + scope-aware
+pattern_b_alpha = config_block.get("layered_overlay_alpha", {
+    "individual_session": 0.85,    # single-session sparse data — favor visibility
+    "binned_sessions":    0.70,    # binned data has more density — moderate alpha
+    "proportion_differences": 0.70,
+    "unbalanced_ot":      0.70,
+})
+
+per_layer_alpha = pattern_b_alpha.get(plot_type, 0.75)
+ax.imshow(H_layer_masked, cmap=layer_cmap, alpha=per_layer_alpha, ...)
+```
+
+New config knob: `configs/defaults.yaml dlc_spatial_tone_aligned.layered_overlay_alpha` (dict, per-plot-type). Defaults above. CC tunes visually per PS47 spot-check.
+
+### Q46 LOCKED — `layered_overlay_floor_fraction` lowered + scope-aware
+
+Q32 corollary's flat 0.05 floor over-masks sparse data. Replace with scope-aware:
+
+```python
+pattern_b_floor = config_block.get("layered_overlay_floor_fraction", {
+    "individual_session": 0.02,    # sparse data — preserve more signal
+    "binned_sessions":    0.05,    # standard floor
+    "proportion_differences": 0.05,
+    "unbalanced_ot":      0.05,
+})
+
+layer_floor_fraction = pattern_b_floor.get(plot_type, 0.05)
+```
+
+CC tunes from PS47 spot-check: drop further to 0.01 if individual_session still too sparse; bump binned_sessions to 0.07 if it's too cluttered.
+
+### Q47 LOCKED — Pattern B uses single-color cmaps derived from Q39 swatch colors
+
+Currently Pattern B layers use the configured `plasma`/`inferno`/`viridis` cmaps from `configs/defaults.yaml dlc_spatial_tone_aligned.bodyparts.<whisker>.cmap`. These have intrinsic hue gradients (plasma: purple → red → orange → yellow), so the visible blob color depends on local density, not on which whisker it is. Combined with Q39's categorical swatch colors, the legend ⇎ blob color mapping is broken.
+
+Fix: replace the per-whisker cmap configs for Pattern B layers with single-color cmaps derived from Q39's swatch hex codes:
+
+```python
+import matplotlib.colors as mcolors
+
+PATTERN_B_BASE_COLORS = {
+    "L_whiskers_1": "#d62728",  # red
+    "L_whiskers_2": "#ff7f0e",  # orange
+    "L_whiskers_3": "#bcbd22",  # yellow-olive
+    "R_whiskers_1": "#1f77b4",  # blue
+    "R_whiskers_2": "#17becf",  # cyan
+    "R_whiskers_3": "#9467bd",  # purple
+}
+
+def make_white_to_color_cmap(name, base_color):
+    cmap = mcolors.LinearSegmentedColormap.from_list(
+        f"{name}_white_to_color",
+        [(0.0, "white"), (1.0, base_color)],
+        N=256,
+    )
+    cmap.set_bad((1.0, 1.0, 1.0, 0.0))  # transparent (Q32)
+    return cmap
+
+per_layer_cmaps = {
+    bp: make_white_to_color_cmap(bp, base_color)
+    for bp, base_color in PATTERN_B_BASE_COLORS.items()
+}
+```
+
+Result:
+- Low-density bins → pale (near-white) tint of the layer's color → visually faint but identifiable.
+- High-density bins → saturated layer color matching the legend swatch.
+- NaN bins → transparent (Q32 unchanged).
+
+Now legend swatch color = saturated layer color = matches the densest part of that whisker's blob. Reader can identify each blob unambiguously.
+
+Apply analogously to other Pattern B families (spout_spout_midpoint, eye_eye_midpoint) — derive single-color cmaps from Q39-style categorical base colors. The existing Q39 swatch palette can include 2-color subsets for these 2-layer families (e.g., spout uses red + blue; eye uses orange + cyan).
+
+### Optional: alpha-modulated by density alternative
+
+Alternative to white-to-color cmaps: keep the existing cmaps but modulate alpha per-bin by normalized density value:
+
+```python
+alpha_array = np.clip(H_layer_masked / vmax_per_layer, 0, 1) * per_layer_alpha_max
+ax.imshow(H_layer_masked, cmap=layer_cmap, alpha=alpha_array, ...)
+```
+
+CC picks: white-to-color cmap (Q47 primary lock) vs alpha-modulated (alternative). White-to-color is simpler + the swatch-blob color match is automatic. Document choice in Task 8 DECISIONS.
+
+### Combined effect of Q45 + Q46 + Q47
+
+- Per-layer alpha bump (Q45): meaningful signal renders more opaquely → visible.
+- Floor relaxation (Q46): less aggressive sub-floor masking → more signal preserved.
+- White-to-color cmaps (Q47): legend swatch matches densest part of blob → reader can identify whiskers.
+- Combined: Pattern B layered overlay renders as 6 distinguishable colored blobs at appropriate spatial locations, matching the legend.
+
+### Implementation site
+
+`dlc_spatial/render_on_demand.py` Pattern B rendering wrapper. Apply Q45/Q46/Q47 together; the cmap change (Q47) is independent of the alpha/floor changes (Q45/Q46) so they can land in separate commits if cleaner.
+
+### Apply via post-cohort whisker re-emit (Q40 deferred work)
+
+Q40 already queued the targeted whiskers re-emit post-cohort. Bundle Q45/Q46/Q47 into the same targeted re-emit:
+
+1. Apply Q37 (config bilateral xlim) + Q38 (verify 6-iteration) + Q39 (swatch colors) per Addendum #35.
+2. Apply Q45 (alpha) + Q46 (floor) + Q47 (single-color cmaps) per this addendum.
+3. Targeted re-emit of `whiskers_eye_midpoint` family entry across all 9 animals, 4 plot types, 2 scopes, 3 trial groups (tone_aligned) / 1 (whole_session), per-animal singleton bin_size.
+
+PS47 spot-check verifies all density/color fixes before declaring done. Iterate Q45/Q46 alpha/floor values if PS47 still reads too faint or too saturated.
+
+### Also audit other Pattern B family entries during re-emit
+
+`spout_spout_midpoint` (L_spout + R_spout = 2 layers) and `eye_eye_midpoint` (L_eye + R_eye = 2 layers) currently use Q39-uncovered cmaps from defaults.yaml (`Reds` for L_spout/eye, `Blues` for R_spout/eye per Addendum #13). These 2-layer Pattern B's swatches naturally show as 2 distinct hues already.
+
+Apply Q45/Q46 to these 2-layer families. Q47 white-to-color cmap conversion is optional for 2-layer cases since `Reds`/`Blues` already start near-white at the low end — but for consistency, may want to switch them to white-to-#d62728 / white-to-#1f77b4 explicitly.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q47, Addendum #9-38 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36. Q5.F superseded by Q5.G + Q41. Q43 superseded by Q43.B.)
+
+---
+
+## Addendum #40 — Pattern B legacy audit REQUIRED before Q45/Q46/Q47 speculative tuning (Priya 2026-05-15)
+
+### Context — legacy code already solved this problem
+
+Priya 2026-05-15: the legacy notebook successfully overlays 6 whiskers (and all bodyparts) with readable density. Whatever convention the legacy used IS the working answer. Q45/Q46/Q47 from Addendum #39 are speculative re-inventions of parameters that the legacy code already pinned. Per Q13's "port legacy plotting params faithfully" principle, the correct first step is to AUDIT the legacy rendering convention and PORT VERBATIM, not invent new defaults.
+
+### Q48 LOCKED — Pattern B legacy audit + verbatim port BEFORE applying speculative Q45/Q46/Q47
+
+CC's required sequence:
+
+**1. Identify the legacy Pattern B rendering cells.** Search the legacy all-bodyparts notebook for the cells that render the layered-overlay heatmap with multiple bodyparts on a single axis. Candidate locations:
+
+- `20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb` — the all-bodyparts pixelbin file CC has been pulling other Pattern B params from. Look for cells with:
+  - Sequential `hist2d` or `imshow` calls iterating over a bodypart list (e.g., `for bp in whisker_list: ax.imshow(...)`).
+  - `alpha=...` keyword on each layer.
+  - Per-bodypart cmap dict lookup.
+  - A figure/axis with multiple bodyparts visible.
+- The legacy notebook may have multiple flavors (single-session vs binned vs whole-session). Find the cell that produces the equivalent of each Phase 7c.2 plot type (individual_session, binned_sessions, etc.).
+
+**2. Extract the legacy rendering parameters verbatim:**
+
+| Parameter | Legacy value | Where to find it |
+|---|---|---|
+| Per-layer `alpha` | ??? | The `alpha=` keyword in the legacy `hist2d` / `imshow` call |
+| Layer rendering order | ??? | The bodypart iteration order; later layers can obscure earlier |
+| Per-layer cmap | ??? | The cmap dict the legacy iterates over; check whether it's the same `plasma`/`inferno`/`viridis` already in defaults.yaml or something else |
+| Sub-floor / NaN handling | ??? | Does the legacy mask zero/low-density bins? If yes, what threshold? |
+| `vmin`/`vmax` per layer | ??? | Per-layer normalization — fixed values, per-layer max, per-bucket max, etc. |
+| Background color | ??? | `ax.set_facecolor(...)` or figure facecolor; may be white, or may be the cmap's "set_bad" |
+| Layer blend mode | ??? | Default alpha blending or something custom |
+| Axis xlim/ylim | ??? | Whether the legacy uses per-bodypart, unified, or symmetric range — Q37 already addresses this |
+
+**3. Port verbatim** into the Phase 7c.2 Pattern B rendering wrapper in `dlc_spatial/render_on_demand.py`:
+
+- Per-layer alpha: use the legacy value exactly. If legacy uses scope-dependent alpha (e.g., different alpha for binned vs single-session), port that structure.
+- Per-layer cmap: use the legacy cmap dict. If the legacy uses single-color or LinearSegmentedColormap derived cmaps, port those constructions.
+- Sub-floor / NaN handling: port the legacy approach. If legacy uses no masking (renders all bins), match that. If legacy masks, port the threshold logic.
+- vmin/vmax convention: port verbatim (legacy may use per-bucket shared scale per Q14 OR per-layer self-normalization; whichever legacy does, match).
+- Background and blend: port verbatim.
+
+**4. Document the legacy convention** in Task 8 DECISIONS prose: cite the exact cells (file + cell index + line range), list the extracted parameters, and note any deviations from legacy made for Phase 7c.2 (with rationale).
+
+### Q45/Q46/Q47 demoted to FALLBACK ONLY
+
+Addendum #39's Q45 (alpha bump), Q46 (floor relaxation), Q47 (white-to-color cmaps) are now **fallback defaults** that apply ONLY IF the legacy audit yields:
+
+- No discoverable convention (e.g., legacy doesn't have an analogous plot type for some Phase 7c.2 scope), OR
+- Convention exists but produces visibly broken output when ported (rare — would indicate a legacy bug that needs Priya's input).
+
+In either fallback case, CC documents in Task 8 DECISIONS:
+- Why the legacy audit didn't yield a portable value.
+- What Q45/Q46/Q47 default was used instead.
+- Recommend visual iteration to tune further.
+
+**Default expectation:** legacy audit yields portable values for at least the alpha + cmap conventions across all 4 plot types. Q45/Q46/Q47 mostly stay dormant.
+
+### Q47 cmap-swatch alignment is still relevant — but as a CONSEQUENCE of the audit, not a speculation
+
+If the legacy uses cmaps like `plasma`/`inferno`/`viridis` (which the current defaults.yaml mirrors), then Q39's categorical swatch colors don't match the actual heatmap blob colors. That's an Phase-7c.2-only issue (Q39 chose categorical hex for legend readability, but legacy used the cmap-derived shades).
+
+Resolution options:
+- **A**: Swap Q39 swatch colors to MATCH legacy cmap midshades (e.g., `plasma(0.7)` orange, `inferno(0.7)` orange-red, `viridis(0.7)` green) — reverting to the original Q30 sampling. Drawback: 6 cmaps → only 2 visually distinct hues (the original Q39 motivation).
+- **B**: Keep Q39 categorical colors AND swap legacy cmaps to white-to-categorical-color per Q47. Now swatch matches blob. Requires deviation from legacy cmap choice.
+
+Pick (A) or (B) based on legacy audit + Priya's preference. (B) preserves the Q39 readability win at the cost of a verbatim-cmap deviation; (A) maintains verbatim cmap port at the cost of legend readability. Document the trade-off + Priya's choice in Task 8 DECISIONS.
+
+### Audit applies to ALL Pattern B family entries
+
+While doing the whiskers audit, also extract the legacy convention for:
+- Single-bodypart families (tongue, jaw, nose individually) for sanity comparison.
+- `spout_spout_midpoint` (L_spout + R_spout = 2-layer Pattern B per Addendum #13).
+- `eye_eye_midpoint` (L_eye + R_eye = 2-layer Pattern B per Addendum #13).
+
+Note any inconsistencies between Pattern B legacy conventions for whiskers (6-layer) vs spout/eye (2-layer) — they may use different alpha tunings if the legacy hand-tuned per-family.
+
+### Ordering
+
+Bundle Q48 audit into the post-cohort recovery sequence (after `bs2o2pohl` completes):
+
+1. CC reads legacy Pattern B cells + extracts the parameter table.
+2. CC reports the extracted values to Priya for review BEFORE applying.
+3. Priya approves the legacy port (or asks for specific deviations per Q47 trade-off).
+4. CC patches the Pattern B rendering wrapper with legacy-verbatim values.
+5. Targeted whiskers + spout + eye re-emit (the Q40 already-queued whisker re-emit expands to cover the other Pattern B families with the Q48 patch).
+6. PS47 spot-check verifies the rendered output matches the legacy convention's visual density.
+
+This audit-first sequence may obviate Q45/Q46/Q47 entirely.
+
+### ALL OTHER LOCKS UNCHANGED
+
+(Q1.C 248-session cohort, Q2.B no-spatial-cache, Q3 verification axes, Q3a.B unbalanced source cells, Q3b OT params verbatim, Q3d.B bins-vs-all-pre-stroke comparison, Q5.G one-time-cleanup, Q6 PathResolver, Q7.A per-animal sub-batching, Q8 no-backup, Q9 F-P-5 bundle, Q10.C 7-family allowlist, Q11 driver patch, Q12.B output path naming, Q13 legacy plotting param faithfulness, Q14-Q20, Q22-Q26, Q29-Q42, Q43.B, Q45-Q48, Addendum #9-39 Task 5 scope. Q27/Q28 superseded by Q33. Q24's arrow-no-colorbar clause superseded by Q35. Q34.B descoped per Addendum #33. Addendum #15 binned_sessions row superseded by Q36. Q5.F superseded by Q5.G + Q41. Q43 superseded by Q43.B. Q45-Q47 demoted to fallback only per Q48.)
