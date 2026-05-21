@@ -6156,3 +6156,47 @@ Verdict deliverable at [`.scratch_phase_7c1/pilot_verdict.md`](../.scratch_phase
 
 ---
 
+## Phase 7c.2 close — Cohort-wide DLC kinematics + spatial re-emit + compute-on-demand spatial architecture + F-P-5 bundled + 2.15 GB legacy cleanup
+
+**Tag:** `v7c.2-dlc-cohort-completion` (applied to merge commit on main).
+**Branch:** `phase/7c.2-dlc-cohort-completion`.
+**Kickoff:** [`docs/prompts/phase-7c.2-dlc-cohort-completion-kickoff.md`](prompts/phase-7c.2-dlc-cohort-completion-kickoff.md) (59 addenda).
+**DECISIONS entry:** 2026-05-21 (Decisions 1-27).
+
+**What shipped:**
+
+- Phase D cohort re-emit: 8 animals × {266 .. 686} individual_session + 28 each of binned_sessions / proportion_differences / unbalanced_ot SVGs = **4,144 SVGs total** at canonical paths under `pipeline_outputs/dlc_kinematics/{tone_aligned_heatmaps,whole_session_heatmaps}/`. Manifest at `.scratch_phase_7c2/cohort_heatmaps_manifest.csv` (8 canonical OK rows post Task 7.C collapse). Cohort runtime 23.4 hr (84,246s).
+- Compute-on-demand spatial figure architecture (Q2.B / Addendum #3 Interpretation 1): cached Phase 6 NPZ tree eliminated; Phase 4 centered parquets are canonical whole-session spatial data; tone-aligned + whole-session heatmaps fold into Task 5 compute-on-demand wrappers (`src/stroke_orofacial/dlc_spatial/render_on_demand.py`).
+- F-P-5 SessionManifest Pattern A wiring fix + PS48/2025-03-14 production force-emit (Task 2). Forward-pointer F-P-5 discharged in-phase.
+- 7 family entries (Q10.C / Addendum #13): `tongue_spout_midpoint`, `tongue_eye_midpoint`, `jaw_eye_midpoint`, `nose_eye_midpoint`, `whiskers_eye_midpoint` (Pattern B 6-layer), `spout_spout_midpoint` (Pattern B 2-layer reference), `eye_eye_midpoint` (Pattern B 2-layer reference).
+- Q67 YAML-driven cohort enumeration refactor (Addendum #57; in-phase forward-pointer discharge): new helper `stroke_orofacial.cohort_enumeration.yaml_driven_session_dates()` + refactor of 3 cohort drivers + 13 tests (8 parity-vs-Phase-D + 5 unit). Forward-pointer `project_cohort_enumeration_should_be_yaml_driven_forward_pointer.md` discharged.
+- Q68 retire legacy `scripts/phase_6_8a_first_run_health_report.py` (Addendum #57; per Phase 7c.1 audit §5.1). `task_runner_wrapper.sh` trimmed; cosmetic next-step references in `run_notebook_10/12` cleaned up.
+- Q5.G + Q41 + CLAUDE.md Rule 7 one-time cleanup + manifest reset; **~2.15 GB legacy artifacts removed** across 9 cleanup categories (Cat 1 NPZ tree 2.03 GB / 27,642 files + Cat 9 mean_sem legacy 121 MB / 200 files + de-minimis Cats 2/4/5/8 cleared in initial pass; Cats 3/7 auto-pass; Cat 6 DROPPED per investigation — predicate would have deleted ~1,400 files of canonical Phase 7a.4 output).
+- 27 DECISIONS entries documenting all locked iterative design choices + 5 new decisions (23-27) recording Task 7 outcomes, Q67/Q68 discharge, Q70/Q71 alignment-regime side-experiment, and Q51 cohort skip audit.
+
+**Behavior changes vs prior phases:**
+
+- Pattern B render uses legacy convention end-to-end per Q55 (alpha=1.0, transparent NaN via `cmap.set_bad((1,1,1,0))`, no magnitude-floor masking, plasma/inferno/viridis cmap-per-layer for whiskers 1/2/3). Q55 supersedes earlier Q39/Q47/Q30/Q53 speculative iterations. Q56 short labels (L_w1..R_w3). Q58 Pattern B PD layered overlay (w1=RdBu, w2=PuOr, w3=BrBG). Q59 per-bp extent for Pattern B PD. Q60 grid-summary row spacing (h_pad=0.3, hspace=0.4). Q61 Pattern B UOT layered overlay.
+- PD plots use diverging red-blue cmap (red=increased, blue=decreased per Q25) + Q43.B no-data mask only (no magnitude-floor masking).
+- UOT per-bin layout collapsed to 2 panels (`mass_change` + arrows) per Q33; Pattern B UOT layered per Q61.
+- All grid-summary SVGs use Q60 row spacing.
+- Per-animal singleton `bin_sizes_days` (Q23 / Addendum #22): PS46-50 emit bin2d only; PS51/54/55 emit bin7d only.
+- Q17 H_proportion normalization with total-frame denominator universal.
+- Q19/Q49 WS-bounded restriction on whole_session scope; new `_ws_cam_frame_bounds()` in `render_on_demand.py`.
+- Q62 likelihood threshold experiment (0.80→0.70) accepted; Q63 cohort pass-rate audit + sparse warning (`_SPARSE_FRAME_WARN_THRESHOLD = 0.05`) added.
+
+**Forward-pointers queued post-merge:**
+
+- **Phase 7d-dlc-kinematics-naming-hygiene** (kickoff drafted): granularity-first layout migration for `dlc_kinematics/features/`.
+- **Phase 7-pre-alignment-templates F-P-7** (kickoff drafted): cohort-wide alignment template emit + consumer cutover.
+- **Phase 9 stats** (scoping drafted).
+- **Phase 9.1 phenotype-pooled figures** (scoping drafted).
+- **Pub-figures phase.**
+- **Possible Q70/Q71 alignment-mode follow-on** depending on the in-progress side-experiment outcomes (`.scratch_phase_7c2_alignment_test/`).
+
+**Discharged in-phase:** F-P-5 (SessionManifest Pattern A wiring); cohort-enumeration YAML-driven refactor (was queued at Addendum #5 as a post-7c.2 chore-PR, promoted to in-phase via Q67 because Cat 1 cleanup depended on it).
+
+**Tag:** `v7c.2-dlc-cohort-completion` on the merge commit.
+
+---
+

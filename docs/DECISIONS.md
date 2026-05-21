@@ -15,6 +15,244 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-21 — Phase 7c.2 close — Cohort-wide DLC kinematics + spatial re-emit + F-P-5 SessionManifest Pattern A wiring fix + compute-on-demand spatial figure architecture + Phase 7a.7 visual gate fold-in + legacy-path cleanup
+
+Phase 7c.2 closed against `phase/7c.2-dlc-cohort-completion`; branched 2026-05-15 off `main` at the Phase 7c.1 merge commit `ff36b8e` (tag `v7c.1-dlc-source-rename-and-pilot`). Tag `v7c.2-dlc-cohort-completion` on the merge commit. Kickoff [`docs/prompts/phase-7c.2-dlc-cohort-completion-kickoff.md`](prompts/phase-7c.2-dlc-cohort-completion-kickoff.md) accumulated 59 addenda across iterative re-spec. Refer to the kickoff's "ALL OTHER LOCKS UNCHANGED" footer for the final Q-lock list at close.
+
+### Decision 1 — Cohort scope: 248 sessions (Q1.C; supersedes Q1.B)
+
+Q1.B initially specified 257 sessions; Task 1 audit (Addendum #5 Q1.C) surfaced 9 out-of-YAML-range sessions enumerated from the legacy spatial tree (PS51/PS54/PS55 × 2025-04-16/17/18 pre-cohort-launch baseline acquisitions excluded by F-P-6 chore-PR policy). Corrected scope: 247 Cohort A bare sessions + 1 PS48 Pattern A multi-half = 248. Cohort B descoped per Q1.B (no jaw/tongue secondary spout sessions in this phase). In-flight fix is filter-after-walk in `scripts/phase_7c2/reemit_cohort.py` `_enumerate_cohort_a_bare_dates`; long-term YAML-driven refactor queued as forward-pointer.
+
+**Rationale.** The legacy `spatial_reward_aligned/` NPZ tree was the canonical session enumerator at Phase 7c.2 start: Phase 6 had emitted one NPZ per (animal, date) and downstream cohort drivers walked that tree to discover dates. Restarting the enumeration mid-phase via a fresh YAML-driven helper would have deferred Task 3 by a week or more; filter-after-walk via `start <= d <= end` preserved the legacy enumeration as authoritative through Phase D while delivering the Q1.C correction in-flight. The long-term YAML refactor (Decision 19) was queued as a forward-pointer at start; ended up discharged in-phase per Q67 (Decision 24) once Cat 1 cleanup required the legacy-tree-independence to land first.
+
+### Decision 2 — Architectural pivot: compute-on-demand spatial figures; cached NPZ tree eliminated (Q2.B / Addendum #3 Interpretation 1)
+
+The original Phase 7c.2 scope (drafted 2026-05-14) carried forward the Phase 6 cached-NPZ tree at `pipeline_outputs/dlc_analysis/spatial_*_aligned/`. Addendum #3 (2026-05-15) reframed: Phase 4 centered parquets carry sufficient per-frame state that the cached NPZ layer is redundant. Tone-aligned + whole-session heatmaps fold into Task 5 as compute-on-demand wrappers reading directly from centered parquets.
+
+**Rationale.** Phase 4 centered parquets retain every DLC-tracked per-frame field (x/y/likelihood for all bodyparts + alignment metadata + WS-bound mapping). The Phase 6 cached-NPZ tree was a precomputed aggregation layer on top of that — useful when the renders were re-run frequently, redundant once Phase 7c.2 converged the spatial figure code into Task 5 compute-on-demand wrappers. Eliminating the cached tree removed ~2 GB of disk overhead (discharged at Cat 1 cleanup; Decision 23) and removed the cohort-re-emit NPZ-write step (~8 min per session). Task 5 wrappers add ~15-30s per (animal, family) render call — well under amortized cost.
+
+### Decision 3 — F-P-5 corrected scope: SessionManifest Pattern A wiring fix, not new merge code (Q9 / Task 2)
+
+Original F-P-5 forward-pointer (Phase 8a.10.1) described "Pattern A DLC merge wiring for PS48/2025-03-14" as a gap requiring new merge code. 2026-05-15 codebase audit (Phase 7c.2 pre-flight) corrected the scope: merge functions `merge_licks_and_rewards` / `merge_alignment_templates` / `merge_centered_parquet` are ALREADY ported AND wired (Phase 7-pre-multi-half `v7-pre-multi-half`). The actual gap is upstream — `SessionManifest.dlc_h5_files` is empty for Pattern A multi-half sessions, blocking Phase 7a.2 `build_interpolated_trace` from running on PS48/2025-03-14. Task 2 fixes that wiring; expected scope ~3-5 commits.
+
+**Rationale.** Pre-Phase-7c.2 audit of `src/stroke_orofacial/manifest.py` confirmed the merge functions (`merge_licks_and_rewards`, `merge_alignment_templates`, `merge_centered_parquet`) are ported and wired (Phase 7-pre-multi-half `v7-pre-multi-half`). The actual gap was upstream — the SessionManifest builder's Pattern A branch did not assemble the merged `dlc_h5_files` list from per-half `multi_half_sessions:` overrides, so Phase 7a.2 `build_interpolated_trace` could not run on PS48/2025-03-14. Task 2 added the branch + production force-emit; F-P-5 forward-pointer discharged.
+
+### Decision 4 — Seven family entries: 5 production + 2 reference (Q10.C + Addendum #13)
+
+Locked allowlist for Task 5 rendering:
+
+- Production (5): `tongue_spout_midpoint`, `tongue_eye_midpoint`, `jaw_eye_midpoint`, `nose_eye_midpoint`, `whiskers_eye_midpoint` (Pattern B: 6 layers L_whiskers_1/2/3 + R_whiskers_1/2/3).
+- Reference (2; Addendum #13): `spout_spout_midpoint` (Pattern B: L_spout + R_spout), `eye_eye_midpoint` (Pattern B: L_eye + R_eye).
+
+**Rationale.** The 5 production family entries each center a tracked bodypart's spatial distribution against either the inter-spout midpoint (legacy convention, tongue only) or the contralateral-eye fiducial (Phase 7 imaging convention; all 5 other families). Eye-midpoint centering enables anatomical-frame comparison across animals; spout-midpoint centering preserves a legacy-comparison reference. Nose was kept at eye-midpoint only because the spout-midpoint variant adds no anatomical interpretation (nose is far from the spouts). `spout_spout_midpoint` and `eye_eye_midpoint` (Addendum #13) are visual-reference families: they should render symmetric near origin under correct alignment; any asymmetry signals an alignment regression — Q64/Q70/Q71 (Decision 26) exploit this as the principal visual cross-regime comparison axis.
+
+### Decision 5 — Per-animal singleton bin_size (Q23 / Addendum #22)
+
+`bin_sizes_days` defaults to `[animals.yaml <animal>.bin_days]` (singleton list per animal), NOT a fixed `[2, 7]` list. PS46-50 emit only `bin2d.svg` / `unbalanced_ot_grid_bin2d.svg`; PS51-54 emit only `bin7d.svg` / `unbalanced_ot_grid_bin7d.svg`. Each animal emits at exactly one bin_size matching its YAML configuration.
+
+**Rationale.** PS46-50 followed a dense ~daily 4-week post-stroke recovery cadence; PS51/54/55 followed a sparse ~every-7-days 12-week protocol. `bin_days=2` for the dense cohort yields ~7 post-stroke bins; `bin_days=7` for the sparse cohort yields ~10 post-stroke bins. Hardcoding a single `[2, 7]` list across all animals would double-emit per-animal artifacts at the wrong granularity for half the cohort. Per-animal singleton keys SVG output to one canonical bin_size per animal; cross-cohort comparisons happen in Phase 9 stats, where bin alignment is handled at the aggregation layer.
+
+### Decision 6 — Trial-group fanout (all/L/R) for ALL 4 tone_aligned plot types (Q16)
+
+All 4 plot types under tone_aligned scope fan out into 3 trial-group variants (all/L/R): individual_session, binned_sessions, proportion_differences, unbalanced_ot. Whole_session scope remains single-trial-group (all only) per Q19's WS-bounded restriction.
+
+**Rationale.** Tone-aligned analyses isolate behavior in a fixed peri-tone window where the tone side (L vs R cue) drives anticipated licking response. Side-separating exposes contralateral-deficit phenotypes (animals slower to respond to contra-stroke tone). Whole-session has no triggering event, so L/R trial-group splits would just partition baseline frames by an arbitrary criterion with no analytical meaning — kept as `all` only per Q19.
+
+### Decision 7 — Proportion-difference convention bundle (Q20, Q22, Q25, Q26, Q42, Q43.B)
+
+Comprehensive convention for proportion_differences plot type:
+
+- **Cmap (Q25, supersedes Q20):** red-grey-blue diverging `LinearSegmentedColormap` with stops `[(0.0, "blue"), (0.5, "#d0d0d0"), (1.0, "red")]`. **Red = increased proportion, blue = decreased.** Matches individual_session/binned_sessions hot-cmap "redder = hotter" convention.
+- **Scale (Q26):** linear, symmetric `vmin = -vmax`, `vmax = vmax_abs`. Not log; diverging cmap + zero-centering needs symmetric linear normalization.
+- **vmax_abs (Q42):** 95th-percentile of `|H_diff|` across the Q14 shared-scale bucket, NOT `max(|min|, |max|)`. Compresses outlier-driven dynamic range washout.
+- **NaN mask (Q43.B; supersedes Q43):** mask ONLY true no-data bins `(H_pre_counts == 0) & (H_post_counts == 0)` as NaN → render white via `set_bad("white")`. Preserves "data present, no change" as grey-at-midpoint signal; DO NOT use magnitude-floor masking on diverging cmaps.
+- **Tick label / axis label / title (Q22):** colorbar tick fontsize 12; axis labels "X (px, centered)" / "Y (px, centered)" fontsize 12; suptitle includes `{animal} | {family_entry} | {bin_label} − all_pre_stroke | {scope} | {trial_group}`.
+
+**Rationale.** Convention finalized via Priya 2026-05-15 visual approval on PS47 rounds 5-6, then re-validated by Phase D outputs. The Q25 red-positive/blue-negative direction matches the Q20 hot-cmap intuition ("redder = hotter"); Q42's 95th-percentile vmax compresses outlier-driven dynamic range washout without losing the bulk distribution signal; Q43.B's "true-no-data only" mask preserves "data present, no change" as the grey-at-zero signal (a magnitude-floor mask would silently hide low-magnitude regions of biological interest). Q26 symmetric-linear normalization is the only choice compatible with a diverging cmap + Q43.B mask: log/asymmetric scales would distort the zero-anchored visual semantics.
+
+### Decision 8 — UOT layout collapse: single diverging mass_change panel + arrow panel (Q33 + Q35)
+
+Q27 originally split UOT per-bin into 3 panels (mass_destroy Blues + mass_create Reds + arrows). Q33 (Addendum #30) collapsed mass_destroy + mass_create into a single diverging-cmap mass_change panel = mass_create − mass_destroy. Per-bin row becomes 2 panels (`mass_change` | `arrows`).
+
+- **mass_change cmap:** diverging red-grey-blue matching Q25 proportion-diff convention.
+- **mass_change vmax/floor:** symmetric `±vmax_abs` per Q14 bucket; magnitude-fraction floor `mass_change_floor_fraction = 0.05` masks UOT-solver noise floor as NaN.
+- **Arrow panel (Q35; supersedes Q24's no-colorbar clause):** sequential colorbar showing arrow-color → transported-mass magnitude; `quiverkey` showing reference-length → displacement-px scale. Both annotations on every arrow panel.
+- **Filename unchanged:** `unbalanced_ot_grid_bin<N>d.svg` (or per Q23 per-animal singleton, drop the `bin<N>d` suffix).
+
+**Rationale.** The 3-panel Q27 layout split positive and negative mass flow across two sequential cmaps + a third arrow panel, forcing the viewer to mentally combine three frames. Q33's single diverging mass_change panel embeds both signs in one cmap — directly comparable to the proportion_differences plot's Q25 convention, so a viewer reading both plot families uses the same color encoding throughout. The 0.05 magnitude-fraction floor masks UOT-solver noise (sub-bin mass artifacts the OT solver emits due to bin discretization at low pre/post mass), preserving interpretable signal without solver-noise speckle.
+
+### Decision 9 — Pattern B render conventions: swatch legend for ≥3 layers + transparent NaN + layout fixes (Q30, Q31, Q32) + legacy audit first (Q48)
+
+For Pattern B layered-overlay families (whiskers 6-layer, spout/eye 2-layer):
+
+- **Layer legend (Q30):** 6-whisker Pattern B uses `mpatches.Patch` proxy swatch legend at `bbox_to_anchor=(1.02, 0.5)`, NOT 6 stacked colorbars. 2-layer Pattern B (spout, eye) keeps 2 stacked colorbars per Q24 unless overlap forces swatch fallback.
+- **Layout (Q31):** `constrained_layout=True` + `bbox_inches="tight"` + `figsize` proportional to legend extent. Per-cbar `pad >= 0.1`.
+- **Transparent NaN (Q32):** Pattern B layers use `cmap.set_bad((1.0, 1.0, 1.0, 0.0))` (transparent white) instead of opaque white. Lower layers show through where upper layers have no data. Single-cmap plots keep `set_bad("white")` (opaque) — no layering means no washing-out.
+- **Magnitude-floor per layer (Q32 corollary):** `layered_overlay_floor_fraction = 0.05` masks sub-floor bins per layer.
+- **Q48 audit-first reflex (Addendum #40):** before applying speculative render params (Q45/Q46/Q47 demoted), CC audits the legacy notebook's working convention + ports verbatim. Speculative defaults are FALLBACK ONLY when legacy doesn't pin a value.
+
+**Rationale.** Q48 audit of legacy `_render_overlay_composite()` found the working convention: `alpha=1.0` (NOT 0.5/0.3), `cmap.set_bad((1,1,1,0))` for transparent NaN (so lower layers show through where upper layers have no data), no magnitude-floor masking (legacy uses raw H_counts with sqrt-norm), distinct per-layer cmaps (plasma/inferno/viridis for whiskers 1/2/3). Q55 ported this verbatim. Q47/Q46/Q45 (Addendum #39) speculative defaults demoted per Priya 2026-05-15 "legacy code already does this successfully" feedback — the audit-first reflex (Decision 18) is the operating principle.
+
+### Decision 10 — Whiskers Pattern B fixes: unified bilateral xlim + all-6-iteration verification + 6-color legend (Q37, Q38, Q39, Q40)
+
+PS47 spot-check surfaced 3 coupled whiskers bugs: (a) one-sided xlim from L_whiskers_1 first-bp lookup (only positive-X visible despite R_whiskers at negative X); (b) ambiguous whether all 6 whiskers iterate; (c) swatch legend conveying only 2 hues (plasma+inferno both render orange, viridis green) for both L and R.
+
+- **Q37 fix:** override `L_whiskers_1.per_center_mode.eye_midpoint.xlim` to UNIFIED bilateral range `[-200, 200]` (symmetric, max(|R xlim|, |L xlim|) + pad). Mirror Addendum #13 convention for spout/eye Pattern B.
+- **Q38 fix:** verify `EXPECTED_TONE_ALIGNED_FAMILIES["whiskers_eye_midpoint"].bodyparts` lists all 6. Audit render loop for 6-iteration.
+- **Q39 fix:** swatch legend uses 6 visually-distinct base colors. Option (i): categorical hex `{L: red/orange/yellow-olive, R: blue/cyan/purple}`. Option (ii): different cmap positions across L vs R (e.g., L uses Reds at [0.4, 0.6, 0.9]; R uses Blues at [0.4, 0.6, 0.9]). CC picks per audit findings + Priya approval.
+- **Q40 skip-and-rerun:** mid-flight, skip whiskers_eye_midpoint in current Step 7 re-emit + targeted re-emit post-fix.
+
+**Rationale.** PS47 round 4 spot-check revealed all whiskers rendered only on the positive-X half of the plot. Root cause: xlim came from `L_whiskers_1.per_center_mode.eye_midpoint.xlim` (first-bp lookup) which was [10, 200] — positive-only. R_whiskers data at negative X was masked out by the imshow extent. Q37 mirrors Addendum #13's bilateral-symmetric xlim convention for spout/eye Pattern B (`[-200, 200]`). Q38 confirmed the 6-iteration render loop emits all 6 whisker layers. Q39 swatch legend uses 6 distinct hex colors (L red/orange/yellow; R blue/cyan/purple). Q40 skip+targeted-re-emit kept Step 7 unblocked while the fix landed.
+
+### Decision 11 — Tongue eye_midpoint x_range pre-filter gap + targeted re-emit (Q34 / Addendum #31)
+
+PS47 tongue_eye_midpoint heatmaps showed outlier tongue points outside anatomical range. `tongue.per_center_mode.spout_midpoint` has `x_range: [-175, 175]` pre-filter (drops DLC picket-fence mis-detections); `tongue.per_center_mode.eye_midpoint` had no pre-filter. Q34 patches config + targeted re-emit covers tongue_eye_midpoint family entry post-cohort. Q34.B (jaw spout_midpoint analog) descoped per Addendum #33 since jaw_spout_midpoint isn't in the Q10.C 7-family allowlist.
+
+**Rationale.** Legacy `notebooks/spatial_visualization_NB1216.ipynb` defines tongue `x_range = [-175, 175]` for both spout-midpoint and eye-midpoint centering (drops DLC picket-fence mis-detections beyond anatomical range). The Phase 7c.0 config port carried `x_range` forward only for tongue.per_center_mode.spout_midpoint; eye_midpoint inherited the parent block without the `x_range` key. Q34 patched `configs/defaults.yaml`: `tongue.per_center_mode.eye_midpoint.x_range: [-175, 175]`. Q34.B (jaw spout_midpoint analog) descoped per Addendum #33 — jaw_spout_midpoint is not in the Q10.C 7-family allowlist.
+
+### Decision 12 — Plot polish bundle: axis labels + tick sizes + titles + colorbar conventions (Q22, Q24)
+
+Universal polish applied to all 4 plot types × 2 scopes × 7 family entries:
+
+- Tick label fontsize 12pt (was matplotlib default 10pt).
+- Axis labels always present: "X (px, centered)" / "Y (px, centered)" fontsize 12.
+- Titles always present + informative; suptitle format encodes (animal, family_entry, plot_type, scope, trial_group, bin_label) per plot type per Q22 template.
+- Colorbar (Q24): single-axis plots get one cbar attached right; grid-summary plots get one shared cbar right-of-grid; Pattern B ≥3-layer overlays get swatch legend per Q30.
+
+**Rationale.** Matplotlib default 10pt was readable at notebook-zoom but small at PDF/print scale. 12pt brings spatial heatmaps in line with the Phase 7a.4 day-binned and Phase 7a.6 mean-sem cohort figures (which already use 12pt). Validated via Priya's PS47 round 5 visual approval at PDF export scale.
+
+### Decision 13 — Bucket-shared colormap scale per (animal, family_entry, plot_type, scope, bin_size, trial_group) (Q14 + Q18)
+
+Per Q14 lock, the colormap scale is shared across ALL panels within a bucket. Q18 locks two-pass rendering: pass 1 computes bucket-wide vmin/vmax; pass 2 renders all panels at the shared scale.
+
+**Rationale.** Per-panel auto-scale would make a low-activity bin's max-frequency cell appear as "hot" as a high-activity bin's max-frequency cell, hiding the actual cross-bin density change (the biological signal of interest). Bucket-shared scale forces consistent visual encoding within (animal, family, plot_type, scope, bin_size, trial_group), so intensity differences across bins reflect true distributional differences. Q52 (Addendum #44) extended the bucket-shared scale to Pattern B per-bp norms — without it, cross-SVG Pattern B comparisons lose meaning.
+
+### Decision 14 — H_proportion normalization: total-frame-count denominator (Q17)
+
+H_proportion = H_counts / n_total_frames_in_window (PRE-likelihood-filter total), NOT H_counts / passed_count. Q17 locked as universal switch across all proportion-based outputs. Bins below likelihood threshold contribute zero to the numerator but still count in the denominator → proportion is total-frame-relative, not passed-frame-relative.
+
+**Rationale.** The proportion answers "what fraction of all frames in the WS-bounded window had the bodypart detected at this spatial bin." Pre-likelihood-filter denominator means bins with high low-likelihood frame counts get correctly reported as low-proportion (the bodypart wasn't reliably detected there), not artificially inflated as "high-proportion of the surviving frames" — which would happen with H_counts / passed_count. Universal across all 4 plot types so that proportion has a single consistent semantic across the cohort.
+
+### Decision 15 — Whole_session WS-bounded restriction (Q19)
+
+Whole_session scope restricts to frames within `[ws_start_cam_idx, ws_end_cam_idx]` from Phase 3 alignment template. Frames before WS start or after WS end excluded from whole_session aggregates.
+
+**Rationale.** Camera frames before WS start or after WS end are unaligned with the WS-frame time base used everywhere else in the pipeline (Phase 5 onward), so including them in whole_session aggregates would contaminate the WS-frame interpretation. The Phase 3 alignment template's `sig_camIdx__idx_ws` LUT provides the canonical (cam_idx → ws_idx) mapping; its finite min/max define the WS-covered cam-frame range. Q49 (Addendum #41) bakes this into `_ws_cam_frame_bounds()` in `render_on_demand.py`, used by every whole_session render call (and reused by the Q71 alignment-comparison side-experiment).
+
+### Decision 16 — Q5.G + Q41: one-time-only stale cleanup + manifest reset (Addendum #36; supersedes Q5.F / Q5.E / Q5.D / Q5.C / Q5.B)
+
+8-round `rm -rf` incident 2026-05-15: CC interpreted Q5.F's "before Step 7 final re-render" as per-cycle pattern, ran `rm -rf` on heatmap trees 8 times across kill+relaunch cycles, deleting PS46 + most PS47 outputs. Stale manifest's `PS46,OK` row caused resume-skip after wipes. Locked Q5.G (cleanup is one-time-only in Task 7, requires explicit per-invocation Priya approval) + Q41 (atomic manifest reset accompanies any destructive op). Per-cycle `rm -rf` explicitly DISALLOWED.
+
+**Recovery:** PS46 targeted re-emit via `--animal PS46 --no-skip` + manifest reset; queued post-cohort.
+
+**Rationale.** Incident timeline: 2026-05-15 mid-flight, CC interpreted Q5.F's "before Step 7 final re-render" as compatible with a per-kill+relaunch cycle wipe pattern. Ran `rm -rf` on `tone_aligned_heatmaps/` + `whole_session_heatmaps/` across 8 cycles to "force re-emit". Stale `.scratch_phase_7c2/cohort_heatmaps_manifest.csv` carried `PS46,OK` rows that survived each wipe; resume-logic skipped PS46 on every restart. Result: PS46 outputs deleted from disk, never re-emitted. Remediated via Q5.G (cleanup is one-time-only in Task 7, requires explicit per-invocation Priya approval) + Q41 (atomic manifest reset alongside any destructive op). CLAUDE.md Rule 7 expansion formalizes the governance for future phases: per-invocation approval, multiple-wipes-per-session anti-pattern, manifest-reset-with-destructive-op requirement.
+
+### Decision 17 — binned_sessions grid layout (Q36 / Addendum #34; supersedes Addendum #15 per-bin SVG fanout)
+
+binned_sessions emits ONE grid-summary SVG combining all N_bins instead of M_bins separate SVGs. Tone_aligned scope: 3 grids per (animal, family, bin_size) (one per trial_group). Whole_session scope: 1 grid per (animal, family, bin_size). Mirrors proportion_differences (Q3c) + unbalanced_ot (Q3d.B / Addendum #15) grid-summary convention.
+
+**Rationale.** Per-bin fanout (Addendum #15) would have emitted ~7-10 SVGs per (animal, family, bin_size, trial_group) for binned_sessions — ~1,300+ SVGs cohort-wide. Grid-summary collapses to 1 SVG per bucket = ~224 binned_sessions SVGs total. Each SVG renders the full bin axis horizontally, preserving cross-bin visual comparison while keeping file count manageable. Mirrors proportion_differences (Q3c) and unbalanced_ot (Q3d.B / Addendum #15) grid-summary conventions, so all 3 grid plot types share layout.
+
+### Decision 18 — Q13 "port legacy plotting params faithfully" reaffirmed via Q48 audit-first reflex (Addendum #40)
+
+Q13 originally locked the principle; in practice Q45/Q46/Q47 (Addendum #39) speculated new defaults for Pattern B render params. Priya 2026-05-15: "legacy code already overlays whiskers successfully." Q48 reframed: legacy-audit-first is the required reflex; speculative defaults are fallback only.
+
+**Rationale.** The Q39 → Q47 → Q30 → Q48 → Q53 → Q55 sequence cycled through 6 speculative whisker-render parameter sets before Q48 audited the legacy notebook directly and found alpha=1.0 + transparent NaN + plasma/inferno/viridis was the working convention. The 6-iteration cost is the standing lesson captured at memory `feedback_audit_legacy_before_speculating_on_render_params.md`: when Priya supplies a reference visual, port the legacy cell verbatim FIRST; do not iterate render params ahead of the audit. Q18 (this list) reaffirms Q13's "port legacy plotting params faithfully" lock with this audit-first reflex as the procedural complement.
+
+### Decision 19 — Cohort enumeration: filter-after-walk in-flight; YAML-driven refactor discharged in-phase (Addendum #5 → Addendum #57 Q67)
+
+Phase 7c.2 Tasks 3-4 ran with filter-after-walk against the legacy `pipeline_outputs/dlc_analysis/spatial_reward_aligned/` tree per the original Q1.C correction strategy. Long-term refactor switches to YAML-driven enumeration directly (no filesystem walk), which became urgent when Cat 1 deletion (~2 GB freed) needed to land in Task 7 — the 4 production consumers of that tree had to either cut over or retire first. The forward-pointer (memory `project_cohort_enumeration_should_be_yaml_driven_forward_pointer.md`) was discharged in-phase per Addendum #57 Q67; see Decision 24 for the refactor outcomes.
+
+**Rationale.** The filter-after-walk in-flight strategy preserved Phase D timing (no Task 3 deferral) at the cost of carrying a soon-to-be-deleted dependency. Pulling the YAML refactor into Task 7 enabled Cat 1 cleanup atomically; the alternative (forward-pointer + delayed cleanup) would have left a 2 GB stale tree across a phase boundary, complicating future re-emit work.
+
+### Decision 20 — Output path naming for compute-on-demand spatial figures (Q12.B + Addendum #7/#8)
+
+`pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps/<animal>/<family_entry>/<plot_type>/<trial_group>_<window>.svg` (tone_aligned scope). `pipeline_outputs/dlc_kinematics/whole_session_heatmaps/<animal>/<family_entry>/<plot_type>.svg` (whole_session scope). Both under `dlc_kinematics/` (not `dlc_analysis/`); naming convention is analysis-type-first.
+
+**Rationale.** `dlc_analysis/` was the Phase 6 namespace for cached spatial NPZ outputs (deleted as Cat 1; Decision 23). `dlc_kinematics/` is the Phase 7a namespace for compute-from-centered-parquet outputs (`interpolated_traces`, `features`, `tongue_angle`, `mean_sem`). Tone-aligned + whole-session heatmaps share the compute-from-parquet pattern, so they belong in `dlc_kinematics/` — namespace-by-source matches the architectural intent (the Decision 2 pivot eliminated the cached-NPZ semantic that would have justified `dlc_analysis/`).
+
+### Decision 21 — Post-cohort recovery sequence completed at phase-close
+
+After in-flight cohort `bs2o2pohl` completed: Step B per-animal SVG audit; PS46 targeted re-emit (~100 min); Q42 + Q43.B proportion_diff patches + targeted re-emit; Q48 legacy Pattern B audit + Q37/Q38/Q39 whisker fixes + targeted whiskers re-emit; Q34 tongue_eye_midpoint x_range fix + targeted re-emit; Task 6 verification; Task 7 cleanup (Q5.G + Q41 with explicit Priya approval).
+
+**Rationale + numerics.** Phase D cohort re-emit final state (collapsed `cohort_heatmaps_manifest.csv` per Task 7.C):
+
+| Animal | n_individual | n_binned | n_PD | n_UOT | runtime (s) | err |
+|---|---|---|---|---|---|---|
+| PS46 | 294 | 28 | 28 | 28 | 7,095.9 | 0 |
+| PS47 | 294 | 28 | 28 | 28 | 7,174.3 | 0 |
+| PS48 | 294 | 28 | 28 | 28 | 7,249.7 | 0 |
+| PS49 | 308 | 28 | 28 | 28 | 7,506.9 | 0 |
+| PS50 | 266 | 28 | 28 | 28 | 7,012.7 | 0 |
+| PS51 | 672 | 28 | 28 | 28 | 16,266.6 | 0 |
+| PS54 | 686 | 28 | 28 | 28 | 16,353.4 | 0 |
+| PS55 | 658 | 28 | 28 | 28 | 15,586.3 | 0 |
+| **Total** | **3,472** | **224** | **224** | **224** | **84,245.8 (≈23.4 hr)** | **0** |
+
+Grand total: 4,144 SVGs across 8 cohort animals × 7 family entries. 0 ERR rows across the cohort manifest. 1 unique Q51 WARNING-skip (PS50/2025-03-24/R_eye/R; 10 distinct call-sites = same underlying degraded R_eye likelihood; see Decision 27).
+
+### Decision 22 — Forward-pointers queued post-Phase 7c.2
+
+- **Phase 7d-dlc-kinematics-naming-hygiene** (kickoff drafted 2026-05-15 at `docs/prompts/phase-7d-dlc-kinematics-naming-hygiene-kickoff.md`): granularity-first layout migration for `dlc_kinematics/features/` → `per_frame/` + tongue endpoints → `per_trial/tongue/`.
+- **Phase 7-pre-alignment-templates** (kickoff drafted 2026-05-15 at `docs/prompts/phase-7-pre-alignment-templates-kickoff.md`): cohort-wide alignment template emit + consumer cutover from legacy tree.
+- **Phase 9 stats** (scoping drafted at `docs/prompts/phase-9-stats-scoping.md`): statistical tests on Phase 7c.2 + kinematics outputs.
+- **Phase 9.1 phenotype-pooled figures** (scoping drafted at `docs/prompts/phase-9.1-phenotype-pooled-figures-scoping.md`): mild/moderate/severe phenotype cohort-pooled visualizations.
+- **Pub-figures phase:** aesthetic-tier polish for paper figures.
+- **Possible Q70/Q71 alignment-mode follow-on** (depending on findings; see Decision 26).
+
+**Discharged in-phase:**
+- **Cohort enumeration YAML-driven refactor** — discharged in-phase per Q67 (Decision 24); was originally queued as a chore-PR forward-pointer at Addendum #5.
+
+**Rationale (ordering).** Phase 7d (naming-hygiene) → Phase 7-pre-alignment-templates (consumer cutover) → Phase 9 stats → Phase 9.1 phenotype-pooled figures → pub-figures. The cohort-enumeration refactor was promoted to in-phase scope because Cat 1 cleanup atomically depended on it (Decision 19).
+
+### Decision 23 — Task 7 stale-output cleanup outcome (Q5.G + Q41 execution)
+
+Task 7 executed in 4 stages per Q5.G + Q41 + CLAUDE.md Rule 7 (per-invocation Priya approval for destructive ops):
+
+- **Task 7.A** — dry-run enumeration of 9 cleanup categories (`scripts/task7a_dry_run.py`); ~30,499 files / 2,891 MB enumerated total.
+- **Task 7.B** — per-category execution with explicit Priya approval for each. Cat 6 deferred for investigation. First pass cleared Cats 3, 4, 5, 7 + (partial) Cat 2; resume pass cleared Cats 8, 9 (Cats 2/4/5/8 found at zero already; Cat 9 freed 200 files / 121.4 MB). Cat 1 deferred behind Q67 (Decision 24) + Q68 (Decision 25); finally executed at Q69 freeing 27,642 files / 2,034.2 MB.
+- **Task 7.C** — `cohort_heatmaps_manifest.csv` collapsed 19 → 8 canonical OK rows (one per cohort animal). Pre-collapse backup at `.scratch_phase_7c2/cohort_heatmaps_manifest.pre_task7c.csv`.
+- **Task 7.D** — per-category verification PASS across all 9 cats. Verdict at `.scratch_phase_7c2/cleanup_verdict.md`.
+
+**Total freed: ~2.15 GB** (Cat 1: 2,034 MB + Cat 9: 121 MB + de-minimis Cats 2/4/5/8). Cat 6 DROPPED — predicate iterated `tongue_angle/within_session/<animal>` as if `<animal>` were `<date>`, producing 8 false-positive matches across the canonical Phase 7a.4 within_session/<PS46-PS55>/ tree (~1,400 files / ~450 MB); executing it would have deleted canonical output. Investigation at `.scratch_phase_7c2/cat6_verdict.md`.
+
+### Decision 24 — Q67 YAML-driven cohort enumeration: in-phase discharge of forward-pointer (Addendum #57)
+
+Forward-pointer `project_cohort_enumeration_should_be_yaml_driven_forward_pointer.md` discharged in-phase per Addendum #57 Q67. Added `src/stroke_orofacial/cohort_enumeration.yaml_driven_session_dates()` + refactored the 3 cohort drivers (`render_heatmaps.py`, `reemit_cohort.py`, `reemit_cohort_aggregates.py`) to use it. 13 new tests in `tests/test_cohort_enumeration.py` pass (8 parity tests against Phase D actual emitted date set + 5 unit tests for boundary inclusivity, exclusion scoping, PS48 Pattern A inclusion, empty-range handling, and analysis-context filtering). Pytest collection stable at 1502 tests. Refactor commit `e1aba11`.
+
+**Rationale.** Cat 1 deletion (Decision 23) atomically depended on zero production reads from `spatial_reward_aligned/`. The 4 prior consumers were (a) the 3 cohort drivers above (refactored away here) and (b) the Phase 6.8a health-report script (retired per Decision 25). With both fronts landed, Q69's post-refactor grep returned zero production reads; Cat 1 unblocked.
+
+### Decision 25 — Q68 retire legacy `phase_6_8a_first_run_health_report.py` (Addendum #57; Option A)
+
+Per Phase 7c.1 audit §5.1: "PRESERVE health-report script with inline-comment breadcrumb (retires alongside legacy tree in Phase 7c.2 Task 5)." Q68 executed Option A:
+- Deleted `scripts/phase_6_8a_first_run_health_report.py`.
+- Removed the health-report invocation block from `scripts/task_runner_wrapper.sh`; preserved the `scripts/run_notebook_12_first_emit.py` invocation per Priya's "wrapper has OTHER tasks → preserve the rest" rule; tightened docstring to remove dangling references to the deleted script.
+- Cleaned cosmetic next-step references in `scripts/run_notebook_10_phase_4_centering.py` (docstring line 43 + print line 199) and `scripts/run_notebook_12_first_emit.py` (docstring line 36 + print line 353).
+
+Pytest collection unchanged (1502 tests). No production code reference remains in `src/scripts/tests/notebooks/configs/`; only historical references in `docs/` (DECISIONS.md, MIGRATION_LOG.md, kickoff doc, runbook).
+
+### Decision 26 — Q70/Q71 alignment-regime side-experiment (parallel; outcomes pending review)
+
+Q64 (Addendum #54) seeded an alignment-regime visual-comparison side-experiment in `.scratch_phase_7c2_alignment_test/`. The Phase 7c.2 production pipeline uses `eye_centered` alignment; Q64-Q71 compares it against `eye_affine`, `eye_rigid`, `spout_centered` to surface (a) cohort-wide regime-preference patterns, (b) phenotype-stratified regime sensitivity (mild PS47-50 vs mod-severe PS46/PS51 vs severe PS54/PS55), (c) scale-drift signature differences (PS51/PS54/PS55 ~4% scale shrinkage over 60d vs PS46-50 ~1% shrinkage), and (d) window-dependent regime sensitivity (tone_aligned vs whole_session).
+
+- **Q65** (Addendum #55): per-bin PD-comparison rendering (4 regimes × N bins × {pre, post}).
+- **Q66** (Addendum #56): pre-stroke bins included as null-reference rows (expected near-zero, calibration baseline).
+- **Q70** (Addendum #58): expand to 8-animal cohort × 6 families (drop `tongue_spout_midpoint` as redundant with `tongue_eye_midpoint`).
+- **Q71** (Addendum #59): add `whole_session` scope alongside `tone_aligned` (with Q49 WS-bounded frame filter).
+- **Cmap-direction bug fix** (Priya 2026-05-21 catch): Q66 used `[(0.0, red), (1.0, blue)]` (vmin→red = NEGATIVE diff red), opposite of Q25 canonical. Corrected to `[(0.0, blue), (0.5, grey), (1.0, red)]` matching `_PROPORTION_DIFF_CMAP`. Applied at the Q70+Q71 combined launch.
+
+Total output: 192 SVGs (48 Q64-style IS + 144 Q70 tone_aligned PD + 48 Q71 whole_session PD), still rendering in background at phase-close (bg task `buv0jo455`; ~2.7 hr wall time). Outcomes (per-animal regime winner, scale-drift visual confirmation, window-dependent regime sensitivity) fold into this Decision post-hoc OR queue a Phase 7c.2-follow-on note depending on findings.
+
+### Decision 27 — Q51 cohort skip audit (PS50/2025-03-24/R_eye accepted as data-quality noise)
+
+Q51 (Addendum #43 logging instrumentation) emits per-skip WARNING + end-of-aggregation INFO summary when `compute_animal_aggregated_histogram` returns None for a (date, bodypart, trial_group). Phase D cohort emitted 10 Q51 WARNINGs cohort-wide; root cause traced to ONE session: PS50/2025-03-24/R_eye/R (10 distinct call-sites = same underlying degraded R_eye DLC likelihood on that session).
+
+Q63 (Addendum #53) added a cohort pass-rate audit + sparse-warning threshold `_SPARSE_FRAME_WARN_THRESHOLD = 0.05` to surface near-degenerate sessions. The audit surfaced 2 additional sparse-pass cases not caught by Q51 (because their pass-count was non-zero): PS50/2025-03-28/R_eye and PS49/2025-03-30/L_eye.
+
+All 3 cases accepted as data-quality noise (Priya 2026-05-21 review); future degradations will be caught by the Q63 sparse warning at first appearance.
+
+---
+
 ## 2026-05-15 — Phase 7c.1 close — Source-side on-disk-string renames (Addendum #1 deferrals from 7b-light) + 3-session pilot re-emit
 
 **Phase metadata.** Branch `phase/7c.1-dlc-source-rename-and-pilot`, opened 2026-05-15 off `main` at the Phase 7b-light merge commit `d80d7c0` (tag `v7b-light-dlc-narrative-cleanup`). Tag `v7c.1-dlc-source-rename-and-pilot` on the merge commit. Kickoff [`docs/prompts/phase-7c.1-dlc-source-rename-and-pilot-kickoff.md`](prompts/phase-7c.1-dlc-source-rename-and-pilot-kickoff.md) (with Addendum #1 — pilot scope locked to full per-session DLC pipeline, Categories A-D + D-supplements, pre-Task-3 — and Addendum #2 — Finding A: Phase 8a.10.1 Task 4.5 wrote to production paths, cohort-archeology implications for Phase 7c.2, post-Task-4). Discharges Phase 7b-light Addendum #1 on-disk-string deferrals (output subdir paths, NPZ schema keys, window-dir tokens, family-name tokens, CLI flag spellings, figure filename suffixes) for the renamed source surface; cohort completion deferred to Phase 7c.2.
