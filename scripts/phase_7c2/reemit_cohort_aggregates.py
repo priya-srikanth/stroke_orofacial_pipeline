@@ -53,8 +53,8 @@ import sys
 import time
 from pathlib import Path
 
-from stroke_orofacial.animals import get_animal
-from stroke_orofacial.config_loader import load_defaults, load_session_overrides
+from stroke_orofacial.cohort_enumeration import yaml_driven_session_dates
+from stroke_orofacial.config_loader import load_defaults
 from stroke_orofacial.dlc_kinematics import (
     aggregate_licking_dynamics_day_binned_by_animal,
     build_individual_sessions_animal,
@@ -70,14 +70,6 @@ COHORT_ORDER = ("PS46", "PS47", "PS48", "PS49", "PS50", "PS51", "PS54", "PS55")
 
 MEAN_SEM_BODYPARTS = ("tongue", "jaw")
 MEAN_SEM_TIME_WINDOWS_MS = ((100, 1000), (500, 5000))
-
-# Canonical legacy config used by Task 3 enumeration (duplicated here to
-# avoid scripts/scripts cross-import; the Task 1.5 + Task 3 cohort manifest
-# uses the same path). The legacy spatial tree retires in Task 7 cleanup;
-# after that, enumeration must become YAML-driven directly per the
-# forward-pointer captured in Addendum #5.
-CANON_BP_CM = "tongue_spout_midpoint"
-CANON_WIN = "trials-all_-100to1000ms"
 
 MANIFEST_PATH = Path(".scratch_phase_7c2/cohort_aggregates_manifest.csv")
 MANIFEST_HEADER = [
@@ -148,48 +140,15 @@ def _build_err_row(animal: str, t0: float, anomalies: list[str]) -> dict:
 
 
 def _enumerate_yaml_filtered_dates(animal: str, resolver: PathResolver) -> list[dt.date]:
-    """Walk legacy spatial tree + filter by YAML range + add Pattern A
-    dates (mirrors Task 3 enumerator in reemit_cohort.py). Returns
-    datetime.date list in chronological order.
+    """Q67 (Addendum #57) — YAML-driven session-date enumeration.
 
-    Per Q1.C (Addendum #5) the cohort scope is 247 in-YAML-range
-    cohort-A bare sessions + 1 PS48/2025-03-14 Pattern A multi-half
-    session = 248 total. The walk-then-filter step yields the 247 bare;
-    Pattern A dates are merged in from
-    ``session_overrides.yaml multi_half_sessions:``.
-
-    Forward-pointer (Addendum #5): switch to YAML-driven enumeration
-    after Task 7 deletes the legacy spatial tree. Until then this
-    walk-then-filter approach is the canonical session-list source.
+    ``resolver`` retained for signature compatibility with prior callers
+    but unused after the refactor: enumeration is pure YAML, no
+    filesystem dependency on the legacy ``spatial_reward_aligned/``
+    tree (which Q69 deletes).
     """
-    import re
-    output_root = resolver.pipeline_outputs("dlc_analysis")
-    canon_dir = output_root / "spatial_reward_aligned" / CANON_BP_CM / CANON_WIN / animal
-    animal_info = get_animal(animal)
-    start = animal_info.session_start
-    end = animal_info.session_end
-
-    dates: set[dt.date] = set()
-    if canon_dir.exists():
-        for npz in sorted(canon_dir.glob("heatmap_*.npz")):
-            m = re.match(r"heatmap_(\d{8})\.npz", npz.name)
-            if not m:
-                continue
-            ds = m.group(1)
-            d = dt.date(int(ds[0:4]), int(ds[4:6]), int(ds[6:8]))
-            if start <= d <= end:
-                dates.add(d)
-
-    # Pattern A: add multi_half_sessions: dates (no legacy NPZ; covered
-    # by Task 2 F-P-5 wiring + Task 3 re-emit). Currently PS48/20250314 only.
-    overrides = load_session_overrides()
-    mh = overrides.get("multi_half_sessions", {}) or {}
-    for ds in (mh.get(animal, {}) or {}).keys():
-        d = dt.date(int(ds[0:4]), int(ds[4:6]), int(ds[6:8]))
-        if start <= d <= end:
-            dates.add(d)
-
-    return sorted(dates)
+    del resolver  # no longer needed after Q67 refactor
+    return yaml_driven_session_dates(animal)
 
 
 def _resolve_mean_video_windows() -> list[tuple[int, int]] | None:

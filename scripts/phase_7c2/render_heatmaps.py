@@ -38,7 +38,6 @@ import argparse
 import csv
 import datetime as dt
 import logging
-import re
 import sys
 import time
 from pathlib import Path
@@ -49,10 +48,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from stroke_orofacial.animals import get_animal
+from stroke_orofacial.cohort_enumeration import yaml_driven_session_dates
 from stroke_orofacial.config_loader import (
     EXPECTED_TONE_ALIGNED_FAMILIES,
     load_defaults,
-    load_session_overrides,
 )
 from stroke_orofacial.dlc_kinematics._day_binned import _compute_rel_day_bin_label
 from stroke_orofacial.dlc_spatial.render_on_demand import (
@@ -101,10 +100,6 @@ SCOPES = ("tone_aligned", "whole_session")
 # animal in animals.yaml has bin_days set).
 _FALLBACK_BIN_SIZES_DAYS: tuple[int, ...] = (2,)
 
-# Task 3/4 cohort enumeration constants.
-CANON_BP_CM = "tongue_spout_midpoint"
-CANON_WIN = "trials-all_-100to1000ms"
-
 MANIFEST_PATH = Path(".scratch_phase_7c2/cohort_heatmaps_manifest.csv")
 MANIFEST_HEADER = [
     "animal",
@@ -124,33 +119,15 @@ log = logging.getLogger("phase_7c2.render_heatmaps")
 
 
 def _enumerate_yaml_filtered_dates(animal: str, resolver: PathResolver) -> list[dt.date]:
-    """Walk legacy spatial tree + YAML range filter + Pattern A. Mirrors
-    Task 3/4 enumeration; see Addendum #5 + #4 for context."""
-    output_root = resolver.pipeline_outputs("dlc_analysis")
-    canon_dir = output_root / "spatial_reward_aligned" / CANON_BP_CM / CANON_WIN / animal
-    animal_info = get_animal(animal)
-    start = animal_info.session_start
-    end = animal_info.session_end
+    """Q67 (Addendum #57) — YAML-driven session-date enumeration.
 
-    dates: set[dt.date] = set()
-    if canon_dir.exists():
-        for npz in sorted(canon_dir.glob("heatmap_*.npz")):
-            m = re.match(r"heatmap_(\d{8})\.npz", npz.name)
-            if not m:
-                continue
-            ds = m.group(1)
-            d = dt.date(int(ds[0:4]), int(ds[4:6]), int(ds[6:8]))
-            if start <= d <= end:
-                dates.add(d)
-
-    overrides = load_session_overrides()
-    mh = overrides.get("multi_half_sessions", {}) or {}
-    for ds in (mh.get(animal, {}) or {}).keys():
-        d = dt.date(int(ds[0:4]), int(ds[4:6]), int(ds[6:8]))
-        if start <= d <= end:
-            dates.add(d)
-
-    return sorted(dates)
+    ``resolver`` retained for signature compatibility with prior callers
+    but unused after the refactor: enumeration is pure YAML, no
+    filesystem dependency on the legacy ``spatial_reward_aligned/``
+    tree (which Q69 deletes).
+    """
+    del resolver  # no longer needed after Q67 refactor
+    return yaml_driven_session_dates(animal)
 
 
 def _bin_dates_by_rel_day(

@@ -70,13 +70,11 @@ import datetime as dt
 import hashlib
 import json
 import logging
-import re
 import sys
 import time
 from pathlib import Path
 
-from stroke_orofacial.animals import get_animal
-from stroke_orofacial.config_loader import load_session_overrides
+from stroke_orofacial.cohort_enumeration import yaml_driven_session_dates
 from stroke_orofacial.paths import PathResolver
 from stroke_orofacial.dlc_kinematics import (
     build_interpolated_trace_by_animal_date,
@@ -109,10 +107,6 @@ MANIFEST_HEADER = [
 MAX_PER_ANIMAL_FAILURES = 2
 MAX_COHORT_FAILURES = 5
 
-# Canonical legacy config used by Task 1 audit (and to enumerate cohort-A bare sessions).
-CANON_BP_CM = "tongue_spout_midpoint"
-CANON_WIN = "trials-all_-100to1000ms"
-
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger("phase_7c2.reemit_cohort")
@@ -128,58 +122,17 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def _enumerate_cohort_a_bare_dates(animal: str, resolver: PathResolver) -> list[str]:
-    """Walk legacy `spatial_reward_aligned/<canon>/<animal>/heatmap_*.npz` to
-    enumerate cohort-A bare-session date strings, FILTERED to in-YAML-range
-    per ``configs/animals.yaml <animal>.sessions.start/end``.
+def _enumerate_session_dates(animal: str) -> list[dt.date]:
+    """Q67 (Addendum #57) — YAML-driven cohort-A bare + Pattern A enumeration.
 
-    Per Phase 7c.2 Addendum #5 Q1.C: 9 sessions on the legacy tree
-    (PS51/PS54/PS55 × 2025-04-16/17/18) are pre-cohort-launch baseline
-    acquisitions explicitly excluded from cohort scope per F-P-6
-    cohort-boundary policy + animals.yaml header comment. Phase 8a.10.1
-    Phase 2 re-emit gated by YAML so their licks NPZs no longer exist,
-    blocking Phase 7a kinematics consumers if processed. Filter here
-    before enumeration to avoid that failure mode.
-
-    Forward-pointer (memory
-    project_cohort_enumeration_should_be_yaml_driven_forward_pointer.md):
-    after Task 7 deletes the legacy spatial tree this walk won't work
-    for future re-runs; enumeration should switch to YAML-driven
-    (iterate ``animal_info.session_start`` to ``.session_end`` directly).
-    Not in 7c.2 scope; small chore-PR post-7c.2.
+    Replaces the legacy split (`_enumerate_cohort_a_bare_dates` filesystem
+    walk + `_enumerate_pattern_a_dates` overrides merge): every date in
+    ``[session_start, session_end]`` not excluded for the ``dlc`` analysis
+    context is included. PS48/2025-03-14 (the lone Pattern A multi-half
+    session) is naturally in PS48's range; Pattern B secondary-spout dates
+    add manifest variants downstream rather than additional dates here.
     """
-    output_root = resolver.pipeline_outputs("dlc_analysis")
-    canon_dir = output_root / "spatial_reward_aligned" / CANON_BP_CM / CANON_WIN / animal
-    if not canon_dir.exists():
-        return []
-    animal_info = get_animal(animal)
-    start = animal_info.session_start
-    end = animal_info.session_end
-    dates: list[str] = []
-    excluded: list[str] = []
-    for npz in sorted(canon_dir.glob("heatmap_*.npz")):
-        m = re.match(r"heatmap_(\d{8})\.npz", npz.name)
-        if not m:
-            continue
-        date_str = m.group(1)
-        d = dt.date(int(date_str[0:4]), int(date_str[4:6]), int(date_str[6:8]))
-        if start <= d <= end:
-            dates.append(date_str)
-        else:
-            excluded.append(date_str)
-    if excluded:
-        log.info(
-            f"  YAML-range filter ({animal}, {start.isoformat()}..{end.isoformat()}): "
-            f"excluded {len(excluded)} out-of-range dates: {excluded}"
-        )
-    return sorted(dates)
-
-
-def _enumerate_pattern_a_dates(animal: str, overrides: dict) -> list[str]:
-    """List multi_half_sessions entries for this animal."""
-    mh = overrides.get("multi_half_sessions", {}) or {}
-    entry = mh.get(animal, {}) or {}
-    return sorted(entry.keys())
+    return yaml_driven_session_dates(animal)
 
 
 def _load_manifest_so_far() -> dict[tuple[str, str], str]:
@@ -326,30 +279,24 @@ def _run_session(
     }
 
 
-def _date_str_to_date(date_str: str) -> dt.date:
-    return dt.date(int(date_str[0:4]), int(date_str[4:6]), int(date_str[6:8]))
-
-
-def _process_animal(animal: str, resolver, overrides) -> tuple[int, int, int]:
-    """Process all cohort-A bare + (PS48 only) Pattern A sessions for one animal.
+def _process_animal(animal: str, resolver) -> tuple[int, int, int]:
+    """Process all in-YAML-range sessions for one animal (cohort-A bare +
+    PS48 Pattern A multi-half merged in via the manifest layer).
 
     Returns (n_run, n_ok, n_fail). Stops within-animal if failure count >=
     MAX_PER_ANIMAL_FAILURES.
     """
-    cohort_dates = _enumerate_cohort_a_bare_dates(animal, resolver)
-    # Pattern A: PS48/20250314 has no legacy NPZ; add it for PS48 explicitly.
-    pattern_a_dates = _enumerate_pattern_a_dates(animal, overrides)
-    pa_set = set(pattern_a_dates)
-    all_dates = sorted(set(cohort_dates) | pa_set)
+    all_dates = _enumerate_session_dates(animal)
 
     prior = _load_manifest_so_far()
-    log.info(f"=== animal={animal}: {len(cohort_dates)} cohort-A bare + "
-             f"{len(pa_set)} pattern-A = {len(all_dates)} total dates ===")
+    log.info(
+        f"=== animal={animal}: {len(all_dates)} dates "
+        f"(YAML-driven; Pattern A multi-half merged at manifest layer) ==="
+    )
 
     n_run = n_ok = n_fail = 0
     animal_t0 = time.perf_counter()
-    for date_str in all_dates:
-        date = _date_str_to_date(date_str)
+    for date in all_dates:
         key = (animal, date.isoformat())
         prior_status = prior.get(key)
         if prior_status == "OK":
@@ -387,7 +334,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     resolver = PathResolver()
-    overrides = load_session_overrides()
     log.info(f"output_root: {resolver.pipeline_outputs('dlc_analysis')}")
     log.info(f"manifest: {MANIFEST_PATH.resolve()}")
 
@@ -395,7 +341,7 @@ def main(argv: list[str] | None = None) -> int:
 
     total_run = total_ok = total_fail = 0
     for animal in animals:
-        n_run, n_ok, n_fail = _process_animal(animal, resolver, overrides)
+        n_run, n_ok, n_fail = _process_animal(animal, resolver)
         total_run += n_run
         total_ok += n_ok
         total_fail += n_fail
