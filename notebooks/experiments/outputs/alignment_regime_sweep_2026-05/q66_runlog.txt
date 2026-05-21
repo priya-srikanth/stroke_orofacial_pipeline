@@ -1,0 +1,56 @@
+=== Q65 PD 4-regime comparison ===
+  PS46: 21 dates, pre_stroke=7, bin_days=2, spout_ref=YES
+  PS48: 21 dates, pre_stroke=7, bin_days=2, spout_ref=YES
+
+=== Rendering 42 (animal × family × trial_group) SVGs ===
+  OK   PS46/tongue_spout_midpoint     tg=all  (55.8s, 552,895 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/tongue_spout_midpoint     tg=L  (52.3s, 530,331 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/tongue_spout_midpoint     tg=R  (53.2s, 535,440 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/tongue_eye_midpoint       tg=all  (50.1s, 552,744 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/tongue_eye_midpoint       tg=L  (49.3s, 530,172 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/tongue_eye_midpoint       tg=R  (51.9s, 535,285 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/jaw_eye_midpoint          tg=all  (50.3s, 414,650 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/jaw_eye_midpoint          tg=L  (48.4s, 408,848 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/jaw_eye_midpoint          tg=R  (49.2s, 404,696 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/nose_eye_midpoint         tg=all  (50.0s, 419,903 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/nose_eye_midpoint         tg=L  (51.0s, 417,129 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/nose_eye_midpoint         tg=R  (49.6s, 418,642 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/whiskers_eye_midpoint     tg=all  (74.1s, 427,392 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/whiskers_eye_midpoint     tg=L  (65.7s, 418,700 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/whiskers_eye_midpoint     tg=R  (66.3s, 420,000 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/spout_spout_midpoint      tg=all  (53.1s, 367,216 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/spout_spout_midpoint      tg=L  (46.7s, 366,439 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/spout_spout_midpoint      tg=R  (52.0s, 365,403 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/eye_eye_midpoint          tg=all  (55.7s, 390,937 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/eye_eye_midpoint          tg=L  (58.3s, 389,224 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS46/eye_eye_midpoint          tg=R  (55.6s, 390,687 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/tongue_spout_midpoint     tg=all  (47.5s, 599,479 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/tongue_spout_midpoint     tg=L  (46.8s, 531,527 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/tongue_spout_midpoint     tg=R  (46.7s, 546,336 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/tongue_eye_midpoint       tg=all  (47.4s, 599,328 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/tongue_eye_midpoint       tg=L  (46.2s, 531,368 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/tongue_eye_midpoint       tg=R  (46.4s, 546,181 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/jaw_eye_midpoint          tg=all  (48.5s, 461,803 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/jaw_eye_midpoint          tg=L  (47.9s, 440,285 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/jaw_eye_midpoint          tg=R  (48.1s, 443,453 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/nose_eye_midpoint         tg=all  (49.1s, 487,052 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/nose_eye_midpoint         tg=L  (47.6s, 483,190 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/nose_eye_midpoint         tg=R  (48.7s, 486,023 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/whiskers_eye_midpoint     tg=all  (67.3s, 480,771 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/whiskers_eye_midpoint     tg=L  (62.9s, 477,231 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/whiskers_eye_midpoint     tg=R  (64.0s, 470,571 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/spout_spout_midpoint      tg=all  (51.6s, 383,165 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/spout_spout_midpoint      tg=L  (50.6s, 381,268 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/spout_spout_midpoint      tg=R  (50.1s, 380,740 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/eye_eye_midpoint          tg=all  (52.5s, 392,266 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/eye_eye_midpoint          tg=L  (51.2s, 390,973 bytes, n_bins=11 [pre=4, post=7])
+  OK   PS48/eye_eye_midpoint          tg=R  (51.5s, 389,824 bytes, n_bins=11 [pre=4, post=7])
+
+Summary: 42 OK, 0 SKIP, 0 ERR.
+
+=== Notes ===
+Pattern B families (whiskers_eye_midpoint, spout_spout_midpoint, eye_eye_midpoint) AGGREGATE bps within the family into a single H_diff per (regime, bin) per the Q65 spec's 'simpler approach' — drops the Phase 7c.2 Pattern B layered overlay for visual tractability in the 4-regime side-by-side layout.
+Each cell's denominator (Q17-style) uses H_counts.sum() across (in-window × likelihood-passing × bp-pooled) — consistent across regimes within each cell so the diff is fair. NOT identical to Phase 7c.2 Q17 universal-pre-likelihood denominator (which divides by total in-window frames including likelihood failures). The Q65 denominator is invariant under alignment-transform choice, which is what we want for regime comparison.
+Sessions where the trial_group has zero tone events are skipped silently (per Phase 7c.2 convention); the n_sess label in the row header reflects only contributing sessions.
+
+Report written to .scratch_phase_7c2_alignment_test\q65_report.txt
