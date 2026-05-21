@@ -60,6 +60,14 @@ from stroke_orofacial.paths import PathResolver
 
 logger = logging.getLogger(__name__)
 
+# Q63 Addendum #53 (Priya 2026-05-21): "sparse but not empty" pass-rate
+# WARNING threshold. When 0 < H_counts.sum() / session_n_total <
+# _SPARSE_FRAME_WARN_THRESHOLD, fire a WARNING — catches sessions like
+# PS50/2025-03-28 R_eye (0.6-4% pass) or PS49/2025-03-30 L_eye (~0.02%)
+# that Phase D Q51 missed because they produced non-None (just very
+# sparse) histograms. Matches the Q63 audit's "Critical" bucket (<5%).
+_SPARSE_FRAME_WARN_THRESHOLD: float = 0.05
+
 
 def _load_centered_df_for(
     manifest: SessionManifest,
@@ -488,6 +496,14 @@ def compute_animal_aggregated_histogram(
     # for downstream skip_audit.csv aggregation (Q51.C, Task 6).
     n_sessions_skipped = 0
     skipped_dates: list[dt.date] = []
+    # Q63 (Priya 2026-05-21 post-Q62 verdict): also warn on "sparse but
+    # not empty" sessions — pass_rate < 5% but > 0% — which Phase D Q51
+    # missed because they produced non-None histograms (e.g., PS50/
+    # 2025-03-28 R_eye, ~0.6-4% pass rate across tgs; PS49/2025-03-30
+    # L_eye, ~0.02-0.03%; bilateral PS55/2025-05-07 spout failures).
+    # The threshold matches the Q63 "critical" bucket (<5%).
+    n_sessions_sparse = 0
+    sparse_records: list[tuple[dt.date, int, int]] = []  # (date, n_pass, n_total)
     for date in dates:
         try:
             manifest = build_manifest(
@@ -559,26 +575,61 @@ def compute_animal_aggregated_histogram(
                 lik_thr,
             )
             continue
+        # Q63 sparse warning (Priya 2026-05-21): pass_rate <
+        # _SPARSE_FRAME_WARN_THRESHOLD (5%) but > 0% → emit WARNING.
+        # The hist=None branch above caught literal-zero cases; this
+        # branch catches "sparse but not empty" cases. session_n_total
+        # is the in-window denominator (Q17); H_counts.sum() is the
+        # number of frames that passed the bp's lik_thr + x_range
+        # filter and fell within (xlim, ylim).
+        n_pass_frames = int(hist["H_counts"].sum())
+        if (
+            session_n_total > 0
+            and 0 < n_pass_frames
+            and (n_pass_frames / session_n_total) < _SPARSE_FRAME_WARN_THRESHOLD
+        ):
+            n_sessions_sparse += 1
+            sparse_records.append((date, n_pass_frames, session_n_total))
+            logger.warning(
+                "compute_animal_aggregated_histogram: sparse %s/%s "
+                "(bodypart=%s, center_mode=%s, trial_group=%s): "
+                "pass_rate=%.2f%% (passed=%d / in_window=%d) at "
+                "likelihood threshold %.2f.",
+                animal, date.isoformat(), bodypart, center_mode,
+                str(trial_group) if trial_group is not None else "whole_session",
+                100.0 * n_pass_frames / session_n_total,
+                n_pass_frames, session_n_total, lik_thr,
+            )
         if H_total is None:
             H_total = hist["H_counts"].copy()
             extent = list(hist["extent"])
         else:
             H_total += hist["H_counts"]
 
-    # Q51.B Addendum #43: per-(animal, bp, center_mode) session-drop
-    # summary at end of aggregation. Emitted only when at least one
-    # skip occurred (silent otherwise).
-    if n_sessions_skipped > 0:
+    # Q51.B Addendum #43 + Q63: per-(animal, bp, center_mode) end-of-
+    # aggregation summary. Emitted when ANY skip or sparse session
+    # occurred (silent otherwise).
+    if n_sessions_skipped > 0 or n_sessions_sparse > 0:
+        sparse_summary = (
+            f"; sparse={n_sessions_sparse} sessions "
+            + ", ".join(
+                f"{d.isoformat()}({np_p}/{nt})"
+                for d, np_p, nt in sparse_records
+            )
+            if n_sessions_sparse > 0
+            else ""
+        )
         logger.info(
             "compute_animal_aggregated_histogram: %s aggregation for "
             "(bp=%s, center_mode=%s, trial_group=%s) complete. "
             "Sessions: contributed=%d, skipped=%d, total=%d. "
-            "Skipped sessions: %s",
+            "Skipped sessions: %s%s",
             animal, bodypart, center_mode,
             str(trial_group) if trial_group is not None else "whole_session",
             n_sessions_contributing, n_sessions_skipped,
             n_sessions_contributing + n_sessions_skipped,
             [d.isoformat() for d in skipped_dates],
+            sparse_summary,
         )
 
     return (
