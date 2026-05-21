@@ -1,0 +1,35 @@
+Building per-animal references...
+  PS46: yaml_dates=31, pre=7, bin_days=2
+  PS47: yaml_dates=31, pre=7, bin_days=2
+  PS48: yaml_dates=31, pre=7, bin_days=2
+  PS49: yaml_dates=28, pre=8, bin_days=2
+  PS50: yaml_dates=19, pre=5, bin_days=2
+  PS51: yaml_dates=78, pre=8, bin_days=7
+  PS54: yaml_dates=79, pre=9, bin_days=7
+  PS55: yaml_dates=78, pre=8, bin_days=7
+  PS46: pre=7 sessions (52 rows) | all=21 sessions (52 rows) (90.7s)
+  PS47: pre=7 sessions (52 rows) | all=21 sessions (52 rows) (91.7s)
+  PS48: pre=7 sessions (52 rows) | all=21 sessions (52 rows) (92.0s)
+  PS49: pre=8 sessions (52 rows) | all=22 sessions (52 rows) (102.9s)
+  PS50: pre=5 sessions (52 rows) | all=18 sessions (52 rows) (94.5s)
+  PS51: pre=8 sessions (52 rows) | all=50 sessions (52 rows) (202.5s)
+  PS54: pre=9 sessions (52 rows) | all=51 sessions (52 rows) (202.3s)
+  PS55: pre=8 sessions (52 rows) | all=49 sessions (52 rows) (198.1s)
+
+Metric computation done in 17.9 min (416 pre rows + 416 all rows)
+  wrote notebooks\experiments\outputs\alignment_regime_sweep_2026-05\per_animal_metrics_pre_stroke.csv (416 rows)
+  wrote notebooks\experiments\outputs\alignment_regime_sweep_2026-05\per_animal_metrics_all_bins.csv (416 rows)
+  wrote 00_metric_overview_pearson_pre_stroke.png
+  wrote 00_metric_overview_pearson_all_bins.png
+  wrote 00_metric_overview_js_divergence_pre_stroke.png
+  wrote 00_metric_overview_js_divergence_all_bins.png
+
+Low-N WARN check (n_pre_stroke_sessions < 5):
+  PS46: n_pre_stroke=7 [ok]
+  PS47: n_pre_stroke=7 [ok]
+  PS48: n_pre_stroke=7 [ok]
+  PS49: n_pre_stroke=8 [ok]
+  PS50: n_pre_stroke=5 [ok]
+  PS51: n_pre_stroke=8 [ok]
+  PS54: n_pre_stroke=9 [ok]
+  PS55: n_pre_stroke=8 [ok]

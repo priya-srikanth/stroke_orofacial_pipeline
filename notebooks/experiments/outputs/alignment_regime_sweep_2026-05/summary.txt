@@ -1,0 +1,135 @@
+=== Cross-Session Alignment Regime Sweep — 2026-05 archive ===
+=== Q64 IS-style + Q65/Q66/Q70/Q71 PD-comparison + Q72 numeric ===
+
+Reference mode: mean_of_baseline (per-animal mean of eye medians across
+all pre-stroke sessions; matches 2026-04-19 baseline at
+../alignment_sweep/summary.txt)
+
+Animals included: ['PS46', 'PS47', 'PS48', 'PS49', 'PS50', 'PS51', 'PS54', 'PS55']
+Bodyparts compared: ['tongue', 'jaw', 'nose',
+                     'L_whiskers_1', 'L_whiskers_2', 'L_whiskers_3',
+                     'R_whiskers_1', 'R_whiskers_2', 'R_whiskers_3',
+                     'L_eye', 'R_eye', 'L_spout', 'R_spout']
+Regimes: ['eye_affine', 'eye_rigid', 'eye_centered', 'spout_centered']
+Likelihood thresholds: bodypart=0.7, eye=0.9, spout=0.7
+Heatmap bins: 80 x 80
+Total cells: 8 animals x 13 bodyparts x 4 regimes = 416
+
+Pre-stroke session counts (n_pre_stroke_sessions):
+  PS46: 7,  PS47: 7,  PS48: 7,  PS49: 8,  PS50: 5,
+  PS51: 8,  PS54: 9,  PS55: 8
+(PS50 has the smallest pre-stroke window — see low-N WARN logic in the
+overview figures; PS50 subplots annotated with n=5.)
+
+================================================================
+Methodology — side-experiment work feeding DECISIONS Decision 26
+================================================================
+
+Q64 IS-style 4-regime visual comparison (Addendum #54)
+  Per-bp 4-regime cross-session pooled-heatmap grids, lightweight Option B
+  (14 sampled SVGs for PS46+PS48 only). Predecessor visual stack to the
+  Q65/Q66 PD-comparison work.
+
+Q65 / Q66 / Q70 / Q71 PD-comparison 4-regime layout (Addenda #55/#56/#58/#59)
+  Per-bin proportion-difference heatmaps across 4 alignment regimes,
+  rendered for (animal, family, scope, trial_group) tuples.
+    Q65: post-stroke bins only, PS46+PS48.
+    Q66: pre-stroke bins added as null-reference rows.
+    Q70: full 8-animal cohort, dropped tongue_spout_midpoint (redundant
+         with tongue_eye_midpoint for tongue-only data); 6 family entries.
+    Q71: whole_session scope added alongside tone_aligned (Q49 WS-bounded
+         frame filter for whole_session cells).
+  Cmap-direction bug caught + corrected at Q70+Q71 launch: cmap stops
+  flipped to Q25 canonical [(0.0,"blue"),(0.5,grey),(1.0,"red")] so
+  red=increased post-stroke, blue=decreased post-stroke.
+  Total render: 192 PD-comparison SVGs + 14 Q64 IS-style SVGs = 206 SVGs
+  under svg_comparison/<animal>/.
+
+Q72 per-bin numeric aggregation (Decision 26 input)
+  Within-bin pairwise Pearson r + JS divergence + diff-vs-baseline
+  magnitude per (animal, bp, scope, trial_group, bin, regime). Two
+  variants:
+    - All-bins:    per_bin_numeric_comparison.csv (16,432 rows)
+    - Pre-stroke:  per_bin_numeric_comparison_pre_stroke.csv (4,368 rows)
+  Plus cross-animal aggregation + per-bin regime-winner summary CSVs
+  for each variant.
+
+Per-animal cohort-wide overview figures (Part A, 2026-05-21)
+  Per-(animal, regime, bodypart) pairwise Pearson r + JS divergence
+  pooled across ALL pre-stroke session pairs (no bin slicing). Matches
+  the 2026-04-19 sweep's per-animal-aggregation semantics exactly so
+  the 2026-04-19 baseline figures at ../alignment_sweep/00_metric_overview_*.png
+  are direct comparators.
+    - per_animal_metrics_pre_stroke.csv (416 rows)
+    - per_animal_metrics_all_bins.csv (416 rows)
+    - 4 PNGs at 00_metric_overview_{pearson,js_divergence}_{pre_stroke,all_bins}.png
+  Histogram-edge logic ported from 2026-04-19 sweep cell 8 verbatim
+  (pooled-data min/max + HEATMAP_MARGIN_PX=20; NOT YAML-config-derived;
+  per Q13 audit-first ground rule).
+
+================================================================
+Output-file index
+================================================================
+
+CSVs (8):
+  per_bin_numeric_comparison.csv                  - Q72 all-bins detailed
+  per_bin_numeric_comparison_pre_stroke.csv       - Q72 pre-stroke detailed
+  cross_animal_per_bin_summary.csv                - Q72 all-bins cross-animal aggregate
+  cross_animal_per_bin_summary_pre_stroke.csv     - Q72 pre-stroke cross-animal aggregate
+  per_bin_regime_winner_summary.csv               - Q72 all-bins winner per (bp, bin)
+  per_bin_regime_winner_summary_pre_stroke.csv    - Q72 pre-stroke winner per (bp, bin)
+  per_animal_metrics_all_bins.csv                 - Part A all-bins
+  per_animal_metrics_pre_stroke.csv               - Part A pre-stroke
+
+Reports + runlogs (9):
+  numeric_comparison_report.md                    - Q72 all-bins markdown
+  numeric_comparison_pre_stroke_report.md         - Q72 pre-stroke markdown
+  q64_report.txt                                  - Q64 IS-style render log
+  q65_report.txt                                  - Q65/Q66/Q70/Q71 PD-comparison render log
+  q66_runlog.txt                                  - Q66 background-task log
+  q70_q71_runlog.txt                              - Q70+Q71 background-task log
+  per_bin_numeric_runlog.txt                      - Q72 all-bins background-task log
+  per_bin_numeric_pre_stroke_runlog.txt           - Q72 pre-stroke background-task log
+  per_animal_overview_runlog.txt                  - Part A background-task log
+
+PNGs (4):
+  00_metric_overview_pearson_pre_stroke.png       - Pearson r grid (pre-stroke)
+  00_metric_overview_pearson_all_bins.png         - Pearson r grid (all sessions)
+  00_metric_overview_js_divergence_pre_stroke.png - JS divergence grid (pre-stroke)
+  00_metric_overview_js_divergence_all_bins.png   - JS divergence grid (all sessions)
+
+SVGs (206):
+  svg_comparison/<animal>/                         - per-animal PD-comparison + IS-style
+    <family>_PD_4_regime_comparison_<scope>_<tg>.svg  - 192 Q70+Q71 PD SVGs
+    <bp>_4_regime_comparison.svg                      - 14 Q64 IS-style SVGs
+
+Source scripts moved to ../../<top-level> (notebooks/experiments/):
+  alignment_modes.py                              - eye_affine + eye_rigid + alignment helpers
+  q64_lightweight.py                              - Q64 IS-style 4-regime renderer
+  q65_pd_comparison.py                            - Q65/Q66/Q70/Q71 PD-comparison renderer
+  per_bin_numeric_comparison.py                   - Q72 all-bins aggregation
+  per_bin_numeric_comparison_pre_stroke.py        - Q72 pre-stroke aggregation
+  per_animal_overview_figures.py                  - Part A overview figure renderer
+
+eye_affine + eye_rigid implementations in alignment_modes.py do NOT ship
+to production; the production centering code at
+src/stroke_orofacial/dlc_io/centering.py implements only eye_centered
++ spout_centered. The scratch implementations are preserved here as the
+experimental-record companion to the 2026-04-19 + 2026-05 sweep findings.
+
+================================================================
+Cross-references
+================================================================
+
+  Baseline:           ../alignment_sweep/  (2026-04-19 sweep; per-animal
+                      summary + scale-drift transform summary figures;
+                      direct comparator for the 2026-05 per_animal_metrics_*
+                      CSVs and PNGs).
+
+  DECISIONS Decision 26: docs/DECISIONS.md "Phase 7c.2 close"
+                      entry 2026-05-21 — the post-hoc amendment from
+                      this archive's findings is the next step (separate
+                      branch / PR; not bundled into this archive PR).
+
+  Phase 7c.2 kickoff:  docs/prompts/phase-7c.2-dlc-cohort-completion-kickoff.md
+                      Addenda #54-59 are the side-experiment specs.

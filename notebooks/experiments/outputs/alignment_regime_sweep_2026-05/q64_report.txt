@@ -1,0 +1,62 @@
+=== Q64 lightweight side-experiment ===
+Source data: notebooks/experiments/outputs/alignment_sweep/_dlc_cache/
+Transform math: ported verbatim from cross_session_alignment_sweep.ipynb cells 5-7
+
+PS46: 21 cached dates; pre_stroke=7; reference built from 7 sessions (spout_ref=YES)
+  L_eye_ref=[520.30661882673, 69.99184090750558]  R_eye_ref=[263.00929478236606, 71.19721439906529]  eye_mid_ref=[391.657956804548, 70.59452765328544]
+  spout_mid_ref=[397.1254119873047, 493.19498552594865]
+PS48: 21 cached dates; pre_stroke=7; reference built from 7 sessions (spout_ref=YES)
+  L_eye_ref=[511.9136047363281, 86.97355052403041]  R_eye_ref=[258.558340890067, 86.41914204188755]  eye_mid_ref=[385.2359728131975, 86.69634628295898]
+  spout_mid_ref=[384.56312561035156, 523.7443586077009]
+
+=== Rendering 14 sampled (animal, bp) comparison SVGs ===
+  OK  PS46/tongue          (21.1s, 5,132,993 bytes)
+      n_pts: eye_affine=1,464,224, eye_rigid=1,464,224, eye_centered=1,464,224, spout_centered=1,464,224
+  OK  PS46/jaw             (23.9s, 5,119,676 bytes)
+      n_pts: eye_affine=18,092,979, eye_rigid=18,092,979, eye_centered=18,092,979, spout_centered=18,092,979
+  OK  PS46/nose            (22.8s, 5,115,938 bytes)
+      n_pts: eye_affine=19,276,741, eye_rigid=19,276,741, eye_centered=19,276,741, spout_centered=19,276,741
+  OK  PS46/L_whiskers_2    (22.9s, 5,118,260 bytes)
+      n_pts: eye_affine=19,294,045, eye_rigid=19,294,045, eye_centered=19,294,045, spout_centered=19,294,045
+  OK  PS46/R_whiskers_2    (23.4s, 5,131,494 bytes)
+      n_pts: eye_affine=19,276,668, eye_rigid=19,276,668, eye_centered=19,276,668, spout_centered=19,276,668
+  OK  PS46/L_eye           (23.1s, 5,114,210 bytes)
+      n_pts: eye_affine=19,361,674, eye_rigid=19,361,674, eye_centered=19,361,674, spout_centered=19,361,674
+  OK  PS46/L_spout         (24.5s, 5,112,438 bytes)
+      n_pts: eye_affine=19,274,519, eye_rigid=19,274,519, eye_centered=19,274,519, spout_centered=19,274,519
+  OK  PS48/tongue          (18.8s, 5,134,538 bytes)
+      n_pts: eye_affine=985,164, eye_rigid=985,164, eye_centered=985,164, spout_centered=985,164
+  OK  PS48/jaw             (23.0s, 5,120,146 bytes)
+      n_pts: eye_affine=17,789,022, eye_rigid=17,789,022, eye_centered=17,789,022, spout_centered=17,789,022
+  OK  PS48/nose            (22.4s, 5,120,937 bytes)
+      n_pts: eye_affine=19,199,073, eye_rigid=19,199,073, eye_centered=19,199,073, spout_centered=19,199,073
+  OK  PS48/L_whiskers_2    (22.6s, 5,115,234 bytes)
+      n_pts: eye_affine=19,191,568, eye_rigid=19,191,568, eye_centered=19,191,568, spout_centered=19,191,568
+  OK  PS48/R_whiskers_2    (22.0s, 5,133,723 bytes)
+      n_pts: eye_affine=19,131,413, eye_rigid=19,131,413, eye_centered=19,131,413, spout_centered=19,131,413
+  OK  PS48/L_eye           (21.6s, 5,119,119 bytes)
+      n_pts: eye_affine=19,205,503, eye_rigid=19,205,503, eye_centered=19,205,503, spout_centered=19,205,503
+  OK  PS48/L_spout         (21.8s, 5,122,466 bytes)
+      n_pts: eye_affine=18,967,223, eye_rigid=18,967,223, eye_centered=18,967,223, spout_centered=18,967,223
+
+Summary: 14 OK, 0 ERR.
+
+=== 2026-04-19 summary cross-reference (PS46 + PS48) ===
+  PS46/tongue           pearson winner: spout_centered (r=0.7883); JS winner: spout_centered (JS=0.1791)
+  PS46/jaw              pearson winner: eye_affine     (r=0.8389); JS winner: eye_affine     (JS=0.1066)
+  PS46/nose             pearson winner: eye_centered   (r=0.7646); JS winner: eye_centered   (JS=0.1372)
+  PS46/L_whiskers_2     pearson winner: eye_centered   (r=0.8614); JS winner: eye_centered   (JS=0.0885)
+  PS46/R_whiskers_2     pearson winner: eye_affine     (r=0.8725); JS winner: eye_affine     (JS=0.0850)
+  PS46/L_eye            pearson winner: eye_affine     (r=0.9835); JS winner: eye_affine     (JS=0.0276)
+  PS46/L_spout          pearson winner: spout_centered (r=0.4718); JS winner: spout_centered (JS=0.4495)
+  PS48/tongue           pearson winner: spout_centered (r=0.8191); JS winner: spout_centered (JS=0.1171)
+  PS48/jaw              pearson winner: eye_centered   (r=0.7974); JS winner: eye_centered   (JS=0.1290)
+  PS48/nose             pearson winner: eye_centered   (r=0.8419); JS winner: eye_centered   (JS=0.0966)
+  PS48/L_whiskers_2     pearson winner: eye_rigid      (r=0.8015); JS winner: eye_rigid      (JS=0.1251)
+  PS48/R_whiskers_2     pearson winner: eye_centered   (r=0.8083); JS winner: eye_rigid      (JS=0.1168)
+  PS48/L_eye            pearson winner: eye_affine     (r=0.9179); JS winner: eye_affine     (JS=0.0832)
+  PS48/L_spout          pearson winner: spout_centered (r=0.4991); JS winner: spout_centered (JS=0.4096)
+
+=== Notes ===
+Numerical regime winners come from the 2026-04-19 sweep (full 8-animal cohort, pooled across-session pairwise Pearson/JS). Q64 lightweight does NOT recompute; it surfaces the existing winners + side-by-side visuals for PS46+PS48 only.
+Production centering convention stays at eye_midpoint + spout_midpoint translation per Phase 4.5-lite. Q64 informs FUTURE-phase architecture only; no Phase 7c.2 lock change.
