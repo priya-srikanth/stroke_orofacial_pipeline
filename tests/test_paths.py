@@ -1008,6 +1008,40 @@ class TestTonguePertrialPaths:
         )
         assert dir_path == json_path.parent
 
+    def test_tongue_jaw_mismatch_candidate_trials_dir_path(
+        self, monkeypatch, tmp_path,
+    ):
+        """Phase 7d Task 6 (Addendum #4) — new directory resolver for
+        Phase 7a.5 candidate-trials parquets. Symmetric with
+        :meth:`tongue_jaw_mismatch_candidate_trials_parquet` (the
+        per-(animal, date) file resolver). Discharges 2 PathResolver-
+        bypass call sites in ``dlc_kinematics/tongue_jaw_mismatch.py``.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tongue_jaw_mismatch_candidate_trials_dir("PS46")
+        expected = (
+            tmp_path / "dlc_kinematics" / "tongue_jaw_mismatch"
+            / "candidate_trials" / "PS46"
+        )
+        assert path == expected
+        assert not path.exists()
+
+    def test_tongue_jaw_mismatch_candidate_trials_dir_matches_file_parent(
+        self, monkeypatch, tmp_path,
+    ):
+        """Invariant: the directory resolver returns the parent of the
+        file resolver for the same animal + any date. Guards against
+        drift between the two methods.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        dir_path = resolver.tongue_jaw_mismatch_candidate_trials_dir("PS46")
+        file_path = resolver.tongue_jaw_mismatch_candidate_trials_parquet(
+            "PS46", datetime.date(2025, 3, 7),
+        )
+        assert dir_path == file_path.parent
+
     def test_interpolated_trace_dir_path(self, monkeypatch, tmp_path):
         """Phase 7d Task 6 (Addendum #4) — new directory resolver for Phase
         7a.2 interpolated traces. Symmetric with :meth:`interpolated_trace`

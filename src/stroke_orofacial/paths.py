@@ -821,6 +821,29 @@ class PathResolver:
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 
+    def tongue_jaw_mismatch_candidate_trials_dir(self, animal: str) -> Path:
+        """Return the per-animal directory of Phase 7a.5 candidate-trials parquets.
+
+        E.g. ``<outputs>/dlc_kinematics/tongue_jaw_mismatch/candidate_trials/PS46/``.
+
+        Symmetric with :meth:`tongue_jaw_mismatch_candidate_trials_parquet`
+        (the per-(animal, date) file resolver). Use this when enumerating
+        session dates for an animal by globbing ``*.parquet``.
+
+        Added in Phase 7d (Addendum #4) to discharge 2 PathResolver-bypass
+        call sites in ``dlc_kinematics/tongue_jaw_mismatch.py`` that
+        manually constructed
+        ``pipeline_outputs("dlc_kinematics") / "tongue_jaw_mismatch" / "candidate_trials" / animal``.
+        Does NOT create the directory eagerly (caller decides; the file
+        resolver above handles eager creation when writing).
+        """
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "tongue_jaw_mismatch"
+            / "candidate_trials"
+            / animal
+        )
+
     def tongue_jaw_mismatch_within_session_dir(
         self, animal: str, date: datetime.date,
         *, session_suffix: str | None = None,
