@@ -172,4 +172,7 @@ secondary_spout_sessions:
 #       "<YYYY-MM-DD>":               # ISO date string (matches secondary_spout_sessions:)
 #         bare_ws_h5_filename: "<filename>"  # bare-half override (single-half manifest)
 #         # b_ws_h5_filename: "<filename>"   # b-half override (RESERVED — no consumer in F-P-7)
-wavesurfer_file_overrides: {}
+wavesurfer_file_overrides:
+  PS55:
+    "2025-06-06":
+      bare_ws_h5_filename: "stroke_0002.h5"   # Priya 2026-05-22 manual choice; disregard stroke_0001.h5
