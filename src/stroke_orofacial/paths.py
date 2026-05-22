@@ -395,6 +395,29 @@ class PathResolver:
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 
+    def interpolated_trace_dir(self, bodypart: str, animal: str) -> Path:
+        """Return the per-(bodypart, animal) directory of Phase 7a.2 interpolated traces.
+
+        E.g. ``<outputs>/dlc_analysis/interpolated_traces/tongue/PS46/``.
+
+        Symmetric with :meth:`interpolated_trace` (the per-(animal, date)
+        file resolver). Use this when enumerating session dates for a
+        (bodypart, animal) pair via ``*.parquet`` glob.
+
+        Added in Phase 7d (Addendum #4) to discharge a PathResolver-bypass
+        call site in ``dlc_kinematics/mean_sem_visual.py`` that manually
+        constructed
+        ``pipeline_outputs("dlc_analysis") / "interpolated_traces" / bodypart / animal``.
+        Does NOT create the directory eagerly (caller decides; the file
+        resolver above handles eager creation when writing).
+        """
+        return (
+            self.pipeline_outputs(subdir="dlc_analysis")
+            / "interpolated_traces"
+            / bodypart
+            / animal
+        )
+
     def tongue_pertrial_angle_parquet(
         self, animal: str, date: datetime.date,
         *, session_suffix: str | None = None,

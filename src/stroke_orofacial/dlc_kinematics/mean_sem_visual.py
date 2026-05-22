@@ -757,12 +757,7 @@ def _eligible_dates(
         d0 = datetime.date(2025, 1, 1)
         d1 = datetime.date(2026, 12, 31)
 
-    parquet_dir = (
-        resolver.pipeline_outputs(subdir="dlc_analysis")
-        / "interpolated_traces"
-        / bodypart
-        / animal
-    )
+    parquet_dir = resolver.interpolated_trace_dir(bodypart, animal)
     if not parquet_dir.exists():
         return []
 

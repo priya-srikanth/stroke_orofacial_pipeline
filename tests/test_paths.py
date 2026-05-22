@@ -1008,6 +1008,45 @@ class TestTonguePertrialPaths:
         )
         assert dir_path == json_path.parent
 
+    def test_interpolated_trace_dir_path(self, monkeypatch, tmp_path):
+        """Phase 7d Task 6 (Addendum #4) — new directory resolver for Phase
+        7a.2 interpolated traces. Symmetric with :meth:`interpolated_trace`
+        (the per-(animal, date) file resolver). Discharges 1 PathResolver-
+        bypass call site in ``dlc_kinematics/mean_sem_visual.py`` that
+        manually constructed
+        ``pipeline_outputs("dlc_analysis") / "interpolated_traces" / bodypart / animal``.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.interpolated_trace_dir("tongue", "PS46")
+        expected = (
+            tmp_path / "dlc_analysis" / "interpolated_traces"
+            / "tongue" / "PS46"
+        )
+        assert path == expected
+        # Read-only dir resolver — does NOT create the directory eagerly
+        # (the file resolver above handles eager parent mkdir when writing).
+        assert not path.exists()
+
+    def test_interpolated_trace_dir_path_matches_file_parent(
+        self, monkeypatch, tmp_path,
+    ):
+        """Invariant: the directory resolver returns the parent of the
+        file resolver for the same ``(bodypart, animal)`` plus any date.
+        Guards against drift between the two methods.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        dir_path = resolver.interpolated_trace_dir("tongue", "PS46")
+        file_path = resolver.interpolated_trace(
+            "tongue", "PS46", datetime.date(2025, 3, 7),
+        )
+        assert dir_path == file_path.parent
+        # The file resolver creates the parent eagerly, so after the call
+        # the directory does exist on disk — but only because of the file
+        # resolver's mkdir, not the dir resolver itself.
+        assert dir_path.exists()
+
     def test_spout_licks_and_rewards_npz_path(self, monkeypatch, tmp_path):
         """Phase 7d Task 6 (Addendum #4) — new file resolver for Phase 2
         licks NPZ. Discharges 6 PathResolver-bypass call sites (3 direct +
