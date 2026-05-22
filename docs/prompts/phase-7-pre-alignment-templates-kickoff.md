@@ -412,7 +412,18 @@ Addendum #1 L2's `np.testing.assert_allclose(rtol=1e-7, atol=0)` thresholds were
 
 **Outlier #1 — PS54/2025-06-26 (b-half):** sig_wsIdx__idx_cam fails with max_abs=2.095e-06 (~2× atol), max_rel=3.058e-04 (~30× rtol). The magnitude is at the upper end of scipy interp1d/polyfit floating-point drift — unambiguously category-b in nature, just sitting at the high-magnitude tail.
 
-**Outlier #2 — PS55/2025-05-02 (single_half):** sig_camTimesCommon__idx_cam + sig_camTimes__idx_cam + sig_wsIdx__idx_cam show a 1-sample shape delta (new=908112 vs legacy=908111). Substantively different from sub-bit drift — either scipy.interp1d boundary-inclusion semantics changed between versions, OR the `_find_rising_edges` detector counted differently due to floating-point comparisons against `edge_threshold`. **Requires Task 3.5 root-cause investigation before Task 4.**
+**Outlier #2 — PS55/2025-05-02 (single_half):** sig_camTimesCommon__idx_cam + sig_camTimes__idx_cam + sig_wsIdx__idx_cam show a 1-sample shape delta (new=908112 vs legacy=908111). Substantively different from sub-bit drift — either scipy.interp1d boundary-inclusion semantics changed between versions, OR the `_find_rising_edges` detector counted differently due to floating-point comparisons against `edge_threshold`. **Required Task 3.5 root-cause investigation before Task 4.**
+
+**Task 3.5 root-cause verdict (2026-05-22, CC investigation):** Neither Hypothesis A (scipy.interpolate.interp1d boundary semantics) nor Hypothesis B (`_find_rising_edges` divergence). Confirmed **Hypothesis C — legacy CSV-loader dropped the trailing row**, new pipeline ingests the full CSV faithfully. Evidence:
+- Source-of-truth CSV has 908,112 rows (verified `wc -l`); file mtime 2025-05-02 (stable, not a growing-file race).
+- New pipeline `sig_camTimes__idx_cam.shape = (908112,)` — matches CSV exactly.
+- Legacy pipeline `sig_camTimes__idx_cam.shape = (908111,)` — missing one row at the tail.
+- Element-wise: legacy `[-1]` value is the second-to-last CSV row (camera tick 111228430); new `[-1]` is the actual last CSV row (camera tick 111228431). The 1-frame delta at ~350 fps is ~3 ms of trailing recording — far from any task-relevant signal window.
+- Session-specific: 274 other sessions have shape-matching arrays (just sub-bit scipy drift); only PS55/2025-05-02 triggered the legacy loader's trailing-row drop. Likely a per-CSV-formatting quirk (trailing newline, EOF byte handling, etc.) that no other session's CSV exhibited.
+
+**Verdict:** New pipeline is **more correct than legacy** (faithful CSV ingest); scientifically equivalent at every magnitude. Categorize as edge-of-category-b in Task 8 DECISIONS. **Task 4 proceed cleared on the outlier-#2 axis.**
+
+*Captured in Task 8 DECISIONS (forthcoming) — Decision N: "Phase 7-pre-alignment-templates surfaces a legacy CSV-loader trailing-row-drop bug (session-specific, PS55/2025-05-02). New pipeline's pandas-based CSV ingest is more faithful; the 1-sample delta at trailing tail is scientifically equivalent at downstream consumer scale (interpolation-array index resolution). No fix needed — new behavior is correct."*
 
 **Lock.** PS54/2025-06-26 is documented as a category-b outlier in `.scratch_phase_7_pre_aligntmpl/parity_summary.md` with the magnitude flag preserved. PS55/2025-05-02 gates on Task 3.5 root-cause: if scipy boundary semantics, document as category-b boundary-edge outlier and proceed. If `_find_rising_edges` divergence, that's a Phase 3 builder behavior difference that needs Priya review before Task 4.
 
@@ -430,16 +441,33 @@ PS55/2025-06-06 has two `stroke_000{1,2}.h5` files in the WS dir. `find_wavesurf
 
 **Lock.** F-P-7 closes this gap in-phase via Task 3.6 (new sub-task between Task 3 and Task 4):
 
-1. CC proposes a schema extension to `configs/session_overrides.yaml` for h5-filename disambiguation. **STOP-and-report** the proposed schema before implementing — Priya approves the shape before plumbing.
-2. CC plumbs the override through:
-   - `find_wavesurfer_file` — accept optional `preferred_filename: str | None = None` parameter; if provided AND that filename exists in the dir, return it; else fall back to existing glob-disambig logic.
-   - `manifest.py` builder — when building a single_half manifest, look up `(animal, date)` in the new session_overrides section; pass the override into `find_wavesurfer_file`.
-3. Add a `configs/session_overrides.yaml` entry for PS55/2025-06-06 pointing to `stroke_0002.h5` per the schema CC proposed.
-4. Re-emit just the PS55/2025-06-06 row (delete the existing SKIP row from `emit_manifest.csv`; re-run the emit driver in resume mode — it'll process the one un-emitted row).
-5. Re-run Task 3 parity check against just PS55/2025-06-06; categorize alongside the rest.
-6. Update `.scratch_phase_7_pre_aligntmpl/parity_summary.md` with the post-fix verdict.
+1. **Task 3.6A schema proposal STOP-and-ask** — DISCHARGED 2026-05-22. CC proposed 3 schema options; Priya locked **Option A1** (new top-level `wavesurfer_file_overrides:` section, parallel to existing filesystem-discovery registries `secondary_spout_sessions:` / `multi_half_sessions:`). Schema shape:
 
-Out-of-scope for Task 3.6: any other ambiguous-h5 cases. The new override mechanism is general but the entry list stays at 1 row for F-P-7.
+   ```yaml
+   wavesurfer_file_overrides:
+     PS55:
+       "2025-06-06":
+         bare_ws_h5_filename: "stroke_0002.h5"
+   ```
+
+   The `bare_ws_h5_filename` field name reserves the `b_ws_h5_filename` naming slot for future b-half ambiguity (no consumer yet; out-of-scope for F-P-7).
+
+2. CC plumbs the override through (Task 3.6B):
+   - `find_wavesurfer_file(session_dir, *, preferred_filename: str | None = None)` — if `preferred_filename` is set AND the file exists in `session_dir`, return it; else execute existing glob-disambig logic. Override + ambiguity → override wins. Override set but file missing → raise `FileNotFoundError` naming both the configured override and actual disk contents (catches YAML-vs-disk drift early).
+   - New `load_wavesurfer_file_overrides(overrides_config)` helper sibling to `load_secondary_spout_sessions` in the overrides-loader module.
+   - `manifest.py` builder — when building a single_half manifest, look up `(animal, iso_date_str)` in the loaded `wavesurfer_file_overrides`; pass the override into `find_wavesurfer_file` via `preferred_filename=`.
+   - Add unit tests for both `find_wavesurfer_file` paths (override present + override absent) AND for manifest builder honoring the override.
+
+3. Add `configs/session_overrides.yaml` entry for PS55/2025-06-06 → `stroke_0002.h5` per the locked A1 schema (Task 3.6C).
+
+4. Re-emit just the PS55/2025-06-06 row (Task 3.6D):
+   - Update `emit_manifest.csv` to remove the existing SKIP_NO_INPUT row for PS55/2025-06-06 (so the resume-logic processes it).
+   - Re-run `scripts/phase_7_pre_aligntmpl/emit_cohort.py` in resume mode.
+   - Verify the new row lands as OK with `output_path` + `output_sha256` populated.
+
+5. Re-run Task 3 parity check against just PS55/2025-06-06 (Task 3.6E); categorize alongside the rest. Update `.scratch_phase_7_pre_aligntmpl/parity_summary.md` with the post-fix verdict + 0 MISSING_NEW.
+
+Out-of-scope for Task 3.6: any other ambiguous-h5 cases. The A1 override mechanism is general but the entry list stays at 1 row for F-P-7.
 
 *Enforced at:* `configs/session_overrides.yaml` new section; `src/stroke_orofacial/spout_behavior/wavesurfer_io.py:find_wavesurfer_file` optional param; `src/stroke_orofacial/manifest.py` builder override lookup; `.scratch_phase_7_pre_aligntmpl/emit_manifest.csv` updated row.
 
