@@ -358,3 +358,95 @@ Both call sites update to use `resolver.tongue_pertrial_endpoints_dir(animal)`. 
 Add a decision entry covering Addendum #2's audit-finding-driven lock — the audit surfaced 2 PathResolver-bypass call sites that the kickoff did not anticipate; the A.2 resolution adds a sibling directory resolver method and discharges the violation in-phase rather than perpetuating it.
 
 **ALL OTHER LOCKS UNCHANGED.** Tasks 0/3/4/5/6, parity strategy, verification axes, acceptance criteria, and out-of-scope items all remain as written. Addendum #1's method-name preservation lock (Option A) continues to apply to the three existing resolver methods; Addendum #2 only ADDS one new method, does not rename any existing methods.
+
+---
+
+## Addendum #3 — PathResolver-bypass sweep promoted into Phase 7d (Priya 2026-05-22)
+
+**Lock:** add a PathResolver-bypass sweep chore as a new **Task 6** in Phase 7d, sequenced AFTER Task 5 (old-path cleanup) and BEFORE the renumbered Task 7 (DECISIONS + MIGRATION_LOG). The sweep bundles into the same Phase 7d branch + PR per `feedback_scope_bundling.md` — the work is logically related polish on the PathResolver violation surface that Addendum #2's audit surfaced.
+
+**Why:** Addendum #2's Task 1 audit found 2 PathResolver-bypass sites in `dlc_kinematics/` that the kickoff did not anticipate. Two sites is a small count, but the existence of any is evidence that the consolidation pipeline likely has hidden literal-path constructions elsewhere in `src/` that violate CLAUDE.md's "no absolute paths in source; use PathResolver" rule. Discharging the violation surface in-phase prevents the next path rename from hitting the same silent-failure mode that almost broke pre-stroke median-ILI computation + tongue-angle cross-session enumeration. Bundling into Phase 7d (rather than a follow-up chore-PR) keeps related work together and avoids the cost of a separate round of branch + PR + tag + close-out overhead.
+
+**Sweep scope:**
+
+- **Search target: `src/` only.** Tests/scripts/notebooks have looser rules per CLAUDE.md; the "no absolute paths in source" rule applies to source code. Out-of-scope: `tests/`, `scripts/`, `notebooks/`.
+- **Exclude `src/stroke_orofacial/paths.py` itself** — the resolver methods legitimately contain literal path strings (they ARE the source of truth).
+
+**Audit patterns (Task 6 step 1):**
+
+```bash
+# Pattern 1 — partial bypass: pipeline_outputs() with literal concatenation
+grep -rn 'pipeline_outputs(' src/ | grep -v 'paths.py' | grep -E '/ "[^"]+"'
+
+# Pattern 2 — hardcoded absolute paths (should never appear)
+grep -rn '"/Users/\|"/Volumes/\|"\\\\research\.files\|"//research\.files' src/
+
+# Pattern 3 — hardcoded "pipeline_outputs/" tree-root literal
+grep -rn '"pipeline_outputs/\|"\./pipeline_outputs/\|"\.\./pipeline_outputs/' src/
+
+# Pattern 4 — hardcoded top-level pipeline_outputs subdir literals that should go through
+# a resolver subdir method (pipeline_outputs(subdir=...))
+grep -rn '"dlc_kinematics/\|"dlc_analysis/\|"spout_behavior/\|"dlc_spatial/\|"alignment_templates/\|"figures_qc/' src/ | grep -v 'paths.py'
+
+# Pattern 5 — Path() constructions with literal pipeline_outputs-shaped strings
+grep -rn 'Path("[^"]*pipeline_outputs' src/
+```
+
+Catalog findings in `.scratch_phase_7d/bypass_sweep_audit.md` with columns:
+
+| File | Line | Snippet | Pattern # | Proposed type | Proposed resolution |
+|---|---|---|---|---|---|
+
+**Per-finding classification (Task 6 step 2):**
+
+- **Type R — Resolver-method-shaped:** the literal path forms a recognizable tree position (e.g., `pipeline_outputs(...) / "some_subdir" / animal`). Resolution: either use an existing resolver method if one already exists, OR add a new sibling resolver method per the Addendum #2 / Option A.2 pattern.
+- **Type L — Local literal within an already-resolved tree:** the literal is a one-off subdirectory/filename within an already-resolved parent (e.g., constructing a file inside a known dir). Resolution: keep the literal inline but ensure the parent dir comes from a resolver method, not from a hardcoded tree-root.
+- **Type ? — Ambiguous:** unclear classification. STOP-and-ask Priya per-finding.
+
+**STOP-and-report gate (Task 6 step 3):**
+
+After the audit doc completes, STOP and report all findings + per-finding proposed resolution to Priya. **Do not apply any fixes before approval.** Report should include:
+
+- Total findings count
+- Per-pattern breakdown (how many of each type)
+- Proposed new PathResolver methods (if any), with signatures + returned path structures
+- Proposed call-site updates list
+- Test fixture updates required
+- Any Type ? findings that need a Priya call
+
+If the total finding count is >15 or affects >5 distinct source files outside `paths.py`, ALSO ask Priya whether to fix all in-phase or split a portion to a follow-up chore-PR.
+
+**Fix application (Task 6 step 4):**
+
+After Priya approval, apply per-finding fixes:
+
+- New PathResolver methods added to `paths.py` (placed adjacent to symmetric existing methods).
+- Call-site updates use the resolver method.
+- Unit tests in `tests/test_paths.py` cover any new resolver methods.
+- Run `pytest -x` after each pattern-group of fixes; expect baseline pass count + new test count.
+
+**Out of scope for the sweep:**
+
+- Renaming existing PathResolver methods (Addendum #1's lock continues to apply).
+- Changing any semantic data behavior (Phase 7d is pure-rename + bypass-discharge; no data changes).
+- Sweeping `tests/`, `scripts/`, `notebooks/` (per CLAUDE.md, the "no absolute paths in source" rule applies to `src/`).
+- Refactoring resolver method bodies in `paths.py` (they ARE the source of truth — the rule doesn't apply to them).
+
+**Task renumbering:**
+
+- Tasks 0-5 unchanged.
+- **NEW Task 6 — PathResolver-bypass sweep** (per this addendum).
+- **Task 6 (DECISIONS + MIGRATION_LOG) → renumbered to Task 7.** Documentation now covers both the rename + the sweep findings.
+
+**DECISIONS entry (renumbered Task 7) additions:**
+
+- Document Addendum #3 promoting the sweep into Phase 7d.
+- List each new PathResolver method added by the sweep + its returned path structure.
+- List each call-site fixed by the sweep (file:line + before/after snippet).
+- Any forward-pointer findings (e.g., bypass categories outside `src/` that the sweep deliberately excluded but warrant a future chore — like a future `tests/`/`scripts/` bypass cleanup pass if that ever becomes desirable).
+
+**Verification axes (existing kickoff "Verification" section extension):**
+
+Add a 5th axis: **PathResolver-bypass sweep complete** — `.scratch_phase_7d/bypass_sweep_audit.md` exists; all in-scope findings discharged (call sites updated, new resolver methods added, new tests pass); per-pattern re-grep returns 0 unresolved findings in `src/` (excluding `paths.py`).
+
+**ALL OTHER LOCKS UNCHANGED.** Addendum #1's method-name preservation lock + Addendum #2's `tongue_pertrial_endpoints_dir` addition + parity strategy + verification axes 1-4 + acceptance criteria + (now-reduced) out-of-scope items all remain as written.
