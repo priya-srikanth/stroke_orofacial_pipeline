@@ -292,3 +292,61 @@ See Task 7 for the STOP-and-report verification gate. Acceptance signals:
 - `src/stroke_orofacial/alignment/timebase.py:compute_and_merge_alignment_multi_half` — the existing Phase 7-pre-multi-half merge entry point for Pattern A sessions.
 - `src/stroke_orofacial/paths.py` — existing `alignment_template_legacy_read` + `alignment_template_new`; F-P-7 adds `alignment_template_for_reading`.
 - CLAUDE.md Rule 1 (read-only on legacy) + Rule 6 (output writes to new dirs) + Rule 7 (destructive-ops policy applies if cleanup queues a future legacy-removal phase).
+
+---
+
+## Addendum #1 — Warm-start state refresh (2026-05-22, post-7c.2 + post-7d close)
+
+Original kickoff was drafted 2026-05-15, before Phase 7c.2 closed (2026-05-21) and before Phase 7d closed (2026-05-22). Warm-start verification on 2026-05-22 surfaced 5 state-drift updates + 3 locked decisions. **ALL OTHER LOCKS UNCHANGED.**
+
+### State-drift updates
+
+**S1 — F-P-5 (Phase 7-pre-multi-half-dlc) DISCHARGED 2026-05-21.** The SessionManifest Pattern A wiring fix was folded into Phase 7c.2 Task 2 per Q9.A bundling lock; PS48/2025-03-14 was re-emitted as part of cohort. References in this kickoff to "Phase 7-pre-multi-half-dlc" as a pending sibling phase are stale — F-P-5 is discharged. The merge code is wired at `src/stroke_orofacial/manifest.py:948-973` (verified 2026-05-22). Phase 7c.2 close DECISIONS.md Decision 3 documents the discharge.
+
+**S2 — Task 4 consumer call-site count: 7 sites, not 6.** Phase 7c.2's compute-on-demand spatial render architecture (Decision 3 in 7c.2 close) added `src/stroke_orofacial/dlc_spatial/render_on_demand.py`, which has TWO `alignment_template_legacy_read` call sites (lines 128 + 182). Updated Task 4 table:
+
+| File | Line (verified 2026-05-22) | Change |
+|---|---|---|
+| `manifest.py` | 827 | `alignment_template_legacy_read` → `alignment_template_for_reading` |
+| `dlc_spatial/render_on_demand.py` | 128 | same |
+| `dlc_spatial/render_on_demand.py` | 182 | same (NEW from 7c.2 compute-on-demand pivot) |
+| `dlc_spatial/tone_aligned.py` | 439 | same |
+| `dlc_kinematics/interpolation.py` | 547 | same |
+| `dlc_kinematics/mean_sem_visual.py` | 566 | same |
+| `dlc_kinematics/tongue_pertrial.py` | 1411 | same |
+
+Plus 7 docstring references in `alignment/timebase.py` (lines 163, 259, 359, 360, 553, 556, 558) — update where call-site references appear inline; preserve where they document the PathResolver method names directly.
+
+**S3 — PathResolver-bypass sweep already complete (Phase 7d Task 6).** Phase 7d ran a full source-tree sweep for PathResolver-bypassing path literals (5 grep patterns, 17 findings discharged). Verified 2026-05-22: no rogue `alignment_templates` literals exist in `src/` outside `paths.py` resolver methods + the writeguard declarative deny-list. Task 4's scope is the 7 explicit `legacy_read` call sites only — no hidden bypass surface to discover mid-phase.
+
+**S4 — New-tree current state TBD; CC verifies at Task 1 start.** Kickoff Context claims "~3 templates from 2026-05-05 PS48 incident-response restore." This count is from 2026-05-15 and predates Phase 7c.2 cohort completion (which may have triggered Pattern A merge writes to the new tree for any multi-half sessions processed). Task 1's first sub-step: `find <pipeline_outputs>/dlc_analysis/alignment_templates/cam2/ -name "*.npz" | wc -l` + report the actual count + per-animal breakdown before the dry-run.
+
+**S5 — F-P-5 reference updates in Out-of-scope.** Replace "Already shipped in Phase 7-pre-multi-half + wired in Phase 7c.2 Task 2" with the cleaner present-state framing: "Multi-half Pattern A merge code is shipped at `spout_behavior/multi_half_merge.py` + wired at `alignment/timebase.py:compute_and_merge_alignment_multi_half` (Phase 7-pre-multi-half, `v7-pre-multi-half`) and downstream SessionManifest.dlc_h5_files population is wired at `manifest.py:948-973` (Phase 7c.2 Task 2, F-P-5 discharge)."
+
+### Locked decisions (3)
+
+**L1 — Co-discharge cohort-enumeration-YAML-driven forward-pointer.** Task 1's enumeration driver iterates `configs/animals.yaml <animal>.sessions.start → .sessions.end` (filtered by `excluded_sessions`). This IS the clean YAML-driven pattern that `project_cohort_enumeration_should_be_yaml_driven_forward_pointer.md` wants. Phase 7-pre-alignment-templates discharges that forward-pointer as a side effect — Task 8 DECISIONS adds Decision N: "Cohort-enumeration YAML-driven refactor forward-pointer co-discharged; driver pattern is now canonical for future cohort phases."
+
+**L2 — Task 3 parity verdict: 4 pre-expected DIFFERENT categories + structural-allclose triage.**
+
+`make_alignment_template` (frame_sync.py:143) uses `scipy.interpolate.interp1d` (line 136) + `np.polyfit` (lines 243, 248). These are exactly the floating-point-sensitive operations that surfaced version drift in Phase 7a.0 baseline-seed probe (PR #79, scipy 1.15→1.17 caused PS49/PS50 tongue Y0 retune). Legacy templates were emitted on the pre-Option-A scipy environment; new pipeline runs scipy 1.17.1. **Byte-equality across 345 sessions is expected to be partial — possibly low.**
+
+Updated Task 3 parity verdict structure:
+
+1. **IDENTICAL (sha256 byte-equal)** — legacy was emitted on the same scipy version as the new pipeline runs; expected for a subset of sessions.
+2. **DIFFERENT — structurally-equivalent under `np.testing.assert_allclose`** — categorize via the cause:
+   - (a) Multi-half Pattern A merge (legacy has one half template; new has merged).
+   - (b) **scipy/numpy version drift** (sub-bit floating-point divergence, scientifically equivalent).
+   - (c) Post-incident hand-emit (legacy template was hand-emitted from a different code path).
+   - (d) Pre-Phase-3-refactor legacy version (old code path).
+3. **DIFFERENT — structurally divergent** (assert_allclose fails) — REAL issue; STOP-and-report each case for Priya review.
+4. **MISSING_LEGACY** — new pipeline emits for sessions legacy never had.
+5. **MISSING_NEW** — should be 0; STOP-and-report if nonzero.
+
+Task 3 logic: sha256 first-pass for fast categorization; for every non-IDENTICAL session, run `np.testing.assert_allclose` (default rtol=1e-7, atol=0) on each numerical array in the NPZ + literal compare on metadata. Categorize per the structure above. STOP-and-report only on category-3 (structurally divergent).
+
+**L3 — Indefinite legacy fallback in `alignment_template_for_reading()`.** Replace Out-of-scope text "Deleting `alignment_template_legacy_read()` from PathResolver. The fallback path is retained for safety; deletion is deferred to a future cleanup phase" with: "Deleting `alignment_template_legacy_read()` from PathResolver. The fallback path is retained **indefinitely** as a safety net per CLAUDE.md Rule 1 (legacy is read-only and authoritative for archival sessions). No future cleanup phase queued — legacy fallback is a permanent feature of `alignment_template_for_reading()`."
+
+### Addendum scope statement
+
+All other locks (Tasks 0-2, 5-8; parity strategy axis 2; acceptance criteria; reference list) UNCHANGED. Addendum #1 only adjusts Task 4's call-site table (S2), Task 3's parity verdict structure (L2), Task 8's DECISIONS list (L1 co-discharge), Context (S1, S4), and Out-of-scope (S5, L3).
