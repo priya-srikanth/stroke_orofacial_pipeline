@@ -350,3 +350,42 @@ Task 3 logic: sha256 first-pass for fast categorization; for every non-IDENTICAL
 ### Addendum scope statement
 
 All other locks (Tasks 0-2, 5-8; parity strategy axis 2; acceptance criteria; reference list) UNCHANGED. Addendum #1 only adjusts Task 4's call-site table (S2), Task 3's parity verdict structure (L2), Task 8's DECISIONS list (L1 co-discharge), Context (S1, S4), and Out-of-scope (S5, L3).
+
+---
+
+## Addendum #2 — Task 1 post-execution refinements (2026-05-22)
+
+CC ran Task 1 cleanly. New-tree initial state is 3 templates (all under PS48/20250314 — kickoff's stale-state-warning was unnecessary; original count was accurate). Cohort enumeration produced 403 rows vs kickoff's ~355 estimate (+13%) — delta source-isolated by CC and benign. Dry-run 3/3 PASS. Two locks for Task 2 + a Task 1 count refinement. **ALL OTHER LOCKS UNCHANGED.**
+
+### Task 1 count refinement (informational, not a lock change)
+
+Kickoff's ~355 estimate is superseded by Task 1 enumeration:
+
+| Source | Count | Notes |
+|---|---|---|
+| Cohort A single-half | 378 | YAML-strict + complete-by-default; +37 vs legacy tree's 308 (PS51/PS54/PS55 each had ~20-27 missing in-range templates legacy never emitted) |
+| Cohort B b-half (`secondary_spout_sessions`) | 24 | Registry grew from ~14 → 24 between 2026-05-15 kickoff draft and 2026-05-22 (PS51=4, PS54=13, PS55=7) |
+| Multi-half Pattern A | 1 | PS48/2025-03-14 only |
+| **Total cohort_manifest.csv rows** | **403** | |
+
+Expected Task 2 emit count: ~398 (403 − ~5 SKIP_NO_INPUT per L4 below).
+
+### L4 — Task 2 emit driver SKIP_NO_INPUT handling (Priya 2026-05-22)
+
+Task 1 surfaced 5 secondary_spout_b_half registry entries with no on-disk b-half WS data: PS51/2025-04-24, PS51/2025-04-25, PS54/2025-04-24, PS54/2025-04-25, and one of PS55/2025-04-24-or-25. Cross-check: legacy tree has 19 `*b.npz` files vs 24 registry entries = 5 missing, matching CC's per-animal accounting. These are registry entries that never had separate b-half acquisitions on disk.
+
+**Lock.** Task 2 emit driver treats `manifest.wavesurfer_file is None` as a per-session **SKIP_NO_INPUT** event (log + continue), NOT a fatal cohort failure. Per-session manifest at `.scratch_phase_7_pre_aligntmpl/emit_manifest.csv` tags those rows `SKIP_NO_INPUT` with a populated `error_msg` column ("wavesurfer_file is None — no b-half WS acquisition on disk"). Acceptance criterion at Task 7 verdict: SKIP_NO_INPUT count ≤ 6 (5 expected + 1 buffer); any unexpected SKIP cases STOP-and-report.
+
+*Enforced at:* Task 2 driver in `scripts/phase_7_pre_aligntmpl/emit_cohort.py`; `.scratch_phase_7_pre_aligntmpl/emit_manifest.csv` status column.
+
+### L5 — Lock `analysis_context="alignment"` for cohort enumeration (Priya 2026-05-22)
+
+Task 1 enumeration used `analysis_context="alignment"` (broader than DLC-strict), which keeps 4 sessions that are DLC-excluded but Phase-3-valid. Alignment templates are a Phase 3 product; they're emitted independently of DLC QC status. Consistent with "new pipeline complete-by-default" philosophy. CC's current `cohort_manifest.csv` uses this; no re-enumeration needed.
+
+**Lock.** All F-P-7 cohort emit + parity validation uses `analysis_context="alignment"`. Future phases that need DLC-strict cohort enumeration (e.g., Phase 9 stats) use `analysis_context="dlc"` independently — F-P-7's choice doesn't constrain them.
+
+*Enforced at:* `scripts/phase_7_pre_aligntmpl/enumerate_cohort.py` `analysis_context` parameter; `.scratch_phase_7_pre_aligntmpl/cohort_manifest.csv` row count (403 with "alignment"; would be 399 with "dlc").
+
+### Addendum #2 scope statement
+
+All other locks UNCHANGED. Addendum #2 only adjusts Task 1 count expectation (informational), Task 2 SKIP_NO_INPUT semantics (L4), and locks the cohort enumeration analysis_context (L5).
