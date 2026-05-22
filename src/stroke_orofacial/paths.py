@@ -1025,6 +1025,32 @@ class PathResolver:
             )
         return matches[0]
 
+    def dlc_centered_parquet_dir(
+        self, center_mode: str, animal: str,
+    ) -> Path:
+        """Return the per-(center_mode, animal) directory for Phase 4 centered DLC parquets.
+
+        E.g. ``<outputs>/dlc_analysis/centered_spout_midpoint/PS50/``.
+
+        The per-(animal, date) file resolver for the special spout-midpoint
+        case + glob handling lives at
+        :meth:`dlc_centered_spout_midpoint_parquet`; this method generalizes
+        to ANY ``center_mode`` directory (e.g. ``"spout_midpoint"``,
+        ``"nose"``, etc.) so callers can manually construct the per-file
+        path from a Phase 4 H5-filename-derived parquet name.
+
+        Added in Phase 7d (Addendum #4) to discharge 5 PathResolver-bypass
+        call sites that manually constructed
+        ``pipeline_outputs("dlc_analysis") / f"centered_{center_mode}" / animal``.
+        Does NOT create the directory eagerly (caller decides; Phase 4
+        write code creates as needed).
+        """
+        return (
+            self.pipeline_outputs(subdir="dlc_analysis")
+            / f"centered_{center_mode}"
+            / animal
+        )
+
     def wavesurfer_dir(
         self,
         date: datetime.date,

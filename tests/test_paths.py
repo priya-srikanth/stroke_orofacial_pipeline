@@ -1008,6 +1008,28 @@ class TestTonguePertrialPaths:
         )
         assert dir_path == json_path.parent
 
+    def test_dlc_centered_parquet_dir_path(self, monkeypatch, tmp_path):
+        """Phase 7d Task 6 (Addendum #4) — new directory resolver for Phase 4
+        centered DLC parquets, parametric on ``center_mode``. Discharges 5
+        PathResolver-bypass call sites that manually constructed
+        ``pipeline_outputs("dlc_analysis") / f"centered_{center_mode}" / animal``.
+
+        Does NOT create the directory eagerly (caller decides; Phase 4 write
+        code creates as needed).
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.dlc_centered_parquet_dir("spout_midpoint", "PS50")
+        expected = (
+            tmp_path / "dlc_analysis" / "centered_spout_midpoint" / "PS50"
+        )
+        assert path == expected
+        assert not path.exists()
+        # Parametric in center_mode: a different mode resolves to a sibling dir.
+        other = resolver.dlc_centered_parquet_dir("nose", "PS50")
+        assert other == tmp_path / "dlc_analysis" / "centered_nose" / "PS50"
+        assert other.parent == path.parent.parent / "centered_nose"
+
     def test_dlc_centered_spout_midpoint_parquet_globs_and_returns_unique_match(
         self, monkeypatch, tmp_path,
     ):

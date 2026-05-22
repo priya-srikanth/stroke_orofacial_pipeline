@@ -174,9 +174,8 @@ def _build_centered_parquet_multi_half(
     compression = str(params.get("compression", "zstd"))
     sig = _param_sig(center_mode, lik_thr)
 
-    output_root = resolver.pipeline_outputs("dlc_analysis")
     per_half_subdir = (
-        output_root / f"centered_{center_mode}" / animal
+        resolver.dlc_centered_parquet_dir(center_mode, animal)
         / f"{date_str}{halves_concat_label}"
     )
 
@@ -211,7 +210,7 @@ def _build_centered_parquet_multi_half(
     # at the merged file, NOT a per-half file in the subdir).
     half_a_h5_name = halves[0].dlc_h5_file.name
     merged_name = f"{half_a_h5_name}.intermediate.{sig}.parquet"
-    merged_path = output_root / f"centered_{center_mode}" / animal / merged_name
+    merged_path = resolver.dlc_centered_parquet_dir(center_mode, animal) / merged_name
 
     if overwrite == "skip" and merged_path.exists():
         logger.info("Skip (exists): %s", merged_path)
@@ -300,14 +299,14 @@ def build_centered_parquet(
     compression = str(params.get("compression", "zstd"))
 
     animal = manifest.animal
-    output_root = resolver.pipeline_outputs("dlc_analysis")
+    centered_dir = resolver.dlc_centered_parquet_dir(center_mode, animal)
     results: list[Path] = []
 
     for h5_path in manifest.dlc_h5_files:
         # Build output path matching legacy convention
         sig = _param_sig(center_mode, lik_thr)
         out_name = f"{h5_path.name}.intermediate.{sig}.parquet"
-        out_path = output_root / f"centered_{center_mode}" / animal / out_name
+        out_path = centered_dir / out_name
 
         if overwrite == "skip" and out_path.exists():
             logger.info("Skip (exists): %s", out_path)

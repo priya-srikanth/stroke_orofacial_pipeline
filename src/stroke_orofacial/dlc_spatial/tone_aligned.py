@@ -388,7 +388,7 @@ def build_tone_aligned_analysis(
     # Locate the centered parquet derived from this manifest's first DLC h5.
     lik_thr_centering = 0.7  # Phase 4 centering threshold
     sig = _param_sig(center_mode, lik_thr_centering)
-    parquet_dir = resolver.pipeline_outputs("dlc_analysis") / f"centered_{center_mode}" / animal
+    parquet_dir = resolver.dlc_centered_parquet_dir(center_mode, animal)
     parquet_name = f"{manifest.dlc_h5_files[0].name}.intermediate.{sig}.parquet"
     parquet_path = parquet_dir / parquet_name
     if not parquet_path.exists():
