@@ -519,15 +519,13 @@ def build_tone_aligned_analysis(
     # for notebook 12 / one-off inspection. The cohort re-emit driver
     # never sets emit_cache=True.
     if emit_cache and histogram is not None:
-        win_tag = f"{int(window_ms[0])}to{int(window_ms[1])}ms"
-        npz_dir = (
-            resolver.pipeline_outputs("dlc_analysis")
-            / "spatial_tone_aligned"
-            / f"{bodypart}_{center_mode}"
-            / f"trials-{trial_group}_{win_tag}"
-            / animal
+        # Opt-in cache write via the Phase 7d (Addendum #4)
+        # spatial_tone_aligned_npz resolver. Dormant in production —
+        # the Phase 7c.2 cohort driver never sets emit_cache=True; this
+        # path is for notebook-12 / one-off inspection use.
+        npz_path = resolver.spatial_tone_aligned_npz(
+            bodypart, center_mode, trial_group, window_ms, animal, date,
         )
-        npz_path = npz_dir / f"heatmap_{date_str}.npz"
         save_tone_aligned_npz(result, npz_path)
 
     return result

@@ -1107,6 +1107,40 @@ class TestTonguePertrialPaths:
         assert not path.exists()
         assert not path.parent.exists()
 
+    def test_spatial_tone_aligned_npz_path(self, monkeypatch, tmp_path):
+        """Phase 7d Task 6 (Addendum #4) — new file resolver for Phase 6
+        opt-in tone-aligned spatial heatmap NPZ cache. Discharges 1
+        PathResolver-bypass call site in
+        ``dlc_spatial/tone_aligned.py`` that manually constructed the
+        parametric ``spatial_tone_aligned/<bodypart>_<center_mode>/
+        trials-<trial_group>_<win_tag>/<animal>/heatmap_<date>.npz``
+        path.
+
+        Dormant in production per Phase 7c.2 Addendum #3 Q2.B — the
+        cohort driver never sets ``emit_cache=True``; this resolver
+        exists for notebook-12 / one-off inspection use.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.spatial_tone_aligned_npz(
+            bodypart="jaw",
+            center_mode="spout_midpoint",
+            trial_group="tone",
+            window_ms=(-500, 0),
+            animal="PS50",
+            date=datetime.date(2025, 3, 19),
+        )
+        expected = (
+            tmp_path / "dlc_analysis" / "spatial_tone_aligned"
+            / "jaw_spout_midpoint" / "trials-tone_-500to0ms" / "PS50"
+            / "heatmap_20250319.npz"
+        )
+        assert path == expected
+        # Read-only resolver — does NOT create the parent directory eagerly.
+        # The opt-in cache write path creates the tree as needed.
+        assert not path.exists()
+        assert not path.parent.exists()
+
     def test_dlc_centered_parquet_dir_path(self, monkeypatch, tmp_path):
         """Phase 7d Task 6 (Addendum #4) — new directory resolver for Phase 4
         centered DLC parquets, parametric on ``center_mode``. Discharges 5

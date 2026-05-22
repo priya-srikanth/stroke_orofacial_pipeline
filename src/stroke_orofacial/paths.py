@@ -1071,6 +1071,48 @@ class PathResolver:
             )
         return matches[0]
 
+    def spatial_tone_aligned_npz(
+        self,
+        bodypart: str,
+        center_mode: str,
+        trial_group: str,
+        window_ms: tuple[int, int],
+        animal: str,
+        date: datetime.date,
+    ) -> Path:
+        """Return the Phase 6 tone-aligned spatial heatmap NPZ cache path.
+
+        E.g. ``<outputs>/dlc_analysis/spatial_tone_aligned/jaw_spout_midpoint/
+        trials-tone_-500to0ms/PS50/heatmap_20250319.npz``.
+
+        Opt-in cache write only — emitted by
+        :func:`stroke_orofacial.dlc_spatial.tone_aligned.compute_tone_aligned`
+        when ``emit_cache=True`` is passed. The Phase 7c.2 cohort re-emit
+        driver never sets this flag (the cohort-wide NPZ cache was eliminated
+        per Phase 7c.2 Addendum #3 Q2.B in favor of compute-on-demand via
+        :func:`render_tone_aligned_heatmap`); this resolver is dormant in
+        production and exists for notebook-12 / one-off inspection use.
+
+        Added in Phase 7d (Addendum #4) to discharge a PathResolver-bypass
+        call site even though the path is currently dormant — consistency
+        win: every bypass becomes a resolver call.
+
+        ``window_ms`` is a ``(lo, hi)`` int tuple in milliseconds; the
+        directory tag is ``f"trials-{trial_group}_{lo}to{hi}ms"``.
+        Does NOT create the parent directory eagerly (caller decides; the
+        opt-in cache write path creates as needed).
+        """
+        win_tag = f"{int(window_ms[0])}to{int(window_ms[1])}ms"
+        date_str = date.strftime("%Y%m%d")
+        return (
+            self.pipeline_outputs(subdir="dlc_analysis")
+            / "spatial_tone_aligned"
+            / f"{bodypart}_{center_mode}"
+            / f"trials-{trial_group}_{win_tag}"
+            / animal
+            / f"heatmap_{date_str}.npz"
+        )
+
     def dlc_centered_parquet_dir(
         self, center_mode: str, animal: str,
     ) -> Path:
