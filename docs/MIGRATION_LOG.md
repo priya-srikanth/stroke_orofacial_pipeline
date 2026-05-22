@@ -6192,11 +6192,44 @@ Verdict deliverable at [`.scratch_phase_7c1/pilot_verdict.md`](../.scratch_phase
 - **Phase 9 stats** (scoping drafted).
 - **Phase 9.1 phenotype-pooled figures** (scoping drafted).
 - **Pub-figures phase.**
-- **Possible Q70/Q71 alignment-mode follow-on** depending on the in-progress side-experiment outcomes (`.scratch_phase_7c2_alignment_test/`).
+- **Possible Q70/Q71 alignment-mode follow-on** depending on the in-progress side-experiment outcomes (`.scratch_phase_7c2_alignment_test/`). **Discharged 2026-05-21 via the alignment-regime archive PR #121 + Decision 26 amendment — see entry below.**
 
 **Discharged in-phase:** F-P-5 (SessionManifest Pattern A wiring); cohort-enumeration YAML-driven refactor (was queued at Addendum #5 as a post-7c.2 chore-PR, promoted to in-phase via Q67 because Cat 1 cleanup depended on it).
 
 **Tag:** `v7c.2-dlc-cohort-completion` on the merge commit.
+
+---
+
+## Phase 7c.2 follow-up — Alignment-regime side-experiment archive + Decision 26 amendment
+
+**Date:** 2026-05-21
+
+**Tag:** `v7c.2-alignment-regime-archive` (applied to merge commit on main).
+**Branch:** `experiment/alignment-regime-sweep-2026-05-archive`.
+**PR:** #121.
+**Status:** Closes the Phase 7c.2 forward-pointer "Possible Q70/Q71 alignment-mode follow-on" above.
+
+**What shipped:**
+
+- **206 SVGs relocated** from `.scratch_phase_7c2_alignment_test/svg_comparison/` → `notebooks/experiments/outputs/alignment_regime_sweep_2026-05/svg_comparison/<animal>/`. Breakdown: 14 Q64 IS-style 4-regime per-bp comparison SVGs + 144 Q70 tone_aligned PD-comparison SVGs (6 family entries × 8 animals × 3 trial_groups) + 48 Q71 whole_session PD-comparison SVGs (6 family entries × 8 animals × 1 trial_group). Cmap-direction bug fixed at Q70+Q71 launch — `[(0.0, blue), (0.5, grey), (1.0, red)]` matching Q25 canonical `_PROPORTION_DIFF_CMAP`.
+- **Q72 + Q72-pre-stroke per-bin numeric aggregation CSVs** at the new tree: `per_bin_numeric_comparison.csv` (16,432 rows, all-bins) + `per_bin_numeric_comparison_pre_stroke.csv` (4,368 rows) + cross-animal + winner-summary variants of each + 2 markdown reports.
+- **Per-animal cohort overview PNGs (4)** mirroring the 2026-04-19 sweep's `00_metric_overview_*.png` layout: `00_metric_overview_{pearson,js_divergence}_{pre_stroke,all_bins}.png`. Direct comparators to `notebooks/experiments/outputs/alignment_sweep/00_metric_overview_*.png` from the 2026-04-19 sweep (Decision 2026-04-19). Per-(animal, regime, bodypart) pairwise pooling across all pre-stroke or all-sessions session pairs. Histogram-edge logic ported from 2026-04-19 sweep cell 8 verbatim per Q13 audit-first ground rule.
+- **`per_animal_metrics_{pre_stroke,all_bins}.csv`** (416 rows each: 8 animals × 13 bodyparts × 4 regimes) — companion numeric tables to the overview PNGs.
+- **6 source scripts relocated** to `notebooks/experiments/` (sibling to `cross_session_alignment_sweep.ipynb`): `alignment_modes.py` (eye_affine + eye_rigid scratch implementations — do NOT ship to production; preserved as experimental-record companion to the eye_centered + spout_centered production code at `src/stroke_orofacial/dlc_io/centering.py`), `q64_lightweight.py`, `q65_pd_comparison.py`, `per_bin_numeric_comparison.py`, `per_bin_numeric_comparison_pre_stroke.py`, `per_animal_overview_figures.py`.
+- **`summary.txt`** at the new tree: cohort + methodology + output-file index, cross-references to the 2026-04-19 baseline + DECISIONS Decision 26 + Phase 7c.2 kickoff Addenda #54-59.
+- **Decision 26 amendment** landed in `docs/DECISIONS.md` lines 246-266 (separate docs-only follow-up PR, not bundled here): four findings from the pre-stroke re-analysis with net production impact = zero. See DECISIONS entry for full table.
+
+**Scratch tree retained:** `.scratch_phase_7c2_alignment_test/centered_parquets/` (large, regenerable from production DLC outputs); `__pycache__/`; `_inspect_sweep_notebook.py` (528 B helper). Nothing Decision-26-loadbearing remains in scratch.
+
+**Behavior changes vs production:** None. eye_affine + eye_rigid centering regimes remain non-production per Decision 2026-04-19; `alignment_modes.py` is experimental-record only. Phase 4.5-lite per-bodypart `center_mode` defaults at `configs/defaults.yaml` `dlc_spatial.bodyparts.*.center_mode` unchanged.
+
+**Repo growth:** ~159 MB committed under `notebooks/experiments/outputs/alignment_regime_sweep_2026-05/` + ~50 KB at `notebooks/experiments/*.py`. Acceptable for experimental-record tier given the precedent of the 2026-04-19 sweep folder also living under `notebooks/experiments/outputs/`.
+
+**Cross-references:**
+
+- **DECISIONS Decision 26 + amendment:** `docs/DECISIONS.md` lines 234-266.
+- **Baseline:** `notebooks/experiments/outputs/alignment_sweep/` (2026-04-19 sweep; Decision 2026-04-19 enforcement clause).
+- **Kickoff Addenda:** Phase 7c.2 Addenda #54 (Q64), #55 (Q65), #56 (Q66), #58 (Q70), #59 (Q71).
 
 ---
 
