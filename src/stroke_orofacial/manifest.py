@@ -501,6 +501,18 @@ _SECONDARY_SPOUT_OVERRIDE_KEYS: frozenset[str] = frozenset({
     "b_cam_subdir_override",
 })
 
+# Allowed override keys on every per-date entry in
+# ``wavesurfer_file_overrides:`` (Phase 7-pre-alignment-templates
+# Addendum #3 L9). Used to disambiguate which ``*.h5`` file the
+# new pipeline reads when a session dir contains multiple
+# candidates. ``b_ws_h5_filename`` is reserved for the b-half
+# variant (no consumer in F-P-7 — only bare-half lookup is wired).
+# Unknown keys raise ``ValueError`` on load.
+_WAVESURFER_FILE_OVERRIDE_KEYS: frozenset[str] = frozenset({
+    "bare_ws_h5_filename",
+    "b_ws_h5_filename",
+})
+
 
 def _multi_half_date_str_as_iso(date_str: str) -> str:
     """Convert ``multi_half_sessions:`` YYYYMMDD key to ISO YYYY-MM-DD.
@@ -640,6 +652,84 @@ def get_secondary_spout_entry(
         See :func:`load_secondary_spout_sessions`.
     """
     registry = load_secondary_spout_sessions(overrides_config)
+    iso = date.isoformat()
+    return registry.get(animal, {}).get(iso)
+
+
+def load_wavesurfer_file_overrides(
+    overrides_config: dict[str, Any],
+) -> dict[str, dict[str, dict[str, Any]]]:
+    """Load and validate ``wavesurfer_file_overrides:`` from the overrides
+    config.
+
+    Returns a nested mapping ``{animal: {iso_date_str: override_dict}}``
+    where each ``override_dict`` contains a subset of
+    :data:`_WAVESURFER_FILE_OVERRIDE_KEYS` mapping override-role names
+    to explicit ``*.h5`` filenames. Used by :func:`build_manifest`
+    to disambiguate ``find_wavesurfer_file`` when a session dir
+    contains multiple ``*.h5`` candidates.
+
+    Phase 7-pre-alignment-templates Addendum #3 L9.
+
+    Parameters
+    ----------
+    overrides_config : dict
+        Parsed contents of ``configs/session_overrides.yaml`` (typically
+        from :func:`stroke_orofacial.config_loader.load_session_overrides`).
+
+    Returns
+    -------
+    dict[str, dict[str, dict[str, Any]]]
+        Nested mapping ``{animal: {iso_date_str: override_dict}}``.
+        Empty when the YAML has no ``wavesurfer_file_overrides:`` block.
+
+    Raises
+    ------
+    ValueError
+        If an entry contains an unknown override key not listed in
+        :data:`_WAVESURFER_FILE_OVERRIDE_KEYS`. The error message
+        includes the ``(animal, date)`` that contained the typo.
+    """
+    raw = overrides_config.get("wavesurfer_file_overrides", {}) or {}
+    out: dict[str, dict[str, dict[str, Any]]] = {}
+    for animal, dates in raw.items():
+        if not dates:
+            continue
+        animal_out: dict[str, dict[str, Any]] = {}
+        for date_str, entry in dates.items():
+            entry_dict = dict(entry) if entry else {}
+            unknown = set(entry_dict) - _WAVESURFER_FILE_OVERRIDE_KEYS
+            if unknown:
+                raise ValueError(
+                    f"wavesurfer_file_overrides:{animal}:{date_str!r} "
+                    f"contains unknown override key(s) "
+                    f"{sorted(unknown)}. Allowed keys: "
+                    f"{sorted(_WAVESURFER_FILE_OVERRIDE_KEYS)}."
+                )
+            animal_out[date_str] = entry_dict
+        if animal_out:
+            out[animal] = animal_out
+    return out
+
+
+def get_wavesurfer_file_override(
+    animal: str,
+    date: datetime.date,
+    overrides_config: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Return the per-session wavesurfer-file override dict if
+    ``(animal, date)`` is registered, else ``None``.
+
+    Convenience accessor over :func:`load_wavesurfer_file_overrides`.
+    Mirrors :func:`get_secondary_spout_entry`.
+
+    Returns
+    -------
+    dict or None
+        Override dict (possibly empty) when ``(animal, date)`` is
+        registered in ``wavesurfer_file_overrides:``; ``None`` otherwise.
+    """
+    registry = load_wavesurfer_file_overrides(overrides_config)
     iso = date.isoformat()
     return registry.get(animal, {}).get(iso)
 
@@ -921,6 +1011,24 @@ def build_manifest(
                 "bare_cam_subdir_override",
             )
 
+    # Phase 7-pre-alignment-templates Addendum #3 L9: per-session
+    # h5-filename override for the bare-half manifest. When the WS
+    # session dir contains multiple ``*.h5`` candidates (e.g.
+    # PS55/2025-06-06 with stroke_0001.h5 + stroke_0002.h5),
+    # ``find_wavesurfer_file`` raises ValueError on ambiguity by
+    # default. The YAML override disambiguates per-(animal, date).
+    # b-half override (``b_ws_h5_filename``) is reserved but not
+    # consumed in F-P-7 — only bare-half is wired.
+    preferred_ws_h5_filename: str | None = None
+    if session_suffix is None:
+        ws_h5_override = get_wavesurfer_file_override(
+            animal, date, overrides_config,
+        )
+        if ws_h5_override is not None:
+            preferred_ws_h5_filename = ws_h5_override.get(
+                "bare_ws_h5_filename",
+            )
+
     wavesurfer_file: Path | None = None
     video_files: list[Path] = []
     if halves is None:
@@ -932,7 +1040,10 @@ def build_manifest(
                 date, animal, subdir_override=ws_subdir_override,
             )
             if ws_dir.exists():
-                wavesurfer_file = find_wavesurfer_file(ws_dir)
+                wavesurfer_file = find_wavesurfer_file(
+                    ws_dir,
+                    preferred_filename=preferred_ws_h5_filename,
+                )
         except (FileNotFoundError, ValueError):
             pass  # wavesurfer data not available for this session
 
