@@ -1107,6 +1107,27 @@ class TestTonguePertrialPaths:
         assert not path.exists()
         assert not path.parent.exists()
 
+    def test_spout_licks_and_rewards_npz_session_suffix(
+        self, monkeypatch, tmp_path,
+    ):
+        """``session_suffix=`` appends to the date string (matches the
+        existing :meth:`tongue_pertrial_endpoints_json` /
+        :meth:`interpolated_trace` convention). ``None`` or ``""`` yields
+        the bare-half filename; ``"b"`` yields the Pattern B b-half
+        sibling. Added in Phase 7d Task 6 step 5 to discharge 2
+        audit-missed sibling sites in ``spout_close_vs_std.py``.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        date = datetime.date(2025, 4, 30)
+        bare = resolver.spout_licks_and_rewards_npz("PS51", date)
+        b = resolver.spout_licks_and_rewards_npz(
+            "PS51", date, session_suffix="b",
+        )
+        assert bare.name == "20250430.npz"
+        assert b.name == "20250430b.npz"
+        assert bare.parent == b.parent
+
     def test_spatial_tone_aligned_npz_path(self, monkeypatch, tmp_path):
         """Phase 7d Task 6 (Addendum #4) — new file resolver for Phase 6
         opt-in tone-aligned spatial heatmap NPZ cache. Discharges 1

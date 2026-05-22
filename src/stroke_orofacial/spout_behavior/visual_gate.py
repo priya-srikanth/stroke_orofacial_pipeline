@@ -220,6 +220,11 @@ def _resolve_session_npz_path(
       ``multi_half_sessions:``):
       ``{licks_root}/<animal>/<date_str><half_suffix>.npz`` (flat).
     """
+    # Intentional Type L per Phase 7d Addendum #4 — this helper IS the
+    # routing layer for spout session NPZ types; PathResolver covers the
+    # tree-root (sp_root) and the per-output_type routing lives here.
+    # Adding a `spout_output_dir(output_type, animal)` PathResolver method
+    # would just relocate the routing logic without separating concerns.
     sp_root = resolver.pipeline_outputs("spout_behavior")
     type_root = sp_root / output_type / animal
     if half_suffix == "":

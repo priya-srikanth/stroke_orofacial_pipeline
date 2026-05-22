@@ -1242,24 +1242,34 @@ class PathResolver:
 
     def spout_licks_and_rewards_npz(
         self, animal: str, date: datetime.date,
+        *, session_suffix: str | None = None,
     ) -> Path:
         """Return the per-(animal, date) Phase 2 licks_and_rewards NPZ.
 
-        E.g. ``<outputs>/spout_behavior/licks_and_rewards/PS50/20250319.npz``.
+        E.g. ``<outputs>/spout_behavior/licks_and_rewards/PS50/20250319.npz``
+        (bare) or ``<outputs>/spout_behavior/licks_and_rewards/PS50/20250319b.npz``
+        (Pattern B b-half via ``session_suffix="b"``).
+
+        ``session_suffix`` is appended to the date string (matches the
+        existing :meth:`tongue_pertrial_endpoints_json` / :meth:`interpolated_trace`
+        convention). ``None`` or ``""`` yields the bare-half filename.
 
         Emitted by the Phase 2 lick/reward extraction (notebook 06). The
         ``licks_and_rewards`` directory name is PRESERVED per Phase 8a.10.1
         Decision 8 E.B.1 (rename-cost-without-benefit cycle avoided).
 
-        Added in Phase 7d (Addendum #4) to discharge 6 PathResolver-bypass
-        call sites — both direct concatenation (``pipeline_outputs(
-        "spout_behavior") / "licks_and_rewards" / animal / f"{date_str}.npz"``)
-        and captured-root variants (``sp_root = pipeline_outputs(
-        "spout_behavior")`` then ``sp_root / "licks_and_rewards" / ...``).
+        Added in Phase 7d (Addendum #4) to discharge 6 audit-listed
+        PathResolver-bypass call sites — both direct concatenation
+        (``pipeline_outputs("spout_behavior") / "licks_and_rewards" / animal
+        / f"{date_str}.npz"``) and captured-root variants (``sp_root =
+        pipeline_outputs("spout_behavior")`` then ``sp_root /
+        "licks_and_rewards" / ...``). The ``session_suffix`` keyword added
+        during Task 6 step 5 re-grep to also discharge 2 audit-missed
+        sibling sites in ``spout_close_vs_std.py`` (bare + b-half).
         Read-only resolver — does NOT create the parent directory eagerly;
         Phase 2 emission writes the NPZs and creates the tree.
         """
-        date_str = date.strftime("%Y%m%d")
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         return (
             self.pipeline_outputs(subdir="spout_behavior")
             / "licks_and_rewards"
