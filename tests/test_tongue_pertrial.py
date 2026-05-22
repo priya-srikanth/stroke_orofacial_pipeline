@@ -1581,11 +1581,24 @@ class TestTrialEventsAutoDerive:
         # exist on the real share. Patch resolver to a non-existent path.
         # We do this by overriding the alignment_template method.
         nonexistent = tmp_path / "no_alignment_anywhere.npz"
-        # Renamed from alignment_template after the 2026-05-05 incident:
-        # the resolver method is now alignment_template_legacy_read.
+        # Phase 7-pre-alignment-templates Task 4 cutover: consumer now
+        # reads via alignment_template_for_reading (prefer-new-then-
+        # legacy). This test asserts the CONSUMER's own raise
+        # ("alignment template missing"), not the resolver's. To force
+        # the consumer's existence-check raise rather than the
+        # resolver's FileNotFoundError, return a non-existent path from
+        # for_reading instead of raising — the consumer then runs its
+        # own `not align_path.exists()` check and produces its own error
+        # message. Both the legacy and for_reading overrides return
+        # non-existent so the consumer hits the missing case
+        # regardless of which one is called.
         monkeypatch.setattr(
             resolver, "alignment_template_legacy_read",
-            lambda animal, date, cam="cam2": nonexistent,
+            lambda animal, date, cam="cam2", *, session_suffix=None: nonexistent,
+        )
+        monkeypatch.setattr(
+            resolver, "alignment_template_for_reading",
+            lambda animal, date, cam="cam2", *, session_suffix=None: nonexistent,
         )
         with pytest.raises(FileNotFoundError, match="alignment template missing"):
             _derive_trial_events_from_spout_behavior(
