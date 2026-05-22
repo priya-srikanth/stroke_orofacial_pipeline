@@ -389,3 +389,64 @@ Task 1 enumeration used `analysis_context="alignment"` (broader than DLC-strict)
 ### Addendum #2 scope statement
 
 All other locks UNCHANGED. Addendum #2 only adjusts Task 1 count expectation (informational), Task 2 SKIP_NO_INPUT semantics (L4), and locks the cohort enumeration analysis_context (L5).
+
+---
+
+## Addendum #3 — Task 2 + Task 3 post-execution refinements (2026-05-22)
+
+CC ran Task 2 + Task 3 cleanly. Task 2 emit: 277 OK + 126 SKIP_NO_INPUT (all legitimate "no WS data on disk" — see L6) + 0 FAIL. Task 3 parity: 0 IDENTICAL (Addendum #1 L2 scipy-drift prediction CONFIRMED), 1 expected multi-half divergence (PS48/2025-03-14), 274 scipy-drift-equivalent (category-b dominant as predicted), 2 borderline-divergent + 1 MISSING_NEW requiring per-case adjudication, 125 MISSING_BOTH (legitimate cutoff). Four locks for Task 4 + 3 pre-Task-4 actions. **ALL OTHER LOCKS UNCHANGED.**
+
+### L6 — SKIP_NO_INPUT threshold revision (Priya 2026-05-22)
+
+Addendum #2 L4's "≤6 threshold" anticipated only the 5 b-half registry-vs-disk-data gaps. Task 2 enumeration surfaced 121 additional single_half SKIPs from YAML-range-vs-recording-extent skew (sessions where YAML `sessions.start → .sessions.end` extends past the actual recording cutoff). CC verified all 126 SKIPs are legitimate: legacy tree also has no template for these dates, so the new pipeline is matching legacy correctly — the YAML range is the upper bound, not the actual recording extent.
+
+**Revised acceptance criterion.** SKIP_NO_INPUT count ≤ 6 b-half SKIPs + N single_half SKIPs where N matches no-on-disk-data sessions (legacy also missing). Task 7 verdict cross-checks each SKIP against legacy tree absence. Any single_half SKIP where legacy DOES have a template → STOP-and-report as anomaly.
+
+The cross-check identified exactly 1 such anomaly: PS55/2025-06-06 (legacy has template; new SKIP'd on ambiguous-h5 ValueError). Discharge via L9 below.
+
+*Enforced at:* Task 7 verdict in `.scratch_phase_7_pre_aligntmpl/verdict.md`; Task 2 driver continues SKIP_NO_INPUT logic without threshold change.
+
+### L7 — Task 3 parity threshold adjustment + outlier documentation (Priya 2026-05-22)
+
+Addendum #1 L2's `np.testing.assert_allclose(rtol=1e-7, atol=0)` thresholds were too tight for actual scipy 1.15→1.17 drift magnitude. CC ran the practical pair `rtol=1e-5, atol=1e-6` which correctly categorized 274/277 as scipy-drift-equivalent (category-b). Two non-categorizable cases surfaced:
+
+**Outlier #1 — PS54/2025-06-26 (b-half):** sig_wsIdx__idx_cam fails with max_abs=2.095e-06 (~2× atol), max_rel=3.058e-04 (~30× rtol). The magnitude is at the upper end of scipy interp1d/polyfit floating-point drift — unambiguously category-b in nature, just sitting at the high-magnitude tail.
+
+**Outlier #2 — PS55/2025-05-02 (single_half):** sig_camTimesCommon__idx_cam + sig_camTimes__idx_cam + sig_wsIdx__idx_cam show a 1-sample shape delta (new=908112 vs legacy=908111). Substantively different from sub-bit drift — either scipy.interp1d boundary-inclusion semantics changed between versions, OR the `_find_rising_edges` detector counted differently due to floating-point comparisons against `edge_threshold`. **Requires Task 3.5 root-cause investigation before Task 4.**
+
+**Lock.** PS54/2025-06-26 is documented as a category-b outlier in `.scratch_phase_7_pre_aligntmpl/parity_summary.md` with the magnitude flag preserved. PS55/2025-05-02 gates on Task 3.5 root-cause: if scipy boundary semantics, document as category-b boundary-edge outlier and proceed. If `_find_rising_edges` divergence, that's a Phase 3 builder behavior difference that needs Priya review before Task 4.
+
+*Enforced at:* `.scratch_phase_7_pre_aligntmpl/parity_summary.md` outlier table; Task 3.5 in `.scratch_phase_7_pre_aligntmpl/ps55_20250502_root_cause.md`.
+
+### L8 — Practical parity tolerance revision (Priya 2026-05-22, implicit via L7)
+
+Override Addendum #1 L2's `(rtol=1e-7, atol=0)` tolerance pair. **Locked: `rtol=1e-5, atol=1e-6, equal_nan=True`.** Rationale: scipy 1.15→1.17 numerical drift in `scipy.interpolate.interp1d` + `np.polyfit` produces sub-bit differences in the 1e-6 to 1e-5 magnitude range; the practical tolerance pair categorizes them as expected (category-b) without false-positives at 1e-7 rigor. Future phases doing parity validation against legacy outputs should use the same tolerance pair as the default.
+
+*Enforced at:* `scripts/phase_7_pre_aligntmpl/parity_validate.py` allclose call; documented in Task 8 DECISIONS as the canonical post-Option-A-scipy parity tolerance.
+
+### L9 — In-phase fix for PS55/2025-06-06 ambiguous h5 (Priya 2026-05-22)
+
+PS55/2025-06-06 has two `stroke_000{1,2}.h5` files in the WS dir. `find_wavesurfer_file` (`spout_behavior/wavesurfer_io.py:140`) raises ValueError on multiple matches. Priya's manual choice: **`stroke_0002.h5` is canonical; disregard `stroke_0001.h5`.**
+
+**Lock.** F-P-7 closes this gap in-phase via Task 3.6 (new sub-task between Task 3 and Task 4):
+
+1. CC proposes a schema extension to `configs/session_overrides.yaml` for h5-filename disambiguation. **STOP-and-report** the proposed schema before implementing — Priya approves the shape before plumbing.
+2. CC plumbs the override through:
+   - `find_wavesurfer_file` — accept optional `preferred_filename: str | None = None` parameter; if provided AND that filename exists in the dir, return it; else fall back to existing glob-disambig logic.
+   - `manifest.py` builder — when building a single_half manifest, look up `(animal, date)` in the new session_overrides section; pass the override into `find_wavesurfer_file`.
+3. Add a `configs/session_overrides.yaml` entry for PS55/2025-06-06 pointing to `stroke_0002.h5` per the schema CC proposed.
+4. Re-emit just the PS55/2025-06-06 row (delete the existing SKIP row from `emit_manifest.csv`; re-run the emit driver in resume mode — it'll process the one un-emitted row).
+5. Re-run Task 3 parity check against just PS55/2025-06-06; categorize alongside the rest.
+6. Update `.scratch_phase_7_pre_aligntmpl/parity_summary.md` with the post-fix verdict.
+
+Out-of-scope for Task 3.6: any other ambiguous-h5 cases. The new override mechanism is general but the entry list stays at 1 row for F-P-7.
+
+*Enforced at:* `configs/session_overrides.yaml` new section; `src/stroke_orofacial/spout_behavior/wavesurfer_io.py:find_wavesurfer_file` optional param; `src/stroke_orofacial/manifest.py` builder override lookup; `.scratch_phase_7_pre_aligntmpl/emit_manifest.csv` updated row.
+
+### Pre-Task-4 sequence
+
+Task 3.5 (PS55/2025-05-02 root-cause) and Task 3.6 (PS55/2025-06-06 in-phase fix) both gate Task 4. Suggested order: 3.5 → 3.6 → combined STOP-and-report → Priya "go" → Task 4. Task 3.5 is investigation-only (no code/data writes); Task 3.6 has CC's schema STOP-and-ask in the middle.
+
+### Addendum #3 scope statement
+
+All other locks UNCHANGED. Addendum #3 adjusts SKIP threshold acceptance (L6), Task 3 outlier documentation (L7), parity tolerance pair (L8), and adds Task 3.6 in-phase fix for PS55/2025-06-06 (L9). Task 4 consumer cutover scope unchanged; gated on Task 3.5 + 3.6 + Priya go.
