@@ -293,3 +293,23 @@ Generate `.scratch_phase_7d/verification.md` summarizing all 4 axes + STOP-and-r
 - Memory: `project_dlc_kinematics_features_naming_cleanup_forward_pointer.md` (granularity-first layout rationale + scope estimate).
 - Phase 7c.2 close (the immediate predecessor + the phase that created `tone_aligned_heatmaps/` + `whole_session_heatmaps/`).
 - CLAUDE.md Ground Rules — especially Rule 7's destructive-ops policy applies to Task 4 migration commands.
+
+---
+
+## Addendum #1 — Task 2 Option A locked (Priya 2026-05-21)
+
+**Lock:** Task 2 Option A — **PathResolver method names PRESERVED**. Only the returned path strings change. The three resolver methods retain their current names:
+
+- `tongue_pertrial_angle_parquet(...)` — returned path changes from `dlc_kinematics/features/tongue/...` to `dlc_kinematics/per_frame/tongue/...`
+- `tongue_pertrial_endpoints_json(...)` — returned path changes from `dlc_kinematics/endpoints/...` to `dlc_kinematics/per_trial/tongue/...`
+- `jaw_pertrial_endpoints_json(...)` — returned path changes from `dlc_kinematics/jaw_pertrial/endpoints/...` to `dlc_kinematics/per_trial/jaw/...`
+
+**Why:** zero call-site changes across `src/`, `tests/`, `scripts/`, `notebooks/`. The method-name-vs-path-structure mismatch (e.g., `jaw_pertrial_endpoints_json` returning a path under `per_trial/jaw/`) is acceptable cosmetic drift; bigger PathResolver method-naming cleanup is deferred indefinitely. Phase 7d stays pure on-disk-layout cleanup, no source surface changes.
+
+**How to apply:**
+- Task 2 implements the path-string updates inside each method body; method signatures + names unchanged.
+- Task 3 test-fixture updates: assertion-string updates only (`features/tongue` → `per_frame/tongue`, etc.); no test function renames.
+- DECISIONS (Task 6) records Option A choice + reasoning.
+- Skip the "Option B unless Priya explicitly approves" branch entirely.
+
+**ALL OTHER LOCKS UNCHANGED.** Tasks 0/1/3/4/5/6, parity strategy, verification axes, acceptance criteria, and out-of-scope items all remain as written.
