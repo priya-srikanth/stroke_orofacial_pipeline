@@ -32,11 +32,11 @@ Inputs
 
 Outputs (atomic, three files per session)
 -----------------------------------------
-- ``<outputs>/dlc_kinematics/features/tongue/<animal>/<YYYYMMDD>.parquet``
+- ``<outputs>/dlc_kinematics/per_frame/tongue/<animal>/<YYYYMMDD>.parquet``
   (per-frame angle parquet, 2 cols + 10 file-level metadata keys)
 - ``<outputs>/dlc_kinematics/licking_dynamics/traces/<animal>/<YYYYMMDD>.parquet``
   (per-session × side traces parquet, 6 cols + 17 file-level metadata keys)
-- ``<outputs>/dlc_kinematics/endpoints/<animal>/<YYYYMMDD>.json``
+- ``<outputs>/dlc_kinematics/per_trial/tongue/<animal>/<YYYYMMDD>.json``
   (per-trial endpoints JSON, ``schema_version="v7a.3"``)
 """
 
@@ -963,10 +963,7 @@ def compute_pre_stroke_median_ili_ms(
     if animal_info is None:
         animal_info = get_animal(animal)
 
-    endpoints_dir = (
-        resolver.pipeline_outputs(subdir="dlc_kinematics")
-        / "endpoints" / animal
-    )
+    endpoints_dir = resolver.tongue_pertrial_endpoints_dir(animal)
     if not endpoints_dir.exists():
         return float("nan")
 

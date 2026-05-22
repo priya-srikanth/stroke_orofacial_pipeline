@@ -401,17 +401,21 @@ class PathResolver:
     ) -> Path:
         """Return the Phase 7a.3 per-frame tongue-angle parquet path.
 
-        E.g. ``<outputs>/dlc_kinematics/features/tongue/PS50/20250319.parquet``.
+        E.g. ``<outputs>/dlc_kinematics/per_frame/tongue/PS50/20250319.parquet``.
 
         Output filename uses ``%Y%m%d`` to match the existing 7a.2
         :meth:`interpolated_trace` convention. Mirrors :meth:`pipeline_outputs`'s
         ``output_root`` test-override behavior via ``_output_root_override``.
         Parent directory is created eagerly.
+
+        Path layout migrated from ``dlc_kinematics/features/tongue/`` to
+        ``dlc_kinematics/per_frame/tongue/`` in Phase 7d (granularity-first
+        layout); method name preserved per Phase 7d Addendum #1.
         """
         date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         out = (
             self.pipeline_outputs(subdir="dlc_kinematics")
-            / "features"
+            / "per_frame"
             / "tongue"
             / animal
             / f"{date_str}.parquet"
@@ -448,21 +452,56 @@ class PathResolver:
     ) -> Path:
         """Return the Phase 7a.3 per-trial endpoints JSON path.
 
-        E.g. ``<outputs>/dlc_kinematics/endpoints/PS54/20250607.json``.
+        E.g. ``<outputs>/dlc_kinematics/per_trial/tongue/PS54/20250607.json``.
 
         Output filename uses ``%Y%m%d`` to match
         :meth:`interpolated_trace`'s convention. Parent directory is created
         eagerly.
+
+        Path layout migrated from ``dlc_kinematics/endpoints/`` (top-level,
+        tongue-implicit) to ``dlc_kinematics/per_trial/tongue/`` in Phase 7d
+        (granularity-first + per-bodypart-symmetric layout); method name
+        preserved per Phase 7d Addendum #1. The directory containing these
+        per-(animal, date) files is also exposed as
+        :meth:`tongue_pertrial_endpoints_dir`.
         """
         date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         out = (
             self.pipeline_outputs(subdir="dlc_kinematics")
-            / "endpoints"
+            / "per_trial"
+            / "tongue"
             / animal
             / f"{date_str}.json"
         )
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
+
+    def tongue_pertrial_endpoints_dir(self, animal: str) -> Path:
+        """Return the per-animal directory holding per-trial tongue endpoints.
+
+        E.g. ``<outputs>/dlc_kinematics/per_trial/tongue/PS46/``.
+
+        Symmetric with :meth:`tongue_pertrial_endpoints_json` (which returns
+        the per-(animal, date) file path). Use this when a caller needs to
+        enumerate every session date for an animal by globbing ``*.json``
+        within the directory (e.g.
+        :func:`stroke_orofacial.dlc_kinematics.tongue_pertrial.compute_pre_stroke_median_ili_ms`
+        and
+        :func:`stroke_orofacial.dlc_kinematics.tongue_angle_cohort._enumerate_session_dates`).
+
+        Added in Phase 7d (Addendum #2) to discharge two pre-existing
+        PathResolver-bypass call sites that manually constructed this path
+        — Phase 7d's rename surfaced the latent bug because the manual paths
+        would silently miss every session after the on-disk migration.
+        Does NOT create the directory eagerly (caller decides; consumers
+        typically read-only).
+        """
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "per_trial"
+            / "tongue"
+            / animal
+        )
 
     def tongue_pertrial_licking_dynamics_day_binned_parquet(
         self, animal: str, rel_day_bin_label: str,
@@ -709,7 +748,7 @@ class PathResolver:
     ) -> Path:
         """Return the Phase 7a.5 per-trial jaw scalars JSON path.
 
-        E.g. ``<outputs>/dlc_kinematics/jaw_pertrial/endpoints/PS46/20250307.json``.
+        E.g. ``<outputs>/dlc_kinematics/per_trial/jaw/PS46/20250307.json``.
 
         Hosts the per-trial jaw baseline / deflection / QC scalars produced
         by :func:`stroke_orofacial.dlc_kinematics.jaw_pertrial.build_jaw_pertrial`
@@ -717,12 +756,17 @@ class PathResolver:
         logic). Filename uses ``%Y%m%d`` to match the
         :meth:`interpolated_trace` / :meth:`tongue_pertrial_endpoints_json`
         conventions. Parent directory is created eagerly.
+
+        Path layout migrated from ``dlc_kinematics/jaw_pertrial/endpoints/``
+        to ``dlc_kinematics/per_trial/jaw/`` in Phase 7d (granularity-first +
+        per-bodypart-symmetric layout, matching the tongue sibling at
+        ``per_trial/tongue/``); method name preserved per Phase 7d Addendum #1.
         """
         date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         out = (
             self.pipeline_outputs(subdir="dlc_kinematics")
-            / "jaw_pertrial"
-            / "endpoints"
+            / "per_trial"
+            / "jaw"
             / animal
             / f"{date_str}.json"
         )

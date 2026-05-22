@@ -27,7 +27,7 @@ Inputs
 
 Outputs (atomic, one JSON file per session)
 -------------------------------------------
-- ``<outputs>/dlc_kinematics/jaw_pertrial/endpoints/<animal>/<YYYYMMDD>.json``
+- ``<outputs>/dlc_kinematics/per_trial/jaw/<animal>/<YYYYMMDD>.json``
   (per-trial scalars + metadata; ``schema_version="v7a.5"``)
 
 Per-trial scalars (8 fields, co-indexed with ``trial_indices`` + ``sides``)

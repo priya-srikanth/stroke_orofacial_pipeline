@@ -900,7 +900,12 @@ class TestTonguePertrialPaths:
     """
 
     def test_tongue_pertrial_angle_parquet_path(self, monkeypatch, tmp_path):
-        """Output uses %Y%m%d (matches 7a.2 interpolated_trace)."""
+        """Output uses %Y%m%d (matches 7a.2 interpolated_trace).
+
+        Path layout post-Phase-7d:
+        ``dlc_kinematics/per_frame/tongue/<animal>/<date>.parquet`` (was
+        ``dlc_kinematics/features/tongue/...`` pre-7d).
+        """
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(output_root=tmp_path)
         path = resolver.tongue_pertrial_angle_parquet(
@@ -909,7 +914,7 @@ class TestTonguePertrialPaths:
         expected = (
             tmp_path
             / "dlc_kinematics"
-            / "features"
+            / "per_frame"
             / "tongue"
             / "PS50"
             / "20250319.parquet"
@@ -937,6 +942,13 @@ class TestTonguePertrialPaths:
         assert path.parent.exists()
 
     def test_tongue_pertrial_endpoints_json_path(self, monkeypatch, tmp_path):
+        """Per-(animal, date) per-trial tongue endpoints JSON path.
+
+        Path layout post-Phase-7d:
+        ``dlc_kinematics/per_trial/tongue/<animal>/<date>.json`` (was
+        ``dlc_kinematics/endpoints/<animal>/<date>.json`` pre-7d —
+        top-level, tongue-implicit).
+        """
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(output_root=tmp_path)
         path = resolver.tongue_pertrial_endpoints_json(
@@ -945,12 +957,56 @@ class TestTonguePertrialPaths:
         expected = (
             tmp_path
             / "dlc_kinematics"
-            / "endpoints"
+            / "per_trial"
+            / "tongue"
             / "PS54"
             / "20250607.json"
         )
         assert path == expected
         assert path.parent.exists()
+
+    def test_tongue_pertrial_endpoints_dir_path(self, monkeypatch, tmp_path):
+        """New Phase 7d (Addendum #2) directory resolver: per-animal dir of
+        per-trial tongue endpoints JSONs. Symmetric with
+        :meth:`tongue_pertrial_endpoints_json`. Used by callers that need
+        to enumerate every session date for an animal by globbing ``*.json``.
+
+        Discharges 2 pre-7d PathResolver-bypass call sites in
+        ``compute_pre_stroke_median_ili_ms`` (tongue_pertrial.py) and
+        ``_enumerate_session_dates`` (tongue_angle_cohort.py). Does NOT
+        create the directory eagerly (caller decides).
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tongue_pertrial_endpoints_dir("PS46")
+        expected = (
+            tmp_path
+            / "dlc_kinematics"
+            / "per_trial"
+            / "tongue"
+            / "PS46"
+        )
+        assert path == expected
+        # No eager mkdir — directory should NOT exist until a writer
+        # (tongue_pertrial_endpoints_json) creates it via its parent mkdir.
+        assert not path.exists()
+
+    def test_tongue_pertrial_endpoints_dir_matches_json_parent(
+        self, monkeypatch, tmp_path,
+    ):
+        """The directory resolver must return the same path as the parent
+        of the per-(animal, date) JSON resolver for the same animal. This
+        invariant guards against drift between the two methods: if one is
+        renamed/moved, the other must follow.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        animal = "PS46"
+        dir_path = resolver.tongue_pertrial_endpoints_dir(animal)
+        json_path = resolver.tongue_pertrial_endpoints_json(
+            animal, datetime.date(2025, 3, 7),
+        )
+        assert dir_path == json_path.parent
 
     def test_dlc_centered_spout_midpoint_parquet_globs_and_returns_unique_match(
         self, monkeypatch, tmp_path,
@@ -1139,7 +1195,14 @@ class TestPhase7a5Paths:
     """
 
     def test_jaw_pertrial_endpoints_json_path(self, monkeypatch, tmp_path):
-        """Per-trial jaw scalars JSON: %Y%m%d filename + eager parent mkdir."""
+        """Per-trial jaw scalars JSON: %Y%m%d filename + eager parent mkdir.
+
+        Path layout post-Phase-7d:
+        ``dlc_kinematics/per_trial/jaw/<animal>/<date>.json`` (was
+        ``dlc_kinematics/jaw_pertrial/endpoints/<animal>/<date>.json``
+        pre-7d — symmetric with the tongue sibling at
+        ``per_trial/tongue/``).
+        """
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(output_root=tmp_path)
         path = resolver.jaw_pertrial_endpoints_json(
@@ -1148,8 +1211,8 @@ class TestPhase7a5Paths:
         expected = (
             tmp_path
             / "dlc_kinematics"
-            / "jaw_pertrial"
-            / "endpoints"
+            / "per_trial"
+            / "jaw"
             / "PS46"
             / "20250307.json"
         )
