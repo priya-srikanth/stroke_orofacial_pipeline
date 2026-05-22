@@ -316,7 +316,7 @@ class _HarnessResolver:
     ) -> Path:
         date_str = date.strftime("%Y%m%d")
         out = (
-            self._temp / "dlc_kinematics" / "features" / "tongue"
+            self._temp / "dlc_kinematics" / "per_frame" / "tongue"
             / animal / f"{date_str}.parquet"
         )
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -338,7 +338,7 @@ class _HarnessResolver:
     ) -> Path:
         date_str = date.strftime("%Y%m%d")
         out = (
-            self._temp / "dlc_kinematics" / "endpoints"
+            self._temp / "dlc_kinematics" / "per_trial" / "tongue"
             / animal / f"{date_str}.json"
         )
         out.parent.mkdir(parents=True, exist_ok=True)
