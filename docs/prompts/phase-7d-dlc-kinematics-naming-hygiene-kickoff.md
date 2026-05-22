@@ -313,3 +313,48 @@ Generate `.scratch_phase_7d/verification.md` summarizing all 4 axes + STOP-and-r
 - Skip the "Option B unless Priya explicitly approves" branch entirely.
 
 **ALL OTHER LOCKS UNCHANGED.** Tasks 0/1/3/4/5/6, parity strategy, verification axes, acceptance criteria, and out-of-scope items all remain as written.
+
+---
+
+## Addendum #2 — Task 1 audit finding + A.2 resolver-method lock (Priya 2026-05-22)
+
+**Audit finding:** Task 1 caller-surface audit (CC, 2026-05-21) found 2 source-code call sites manually globbing the old `endpoints/` path (bypassing PathResolver) — both would silently return empty / NaN after the Task 4 mv:
+
+1. `src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py:966-969` — `compute_pre_stroke_median_ili_ms` helper: `resolver.pipeline_outputs(subdir="dlc_kinematics") / "endpoints" / animal`
+2. `src/stroke_orofacial/dlc_kinematics/tongue_angle_cohort.py:397-400` — `_enumerate_session_dates`: same manual glob
+
+Audit doc at `.scratch_phase_7d/caller_audit.md`. Addendum #1's "no source-surface changes" framing assumed all callers already routed through PathResolver — this audit shows the assumption was wrong. These two sites MUST be fixed in Phase 7d (deferring to a follow-up would land Phase 7d on day one with broken pre-stroke median-ILI computation + tongue-angle cross-session enumeration).
+
+**Lock (Option A.2):** add a NEW PathResolver method:
+
+```python
+def tongue_pertrial_endpoints_dir(self, animal: str) -> Path:
+    """Return the directory containing per-trial tongue endpoint JSONs for an animal.
+
+    E.g. ``<outputs>/dlc_kinematics/per_trial/tongue/PS46/``.
+    Symmetric with :meth:`tongue_pertrial_endpoints_json` which returns the per-(animal, date) file.
+    """
+    return self.pipeline_outputs(subdir="dlc_kinematics") / "per_trial" / "tongue" / animal
+```
+
+Both call sites update to use `resolver.tongue_pertrial_endpoints_dir(animal)`. The resolver method is the canonical source-of-truth for the directory path.
+
+**Why A.2 over A.1 (inline rewrite):**
+
+- Symmetric with the existing `tongue_pertrial_endpoints_json` (file resolver) — there should be a directory resolver too. The audit's surprise (2 sites bypassing) is evidence the resolver had a gap (file-resolver-only) that forced consumers to manually glob.
+- Future-proofs the next rename — Phase 7d itself proves the cost of PathResolver bypass: when paths rename, bypassing sites silently break. Adding the resolver method discharges the violation rather than perpetuating it (which A.1 would do).
+- Scope cost small: +1 method body + 2 call-site updates + 1 unit test. Within mechanical-rename territory.
+- Consistent with Addendum #1: Addendum #1 locked method-NAME preservation (Option A vs Option B), not "no new methods added." A new sibling resolver method does not conflict with that lock.
+
+**How to apply (Task 2 extension):**
+
+- Add `tongue_pertrial_endpoints_dir(animal: str) -> Path` method to `src/stroke_orofacial/paths.py`. Place it adjacent to the existing `tongue_pertrial_endpoints_json` method for symmetry. Returned path: `<output_root>/dlc_kinematics/per_trial/tongue/<animal>/`.
+- Update `src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py:966-969` to use `resolver.tongue_pertrial_endpoints_dir(animal)`.
+- Update `src/stroke_orofacial/dlc_kinematics/tongue_angle_cohort.py:397-400` to use the same resolver method.
+- Add 1 unit test in `tests/test_paths.py` covering the new dir resolver's returned path structure.
+
+**How to apply (Task 6 DECISIONS):**
+
+Add a decision entry covering Addendum #2's audit-finding-driven lock — the audit surfaced 2 PathResolver-bypass call sites that the kickoff did not anticipate; the A.2 resolution adds a sibling directory resolver method and discharges the violation in-phase rather than perpetuating it.
+
+**ALL OTHER LOCKS UNCHANGED.** Tasks 0/3/4/5/6, parity strategy, verification axes, acceptance criteria, and out-of-scope items all remain as written. Addendum #1's method-name preservation lock (Option A) continues to apply to the three existing resolver methods; Addendum #2 only ADDS one new method, does not rename any existing methods.
