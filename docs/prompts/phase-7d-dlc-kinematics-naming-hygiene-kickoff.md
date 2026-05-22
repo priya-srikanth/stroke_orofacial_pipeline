@@ -293,3 +293,214 @@ Generate `.scratch_phase_7d/verification.md` summarizing all 4 axes + STOP-and-r
 - Memory: `project_dlc_kinematics_features_naming_cleanup_forward_pointer.md` (granularity-first layout rationale + scope estimate).
 - Phase 7c.2 close (the immediate predecessor + the phase that created `tone_aligned_heatmaps/` + `whole_session_heatmaps/`).
 - CLAUDE.md Ground Rules — especially Rule 7's destructive-ops policy applies to Task 4 migration commands.
+
+---
+
+## Addendum #1 — Task 2 Option A locked (Priya 2026-05-21)
+
+**Lock:** Task 2 Option A — **PathResolver method names PRESERVED**. Only the returned path strings change. The three resolver methods retain their current names:
+
+- `tongue_pertrial_angle_parquet(...)` — returned path changes from `dlc_kinematics/features/tongue/...` to `dlc_kinematics/per_frame/tongue/...`
+- `tongue_pertrial_endpoints_json(...)` — returned path changes from `dlc_kinematics/endpoints/...` to `dlc_kinematics/per_trial/tongue/...`
+- `jaw_pertrial_endpoints_json(...)` — returned path changes from `dlc_kinematics/jaw_pertrial/endpoints/...` to `dlc_kinematics/per_trial/jaw/...`
+
+**Why:** zero call-site changes across `src/`, `tests/`, `scripts/`, `notebooks/`. The method-name-vs-path-structure mismatch (e.g., `jaw_pertrial_endpoints_json` returning a path under `per_trial/jaw/`) is acceptable cosmetic drift; bigger PathResolver method-naming cleanup is deferred indefinitely. Phase 7d stays pure on-disk-layout cleanup, no source surface changes.
+
+**How to apply:**
+- Task 2 implements the path-string updates inside each method body; method signatures + names unchanged.
+- Task 3 test-fixture updates: assertion-string updates only (`features/tongue` → `per_frame/tongue`, etc.); no test function renames.
+- DECISIONS (Task 6) records Option A choice + reasoning.
+- Skip the "Option B unless Priya explicitly approves" branch entirely.
+
+**ALL OTHER LOCKS UNCHANGED.** Tasks 0/1/3/4/5/6, parity strategy, verification axes, acceptance criteria, and out-of-scope items all remain as written.
+
+---
+
+## Addendum #2 — Task 1 audit finding + A.2 resolver-method lock (Priya 2026-05-22)
+
+**Audit finding:** Task 1 caller-surface audit (CC, 2026-05-21) found 2 source-code call sites manually globbing the old `endpoints/` path (bypassing PathResolver) — both would silently return empty / NaN after the Task 4 mv:
+
+1. `src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py:966-969` — `compute_pre_stroke_median_ili_ms` helper: `resolver.pipeline_outputs(subdir="dlc_kinematics") / "endpoints" / animal`
+2. `src/stroke_orofacial/dlc_kinematics/tongue_angle_cohort.py:397-400` — `_enumerate_session_dates`: same manual glob
+
+Audit doc at `.scratch_phase_7d/caller_audit.md`. Addendum #1's "no source-surface changes" framing assumed all callers already routed through PathResolver — this audit shows the assumption was wrong. These two sites MUST be fixed in Phase 7d (deferring to a follow-up would land Phase 7d on day one with broken pre-stroke median-ILI computation + tongue-angle cross-session enumeration).
+
+**Lock (Option A.2):** add a NEW PathResolver method:
+
+```python
+def tongue_pertrial_endpoints_dir(self, animal: str) -> Path:
+    """Return the directory containing per-trial tongue endpoint JSONs for an animal.
+
+    E.g. ``<outputs>/dlc_kinematics/per_trial/tongue/PS46/``.
+    Symmetric with :meth:`tongue_pertrial_endpoints_json` which returns the per-(animal, date) file.
+    """
+    return self.pipeline_outputs(subdir="dlc_kinematics") / "per_trial" / "tongue" / animal
+```
+
+Both call sites update to use `resolver.tongue_pertrial_endpoints_dir(animal)`. The resolver method is the canonical source-of-truth for the directory path.
+
+**Why A.2 over A.1 (inline rewrite):**
+
+- Symmetric with the existing `tongue_pertrial_endpoints_json` (file resolver) — there should be a directory resolver too. The audit's surprise (2 sites bypassing) is evidence the resolver had a gap (file-resolver-only) that forced consumers to manually glob.
+- Future-proofs the next rename — Phase 7d itself proves the cost of PathResolver bypass: when paths rename, bypassing sites silently break. Adding the resolver method discharges the violation rather than perpetuating it (which A.1 would do).
+- Scope cost small: +1 method body + 2 call-site updates + 1 unit test. Within mechanical-rename territory.
+- Consistent with Addendum #1: Addendum #1 locked method-NAME preservation (Option A vs Option B), not "no new methods added." A new sibling resolver method does not conflict with that lock.
+
+**How to apply (Task 2 extension):**
+
+- Add `tongue_pertrial_endpoints_dir(animal: str) -> Path` method to `src/stroke_orofacial/paths.py`. Place it adjacent to the existing `tongue_pertrial_endpoints_json` method for symmetry. Returned path: `<output_root>/dlc_kinematics/per_trial/tongue/<animal>/`.
+- Update `src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py:966-969` to use `resolver.tongue_pertrial_endpoints_dir(animal)`.
+- Update `src/stroke_orofacial/dlc_kinematics/tongue_angle_cohort.py:397-400` to use the same resolver method.
+- Add 1 unit test in `tests/test_paths.py` covering the new dir resolver's returned path structure.
+
+**How to apply (Task 6 DECISIONS):**
+
+Add a decision entry covering Addendum #2's audit-finding-driven lock — the audit surfaced 2 PathResolver-bypass call sites that the kickoff did not anticipate; the A.2 resolution adds a sibling directory resolver method and discharges the violation in-phase rather than perpetuating it.
+
+**ALL OTHER LOCKS UNCHANGED.** Tasks 0/3/4/5/6, parity strategy, verification axes, acceptance criteria, and out-of-scope items all remain as written. Addendum #1's method-name preservation lock (Option A) continues to apply to the three existing resolver methods; Addendum #2 only ADDS one new method, does not rename any existing methods.
+
+---
+
+## Addendum #3 — PathResolver-bypass sweep promoted into Phase 7d (Priya 2026-05-22)
+
+**Lock:** add a PathResolver-bypass sweep chore as a new **Task 6** in Phase 7d, sequenced AFTER Task 5 (old-path cleanup) and BEFORE the renumbered Task 7 (DECISIONS + MIGRATION_LOG). The sweep bundles into the same Phase 7d branch + PR per `feedback_scope_bundling.md` — the work is logically related polish on the PathResolver violation surface that Addendum #2's audit surfaced.
+
+**Why:** Addendum #2's Task 1 audit found 2 PathResolver-bypass sites in `dlc_kinematics/` that the kickoff did not anticipate. Two sites is a small count, but the existence of any is evidence that the consolidation pipeline likely has hidden literal-path constructions elsewhere in `src/` that violate CLAUDE.md's "no absolute paths in source; use PathResolver" rule. Discharging the violation surface in-phase prevents the next path rename from hitting the same silent-failure mode that almost broke pre-stroke median-ILI computation + tongue-angle cross-session enumeration. Bundling into Phase 7d (rather than a follow-up chore-PR) keeps related work together and avoids the cost of a separate round of branch + PR + tag + close-out overhead.
+
+**Sweep scope:**
+
+- **Search target: `src/` only.** Tests/scripts/notebooks have looser rules per CLAUDE.md; the "no absolute paths in source" rule applies to source code. Out-of-scope: `tests/`, `scripts/`, `notebooks/`.
+- **Exclude `src/stroke_orofacial/paths.py` itself** — the resolver methods legitimately contain literal path strings (they ARE the source of truth).
+
+**Audit patterns (Task 6 step 1):**
+
+```bash
+# Pattern 1 — partial bypass: pipeline_outputs() with literal concatenation
+grep -rn 'pipeline_outputs(' src/ | grep -v 'paths.py' | grep -E '/ "[^"]+"'
+
+# Pattern 2 — hardcoded absolute paths (should never appear)
+grep -rn '"/Users/\|"/Volumes/\|"\\\\research\.files\|"//research\.files' src/
+
+# Pattern 3 — hardcoded "pipeline_outputs/" tree-root literal
+grep -rn '"pipeline_outputs/\|"\./pipeline_outputs/\|"\.\./pipeline_outputs/' src/
+
+# Pattern 4 — hardcoded top-level pipeline_outputs subdir literals that should go through
+# a resolver subdir method (pipeline_outputs(subdir=...))
+grep -rn '"dlc_kinematics/\|"dlc_analysis/\|"spout_behavior/\|"dlc_spatial/\|"alignment_templates/\|"figures_qc/' src/ | grep -v 'paths.py'
+
+# Pattern 5 — Path() constructions with literal pipeline_outputs-shaped strings
+grep -rn 'Path("[^"]*pipeline_outputs' src/
+```
+
+Catalog findings in `.scratch_phase_7d/bypass_sweep_audit.md` with columns:
+
+| File | Line | Snippet | Pattern # | Proposed type | Proposed resolution |
+|---|---|---|---|---|---|
+
+**Per-finding classification (Task 6 step 2):**
+
+- **Type R — Resolver-method-shaped:** the literal path forms a recognizable tree position (e.g., `pipeline_outputs(...) / "some_subdir" / animal`). Resolution: either use an existing resolver method if one already exists, OR add a new sibling resolver method per the Addendum #2 / Option A.2 pattern.
+- **Type L — Local literal within an already-resolved tree:** the literal is a one-off subdirectory/filename within an already-resolved parent (e.g., constructing a file inside a known dir). Resolution: keep the literal inline but ensure the parent dir comes from a resolver method, not from a hardcoded tree-root.
+- **Type ? — Ambiguous:** unclear classification. STOP-and-ask Priya per-finding.
+
+**STOP-and-report gate (Task 6 step 3):**
+
+After the audit doc completes, STOP and report all findings + per-finding proposed resolution to Priya. **Do not apply any fixes before approval.** Report should include:
+
+- Total findings count
+- Per-pattern breakdown (how many of each type)
+- Proposed new PathResolver methods (if any), with signatures + returned path structures
+- Proposed call-site updates list
+- Test fixture updates required
+- Any Type ? findings that need a Priya call
+
+If the total finding count is >15 or affects >5 distinct source files outside `paths.py`, ALSO ask Priya whether to fix all in-phase or split a portion to a follow-up chore-PR.
+
+**Fix application (Task 6 step 4):**
+
+After Priya approval, apply per-finding fixes:
+
+- New PathResolver methods added to `paths.py` (placed adjacent to symmetric existing methods).
+- Call-site updates use the resolver method.
+- Unit tests in `tests/test_paths.py` cover any new resolver methods.
+- Run `pytest -x` after each pattern-group of fixes; expect baseline pass count + new test count.
+
+**Out of scope for the sweep:**
+
+- Renaming existing PathResolver methods (Addendum #1's lock continues to apply).
+- Changing any semantic data behavior (Phase 7d is pure-rename + bypass-discharge; no data changes).
+- Sweeping `tests/`, `scripts/`, `notebooks/` (per CLAUDE.md, the "no absolute paths in source" rule applies to `src/`).
+- Refactoring resolver method bodies in `paths.py` (they ARE the source of truth — the rule doesn't apply to them).
+
+**Task renumbering:**
+
+- Tasks 0-5 unchanged.
+- **NEW Task 6 — PathResolver-bypass sweep** (per this addendum).
+- **Task 6 (DECISIONS + MIGRATION_LOG) → renumbered to Task 7.** Documentation now covers both the rename + the sweep findings.
+
+**DECISIONS entry (renumbered Task 7) additions:**
+
+- Document Addendum #3 promoting the sweep into Phase 7d.
+- List each new PathResolver method added by the sweep + its returned path structure.
+- List each call-site fixed by the sweep (file:line + before/after snippet).
+- Any forward-pointer findings (e.g., bypass categories outside `src/` that the sweep deliberately excluded but warrant a future chore — like a future `tests/`/`scripts/` bypass cleanup pass if that ever becomes desirable).
+
+**Verification axes (existing kickoff "Verification" section extension):**
+
+Add a 5th axis: **PathResolver-bypass sweep complete** — `.scratch_phase_7d/bypass_sweep_audit.md` exists; all in-scope findings discharged (call sites updated, new resolver methods added, new tests pass); per-pattern re-grep returns 0 unresolved findings in `src/` (excluding `paths.py`).
+
+**ALL OTHER LOCKS UNCHANGED.** Addendum #1's method-name preservation lock + Addendum #2's `tongue_pertrial_endpoints_dir` addition + parity strategy + verification axes 1-4 + acceptance criteria + (now-reduced) out-of-scope items all remain as written.
+
+---
+
+## Addendum #4 — Task 6 sweep audit dispositions locked (Priya 2026-05-22)
+
+**Audit result recap:** Task 6 step-1 audit (CC, 2026-05-22) found 17 in-scope bypass findings across 8 source files — both kickoff escalation thresholds (>15 findings AND >5 files) fired. Full audit doc at `.scratch_phase_7d/bypass_sweep_audit.md`. Pattern 2 (writeguard) correctly classified Type N/A (declarative deny-list, source of truth analogous to `paths.py`). 5 new PathResolver methods proposed across the 17 findings.
+
+**Lock — Sweep scope = Sweep-A (fix all 17 in-phase):**
+
+All 17 findings discharged in Phase 7d. ~5 new resolver methods + ~15 call-site updates + ~5 new unit tests + 1 intentional-Type-L documentation note. Mechanical scope. Bundling all related polish into one PR per `feedback_scope_bundling.md`; matches Addendum #3's "discharge the violation surface in-phase" rationale.
+
+**Lock — Type-? finding #14 = Type L (keep inline):**
+
+`spout_behavior/visual_gate.py:217-218` (`_resolve_session_npz_path` parametric `output_type` routing helper) stays as inline `sp_root / output_type / animal`. The helper IS the routing logic for spout session NPZ types — extracting `spout_output_dir(output_type, animal)` to PathResolver would just relocate routing without separating concerns. The local `sp_root` already comes from a resolver call (`pipeline_outputs("spout_behavior")`), satisfying the "no absolute paths in source" rule at the tree-root level.
+
+**How to apply Type L for #14:**
+
+- Leave the construction at line 217-218 as-is (no new resolver method).
+- Add a code comment above the construction explaining the intentional Type L disposition: e.g., `# Intentional Type L per Phase 7d Addendum #4 — this helper IS the routing layer for spout session NPZ types; PathResolver covers the tree-root (sp_root) and the per-output_type routing lives here.`
+- Document the Type L decision in Task 7 DECISIONS with the rationale + reference to Addendum #4.
+
+**Lock — Type-? finding #8 = Type R (add resolver method):**
+
+Add the 5th proposed resolver method `spatial_tone_aligned_npz(bodypart, center_mode, trial_group, window_ms, animal, date)` per the audit doc's signature/body. Consistency win — every bypass becomes a resolver call; resolver method exists for notebook-12 opt-in use even though the production cohort driver never sets `emit_cache=True`.
+
+**How to apply Type R for #8:**
+
+- Add the method to `paths.py` per the audit doc's proposed body (audit doc section "Proposed new PathResolver methods" #5).
+- Update the call site at `dlc_spatial/tone_aligned.py:521-530` to use `resolver.spatial_tone_aligned_npz(...)`.
+- Add unit test `test_spatial_tone_aligned_npz_path` in `tests/test_paths.py`.
+- Document in Task 7 DECISIONS: the resolver method discharges the bypass and exists for notebook-12 opt-in use; the production cohort driver never sets `emit_cache=True` so the method is currently dormant in production.
+
+**Writeguard (Pattern 2) — Type N/A confirmed:**
+
+`src/stroke_orofacial/_writeguard.py` deny-list (12 hardcoded absolute path strings, lines 64-86) is declarative configuration data — the writeguard's source of truth, analogous to `paths.py` for output paths. NOT a bypass. Document `_writeguard.py` as an excluded file alongside `paths.py` in Task 7 DECISIONS for future-bypass-sweep methodology reference.
+
+**Task 6 fix-application sequence (post-Priya-approval-here):**
+
+1. Add 5 new PathResolver methods to `paths.py` (place each adjacent to a symmetric existing method per Addendum #2 pattern):
+   - `dlc_centered_parquet_dir(center_mode, animal)` — discharges findings #1, #5, #7, #15, #16
+   - `spout_licks_and_rewards_npz(animal, date)` — discharges findings #2, #3, #6, #11, #12, #13
+   - `interpolated_trace_dir(bodypart, animal)` — discharges finding #4
+   - `tongue_jaw_mismatch_candidate_trials_dir(animal)` — discharges findings #9, #10
+   - `spatial_tone_aligned_npz(bodypart, center_mode, trial_group, window_ms, animal, date)` — discharges finding #8
+2. Update 15 call sites to use the new resolver methods (per audit doc table). Finding #14 stays as Type L per this addendum — DO NOT add `spout_output_dir`.
+3. Add comment at `visual_gate.py:217-218` documenting the intentional Type L per this addendum.
+4. Add 5 new unit tests in `tests/test_paths.py`. For dir-resolvers paired with existing file-resolvers (`interpolated_trace_dir` ↔ `interpolated_trace`; `tongue_jaw_mismatch_candidate_trials_dir` ↔ `tongue_jaw_mismatch_candidate_trials_parquet`), include `dir == file_resolver.parent` invariant tests.
+5. Run `conda run -n stroke_orofacial pytest -x` after each pattern-group of fixes; expect 1502 baseline pass count + 5 new tests = 1507 passing.
+
+**Task 6 step 5 (re-grep verify) gate:**
+
+After all fixes apply, re-run the 5 audit patterns from Addendum #3 against `src/` (excluding `paths.py` + `_writeguard.py`). Expected: 0 unresolved findings except #14 (intentional Type L). Document the re-grep result in `.scratch_phase_7d/bypass_sweep_audit.md` as a footer + carry into Task 7 DECISIONS.
+
+**ALL OTHER LOCKS UNCHANGED.** Addenda #1 (method-name preservation), #2 (`tongue_pertrial_endpoints_dir`), #3 (sweep promoted into Phase 7d Task 6 + Task 7 = renumbered DECISIONS) all remain as written.

@@ -408,6 +408,13 @@ class TestBuildToneAlignedAnalysisRaisesOnMissingPrerequisites:
 
         resolver = MagicMock(spec=PathResolver)
         resolver.pipeline_outputs.return_value = tmp_path
+        # Post-Phase-7d (Addendum #4): build_tone_aligned_analysis now resolves
+        # the centered-parquet dir via the new dlc_centered_parquet_dir helper.
+        # Mock it to point at a real (non-existent) tmp_path subtree so the
+        # ``parquet_path.exists()`` guard fires with the expected message.
+        resolver.dlc_centered_parquet_dir.return_value = (
+            tmp_path / "dlc_analysis" / "centered_nose" / "PS46"
+        )
         manifest = SessionManifest(
             session_id="PS46_20250101",
             animal="PS46",

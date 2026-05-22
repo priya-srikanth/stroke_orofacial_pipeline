@@ -32,11 +32,11 @@ Inputs
 
 Outputs (atomic, three files per session)
 -----------------------------------------
-- ``<outputs>/dlc_kinematics/features/tongue/<animal>/<YYYYMMDD>.parquet``
+- ``<outputs>/dlc_kinematics/per_frame/tongue/<animal>/<YYYYMMDD>.parquet``
   (per-frame angle parquet, 2 cols + 10 file-level metadata keys)
 - ``<outputs>/dlc_kinematics/licking_dynamics/traces/<animal>/<YYYYMMDD>.parquet``
   (per-session × side traces parquet, 6 cols + 17 file-level metadata keys)
-- ``<outputs>/dlc_kinematics/endpoints/<animal>/<YYYYMMDD>.json``
+- ``<outputs>/dlc_kinematics/per_trial/tongue/<animal>/<YYYYMMDD>.json``
   (per-trial endpoints JSON, ``schema_version="v7a.3"``)
 """
 
@@ -963,10 +963,7 @@ def compute_pre_stroke_median_ili_ms(
     if animal_info is None:
         animal_info = get_animal(animal)
 
-    endpoints_dir = (
-        resolver.pipeline_outputs(subdir="dlc_kinematics")
-        / "endpoints" / animal
-    )
+    endpoints_dir = resolver.tongue_pertrial_endpoints_dir(animal)
     if not endpoints_dir.exists():
         return float("nan")
 
@@ -1402,15 +1399,10 @@ def _derive_trial_events_from_spout_behavior(
         )
     n_frames = int(n_frames_meta)
 
-    # 2. licks_and_rewards NPZ path (no dedicated PathResolver helper as of
-    #    Task 5.0; pattern matches 7a.2's _load_tone_centers_cam).
+    # 2. Phase 2 licks_and_rewards NPZ path via the Phase 7d (Addendum #4)
+    #    spout_licks_and_rewards_npz resolver method.
     date_str = date.strftime("%Y%m%d")
-    licks_path = (
-        resolver.pipeline_outputs("spout_behavior")
-        / "licks_and_rewards"
-        / animal
-        / f"{date_str}.npz"
-    )
+    licks_path = resolver.spout_licks_and_rewards_npz(animal, date)
 
     # 3. Alignment template (cam2 — same fallback chain as 7a.2's
     #    _load_tone_centers_cam: prefer manifest if set, else resolver).

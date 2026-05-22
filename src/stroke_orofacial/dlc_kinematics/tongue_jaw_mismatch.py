@@ -387,7 +387,7 @@ def render_cross_session_figures(
     if not sessions:
         raise FileNotFoundError(
             f"No candidate_trials parquets found for {animal} under "
-            f"{resolver.pipeline_outputs('dlc_kinematics') / 'tongue_jaw_mismatch' / 'candidate_trials' / animal}. "
+            f"{resolver.tongue_jaw_mismatch_candidate_trials_dir(animal)}. "
             f"Run classify_tongue_jaw_mismatch on individual sessions first.",
         )
 
@@ -664,10 +664,7 @@ def _gather_sessions_for_animal(
     ``date``, ``rel_day``, ``trials_df``, ``jaw_y``, ``tongue_y``,
     ``fps``, ``n_frames``. Sessions with missing traces are skipped
     with a console warning."""
-    candidate_dir = (
-        resolver.pipeline_outputs("dlc_kinematics")
-        / "tongue_jaw_mismatch" / "candidate_trials" / animal
-    )
+    candidate_dir = resolver.tongue_jaw_mismatch_candidate_trials_dir(animal)
     if not candidate_dir.exists():
         return []
     parquets = sorted(candidate_dir.glob("*.parquet"))

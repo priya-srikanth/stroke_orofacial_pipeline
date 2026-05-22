@@ -15,6 +15,81 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-22 — Phase 7d close — dlc_kinematics/ granularity-first naming hygiene + PathResolver-bypass sweep
+
+Phase 7d closed against `phase/7d-dlc-kinematics-naming-hygiene`; branched 2026-05-21 off `main` at the Phase 7c.2 docs-followup merge commit `9f56056` (post-`v7c.2-dlc-cohort-completion` + PR #122 docs amendment). Tag `v7d-dlc-kinematics-naming-hygiene` on the merge commit. Kickoff [`docs/prompts/phase-7d-dlc-kinematics-naming-hygiene-kickoff.md`](prompts/phase-7d-dlc-kinematics-naming-hygiene-kickoff.md) accumulated 4 addenda. Refer to the kickoff for the final lock list at close.
+
+### Decision 1 — Granularity-first `dlc_kinematics/` layout (Sweep core)
+
+`dlc_kinematics/features/tongue/` was misnamed (it stores per-FRAME data) and `dlc_kinematics/endpoints/` (tongue per-trial scalars, top-level) + `dlc_kinematics/jaw_pertrial/endpoints/` (jaw per-trial scalars, bodypart-namespaced) were per-bodypart-asymmetric. Phase 7d locks **granularity-first layout** (Priya 2026-05-15 lock): `per_frame/<bodypart>/` and `per_trial/<bodypart>/`. Symmetric per-bodypart extension (new bodyparts plug in at `<granularity>/<bodypart>/` without inventing top-level dirs); discoverable ("where's all per-trial data?" → `per_trial/`); avoids the `<bodypart>_pertrial` suffix pattern.
+
+Mixed-organizational-principles intentional: specialized analyses (`tongue_angle/`, `tongue_jaw_mismatch/`, `mean_sem/`, `licking_dynamics/`, `tone_aligned_heatmaps/`, `whole_session_heatmaps/`) keep analysis-type-first naming; general data shapes (`per_trial/`, `per_frame/`) use granularity-first. No data semantic change; sha256-verified byte-identical migration of 762 files (257 per-frame parquets + 257 + 248 per-trial JSONs).
+
+*Enforced at:* `src/stroke_orofacial/paths.py` resolver method bodies (`tongue_pertrial_angle_parquet`, `tongue_pertrial_endpoints_json`, `jaw_pertrial_endpoints_json`); migrated on-disk tree under `pipeline_outputs/dlc_kinematics/`.
+
+### Decision 2 — Addendum #1 Option A: preserve PathResolver method names
+
+Two options considered for the three resolver methods in scope (Task 2):
+- **Option A:** keep method names, change only path strings inside method bodies. Pro: zero call-site changes. Con: method name `jaw_pertrial_endpoints_json` no longer reflects path structure (now under `per_trial/jaw/`).
+- **Option B:** rename methods to match new structure (e.g., `per_trial_jaw_endpoints_json`). Pro: method names match new convention. Con: every call site updates.
+
+**Lock — Option A** (Priya 2026-05-21, Addendum #1). The method-name-vs-path-structure mismatch (e.g., `jaw_pertrial_endpoints_json` returning a path under `per_trial/jaw/`) is acceptable cosmetic drift; larger PathResolver method-naming cleanup is deferred indefinitely. Phase 7d stays pure on-disk-layout cleanup, no source surface changes to the three existing methods.
+
+*Enforced at:* `src/stroke_orofacial/paths.py` (method signatures + names unchanged); Addendum #1 of the kickoff doc; commit `b3b6b7e`.
+
+### Decision 3 — Addendum #2 Option A.2: add `tongue_pertrial_endpoints_dir` (new sibling resolver method) to discharge 2 audit-surfaced PathResolver-bypass sites
+
+Task 1 caller-surface audit (CC, 2026-05-21; `.scratch_phase_7d/caller_audit.md`) found 2 source-code call sites manually globbing the old `dlc_kinematics/endpoints/` path, bypassing PathResolver — both would silently return empty / NaN after the Task 4 mv:
+1. `src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py:966-969` — `compute_pre_stroke_median_ili_ms`.
+2. `src/stroke_orofacial/dlc_kinematics/tongue_angle_cohort.py:397-400` — `_enumerate_session_dates`.
+
+Addendum #1's "no source-surface changes" framing assumed all callers already routed through PathResolver; the audit showed that assumption was wrong. **Lock — Option A.2** (Priya 2026-05-22, Addendum #2): add a NEW PathResolver method `tongue_pertrial_endpoints_dir(animal: str) -> Path` returning `<output_root>/dlc_kinematics/per_trial/tongue/<animal>/`, symmetric with the existing `tongue_pertrial_endpoints_json` (per-(animal, date) file resolver). Both bypassing sites updated to call the new method. Addendum #1's method-name preservation lock continues to apply to the three existing resolver methods; Addendum #2 only ADDS one new method, does not rename any existing methods.
+
+The audit's surprise (2 PathResolver-bypass sites) is evidence the resolver had a gap (file-resolver-only) that forced consumers to manually glob. Future-proofs the next rename — Phase 7d itself proves the cost of PathResolver bypass: when paths rename, bypassing sites silently break.
+
+*Enforced at:* `src/stroke_orofacial/paths.py:tongue_pertrial_endpoints_dir`; `src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py:compute_pre_stroke_median_ili_ms`; `src/stroke_orofacial/dlc_kinematics/tongue_angle_cohort.py:_enumerate_session_dates`; Addendum #2 of the kickoff doc; commit `452dddf`.
+
+### Decision 4 — Addendum #3 promotion: PathResolver-bypass sweep bundled into Phase 7d as Task 6
+
+Addendum #2's audit finding (2 PathResolver-bypass sites in `dlc_kinematics/`) was a small count, but evidence that the consolidation pipeline likely had hidden literal-path constructions elsewhere in `src/` violating CLAUDE.md's "no absolute paths in source; use PathResolver" rule. **Lock — promote the bypass-sweep chore into Phase 7d as Task 6** (Priya 2026-05-22, Addendum #3), sequenced AFTER Task 5 (old-path cleanup) and BEFORE the renumbered Task 7 (DECISIONS + MIGRATION_LOG). Bundles related polish on the PathResolver violation surface into the same branch + PR per `feedback_scope_bundling.md`. Discharges the violation surface in-phase rather than perpetuating it (which would have left the next path rename to hit the same silent-failure mode).
+
+Sweep scope: `src/` only, excluding `paths.py` itself (resolver methods legitimately contain literal path strings — they ARE the source of truth). Tests/scripts/notebooks out-of-scope per CLAUDE.md's "no absolute paths in source" rule applying to source code.
+
+*Enforced at:* Addendum #3 of the kickoff doc; new Task 6 sequenced after Task 5; commit `3ded401`.
+
+### Decision 5 — Addendum #4 Sweep-A scope: fix all 17 audit findings in-phase
+
+Task 6 step-1 audit (CC, 2026-05-22; `.scratch_phase_7d/bypass_sweep_audit.md`) found **17 in-scope bypass findings across 8 source files** — both kickoff escalation thresholds fired (>15 findings AND >5 files). Three scope-split options offered to Priya:
+- **Sweep-A:** fix all 17 in-phase.
+- **Sweep-B:** fix Pattern 1 direct (10/17) in-phase; defer indirect (7/17) to follow-up chore-PR.
+- **Sweep-C:** fix 15/17 in-phase; defer Type-? findings #8 + #14 to follow-up.
+
+**Lock — Sweep-A** (Priya 2026-05-22, Addendum #4). All 17 findings discharged in-phase. ~5 new resolver methods + ~15 call-site updates + ~5 new unit tests + 1 Type-L documentation note. Mechanical scope; bundling all related polish into one PR per `feedback_scope_bundling.md`; matches Addendum #3's "discharge the violation surface in-phase" rationale.
+
+*Enforced at:* Addendum #4 of the kickoff doc; Task 6a-6f commits `d470067`, `bbcb768`, `8cf88c1`, `b23a932`, `ca05753`, `4fd7256`.
+
+### Decision 6 — Type-? finding #14 (visual_gate.py:217-218): Type L
+
+`spout_behavior/visual_gate.py:_resolve_session_npz_path` parametric routing helper at line 217-218 (`sp_root / output_type / animal`) is the routing logic for spout session NPZ types — extracting a `spout_output_dir(output_type, animal)` PathResolver method would just relocate routing without separating concerns. **Lock — Type L** (Priya 2026-05-22, Addendum #4). Keep inline; the local `sp_root` already comes from a resolver call (`pipeline_outputs("spout_behavior")`) at line 223, satisfying the "no absolute paths in source" rule at the tree-root level. Explanatory comment added at the construction site.
+
+By analogy, four additional Type-L routing helpers surfaced during Task 6 step-5 re-grep are documented as the same disposition: `session_processing.py:_output_path` (line 63-65), `_per_half_output_path` (line 83-111), `_params_json_path` (line 171-173), and `dlc_io/parquet.py:_save_dlc_session_params` (line 366-388). All are private helpers taking `output_root` as a function parameter; routing logic stays in-helper. No fix needed; documented for completeness + future-bypass-sweep methodology.
+
+*Enforced at:* `src/stroke_orofacial/spout_behavior/visual_gate.py` lines 219-223 (Type-L explanatory comment); `.scratch_phase_7d/bypass_sweep_audit.md` footer (additional 4 Type-L helpers); commit `4fd7256`.
+
+### Decision 7 — Type-? finding #8 (spatial_tone_aligned cache NPZ): Type R, dormant in production
+
+`dlc_spatial/tone_aligned.py:521-530` constructs an opt-in cache NPZ path under `dlc_analysis/spatial_tone_aligned/<bodypart>_<center_mode>/trials-<trial_group>_<win_tag>/<animal>/heatmap_<date>.npz`. Per Phase 7c.2 Addendum #3 Q2.B the cohort-wide spatial NPZ cache was eliminated in favor of compute-on-demand via `render_tone_aligned_heatmap`; the Phase 7c.2 cohort driver never sets `emit_cache=True`. **Lock — Type R** (Priya 2026-05-22, Addendum #4): add the resolver method `spatial_tone_aligned_npz(bodypart, center_mode, trial_group, window_ms, animal, date)` for consistency (every bypass becomes a resolver call) even though the resolver is dormant in production. The notebook-12 / one-off inspection use case keeps the call site live.
+
+*Enforced at:* `src/stroke_orofacial/paths.py:spatial_tone_aligned_npz`; `src/stroke_orofacial/dlc_spatial/tone_aligned.py:521-528`; commit `ca05753`.
+
+### Decision 8 — Writeguard (Pattern 2) Type N/A: declarative deny-list, excluded from bypass-sweep methodology
+
+`src/stroke_orofacial/_writeguard.py` contains 12 hardcoded absolute path strings forming the writeguard's `_DENY_PREFIXES` list (lines 64-86). These are **declarative configuration data** for the writeguard module: the writeguard's job is to literally recognize these source-data tree roots so it can block writes into them. Like `paths.py` for output paths, `_writeguard.py` is the **source of truth** for the deny list. **Lock — Type N/A** (not a bypass). Document `_writeguard.py` as an excluded file alongside `paths.py` in future bypass-sweep methodology references.
+
+*Enforced at:* `.scratch_phase_7d/bypass_sweep_audit.md` Pattern 2 section; commit `4fd7256`.
+
+---
+
 ## 2026-05-21 — Phase 7c.2 close — Cohort-wide DLC kinematics + spatial re-emit + F-P-5 SessionManifest Pattern A wiring fix + compute-on-demand spatial figure architecture + Phase 7a.7 visual gate fold-in + legacy-path cleanup
 
 Phase 7c.2 closed against `phase/7c.2-dlc-cohort-completion`; branched 2026-05-15 off `main` at the Phase 7c.1 merge commit `ff36b8e` (tag `v7c.1-dlc-source-rename-and-pilot`). Tag `v7c.2-dlc-cohort-completion` on the merge commit. Kickoff [`docs/prompts/phase-7c.2-dlc-cohort-completion-kickoff.md`](prompts/phase-7c.2-dlc-cohort-completion-kickoff.md) accumulated 59 addenda across iterative re-spec. Refer to the kickoff's "ALL OTHER LOCKS UNCHANGED" footer for the final Q-lock list at close.

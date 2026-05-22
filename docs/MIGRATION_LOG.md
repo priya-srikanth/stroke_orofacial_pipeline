@@ -6233,3 +6233,51 @@ Verdict deliverable at [`.scratch_phase_7c1/pilot_verdict.md`](../.scratch_phase
 
 ---
 
+## Phase 7d close — dlc_kinematics/ granularity-first naming hygiene + PathResolver-bypass sweep
+
+**Date:** 2026-05-22
+
+**Tag:** `v7d-dlc-kinematics-naming-hygiene` (applied to merge commit on main).
+**Branch:** `phase/7d-dlc-kinematics-naming-hygiene`.
+**Kickoff:** [`docs/prompts/phase-7d-dlc-kinematics-naming-hygiene-kickoff.md`](prompts/phase-7d-dlc-kinematics-naming-hygiene-kickoff.md) (4 addenda).
+**DECISIONS entry:** 2026-05-22 (Decisions 1-8).
+
+**What shipped:**
+
+- **`dlc_kinematics/` granularity-first layout migration.** Three on-disk paths renamed per Addendum #1 Option A lock (method names preserved; only path strings inside resolver method bodies change):
+  - `dlc_kinematics/features/tongue/` → `dlc_kinematics/per_frame/tongue/` (257 parquets).
+  - `dlc_kinematics/endpoints/` → `dlc_kinematics/per_trial/tongue/` (257 JSONs).
+  - `dlc_kinematics/jaw_pertrial/endpoints/` → `dlc_kinematics/per_trial/jaw/` (248 JSONs).
+  - **762 files moved total**, byte-identical migration verified via per-file sha256 (empty diff on the sorted hash-column comparison). Snapshot files at `.scratch_phase_7d/pre_migration_hashes.txt` + `post_migration_hashes.txt` (gitignored).
+- **Final `dlc_kinematics/` tree** (post-migration): `per_frame/`, `per_trial/`, plus unchanged `licking_dynamics/`, `mean_sem/`, `tone_aligned_heatmaps/`, `tongue_angle/`, `tongue_jaw_mismatch/`, `whole_session_heatmaps/`. Old `features/` + `jaw_pertrial/` parent dirs removed via `rmdir` (non-recursive, safe).
+- **6 new PathResolver methods + 9 new unit tests** across Phase 7d Tasks 2 + 6:
+  - Task 2 (Addendum #2 / Option A.2): `tongue_pertrial_endpoints_dir(animal)` — discharges 2 pre-existing PathResolver-bypass call sites (`tongue_pertrial.py:966-969`, `tongue_angle_cohort.py:397-400`) that the Task 1 audit surfaced.
+  - Task 6 (Addendum #4 / Sweep-A): `dlc_centered_parquet_dir(center_mode, animal)`, `spout_licks_and_rewards_npz(animal, date, *, session_suffix)`, `interpolated_trace_dir(bodypart, animal)`, `tongue_jaw_mismatch_candidate_trials_dir(animal)`, `spatial_tone_aligned_npz(...)`. Discharged 17 audit findings + 1 audit-missed parquet.py:213 site + 2 audit-missed `spout_close_vs_std.py:212-213` sites via the `session_suffix=` extension.
+- **PathResolver-bypass sweep (Addendum #3 promotion).** Original audit catalog at [`.scratch_phase_7d/bypass_sweep_audit.md`](../.scratch_phase_7d/bypass_sweep_audit.md). 17 findings → all discharged in-phase per Sweep-A lock. Step-5 re-grep verification: 0 unresolved findings outside `paths.py` + `_writeguard.py` for the strict 5 audit patterns, except finding #14 (intentional Type L per Addendum #4).
+- **Finding #14 — Type L (visual_gate.py:217-218).** `_resolve_session_npz_path` parametric routing helper kept as inline `sp_root / output_type / animal`. PathResolver covers the tree-root via the local `sp_root = pipeline_outputs("spout_behavior")` capture at line 223; per-output_type routing logic stays in-helper. Explanatory comment landed at the construction site.
+- **Writeguard Pattern 2 — Type N/A.** `_writeguard.py` deny-list (12 hardcoded absolute path strings) is declarative configuration data, the writeguard's source of truth analogous to `paths.py`. Excluded alongside `paths.py` from future bypass-sweep methodology.
+- **4 additional Type-L routing helpers documented (post-audit re-grep surfacing).** `session_processing.py:_output_path` + `_per_half_output_path` + `_params_json_path` + `dlc_io/parquet.py:_save_dlc_session_params` — all private helpers taking `output_root` as a function parameter; routing logic stays in-helper. Analogous to finding #14; no fix needed.
+
+**Behavior changes vs prior phases:**
+
+- **Pure on-disk-layout change for the 3 migrated paths.** No semantic data change; sha256-verified byte-identical migration. Existing analyses that read these paths via PathResolver are transparently routed to the new locations (method names preserved per Addendum #1 Option A).
+- **2 latent bugs in `tongue_pertrial.py:compute_pre_stroke_median_ili_ms` and `tongue_angle_cohort.py:_enumerate_session_dates` fixed.** These manually globbed the old `dlc_kinematics/endpoints/` directory and would have silently returned NaN / empty list after the Task 4 mv. Both now use `resolver.tongue_pertrial_endpoints_dir(animal)`.
+
+**Forward-pointers queued post-merge:**
+
+- **Future bypass-sweep methodology:** the 4 Type-L routing helpers documented above are not a Phase-7d-bug; they ARE the routing layer (output_root parameter + parametric output_type + literal subdir). If a future phase wants to fully eliminate captured-root + parametric-subdir patterns, that's a follow-on chore. Documented for traceability.
+
+**Test count:** 1502 baseline → 1512 collected (1466+ passed + 39 skipped). 10 new tests added across Tasks 2, 6a-6f. Zero regressions.
+
+**Acceptance criteria (kickoff base text + Addendum #3 5th axis):**
+
+1. Test suite passes at post-7c.2 baseline + new tests (1512 collected; full suite green).
+2. Data migration byte-identical (sha256 verified, empty diff on sorted hash column).
+3. New paths populated; old paths empty (`features/` + `jaw_pertrial/` removed via `rmdir`).
+4. PathResolver methods return new paths (`tongue_pertrial_angle_parquet` → `per_frame/tongue/`, etc.).
+5. PathResolver-bypass sweep complete: 17 audit findings discharged + 3 audit-missed sites discharged + 5 Type-L cases documented + step-5 re-grep returns 0 Pattern-1 findings outside `paths.py` + `_writeguard.py`.
+
+**Tag:** `v7d-dlc-kinematics-naming-hygiene` on the merge commit. Tag message: "Phase 7d: dlc_kinematics granularity-first naming hygiene + PathResolver-bypass sweep — per_frame/ + per_trial/<bodypart>/ layout + bypass surface discharged".
+
+---
+

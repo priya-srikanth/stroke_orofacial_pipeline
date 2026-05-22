@@ -395,23 +395,50 @@ class PathResolver:
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
 
+    def interpolated_trace_dir(self, bodypart: str, animal: str) -> Path:
+        """Return the per-(bodypart, animal) directory of Phase 7a.2 interpolated traces.
+
+        E.g. ``<outputs>/dlc_analysis/interpolated_traces/tongue/PS46/``.
+
+        Symmetric with :meth:`interpolated_trace` (the per-(animal, date)
+        file resolver). Use this when enumerating session dates for a
+        (bodypart, animal) pair via ``*.parquet`` glob.
+
+        Added in Phase 7d (Addendum #4) to discharge a PathResolver-bypass
+        call site in ``dlc_kinematics/mean_sem_visual.py`` that manually
+        constructed
+        ``pipeline_outputs("dlc_analysis") / "interpolated_traces" / bodypart / animal``.
+        Does NOT create the directory eagerly (caller decides; the file
+        resolver above handles eager creation when writing).
+        """
+        return (
+            self.pipeline_outputs(subdir="dlc_analysis")
+            / "interpolated_traces"
+            / bodypart
+            / animal
+        )
+
     def tongue_pertrial_angle_parquet(
         self, animal: str, date: datetime.date,
         *, session_suffix: str | None = None,
     ) -> Path:
         """Return the Phase 7a.3 per-frame tongue-angle parquet path.
 
-        E.g. ``<outputs>/dlc_kinematics/features/tongue/PS50/20250319.parquet``.
+        E.g. ``<outputs>/dlc_kinematics/per_frame/tongue/PS50/20250319.parquet``.
 
         Output filename uses ``%Y%m%d`` to match the existing 7a.2
         :meth:`interpolated_trace` convention. Mirrors :meth:`pipeline_outputs`'s
         ``output_root`` test-override behavior via ``_output_root_override``.
         Parent directory is created eagerly.
+
+        Path layout migrated from ``dlc_kinematics/features/tongue/`` to
+        ``dlc_kinematics/per_frame/tongue/`` in Phase 7d (granularity-first
+        layout); method name preserved per Phase 7d Addendum #1.
         """
         date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         out = (
             self.pipeline_outputs(subdir="dlc_kinematics")
-            / "features"
+            / "per_frame"
             / "tongue"
             / animal
             / f"{date_str}.parquet"
@@ -448,21 +475,56 @@ class PathResolver:
     ) -> Path:
         """Return the Phase 7a.3 per-trial endpoints JSON path.
 
-        E.g. ``<outputs>/dlc_kinematics/endpoints/PS54/20250607.json``.
+        E.g. ``<outputs>/dlc_kinematics/per_trial/tongue/PS54/20250607.json``.
 
         Output filename uses ``%Y%m%d`` to match
         :meth:`interpolated_trace`'s convention. Parent directory is created
         eagerly.
+
+        Path layout migrated from ``dlc_kinematics/endpoints/`` (top-level,
+        tongue-implicit) to ``dlc_kinematics/per_trial/tongue/`` in Phase 7d
+        (granularity-first + per-bodypart-symmetric layout); method name
+        preserved per Phase 7d Addendum #1. The directory containing these
+        per-(animal, date) files is also exposed as
+        :meth:`tongue_pertrial_endpoints_dir`.
         """
         date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         out = (
             self.pipeline_outputs(subdir="dlc_kinematics")
-            / "endpoints"
+            / "per_trial"
+            / "tongue"
             / animal
             / f"{date_str}.json"
         )
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
+
+    def tongue_pertrial_endpoints_dir(self, animal: str) -> Path:
+        """Return the per-animal directory holding per-trial tongue endpoints.
+
+        E.g. ``<outputs>/dlc_kinematics/per_trial/tongue/PS46/``.
+
+        Symmetric with :meth:`tongue_pertrial_endpoints_json` (which returns
+        the per-(animal, date) file path). Use this when a caller needs to
+        enumerate every session date for an animal by globbing ``*.json``
+        within the directory (e.g.
+        :func:`stroke_orofacial.dlc_kinematics.tongue_pertrial.compute_pre_stroke_median_ili_ms`
+        and
+        :func:`stroke_orofacial.dlc_kinematics.tongue_angle_cohort._enumerate_session_dates`).
+
+        Added in Phase 7d (Addendum #2) to discharge two pre-existing
+        PathResolver-bypass call sites that manually constructed this path
+        — Phase 7d's rename surfaced the latent bug because the manual paths
+        would silently miss every session after the on-disk migration.
+        Does NOT create the directory eagerly (caller decides; consumers
+        typically read-only).
+        """
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "per_trial"
+            / "tongue"
+            / animal
+        )
 
     def tongue_pertrial_licking_dynamics_day_binned_parquet(
         self, animal: str, rel_day_bin_label: str,
@@ -709,7 +771,7 @@ class PathResolver:
     ) -> Path:
         """Return the Phase 7a.5 per-trial jaw scalars JSON path.
 
-        E.g. ``<outputs>/dlc_kinematics/jaw_pertrial/endpoints/PS46/20250307.json``.
+        E.g. ``<outputs>/dlc_kinematics/per_trial/jaw/PS46/20250307.json``.
 
         Hosts the per-trial jaw baseline / deflection / QC scalars produced
         by :func:`stroke_orofacial.dlc_kinematics.jaw_pertrial.build_jaw_pertrial`
@@ -717,12 +779,17 @@ class PathResolver:
         logic). Filename uses ``%Y%m%d`` to match the
         :meth:`interpolated_trace` / :meth:`tongue_pertrial_endpoints_json`
         conventions. Parent directory is created eagerly.
+
+        Path layout migrated from ``dlc_kinematics/jaw_pertrial/endpoints/``
+        to ``dlc_kinematics/per_trial/jaw/`` in Phase 7d (granularity-first +
+        per-bodypart-symmetric layout, matching the tongue sibling at
+        ``per_trial/tongue/``); method name preserved per Phase 7d Addendum #1.
         """
         date_str = date.strftime("%Y%m%d") + (session_suffix or "")
         out = (
             self.pipeline_outputs(subdir="dlc_kinematics")
-            / "jaw_pertrial"
-            / "endpoints"
+            / "per_trial"
+            / "jaw"
             / animal
             / f"{date_str}.json"
         )
@@ -753,6 +820,29 @@ class PathResolver:
         )
         out.parent.mkdir(parents=True, exist_ok=True)
         return out
+
+    def tongue_jaw_mismatch_candidate_trials_dir(self, animal: str) -> Path:
+        """Return the per-animal directory of Phase 7a.5 candidate-trials parquets.
+
+        E.g. ``<outputs>/dlc_kinematics/tongue_jaw_mismatch/candidate_trials/PS46/``.
+
+        Symmetric with :meth:`tongue_jaw_mismatch_candidate_trials_parquet`
+        (the per-(animal, date) file resolver). Use this when enumerating
+        session dates for an animal by globbing ``*.parquet``.
+
+        Added in Phase 7d (Addendum #4) to discharge 2 PathResolver-bypass
+        call sites in ``dlc_kinematics/tongue_jaw_mismatch.py`` that
+        manually constructed
+        ``pipeline_outputs("dlc_kinematics") / "tongue_jaw_mismatch" / "candidate_trials" / animal``.
+        Does NOT create the directory eagerly (caller decides; the file
+        resolver above handles eager creation when writing).
+        """
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "tongue_jaw_mismatch"
+            / "candidate_trials"
+            / animal
+        )
 
     def tongue_jaw_mismatch_within_session_dir(
         self, animal: str, date: datetime.date,
@@ -981,6 +1071,74 @@ class PathResolver:
             )
         return matches[0]
 
+    def spatial_tone_aligned_npz(
+        self,
+        bodypart: str,
+        center_mode: str,
+        trial_group: str,
+        window_ms: tuple[int, int],
+        animal: str,
+        date: datetime.date,
+    ) -> Path:
+        """Return the Phase 6 tone-aligned spatial heatmap NPZ cache path.
+
+        E.g. ``<outputs>/dlc_analysis/spatial_tone_aligned/jaw_spout_midpoint/
+        trials-tone_-500to0ms/PS50/heatmap_20250319.npz``.
+
+        Opt-in cache write only — emitted by
+        :func:`stroke_orofacial.dlc_spatial.tone_aligned.compute_tone_aligned`
+        when ``emit_cache=True`` is passed. The Phase 7c.2 cohort re-emit
+        driver never sets this flag (the cohort-wide NPZ cache was eliminated
+        per Phase 7c.2 Addendum #3 Q2.B in favor of compute-on-demand via
+        :func:`render_tone_aligned_heatmap`); this resolver is dormant in
+        production and exists for notebook-12 / one-off inspection use.
+
+        Added in Phase 7d (Addendum #4) to discharge a PathResolver-bypass
+        call site even though the path is currently dormant — consistency
+        win: every bypass becomes a resolver call.
+
+        ``window_ms`` is a ``(lo, hi)`` int tuple in milliseconds; the
+        directory tag is ``f"trials-{trial_group}_{lo}to{hi}ms"``.
+        Does NOT create the parent directory eagerly (caller decides; the
+        opt-in cache write path creates as needed).
+        """
+        win_tag = f"{int(window_ms[0])}to{int(window_ms[1])}ms"
+        date_str = date.strftime("%Y%m%d")
+        return (
+            self.pipeline_outputs(subdir="dlc_analysis")
+            / "spatial_tone_aligned"
+            / f"{bodypart}_{center_mode}"
+            / f"trials-{trial_group}_{win_tag}"
+            / animal
+            / f"heatmap_{date_str}.npz"
+        )
+
+    def dlc_centered_parquet_dir(
+        self, center_mode: str, animal: str,
+    ) -> Path:
+        """Return the per-(center_mode, animal) directory for Phase 4 centered DLC parquets.
+
+        E.g. ``<outputs>/dlc_analysis/centered_spout_midpoint/PS50/``.
+
+        The per-(animal, date) file resolver for the special spout-midpoint
+        case + glob handling lives at
+        :meth:`dlc_centered_spout_midpoint_parquet`; this method generalizes
+        to ANY ``center_mode`` directory (e.g. ``"spout_midpoint"``,
+        ``"nose"``, etc.) so callers can manually construct the per-file
+        path from a Phase 4 H5-filename-derived parquet name.
+
+        Added in Phase 7d (Addendum #4) to discharge 5 PathResolver-bypass
+        call sites that manually constructed
+        ``pipeline_outputs("dlc_analysis") / f"centered_{center_mode}" / animal``.
+        Does NOT create the directory eagerly (caller decides; Phase 4
+        write code creates as needed).
+        """
+        return (
+            self.pipeline_outputs(subdir="dlc_analysis")
+            / f"centered_{center_mode}"
+            / animal
+        )
+
     def wavesurfer_dir(
         self,
         date: datetime.date,
@@ -1081,6 +1239,43 @@ class PathResolver:
         Use ``pipeline_outputs(subdir='spout_behavior')`` instead.
         """
         return self.root("local_processed_spout") / f"session_processing_{version}"
+
+    def spout_licks_and_rewards_npz(
+        self, animal: str, date: datetime.date,
+        *, session_suffix: str | None = None,
+    ) -> Path:
+        """Return the per-(animal, date) Phase 2 licks_and_rewards NPZ.
+
+        E.g. ``<outputs>/spout_behavior/licks_and_rewards/PS50/20250319.npz``
+        (bare) or ``<outputs>/spout_behavior/licks_and_rewards/PS50/20250319b.npz``
+        (Pattern B b-half via ``session_suffix="b"``).
+
+        ``session_suffix`` is appended to the date string (matches the
+        existing :meth:`tongue_pertrial_endpoints_json` / :meth:`interpolated_trace`
+        convention). ``None`` or ``""`` yields the bare-half filename.
+
+        Emitted by the Phase 2 lick/reward extraction (notebook 06). The
+        ``licks_and_rewards`` directory name is PRESERVED per Phase 8a.10.1
+        Decision 8 E.B.1 (rename-cost-without-benefit cycle avoided).
+
+        Added in Phase 7d (Addendum #4) to discharge 6 audit-listed
+        PathResolver-bypass call sites — both direct concatenation
+        (``pipeline_outputs("spout_behavior") / "licks_and_rewards" / animal
+        / f"{date_str}.npz"``) and captured-root variants (``sp_root =
+        pipeline_outputs("spout_behavior")`` then ``sp_root /
+        "licks_and_rewards" / ...``). The ``session_suffix`` keyword added
+        during Task 6 step 5 re-grep to also discharge 2 audit-missed
+        sibling sites in ``spout_close_vs_std.py`` (bare + b-half).
+        Read-only resolver — does NOT create the parent directory eagerly;
+        Phase 2 emission writes the NPZs and creates the tree.
+        """
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
+        return (
+            self.pipeline_outputs(subdir="spout_behavior")
+            / "licks_and_rewards"
+            / animal
+            / f"{date_str}.npz"
+        )
 
     def spout_behavior_figures_dir(self, animal: str) -> Path:
         """Return the per-mouse spout-behavior figures output directory.

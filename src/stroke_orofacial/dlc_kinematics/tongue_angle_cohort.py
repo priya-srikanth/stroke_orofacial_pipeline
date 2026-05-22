@@ -394,10 +394,7 @@ def _enumerate_session_dates(
     (= 7a.3 V3 emit set). Matches the
     :func:`compute_pre_stroke_median_ili_ms` enumeration logic.
     """
-    endpoints_dir = (
-        resolver.pipeline_outputs(subdir="dlc_kinematics")
-        / "endpoints" / animal
-    )
+    endpoints_dir = resolver.tongue_pertrial_endpoints_dir(animal)
     if not endpoints_dir.exists():
         return []
     dates: list[datetime.date] = []

@@ -190,8 +190,6 @@ def iter_cohort_b_session_keys(
     if animal_info_cache is None:
         animal_info_cache = {}
 
-    sp_root = resolver.pipeline_outputs("spout_behavior")
-
     for animal in target_animals:
         if animal not in animal_info_cache:
             animal_info_cache[animal] = get_animal(animal)
@@ -205,12 +203,15 @@ def iter_cohort_b_session_keys(
 
             date_str = _iso_to_yyyymmdd(iso)
             if require_on_disk:
-                # b-half existence gate. Both bare and b NPZs are
-                # under licks_and_rewards/<animal>/. For Pattern B
+                # b-half existence gate via Phase 7d (Addendum #4)
+                # spout_licks_and_rewards_npz resolver. For Pattern B
                 # (which all Cohort B entries are by construction),
-                # bare is at <date_str>.npz and b is at <date_str>b.npz.
-                bare_npz = sp_root / "licks_and_rewards" / animal / f"{date_str}.npz"
-                b_npz = sp_root / "licks_and_rewards" / animal / f"{date_str}b.npz"
+                # bare is at <date_str>.npz and b is at <date_str>b.npz
+                # via the resolver's session_suffix= keyword.
+                bare_npz = resolver.spout_licks_and_rewards_npz(animal, date)
+                b_npz = resolver.spout_licks_and_rewards_npz(
+                    animal, date, session_suffix="b",
+                )
                 if not bare_npz.exists() or not b_npz.exists():
                     continue
 

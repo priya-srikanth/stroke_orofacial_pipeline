@@ -900,7 +900,12 @@ class TestTonguePertrialPaths:
     """
 
     def test_tongue_pertrial_angle_parquet_path(self, monkeypatch, tmp_path):
-        """Output uses %Y%m%d (matches 7a.2 interpolated_trace)."""
+        """Output uses %Y%m%d (matches 7a.2 interpolated_trace).
+
+        Path layout post-Phase-7d:
+        ``dlc_kinematics/per_frame/tongue/<animal>/<date>.parquet`` (was
+        ``dlc_kinematics/features/tongue/...`` pre-7d).
+        """
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(output_root=tmp_path)
         path = resolver.tongue_pertrial_angle_parquet(
@@ -909,7 +914,7 @@ class TestTonguePertrialPaths:
         expected = (
             tmp_path
             / "dlc_kinematics"
-            / "features"
+            / "per_frame"
             / "tongue"
             / "PS50"
             / "20250319.parquet"
@@ -937,6 +942,13 @@ class TestTonguePertrialPaths:
         assert path.parent.exists()
 
     def test_tongue_pertrial_endpoints_json_path(self, monkeypatch, tmp_path):
+        """Per-(animal, date) per-trial tongue endpoints JSON path.
+
+        Path layout post-Phase-7d:
+        ``dlc_kinematics/per_trial/tongue/<animal>/<date>.json`` (was
+        ``dlc_kinematics/endpoints/<animal>/<date>.json`` pre-7d —
+        top-level, tongue-implicit).
+        """
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(output_root=tmp_path)
         path = resolver.tongue_pertrial_endpoints_json(
@@ -945,12 +957,232 @@ class TestTonguePertrialPaths:
         expected = (
             tmp_path
             / "dlc_kinematics"
-            / "endpoints"
+            / "per_trial"
+            / "tongue"
             / "PS54"
             / "20250607.json"
         )
         assert path == expected
         assert path.parent.exists()
+
+    def test_tongue_pertrial_endpoints_dir_path(self, monkeypatch, tmp_path):
+        """New Phase 7d (Addendum #2) directory resolver: per-animal dir of
+        per-trial tongue endpoints JSONs. Symmetric with
+        :meth:`tongue_pertrial_endpoints_json`. Used by callers that need
+        to enumerate every session date for an animal by globbing ``*.json``.
+
+        Discharges 2 pre-7d PathResolver-bypass call sites in
+        ``compute_pre_stroke_median_ili_ms`` (tongue_pertrial.py) and
+        ``_enumerate_session_dates`` (tongue_angle_cohort.py). Does NOT
+        create the directory eagerly (caller decides).
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tongue_pertrial_endpoints_dir("PS46")
+        expected = (
+            tmp_path
+            / "dlc_kinematics"
+            / "per_trial"
+            / "tongue"
+            / "PS46"
+        )
+        assert path == expected
+        # No eager mkdir — directory should NOT exist until a writer
+        # (tongue_pertrial_endpoints_json) creates it via its parent mkdir.
+        assert not path.exists()
+
+    def test_tongue_pertrial_endpoints_dir_matches_json_parent(
+        self, monkeypatch, tmp_path,
+    ):
+        """The directory resolver must return the same path as the parent
+        of the per-(animal, date) JSON resolver for the same animal. This
+        invariant guards against drift between the two methods: if one is
+        renamed/moved, the other must follow.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        animal = "PS46"
+        dir_path = resolver.tongue_pertrial_endpoints_dir(animal)
+        json_path = resolver.tongue_pertrial_endpoints_json(
+            animal, datetime.date(2025, 3, 7),
+        )
+        assert dir_path == json_path.parent
+
+    def test_tongue_jaw_mismatch_candidate_trials_dir_path(
+        self, monkeypatch, tmp_path,
+    ):
+        """Phase 7d Task 6 (Addendum #4) — new directory resolver for
+        Phase 7a.5 candidate-trials parquets. Symmetric with
+        :meth:`tongue_jaw_mismatch_candidate_trials_parquet` (the
+        per-(animal, date) file resolver). Discharges 2 PathResolver-
+        bypass call sites in ``dlc_kinematics/tongue_jaw_mismatch.py``.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tongue_jaw_mismatch_candidate_trials_dir("PS46")
+        expected = (
+            tmp_path / "dlc_kinematics" / "tongue_jaw_mismatch"
+            / "candidate_trials" / "PS46"
+        )
+        assert path == expected
+        assert not path.exists()
+
+    def test_tongue_jaw_mismatch_candidate_trials_dir_matches_file_parent(
+        self, monkeypatch, tmp_path,
+    ):
+        """Invariant: the directory resolver returns the parent of the
+        file resolver for the same animal + any date. Guards against
+        drift between the two methods.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        dir_path = resolver.tongue_jaw_mismatch_candidate_trials_dir("PS46")
+        file_path = resolver.tongue_jaw_mismatch_candidate_trials_parquet(
+            "PS46", datetime.date(2025, 3, 7),
+        )
+        assert dir_path == file_path.parent
+
+    def test_interpolated_trace_dir_path(self, monkeypatch, tmp_path):
+        """Phase 7d Task 6 (Addendum #4) — new directory resolver for Phase
+        7a.2 interpolated traces. Symmetric with :meth:`interpolated_trace`
+        (the per-(animal, date) file resolver). Discharges 1 PathResolver-
+        bypass call site in ``dlc_kinematics/mean_sem_visual.py`` that
+        manually constructed
+        ``pipeline_outputs("dlc_analysis") / "interpolated_traces" / bodypart / animal``.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.interpolated_trace_dir("tongue", "PS46")
+        expected = (
+            tmp_path / "dlc_analysis" / "interpolated_traces"
+            / "tongue" / "PS46"
+        )
+        assert path == expected
+        # Read-only dir resolver — does NOT create the directory eagerly
+        # (the file resolver above handles eager parent mkdir when writing).
+        assert not path.exists()
+
+    def test_interpolated_trace_dir_path_matches_file_parent(
+        self, monkeypatch, tmp_path,
+    ):
+        """Invariant: the directory resolver returns the parent of the
+        file resolver for the same ``(bodypart, animal)`` plus any date.
+        Guards against drift between the two methods.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        dir_path = resolver.interpolated_trace_dir("tongue", "PS46")
+        file_path = resolver.interpolated_trace(
+            "tongue", "PS46", datetime.date(2025, 3, 7),
+        )
+        assert dir_path == file_path.parent
+        # The file resolver creates the parent eagerly, so after the call
+        # the directory does exist on disk — but only because of the file
+        # resolver's mkdir, not the dir resolver itself.
+        assert dir_path.exists()
+
+    def test_spout_licks_and_rewards_npz_path(self, monkeypatch, tmp_path):
+        """Phase 7d Task 6 (Addendum #4) — new file resolver for Phase 2
+        licks NPZ. Discharges 6 PathResolver-bypass call sites (3 direct +
+        3 captured-root indirect) that manually constructed
+        ``pipeline_outputs("spout_behavior") / "licks_and_rewards" / animal
+        / f"{date_str}.npz"``.
+
+        The ``licks_and_rewards`` directory name is PRESERVED per Phase
+        8a.10.1 Decision 8 E.B.1 (rename-cost-without-benefit). Read-only
+        resolver — does NOT create the parent directory eagerly.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.spout_licks_and_rewards_npz(
+            "PS50", datetime.date(2025, 3, 19),
+        )
+        expected = (
+            tmp_path / "spout_behavior" / "licks_and_rewards"
+            / "PS50" / "20250319.npz"
+        )
+        assert path == expected
+        # Read-only resolver — parent dir is NOT created eagerly. The Phase
+        # 2 emission code writes NPZs and creates the tree as needed.
+        assert not path.exists()
+        assert not path.parent.exists()
+
+    def test_spout_licks_and_rewards_npz_session_suffix(
+        self, monkeypatch, tmp_path,
+    ):
+        """``session_suffix=`` appends to the date string (matches the
+        existing :meth:`tongue_pertrial_endpoints_json` /
+        :meth:`interpolated_trace` convention). ``None`` or ``""`` yields
+        the bare-half filename; ``"b"`` yields the Pattern B b-half
+        sibling. Added in Phase 7d Task 6 step 5 to discharge 2
+        audit-missed sibling sites in ``spout_close_vs_std.py``.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        date = datetime.date(2025, 4, 30)
+        bare = resolver.spout_licks_and_rewards_npz("PS51", date)
+        b = resolver.spout_licks_and_rewards_npz(
+            "PS51", date, session_suffix="b",
+        )
+        assert bare.name == "20250430.npz"
+        assert b.name == "20250430b.npz"
+        assert bare.parent == b.parent
+
+    def test_spatial_tone_aligned_npz_path(self, monkeypatch, tmp_path):
+        """Phase 7d Task 6 (Addendum #4) — new file resolver for Phase 6
+        opt-in tone-aligned spatial heatmap NPZ cache. Discharges 1
+        PathResolver-bypass call site in
+        ``dlc_spatial/tone_aligned.py`` that manually constructed the
+        parametric ``spatial_tone_aligned/<bodypart>_<center_mode>/
+        trials-<trial_group>_<win_tag>/<animal>/heatmap_<date>.npz``
+        path.
+
+        Dormant in production per Phase 7c.2 Addendum #3 Q2.B — the
+        cohort driver never sets ``emit_cache=True``; this resolver
+        exists for notebook-12 / one-off inspection use.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.spatial_tone_aligned_npz(
+            bodypart="jaw",
+            center_mode="spout_midpoint",
+            trial_group="tone",
+            window_ms=(-500, 0),
+            animal="PS50",
+            date=datetime.date(2025, 3, 19),
+        )
+        expected = (
+            tmp_path / "dlc_analysis" / "spatial_tone_aligned"
+            / "jaw_spout_midpoint" / "trials-tone_-500to0ms" / "PS50"
+            / "heatmap_20250319.npz"
+        )
+        assert path == expected
+        # Read-only resolver — does NOT create the parent directory eagerly.
+        # The opt-in cache write path creates the tree as needed.
+        assert not path.exists()
+        assert not path.parent.exists()
+
+    def test_dlc_centered_parquet_dir_path(self, monkeypatch, tmp_path):
+        """Phase 7d Task 6 (Addendum #4) — new directory resolver for Phase 4
+        centered DLC parquets, parametric on ``center_mode``. Discharges 5
+        PathResolver-bypass call sites that manually constructed
+        ``pipeline_outputs("dlc_analysis") / f"centered_{center_mode}" / animal``.
+
+        Does NOT create the directory eagerly (caller decides; Phase 4 write
+        code creates as needed).
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.dlc_centered_parquet_dir("spout_midpoint", "PS50")
+        expected = (
+            tmp_path / "dlc_analysis" / "centered_spout_midpoint" / "PS50"
+        )
+        assert path == expected
+        assert not path.exists()
+        # Parametric in center_mode: a different mode resolves to a sibling dir.
+        other = resolver.dlc_centered_parquet_dir("nose", "PS50")
+        assert other == tmp_path / "dlc_analysis" / "centered_nose" / "PS50"
+        assert other.parent == path.parent.parent / "centered_nose"
 
     def test_dlc_centered_spout_midpoint_parquet_globs_and_returns_unique_match(
         self, monkeypatch, tmp_path,
@@ -1139,7 +1371,14 @@ class TestPhase7a5Paths:
     """
 
     def test_jaw_pertrial_endpoints_json_path(self, monkeypatch, tmp_path):
-        """Per-trial jaw scalars JSON: %Y%m%d filename + eager parent mkdir."""
+        """Per-trial jaw scalars JSON: %Y%m%d filename + eager parent mkdir.
+
+        Path layout post-Phase-7d:
+        ``dlc_kinematics/per_trial/jaw/<animal>/<date>.json`` (was
+        ``dlc_kinematics/jaw_pertrial/endpoints/<animal>/<date>.json``
+        pre-7d — symmetric with the tongue sibling at
+        ``per_trial/tongue/``).
+        """
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(output_root=tmp_path)
         path = resolver.jaw_pertrial_endpoints_json(
@@ -1148,8 +1387,8 @@ class TestPhase7a5Paths:
         expected = (
             tmp_path
             / "dlc_kinematics"
-            / "jaw_pertrial"
-            / "endpoints"
+            / "per_trial"
+            / "jaw"
             / "PS46"
             / "20250307.json"
         )

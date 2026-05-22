@@ -556,15 +556,10 @@ def _derive_reward_events_for_bodypart(
         )
     n_frames = int(n_frames_meta)
 
-    # Spout_behavior licks_and_rewards NPZ path (no dedicated PathResolver
-    # helper as of Phase 7a.6; pattern matches 7a.3 V3 Task 5.0).
+    # Phase 2 licks_and_rewards NPZ path via the Phase 7d (Addendum #4)
+    # spout_licks_and_rewards_npz resolver method.
     date_str = date.strftime("%Y%m%d")
-    licks_path = (
-        resolver.pipeline_outputs("spout_behavior")
-        / "licks_and_rewards"
-        / animal
-        / f"{date_str}.npz"
-    )
+    licks_path = resolver.spout_licks_and_rewards_npz(animal, date)
 
     align_path = manifest.alignment_template
     if align_path is None or not align_path.exists():
@@ -762,12 +757,7 @@ def _eligible_dates(
         d0 = datetime.date(2025, 1, 1)
         d1 = datetime.date(2026, 12, 31)
 
-    parquet_dir = (
-        resolver.pipeline_outputs(subdir="dlc_analysis")
-        / "interpolated_traces"
-        / bodypart
-        / animal
-    )
+    parquet_dir = resolver.interpolated_trace_dir(bodypart, animal)
     if not parquet_dir.exists():
         return []
 

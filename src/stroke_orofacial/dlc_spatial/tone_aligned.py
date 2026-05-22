@@ -388,7 +388,7 @@ def build_tone_aligned_analysis(
     # Locate the centered parquet derived from this manifest's first DLC h5.
     lik_thr_centering = 0.7  # Phase 4 centering threshold
     sig = _param_sig(center_mode, lik_thr_centering)
-    parquet_dir = resolver.pipeline_outputs("dlc_analysis") / f"centered_{center_mode}" / animal
+    parquet_dir = resolver.dlc_centered_parquet_dir(center_mode, animal)
     parquet_name = f"{manifest.dlc_h5_files[0].name}.intermediate.{sig}.parquet"
     parquet_path = parquet_dir / parquet_name
     if not parquet_path.exists():
@@ -403,11 +403,11 @@ def build_tone_aligned_analysis(
     df = read_centered_parquet(parquet_path)
     n_frames = len(df)
 
-    # Load tone events from Phase 2 licks NPZ (manifest gives animal+date).
-    # The ``licks_and_rewards`` directory name is PRESERVED per Phase 8a.10.1
-    # Decision 8 E.B.1 (rename-cost-without-benefit cycle avoided).
-    spout_root = resolver.pipeline_outputs("spout_behavior")
-    licks_path = spout_root / "licks_and_rewards" / animal / f"{date_str}.npz"
+    # Load tone events from Phase 2 licks NPZ via the Phase 7d (Addendum #4)
+    # spout_licks_and_rewards_npz resolver. The ``licks_and_rewards``
+    # directory name is PRESERVED per Phase 8a.10.1 Decision 8 E.B.1
+    # (rename-cost-without-benefit cycle avoided).
+    licks_path = resolver.spout_licks_and_rewards_npz(animal, date)
     if not licks_path.exists():
         raise FileNotFoundError(
             f"{manifest.session_id}: Phase 2 licks NPZ missing at "
@@ -519,15 +519,13 @@ def build_tone_aligned_analysis(
     # for notebook 12 / one-off inspection. The cohort re-emit driver
     # never sets emit_cache=True.
     if emit_cache and histogram is not None:
-        win_tag = f"{int(window_ms[0])}to{int(window_ms[1])}ms"
-        npz_dir = (
-            resolver.pipeline_outputs("dlc_analysis")
-            / "spatial_tone_aligned"
-            / f"{bodypart}_{center_mode}"
-            / f"trials-{trial_group}_{win_tag}"
-            / animal
+        # Opt-in cache write via the Phase 7d (Addendum #4)
+        # spatial_tone_aligned_npz resolver. Dormant in production —
+        # the Phase 7c.2 cohort driver never sets emit_cache=True; this
+        # path is for notebook-12 / one-off inspection use.
+        npz_path = resolver.spatial_tone_aligned_npz(
+            bodypart, center_mode, trial_group, window_ms, animal, date,
         )
-        npz_path = npz_dir / f"heatmap_{date_str}.npz"
         save_tone_aligned_npz(result, npz_path)
 
     return result
