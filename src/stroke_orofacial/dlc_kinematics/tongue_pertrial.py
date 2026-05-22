@@ -1399,15 +1399,10 @@ def _derive_trial_events_from_spout_behavior(
         )
     n_frames = int(n_frames_meta)
 
-    # 2. licks_and_rewards NPZ path (no dedicated PathResolver helper as of
-    #    Task 5.0; pattern matches 7a.2's _load_tone_centers_cam).
+    # 2. Phase 2 licks_and_rewards NPZ path via the Phase 7d (Addendum #4)
+    #    spout_licks_and_rewards_npz resolver method.
     date_str = date.strftime("%Y%m%d")
-    licks_path = (
-        resolver.pipeline_outputs("spout_behavior")
-        / "licks_and_rewards"
-        / animal
-        / f"{date_str}.npz"
-    )
+    licks_path = resolver.spout_licks_and_rewards_npz(animal, date)
 
     # 3. Alignment template (cam2 — same fallback chain as 7a.2's
     #    _load_tone_centers_cam: prefer manifest if set, else resolver).

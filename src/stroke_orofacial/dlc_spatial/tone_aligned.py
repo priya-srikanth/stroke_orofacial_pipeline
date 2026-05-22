@@ -403,11 +403,11 @@ def build_tone_aligned_analysis(
     df = read_centered_parquet(parquet_path)
     n_frames = len(df)
 
-    # Load tone events from Phase 2 licks NPZ (manifest gives animal+date).
-    # The ``licks_and_rewards`` directory name is PRESERVED per Phase 8a.10.1
-    # Decision 8 E.B.1 (rename-cost-without-benefit cycle avoided).
-    spout_root = resolver.pipeline_outputs("spout_behavior")
-    licks_path = spout_root / "licks_and_rewards" / animal / f"{date_str}.npz"
+    # Load tone events from Phase 2 licks NPZ via the Phase 7d (Addendum #4)
+    # spout_licks_and_rewards_npz resolver. The ``licks_and_rewards``
+    # directory name is PRESERVED per Phase 8a.10.1 Decision 8 E.B.1
+    # (rename-cost-without-benefit cycle avoided).
+    licks_path = resolver.spout_licks_and_rewards_npz(animal, date)
     if not licks_path.exists():
         raise FileNotFoundError(
             f"{manifest.session_id}: Phase 2 licks NPZ missing at "

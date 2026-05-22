@@ -151,10 +151,16 @@ def iter_cohort_a_sessions(
                 raw_keys.append(date_yyyymmdd)
 
     if require_on_disk:
-        sp_root = resolver.pipeline_outputs("spout_behavior")
+        # Per Phase 7d (Addendum #4) the licks NPZ path lives behind the
+        # spout_licks_and_rewards_npz resolver, which takes a datetime.date
+        # rather than a YYYYMMDD string — parse and roundtrip per key.
+        def _date_from_yyyymmdd(k: str) -> datetime.date:
+            return datetime.datetime.strptime(k, "%Y%m%d").date()
         raw_keys = [
             k for k in raw_keys
-            if (sp_root / "licks_and_rewards" / animal / f"{k}.npz").exists()
+            if resolver.spout_licks_and_rewards_npz(
+                animal, _date_from_yyyymmdd(k),
+            ).exists()
         ]
     return sorted(raw_keys)
 

@@ -515,12 +515,8 @@ def _load_tone_centers_cam(
     """
     from stroke_orofacial.dlc_spatial.tone_aligned import load_tone_events
 
-    date_str = manifest.date.strftime("%Y%m%d")
-    licks_path = (
-        resolver.pipeline_outputs("spout_behavior")
-        / "licks_and_rewards"
-        / manifest.animal
-        / f"{date_str}.npz"
+    licks_path = resolver.spout_licks_and_rewards_npz(
+        manifest.animal, manifest.date,
     )
     if not licks_path.exists():
         raise FileNotFoundError(

@@ -1008,6 +1008,32 @@ class TestTonguePertrialPaths:
         )
         assert dir_path == json_path.parent
 
+    def test_spout_licks_and_rewards_npz_path(self, monkeypatch, tmp_path):
+        """Phase 7d Task 6 (Addendum #4) — new file resolver for Phase 2
+        licks NPZ. Discharges 6 PathResolver-bypass call sites (3 direct +
+        3 captured-root indirect) that manually constructed
+        ``pipeline_outputs("spout_behavior") / "licks_and_rewards" / animal
+        / f"{date_str}.npz"``.
+
+        The ``licks_and_rewards`` directory name is PRESERVED per Phase
+        8a.10.1 Decision 8 E.B.1 (rename-cost-without-benefit). Read-only
+        resolver — does NOT create the parent directory eagerly.
+        """
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.spout_licks_and_rewards_npz(
+            "PS50", datetime.date(2025, 3, 19),
+        )
+        expected = (
+            tmp_path / "spout_behavior" / "licks_and_rewards"
+            / "PS50" / "20250319.npz"
+        )
+        assert path == expected
+        # Read-only resolver — parent dir is NOT created eagerly. The Phase
+        # 2 emission code writes NPZs and creates the tree as needed.
+        assert not path.exists()
+        assert not path.parent.exists()
+
     def test_dlc_centered_parquet_dir_path(self, monkeypatch, tmp_path):
         """Phase 7d Task 6 (Addendum #4) — new directory resolver for Phase 4
         centered DLC parquets, parametric on ``center_mode``. Discharges 5

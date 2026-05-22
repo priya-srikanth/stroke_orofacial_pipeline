@@ -1152,6 +1152,33 @@ class PathResolver:
         """
         return self.root("local_processed_spout") / f"session_processing_{version}"
 
+    def spout_licks_and_rewards_npz(
+        self, animal: str, date: datetime.date,
+    ) -> Path:
+        """Return the per-(animal, date) Phase 2 licks_and_rewards NPZ.
+
+        E.g. ``<outputs>/spout_behavior/licks_and_rewards/PS50/20250319.npz``.
+
+        Emitted by the Phase 2 lick/reward extraction (notebook 06). The
+        ``licks_and_rewards`` directory name is PRESERVED per Phase 8a.10.1
+        Decision 8 E.B.1 (rename-cost-without-benefit cycle avoided).
+
+        Added in Phase 7d (Addendum #4) to discharge 6 PathResolver-bypass
+        call sites — both direct concatenation (``pipeline_outputs(
+        "spout_behavior") / "licks_and_rewards" / animal / f"{date_str}.npz"``)
+        and captured-root variants (``sp_root = pipeline_outputs(
+        "spout_behavior")`` then ``sp_root / "licks_and_rewards" / ...``).
+        Read-only resolver — does NOT create the parent directory eagerly;
+        Phase 2 emission writes the NPZs and creates the tree.
+        """
+        date_str = date.strftime("%Y%m%d")
+        return (
+            self.pipeline_outputs(subdir="spout_behavior")
+            / "licks_and_rewards"
+            / animal
+            / f"{date_str}.npz"
+        )
+
     def spout_behavior_figures_dir(self, animal: str) -> Path:
         """Return the per-mouse spout-behavior figures output directory.
 
