@@ -56,7 +56,13 @@ def mock_resolver(tmp_path, mock_dlc_dir, mock_alignment_dir) -> MagicMock:
     """Create a mock PathResolver that points to tmp_path fixtures."""
     resolver = MagicMock(spec=PathResolver)
     resolver.dlc_output_dir.return_value = mock_dlc_dir
-    resolver.alignment_template_legacy_read.return_value = (
+    # Phase 7-pre-alignment-templates Task 4 cutover: build_manifest now
+    # calls alignment_template_for_reading (prefer-new-then-legacy);
+    # mock that method on the resolver. The fixture file exists (per
+    # mock_alignment_dir fixture), so the mock returns the path — same
+    # as the pre-cutover behavior would have produced for an existing
+    # legacy file.
+    resolver.alignment_template_for_reading.return_value = (
         mock_alignment_dir / "cam2" / "PS46" / "20250307.npz"
     )
     return resolver
@@ -104,7 +110,12 @@ class TestBuildManifest:
         (dlc_dir / f"{base}_filtered.h5").touch()
         (dlc_dir / f"{base}_filtered.csv").touch()
         # Point alignment template to a non-existent file
-        mock_resolver.alignment_template_legacy_read.return_value = tmp_path / "nonexistent.npz"
+        # Post-cutover: alignment_template_for_reading raises FileNotFoundError
+        # when neither tree has the template; build_manifest catches and
+        # sets alignment_template=None. Mock the raise to model that.
+        mock_resolver.alignment_template_for_reading.side_effect = FileNotFoundError(
+            "test fixture: no alignment template for this (animal, date)"
+        )
 
         info = AnimalInfo(
             animal_id="PS46",
@@ -181,7 +192,13 @@ class TestBuildManifest:
         resolver = MagicMock(spec=PathResolver)
         resolver.dlc_output_dir.return_value = Path("/nonexistent/path")
         # Alignment template path is constructed but won't exist
-        resolver.alignment_template_legacy_read.return_value = tmp_path / "no_template.npz"
+        # Post-cutover: alignment_template_for_reading raises when neither
+        # tree has the template (vs the pre-cutover legacy resolver which
+        # returned a non-existent path that build_manifest then existence-
+        # checked).
+        resolver.alignment_template_for_reading.side_effect = FileNotFoundError(
+            "test fixture: no alignment template for this (animal, date)"
+        )
 
         manifest = build_manifest(
             "PS46", datetime.date(2025, 3, 7), resolver, ps46_info
@@ -245,8 +262,10 @@ def _mock_resolver_for_pattern_b(tmp_path: Path) -> MagicMock:
     set up — Pattern B tests don't need those."""
     resolver = MagicMock(spec=PathResolver)
     resolver.dlc_output_dir.return_value = tmp_path / "no_dlc_dir"
-    resolver.alignment_template_legacy_read.return_value = (
-        tmp_path / "no_alignment.npz"
+    # Post-cutover (Phase 7-pre-alignment-templates Task 4): mock the
+    # for_reading method to raise (mimics "neither tree has template").
+    resolver.alignment_template_for_reading.side_effect = FileNotFoundError(
+        "test fixture: no alignment template for Pattern B test"
     )
     resolver.wavesurfer_dir.return_value = tmp_path / "no_ws_dir"
     resolver.camera_dir.return_value = tmp_path / "no_cam_dir"
@@ -420,8 +439,9 @@ class TestBuildManifestSessionSuffix:
             (dlc_dir / f"{base}_filtered.h5").touch()
             (dlc_dir / f"{base}_filtered.csv").touch()
         resolver.dlc_output_dir.return_value = dlc_dir
-        resolver.alignment_template_legacy_read.return_value = (
-            tmp_path / "no_alignment.npz"
+        # Post-cutover: mock for_reading to raise (mimics no template).
+        resolver.alignment_template_for_reading.side_effect = FileNotFoundError(
+            "test fixture: no alignment template"
         )
         resolver.wavesurfer_dir.return_value = tmp_path / "no_ws"
         resolver.camera_dir.return_value = tmp_path / "no_cam"
@@ -465,8 +485,9 @@ class TestBuildManifestSessionSuffix:
             (dlc_dir / f"{base}_filtered.h5").touch()
             (dlc_dir / f"{base}_filtered.csv").touch()
         resolver.dlc_output_dir.return_value = dlc_dir
-        resolver.alignment_template_legacy_read.return_value = (
-            tmp_path / "no_alignment.npz"
+        # Post-cutover: mock for_reading to raise (mimics no template).
+        resolver.alignment_template_for_reading.side_effect = FileNotFoundError(
+            "test fixture: no alignment template"
         )
         resolver.wavesurfer_dir.return_value = tmp_path / "no_ws"
         resolver.camera_dir.return_value = tmp_path / "no_cam"
@@ -522,8 +543,9 @@ class TestWavesurferFileOverride:
         resolver.camera_dir.return_value = (
             ambiguous_ws_dir.parent.parent / "cam_nonexistent"
         )
-        resolver.alignment_template_legacy_read.return_value = (
-            ambiguous_ws_dir.parent.parent / "tmpl_nonexistent.npz"
+        # Post-cutover: mock for_reading to raise (no template).
+        resolver.alignment_template_for_reading.side_effect = FileNotFoundError(
+            "test fixture: no alignment template for wavesurfer_file_overrides test"
         )
         resolver.dlc_output_dir.return_value = (
             ambiguous_ws_dir.parent.parent / "dlc_nonexistent"

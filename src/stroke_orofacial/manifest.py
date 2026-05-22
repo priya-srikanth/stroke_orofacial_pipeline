@@ -914,10 +914,22 @@ def build_manifest(
     # half ``{date_str}.npz``). Without this, the b-half manifest's
     # ``.alignment_template`` would point at the bare-half template,
     # causing Phase 3 to short-circuit cache-hit on the wrong file.
-    alignment_path = resolver.alignment_template_legacy_read(
-        animal, date, session_suffix=session_suffix,
-    )
-    alignment_template = alignment_path if alignment_path.exists() else None
+    # Phase 7-pre-alignment-templates Task 4 cutover: read via the
+    # unified prefer-new-then-legacy resolver. After F-P-7 cohort emit
+    # the new tree is authoritative for in-cohort sessions; legacy
+    # remains as a permanent safety net (Addendum #1 L3) for sessions
+    # the new pipeline can't emit (missing/ambiguous raw inputs,
+    # hand-emit, archival pre-cohort baseline).
+    try:
+        alignment_path = resolver.alignment_template_for_reading(
+            animal, date, session_suffix=session_suffix,
+        )
+        alignment_template = alignment_path
+    except FileNotFoundError:
+        # Neither new-tree nor legacy template exists for this
+        # (animal, date, suffix) — manifest.alignment_template stays
+        # None; downstream consumers handle the None case.
+        alignment_template = None
 
     # Compute stroke-relative metadata
     day_rel = animal_info.day_relative_to_stroke(date)

@@ -256,10 +256,28 @@ def load_or_compute_alignment(
     if cam_idx == 2 and manifest.alignment_template is not None:
         existing_path = manifest.alignment_template
     else:
-        existing_path = resolver.alignment_template_legacy_read(
-            animal, date, cam=cam_name,
-            session_suffix=manifest.session_suffix,
-        )
+        # Phase 7-pre-alignment-templates Task 4 cutover: read via the
+        # unified prefer-new-then-legacy resolver. Reaches here when
+        # cam_idx != 2 (manifest only tracks cam2's template) OR when
+        # manifest didn't see the template at build time. Returns the
+        # new-tree path post-F-P-7 cohort emit; legacy fallback per
+        # Addendum #1 L3 for sessions the new pipeline can't emit.
+        try:
+            existing_path = resolver.alignment_template_for_reading(
+                animal, date, cam=cam_name,
+                session_suffix=manifest.session_suffix,
+            )
+        except FileNotFoundError:
+            # Sentinel: neither tree has the file — leave existing_path
+            # pointing at the new-tree-shaped path so the
+            # ``existing_path.exists()`` check below short-circuits the
+            # cache hit and we fall into the recompute branch (same
+            # outcome as pre-cutover when alignment_template_legacy_read
+            # returned a non-existent path).
+            existing_path = resolver.alignment_template_new(
+                animal, date, cam=cam_name,
+                session_suffix=manifest.session_suffix,
+            )
 
     if not force_recompute and existing_path.exists():
         tmpl = load_alignment_template(existing_path)
