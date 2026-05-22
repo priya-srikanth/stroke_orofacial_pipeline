@@ -775,6 +775,108 @@ class TestNewConvenienceMethods:
         assert tmp_path in result.parents
         assert "MICROSCOPE" not in result.as_posix()
 
+    # ---- Phase 7-pre-alignment-templates Task 5:
+    #      alignment_template_for_reading prefer-new + legacy-fallback ----
+    #
+    # These tests use monkeypatch.setattr to override the two underlying
+    # resolver methods so both candidate paths land in the test sandbox.
+    # alignment_template_legacy_read routes through "microscope_server"
+    # (not pipeline_outputs), so output_root=tmp_path alone wouldn't
+    # redirect the legacy path — and in a real machine config the legacy
+    # path may already exist on disk, polluting the test.
+
+    @staticmethod
+    def _setup_for_reading_fixture(monkeypatch, tmp_path: Path):
+        """Build a resolver whose new + legacy template paths both
+        live under tmp_path (independent of the real MICROSCOPE mount)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path / "new_tree")
+        new_path = (
+            tmp_path / "new_tree" / "dlc_analysis" / "alignment_templates"
+            / "cam2" / "PS46" / "20250307.npz"
+        )
+        legacy_path = (
+            tmp_path / "legacy_tree" / "alignment_templates"
+            / "cam2" / "PS46" / "20250307.npz"
+        )
+        monkeypatch.setattr(
+            resolver, "alignment_template_new",
+            lambda animal, date, cam="cam2", session_suffix=None: new_path,
+        )
+        monkeypatch.setattr(
+            resolver, "alignment_template_legacy_read",
+            lambda animal, date, cam="cam2", session_suffix=None: legacy_path,
+        )
+        return resolver, new_path, legacy_path
+
+    def test_alignment_template_for_reading_prefers_new_tree(
+        self, monkeypatch, tmp_path: Path,
+    ):
+        """When BOTH the new-tree and legacy-tree paths exist, the new
+        path wins. Phase 7-pre-alignment-templates F-P-7 cutover
+        invariant: after cohort emit, the new tree is authoritative
+        for every session that has a new-tree template.
+        """
+        resolver, new_path, legacy_path = self._setup_for_reading_fixture(
+            monkeypatch, tmp_path,
+        )
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        legacy_path.parent.mkdir(parents=True, exist_ok=True)
+        new_path.write_bytes(b"new")
+        legacy_path.write_bytes(b"legacy")
+
+        result = resolver.alignment_template_for_reading(
+            "PS46", datetime.date(2025, 3, 7),
+        )
+        assert result == new_path
+        assert result.read_bytes() == b"new"
+
+    def test_alignment_template_for_reading_falls_back_to_legacy(
+        self, monkeypatch, tmp_path: Path,
+    ):
+        """When ONLY the legacy-tree path exists, the resolver falls
+        back to legacy. Permanent safety net per Addendum #1 L3 for
+        sessions the new pipeline can't emit equivalents for
+        (missing/ambiguous raw inputs, hand-emitted incident-response
+        templates, archival pre-cohort baseline sessions).
+        """
+        resolver, new_path, legacy_path = self._setup_for_reading_fixture(
+            monkeypatch, tmp_path,
+        )
+        legacy_path.parent.mkdir(parents=True, exist_ok=True)
+        legacy_path.write_bytes(b"legacy")
+        assert not new_path.exists()
+
+        result = resolver.alignment_template_for_reading(
+            "PS46", datetime.date(2025, 3, 7),
+        )
+        assert result == legacy_path
+
+    def test_alignment_template_for_reading_raises_if_neither(
+        self, monkeypatch, tmp_path: Path,
+    ):
+        """When neither path exists, raise FileNotFoundError with a
+        message that names BOTH candidate paths so the caller can
+        debug whether the YAML cohort entry, the WS data, or the
+        emit driver is missing.
+        """
+        resolver, new_path, legacy_path = self._setup_for_reading_fixture(
+            monkeypatch, tmp_path,
+        )
+        assert not new_path.exists()
+        assert not legacy_path.exists()
+
+        with pytest.raises(FileNotFoundError) as excinfo:
+            resolver.alignment_template_for_reading(
+                "PS46", datetime.date(2025, 3, 7),
+            )
+        msg = str(excinfo.value)
+        assert "PS46" in msg
+        assert "2025-03-07" in msg
+        # Both paths named in the error message
+        assert str(new_path) in msg
+        assert str(legacy_path) in msg
+
 
 class TestOutputRootOverride:
     """Task #20: ``output_root=`` kwarg on PathResolver.__init__ overrides the
