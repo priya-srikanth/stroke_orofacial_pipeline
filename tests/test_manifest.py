@@ -56,7 +56,13 @@ def mock_resolver(tmp_path, mock_dlc_dir, mock_alignment_dir) -> MagicMock:
     """Create a mock PathResolver that points to tmp_path fixtures."""
     resolver = MagicMock(spec=PathResolver)
     resolver.dlc_output_dir.return_value = mock_dlc_dir
-    resolver.alignment_template_legacy_read.return_value = (
+    # Phase 7-pre-alignment-templates Task 4 cutover: build_manifest now
+    # calls alignment_template_for_reading (prefer-new-then-legacy);
+    # mock that method on the resolver. The fixture file exists (per
+    # mock_alignment_dir fixture), so the mock returns the path — same
+    # as the pre-cutover behavior would have produced for an existing
+    # legacy file.
+    resolver.alignment_template_for_reading.return_value = (
         mock_alignment_dir / "cam2" / "PS46" / "20250307.npz"
     )
     return resolver
@@ -104,7 +110,12 @@ class TestBuildManifest:
         (dlc_dir / f"{base}_filtered.h5").touch()
         (dlc_dir / f"{base}_filtered.csv").touch()
         # Point alignment template to a non-existent file
-        mock_resolver.alignment_template_legacy_read.return_value = tmp_path / "nonexistent.npz"
+        # Post-cutover: alignment_template_for_reading raises FileNotFoundError
+        # when neither tree has the template; build_manifest catches and
+        # sets alignment_template=None. Mock the raise to model that.
+        mock_resolver.alignment_template_for_reading.side_effect = FileNotFoundError(
+            "test fixture: no alignment template for this (animal, date)"
+        )
 
         info = AnimalInfo(
             animal_id="PS46",
@@ -181,7 +192,13 @@ class TestBuildManifest:
         resolver = MagicMock(spec=PathResolver)
         resolver.dlc_output_dir.return_value = Path("/nonexistent/path")
         # Alignment template path is constructed but won't exist
-        resolver.alignment_template_legacy_read.return_value = tmp_path / "no_template.npz"
+        # Post-cutover: alignment_template_for_reading raises when neither
+        # tree has the template (vs the pre-cutover legacy resolver which
+        # returned a non-existent path that build_manifest then existence-
+        # checked).
+        resolver.alignment_template_for_reading.side_effect = FileNotFoundError(
+            "test fixture: no alignment template for this (animal, date)"
+        )
 
         manifest = build_manifest(
             "PS46", datetime.date(2025, 3, 7), resolver, ps46_info
@@ -245,8 +262,10 @@ def _mock_resolver_for_pattern_b(tmp_path: Path) -> MagicMock:
     set up — Pattern B tests don't need those."""
     resolver = MagicMock(spec=PathResolver)
     resolver.dlc_output_dir.return_value = tmp_path / "no_dlc_dir"
-    resolver.alignment_template_legacy_read.return_value = (
-        tmp_path / "no_alignment.npz"
+    # Post-cutover (Phase 7-pre-alignment-templates Task 4): mock the
+    # for_reading method to raise (mimics "neither tree has template").
+    resolver.alignment_template_for_reading.side_effect = FileNotFoundError(
+        "test fixture: no alignment template for Pattern B test"
     )
     resolver.wavesurfer_dir.return_value = tmp_path / "no_ws_dir"
     resolver.camera_dir.return_value = tmp_path / "no_cam_dir"
@@ -420,8 +439,9 @@ class TestBuildManifestSessionSuffix:
             (dlc_dir / f"{base}_filtered.h5").touch()
             (dlc_dir / f"{base}_filtered.csv").touch()
         resolver.dlc_output_dir.return_value = dlc_dir
-        resolver.alignment_template_legacy_read.return_value = (
-            tmp_path / "no_alignment.npz"
+        # Post-cutover: mock for_reading to raise (mimics no template).
+        resolver.alignment_template_for_reading.side_effect = FileNotFoundError(
+            "test fixture: no alignment template"
         )
         resolver.wavesurfer_dir.return_value = tmp_path / "no_ws"
         resolver.camera_dir.return_value = tmp_path / "no_cam"
@@ -465,8 +485,9 @@ class TestBuildManifestSessionSuffix:
             (dlc_dir / f"{base}_filtered.h5").touch()
             (dlc_dir / f"{base}_filtered.csv").touch()
         resolver.dlc_output_dir.return_value = dlc_dir
-        resolver.alignment_template_legacy_read.return_value = (
-            tmp_path / "no_alignment.npz"
+        # Post-cutover: mock for_reading to raise (mimics no template).
+        resolver.alignment_template_for_reading.side_effect = FileNotFoundError(
+            "test fixture: no alignment template"
         )
         resolver.wavesurfer_dir.return_value = tmp_path / "no_ws"
         resolver.camera_dir.return_value = tmp_path / "no_cam"
@@ -483,6 +504,95 @@ class TestBuildManifestSessionSuffix:
                 "PS99", datetime.date(2026, 1, 1), resolver, info,
                 overrides_config={},
             )
+
+
+class TestWavesurferFileOverride:
+    """Phase 7-pre-alignment-templates Addendum #3 L9 — per-session
+    h5-filename disambiguation via wavesurfer_file_overrides:.
+
+    Covers the bare-half lookup path; b-half override is reserved but
+    not consumed in F-P-7 (see _WAVESURFER_FILE_OVERRIDE_KEYS).
+    """
+
+    @pytest.fixture()
+    def ps99_info(self) -> AnimalInfo:
+        return AnimalInfo(
+            animal_id="PS99",
+            stroke_date=datetime.date(2026, 1, 15),
+            session_start=datetime.date(2026, 1, 1),
+            session_end=datetime.date(2026, 1, 31),
+        )
+
+    @pytest.fixture()
+    def ambiguous_ws_dir(self, tmp_path) -> Path:
+        """Create a fake WS session dir with TWO h5 files (ambiguous)."""
+        ws_dir = tmp_path / "ws" / "20260105" / "PS99"
+        ws_dir.mkdir(parents=True)
+        (ws_dir / "stroke_0001.h5").touch()
+        (ws_dir / "stroke_0002.h5").touch()
+        return ws_dir
+
+    @pytest.fixture()
+    def resolver_with_ws_dir(self, ambiguous_ws_dir) -> MagicMock:
+        """Mock resolver routing wavesurfer_dir to the ambiguous fixture."""
+        resolver = MagicMock(spec=PathResolver)
+        resolver.wavesurfer_dir.return_value = ambiguous_ws_dir
+        # Pad out the resolver surface enough for build_manifest to finish
+        # (camera + alignment + DLC dirs all return non-existent paths so
+        # the respective discovery branches no-op).
+        resolver.camera_dir.return_value = (
+            ambiguous_ws_dir.parent.parent / "cam_nonexistent"
+        )
+        # Post-cutover: mock for_reading to raise (no template).
+        resolver.alignment_template_for_reading.side_effect = FileNotFoundError(
+            "test fixture: no alignment template for wavesurfer_file_overrides test"
+        )
+        resolver.dlc_output_dir.return_value = (
+            ambiguous_ws_dir.parent.parent / "dlc_nonexistent"
+        )
+        return resolver
+
+    def test_manifest_builder_honors_wavesurfer_file_override(
+        self, resolver_with_ws_dir, ps99_info,
+    ):
+        """build_manifest looks up (animal, iso_date_str) in the new
+        wavesurfer_file_overrides registry; when an entry sets
+        bare_ws_h5_filename, manifest.wavesurfer_file points to that
+        specific file even though the dir has multiple h5 candidates.
+        """
+        overrides = {
+            "wavesurfer_file_overrides": {
+                "PS99": {
+                    "2026-01-05": {
+                        "bare_ws_h5_filename": "stroke_0002.h5",
+                    },
+                },
+            },
+        }
+        manifest = build_manifest(
+            "PS99", datetime.date(2026, 1, 5),
+            resolver_with_ws_dir, ps99_info,
+            overrides_config=overrides,
+        )
+        assert manifest.wavesurfer_file is not None
+        assert manifest.wavesurfer_file.name == "stroke_0002.h5"
+
+    def test_manifest_builder_no_override_uses_existing_disambig(
+        self, resolver_with_ws_dir, ps99_info,
+    ):
+        """Without a wavesurfer_file_overrides entry, find_wavesurfer_file
+        raises ValueError on multiple h5s; build_manifest catches and
+        sets wavesurfer_file=None. (This was the PS55/2025-06-06 pre-fix
+        behavior in cohort emit.)
+        """
+        manifest = build_manifest(
+            "PS99", datetime.date(2026, 1, 5),
+            resolver_with_ws_dir, ps99_info,
+            overrides_config={},
+        )
+        # ValueError on ambiguity was caught by build_manifest's try/except
+        # → wavesurfer_file falls back to None (SKIP_NO_INPUT semantics).
+        assert manifest.wavesurfer_file is None
 
 
 # ---- Integration test (requires real mount) ----

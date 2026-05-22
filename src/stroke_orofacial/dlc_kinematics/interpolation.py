@@ -544,7 +544,7 @@ def _load_tone_centers_cam(
 
     align_path = manifest.alignment_template
     if align_path is None or not align_path.exists():
-        align_path = resolver.alignment_template_legacy_read(
+        align_path = resolver.alignment_template_for_reading(
             manifest.animal, manifest.date, cam="cam2",
         )
     if not align_path.exists():

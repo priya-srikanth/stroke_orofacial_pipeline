@@ -127,25 +127,24 @@ def _make_resolver_for_layout(
     def _dlc_output_dir(animal):
         return dlc_root / animal
 
-    def _alignment_template_legacy_read(
+    def _alignment_template_for_reading(
         animal, date, cam="cam2", *, session_suffix=None,
     ):
-        # No alignment template emitted in fixture (build_manifest only checks
-        # existence and stores None when missing). Renamed in the
-        # 2026-05-05 incident response: the resolver method that build_manifest
-        # uses for legacy template discovery is alignment_template_legacy_read.
-        # Phase 7-pre-secondary-spout: also accept session_suffix kwarg
-        # (Task 5 added it to the real resolver). Mirror suffix-aware
-        # filename behavior for Pattern B b-half discovery.
-        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
-        return ws_root.parent / "alignment_templates" / cam / animal / (
-            f"{date_str}.npz"
+        # No alignment template emitted in fixture; build_manifest catches
+        # the FileNotFoundError and stores alignment_template=None. Post-
+        # Phase-7-pre-alignment-templates-Task-4 cutover: build_manifest
+        # calls alignment_template_for_reading (prefer-new-then-legacy)
+        # which raises FileNotFoundError when neither tree has a template.
+        # Mirror that contract here.
+        raise FileNotFoundError(
+            f"test fixture: no alignment template for {animal}/{date.isoformat()}"
+            f" suffix={session_suffix!r} cam={cam}"
         )
 
     resolver.wavesurfer_dir.side_effect = _ws_dir
     resolver.camera_dir.side_effect = _cam_dir
     resolver.dlc_output_dir.side_effect = _dlc_output_dir
-    resolver.alignment_template_legacy_read.side_effect = _alignment_template_legacy_read
+    resolver.alignment_template_for_reading.side_effect = _alignment_template_for_reading
     return resolver
 
 

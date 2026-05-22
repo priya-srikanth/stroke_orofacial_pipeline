@@ -6281,3 +6281,55 @@ Verdict deliverable at [`.scratch_phase_7c1/pilot_verdict.md`](../.scratch_phase
 
 ---
 
+## Phase 7-pre-alignment-templates — Cohort-wide alignment template emit + consumer cutover (F-P-7)
+
+**Date:** 2026-05-22
+
+**Tag:** `v7-pre-alignment-templates` (applied to merge commit on main).
+**Branch:** `phase/7-pre-alignment-templates`.
+**Kickoff:** [`docs/prompts/phase-7-pre-alignment-templates-kickoff.md`](prompts/phase-7-pre-alignment-templates-kickoff.md) (3 addenda).
+**DECISIONS entry:** 2026-05-22 (Decisions 1-8 + forward-pointers).
+**Verdict doc:** [`.scratch_phase_7_pre_aligntmpl/verdict.md`](../.scratch_phase_7_pre_aligntmpl/verdict.md) (5 axes, all verified).
+
+**What landed (~11 commits on `phase/7-pre-alignment-templates`):**
+
+- **Doc commits (4):** Addendum #1 warm-start state refresh; Addendum #2 Task 1 post-execution refinements (L4 SKIP_NO_INPUT + L5 analysis_context=alignment); Addendum #3 Task 2+3 post-execution refinements (L6 SKIP threshold + L7 outliers + L8 parity tolerance + L9 in-phase PS55/2025-06-06 fix); Addendum #3 L7+L9 update (Task 3.5 Hypothesis C + schema A1 lock).
+- **Cohort emit drivers (commit `4c1c0b4`):** `scripts/phase_7_pre_aligntmpl/emit_cohort.py` + `parity_validate.py`.
+- **`alignment_template_for_reading()` PathResolver method (commit `42580e5`):** new canonical read entry with prefer-new + fallback-legacy semantics; 3 unit tests.
+- **`wavesurfer_file_overrides:` schema (commits `363cf0c` + `cbb20a3`):** new top-level section in `configs/session_overrides.yaml`; plumbing through `find_wavesurfer_file` (new optional `preferred_filename=` kwarg) + `manifest.py` (new `load_wavesurfer_file_overrides` + `get_wavesurfer_file_override` helpers); 5 new tests; PS55/2025-06-06 entry pinning `stroke_0002.h5`.
+- **8 consumer call-site cutovers (commit `deb8603`):** Addendum #1 S2's 7 sites + 1 audit-missed at `timebase.py:259` (Decision 7); 4 mock-fixture updates.
+- **Test fixture follow-up (commit `ede86bb`):** `test_derive_trial_events_raises_on_missing_alignment_template` signature + monkeypatch update.
+- **Parity_validate refinements (commit `f0b4dc3`):** rtol=1e-5, atol=1e-6, equal_nan=True default + `allow_pickle` legacy-quirk filter.
+
+**Outputs.** 280 alignment templates emitted to `pipeline_outputs/dlc_analysis/alignment_templates/cam2/`:
+
+- PS46: 21 NPZs (21 OK single_half)
+- PS47: 21 NPZs (21 OK single_half)
+- PS48: 23 NPZs (20 OK single_half + 1 multi_half_A × 3 NPZs)
+- PS49: 22 NPZs
+- PS50: 19 NPZs
+- PS51: 53 NPZs (51 single_half + 2 b-half)
+- PS54: 63 NPZs (52 single_half + 11 b-half)
+- PS55: 58 NPZs (51 single_half + 6 b-half + 1 PS55/2025-06-06 from Task 3.6D post-fix)
+
+Sum: 21 + 21 + 23 + 22 + 19 + 53 + 63 + 58 = **280** ✓. New tree is now authoritative; consumers use `alignment_template_for_reading()` (prefer-new + fallback-legacy).
+
+**Behavior diff vs legacy:**
+
+- 275/278 emitted sessions differ from legacy at scipy 1.15→1.17 drift magnitude (scientifically equivalent under `assert_allclose(rtol=1e-5, atol=1e-6, equal_nan=True)`).
+- PS55/2025-05-02 NPZ has shape `(908112,)` vs legacy `(908111,)` due to legacy CSV-loader trailing-row-drop bug (Decision 4); new pipeline is more correct.
+- PS48/2025-03-14 multi-half template merged from per-half templates via `compute_and_merge_alignment_multi_half` (legacy had single template; new produces merged-from-halves).
+- **Consumer outputs BIT-IDENTICAL pre/post cutover** (Decision 6 integer-rounding firewall). 5-session functional-equivalence spot-check (`functional_equivalence_magnitudes.md`): all `TIER_2_DISCRETE_IDENTICAL` with `max_abs = max_rel = 0.000e+00`. Phase 9 readiness unconditional.
+
+**Forward-pointers from this phase:**
+
+- **F-P-5 (Phase 7-pre-multi-half-dlc):** DISCHARGED in Phase 7c.2 Task 2 (not this phase). Documented for completeness per Addendum #1 S1.
+- **Cohort-enumeration-YAML-driven forward-pointer:** CO-DISCHARGED via this phase's emit driver (Decision 2 — the YAML-driven enumeration IS the recommended pattern).
+- **Phase 9 stats:** NEXT per Phase 7c.2 Decision 23 ordering lock.
+- **Phase 9.1 phenotype-pooled figures:** queued post-Phase-9.
+- **Pub-figures phase:** queued post-Phase-9.1.
+
+**Tag:** `v7-pre-alignment-templates` on the merge commit. Tag message: "Phase 7-pre-alignment-templates: F-P-7 cohort emit + 8-site consumer cutover from legacy tree + wavesurfer_file_overrides schema + integer-rounding firewall finding".
+
+---
+

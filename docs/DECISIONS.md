@@ -15,6 +15,103 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-22 — Phase 7-pre-alignment-templates close — Cohort-wide alignment template emit + 8-site consumer cutover from legacy tree + new wavesurfer_file_overrides schema + integer-rounding firewall finding
+
+Phase 7-pre-alignment-templates closed against `phase/7-pre-alignment-templates`; branched 2026-05-22 off `main` at the Phase 7d merge commit `fb9c283` (post-`v7d-dlc-kinematics-naming-hygiene`). Tag `v7-pre-alignment-templates` on the merge commit. Kickoff [`docs/prompts/phase-7-pre-alignment-templates-kickoff.md`](prompts/phase-7-pre-alignment-templates-kickoff.md) accumulated 3 addenda. Refer to the kickoff for the final lock list at close. Per-axis acceptance verdict at `.scratch_phase_7_pre_aligntmpl/verdict.md`.
+
+### Decision 1 — F-P-7 architecture: new-tree authoritative + indefinite legacy fallback
+
+The pipeline pre-F-P-7 depended on the legacy tree under `MICROSCOPE/Priya/DeepLabCut/O2_analysis/alignment_templates/cam2/` (345 templates) as a READ source — 7 (+1 audit-missed; see Decision 7) consumer call sites used `alignment_template_legacy_read()`. F-P-7 emits the cohort under the new tree at `pipeline_outputs/dlc_analysis/alignment_templates/cam2/` (280 templates post-F-P-7) and adds a new canonical read entry `alignment_template_for_reading(animal, date, cam, *, session_suffix)` with prefer-new + fallback-legacy semantics: returns the new-tree path if it exists; else the legacy-tree path if it exists; else raises `FileNotFoundError` naming both paths.
+
+**Lock.** `alignment_template_for_reading()` is the canonical read entry post-F-P-7. `alignment_template_legacy_read()` is PRESERVED INDEFINITELY (Addendum #1 L3) as a permanent safety net — legacy is read-only authoritative for archival sessions per CLAUDE.md Rule 1, and the new pipeline may not be able to emit equivalent templates for sessions with missing/ambiguous raw inputs, hand-emitted incident-response templates, or archival pre-cohort baseline sessions.
+
+*Enforced at:* `src/stroke_orofacial/paths.py:alignment_template_for_reading` (commit `42580e5`); 8 consumer call-site cutovers (commit `deb8603` + follow-up `ede86bb`); Addendum #1 L3 of the kickoff doc; verdict.md Axis 4.
+
+### Decision 2 — Cohort scope locked: 403-row YAML-driven enumeration under `analysis_context="alignment"`
+
+Task 1 cohort enumeration produced 403 candidate rows: 378 single_half (Cohort A bare sessions across PS46-PS55) + 1 multi_half_A (PS48/2025-03-14) + 24 secondary_spout_b_half (PS51/PS54/PS55 b-half acquisitions from `secondary_spout_sessions:` registry). Enumeration uses the canonical `stroke_orofacial.cohort_enumeration.yaml_driven_session_dates()` helper introduced by Phase 7c.2 Q67 — pure YAML-driven, no filesystem walk. `analysis_context="alignment"` locked per Addendum #2 L5 (alignment is broader than DLC; 4 sessions are DLC-excluded but Phase-3-valid; alignment templates are emitted independently of DLC QC status). Task 2 emit produced 277 OK + 126 SKIP_NO_INPUT (Addendum #2 L4: ≤6 b-half + N single_half-no-data; cross-checked per session against legacy absence — every SKIP matched legacy missing). Post-Task-3.6D PS55/2025-06-06 fix: 278 OK + 125 SKIP_NO_INPUT.
+
+**Lock.** Future cohort drivers (Phase 9 stats, pub-figures, etc.) follow the same YAML-driven pattern (`yaml_driven_session_dates` + `analysis_context=` per-phase choice). **CO-DISCHARGES** the `project_cohort_enumeration_should_be_yaml_driven_forward_pointer.md` forward-pointer (Addendum #1 L1) — Phase 7-pre-alignment-templates IS the canonical example for future cohort phases.
+
+*Enforced at:* `scripts/phase_7_pre_aligntmpl/enumerate_cohort.py` + `emit_cohort.py` (commit `4c1c0b4`); `.scratch_phase_7_pre_aligntmpl/cohort_manifest.csv`; Addendum #1 L1 + Addendum #2 L5 of the kickoff doc; verdict.md Axis 2.
+
+### Decision 3 — Parity tolerance pair lock: `rtol=1e-5, atol=1e-6, equal_nan=True` as canonical post-Option-A-scipy parity threshold
+
+Addendum #1 L2 initial parity verdict specified `rtol=1e-7, atol=0` — too tight given the actual scipy 1.15→1.17 drift magnitudes observed in `scipy.interpolate.interp1d` + `np.polyfit` outputs (sub-bit to ~1e-6 relative magnitude). Task 3 empirical run categorized 276/278 OK sessions as `DIFFERENT_STRUCTURALLY_DIVERGENT` at rtol=1e-7, atol=0 — clearly the wrong tolerance for the drift floor. CC re-ran with `rtol=1e-5, atol=1e-6` which correctly categorized 275/278 as `DIFFERENT_STRUCTURAL_EQUIVALENT_b_scipy` (scipy version drift, scientifically equivalent) + the 2 documented outliers (Decision 8).
+
+**Lock — `rtol=1e-5, atol=1e-6, equal_nan=True`** (Priya 2026-05-22, Addendum #3 L8). Canonical practical tolerance pair for any future parity validation against legacy-emitted outputs that go through `interp1d` / `polyfit` / similar scipy floating-point chains. Phase 7a.0 L2 baseline-seed precedent (PR #79, scipy 1.15→1.17 → PS49/PS50 tongue Y0 retune at ~1e-5 to 1e-6 magnitude) was empirically CONFIRMED. Plus the LEGACY_QUIRK_KEYS exclusion (`allow_pickle` — a 0-d bool array the legacy writer persisted as if it were a template field; new pipeline omits it).
+
+*Enforced at:* `scripts/phase_7_pre_aligntmpl/parity_validate.py:compare_templates` default kwargs (commit `f0b4dc3`); Addendum #3 L8 of the kickoff doc; verdict.md Axis 3.
+
+### Decision 4 — Legacy CSV-loader trailing-row-drop bug surfaced via PS55/2025-05-02 (Task 3.5 Hypothesis C)
+
+PS55/2025-05-02 parity outlier showed a 1-sample shape delta on `sig_camTimesCommon__idx_cam`, `sig_camTimes__idx_cam`, `sig_wsIdx__idx_cam`: new=`(908112,)`, legacy=`(908111,)`. Task 3.5 root-cause investigation ([`.scratch_phase_7_pre_aligntmpl/ps55_20250502_root_cause.md`](../.scratch_phase_7_pre_aligntmpl/ps55_20250502_root_cause.md)) ruled out kickoff Hypothesis A (scipy `interp1d` boundary semantics) AND Hypothesis B (`_find_rising_edges` count drift). Actual root cause = Hypothesis C: **the legacy CSV-loader dropped the trailing row of the camera CSV; the new pipeline (pandas `pd.read_csv(header=None)`) ingests the full CSV.** Camera CSV has 908,112 rows (verified independently); new pipeline reads all 908,112; legacy stored 908,111 (last row omitted). Session-specific quirk — no other session in the 274 b_scipy category triggered the legacy CSV-loader's drop.
+
+**Lock.** Classified as `DIFFERENT_STRUCTURALLY_DIVERGENT` per literal sha256+allclose comparison but categorize as edge-of-category-b for documentation. **New pipeline is more correct than legacy** (faithful CSV ingest). Scientifically equivalent at downstream scale: 1 extra frame at the recording tail (~3 ms at ~350 fps cam2), far from any task-relevant window. No code fix needed.
+
+*Enforced at:* `.scratch_phase_7_pre_aligntmpl/ps55_20250502_root_cause.md` (Hypothesis C verdict); Addendum #3 L7 of the kickoff doc; verdict.md Axis 3.
+
+### Decision 5 — PS55/2025-06-06 ambiguous-h5 → new `wavesurfer_file_overrides:` schema (A1)
+
+PS55/2025-06-06 has TWO `*.h5` files in its WS dir (`stroke_0001.h5` + `stroke_0002.h5`). `find_wavesurfer_file` raises `ValueError` on multiple matches; `build_manifest` catches and sets `wavesurfer_file=None` → SKIP_NO_INPUT. But legacy DID emit a template for this session — so the new pipeline regressed coverage. Three schema options proposed (A1/A2/A3); **Schema A1 LOCKED** (Priya 2026-05-22, Addendum #3 L9): new top-level section in `configs/session_overrides.yaml`:
+
+```yaml
+wavesurfer_file_overrides:
+  PS55:
+    "2025-06-06":
+      bare_ws_h5_filename: "stroke_0002.h5"
+```
+
+Implementation: `find_wavesurfer_file(session_dir, *, preferred_filename: str | None = None)` — if override is set AND file exists → return it; if override set AND file doesn't exist → `FileNotFoundError` naming both configured + actual contents (catches YAML-vs-disk drift early); if override is None → existing glob-disambig logic. `manifest.py:build_manifest` looks up `(animal, iso_date_str)` for single_half manifests via new `load_wavesurfer_file_overrides()` + `get_wavesurfer_file_override()` helpers (siblings to the `secondary_spout_sessions` loaders). `b_ws_h5_filename` slot reserved for future b-half ambiguity (no F-P-7 consumer).
+
+**Empirical confirmation legacy used `stroke_0002.h5`:** post-fix parity for PS55/2025-06-06 categorized as `DIFFERENT_STRUCTURAL_EQUIVALENT_b_scipy` with **mismatches=0** (allclose passes at rtol=1e-5, atol=1e-6 with zero structural mismatches). Had legacy used `stroke_0001.h5` and new used `stroke_0002.h5`, the consumer-output divergence would be orders of magnitude wider than scipy drift — definitive empirical confirmation that Priya's manual choice matches legacy's implicit choice.
+
+*Enforced at:* `configs/session_overrides.yaml` `wavesurfer_file_overrides:` section (commits `363cf0c` + `cbb20a3`); `src/stroke_orofacial/spout_behavior/wavesurfer_io.py:find_wavesurfer_file` (commit `363cf0c`); `src/stroke_orofacial/manifest.py` (commit `363cf0c`); Addendum #3 L9 of the kickoff doc.
+
+### Decision 6 — Integer-rounding firewall absorbs scipy drift before reaching consumer outputs (NEW finding, Task 6 augment)
+
+Task 6 augment magnitude-augmented spot-check ([`.scratch_phase_7_pre_aligntmpl/functional_equivalence_magnitudes.md`](../.scratch_phase_7_pre_aligntmpl/functional_equivalence_magnitudes.md)) on 5 sessions (PS46/2025-03-07, PS48/2025-03-14, PS48/2025-03-24, PS46/2025-03-20, PS51/2025-06-11 — seed=42) revealed an unexpected stronger result than the kickoff anticipated: every per-key magnitude is `max_abs=max_rel=0.000e+00`. **Consumer outputs are BIT-IDENTICAL pre/post cutover** — not merely allclose-equivalent.
+
+**Mechanism: integer-rounding firewall.** The `int(round(camIdx_at_ws_sample))` step inside `build_tone_aligned_analysis` maps tone-onset WS samples → cam-frame integer indices. The ~1e-6 scipy drift in upstream `sig_camIdx__idx_ws` (the b_scipy-category divergence in 275 alignment templates) is well below the 0.5 integer-rounding threshold for every tone-onset sample. → Integer frame indices are identical between pre/post → `ToneAlignedWindow._mask` (bool ndarray) is identical → selected DLC rows are identical → 2D heatmap arrays (`H_counts`, `H_proportion`, `xedges`, `yedges`, `extent`, `n_total_frames`) are identical → all downstream consumer-visible numerics are identical.
+
+**Structural property generalizes.** Any future scipy version bump producing sub-0.5-rounding-threshold drift in `sig_camIdx__idx_ws` will leave consumer outputs identical at this layer. Phase 9 statistical consumers will see identical inputs from the post-cutover pipeline vs the pre-cutover one — **unconditional Phase 9 readiness ✅** for the tone-aligned consumer path.
+
+**Verdict tier achieved:** `TIER_2_DISCRETE_IDENTICAL` on all 5 sessions × all keys (= the strongest achievable tier short of TIER_1 sha256 byte-equality, which Task 3 already established is not achievable given the legacy NPZ's `allow_pickle` quirk + scipy-drift on stored arrays).
+
+*Enforced at:* `src/stroke_orofacial/dlc_spatial/window_selector.py:ToneAlignedWindow.__init__` (the `int(center)` cast at line 98); `.scratch_phase_7_pre_aligntmpl/functional_equivalence_magnitudes.md` (per-key empirical evidence); verdict.md Axis 4.
+
+### Decision 7 — Audit-missed +1 consumer call site discharged via Task 4 re-grep verification
+
+Kickoff Addendum #1 S2 listed 7 `alignment_template_legacy_read` consumer call sites via re-grep on 2026-05-22. Task 4 implementation found **8** — the +1 site at [`src/stroke_orofacial/alignment/timebase.py:259`](src/stroke_orofacial/alignment/timebase.py#L259), inside `load_or_compute_alignment`'s "existing-template path" branch when `cam_idx != 2` OR `manifest.alignment_template is None`. The Addendum-#1 audit missed this site; Task 4's pre-cutover re-grep caught it.
+
+**Sibling lesson to Phase 7d Task 6 PathResolver-bypass sweep:** initial manual audit + re-grep verification catches more than initial audit alone. Sweep-style verification (re-grep against the current code state at task-start) should be standard before a cutover-style task. Memory reference: `feedback_lock_language_is_not_implementation_verification.md` — lock prose ≠ implementation state; verify against current code.
+
+**Discharged in-phase** via the same cutover commit (`deb8603`) — the +1 site uses the same try/except FileNotFoundError pattern as the other 7 sites that need fallback semantics, so it folds cleanly into the same commit.
+
+*Enforced at:* `src/stroke_orofacial/alignment/timebase.py:259` (commit `deb8603`); verdict.md Axis 5; Phase 7d Task 6 bypass-sweep precedent.
+
+### Decision 8 — 2 structurally-divergent outliers documented; both scientifically equivalent
+
+Two of the 278 OK parity rows fail `assert_allclose` at rtol=1e-5, atol=1e-6:
+
+1. **PS54/2025-06-26 (secondary_spout_b_half):** `sig_wsIdx__idx_cam` fails allclose with `max_abs=2.095e-06` (~2× atol), `max_rel=3.058e-04` (~30× rtol). Edge-of-category-b magnitude — scipy drift at the upper magnitude tail. Documented as a category-b outlier with magnitude flag preserved (Addendum #3 L7).
+
+2. **PS55/2025-05-02 (single_half):** 1-sample shape delta on three arrays (`sig_camTimesCommon__idx_cam`, `sig_camTimes__idx_cam`, `sig_wsIdx__idx_cam`): new=`(908112,)`, legacy=`(908111,)`. Hypothesis C verdict (Decision 4) — legacy CSV-loader trailing-row drop; new is more correct.
+
+**Both scientifically equivalent at downstream scale.** No code fix needed. Documented as known F-P-7 close-state.
+
+*Enforced at:* `.scratch_phase_7_pre_aligntmpl/parity_summary.md` outlier table; Addendum #3 L7 of the kickoff doc; verdict.md Axis 3.
+
+### Forward-pointers from this phase
+
+- **F-P-5 (Phase 7-pre-multi-half-dlc):** DISCHARGED — not by this phase, but by Phase 7c.2 Task 2 (per Addendum #1 S1). Documented here for completeness.
+- **Cohort-enumeration-YAML-driven forward-pointer (`project_cohort_enumeration_should_be_yaml_driven_forward_pointer.md`):** CO-DISCHARGED by Decision 2 — Phase 7-pre-alignment-templates' enumeration driver IS the canonical YAML-driven pattern for future cohort phases.
+- **Phase 9 stats:** NEXT per Phase 7c.2 Decision 23 ordering lock. Scoping at [`docs/prompts/phase-9-stats-scoping.md`](prompts/phase-9-stats-scoping.md).
+- **Phase 9.1 phenotype-pooled figures:** scoping at [`docs/prompts/phase-9.1-phenotype-pooled-figures-scoping.md`](prompts/phase-9.1-phenotype-pooled-figures-scoping.md).
+- **Pub-figures phase:** queued post-Phase-9.
+
+---
+
 ## 2026-05-22 — Phase 7d close — dlc_kinematics/ granularity-first naming hygiene + PathResolver-bypass sweep
 
 Phase 7d closed against `phase/7d-dlc-kinematics-naming-hygiene`; branched 2026-05-21 off `main` at the Phase 7c.2 docs-followup merge commit `9f56056` (post-`v7c.2-dlc-cohort-completion` + PR #122 docs amendment). Tag `v7d-dlc-kinematics-naming-hygiene` on the merge commit. Kickoff [`docs/prompts/phase-7d-dlc-kinematics-naming-hygiene-kickoff.md`](prompts/phase-7d-dlc-kinematics-naming-hygiene-kickoff.md) accumulated 4 addenda. Refer to the kickoff for the final lock list at close.

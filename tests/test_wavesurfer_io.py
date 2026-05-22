@@ -112,6 +112,52 @@ class TestFindWavesurferFile:
         result = find_wavesurfer_file(tmp_path)
         assert result.name == "stroke_0001.h5"
 
+    # ---- Phase 7-pre-alignment-templates Addendum #3 L9: preferred_filename ----
+
+    def test_with_override_returns_named_file(self, tmp_path):
+        """When session dir has multiple h5s + preferred_filename is set
+        to one of them, that exact file is returned without invoking the
+        glob-disambig logic.
+        """
+        (tmp_path / "stroke_0001.h5").touch()
+        (tmp_path / "stroke_0002.h5").touch()
+        result = find_wavesurfer_file(
+            tmp_path, preferred_filename="stroke_0002.h5",
+        )
+        assert result.name == "stroke_0002.h5"
+        assert result == tmp_path / "stroke_0002.h5"
+
+    def test_with_override_none_falls_through_to_glob(self, tmp_path):
+        """When preferred_filename=None (default), existing
+        single-h5 glob-disambig behavior is preserved (back-compat).
+        """
+        (tmp_path / "stroke_0001.h5").touch()
+        result = find_wavesurfer_file(tmp_path, preferred_filename=None)
+        assert result.name == "stroke_0001.h5"
+        # Sanity: same as no-kwarg call (back-compat preserved)
+        assert find_wavesurfer_file(tmp_path) == result
+
+    def test_with_override_missing_raises(self, tmp_path):
+        """When preferred_filename is set but the named file doesn't
+        exist on disk, raise FileNotFoundError that names BOTH the
+        configured filename AND the actual *.h5 files present — so the
+        caller can fix the YAML vs disk mismatch.
+        """
+        (tmp_path / "stroke_0001.h5").touch()
+        (tmp_path / "stroke_0002.h5").touch()
+        with pytest.raises(FileNotFoundError) as excinfo:
+            find_wavesurfer_file(
+                tmp_path, preferred_filename="stroke_0099.h5",
+            )
+        msg = str(excinfo.value)
+        # configured filename
+        assert "stroke_0099.h5" in msg
+        # actual disk contents
+        assert "stroke_0001.h5" in msg
+        assert "stroke_0002.h5" in msg
+        # pointer to the YAML fix location
+        assert "wavesurfer_file_overrides" in msg
+
 
 # ---- Phase 8a.10.1 Tone↔Reward swap fix ----
 

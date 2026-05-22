@@ -279,6 +279,82 @@ class PathResolver:
             / f"{date_str}.npz"
         )
 
+    def alignment_template_for_reading(
+        self,
+        animal: str,
+        date: datetime.date,
+        cam: str = "cam2",
+        *,
+        session_suffix: str | None = None,
+    ) -> Path:
+        """Return the path to read an alignment template, preferring new tree.
+
+        Prefers the new-tree path under ``pipeline_outputs/``
+        (:meth:`alignment_template_new`); falls back to the legacy tree
+        under ``MICROSCOPE/Priya/DeepLabCut/O2_analysis/``
+        (:meth:`alignment_template_legacy_read`) if the new-tree file
+        doesn't exist.
+
+        Phase 7-pre-alignment-templates introduced this resolver as the
+        canonical read entry for every downstream DLC consumer that
+        needs an alignment template (Phase 3, Phase 4, Phase 6, Phase 7a
+        kinematics + spatial). After the F-P-7 cohort emit + consumer
+        cutover, the new tree is authoritative; the legacy fallback is
+        retained INDEFINITELY per Addendum #1 L3 as a permanent safety
+        net for sessions where the new pipeline can't emit an equivalent
+        template (missing/ambiguous raw inputs, hand-emitted incident-
+        response templates, archival pre-cohort baseline sessions).
+        Legacy is read-only authoritative for archival sessions per
+        CLAUDE.md Rule 1.
+
+        ``session_suffix`` (Phase 7-pre-secondary-spout) is threaded
+        through to both candidate paths so Pattern B b-half manifests
+        resolve to ``{date_str}b.npz`` on whichever tree the file
+        lives on.
+
+        Parameters
+        ----------
+        animal : str
+            Animal ID (e.g. ``"PS46"``).
+        date : datetime.date
+            Session date.
+        cam : str, default ``"cam2"``
+            Camera label (only cam2 is in active production use; the
+            legacy resolver accepts any string for forward-compat).
+        session_suffix : str, optional
+            Half-suffix appended to the date string per Phase
+            7-pre-secondary-spout convention. ``None`` for bare half;
+            ``"b"`` for Pattern B b-half manifests.
+
+        Returns
+        -------
+        Path
+            The new-tree path if it exists; else the legacy-tree path
+            if it exists.
+
+        Raises
+        ------
+        FileNotFoundError
+            If neither the new-tree nor the legacy-tree file exists.
+            Error message names BOTH paths so the caller can debug.
+        """
+        new_path = self.alignment_template_new(
+            animal, date, cam=cam, session_suffix=session_suffix,
+        )
+        if new_path.exists():
+            return new_path
+        legacy_path = self.alignment_template_legacy_read(
+            animal, date, cam=cam, session_suffix=session_suffix,
+        )
+        if legacy_path.exists():
+            return legacy_path
+        suffix_disp = f"+suffix={session_suffix!r}" if session_suffix else ""
+        raise FileNotFoundError(
+            f"No alignment template for {animal}/{date.isoformat()}"
+            f"{suffix_disp} cam={cam} at new path {new_path} or "
+            f"legacy path {legacy_path}"
+        )
+
     def alignment_template_per_half_new(
         self,
         animal: str,

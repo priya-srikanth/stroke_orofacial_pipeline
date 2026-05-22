@@ -137,16 +137,33 @@ def load_wavesurfer_signals(
     return signals
 
 
-def find_wavesurfer_file(session_dir: Path) -> Path:
+def find_wavesurfer_file(
+    session_dir: Path,
+    *,
+    preferred_filename: str | None = None,
+) -> Path:
     """Find the wavesurfer .h5 file in a session directory.
 
     Globs for ``*.h5`` files, excluding any containing "kHz" in the name
-    (per legacy convention). Expects exactly one match.
+    (per legacy convention). Expects exactly one match unless an explicit
+    override is provided.
 
     Parameters
     ----------
     session_dir : Path
         Directory containing the session's wavesurfer file(s).
+    preferred_filename : str, optional
+        Override for the h5 selection when the session dir contains
+        multiple ambiguous ``*.h5`` files. Sourced from the
+        ``wavesurfer_file_overrides:`` section of
+        ``configs/session_overrides.yaml`` (Phase 7-pre-alignment-templates
+        Addendum #3 L9). If provided AND
+        ``session_dir / preferred_filename`` exists, that path is
+        returned without invoking the glob-disambig logic.
+        If provided but the file doesn't exist, raises FileNotFoundError
+        naming both the configured override + the actual ``*.h5`` files
+        present in the dir — catches YAML-vs-disk drift early.
+        Defaults to ``None`` (existing glob-disambig behavior).
 
     Returns
     -------
@@ -156,12 +173,31 @@ def find_wavesurfer_file(session_dir: Path) -> Path:
     Raises
     ------
     FileNotFoundError
-        If the directory doesn't exist or no matching .h5 file is found.
+        If the directory doesn't exist, no matching .h5 file is found,
+        OR ``preferred_filename`` is set but the named file doesn't
+        exist in the dir.
     ValueError
-        If multiple .h5 files are found (ambiguous).
+        If multiple .h5 files are found and ``preferred_filename`` is
+        ``None`` (ambiguous).
     """
     if not session_dir.exists():
         raise FileNotFoundError(f"Wavesurfer session directory not found: {session_dir}")
+
+    if preferred_filename is not None:
+        candidate = session_dir / preferred_filename
+        if candidate.exists():
+            return candidate
+        # Override set but the file isn't on disk — surface both
+        # the configured filename and the actual contents so the
+        # caller can fix the YAML vs disk mismatch.
+        actual = sorted(p.name for p in session_dir.glob("*.h5"))
+        raise FileNotFoundError(
+            f"wavesurfer_file_overrides points {session_dir} at "
+            f"{preferred_filename!r} but that file doesn't exist. "
+            f"Actual *.h5 files in dir: {actual}. Fix the YAML entry "
+            f"in configs/session_overrides.yaml under "
+            f"wavesurfer_file_overrides."
+        )
 
     h5_files = [
         f for f in sorted(session_dir.glob("*.h5"))
@@ -177,8 +213,8 @@ def find_wavesurfer_file(session_dir: Path) -> Path:
         names = [f.name for f in h5_files]
         raise ValueError(
             f"Multiple wavesurfer .h5 files found in {session_dir}: {names}. "
-            f"Expected exactly one. Check for session merge entries in "
-            f"configs/session_overrides.yaml."
+            f"Expected exactly one. Add a wavesurfer_file_overrides entry "
+            f"in configs/session_overrides.yaml to disambiguate."
         )
     return h5_files[0]
 
