@@ -450,3 +450,57 @@ After Priya approval, apply per-finding fixes:
 Add a 5th axis: **PathResolver-bypass sweep complete** — `.scratch_phase_7d/bypass_sweep_audit.md` exists; all in-scope findings discharged (call sites updated, new resolver methods added, new tests pass); per-pattern re-grep returns 0 unresolved findings in `src/` (excluding `paths.py`).
 
 **ALL OTHER LOCKS UNCHANGED.** Addendum #1's method-name preservation lock + Addendum #2's `tongue_pertrial_endpoints_dir` addition + parity strategy + verification axes 1-4 + acceptance criteria + (now-reduced) out-of-scope items all remain as written.
+
+---
+
+## Addendum #4 — Task 6 sweep audit dispositions locked (Priya 2026-05-22)
+
+**Audit result recap:** Task 6 step-1 audit (CC, 2026-05-22) found 17 in-scope bypass findings across 8 source files — both kickoff escalation thresholds (>15 findings AND >5 files) fired. Full audit doc at `.scratch_phase_7d/bypass_sweep_audit.md`. Pattern 2 (writeguard) correctly classified Type N/A (declarative deny-list, source of truth analogous to `paths.py`). 5 new PathResolver methods proposed across the 17 findings.
+
+**Lock — Sweep scope = Sweep-A (fix all 17 in-phase):**
+
+All 17 findings discharged in Phase 7d. ~5 new resolver methods + ~15 call-site updates + ~5 new unit tests + 1 intentional-Type-L documentation note. Mechanical scope. Bundling all related polish into one PR per `feedback_scope_bundling.md`; matches Addendum #3's "discharge the violation surface in-phase" rationale.
+
+**Lock — Type-? finding #14 = Type L (keep inline):**
+
+`spout_behavior/visual_gate.py:217-218` (`_resolve_session_npz_path` parametric `output_type` routing helper) stays as inline `sp_root / output_type / animal`. The helper IS the routing logic for spout session NPZ types — extracting `spout_output_dir(output_type, animal)` to PathResolver would just relocate routing without separating concerns. The local `sp_root` already comes from a resolver call (`pipeline_outputs("spout_behavior")`), satisfying the "no absolute paths in source" rule at the tree-root level.
+
+**How to apply Type L for #14:**
+
+- Leave the construction at line 217-218 as-is (no new resolver method).
+- Add a code comment above the construction explaining the intentional Type L disposition: e.g., `# Intentional Type L per Phase 7d Addendum #4 — this helper IS the routing layer for spout session NPZ types; PathResolver covers the tree-root (sp_root) and the per-output_type routing lives here.`
+- Document the Type L decision in Task 7 DECISIONS with the rationale + reference to Addendum #4.
+
+**Lock — Type-? finding #8 = Type R (add resolver method):**
+
+Add the 5th proposed resolver method `spatial_tone_aligned_npz(bodypart, center_mode, trial_group, window_ms, animal, date)` per the audit doc's signature/body. Consistency win — every bypass becomes a resolver call; resolver method exists for notebook-12 opt-in use even though the production cohort driver never sets `emit_cache=True`.
+
+**How to apply Type R for #8:**
+
+- Add the method to `paths.py` per the audit doc's proposed body (audit doc section "Proposed new PathResolver methods" #5).
+- Update the call site at `dlc_spatial/tone_aligned.py:521-530` to use `resolver.spatial_tone_aligned_npz(...)`.
+- Add unit test `test_spatial_tone_aligned_npz_path` in `tests/test_paths.py`.
+- Document in Task 7 DECISIONS: the resolver method discharges the bypass and exists for notebook-12 opt-in use; the production cohort driver never sets `emit_cache=True` so the method is currently dormant in production.
+
+**Writeguard (Pattern 2) — Type N/A confirmed:**
+
+`src/stroke_orofacial/_writeguard.py` deny-list (12 hardcoded absolute path strings, lines 64-86) is declarative configuration data — the writeguard's source of truth, analogous to `paths.py` for output paths. NOT a bypass. Document `_writeguard.py` as an excluded file alongside `paths.py` in Task 7 DECISIONS for future-bypass-sweep methodology reference.
+
+**Task 6 fix-application sequence (post-Priya-approval-here):**
+
+1. Add 5 new PathResolver methods to `paths.py` (place each adjacent to a symmetric existing method per Addendum #2 pattern):
+   - `dlc_centered_parquet_dir(center_mode, animal)` — discharges findings #1, #5, #7, #15, #16
+   - `spout_licks_and_rewards_npz(animal, date)` — discharges findings #2, #3, #6, #11, #12, #13
+   - `interpolated_trace_dir(bodypart, animal)` — discharges finding #4
+   - `tongue_jaw_mismatch_candidate_trials_dir(animal)` — discharges findings #9, #10
+   - `spatial_tone_aligned_npz(bodypart, center_mode, trial_group, window_ms, animal, date)` — discharges finding #8
+2. Update 15 call sites to use the new resolver methods (per audit doc table). Finding #14 stays as Type L per this addendum — DO NOT add `spout_output_dir`.
+3. Add comment at `visual_gate.py:217-218` documenting the intentional Type L per this addendum.
+4. Add 5 new unit tests in `tests/test_paths.py`. For dir-resolvers paired with existing file-resolvers (`interpolated_trace_dir` ↔ `interpolated_trace`; `tongue_jaw_mismatch_candidate_trials_dir` ↔ `tongue_jaw_mismatch_candidate_trials_parquet`), include `dir == file_resolver.parent` invariant tests.
+5. Run `conda run -n stroke_orofacial pytest -x` after each pattern-group of fixes; expect 1502 baseline pass count + 5 new tests = 1507 passing.
+
+**Task 6 step 5 (re-grep verify) gate:**
+
+After all fixes apply, re-run the 5 audit patterns from Addendum #3 against `src/` (excluding `paths.py` + `_writeguard.py`). Expected: 0 unresolved findings except #14 (intentional Type L). Document the re-grep result in `.scratch_phase_7d/bypass_sweep_audit.md` as a footer + carry into Task 7 DECISIONS.
+
+**ALL OTHER LOCKS UNCHANGED.** Addenda #1 (method-name preservation), #2 (`tongue_pertrial_endpoints_dir`), #3 (sweep promoted into Phase 7d Task 6 + Task 7 = renumbered DECISIONS) all remain as written.
