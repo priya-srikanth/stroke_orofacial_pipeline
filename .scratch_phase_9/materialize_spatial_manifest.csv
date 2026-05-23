@@ -1,0 +1,4 @@
+endpoint_slug,animal,status,n_rows,n_sentinel,output_path,wall_time_s
+spatial_wasserstein_tongue_spout_midpoint,PS46,success,24,0,\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\stroke_orofacial_pipeline_outputs\stats\inputs\spatial_wasserstein_tongue_spout_midpoint\PS46.parquet,173.077
+spatial_uot_cost_tongue_spout_midpoint,PS46,success,24,0,\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\stroke_orofacial_pipeline_outputs\stats\inputs\spatial_uot_cost_tongue_spout_midpoint\PS46.parquet,173.077
+spatial_js_divergence_tongue_spout_midpoint,PS46,success,24,0,\\research.files.med.harvard.edu\Neurobio\MICROSCOPE\Priya\stroke_orofacial_pipeline_outputs\stats\inputs\spatial_js_divergence_tongue_spout_midpoint\PS46.parquet,173.077
