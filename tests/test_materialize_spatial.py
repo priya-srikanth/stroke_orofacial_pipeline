@@ -14,11 +14,16 @@ import numpy as np
 from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
 
 from scripts.phase_9_stats.materialize_spatial import (
+    SCOPE_TRIAL_GROUP_COMBOS,
     _bin_groups,
     _build_cost_matrix,
+    _filter_combos,
     _metric_js_divergence,
     _metric_uot_cost,
     _metric_wasserstein,
+    _resolve_combo_kwargs,
+    _slice_suffix,
+    _W_NUMITERMAX,
 )
 
 
@@ -195,3 +200,66 @@ class TestMetricKernels:
         # we can get given EPS.
         assert js is not None
         assert 0.5 < js <= np.sqrt(np.log(2)) + 1e-6
+
+
+# ===========================================================================
+# Addendum #7 — scope+trial_group combos
+# ===========================================================================
+
+
+import pytest  # noqa: E402  (placed here so the comment-section banner stays first)
+
+
+class TestScopeTrialGroupCombos:
+    """Pin the 4-combo expansion from Addendum #7."""
+
+    def test_four_combos_in_order(self):
+        assert SCOPE_TRIAL_GROUP_COMBOS == (
+            ("tone_aligned", "all"),
+            ("tone_aligned", "L"),
+            ("tone_aligned", "R"),
+            ("whole_session", None),
+        )
+
+    @pytest.mark.parametrize("scope,trial_group,expected_suffix", [
+        ("tone_aligned", "all", "tone_aligned_all"),
+        ("tone_aligned", "L", "tone_aligned_L"),
+        ("tone_aligned", "R", "tone_aligned_R"),
+        ("whole_session", None, "whole_session"),
+    ])
+    def test_slice_suffix(self, scope, trial_group, expected_suffix):
+        assert _slice_suffix(scope, trial_group) == expected_suffix
+
+    @pytest.mark.parametrize("scope,trial_group,expected_tg,expected_window", [
+        ("tone_aligned", "all", "all", (0.0, 8000.0)),
+        ("tone_aligned", "L", "L", (0.0, 8000.0)),
+        ("tone_aligned", "R", "R", (0.0, 8000.0)),
+        ("whole_session", None, None, None),
+    ])
+    def test_resolve_combo_kwargs(self, scope, trial_group, expected_tg, expected_window):
+        """The (trial_group, window_ms) tuple passed to
+        ``compute_animal_aggregated_histogram`` is the contract — both
+        None for whole_session, both set for tone_aligned."""
+        tg, window = _resolve_combo_kwargs(scope, trial_group)
+        assert tg == expected_tg
+        assert window == expected_window
+
+    def test_filter_combos_default_is_all_four(self):
+        assert _filter_combos(None) == SCOPE_TRIAL_GROUP_COMBOS
+
+    def test_filter_combos_subset(self):
+        out = _filter_combos(["whole_session", "tone_aligned_L"])
+        # Output order preserved from SCOPE_TRIAL_GROUP_COMBOS canonical order:
+        # tone_aligned_L appears before whole_session.
+        assert out == (("tone_aligned", "L"), ("whole_session", None))
+
+    def test_filter_combos_unknown_suffix_raises(self):
+        with pytest.raises(SystemExit, match="unknown"):
+            _filter_combos(["tone_aligned_X"])
+
+
+class TestWassersteinNumItermax:
+    """Pin the 10M numItermax lock from Addendum #7."""
+
+    def test_w2_numitermax_is_10m(self):
+        assert _W_NUMITERMAX == 10_000_000
