@@ -16,7 +16,6 @@ from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
 from scripts.phase_9_stats.materialize_spatial import (
     _bin_groups,
     _build_cost_matrix,
-    _epoch_groups,
     _metric_js_divergence,
     _metric_uot_cost,
     _metric_wasserstein,
@@ -97,44 +96,39 @@ class TestBinGroups:
         ]
 
 
-class TestEpochGroups:
-    """Per-animal epoch grouping via assign_epoch_label.
-
-    Per Addendum #5 (C): rel_day_anchor for per_epoch = mean of observed
-    rel_days within the epoch for THIS animal. Different animals get
-    different anchors because their epoch membership varies.
+class TestLeaveOneOutBaseline:
+    """Pre-stroke per_session emit uses leave-one-out per Addendum #6 (C/D):
+    each pre session's metric is computed vs the pre-pool MINUS that
+    session. The arithmetic of the leave-one-out construction
+    (H_pre_minus_self = H_pre_full − H_d) is what we assert here; the
+    full integration with compute_animal_aggregated_histogram is
+    exercised via the smoke run against PS46.
     """
 
-    def test_basic_three_epochs(self):
-        # Animal: acute_max=5, subacute_max=8, chronic_min=9.
-        animal_info = _animal_info(acute_max=5, subacute_max=8, chronic_min=9)
-        rel_days = [1, 3, 5, 6, 8, 9, 12]  # acute: 1,3,5; sub: 6,8; chronic: 9,12
-        post_dates_rel = {
-            datetime.date(2025, 3, 14) + datetime.timedelta(days=r - 1): r
-            for r in rel_days
-        }
-        groups = _epoch_groups(post_dates_rel, animal_info)
-        assert set(groups.keys()) == {"acute", "sub_acute", "chronic"}
-        # Mean rel_day per epoch (rounded to int).
-        assert groups["acute"][1] == int(round((1 + 3 + 5) / 3))  # 3
-        assert groups["sub_acute"][1] == int(round((6 + 8) / 2))  # 7
-        assert groups["chronic"][1] == int(round((9 + 12) / 2))  # 11 (rounds up from 10.5)
+    def test_leave_one_out_recovers_other_dates(self):
+        """If H_pre_full is the sum of N per-session histograms and we
+        subtract one, the result equals the sum of the remaining N-1.
+        Trivial arithmetic identity; pins the materialization contract.
+        """
+        rng = np.random.default_rng(0)
+        per_session = [rng.poisson(50, size=(20, 20)).astype(float) for _ in range(5)]
+        H_pre_full = sum(per_session)  # sum of all 5
+        # Leave-one-out for session 2:
+        expected = sum(h for i, h in enumerate(per_session) if i != 2)
+        actual = H_pre_full - per_session[2]
+        np.testing.assert_array_equal(actual, expected)
 
-    def test_transitional_gap_dropped(self):
-        """An animal with chronic_min > subacute_max+1: dates in the gap
-        get epoch_label=None and are dropped from per_epoch grouping."""
-        animal_info = _animal_info(
-            acute_max=5, subacute_max=10, chronic_min=15,
-        )
-        post_dates_rel = {
-            datetime.date(2025, 3, 14): 1,    # acute
-            datetime.date(2025, 3, 25): 12,   # gap (subacute_max=10, chronic_min=15)
-            datetime.date(2025, 3, 29): 16,   # chronic
-        }
-        groups = _epoch_groups(post_dates_rel, animal_info)
-        assert set(groups.keys()) == {"acute", "chronic"}
-        # Gap rel_day=12 is NOT included.
-        assert datetime.date(2025, 3, 25) not in groups.get("sub_acute", ([], 0))[0]
+    def test_leave_one_out_with_single_pre_session_yields_zeros(self):
+        """The leave-one-out construction with a single pre-stroke
+        session yields an all-zeros baseline (H_pre_full == H_d for the
+        only session); the materializer skips these rows since they'd
+        always yield is_sentinel=True (metric vs zero-marginal returns
+        None per _normalize_marginals).
+        """
+        H_d = np.ones((20, 20)) * 10
+        H_pre_full = H_d.copy()
+        leave_one_out = H_pre_full - H_d
+        assert leave_one_out.sum() == 0
 
 
 class TestMetricKernels:

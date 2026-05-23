@@ -366,29 +366,13 @@ def _bin_groups(
     return {k: sorted(groups[k]) for k in sorted(groups)}
 
 
-def _epoch_groups(
-    post_dates_rel: dict[dt.date, int],
-    animal_info: AnimalInfo,
-) -> dict[str, tuple[list[dt.date], int]]:
-    """Group post-stroke dates by epoch_label.
-
-    Returns ``{epoch_label: (dates_sorted, mean_rel_day_rounded)}`` for
-    {acute, sub_acute, chronic}. Per Addendum #5 (C) rel_day_anchor for
-    per_epoch is the per-animal mean rel_day of the dates in that epoch
-    (rounded to int for Int64 schema).
-    """
-    by_label: dict[str, list[tuple[dt.date, int]]] = defaultdict(list)
-    for d, rel in post_dates_rel.items():
-        lbl = assign_epoch_label(rel, animal_info)
-        if lbl in ("acute", "sub_acute", "chronic"):
-            by_label[lbl].append((d, rel))
-    out: dict[str, tuple[list[dt.date], int]] = {}
-    for lbl, pairs in by_label.items():
-        pairs.sort()
-        dates = [d for d, _ in pairs]
-        mean_rel = int(round(np.mean([r for _, r in pairs])))
-        out[lbl] = (dates, mean_rel)
-    return out
+# Note: Addendum #5's _epoch_groups helper (grouping post-stroke dates
+# into {acute, sub_acute, chronic} buckets at materialize-time) was
+# REMOVED per Addendum #6 (C). per_epoch is no longer an emit-time
+# granularity; it's a Task 4 runtime view (filter per_session rows by
+# epoch_label + additive baseline normalization). The bare epoch label
+# is computed per-row via assign_epoch_label inside the per_session
+# emit loops below.
 
 
 # ===========================================================================
@@ -406,13 +390,22 @@ def _emit_one_family_for_animal(
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
     """Emit rows for one (animal, family) tuple across all 3 metrics.
 
-    Returns ``(rows_by_metric_slug, telemetry)``:
-    - ``rows_by_metric_slug``: dict[endpoint_slug, list[row_dict]] — one
-      list per metric (3 total). Each list will be written as one
-      parquet at ``stats/inputs/<slug>/<animal>.parquet``.
-    - ``telemetry``: per-(animal, family) diagnostic counts (n_pre_sessions,
-      n_post_sessions, n_per_session_anchors, n_per_bin_anchors,
-      n_per_epoch_anchors, wall_time_s).
+    Per Addendum #6 (revised from #5): emit two granularities only.
+    - ``per_session`` for ALL sessions (pre + post). Pre-stroke values
+      come from leave-one-out: each pre-stroke session's metric is
+      computed vs the pre-pool MINUS that session, yielding the
+      noise-floor distribution of the metric under pre-stroke
+      variability alone. Post-stroke values are computed vs the FULL
+      pre-pool.
+    - ``per_bin`` for post-stroke bins only (per ``AnimalInfo.bin_days``;
+      anchored on rel_day=0). Bin histograms are summed from the
+      already-computed per-session post-stroke histograms.
+
+    ``per_epoch`` is a Task 4 runtime view (filter per_session rows by
+    ``epoch_label`` + additive baseline normalization); no per_epoch
+    emit at materialization time.
+
+    Returns ``(rows_by_metric_slug, telemetry)``.
     """
     t0 = time.monotonic()
     bodyparts, center_mode = _resolve_family_entry(family_entry, defaults)
@@ -427,32 +420,51 @@ def _emit_one_family_for_animal(
     ]
     pre_dates, post_dates = _split_pre_post_dates(all_dates, animal_info)
 
-    # Pre-pool histogram (computed once; reused across all granularities + metrics).
-    pre = _aggregate_family_hist(
-        animal, pre_dates, bodyparts, center_mode, resolver, defaults, animal_info,
-    )
-    if pre is None:
-        # No pre-stroke data — emit zero rows. Manifest will reflect.
+    # Build per-pre-date histograms one at a time so we can construct
+    # both the full pre-pool (their sum) AND leave-one-out per-session
+    # baselines (pre_pool − H_d). Per Addendum #6 (D) compute cost
+    # ~50ms × N_pre × N_bp; small relative to per-post-session compute.
+    H_per_pre_date: dict[dt.date, _AggregatedHistogram] = {}
+    for d in pre_dates:
+        agg = _aggregate_family_hist(
+            animal, [d], bodyparts, center_mode, resolver, defaults, animal_info,
+        )
+        if agg is None:
+            continue
+        H_per_pre_date[d] = agg
+
+    if not H_per_pre_date:
+        # No pre-stroke data — can't establish baseline. Emit zero rows.
         return {}, {
             "family_entry": family_entry,
             "n_pre_sessions": 0,
             "n_post_sessions": len(post_dates),
-            "n_per_session_anchors": 0,
+            "n_per_session_pre_anchors": 0,
+            "n_per_session_post_anchors": 0,
             "n_per_bin_anchors": 0,
-            "n_per_epoch_anchors": 0,
             "wall_time_s": round(time.monotonic() - t0, 2),
             "skipped_no_pre_pool": True,
         }
-    H_pre = pre.H
-    extent = pre.extent
-    n_pre_sessions = pre.n_sessions
+
+    # Aggregate pre-pool from the per-pre-date histograms.
+    first_pre_agg = next(iter(H_per_pre_date.values()))
+    H_pre = np.zeros_like(first_pre_agg.H, dtype=float)
+    n_pre_sessions = 0
+    n_pre_frames = 0
+    for agg in H_per_pre_date.values():
+        if agg.H.shape != H_pre.shape:
+            continue
+        H_pre = H_pre + agg.H
+        n_pre_sessions += agg.n_sessions
+        n_pre_frames += agg.n_frames
+    extent = first_pre_agg.extent
     nx, ny = H_pre.shape
 
     # Cost matrix — built once per family per animal.
     C = _build_cost_matrix(extent, nx, ny)
 
-    # Per-date post-stroke histograms (build once; reuse for per_bin/per_epoch).
-    H_per_date: dict[dt.date, _AggregatedHistogram] = {}
+    # Per-date post-stroke histograms (build once; reuse for per_bin).
+    H_per_post_date: dict[dt.date, _AggregatedHistogram] = {}
     post_dates_rel: dict[dt.date, int] = {}
     for d in post_dates:
         agg = _aggregate_family_hist(
@@ -460,57 +472,32 @@ def _emit_one_family_for_animal(
         )
         if agg is None or agg.H.shape != H_pre.shape:
             continue
-        H_per_date[d] = agg
+        H_per_post_date[d] = agg
         post_dates_rel[d] = animal_info.day_relative_to_stroke(d)
 
-    # Build per-granularity anchor groups.
-    per_session_groups: dict[int, list[dt.date]] = {
-        post_dates_rel[d]: [d] for d in H_per_date
-    }
+    # Bin grouping (post-stroke only per Addendum #6 (C)).
     bin_groups = _bin_groups(post_dates_rel, animal_info.bin_days)
-    epoch_groups = _epoch_groups(post_dates_rel, animal_info)
 
-    # Emit rows. One row per (granularity, anchor, metric).
     rows_by_slug: dict[str, list[dict[str, Any]]] = {
         f"{prefix}_{family_entry}": []
         for _metric_name, prefix in _METRICS
     }
 
-    def _aggregate_for_dates(dates: list[dt.date]) -> tuple[np.ndarray, int, int]:
-        H_total = np.zeros_like(H_pre)
-        n_sess = 0
-        n_frames = 0
-        for d in dates:
-            agg = H_per_date.get(d)
-            if agg is None:
-                continue
-            H_total = H_total + agg.H
-            n_sess += agg.n_sessions
-            n_frames += agg.n_frames
-        return H_total, n_sess, n_frames
-
-    def _emit(
+    def _emit_row(
         *,
         granularity: str,
         anchor_rel_day: int,
-        dates: list[dt.date],
-        epoch_label_override: str | None = None,
+        row_date: dt.date,
+        epoch_label_value: str,
+        H_a: np.ndarray, H_b: np.ndarray,
+        n_sessions_aggregated: int,
+        n_frames_aggregated: int,
     ) -> None:
-        H_post, n_sess, n_frames = _aggregate_for_dates(dates)
-        if H_post.sum() == 0:
-            return
-        if epoch_label_override is not None:
-            eb_label: str | None = epoch_label_override
-        else:
-            eb_label = assign_epoch_label(int(anchor_rel_day), animal_info)
         for metric_name, prefix in _METRICS:
             slug = f"{prefix}_{family_entry}"
             metric_fn = _METRIC_FNS[metric_name]
-            value = metric_fn(H_pre, H_post, C)
+            value = metric_fn(H_a, H_b, C)
             is_sentinel = value is None or not np.isfinite(value)
-            # Use the earliest date in the group as the row "date"; for
-            # per_session it's the single date.
-            row_date = sorted(dates)[0]
             rows_by_slug[slug].append({
                 "animal": animal,
                 "date": row_date,
@@ -522,35 +509,90 @@ def _emit_one_family_for_animal(
                 "value": None if is_sentinel else float(value),
                 "is_sentinel": bool(is_sentinel),
                 "cohort_bin_size": int(animal_info.bin_days),
-                "epoch_label": eb_label,
+                "epoch_label": epoch_label_value,
                 "granularity": granularity,
                 "rel_day_anchor": int(anchor_rel_day),
-                "n_sessions_aggregated": int(n_sess),
-                "n_frames_aggregated": int(n_frames),
+                "n_sessions_aggregated": int(n_sessions_aggregated),
+                "n_frames_aggregated": int(n_frames_aggregated),
             })
 
-    # per_session
-    for anchor, dates in sorted(per_session_groups.items()):
-        _emit(granularity="per_session", anchor_rel_day=anchor, dates=dates)
-    # per_bin
+    # 1. per_session emit for PRE-stroke sessions via leave-one-out:
+    #    each pre session's metric is computed against the pre-pool
+    #    MINUS that session. Yields a per-session "noise floor" sample.
+    for d, agg in sorted(H_per_pre_date.items()):
+        if agg.H.shape != H_pre.shape:
+            continue
+        H_pre_minus_self = H_pre - agg.H
+        if H_pre_minus_self.sum() <= 0:
+            # Only one pre-stroke session — can't leave-one-out. Skip
+            # rather than emit a degenerate row (it would be metric vs
+            # all-zero, returning is_sentinel anyway).
+            continue
+        rel = animal_info.day_relative_to_stroke(d)
+        _emit_row(
+            granularity="per_session",
+            anchor_rel_day=rel,
+            row_date=d,
+            epoch_label_value="pre",
+            H_a=agg.H, H_b=H_pre_minus_self,
+            n_sessions_aggregated=1,
+            n_frames_aggregated=agg.n_frames,
+        )
+
+    # 2. per_session emit for POST-stroke sessions: metric vs full pre-pool.
+    for d in sorted(H_per_post_date):
+        agg = H_per_post_date[d]
+        rel = post_dates_rel[d]
+        eb_label = assign_epoch_label(int(rel), animal_info)
+        if eb_label is None:
+            # Transitional gap — skip per Addendum #6 semantics; only
+            # categorized epochs participate in per_epoch downstream.
+            continue
+        _emit_row(
+            granularity="per_session",
+            anchor_rel_day=rel,
+            row_date=d,
+            epoch_label_value=eb_label,
+            H_a=agg.H, H_b=H_pre,
+            n_sessions_aggregated=1,
+            n_frames_aggregated=agg.n_frames,
+        )
+
+    # 3. per_bin emit for POST-stroke bins: aggregated bin histogram
+    #    vs full pre-pool.
     for anchor, dates in sorted(bin_groups.items()):
-        _emit(granularity="per_bin", anchor_rel_day=anchor, dates=dates)
-    # per_epoch (anchor = per-animal mean rel_day in epoch)
-    for epoch_label, (dates, mean_rel) in epoch_groups.items():
-        _emit(
-            granularity="per_epoch",
-            anchor_rel_day=mean_rel,
-            dates=dates,
-            epoch_label_override=epoch_label,
+        H_bin = np.zeros_like(H_pre)
+        n_sess = 0
+        n_frames = 0
+        for d in dates:
+            ag = H_per_post_date.get(d)
+            if ag is None:
+                continue
+            H_bin = H_bin + ag.H
+            n_sess += ag.n_sessions
+            n_frames += ag.n_frames
+        if H_bin.sum() == 0:
+            continue
+        eb_label = assign_epoch_label(int(anchor), animal_info)
+        if eb_label is None:
+            eb_label = "transitional_gap"  # rare; still emit so the row isn't silently lost
+        _emit_row(
+            granularity="per_bin",
+            anchor_rel_day=anchor,
+            row_date=sorted(dates)[0],
+            epoch_label_value=eb_label,
+            H_a=H_bin, H_b=H_pre,
+            n_sessions_aggregated=n_sess,
+            n_frames_aggregated=n_frames,
         )
 
     telemetry = {
         "family_entry": family_entry,
         "n_pre_sessions": int(n_pre_sessions),
         "n_post_sessions": int(len(post_dates_rel)),
-        "n_per_session_anchors": int(len(per_session_groups)),
+        "n_per_session_pre_anchors": int(len(H_per_pre_date)),
+        "n_per_session_post_anchors": int(len(H_per_post_date)),
         "n_per_bin_anchors": int(len(bin_groups)),
-        "n_per_epoch_anchors": int(len(epoch_groups)),
         "wall_time_s": round(time.monotonic() - t0, 2),
     }
     return rows_by_slug, telemetry
@@ -693,14 +735,14 @@ def main() -> int:
                     })
                 continue
 
-            n_per_session = telemetry.get("n_per_session_anchors", 0)
+            n_pre = telemetry.get("n_per_session_pre_anchors", 0)
+            n_post = telemetry.get("n_per_session_post_anchors", 0)
             n_per_bin = telemetry.get("n_per_bin_anchors", 0)
-            n_per_epoch = telemetry.get("n_per_epoch_anchors", 0)
             wall = telemetry.get("wall_time_s", 0.0)
             print(
                 f"  {family_entry}: "
-                f"per_session={n_per_session}, per_bin={n_per_bin}, "
-                f"per_epoch={n_per_epoch}  ({wall:.1f} s)",
+                f"per_session pre={n_pre} post={n_post}, "
+                f"per_bin={n_per_bin}  ({wall:.1f} s)",
             )
 
             for slug, rows in rows_by_slug.items():
