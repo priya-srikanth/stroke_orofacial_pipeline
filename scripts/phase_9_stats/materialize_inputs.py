@@ -446,6 +446,12 @@ _TONGUE_DERIVED_PATH: dict[str, tuple[str, str, str]] = {
     "tongue_median_vxy_peak_per_trial": ("peak_velocity_per_lick", "vxy_peaks_bylick", "median"),
     "tongue_median_angle_at_peak_velocity": ("tongue_angle", "angle_at_peak_velocity_bylick", "median"),
     "tongue_median_angle_max_signed_per_lick": ("tongue_angle", "angle_max_signed_per_lick", "median"),
+    # Addendum #8 (CSV rows 66-68) — 3 new headline kinematic endpoints
+    # using the existing peak_velocity_per_lick.vxy_peaks_bylick vector
+    # primitive. Reductions: first / max_first5 / mean_first5 (new).
+    "tongue_lick1_vxy_peak": ("peak_velocity_per_lick", "vxy_peaks_bylick", "first"),
+    "tongue_max_vxy_peak_first5": ("peak_velocity_per_lick", "vxy_peaks_bylick", "max_first5"),
+    "tongue_mean_vxy_peak_first5": ("peak_velocity_per_lick", "vxy_peaks_bylick", "mean_first5"),
 }
 
 _JAW_SCALAR_FIELDS: tuple[str, ...] = (
@@ -464,6 +470,11 @@ def _reduce_vector_per_trial(vec: list[Any] | None, reducer: str) -> float | Non
     - ``"max_first5"``: max of first 5 elements; falls back to max of
       whatever exists if fewer than 5 (documented per inventory note
       for tongue_max_vy_peak_first5).
+    - ``"mean_first5"``: mean of first 5 finite elements; falls back to
+      mean of all finite elements if the first-5 head has no finite
+      values. Added per Addendum #8 (CSV row 68
+      ``tongue_mean_vxy_peak_first5``) as a sibling reducer to
+      ``max_first5`` — different statistical sensitivity (mean vs max).
     - ``"median"``: nanmedian over all finite elements.
     """
     if vec is None:
@@ -482,6 +493,13 @@ def _reduce_vector_per_trial(vec: list[Any] | None, reducer: str) -> float | Non
             # Fall back to full-vector max per inventory note.
             return None if finite.size == 0 else float(np.max(finite))
         return float(np.max(head_f))
+    if reducer == "mean_first5":
+        head = arr[:5]
+        head_f = head[np.isfinite(head)]
+        if head_f.size == 0:
+            # Fall back to full-vector mean per inventory note.
+            return None if finite.size == 0 else float(np.mean(finite))
+        return float(np.mean(head_f))
     if reducer == "median":
         return None if finite.size == 0 else float(np.median(finite))
     raise ValueError(f"unknown reducer: {reducer!r}")

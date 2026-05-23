@@ -20,8 +20,10 @@ from stroke_orofacial.stats.recovery_epochs import assign_epoch_label
 from scripts.phase_9_stats.materialize_inputs import (
     EndpointSpec,
     _SessionScalars,
+    _TONGUE_DERIVED_PATH,
     _materialize_latency_hist,
     _materialize_scalar_per_session,
+    _reduce_vector_per_trial,
 )
 
 
@@ -316,3 +318,77 @@ class TestLatencyHistMaterializer:
         )
         sides_to_ic = {r["side"]: r["ipsi_contra"] for r in rows}
         assert sides_to_ic == {"L": "ipsi", "R": "contra"}
+
+
+# ===========================================================================
+# Addendum #8 — 3 new vxy derived endpoints + mean_first5 reducer
+# ===========================================================================
+
+
+class TestAddendum8VxyDerivedDispatch:
+    """Pin the 3 new vxy derived endpoints (CSV rows 66-68) per Addendum
+    #8 (A). All three reduce the existing vxy_peaks_bylick vector
+    primitive via {first, max_first5, mean_first5}. The first two
+    reducers are reused from the vy_peak family; mean_first5 is NEW
+    per Addendum #8.
+    """
+
+    def test_three_new_vxy_slugs_dispatched(self):
+        assert _TONGUE_DERIVED_PATH["tongue_lick1_vxy_peak"] == (
+            "peak_velocity_per_lick", "vxy_peaks_bylick", "first",
+        )
+        assert _TONGUE_DERIVED_PATH["tongue_max_vxy_peak_first5"] == (
+            "peak_velocity_per_lick", "vxy_peaks_bylick", "max_first5",
+        )
+        assert _TONGUE_DERIVED_PATH["tongue_mean_vxy_peak_first5"] == (
+            "peak_velocity_per_lick", "vxy_peaks_bylick", "mean_first5",
+        )
+
+    def test_existing_dispatch_preserved(self):
+        """Sanity: the v2-era dispatch entries are intact (no regression
+        from the Addendum #8 wiring)."""
+        assert _TONGUE_DERIVED_PATH["tongue_median_vxy_peak_per_trial"] == (
+            "peak_velocity_per_lick", "vxy_peaks_bylick", "median",
+        )
+        assert _TONGUE_DERIVED_PATH["tongue_lick1_vy_peak"] == (
+            "peak_velocity_per_lick", "vy_peaks_bylick", "first",
+        )
+
+
+class TestMeanFirst5Reducer:
+    """Pin the new ``mean_first5`` reducer behavior."""
+
+    def test_mean_of_first_five(self):
+        # vec = [1, 2, 3, 4, 5, 100, 200] → mean of first 5 = 3.0
+        v = _reduce_vector_per_trial([1, 2, 3, 4, 5, 100, 200], "mean_first5")
+        assert v == pytest.approx(3.0)
+
+    def test_fewer_than_five_uses_what_exists(self):
+        # vec = [10, 20] → mean of head = 15.0 (head_f.size > 0)
+        v = _reduce_vector_per_trial([10, 20], "mean_first5")
+        assert v == pytest.approx(15.0)
+
+    def test_first5_all_nan_falls_back_to_finite_mean(self):
+        """When the first 5 head has no finite values, fall back to the
+        mean of all finite elements (mirrors max_first5's fallback)."""
+        v = _reduce_vector_per_trial(
+            [float("nan"), float("nan"), float("nan"), float("nan"),
+             float("nan"), 100.0, 200.0],
+            "mean_first5",
+        )
+        assert v == pytest.approx(150.0)
+
+    def test_all_nan_returns_none(self):
+        v = _reduce_vector_per_trial(
+            [float("nan"), float("nan"), float("nan")],
+            "mean_first5",
+        )
+        assert v is None
+
+    def test_empty_vec_returns_none(self):
+        assert _reduce_vector_per_trial([], "mean_first5") is None
+        assert _reduce_vector_per_trial(None, "mean_first5") is None
+
+    def test_unknown_reducer_raises(self):
+        with pytest.raises(ValueError, match="unknown reducer"):
+            _reduce_vector_per_trial([1.0, 2.0], "nonsense")
