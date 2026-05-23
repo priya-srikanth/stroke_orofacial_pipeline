@@ -263,3 +263,111 @@ class TestWassersteinNumItermax:
 
     def test_w2_numitermax_is_10m(self):
         assert _W_NUMITERMAX == 10_000_000
+
+
+# ===========================================================================
+# Per-worker centered-parquet cache (calibration finding 2026-05-23)
+# ===========================================================================
+
+
+import datetime as _dt  # noqa: E402
+
+from scripts.phase_9_stats import materialize_spatial as _ms  # noqa: E402
+from scripts.phase_9_stats.materialize_spatial import (  # noqa: E402
+    _cache_stats,
+    _install_centered_df_cache,
+    _make_cached_centered_loader,
+    _reset_centered_df_cache,
+)
+
+
+class _FakeManifest:
+    def __init__(self, animal: str, date: _dt.date) -> None:
+        self.animal = animal
+        self.date = date
+
+
+class TestCenteredDFCache:
+    """Pin the per-worker centered-parquet cache contract.
+
+    The cache eliminates redundant SMB reads when a worker processes all
+    4 (scope, trial_group) combos for one (animal, family) — each
+    combo's compute path would otherwise re-read the same per-session
+    centered parquet 4×.
+    """
+
+    def setup_method(self) -> None:
+        _reset_centered_df_cache()
+
+    def test_first_call_is_a_miss_second_call_is_a_hit(self):
+        calls: list[tuple] = []
+
+        def _fake_original(manifest, center_mode, resolver):
+            calls.append((manifest.animal, manifest.date, center_mode))
+            return f"df_for_{manifest.animal}_{manifest.date}_{center_mode}"
+
+        wrapper = _make_cached_centered_loader(_fake_original)
+        m = _FakeManifest("PS46", _dt.date(2025, 3, 14))
+        df1 = wrapper(m, "spout_midpoint", resolver=None)
+        df2 = wrapper(m, "spout_midpoint", resolver=None)
+        assert df1 == df2 == "df_for_PS46_2025-03-14_spout_midpoint"
+        # Original was called exactly once.
+        assert len(calls) == 1
+        n_entries, n_hits, n_misses = _cache_stats()
+        assert n_entries == 1
+        assert n_hits == 1
+        assert n_misses == 1
+
+    def test_cache_key_includes_center_mode(self):
+        """Different center_modes for the same (animal, date) cache
+        separately — the centered parquet path is center_mode-specific."""
+        calls: list[tuple] = []
+
+        def _fake_original(manifest, center_mode, resolver):
+            calls.append((manifest.animal, manifest.date, center_mode))
+            return f"df_{center_mode}"
+
+        wrapper = _make_cached_centered_loader(_fake_original)
+        m = _FakeManifest("PS46", _dt.date(2025, 3, 14))
+        wrapper(m, "spout_midpoint", resolver=None)
+        wrapper(m, "eye_midpoint", resolver=None)
+        wrapper(m, "spout_midpoint", resolver=None)
+        # Two distinct center_modes → 2 misses, 1 hit on the repeat.
+        n_entries, n_hits, n_misses = _cache_stats()
+        assert n_entries == 2
+        assert n_hits == 1
+        assert n_misses == 2
+        assert len(calls) == 2
+
+    def test_cache_key_includes_date(self):
+        """Same animal + center_mode but different date → cache miss."""
+        calls: list[tuple] = []
+
+        def _fake_original(manifest, center_mode, resolver):
+            calls.append((manifest.animal, manifest.date, center_mode))
+            return None
+
+        wrapper = _make_cached_centered_loader(_fake_original)
+        wrapper(_FakeManifest("PS46", _dt.date(2025, 3, 14)), "X", None)
+        wrapper(_FakeManifest("PS46", _dt.date(2025, 3, 15)), "X", None)
+        assert len(calls) == 2
+        assert _cache_stats() == (2, 0, 2)
+
+    def test_install_is_idempotent(self):
+        """Re-installing the patch shouldn't double-wrap or break."""
+        _install_centered_df_cache()
+        first_wrapper = _ms._ro._load_centered_df_for
+        _install_centered_df_cache()
+        second_wrapper = _ms._ro._load_centered_df_for
+        assert first_wrapper is second_wrapper
+        # Wrapper still has the cache-marker attribute.
+        assert getattr(second_wrapper, "_is_cached_wrapper", False) is True
+
+    def test_install_replaces_module_attr(self):
+        """After install, dlc_spatial.render_on_demand._load_centered_df_for
+        IS the cached wrapper (the monkey-patch is visible to consumers
+        like compute_animal_aggregated_histogram)."""
+        _install_centered_df_cache()
+        assert getattr(
+            _ms._ro._load_centered_df_for, "_is_cached_wrapper", False,
+        ) is True
