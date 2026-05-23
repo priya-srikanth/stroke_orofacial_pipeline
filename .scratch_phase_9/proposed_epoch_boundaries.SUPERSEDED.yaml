@@ -1,0 +1,21 @@
+# SUPERSEDED — DO NOT USE.
+#
+# This file was drafted by CC on commit 2ad278f as a starting point for
+# Priya to edit, per the original Phase 9 kickoff's Task 1 Part B spec
+# (CC drafts → Priya stamps → final YAML lands at Task 1.5).
+#
+# That spec was later revised: the updated kickoff
+# (docs/prompts/phase-9-stats-kickoff.md, schema-extension section)
+# states Part B was PRE-COMPLETED by Cowork via direct stamping in
+# configs/animals.yaml during the 2026-05-23 kickoff drafting session.
+# This draft is consequently never used.
+#
+# Canonical per-animal recovery_phenotype + epoch_boundaries values
+# live in configs/animals.yaml for each of the 8 cohort animals (PS46,
+# PS47, PS48, PS49, PS50, PS51, PS54, PS55). Cohort distribution:
+# {mild: 4, moderate: 1, moderate-severe: 1, severe: 2}.
+#
+# Retained as a non-deletable historical artifact (rather than dropped
+# via rebase) so that the 2ad278f commit message remains contextually
+# coherent in the branch history. See also DECISIONS Phase 9 entry
+# (Task 9) for the lock-trail.
