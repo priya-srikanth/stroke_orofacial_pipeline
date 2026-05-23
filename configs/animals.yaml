@@ -80,7 +80,7 @@ PS46:
     start: 2025-03-07
     end: 2025-04-06
   exclusions: []
-  recovery_phenotype: null
+  recovery_phenotype: "moderate"
   sex: F
   date_of_birth: 2024-12-03
   genotype: "C57BL/6J"
@@ -101,6 +101,14 @@ PS46:
     jaw:
       x0: 0.0
       y0: 310.0
+  # epoch_boundaries: per-animal recovery-epoch day ranges, stamped
+  # 2026-05-23 by Priya. rel_day = day relative to stroke_date.
+  # Schema: acute = [1, acute_max_rel_day]; sub-acute = [acute_max_rel_day+1,
+  # subacute_max_rel_day]; chronic = [chronic_min_rel_day, +inf).
+  epoch_boundaries:
+    acute_max_rel_day: 5         # acute = rel_day 1..5
+    subacute_max_rel_day: 8      # sub-acute = rel_day 6..8
+    chronic_min_rel_day: 9       # chronic = rel_day >= 9
 
 PS47:
   stroke_date: 2025-03-13
@@ -108,7 +116,7 @@ PS47:
     start: 2025-03-07
     end: 2025-04-06
   exclusions: []
-  recovery_phenotype: null
+  recovery_phenotype: "mild"
   sex: F
   date_of_birth: 2024-12-03
   genotype: "C57BL/6J"
@@ -126,6 +134,10 @@ PS47:
     jaw:
       x0: 0.0
       y0: 310.0
+  epoch_boundaries:
+    acute_max_rel_day: 1         # acute = rel_day 1
+    subacute_max_rel_day: 4      # sub-acute = rel_day 2..4
+    chronic_min_rel_day: 5       # chronic = rel_day >= 5
 
 PS48:
   stroke_date: 2025-03-13
@@ -133,7 +145,7 @@ PS48:
     start: 2025-03-07
     end: 2025-04-06
   exclusions: []
-  recovery_phenotype: null
+  recovery_phenotype: "mild"
   sex: F
   date_of_birth: 2024-12-03
   genotype: "C57BL/6J"
@@ -151,6 +163,10 @@ PS48:
     jaw:
       x0: 0.0
       y0: 310.0
+  epoch_boundaries:
+    acute_max_rel_day: 1
+    subacute_max_rel_day: 4
+    chronic_min_rel_day: 5
 
 PS49:
   stroke_date: 2025-03-17
@@ -158,7 +174,7 @@ PS49:
     start: 2025-03-10
     end: 2025-04-06
   exclusions: []
-  recovery_phenotype: null
+  recovery_phenotype: "mild"
   sex: F
   date_of_birth: 2024-12-12
   genotype: "C57BL/6J (negative littermate)"
@@ -176,6 +192,10 @@ PS49:
     jaw:
       x0: 0.0
       y0: 310.0
+  epoch_boundaries:
+    acute_max_rel_day: 1
+    subacute_max_rel_day: 4
+    chronic_min_rel_day: 5
 
 PS50:
   stroke_date: 2025-03-23
@@ -183,7 +203,7 @@ PS50:
     start: 2025-03-19
     end: 2025-04-06
   exclusions: []
-  recovery_phenotype: null
+  recovery_phenotype: "mild"
   sex: F
   date_of_birth: 2024-12-12
   genotype: "C57BL/6J (negative littermate)"
@@ -201,6 +221,10 @@ PS50:
     jaw:
       x0: 0.0
       y0: 310.0
+  epoch_boundaries:
+    acute_max_rel_day: 1
+    subacute_max_rel_day: 4
+    chronic_min_rel_day: 5
 
 PS51:
   stroke_date: 2025-04-29
@@ -214,7 +238,7 @@ PS51:
     - date: 2025-05-17
       reason: "missing camera data"
       applies_to: [dlc, alignment]
-  recovery_phenotype: null
+  recovery_phenotype: "moderate-severe"
   sex: M
   date_of_birth: 2025-01-23
   genotype: "C57BL/6J"
@@ -232,6 +256,10 @@ PS51:
     jaw:
       x0: 12.0
       y0: 290.0
+  epoch_boundaries:
+    acute_max_rel_day: 6         # acute = rel_day 1..6
+    subacute_max_rel_day: 30     # sub-acute = rel_day 7..30
+    chronic_min_rel_day: 31      # chronic = rel_day >= 31
 
 PS54:
   stroke_date: 2025-04-30
@@ -242,7 +270,7 @@ PS54:
     - date: 2025-04-26
       reason: "Rose Bengal sham administration caused delayed licking"
       applies_to: [dlc, spout_behavior]
-  recovery_phenotype: null
+  recovery_phenotype: "severe"
   sex: M
   date_of_birth: 2025-01-23
   genotype: "C57BL/6J"
@@ -260,7 +288,15 @@ PS54:
     jaw:
       x0: 12.0
       y0: 290.0
+  epoch_boundaries:
+    # acute = rel_day 1..17; sub-acute = rel_day 18..39; chronic = rel_day >= 40.
+    # Per 2026-05-23 Priya clarification: no recorded sessions on rel_day 18-19;
+    # subacute_min collapses to rel_day 18 (no data-availability gap encoded in schema).
+    acute_max_rel_day: 17
+    subacute_max_rel_day: 39
+    chronic_min_rel_day: 40
 
+# PS55 has a longer recovery trajectory than PS54 (higher laser power, 5.0 mW vs 3.0 mW).
 PS55:
   stroke_date: 2025-04-30
   sessions:  # cohort-boundary policy: see header comment + DECISIONS
@@ -273,7 +309,7 @@ PS55:
     - date: 2025-04-28
       reason: "experimenter error caused inaccurate reward delivery"
       applies_to: [dlc, spout_behavior]
-  recovery_phenotype: null
+  recovery_phenotype: "severe"
   sex: M
   date_of_birth: 2025-01-23
   genotype: "C57BL/6J"
@@ -291,3 +327,13 @@ PS55:
     jaw:
       x0: 0.0
       y0: 290.0
+  epoch_boundaries:
+    # PS55 re-stamped 2026-05-23 (second pass): acute = rel_day 1..17;
+    # sub-acute = rel_day 18..49 (data range d20-49; d18-19 has no recorded
+    # sessions, treated as data-availability artifact, not categorization gap);
+    # chronic = rel_day >= 50. PS55 sub-acute + chronic boundaries differ from
+    # PS54 by +10 days due to longer recovery trajectory (5.0 mW vs 3.0 mW
+    # laser power).
+    acute_max_rel_day: 17
+    subacute_max_rel_day: 49
+    chronic_min_rel_day: 50

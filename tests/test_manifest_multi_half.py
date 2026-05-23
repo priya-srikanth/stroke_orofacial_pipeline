@@ -34,7 +34,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from stroke_orofacial.animals import AnimalInfo, Exclusion
+from stroke_orofacial.animals import AnimalInfo, Exclusion, EpochBoundaries
 from stroke_orofacial.manifest import (
     HalfSpec,
     MultiHalfNotDeclaredError,
@@ -184,6 +184,7 @@ def ps48_info() -> AnimalInfo:
         stroke_date=datetime.date(2025, 3, 19),
         session_start=datetime.date(2025, 3, 5),
         session_end=datetime.date(2025, 4, 30),
+        epoch_boundaries=EpochBoundaries(1, 4, 5),
     )
 
 
@@ -588,6 +589,7 @@ class TestMultiHalfNotDeclaredCheck:
             stroke_date=datetime.date(2025, 3, 19),
             session_start=datetime.date(2025, 3, 5),
             session_end=datetime.date(2025, 4, 30),
+            epoch_boundaries=EpochBoundaries(1, 4, 5),
             exclusions=[
                 Exclusion(
                     datetime.date(2025, 3, 14),
@@ -622,6 +624,7 @@ def ps54_info() -> AnimalInfo:
         stroke_date=datetime.date(2025, 4, 28),
         session_start=datetime.date(2025, 4, 20),
         session_end=datetime.date(2025, 7, 1),
+        epoch_boundaries=EpochBoundaries(1, 4, 5),
     )
 
 

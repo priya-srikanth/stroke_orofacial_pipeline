@@ -89,7 +89,7 @@ class TestSessionManifestIntegration:
     def test_manifest_populates_ws_and_video(self, monkeypatch):
         """build_manifest returns wavesurfer_file and video_files (amendment 3)."""
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", "mac")
-        from stroke_orofacial.animals import AnimalInfo
+        from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
         from stroke_orofacial.manifest import build_manifest
         from stroke_orofacial.paths import PathResolver
 
@@ -99,6 +99,7 @@ class TestSessionManifestIntegration:
             stroke_date=datetime.date(2025, 3, 13),
             session_start=datetime.date(2025, 3, 7),
             session_end=datetime.date(2025, 4, 6),
+            epoch_boundaries=EpochBoundaries(1, 4, 5),
         )
         manifest = build_manifest("PS46", datetime.date(2025, 3, 7), resolver, info)
 

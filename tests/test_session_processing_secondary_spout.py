@@ -30,7 +30,7 @@ from unittest.mock import patch
 
 import pytest
 
-from stroke_orofacial.animals import AnimalInfo
+from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
 from stroke_orofacial.paths import PathResolver
 
 
@@ -105,6 +105,7 @@ def _make_animal_info(animal: str = "PS99") -> AnimalInfo:
         stroke_date=datetime.date(2025, 1, 15),
         session_start=datetime.date(2025, 1, 1),
         session_end=datetime.date(2025, 12, 31),
+        epoch_boundaries=EpochBoundaries(1, 4, 5),
     )
 
 
@@ -522,6 +523,7 @@ class TestPatternAUnchanged:
             stroke_date=datetime.date(2025, 3, 13),
             session_start=datetime.date(2025, 3, 7),
             session_end=datetime.date(2025, 4, 6),
+            epoch_boundaries=EpochBoundaries(1, 4, 5),
         )
 
         # Patch the merge as well — fake pipeline writes empty NPZs

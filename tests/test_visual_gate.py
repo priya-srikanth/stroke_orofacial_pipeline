@@ -120,7 +120,7 @@ def _make_animal_info(
     """Build a synthetic AnimalInfo with controlled date range +
     exclusions. Avoids touching the real configs/animals.yaml.
     """
-    from stroke_orofacial.animals import AnimalInfo
+    from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
     stroke_date = session_start + datetime.timedelta(
         days=(session_end - session_start).days // 2
     )
@@ -129,6 +129,7 @@ def _make_animal_info(
         stroke_date=stroke_date,
         session_start=session_start,
         session_end=session_end,
+        epoch_boundaries=EpochBoundaries(1, 4, 5),
         exclusions=exclusions or [],
     )
 

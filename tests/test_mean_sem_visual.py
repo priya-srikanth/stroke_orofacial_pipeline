@@ -701,12 +701,13 @@ class TestMeanTraceHelpers:
         assert col != "0.6"
 
     def test_normalize_bin_sizes_none_uses_animal_info(self):
-        from stroke_orofacial.animals import AnimalInfo
+        from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
         info = AnimalInfo(
             animal_id="PS_test",
             stroke_date=datetime.date(2025, 3, 13),
             session_start=datetime.date(2025, 3, 7),
             session_end=datetime.date(2025, 4, 6),
+            epoch_boundaries=EpochBoundaries(1, 4, 5),
             bin_days=4,
         )
         assert msv._normalize_bin_sizes(None, info) == [4]
@@ -963,12 +964,13 @@ class TestNormalizeBinSizesParametric:
         ],
     )
     def test_normalize_bin_sizes(self, input_value, expected):
-        from stroke_orofacial.animals import AnimalInfo
+        from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
         info = AnimalInfo(
             animal_id="PS_test",
             stroke_date=datetime.date(2025, 3, 13),
             session_start=datetime.date(2025, 3, 7),
             session_end=datetime.date(2025, 4, 6),
+            epoch_boundaries=EpochBoundaries(1, 4, 5),
             bin_days=2,
         )
         assert msv._normalize_bin_sizes(input_value, info) == expected
@@ -1254,12 +1256,13 @@ class TestMeanVideoFilename:
         assert fname.endswith(".mp4")
 
     def test_filename_with_animal_info_includes_d0(self):
-        from stroke_orofacial.animals import AnimalInfo
+        from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
         info = AnimalInfo(
             animal_id="PS46",
             stroke_date=datetime.date(2025, 3, 13),
             session_start=datetime.date(2025, 3, 7),
             session_end=datetime.date(2025, 4, 6),
+            epoch_boundaries=EpochBoundaries(1, 4, 5),
             bin_days=2,
         )
         cohort = _make_synthetic_mean_trace_cohort(
