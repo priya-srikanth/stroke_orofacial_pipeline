@@ -641,7 +641,13 @@ def _emit_one_family_for_animal(
 
     rows_by_slug: dict[str, list[dict[str, Any]]] = {}
     per_combo_telemetry: list[dict[str, Any]] = []
-    for scope, trial_group in combos:
+    for combo_idx, (scope, trial_group) in enumerate(combos, 1):
+        combo_t0 = time.monotonic()
+        print(
+            f"    [{animal}/{family_entry}] combo {combo_idx}/{len(combos)}: "
+            f"scope={scope} trial_group={trial_group} starting",
+            flush=True,
+        )
         combo_rows, combo_tel = _emit_one_combo_for_animal(
             animal=animal,
             animal_info=animal_info,
@@ -655,6 +661,12 @@ def _emit_one_family_for_animal(
         )
         rows_by_slug.update(combo_rows)
         per_combo_telemetry.append(combo_tel)
+        combo_wall = time.monotonic() - combo_t0
+        print(
+            f"    [{animal}/{family_entry}] combo {combo_idx}/{len(combos)}: "
+            f"done in {combo_wall:.1f}s",
+            flush=True,
+        )
 
     telemetry = {
         "family_entry": family_entry,
