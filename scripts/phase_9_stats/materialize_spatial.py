@@ -91,7 +91,6 @@ from stroke_orofacial.config_loader import load_defaults  # noqa: E402
 from stroke_orofacial.paths import PathResolver  # noqa: E402
 from stroke_orofacial.stats.recovery_epochs import assign_epoch_label  # noqa: E402
 
-import stroke_orofacial.dlc_spatial.render_on_demand as _ro  # noqa: E402
 from stroke_orofacial.dlc_spatial.render_on_demand import (  # noqa: E402
     TASK5_TONE_WINDOW_MS,
     _resolve_family_entry,
@@ -105,92 +104,6 @@ from stroke_orofacial.spout_behavior.visual_gate import (  # noqa: E402
 from scripts.phase_9_stats.materialize_inputs import (  # noqa: E402
     DEFAULT_INVENTORY_PATH,
 )
-
-
-# ===========================================================================
-# Per-worker centered-parquet cache (Commit C v3 calibration finding)
-# ===========================================================================
-#
-# Each worker handles 4 (scope, trial_group) combos for one (animal,
-# family). compute_animal_aggregated_histogram calls
-# ``_load_centered_df_for(manifest, center_mode, resolver)`` internally
-# for every (date, bp) tuple — that's a network-share parquet read.
-# Without caching, the same parquet is re-read 4× per worker (once per
-# combo) because each combo's filter (trial_group / window_ms) is
-# applied AFTER load + the load is opaque to compute_animal_aggregated_
-# histogram's combo dimension.
-#
-# This module monkey-patches ``dlc_spatial.render_on_demand.
-# _load_centered_df_for`` per-process to consult a process-local dict
-# cache keyed by (animal, date_iso, center_mode). First access loads
-# from the share; subsequent accesses (combos 2-4 for the same worker)
-# hit memory. Net I/O reduction per (animal, family): ~75%.
-#
-# Memory bound: each cached DataFrame is ~50-150 MB (frame-level
-# centered coordinates per session). For 50-session late-cohort animals
-# the cache can grow to ~5 GB per worker. Sized for n_jobs ≤ 8 on a
-# workstation with ≥ 32 GB RAM; reduce ``--n-jobs`` or add LRU-bounded
-# eviction if memory is tight.
-#
-# The cache lives at module-level in the WORKER process (each
-# ProcessPoolExecutor subprocess imports this module fresh; the dict is
-# not shared across workers). _worker() installs the patch idempotently
-# at worker startup.
-
-_CENTERED_DF_CACHE: dict[tuple[str, str, str], Any] = {}
-_CACHE_HITS = 0
-_CACHE_MISSES = 0
-_CACHE_INSTALLED = False
-
-
-def _make_cached_centered_loader(original_loader):
-    """Return a wrapper around ``_load_centered_df_for`` that caches
-    by (animal, date, center_mode)."""
-    def _cached(manifest, center_mode, resolver):
-        global _CACHE_HITS, _CACHE_MISSES
-        key = (manifest.animal, manifest.date.isoformat(), center_mode)
-        cached_df = _CENTERED_DF_CACHE.get(key)
-        if cached_df is None:
-            _CACHE_MISSES += 1
-            df = original_loader(manifest, center_mode, resolver)
-            _CENTERED_DF_CACHE[key] = df
-            return df
-        _CACHE_HITS += 1
-        return cached_df
-    _cached._is_cached_wrapper = True  # type: ignore[attr-defined]
-    return _cached
-
-
-def _install_centered_df_cache() -> None:
-    """Monkey-patch dlc_spatial.render_on_demand._load_centered_df_for
-    with the cached wrapper. Idempotent; safe to call multiple times.
-
-    Must be called inside each worker process (the patch is per-process
-    and doesn't propagate across ProcessPoolExecutor's spawned/forked
-    subprocesses)."""
-    global _CACHE_INSTALLED
-    if _CACHE_INSTALLED:
-        return
-    if getattr(_ro._load_centered_df_for, "_is_cached_wrapper", False):
-        _CACHE_INSTALLED = True
-        return
-    original = _ro._load_centered_df_for
-    _ro._load_centered_df_for = _make_cached_centered_loader(original)
-    _CACHE_INSTALLED = True
-
-
-def _reset_centered_df_cache() -> None:
-    """Clear the cache + reset counters. Used by tests; not called
-    during production worker execution."""
-    global _CACHE_HITS, _CACHE_MISSES
-    _CENTERED_DF_CACHE.clear()
-    _CACHE_HITS = 0
-    _CACHE_MISSES = 0
-
-
-def _cache_stats() -> tuple[int, int, int]:
-    """Return (n_entries, n_hits, n_misses) for the worker-local cache."""
-    return (len(_CENTERED_DF_CACHE), _CACHE_HITS, _CACHE_MISSES)
 
 
 # UOT regularization parameters — match Phase 7c.2's existing
@@ -728,13 +641,7 @@ def _emit_one_family_for_animal(
 
     rows_by_slug: dict[str, list[dict[str, Any]]] = {}
     per_combo_telemetry: list[dict[str, Any]] = []
-    for combo_idx, (scope, trial_group) in enumerate(combos, 1):
-        combo_t0 = time.monotonic()
-        print(
-            f"    [{animal}/{family_entry}] combo {combo_idx}/{len(combos)}: "
-            f"scope={scope} trial_group={trial_group} starting",
-            flush=True,
-        )
+    for scope, trial_group in combos:
         combo_rows, combo_tel = _emit_one_combo_for_animal(
             animal=animal,
             animal_info=animal_info,
@@ -748,14 +655,6 @@ def _emit_one_family_for_animal(
         )
         rows_by_slug.update(combo_rows)
         per_combo_telemetry.append(combo_tel)
-        n_entries, n_hits, n_misses = _cache_stats()
-        combo_wall = time.monotonic() - combo_t0
-        print(
-            f"    [{animal}/{family_entry}] combo {combo_idx}/{len(combos)}: "
-            f"done in {combo_wall:.1f}s (cache "
-            f"entries={n_entries} hits={n_hits} misses={n_misses})",
-            flush=True,
-        )
 
     telemetry = {
         "family_entry": family_entry,
@@ -869,13 +768,6 @@ def _worker(work_item: dict[str, Any]) -> list[dict[str, Any]]:
     work_item keys: ``animal``, ``family_entry``, ``combos``,
     ``skip_existing`` (bool).
     """
-    # Install per-worker centered-parquet cache so the 4 combos for
-    # this (animal, family) share parquet reads instead of re-fetching
-    # from the SMB share. Idempotent + process-local; no effect on
-    # parent process or sibling workers.
-    _install_centered_df_cache()
-    _reset_centered_df_cache()
-
     animal: str = work_item["animal"]
     family_entry: str = work_item["family_entry"]
     combos: tuple[tuple[str, str | None], ...] = work_item["combos"]
@@ -943,13 +835,6 @@ def _worker(work_item: dict[str, Any]) -> list[dict[str, Any]]:
 
     wall_total = float(telemetry.get("wall_time_s", 0.0))
     n_slugs = max(1, len(rows_by_slug))
-    n_entries, n_hits, n_misses = _cache_stats()
-    print(
-        f"    [worker] {animal}/{family_entry}: cache entries={n_entries} "
-        f"hits={n_hits} misses={n_misses} "
-        f"(hit rate {100*n_hits/max(1, n_hits+n_misses):.1f}%)",
-        flush=True,
-    )
     success_rows: list[dict[str, Any]] = []
     for slug, rows in rows_by_slug.items():
         out_path = _output_path(resolver, slug, animal)
