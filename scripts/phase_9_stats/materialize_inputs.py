@@ -262,12 +262,17 @@ def _compute_session_scalars_for_animal(
             s: ms_lat[s]["mean"] for s in ("L", "R")
         }
         scalars.late_lickiness[date_label] = {s: float(ms_lick[s]) for s in ("L", "R")}
-        # lick_switch_rate semantics: side=L → switches FROM L (L->R count)
-        # side=R → switches FROM R (R->L count). Documented per Commit A
-        # close report; flip later if Priya prefers destination semantics.
+        # lick_switch_rate semantics: side=L → switches TO L (R->L count);
+        # side=R → switches TO R (L->R count). Destination ("to") semantics
+        # locked per Priya 2026-05-23 Commit A close approval, matches the
+        # legacy render_switchiness_bySession color-by-destination
+        # convention (visual_gate.py:2002-2068 — "L→R" trace gets
+        # SIDE_COLORS["R"] = mouse-R color; "R→L" gets SIDE_COLORS["L"]).
+        # Flipped from initial "from" semantics in Commit A v1 → "to" in
+        # this chore re-emit.
         scalars.lick_switch_rate[date_label] = {
-            "L": float(sw["L->R"]),
-            "R": float(sw["R->L"]),
+            "L": float(sw["R->L"]),
+            "R": float(sw["L->R"]),
         }
 
         # Per-trial lick rate (for lickRate_byTrial). Same inner loop as

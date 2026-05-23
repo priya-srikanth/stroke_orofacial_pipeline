@@ -392,3 +392,42 @@ class TestMeanFirst5Reducer:
     def test_unknown_reducer_raises(self):
         with pytest.raises(ValueError, match="unknown reducer"):
             _reduce_vector_per_trial([1.0, 2.0], "nonsense")
+
+
+# ===========================================================================
+# lick_switch_rate destination semantics (locked Priya 2026-05-23 Commit A close)
+# ===========================================================================
+
+
+class TestLickSwitchRateDestinationSemantics:
+    """Pin the side='L' encodes R→L (TO L) convention.
+
+    Initial Commit A v1 used "from" semantics (side='L' = L→R count); the
+    flip to "to" semantics matches the legacy render_switchiness_bySession
+    color-by-destination convention. Pinning here guards against silent
+    re-flip during future refactors.
+    """
+
+    def test_destination_semantics_locked(self):
+        """Read the materializer source and verify the lick_switch_rate
+        emit uses R→L for side='L' and L→R for side='R'."""
+        import inspect
+
+        from scripts.phase_9_stats.materialize_inputs import (
+            _compute_session_scalars_for_animal,
+        )
+
+        src = inspect.getsource(_compute_session_scalars_for_animal)
+        # Look for the canonical destination-semantics block.
+        # Must contain BOTH "L\": float(sw[\"R->L\"])" AND "R\": float(sw[\"L->R\"])"
+        # (the destination flip). Wrong direction would be the inverse.
+        assert '"L": float(sw["R->L"])' in src, (
+            "lick_switch_rate side='L' should encode R→L (TO L); "
+            "the materializer doesn't match the destination-semantics "
+            "lock."
+        )
+        assert '"R": float(sw["L->R"])' in src, (
+            "lick_switch_rate side='R' should encode L→R (TO R); "
+            "the materializer doesn't match the destination-semantics "
+            "lock."
+        )
