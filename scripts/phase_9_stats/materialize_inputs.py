@@ -184,6 +184,13 @@ class _SessionScalars:
         str, dict[str, list[tuple[int, float]]]
     ] = field(default_factory=dict)
 
+    # Per-session per-side per-trial first-correct-lick latency in seconds
+    # (for latency_hist; Commit B). NaN if the trial had no correct lick.
+    # dict[date][side] → list of (trial_idx, latency_s) pairs.
+    latency_per_trial: dict[
+        str, dict[str, list[tuple[int, float]]]
+    ] = field(default_factory=dict)
+
 
 def _compute_session_scalars_for_animal(
     animal: str,
@@ -280,6 +287,21 @@ def _compute_session_scalars_for_animal(
                     rate = 0.0
                 per_trial_rates[side_tone].append((int(trial_idx), rate))
         scalars.lick_rate_per_trial[date_label] = per_trial_rates
+
+        # Per-trial first-correct-lick latency (for latency_hist; Commit B).
+        # Mirrors compute_latency_bySession's inner-loop math:
+        #   latency_s = (fcl_sample_idx - tone_sample_idx) / sample_rate
+        # NaN when the trial had no correct lick (fcl is None).
+        per_trial_latencies: dict[str, list[tuple[int, float]]] = {"L": [], "R": []}
+        for side_tone in ("L", "R"):
+            tones = data.tones_idx[f"Tone_{side_tone}"]
+            for tone_idx, fcl in fcl_idx[side_tone].items():
+                if fcl is None:
+                    lat = float("nan")
+                else:
+                    lat = float((fcl - int(tones[tone_idx])) / sr)
+                per_trial_latencies[side_tone].append((int(tone_idx), lat))
+        scalars.latency_per_trial[date_label] = per_trial_latencies
     return scalars
 
 
@@ -648,6 +670,49 @@ def _materialize_mismatch_bool_per_trial(
     return rows
 
 
+def _materialize_latency_hist(
+    spec: EndpointSpec,
+    animal: str,
+    animal_info: AnimalInfo,
+    session_scalars: _SessionScalars,
+) -> list[dict[str, Any]]:
+    """One row per (date, trial_idx, side) for latency_hist (vector_per_session).
+
+    Per Addendum #4 the "vector" is the per-session distribution of per-
+    trial first-correct-lick latencies. The materialization just emits
+    one row per trial with that latency; Task 4's KS runner groups by
+    (animal, epoch_label) to build pre vs post latency vectors at test
+    time. Per Addendum #5 (B) no granularity multiplexing happens at
+    materialize-time — Task 4 pools across sessions within bin/epoch.
+    """
+    if spec.slug != "latency_hist":
+        raise ValueError(f"unexpected vector_per_session slug: {spec.slug!r}")
+    rows: list[dict[str, Any]] = []
+    for date_label in session_scalars.dates:
+        per_date = session_scalars.latency_per_trial.get(date_label, {})
+        rel_day = session_scalars.rel_days[date_label]
+        session_date = datetime.date(
+            int(date_label[:4]), int(date_label[4:6]), int(date_label[6:8]),
+        )
+        for side in ("L", "R"):
+            for ti, lat in per_date.get(side, []):
+                is_sentinel = not np.isfinite(lat)
+                rows.append({
+                    "animal": animal,
+                    "date": session_date,
+                    "rel_day": int(rel_day),
+                    "trial_idx": int(ti),
+                    "side": side,
+                    "ipsi_contra": animal_info.mouse_side_to_ipsi_contra(side),
+                    "endpoint_slug": spec.slug,
+                    "value": None if is_sentinel else float(lat),
+                    "is_sentinel": bool(is_sentinel),
+                    "cohort_bin_size": int(animal_info.bin_days),
+                    "epoch_label": assign_epoch_label(int(rel_day), animal_info),
+                })
+    return rows
+
+
 def _materialize_lick_rate_by_trial(
     spec: EndpointSpec,
     animal: str,
@@ -706,6 +771,8 @@ def _dispatch_materializer(
     """
     if spec.value_type == "scalar_per_session":
         return _materialize_scalar_per_session(spec, animal, animal_info, session_scalars)
+    if spec.value_type == "vector_per_session" and spec.slug == "latency_hist":
+        return _materialize_latency_hist(spec, animal, animal_info, session_scalars)
     if spec.slug == "lickRate_byTrial":
         return _materialize_lick_rate_by_trial(spec, animal, animal_info, session_scalars)
     if spec.is_derived:
@@ -791,10 +858,16 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def _commit_a_endpoints(specs: list[EndpointSpec]) -> Iterator[EndpointSpec]:
-    """Yield primary endpoints in Commit A scope (skip vector_per_session,
-    scalar_per_animal_bin, trajectory_per_animal)."""
-    deferred_vts = {"vector_per_session", "scalar_per_animal_bin", "trajectory_per_animal"}
+def _commit_ab_endpoints(specs: list[EndpointSpec]) -> Iterator[EndpointSpec]:
+    """Yield primary endpoints in Commit A + Commit B scope (skip the
+    spatial value_type ``scalar_per_animal_time`` per Addendum #5 (D)
+    rename from ``scalar_per_animal_bin``; skip ``trajectory_per_animal``).
+    """
+    deferred_vts = {
+        "scalar_per_animal_time",   # Commit C (Addendum #5 (D) rename)
+        "scalar_per_animal_bin",    # back-compat alias
+        "trajectory_per_animal",    # Task 6 plot family, not Task 2
+    }
     for spec in specs:
         if not spec.is_primary:
             continue
@@ -803,11 +876,15 @@ def _commit_a_endpoints(specs: list[EndpointSpec]) -> Iterator[EndpointSpec]:
         yield spec
 
 
+# Back-compat alias retained for callers / tests.
+_commit_a_endpoints = _commit_ab_endpoints
+
+
 def main() -> int:
     args = _parse_args()
     specs = load_inventory(args.inventory)
     target_specs = [
-        s for s in _commit_a_endpoints(specs)
+        s for s in _commit_ab_endpoints(specs)
         if args.endpoints is None or s.slug in args.endpoints
     ]
     animals_map = load_animals()
@@ -817,7 +894,7 @@ def main() -> int:
         if args.animals is None or a in args.animals
     ]
 
-    print("Phase 9 Commit A materialize")
+    print("Phase 9 Commit A + B materialize")
     print(f"  endpoints in scope: {len(target_specs)}")
     print(f"  animals in scope:   {len(target_animals)}")
     print(f"  total emit targets: {len(target_specs) * len(target_animals)}")
@@ -883,7 +960,7 @@ def main() -> int:
                 manifest_rows.append({
                     "endpoint_slug": spec.slug,
                     "animal": animal,
-                    "status": "skipped_commit_BC",
+                    "status": "skipped_commit_C",
                     "n_rows": 0,
                     "n_sentinel": 0,
                     "output_path": "",

@@ -20,6 +20,7 @@ from stroke_orofacial.stats.recovery_epochs import assign_epoch_label
 from scripts.phase_9_stats.materialize_inputs import (
     EndpointSpec,
     _SessionScalars,
+    _materialize_latency_hist,
     _materialize_scalar_per_session,
 )
 
@@ -210,3 +211,108 @@ class TestEpochLabelContract:
         assert rows_by_side["L"]["epoch_label"] == "acute"  # rel_day=1
         assert rows_by_side["R"]["is_sentinel"] is False
         assert rows_by_side["R"]["value"] == pytest.approx(0.6)
+
+
+# ===========================================================================
+# Commit B — latency_hist materializer
+# ===========================================================================
+
+
+def _latency_hist_spec() -> EndpointSpec:
+    return EndpointSpec(
+        slug="latency_hist",
+        category="Phase 8a.10 deferred — trial-group",
+        value_type="vector_per_session",
+        is_primary=True,
+        is_confirmatory=True,
+        n_permutations_override=100_000,
+        comparison_axes_in_scope=("pre_post",),
+        notes="Phase 9 Addendum #4 KS test methodology",
+    )
+
+
+class TestLatencyHistMaterializer:
+    """Commit B: per-trial first-correct-lick latency emit.
+
+    The materializer reads per-trial latencies from
+    ``_SessionScalars.latency_per_trial`` (populated alongside the
+    session-aggregate compute) and emits one row per trial. Task 4 KS
+    pools rows by (animal, epoch_label) at runtime per Addendum #5 (B).
+    """
+
+    def test_emits_one_row_per_trial(self):
+        animal_info = _animal_info()
+        dates = ["20250314"]  # rel_day=1
+        rel_days = {dates[0]: 1}
+        scalars = _SessionScalars(
+            dates=dates,
+            rel_days=rel_days,
+            latency_per_trial={
+                dates[0]: {
+                    "L": [(0, 0.45), (1, 0.32), (2, 0.78)],
+                    "R": [(0, 0.51), (1, 0.42)],
+                }
+            },
+        )
+        rows = _materialize_latency_hist(
+            _latency_hist_spec(),
+            animal="PS_TEST",
+            animal_info=animal_info,
+            session_scalars=scalars,
+        )
+        assert len(rows) == 5  # 3 L + 2 R
+        assert {r["side"] for r in rows} == {"L", "R"}
+        assert {r["trial_idx"] for r in rows} == {0, 1, 2}
+        # Every row gets the correct epoch_label = "acute" (rel_day=1).
+        assert all(r["epoch_label"] == "acute" for r in rows)
+        # value = per-trial latency
+        l_rows = [r for r in rows if r["side"] == "L"]
+        l_values_by_trial = {r["trial_idx"]: r["value"] for r in l_rows}
+        assert l_values_by_trial == {0: 0.45, 1: 0.32, 2: 0.78}
+
+    def test_nan_latency_emits_sentinel(self):
+        """A trial with no correct lick (fcl=None) yields NaN latency,
+        which the materializer marks as is_sentinel=True with value=None.
+        """
+        animal_info = _animal_info()
+        dates = ["20250314"]
+        rel_days = {dates[0]: 1}
+        scalars = _SessionScalars(
+            dates=dates,
+            rel_days=rel_days,
+            latency_per_trial={
+                dates[0]: {
+                    "L": [(0, 0.45), (1, float("nan"))],
+                    "R": [],
+                }
+            },
+        )
+        rows = _materialize_latency_hist(
+            _latency_hist_spec(),
+            animal="PS_TEST",
+            animal_info=animal_info,
+            session_scalars=scalars,
+        )
+        by_ti = {r["trial_idx"]: r for r in rows}
+        assert by_ti[0]["is_sentinel"] is False
+        assert by_ti[0]["value"] == pytest.approx(0.45)
+        assert by_ti[1]["is_sentinel"] is True
+        assert by_ti[1]["value"] is None
+        assert by_ti[1]["epoch_label"] == "acute"
+
+    def test_ipsi_contra_consistency_with_animal_laterality(self):
+        animal_info = _animal_info(stroke_laterality="L")
+        dates = ["20250314"]
+        scalars = _SessionScalars(
+            dates=dates,
+            rel_days={dates[0]: 1},
+            latency_per_trial={
+                dates[0]: {"L": [(0, 0.5)], "R": [(0, 0.5)]}
+            },
+        )
+        rows = _materialize_latency_hist(
+            _latency_hist_spec(), animal="PS_TEST",
+            animal_info=animal_info, session_scalars=scalars,
+        )
+        sides_to_ic = {r["side"]: r["ipsi_contra"] for r in rows}
+        assert sides_to_ic == {"L": "ipsi", "R": "contra"}
