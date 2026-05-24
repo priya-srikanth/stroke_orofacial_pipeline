@@ -15,6 +15,16 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-23 — Phase 7c.2 deferred-cleanup chore — stale spatial output trees deleted + notebooks 11/12 deprecated
+
+- **Date:** 2026-05-23.
+- *Context:* Phase 7c.2 kickoff lines 531/597 scheduled `pipeline_outputs/dlc_analysis/spatial_*/` trees for elimination as part of Task 7 cleanup; the Phase 7c.2 close MIGRATION_LOG indicates not all categories made it (`spatial_tone_aligned/`, `spatial_visual_gate/`, `spatial_whole_session/` remained on disk at ~140 MB combined). The Phase 9 spatial materializer consumes `dlc_analysis/centered_*/` parquets, not these trees — they are pure dead state from the per-session-NPZ-cache era that Phase 7c.2 Addendum #3 Q2.B (Interpretation 1) replaced with compute-on-demand histograms.
+- *Decision:* Deleted three on-disk trees totaling ~140 MB: `pipeline_outputs/dlc_analysis/spatial_tone_aligned/` (136 M), `spatial_visual_gate/` (3.4 M), `spatial_whole_session/` (560 K). Moved `notebooks/11_dlc_spatial_whole_session.ipynb` + `notebooks/12_dlc_spatial_tone_aligned.ipynb` to `notebooks/_deprecated/` and prepended a deprecation-header markdown cell at index 0 of each.
+- *Rationale:* Discharges the Phase 7c.2 Task 7 residual. Notebook deprecation (vs deletion) preserves historical reference without leaving a dangling "this notebook would re-emit deleted paths" hazard at the top of the active `notebooks/` directory. The `paths.py` `spatial_tone_aligned_npz` resolver + `tone_aligned.py` `emit_cache` parameter are **PRESERVED as dormant inspection-only utilities** (cheap to keep; potential future use); they remain documented in-place as opt-in only.
+- *Enforced at:* Chore branch `chore/cleanup-stale-spatial-output-trees`; PR (TBD); MIGRATION_LOG chore entry below.
+
+---
+
 ## 2026-05-22 — Phase 7-pre-alignment-templates close — Cohort-wide alignment template emit + 8-site consumer cutover from legacy tree + new wavesurfer_file_overrides schema + integer-rounding firewall finding
 
 Phase 7-pre-alignment-templates closed against `phase/7-pre-alignment-templates`; branched 2026-05-22 off `main` at the Phase 7d merge commit `fb9c283` (post-`v7d-dlc-kinematics-naming-hygiene`). Tag `v7-pre-alignment-templates` on the merge commit. Kickoff [`docs/prompts/phase-7-pre-alignment-templates-kickoff.md`](prompts/phase-7-pre-alignment-templates-kickoff.md) accumulated 3 addenda. Refer to the kickoff for the final lock list at close. Per-axis acceptance verdict at `.scratch_phase_7_pre_aligntmpl/verdict.md`.
