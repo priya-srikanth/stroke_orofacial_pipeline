@@ -384,4 +384,153 @@ two-layer-rendering ask (OPEN-Q 3) before Task 1c full V4 emit across all
 (Task 2c) + spatial (Task 3c) + latency_hist (Task 4c) + ipsi-shift
 (Task 5c).
 
+---
+
+## 2026-05-25 — Task 1a v2 re-emit (branch `phase/9.1-figures`)
+
+Two scope adjustments from Priya's Task 1a v1 review supersede the original
+launch-prompt:
+
+1. **V4 must be side-split**, not cohort-side-pooled. My v1 launch-prompt
+   instructed "plot SIDE-POOLED traces" with ipsi/contra deferred to Q-lock 8;
+   that was wrong per the kickoff scoping doc §6.1 citing Phase 9 Addendum #8
+   (H). Re-emit V4 with side-by-side ipsi + contra panels.
+2. **V5 reviewed alongside V4**, not deferred to Task 2. Task 2 (separate V5
+   emit) is SUBSUMED into Task 1; review locks both figure types at once.
+
+Both locked as **Q-lock 10** in a fresh kickoff doc addendum (lands in this
+commit at `docs/prompts/phase-9.1-phenotype-pooled-figures-kickoff.md`
+§"Pre-commit checks" — immediately after the existing 2026-05-25 ruff-baseline
+addendum).
+
+### Palette adjustment (OPEN-Q 1 partial resolution)
+
+`#ffffb2` → `#fed976` for mild. Priya 2026-05-25 v1 review: pale yellow
+unreadable on white. New value is ColorBrewer YlOrRd 6-step [2] — still
+yellow-dominant but visible. YlOrRd severity gradient preserved.
+Remaining palette decisions defer to Task 6 pub-polish.
+
+### Side-column audit (5 preview endpoints)
+
+ALL 5 endpoints have `side` column present + populated; NONE degrade to
+single-panel cohort-pooled. Per-(phenotype, side) row counts from the raw
+stats input parquets:
+
+| Endpoint | total rows | L rows | R rows |
+|---|---|---|---|
+| `first_lick_accuracy_all` | 512 | 256 | 256 |
+| `num_correct_licks_per_trial` | 512 | 256 | 256 |
+| `tongue_lick1_y_peak` | 19,729 | 10,307 | 9,422 |
+| `tongue_lick1_angle_at_ypeak` | 19,729 | 10,307 | 9,422 |
+| `tongue_lick1_x_at_ypeak` | 19,729 | 10,307 | 9,422 |
+
+(Per-trial endpoints have slight L/R imbalance from per-trial side stratification;
+session endpoints have exact L/R parity from per-session-per-side rows.)
+
+Phenotype × side cells (e.g., `tongue_lick1_y_peak`):
+
+| phenotype_tier | L | R |
+|---|---|---|
+| mild       | 3988 | 3946 |
+| moderate   | 1014 |  926 |
+| moderate-severe | 2035 | 1918 |
+| severe     | 3270 | 2632 |
+
+Every (phenotype × side) cell is well-populated. SEM bands meaningful for
+mild (n=4) + severe (n=2); moderate + moderate-severe render as single-animal
+lines per Critical Caveat 1.
+
+### Implementation summary
+
+- **`palette.py`** — `_YLORRD_4["mild"]` shifted to `#fed976`; comment updated
+  to note the YlOrRd 6-step [2] substitution per Priya 2026-05-25 review.
+- **`_io.py`** — added `endpoint_has_side(df)` (Q-lock 10(c) audit), extended
+  `per_animal_bin_means` + `phenotype_pooled_per_bin` with `by_side: bool`
+  kwarg, added `attach_phenotype_column(df, animals)` + `per_session_within_epoch`
+  for V5 per-session-within-epoch aggregation (Phase 9 Addendum #6 grain).
+  Renamed degenerate `per_animal_bin_means` sort key (`bin_x` removed; was
+  dead from earlier _io edit).
+- **`_layout.py`** — added `phenotype_side_split_panels()` (returns
+  `(fig, ipsi_ax, contra_ax)` with shared y-axis + ipsi/contra panel titles),
+  `cohort_pooled_panel()` (single-panel fallback), `apply_side_split_suptitle`
+  (figure suptitle + footer caveat sentence). Extended `phenotype_panel`
+  with `set_title: bool` (so side-split callers keep panel titles) +
+  `draw_stroke_onset: bool` (V5 boxplots don't need the x=0.5 dashed line).
+- **`phenotype_pooled.py`** — V4 refactored to side-split with cohort-pooled
+  fallback; V5 emit_v5_per_endpoint added with same side-split + fallback
+  pattern. CLI `--figure-types` flag added (default `v4,v5`); main loop
+  iterates both figure types per endpoint.
+
+### V5 boxplot styling defaults locked in code (Task 1b review targets)
+
+- **Layout:** epochs along x at positions 0..3 (pre/acute/sub_acute/chronic);
+  4 phenotype boxes per epoch position, offset by `{mild: −0.30, moderate:
+  −0.10, moderate-severe: +0.10, severe: +0.30}`.
+- **Box width:** `_V5_BOX_WIDTH = 0.18`.
+- **Fill:** patch artist, `set_facecolor(palette_color)`, `alpha=0.55`.
+- **Edge/whisker/cap:** palette color, `linewidth=1.0`.
+- **Median:** dark gray (`color="0.15"`), `linewidth=1.5` (for contrast on
+  light box fills).
+- **Outliers:** `marker="o"`, `markersize=3.0`, hollow (`markerfacecolor=
+  "none"`), edge color = palette color, `alpha=0.5`.
+- **Whiskers:** matplotlib default 1.5×IQR; `showfliers=True`.
+- **xlim:** `(-0.6, n_epochs - 0.4)` to give room for the leftmost +
+  rightmost phenotype offsets.
+
+### Tests
+
+`tests/figures/test_phenotype_pooled.py` extended from 8 → **16 tests**.
+New tests cover the `--figure-types` CLI flag (valid + invalid + default),
+`endpoint_has_side` (all 4 fallback states: populated, only-L, absent, all-NaN,
+empty). **All 16 PASS** in 0.08s.
+
+### Files emitted (5 endpoints × 2 figure types × 2 formats = 20)
+
+Wall-time: ~5s end-to-end for the 5 endpoints × V4 + V5.
+
+```
+pipeline_outputs/phase_9_1_figures/phenotype_pooled/
+├── first_lick_accuracy_all/
+│   ├── v4_per_bin_phenotype_pooled.{svg,png}
+│   └── v5_per_epoch_phenotype_pooled.{svg,png}
+├── num_correct_licks_per_trial/    [v4 + v5]
+├── tongue_lick1_y_peak/            [v4 + v5]
+├── tongue_lick1_angle_at_ypeak/    [v4 + v5]
+└── tongue_lick1_x_at_ypeak/        [v4 + v5]
+```
+
+### Spot-check (visual sanity)
+
+- `tongue_lick1_x_at_ypeak` V4: **memory finding #6 (ipsi-shift) clearly
+  visible.** ipsi panel shows severe (red) deep deficit around rel_day ~10
+  to ~−15, then recovery to ~+30 chronic; contra panel shows moderate-severe
+  (PS51, orange) post-stroke contra values stay around −10 across all
+  post-stroke bins — exactly the "tongue prefers ipsi side after stroke"
+  hypothesis the Q-lock 8 figures will surface explicitly.
+- `tongue_lick1_y_peak` V5: **memory finding #4 (bimodal sign-flip)
+  unambiguous.** Severe acute boxplot at ~185 (vs pre ~115); sub_acute drops
+  to ~80; chronic ~85. Same shape on both ipsi + contra. Mild stable
+  ~115-145 across all epochs.
+- `first_lick_accuracy_all` V4: severe ipsi/contra deficits to 0.0 acute
+  with gradual recovery; mild stable; consistent with memory finding #3.
+- Mild palette (`#fed976`) is now visible — readable against the white
+  background and against the SEM-band fill.
+
+### Tooling
+
+- `ruff check src/stroke_orofacial/figures/ tests/figures/` → **All checks
+  passed!**
+- `pytest tests/figures/test_phenotype_pooled.py` → 16 pass in 0.08s.
+- Kickoff doc Q-lock 10 addendum landed (immediately after the existing
+  2026-05-25 ruff-baseline addendum); palette change bundled per launch-prompt
+  instruction.
+
+### Next
+
+STOP at end of Task 1a v2 per Q-lock 9. Priya's Task 1b scaffold review now
+covers BOTH V4 + V5 together — palette + box styling + side-split layout +
+caption convention + legend placement + retroactive two-layer rendering
+(OPEN-Q 3). Decisions locked at 1b propagate to spatial (Task 3) +
+latency_hist (Task 4) + ipsi-shift (Task 5) before their full emits.
+
 

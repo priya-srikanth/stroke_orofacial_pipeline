@@ -25,13 +25,17 @@ from typing import Literal
 PhenotypeTier = Literal["mild", "moderate", "moderate-severe", "severe"]
 
 
-# ColorBrewer 2.0 YlOrRd[4] — sequential severity ordering.
-# Source: https://colorbrewer2.org/#type=sequential&scheme=YlOrRd&n=4
-# Picked at kickoff per OPEN-Q 1 placeholder; Priya may switch to a
-# categorical scheme at Task 1b scaffold review without touching consumers
-# (they call ``phenotype_palette()`` for the mapping).
+# ColorBrewer 2.0 YlOrRd sequential severity ordering, blended:
+# - mild = YlOrRd[6][2] = "#fed976" — shifted from YlOrRd[4][1] = "#ffffb2"
+#   per Priya 2026-05-25 Task 1a v1 review: pale yellow unreadable on
+#   white. The 6-step second swatch is still yellow-dominant but
+#   visible. OPEN-Q 1 partial resolution.
+# - moderate / moderate-severe / severe = YlOrRd[4]{[2],[3],[4]} unchanged.
+# Source: https://colorbrewer2.org/#type=sequential&scheme=YlOrRd
+# Priya may switch to a categorical scheme at Task 1b without touching
+# consumers (they call ``phenotype_palette()`` for the mapping).
 _YLORRD_4: dict[str, str] = {
-    "mild": "#ffffb2",
+    "mild": "#fed976",
     "moderate": "#fecc5c",
     "moderate-severe": "#fd8d3c",
     "severe": "#e31a1c",
