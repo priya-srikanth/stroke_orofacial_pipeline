@@ -136,6 +136,138 @@ The other 12 confirmatory endpoints show persistent chronic deficits, with tongu
 
 ---
 
+## 2026-05-25 — Phase 7e drafted: DLC tongue pre-clean + v7 detector pipeline (migration deferred)
+
+CC investigation in `.scratch_phase_9_1/` (Priya 2026-05-23 through 2026-05-25, single conversation) iteratively designed and validated a v7 algorithm for tongue lick detection that replaces the legacy slope detector + adds pre-clean of artifact frames. Reference implementation at `.scratch_phase_9_1/inv_p3a_step2j_unified_preclean.py` (980 lines). Validation: 9 canonical hard trials + 80-trial cohort sample at `.scratch_phase_9_1/dlc_tongue_quality_investigation/part3b_cohort_validation_v7/part3b_stats.csv`. Kickoff for production migration at [`docs/prompts/phase-7e-dlc-tongue-preclean-v7-kickoff.md`](prompts/phase-7e-dlc-tongue-preclean-v7-kickoff.md).
+
+### Decision 1 — v7 algorithm locked at scratch state
+
+The v7 pre-clean + detector + gates pipeline is locked at the form embodied in `inv_p3a_step2j_unified_preclean.py` as of 2026-05-25. Five-stage pipeline: (1) pre-clean — cluster classifier (intra-cluster shape Rule A OR non-base low-neighbor Rule B OR isolated-short override) + frame-level outlier wipe + PCHIP-extend wipe + bracketed-interp wipe; (2) detection — find_peaks + bounded-fall + legacy slope, deduped within 50ms with find_peaks winning on overlap; (3) gates F (within-peak raw std), D (left/right low context), E (z-vs-peers + parabolic/spline imputation for first peak); (4) M-gate confidence-based inter-lick interval (80ms, drop lower-confidence on conflict); (5) per-trial-per-lick output records.
+
+### Decision 2 — M-gate confidence trade-off (80ms threshold)
+
+M-gate uses confidence = `#raw_frames_in_±20ms × mean_likelihood` as the tiebreaker for close-pair conflicts. Priya 2026-05-25 chose `M_MIN_INTERVAL_MS=80` and confidence-tiebreaker after a documented trade-off review:
+- Confidence-tiebreaker correctly drops 51L wobble at 52ms (real first lick has more raw DLC).
+- Confidence-tiebreaker incorrectly drops 58L real high-Y peak at 312ms (wobble has more raw frames in this case).
+- Y-tiebreaker has the inverse failure mode (drops 51L real first lick).
+- No single tiebreaker handles all cases; Priya prioritized erroneous-lick removal over rare close-pair real-peak preservation.
+
+### Decision 3 — Pre-clean trace stays at y=0 in production output; imputation only affects per-peak reported y
+
+The cleaned_traces parquet (new Phase 7e output) carries `y_final=0`, `is_baseline_fill=True` at all wiped frames (artifact clusters + frame outliers + PCHIP-extend + bracketed-interp). Spline / parabolic imputation values appear ONLY in the per-trial-per-lick lick_events parquet's `y` column (and the endpoints JSON's `lick1_y_peak`). Downstream metrics that read the trace see clean baseline at wiped frames; per-peak metrics use the imputed value.
+
+### Decision 4 — New per-trial-per-lick parquet output
+
+New canonical output at `pipeline_outputs/dlc_kinematics/lick_events/tongue/<animal>/<date>.parquet`. Schema: one row per kept lick with `animal, date, trial, side, lick_idx, t_ms, y, x, y_original, rise_start_ms, fall_end_ms, imputed, source, confidence, likelihood`. Becomes the canonical source for downstream lick analyses (replacing the need to re-derive lick lists from endpoints JSON arrays).
+
+### Decision 5 — Downstream tongue_velocity gates on KEPT lick windows only
+
+Tongue velocity computation (Phase 7e Task 7) restricts dy/dt windows to KEPT licks only — for each kept peak P, compute velocity over `[rise_start_P, fall_end_P]`. Frames with `is_baseline_fill=True` are masked. Frames associated with rejected (keep=False) peaks are excluded. Velocity metrics like max_tongue_velocity become a per-kept-lick aggregate, not a per-trial-window scan.
+
+### Decision 6 — Lick angle uses imputed y; x-coordinate handling pending Phase 7e Task 0 audit
+
+Lick angle metrics consume the imputed `peak_y` value (already aligned with what's reported). Whether the corresponding `peak_x` needs imputation too is **open** — Phase 7e Task 0 audits x at imputed peak frames across the 80-trial sample and either confirms no action (close to PCHIP-interpolated x is fine) or recommends a fix.
+
+### Decision 7 — Cohort re-emit + downstream stats regeneration deferred out of Phase 7e
+
+Phase 7e migrates the algorithm into production behind feature flag `use_v7_pipeline: true` (default ON for new runs). Re-materializing the existing 248+ session cohort with v7 outputs (cleaned_traces parquets + lick_events parquets + updated endpoints JSON) is **out of scope** for the migration phase and will be a per-invocation Priya-approved follow-up after Phase 7e PR merge per CLAUDE.md Ground Rule 7 (destructive ops). Phase 9 stats inputs re-materialization + per-axis re-runs gated on the cohort re-emit completion.
+
+### Decision 8 — Jaw interpolation revisit deferred to Phase 7f or later
+
+The v7 architecture (cluster classifier + frame outliers + PCHIP-extend + find_peaks + gates) generalizes to jaw kinematics but all parameters (HIGH_THR=130, SHAPE_LOW=80, etc.) are tongue-specific. Priya 2026-05-25 deferred jaw work until after Phase 7e tongue migration lands in production and downstream effects are validated.
+
+### Decision 9 — Intra-cluster Rule A + non-base Rule B over pure-neighborhood classification
+
+*Context:* Priya's stated criterion was "high data points should be eliminated by either being a plateau and/or not having any non-0 low neighbors with Y<130". An initial implementation used a pure neighborhood lookup (any RAW frame in ±100ms with y<130 → keep cluster). This failed on PS47 33L (healthy rapid licking) — when consecutive lick troughs are baseline-fill rather than raw DLC frames, the "raw neighbor" requirement fired false-positive and the rule wiped real lick peak fragments. Meanwhile a pure intra-cluster shape rule (min<80 OR range>50) failed for high-y peak-only fragments like PS54 24L ~50/400/1500/1650/2050ms where DLC only tracked the peak top.
+
+*Decision:* Combine the two rules with OR logic. A high-y raw cluster (max≥130) is KEPT if EITHER (A) intra-cluster shape — cluster_min<SHAPE_LOW_THR (80) OR cluster_range>SHAPE_RANGE_THR (50), OR (B) immediate connectivity to non-base data — `raw_mask[i-1]` or `raw_mask[j]` is True AND at least one non-base frame (`~is_base AND y<HIGH_THR`) exists within ±100ms outside the cluster.
+
+*Rationale:* Rule A catches lick clusters that span baseline-to-peak (real shape visible within the cluster). Rule B catches peak-only fragments where the surrounding rise/fall context is in PCHIP-interpolated frames (which count as "non-base" — they're derived from real DLC neighbors), without requiring those neighbors to be raw. The non-base interpretation is critical: it correctly includes PCHIP frames (real low-data evidence) while excluding baseline-fill (artificial y=0 stuff). 34L/35R plateaus fail BOTH rules (no intra-shape variation; no PCHIP because gaps too long → all is_base) and get wiped. Real lick fragments in 33L pass Rule A; peak-only fragments in 24L pass Rule B.
+
+*Enforced at:* `preclean.py:classify_raw_cluster` + `preclean.py:preclean_trace` Step 1a; constants `PRECLEAN_SHAPE_LOW_THR=80.0`, `PRECLEAN_SHAPE_RANGE_THR=50.0`, `PRECLEAN_NBRHD_RADIUS_MS=100.0` in `configs/defaults.yaml`.
+
+### Decision 10 — HIGH_THR threshold at 130 px
+
+*Context:* The "high y" threshold above which a cluster is classified as a potential artifact (subject to Rule A/B/isolated-short tests) needed to be set. The tongue trace ranges from y~0 (baseline) to y~200-220 (lick peak max).
+
+*Decision:* `HIGH_THR=130 px`. Used by pre-clean cluster classifier AND gate D (`D_Y_THR`).
+
+*Rationale:* Priya 2026-05-25 stated this threshold directly: "all high data points should be eliminated by either being a plateau and/or not having any non-0 low neighbors with Y<130". 130 sits above the typical lick-trough recovery (~y=30-80) and below typical lick-peak amplitude (y=140-200), so it correctly separates "rising into a lick" from "at the lick top". Using the same threshold for both pre-clean classification (which cluster heights qualify as potentially-artifact) and gate D (which requires baseline context within ±150ms of a candidate peak) keeps the criteria coherent.
+
+*Enforced at:* `preclean.py:PRECLEAN_HIGH_THR` and `gates.py:D_Y_THR`; single YAML key `dlc_kinematics.tongue_pertrial.preclean.high_thr_px` is shared by both consumers.
+
+### Decision 11 — Isolated-short cluster override (n ≤ 3 with no other raw cluster within ±20ms → WIPE)
+
+*Context:* PS54 24L ~1200ms had an isolated DLC outlier (single raw frame at y=160) surrounded by long baseline-fill on both sides. Rule B fired (a non-base low neighbor existed at the trailing edge of the previous mini-lick ~50ms away, within ±100ms of the outlier), so the cluster was incorrectly kept. The outlier is clearly artifact — there's no rise/fall structure around it, just a single PCHIP-connected spike.
+
+*Decision:* Add an override that fires AFTER Rule A/B evaluation: if cluster length `n ≤ PRECLEAN_ISOLATED_MAX_N (3)` AND no other raw cluster exists within ±`PRECLEAN_ISOLATED_RADIUS_MS (20)` of the cluster boundary, label as `artifact_isolated_short` regardless of Rule A/B verdict.
+
+*Rationale:* Real lick peak fragments are part of a continuous block of raw DLC (rise→peak→fall all tracked); isolated outliers are alone in their immediate neighborhood. Checking for ANOTHER raw cluster within ±20ms is the cleanest discriminator — it doesn't depend on the neighborhood threshold (which can be fooled by PCHIP "connecting" the outlier to distant context). 20ms (5 frames at 250fps) is tight enough to require IMMEDIATE proximity. n≤3 is the threshold for "short" — real peak fragments are typically 5-15 frames long.
+
+*Enforced at:* `preclean.py:classify_raw_cluster` override clause; constants `PRECLEAN_ISOLATED_MAX_N=3`, `PRECLEAN_ISOLATED_RADIUS_MS=20.0`.
+
+### Decision 12 — Frame-level intra-cluster outlier wipe (jump > 100 px from local median)
+
+*Context:* PS54 24L ~1224ms had a single raw frame at y=161 at the END of a 21-frame real descending lick cluster (frames 268-288: rise to 160 then descent to 18 then suddenly back to 161 at the last frame). The cluster as a whole passes Rule A (range=143, min=18) because it spans baseline to peak. But the final frame is clearly a DLC misfire — it jumps from y=18 back up to y=161 in one frame.
+
+*Decision:* After cluster-level wipe (Step 1c), run a frame-level pass within each remaining kept cluster: for each frame, compute median of ±`PRECLEAN_FRAME_RADIUS_MS (20)` other raw frames within the same cluster; if `|y[k] - local_median| > PRECLEAN_FRAME_JUMP_THR (100)`, wipe that single frame (`y=0`, `is_baseline_fill=True`).
+
+*Rationale:* Cluster-level classification can't catch single-frame outliers WITHIN otherwise-good clusters. Local-median-based outlier detection is robust to the actual peak frames (which are near the peak's local median, not 100px away) but flags single-frame spikes that deviate dramatically. 100px is well above natural lick-frame-to-frame variation (typically ±10-30 px) and well below total cluster range (~150-200 px), so it cleanly catches single-frame DLC jumps.
+
+*Enforced at:* `preclean.py:preclean_trace` Step 1b; constants `PRECLEAN_FRAME_JUMP_THR=100.0`, `PRECLEAN_FRAME_RADIUS_MS=20.0`.
+
+### Decision 13 — PCHIP-extend wipe (±40ms into adjacent is_intp frames)
+
+*Context:* After wiping a raw outlier cluster (or frame outlier), the surrounding PCHIP-interpolated frames retain their original y values — values that were COMPUTED USING the now-wiped outlier as an anchor. Visible in PS54 51L cleaned trace at ~1620ms: the wiped 3-frame outlier dropped to y=0, but the adjacent PCHIP frames (±5-8 frames on each side) still held the rise/fall envelope through the outlier, producing a smooth "interpolation around the eliminated point" appearance even though the outlier itself was gone.
+
+*Decision:* When a cluster or frame is wiped (Step 1c or 1b), also wipe adjacent `is_intp` frames within ±`PRECLEAN_PCHIP_EXTEND_MS (40)` until reaching a non-interp frame (real raw, end of trace, or already-wiped).
+
+*Rationale:* The PCHIP-interpolated frames between the wiped outlier and the next real raw cluster were anchored on the outlier; their y values are mathematically tainted. Wiping them honest-ifies the trace (cleaned trace shows actual baseline at the outlier region, not a residual envelope). 40ms (10 frames at 250fps) covers typical PCHIP-fill ranges — Phase 7a.2 v5p3 caps PCHIP interpolation gaps at ~40ms, so this radius captures most cases. The walk stops at the next non-interp frame to avoid over-wiping into independent raw clusters on the other side.
+
+*Enforced at:* `preclean.py:preclean_trace` Step 1d (extending Step 1c artifact wipes) + Step 1b extension (extending frame-outlier wipes); constant `PRECLEAN_PCHIP_EXTEND_MS=40.0`.
+
+### Decision 14 — Add find_peaks detector alongside legacy slope + bounded-fall (50ms cross-detector dedupe)
+
+*Context:* Two recurring detection failures motivated this: (a) PS54 24L "lick 9" (~1750ms) where the legacy argmax-in-window detector picked a sub-peak with y=130 when the true local max nearby was y=150 — argmax window was wide enough that a higher frame fell outside the search range; (b) PS54 51L missing the real first lick (~830ms) — the rise/fall structure is clearly there, but legacy + bounded merged it with the larger second peak at ~900ms because both fell within the same `peak_pad_ms` argmax window.
+
+*Decision:* Add `scipy.signal.find_peaks` based detector (`detect_local_maxima`) that runs alongside the existing legacy and bounded-fall detectors. Each detector emits its own peak list; cross-detector dedupe within `DEDUPE_RADIUS_MS=50ms` collapses overlapping peaks; processing order is `lmax → bounded → legacy` so find_peaks "wins" on overlap (its peak location is the true local max).
+
+*Rationale:* find_peaks identifies ALL local maxima subject to a `distance` constraint, sidestepping the argmax-in-window failure mode (which can miss real peaks adjacent to higher ones, or merge two real peaks within a window). Running it alongside the existing detectors maintains backwards-compatible recall while improving peak-location accuracy. The 50ms cross-detector dedupe is the right scale because legacy's argmax window is ~52ms (`peak_pad_ms`), so legacy's picks land within 50ms of find_peaks' true local max in the same peak — they dedupe to one record. Real separate peaks are typically >70ms apart so dedupe doesn't merge distinct licks.
+
+*Enforced at:* `detector_v2.py:detect_local_maxima` + `tongue_pertrial.py` cross-detector dedupe loop; constants `LM_MIN_DISTANCE_MS=50.0`, `DEDUPE_RADIUS_MS=50.0`.
+
+### Decision 15 — LM_MIN_DISTANCE_MS=50 (find_peaks minimum spacing)
+
+*Context:* `scipy.signal.find_peaks` accepts a `distance` parameter that suppresses peaks closer than the distance threshold. Trade-off: tighter distance allows real close-pair detections (51L first lick + Ylick1 are ~70ms apart, both real); looser distance suppresses spurious double-peak detections on wavy single peaks (24L lick 9 had wavy maxima ~30-40ms apart that should collapse to one).
+
+*Decision:* `LM_MIN_DISTANCE_MS=50.0`. Verified on the 9-canonical-trial set: 51L's 70ms-apart peaks both survive; 24L's ~30-40ms wavy maxima collapse to one peak.
+
+*Rationale:* Tested at 30ms (lets through 24L wavy double-detections), 60ms (kills 51L first lick), and 50ms (both behaviors correct). 50ms is below the natural inter-lick interval floor (~70ms for very fast licking) so real licks survive, but above typical within-peak wavy-top oscillation period.
+
+*Enforced at:* `detector_v2.py:detect_local_maxima` `find_peaks(distance=...)` call; constant `LM_MIN_DISTANCE_MS=50.0`.
+
+### Decision 16 — parabolic_excise tried BEFORE spline_excise for E-rejected outliers
+
+*Context:* When the E gate flags the first un-promoted peak as an outlier (z>3 vs. peers AND likelihood<0.85), we need to either drop the peak or impute a corrected value. Priya 2026-05-25 wanted "the top of a parabola in the first lick" if possible, falling back to "just connecting the detected dots" otherwise.
+
+*Decision:* Try `parabolic_excise` first — fit a quadratic to anchor frames within ±60ms of the outlier; if the fit is concave-down (coefficient `a < 0`) with vertex inside the window, use the vertex (x, y) as the imputed peak. If parabolic fit fails (not concave-down, too few anchors, vertex outside window), fall back to `spline_excise` — PCHIP through ±160ms anchors, take max within ±20ms local-max window.
+
+*Rationale:* Parabolic produces a clean apex when the surrounding rise/fall is unambiguous (a true peak with anchors flanking it on both sides). PCHIP through wider anchors is the conservative "connect-the-dots" fallback that doesn't try to invent a peak shape — it just smoothly bridges through the gap. The parabolic-first ordering means we PREFER the more-informed estimate when available but never produce a worse result than the conservative fallback. Per-peak imputed y appears only in lick_events parquet's `y` and endpoints JSON's `lick1_y_peak`; trace stays at y=0 per Decision 3.
+
+*Enforced at:* `gates.py:gate_E` + `gates.py:parabolic_excise` + `gates.py:spline_excise`; constants `PARABOLIC_TIGHT_RADIUS_MS=60.0`, `PARABOLIC_MIN_ANCHORS=5`, `SPLINE_ANCHOR_WIN_MS=160.0`, `SPLINE_LOCAL_MAX_WIN_MS=20.0`, `SPLINE_MIN_ANCHORS=4`.
+
+### Decision 17 — E gate runs ONLY for the first un-promoted peak; not all peaks
+
+*Context:* An earlier "E_local" prototype ran outlier z-scoring against nearest-K peers at EVERY kept peak (not just the first). This produced visible over-imputation (PS47 12R, PS48 55L, PS48 80L all showed multiple orange-star imputed peaks per trial — each high-relative-to-neighbors peak got replaced with a spline-interpolated lower value, often DROPPING below the actual raw DLC data at that frame). Priya 2026-05-25 flagged this as "we're over-imputing — for these peaks there are good DLC points with higher Y".
+
+*Decision:* E gate (z-vs-peers + spline imputation) runs ONLY for the first un-promoted peak in the per-trial peak list. After the first kept peak is "promoted" to Ylick1, no subsequent peak goes through E. All other peaks pass through to gate M (or get kept directly).
+
+*Rationale:* The original scientific motivation for E was to ensure the reported `lick1_y_peak` metric isn't dragged up by a single DLC outlier on the very first detected lick (which would bias the per-trial first-lick aggregate downstream). For subsequent licks, there's no analogous problem — they're reported individually (one row per lick in lick_events parquet) and any outlier shows up as one outlier row, not a per-trial bias. Running E on all peaks created false positives (real high-Y peaks flagged as outliers vs. lower-Y neighbors) without scientific benefit. The earlier E_local attempt + revert is documented in the scratch impl comments and the v6→v7 iteration history.
+
+*Enforced at:* `gates.py:gate_E` call site in `tongue_pertrial.py` per-trial peak loop; the `if promoted is None:` guard ensures E only fires once per trial.
+
+---
+
 ## 2026-05-25 — Tongue-jaw-mismatch comparison_grids/ subtree deletion (audit PR #127 follow-up)
 
 - **Date:** 2026-05-25.
