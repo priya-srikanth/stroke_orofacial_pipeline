@@ -6333,3 +6333,73 @@ Sum: 21 + 21 + 23 + 22 + 19 + 53 + 63 + 58 = **280** ✓. New tree is now author
 
 ---
 
+## Chore — Tongue-jaw-mismatch comparison_grids/ subtree deletion (audit PR #127 follow-up)
+
+**Date:** 2026-05-25
+**Tag on merge:** none (chore-PR per F-P-6 convention)
+**Branch:** `chore/cleanup-tongue-jaw-mismatch-comparison-grids`
+
+**Scope.** Discharge the single LEGACY-CANDIDATE identified by audit PR #127 (`chore/audit-stale-output-dirs`): `pipeline_outputs/dlc_kinematics/tongue_jaw_mismatch/comparison_grids/` (20.0 MB). Leftover from a Phase 7a.6 cohort_run iteration when the parity runner emitted into `pipeline_outputs/`; current `tests/scripts/parity_phase7a6_visual_gate.py` writes to `.scratch_7a6/cohort_run/comparison_grids/` by default. No `src/` or active-notebook reference for the `pipeline_outputs/` subtree.
+
+**What landed.** Single commit on `chore/cleanup-tongue-jaw-mismatch-comparison-grids`:
+
+1. `rm -rf` of the on-disk subtree after per-invocation Priya approval ("go ahead", 2026-05-25).
+2. [`docs/DECISIONS.md`](DECISIONS.md) entry (2026-05-25).
+3. This MIGRATION_LOG entry.
+
+**Tree deleted** (size from audit report's pre-`rm` `du`):
+
+- `pipeline_outputs/dlc_kinematics/tongue_jaw_mismatch/comparison_grids/` — 20.0 MB
+
+Pre-`rm` `du -sh` re-verification: 20.0 MB ✓ (matches audit report baseline at PR #127). Post-`rm` re-verification: `PATH_NOT_FOUND`. Sibling subtrees verified intact (`candidate_trials/`, `cross_session/`, `within_session/`).
+
+**Intentional behavior differences vs legacy.** None. The deleted subtree was not consumed by any active source path. `tests/scripts/parity_phase7a6_visual_gate.py` retains its `.scratch_7a6/cohort_run/comparison_grids/` default emit target.
+
+**Total reclaimable to date** (Phase 7c.2 PR #126 + this chore): ~160 MB across 4 dirs.
+
+**Forward-pointers queued.** None.
+
+**Tag:** none (chore-PR per F-P-6 pattern).
+
+---
+
+## Chore — Stale Phase 7c.2 spatial output trees deletion + notebooks 11/12 deprecation
+
+**Date:** 2026-05-23
+**Tag on merge:** none (chore-PR per F-P-6 convention)
+**Branch:** `chore/cleanup-stale-spatial-output-trees`
+
+**Scope.** Discharge the Phase 7c.2 Task 7 residual (kickoff lines 531/597) that did not eliminate three `pipeline_outputs/dlc_analysis/spatial_*/` trees totaling ~140 MB. None of these are Phase 9 inputs — Phase 9 consumes `dlc_analysis/centered_*/` parquets via `render_on_demand.compute_animal_aggregated_histogram`. The deleted trees are pure dead state from the per-session-NPZ-cache era that Phase 7c.2 Addendum #3 Q2.B (Interpretation 1) replaced with compute-on-demand histograms.
+
+**What landed.** Single commit on `chore/cleanup-stale-spatial-output-trees`:
+
+1. `git mv notebooks/11_dlc_spatial_whole_session.ipynb notebooks/_deprecated/` + `git mv notebooks/12_dlc_spatial_tone_aligned.ipynb notebooks/_deprecated/`, each with a deprecation-header markdown cell prepended at index 0.
+2. [`docs/DECISIONS.md`](DECISIONS.md) entry (2026-05-23 chore close record).
+3. This MIGRATION_LOG entry.
+4. `rm -rf` of three on-disk trees after per-invocation Priya approval (per CLAUDE.md Ground Rule 7).
+
+**Trees deleted** (sizes from `.scratch_phase_9/spatial_dir_disposition.txt` immediately pre-deletion):
+
+- `pipeline_outputs/dlc_analysis/spatial_tone_aligned/` — 136 M
+- `pipeline_outputs/dlc_analysis/spatial_visual_gate/`  — 3.4 M
+- `pipeline_outputs/dlc_analysis/spatial_whole_session/` — 560 K
+- **Total:** ~140 MB reclaimed.
+
+**Preserved as dormant.** `paths.py:spatial_tone_aligned_npz` resolver method + `dlc_spatial.tone_aligned.py` `emit_cache=False` parameter remain in-place. Both are documented as inspection-only opt-in utilities; the Phase 7c.2 production driver never sets `emit_cache=True`. Cheap to keep; potential future use.
+
+**Intentional behavior differences vs legacy.** None. The deleted trees were not consumed by any active Phase ≥ 7c.2 code path. Phase 9 spatial materialization is unaffected (verified via parallel cohort emit run on `phase/9-stats` during this chore).
+
+**Exit criteria met.**
+
+- [ ] Notebook moves staged as `R` renames in `git status` (verified pre-commit).
+- [ ] DECISIONS 2026-05-23 entry + this MIGRATION_LOG entry land in the same commit as the notebook moves.
+- [ ] Re-`du -sh` immediately pre-`rm -rf` matches the original disposition file (defensive check; abort if sizes drifted).
+- [ ] Per-invocation Priya approval obtained for each `rm -rf`.
+- [ ] Post-`rm` re-verification: three target dirs report "No such file or directory" or 0 bytes.
+
+**Forward-pointers queued.** None.
+
+**Tag:** none (chore-PR per F-P-6 pattern).
+
+---
+
