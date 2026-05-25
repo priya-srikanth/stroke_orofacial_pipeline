@@ -49,3 +49,43 @@ Distinct from `.scratch_phase_9_1/verdict.md` (Priya's gate-5 verdict output at 
 **Next session:** Phase 9.1 Task 0 — `git checkout -b phase/9.1-figures` off post-Phase-9-close main; environment smoke; seed this notes file with first Task 0.5 audit entry.
 
 ---
+
+## 2026-05-25 (b) follow-up — Q-lock 7 latency_hist phenotype-pooled CDF family
+
+Priya added one additional figure family during plan-mode review iteration. Lands as Q-lock 7 in the kickoff (commit `1d62f13`); precedent scoping-doc reconciliation patch in commit `0967a83`.
+
+**Why this Q-lock exists:**
+`latency_hist` is confirmatory per Phase 9 Addendum #4 KS-bridge but uses `value_type=vector_per_session` — Phase 9's `runners._ks_on_flat_per_trial` bridge handles its flat-per-trial schema, and `pre_post/per_session/latency_hist.csv` carries the KS-statistic + p-values. There is NO `recovery/per_epoch/latency_hist.csv` because LMM was never applied. Q-lock 2 ("ALL Phase 9 LMM-run scalar endpoints") therefore excludes `latency_hist` by definition. Q-lock 7 fixes this by adding a dedicated figure family.
+
+**What Phase 9.1 does for latency_hist:**
+- Pool per-trial latencies across animals within (phenotype × epoch).
+- Compute empirical CDF per (phenotype, epoch) cell.
+- One trace per epoch within each phenotype panel.
+- Annotate panels with existing KS-bridge p-values (no new stats).
+
+**Open question carried forward to Task 0.5 review:**
+
+> **Layout decision (figure count: 1 vs 4):**
+> - (a) `four_separate` — 4 figures, one per phenotype tier; 4 traces per figure (one per epoch).
+> - (b) `single_4panel` — 1 figure, 4 panels (one per phenotype); 4 traces per panel.
+>
+> Kickoff defaults to (b) but the choice is Priya's at Task 0.5 scaffold review. Default rationale: cross-phenotype comparison at a glance is easier; matches the V5 boxplot convention of "one figure per endpoint" not "one figure per phenotype tier."
+
+**Inputs for Task 0.5 audit (latency_hist-specific):**
+- Confirm `pipeline_outputs/stats/inputs/latency_hist/<animal>.parquet` exists for all 8 animals.
+- Confirm `pipeline_outputs/stats/results/<axis>/per_session/latency_hist.csv` location (`pre_post` per kickoff §"Q-lock 7"; verify on disk during audit).
+- Inspect row-counts per (animal, phenotype, epoch) cell to confirm CDF pooling is meaningful (n=1 phenotype tiers will have small per-cell n; the n=1 single-animal CDF is still descriptively useful).
+
+**Total figure count revised:**
+- 70 V4/V5 (35 endpoints × 2 variants) + 48 spatial + 1-4 latency_hist ≈ **~120 figures**.
+- Plus composites at Task 5 (count TBD by Priya).
+
+**Commit chain on branch:**
+1. `3390146` — scoping doc 2026-05-25 amendments landed.
+2. `14bbdcd` — kickoff doc + initial notes_running.
+3. `0967a83` — chore: scoping-doc disk-verified count reconciliation + NEW LOCK Q-lock 7 source.
+4. `1d62f13` — kickoff: Q-lock 7 added; deliverables, tasks, totals updated.
+5. (this commit) — notes_running: Q-lock 7 entry + Task 0.5 layout question.
+
+---
+
