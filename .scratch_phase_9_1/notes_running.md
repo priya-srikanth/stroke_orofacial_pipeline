@@ -533,4 +533,130 @@ caption convention + legend placement + retroactive two-layer rendering
 (OPEN-Q 3). Decisions locked at 1b propagate to spatial (Task 3) +
 latency_hist (Task 4) + ipsi-shift (Task 5) before their full emits.
 
+---
+
+## 2026-05-25 — Task 1a v3 V5 style revision (branch `phase/9.1-figures`)
+
+Priya 2026-05-25 Task 1a v2 review: V5 boxplots replaced with
+delta-from-baseline line plot + faded per-session scatter underlay.
+Conceptually parallel to Q-lock 8 Family 8.1's two-layer rendering, but
+with epoch as categorical x-axis. V4 unchanged from v2; this is V5 only.
+
+Locked as **Q-lock 11** in a fresh kickoff doc addendum (immediately after
+the Q-lock 10 addendum landed in v2).
+
+### V5 pipeline (Q-lock 11)
+
+```
+load_stats_inputs(endpoint)
+    ↓ rows: animal × date × trial × side × value × epoch_label × ...
+attach_phenotype_column(animals)
+    ↓ + phenotype_tier
+per_animal_side_baseline(by_side=has_side)        ← pre-epoch mean per (animal, side)
+per_session_within_epoch(by_side=has_side)        ← rows: (animal, date, side, epoch_label, value)
+apply_baseline_delta(per_session, baseline)       ← + delta_value = value − baseline_mean
+phenotype_pooled_per_epoch_delta(by_side)         ← rows: (phenotype, side, epoch_label, mean, sem, n_sessions)
+```
+
+Foreground: 4 phenotype lines connecting cohort-mean delta across the 4
+epoch positions with SEM error bars (`linewidth=2.0`, `markersize=5.0`,
+`capsize=3.5`, palette color, `zorder=3`).
+
+Background: per-(animal, session) scatter dots at jittered x-positions
+(`±0.15` epoch units; deterministic seed = 42 for reproducibility).
+Marker: `o`, `s=12.0`, `alpha=0.25`, facecolor=palette color,
+edgecolor=none, `zorder=1`.
+
+y=0 reference line drawn by `phenotype_panel` at `zorder=0`. xticks at the
+4 epoch positions; xlim `(-0.5, 3.5)` to give margin for the leftmost +
+rightmost jitter bands.
+
+### Implementation summary
+
+- **`_io.py`** — added `per_animal_side_baseline(df, by_side=...)`,
+  `apply_baseline_delta(sessions, baseline, by_side=...)`,
+  `phenotype_pooled_per_epoch_delta(sessions_with_delta, by_side=...)`.
+  All three composable with the existing `per_session_within_epoch`
+  pipeline. Baseline computed from `epoch_label == "pre"` rows; sessions
+  whose (animal, side) lack a pre-epoch baseline are dropped from delta
+  computation (logged as missing in notes if any endpoint surfaces this;
+  current 5 preview endpoints all have full pre-epoch coverage).
+- **`_layout.py`** — added `jittered_x_positions(n_points, epoch_idx, *,
+  width=0.15, seed=42)` using `np.random.default_rng(seed)`. Fixed seed
+  per-call so the scatter pattern is identical across emits (important
+  for SVG diff readability at PR review). Empty-input path returns `[]`.
+- **`phenotype_pooled.py`** — `emit_v5_per_endpoint` refactored to follow
+  the Q-lock 11 pipeline above; `_draw_v5_boxplots` replaced with
+  `_draw_v5_delta_line_with_scatter`. y-axis label now
+  `"delta <endpoint> (baseline-subtracted)"`. Removed the `_V5_BOX_WIDTH`,
+  `_V5_PHENOTYPE_OFFSETS` constants; replaced with `_V5_JITTER_WIDTH = 0.15`.
+
+### V5 styling defaults locked in code (Task 1b review targets, replaces v2 boxplot styling)
+
+- **Layout:** 4 epoch x-positions (0..3 = pre, acute, sub_acute, chronic);
+  lines walk through each epoch center (no horizontal offset between
+  phenotype lines — overlap mitigated by color + SEM bars).
+- **Line:** `marker="o"`, `markersize=5.0`, `linewidth=2.0`, `capsize=3.5`,
+  palette color, `zorder=3`.
+- **SEM error bars:** vertical bars on each line at each epoch position;
+  same color as line; matplotlib `errorbar` default cap style.
+- **Scatter underlay:** `marker="o"`, `s=12.0`, `alpha=0.25`,
+  `facecolor=palette_color`, `edgecolor="none"`, `zorder=1`. One dot per
+  (animal, session) row.
+- **Jitter:** deterministic, seeded (42), uniform ±0.15 epoch widths
+  around each epoch center. Same emit reproduces the same scatter.
+- **xlim:** `(-0.5, 3.5)` so jitter at epoch 0 + epoch 3 has margin.
+- **y=0 reference:** light gray `"0.85"`, `linewidth=0.8`, `zorder=0` —
+  drawn by `phenotype_panel` (shared with V4).
+- **Y-axis label:** `"delta <endpoint_slug> (baseline-subtracted)"`.
+
+### Tests
+
+`tests/figures/test_phenotype_pooled.py` extended from 16 → **23 tests**.
+New tests:
+
+- `test_per_animal_side_baseline_by_side` — baseline = mean of pre rows per
+  (animal, side); acute/chronic rows excluded.
+- `test_per_animal_side_baseline_no_side` — pools across sides when
+  `by_side=False`.
+- `test_apply_baseline_delta` — delta = value − baseline mean.
+- `test_apply_baseline_delta_drops_unmatched` — sessions whose (animal,
+  side) has no baseline row are dropped (won't render).
+- `test_jittered_x_positions_within_bounds` — all positions inside
+  `±width` of epoch_idx.
+- `test_jittered_x_positions_deterministic` — same seed → same positions.
+- `test_jittered_x_positions_empty` — `n_points=0` returns `[]`.
+
+All 23 PASS in 0.13s. Existing 16 tests unchanged.
+
+### Re-emit (5 endpoints × V5 × {svg,png} = 10 files)
+
+Wall-time ~3s end-to-end. Used `--figure-types v5` to narrow emit to V5
+only (V4 figures from v2 stand untouched).
+
+Per-endpoint spot-check verdicts:
+
+| endpoint | pre line | pre scatter | acute pattern | sub_acute/chronic | scatter density | SEM visible? |
+|---|---|---|---|---|---|---|
+| `first_lick_accuracy_all` | at 0 ✓ | tight ±0.1 ✓ | severe ipsi −0.7 / contra −0.8 | recovery toward 0 (matches mem #3) | balanced | yes |
+| `num_correct_licks_per_trial` | at 0 ✓ | tight ±2 ✓ | severe ipsi −15 / contra −18 | partial recovery | balanced | yes |
+| `tongue_lick1_y_peak` | at 0 ✓ | tight ±5 ✓ | severe acute OVERSHOOT +65/+75 | sub_acute SIGN-FLIP to −40/−15; chronic stays negative | balanced (some clustering at acute high values) | yes |
+| `tongue_lick1_angle_at_ypeak` | at 0 ✓ | balanced | persistent deficit pattern | matches q_holm < 1e-80 expectation | balanced | yes |
+| `tongue_lick1_x_at_ypeak` | at 0 ✓ | balanced | side-asymmetric (ipsi-shift) | persistent contra deficit | balanced | yes |
+
+Memory finding #4 (bimodal sign-flip on `tongue_lick1_y_peak`) is UNAMBIGUOUS in V5 — acute peaks at +65/+75 delta, sub_acute crosses zero to −40/−15. Memory finding #3 (full recovery for `first_lick_accuracy_all`) visible — chronic line returns toward 0.
+
+### Tooling
+
+- `ruff check src/stroke_orofacial/figures/ tests/figures/` → **All checks
+  passed!**
+- `pytest tests/figures/test_phenotype_pooled.py` → 23 pass in 0.13s.
+
+### Next
+
+STOP at end of Task 1a v3 per Q-lock 9. Priya's Task 1b scaffold review
+now covers V4 from v2 + V5 from v3 together. Style decisions at 1b
+propagate to spatial (Task 3) + latency_hist (Task 4) + ipsi-shift
+(Task 5) before their full emits.
+
 

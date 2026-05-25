@@ -820,6 +820,22 @@ conda run -n stroke_orofacial ruff check src/stroke_orofacial/figures/ tests/fig
 >
 > **Updated figure count:** V4 + V5 figure count is unchanged at ~70 (35 endpoints × 2 = V4+V5 per endpoint); the side-split changes panel count per figure (2 side-by-side panels per figure) but not figure count. Total Phase 9.1 ≈ 124-127 figures unchanged.
 
+> **ADDENDUM 2026-05-25 (Task 1a v2 finding — V5 style revision — Q-lock 11):** V5 was originally specified as per_epoch phenotype-pooled boxplots (kickoff §6.2). Per Priya 2026-05-25 Task 1a v2 review: replace with a delta-from-baseline line plot with faded per-session scatter underlay. Conceptually parallel to Q-lock 8 Family 8.1's two-layer rendering but with epoch as a categorical x-axis instead of tone-aligned trial time.
+>
+> **Q-lock 11 — V5 rendering style:**
+> - **Y-axis:** delta from per-animal pre-stroke baseline mean (additive per Phase 9 Addendum #6). Each per-session value at each epoch gets its per-animal pre-mean subtracted at figure-runner time.
+> - **X-axis:** epoch labels at 4 categorical positions: pre / acute / sub_acute / chronic.
+> - **Foreground (bold):** line connectors across epochs within each phenotype. Connect the phenotype-mean delta at each of the 4 epoch positions with a solid colored line; one line per phenotype tier (4 lines per panel). SEM error bars at each epoch position on the line.
+> - **Background (faded):** per-(animal, session) scatter dots at each (phenotype, epoch) position. Same color as the phenotype's connecting line; α≈0.2-0.3; small marker; horizontally jittered within each epoch x-position to reduce overplotting (jitter range ~0.1-0.2 epoch widths). One dot per (animal, session) row in the underlying parquet.
+> - **Reference line:** y=0 drawn in light gray (rgb 0.85) for the no-change baseline.
+> - **Side-split:** 2 side-by-side panels (ipsi + contra) per endpoint per Q-lock 10 (a). Endpoints without populated `side` column degrade to single-panel cohort-pooled per Q-lock 10 (c).
+> - **Pre-epoch role:** the pre-epoch x-position shows the baseline-subtracted noise distribution (mean line near zero + scatter spread around zero). Per Q-lock 8 convention: pre-epoch is the noise-floor visual reference for evaluating whether post-stroke deltas exceed natural session-to-session variability.
+> - **Caption:** y-axis labeled "delta <endpoint> (<unit>, baseline-subtracted)"; y=0 reference noted in figure caption. Ipsi/contra cohort-uniformity caveat retained.
+>
+> **Baseline normalization (LOCKED — applies to V5 only at this Q-lock):** Per-animal pre-stroke mean computed from each animal's pre-epoch (rel_day ≤ 0) sessions, side-matched per Q-lock 10 (a). For ipsi-trial baselines: mean across that animal's pre-stroke mouse-L trials. For contra-trial baselines: mean across pre-stroke mouse-R trials. Per-session delta at each (animal, session, epoch, side) = session mean for that cell − per-animal-side baseline. (This matches Q-lock 8 baseline-trajectory subtraction convention but at the per-session-scalar level instead of per-bin-trajectory level.)
+>
+> **Total figure count unchanged:** ~70 V4 + V5 figures (35 endpoints × 2 figure types). V5 style change does not affect count, just rendering.
+
 If pre-commit hook fixes blocks a commit, investigate root cause; do not bypass.
 
 ---

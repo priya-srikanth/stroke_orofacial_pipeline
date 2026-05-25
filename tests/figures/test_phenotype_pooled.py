@@ -1,8 +1,8 @@
 """Tests for ``figures.phenotype_pooled`` — V4/V5 phenotype-pooled emitters.
 
-Phase 9.1 Task 1a v2 skeleton. CLI smoke + binning helpers + side-presence
-audit + V5 boxplot smoke. Full output-validation tests deferred until Task 1b
-scaffold review locks the rendering style.
+Phase 9.1 Task 1a v3 skeleton. CLI smoke + binning helpers + side-presence
+audit + V5 baseline-subtraction + V5 jitter. Full output-validation tests
+deferred until Task 1b scaffold review locks the rendering style.
 
 Per [docs/testing-conventions.md](../../docs/testing-conventions.md), any test
 that invokes a pipeline writer must use ``PathResolver(output_root=tmp_path)``.
@@ -13,7 +13,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from stroke_orofacial.figures import _io, phenotype_pooled
+from stroke_orofacial.figures import _io, _layout, phenotype_pooled
 
 
 def test_cli_help_parses() -> None:
@@ -130,6 +130,98 @@ def test_endpoint_has_side_empty_df() -> None:
     """Empty DataFrame → degraded."""
     df = pd.DataFrame({"side": [], "value": []})
     assert _io.endpoint_has_side(df) is False
+
+
+def test_per_animal_side_baseline_by_side() -> None:
+    """Q-lock 11: baseline = mean of pre-epoch value per (animal, side)."""
+    df = pd.DataFrame({
+        "animal": ["PS46", "PS46", "PS46", "PS46", "PS47", "PS47"],
+        "side":   ["L",    "L",    "R",    "R",    "L",    "L"   ],
+        "epoch_label": ["pre", "pre", "pre", "pre", "pre", "acute"],
+        "value":  [1.0,    3.0,    10.0,   20.0,   5.0,    99.0  ],
+    })
+    out = _io.per_animal_side_baseline(df, by_side=True)
+    out = out.set_index(["animal", "side"]).sort_index()
+    assert out.loc[("PS46", "L"), "baseline_mean"] == 2.0  # mean(1, 3)
+    assert out.loc[("PS46", "R"), "baseline_mean"] == 15.0  # mean(10, 20)
+    assert out.loc[("PS47", "L"), "baseline_mean"] == 5.0  # acute row excluded
+    assert out.loc[("PS47", "L"), "n_pre_rows"] == 1
+
+
+def test_per_animal_side_baseline_no_side() -> None:
+    """Baseline pools across sides when by_side=False."""
+    df = pd.DataFrame({
+        "animal": ["PS46", "PS46", "PS46"],
+        "side":   ["L",    "R",    "L"   ],
+        "epoch_label": ["pre", "pre", "acute"],
+        "value":  [1.0,    3.0,    99.0  ],
+    })
+    out = _io.per_animal_side_baseline(df, by_side=False)
+    assert "side" not in out.columns
+    assert float(out.loc[out["animal"] == "PS46", "baseline_mean"].iloc[0]) == 2.0
+
+
+def test_apply_baseline_delta() -> None:
+    """delta_value = value − baseline_mean[animal, side]."""
+    sessions = pd.DataFrame({
+        "animal": ["PS46", "PS46", "PS47"],
+        "side":   ["L",    "R",    "L"   ],
+        "epoch_label": ["acute", "acute", "chronic"],
+        "value":  [10.0,   20.0,   7.0   ],
+        "phenotype_tier": ["mild", "mild", "mild"],
+    })
+    baseline = pd.DataFrame({
+        "animal": ["PS46", "PS46", "PS47"],
+        "side":   ["L",    "R",    "L"   ],
+        "baseline_mean": [1.0, 5.0, 3.0],
+        "n_pre_rows":    [4, 4, 4],
+    })
+    joined = _io.apply_baseline_delta(sessions, baseline, by_side=True)
+    joined = joined.set_index(["animal", "side"]).sort_index()
+    assert joined.loc[("PS46", "L"), "delta_value"] == 9.0   # 10 - 1
+    assert joined.loc[("PS46", "R"), "delta_value"] == 15.0  # 20 - 5
+    assert joined.loc[("PS47", "L"), "delta_value"] == 4.0   # 7 - 3
+
+
+def test_apply_baseline_delta_drops_unmatched() -> None:
+    """Sessions whose (animal, side) has no baseline row are dropped."""
+    sessions = pd.DataFrame({
+        "animal": ["PS46", "PS46"],
+        "side":   ["L",    "R"   ],
+        "epoch_label": ["acute", "acute"],
+        "value":  [10.0,   20.0  ],
+        "phenotype_tier": ["mild", "mild"],
+    })
+    # PS46-R missing from baseline
+    baseline = pd.DataFrame({
+        "animal": ["PS46"],
+        "side":   ["L"   ],
+        "baseline_mean": [1.0],
+        "n_pre_rows":    [4],
+    })
+    joined = _io.apply_baseline_delta(sessions, baseline, by_side=True)
+    assert len(joined) == 1
+    assert joined["side"].iloc[0] == "L"
+
+
+def test_jittered_x_positions_within_bounds() -> None:
+    """All jittered positions sit within epoch_idx ± width."""
+    xs = _layout.jittered_x_positions(50, epoch_idx=2, width=0.15)
+    assert len(xs) == 50
+    for x in xs:
+        assert 2.0 - 0.15 <= x <= 2.0 + 0.15
+
+
+def test_jittered_x_positions_deterministic() -> None:
+    """Same seed produces same positions (reproducible scatter)."""
+    xs1 = _layout.jittered_x_positions(20, epoch_idx=0, width=0.1, seed=42)
+    xs2 = _layout.jittered_x_positions(20, epoch_idx=0, width=0.1, seed=42)
+    assert xs1 == xs2
+
+
+def test_jittered_x_positions_empty() -> None:
+    """n_points=0 returns empty list (no NaN, no crash)."""
+    assert _layout.jittered_x_positions(0, epoch_idx=0) == []
 
 
 def test_load_endpoint_list_strips_comments(tmp_path) -> None:

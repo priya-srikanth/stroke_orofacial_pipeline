@@ -320,6 +320,116 @@ def per_session_within_epoch(
 
 
 # ---------------------------------------------------------------------------
+# Baseline normalization (Q-lock 11 — V5 delta-from-baseline)
+# ---------------------------------------------------------------------------
+
+def per_animal_side_baseline(
+    df: pd.DataFrame,
+    *,
+    by_side: bool = False,
+) -> pd.DataFrame:
+    """Compute the per-animal[-per-side] pre-stroke baseline mean.
+
+    Q-lock 11 — V5 delta-from-baseline. Baseline = mean of ``value`` rows
+    with ``epoch_label == "pre"`` (rel_day ≤ 0 per
+    :func:`stroke_orofacial.stats.recovery_epochs.assign_epoch_label`).
+    Computed in trial-grain or session-grain space — whichever the
+    caller's df is at — since the mean is identity-preserving across
+    aggregation passes (trial-mean-of-trial-values == trial-mean-of-
+    session-means-weighted-by-trial-count when sessions have ~uniform
+    n; the figure-runner cares about the per-animal point estimate, not
+    precise weighting, so we don't dispatch on grain).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Stats inputs rows with ``animal``, optional ``side``, ``epoch_label``,
+        ``value``. Sentinel / NaN-value rows already dropped upstream by
+        :func:`load_stats_inputs`.
+    by_side : bool, optional
+        When True, partitions baseline by ``(animal, side)`` per Q-lock 11
+        ("ipsi-trial baselines: mean across that animal's pre-stroke
+        mouse-L trials. For contra-trial baselines: mean across pre-stroke
+        mouse-R trials.").
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: ``animal``, optionally ``side``, ``baseline_mean``,
+        ``n_pre_rows``. Animals lacking pre-epoch rows for a (side) cell
+        get ``baseline_mean = NaN``; callers should drop such rows from
+        downstream delta computation (or surface them in notes_running).
+    """
+    if df.empty or "epoch_label" not in df.columns:
+        cols = ["animal", "baseline_mean", "n_pre_rows"]
+        if by_side:
+            cols.insert(1, "side")
+        return pd.DataFrame(columns=cols)
+    pre = df[df["epoch_label"] == "pre"]
+    keys = ["animal"]
+    if by_side and "side" in pre.columns:
+        keys.append("side")
+    agg = (
+        pre.groupby(keys, as_index=False)["value"]
+        .agg(["mean", "count"])
+        .reset_index()
+    )
+    return agg.rename(columns={"mean": "baseline_mean", "count": "n_pre_rows"})
+
+
+def apply_baseline_delta(
+    sessions: pd.DataFrame,
+    baseline: pd.DataFrame,
+    *,
+    by_side: bool = False,
+) -> pd.DataFrame:
+    """Attach a ``delta_value = value − baseline_mean`` column.
+
+    Q-lock 11 per-session delta. ``sessions`` is the per-session-within-
+    epoch DataFrame from :func:`per_session_within_epoch`; ``baseline`` is
+    the output of :func:`per_animal_side_baseline`. Join on ``animal``
+    (and ``side`` when ``by_side=True``). Sessions whose (animal[, side])
+    has no baseline (pre-epoch absent) are dropped — they can't contribute
+    to a delta plot.
+    """
+    if sessions.empty:
+        return sessions.assign(delta_value=pd.Series(dtype=float))
+    on = ["animal"]
+    if by_side and "side" in sessions.columns and "side" in baseline.columns:
+        on.append("side")
+    joined = sessions.merge(baseline, on=on, how="inner")
+    joined = joined.dropna(subset=["baseline_mean"]).copy()
+    joined["delta_value"] = joined["value"] - joined["baseline_mean"]
+    return joined
+
+
+def phenotype_pooled_per_epoch_delta(
+    sessions_with_delta: pd.DataFrame,
+    *,
+    by_side: bool = False,
+) -> pd.DataFrame:
+    """Pool delta values across (animal, session) within (phenotype, [side,] epoch).
+
+    Q-lock 11 — V5 cohort-level aggregation. Mean ± SEM of ``delta_value``
+    grouped by (``phenotype_tier``, optionally ``side``, ``epoch_label``).
+    Output columns: ``phenotype_tier``, optionally ``side``,
+    ``epoch_label``, ``mean``, ``sem``, ``n_sessions``.
+    """
+    if sessions_with_delta.empty:
+        cols = ["phenotype_tier", "epoch_label", "mean", "sem", "n_sessions"]
+        if by_side:
+            cols.insert(1, "side")
+        return pd.DataFrame(columns=cols)
+    keys = ["phenotype_tier"]
+    if by_side and "side" in sessions_with_delta.columns:
+        keys.append("side")
+    keys.append("epoch_label")
+    grp = sessions_with_delta.groupby(keys, as_index=False)
+    agg = grp["delta_value"].agg(["mean", "sem", "count"]).reset_index()
+    return agg.rename(columns={"count": "n_sessions"})
+
+
+# ---------------------------------------------------------------------------
 # Side-column presence audit (Q-lock 10 fallback)
 # ---------------------------------------------------------------------------
 
