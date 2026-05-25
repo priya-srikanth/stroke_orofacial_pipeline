@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .palette import PHENOTYPE_ORDER, phenotype_palette
+from .palette import PHENOTYPE_ORDER, phenotype_display_name, phenotype_palette
 
 
 def phenotype_panel(
@@ -92,7 +92,7 @@ def phenotype_legend(
             continue
         n = n_by_tier.get(tier, 0)
         ordered_handles.append(by_label[tier])
-        ordered_labels.append(f"{tier} (n={n})")
+        ordered_labels.append(f"{phenotype_display_name(tier)} (n={n})")
     if ordered_handles:
         ax.legend(
             ordered_handles, ordered_labels,

@@ -57,6 +57,17 @@ PHENOTYPE_ORDER: tuple[str, ...] = (
     "mild", "moderate", "moderate-severe", "severe",
 )
 
+# Short display names for figure legends (Priya 2026-05-25 — "moderate-severe"
+# was too long; shorter labels let matplotlib's loc="best" find a clean corner
+# without overlapping data). The YAML enum value stays "moderate-severe" for
+# data consistency; only the rendered legend text changes.
+PHENOTYPE_DISPLAY_NAMES: dict[str, str] = {
+    "mild": "mild",
+    "moderate": "moderate",
+    "moderate-severe": "mod-severe",
+    "severe": "severe",
+}
+
 # Per-phenotype marker shapes (Task 1a v5; Priya 2026-05-25 review).
 # In addition to color (which can be hard to distinguish for some readers /
 # in grayscale prints), each tier gets a distinct silhouette. Applies to V4
@@ -100,6 +111,20 @@ def phenotype_palette(tier: str) -> str:
             f"unknown phenotype tier {tier!r}; expected one of {tuple(_YLORRD_4)}",
         )
     return _YLORRD_4[tier]
+
+
+def phenotype_display_name(tier: str) -> str:
+    """Return the short display name for one phenotype tier (legends + labels).
+
+    See :data:`PHENOTYPE_DISPLAY_NAMES`. Mostly identity except
+    ``"moderate-severe" → "mod-severe"`` per 2026-05-25 legend cleanup.
+    """
+    if tier not in PHENOTYPE_DISPLAY_NAMES:
+        raise KeyError(
+            f"unknown phenotype tier {tier!r}; expected one of "
+            f"{tuple(PHENOTYPE_DISPLAY_NAMES)}",
+        )
+    return PHENOTYPE_DISPLAY_NAMES[tier]
 
 
 def phenotype_marker(tier: str) -> str:
