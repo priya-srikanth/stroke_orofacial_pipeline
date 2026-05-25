@@ -155,21 +155,106 @@ def cohort_pooled_panel(
     return fig, ax
 
 
-def apply_side_split_suptitle(fig: Any, endpoint_slug: str) -> None:
+def apply_side_split_suptitle(
+    fig: Any,
+    endpoint_slug: str,
+    *,
+    baseline_subtracted: bool = False,
+) -> None:
     """Add a figure-level title above the ipsi + contra panels.
 
-    Per-panel titles already say "ipsi (mouse-L)" / "contra (mouse-R)";
-    the suptitle carries the endpoint identifier so both panels stay
-    decluttered. Includes a small caption caveat below the suptitle per
-    Q-lock 4.
+    Wraps :func:`apply_figure_suptitle` and additionally drops the Q-lock 4
+    cohort-uniformity caveat at the bottom of the figure. Per-panel titles
+    ("ipsi (mouse-L)" / "contra (mouse-R)") are set by
+    :func:`phenotype_side_split_panels`.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+    endpoint_slug : str
+        Endpoint identifier — looked up in ``ENDPOINT_DISPLAY_NAMES`` for
+        the long-form display name; falls back to the slug verbatim.
+    baseline_subtracted : bool, optional
+        When True, adds the italic gray "baseline-subtracted" subheading
+        below the bold endpoint title (Q-lock 11). V5 figures pass True;
+        V4 passes False (V4 plots cohort recovery curves of raw values).
     """
     from .palette import figure_caption_caveat
-    fig.suptitle(endpoint_slug, fontsize=11, fontweight="bold", y=1.02)
+    display_name, _ = get_endpoint_labels(endpoint_slug)
+    apply_figure_suptitle(fig, display_name, baseline_subtracted=baseline_subtracted)
     fig.text(
         0.5, -0.04,
         figure_caption_caveat(),
         ha="center", va="top", fontsize=8, color="0.35",
     )
+
+
+# ---------------------------------------------------------------------------
+# Endpoint display-name + short y-label lookup (Task 1a v4)
+# ---------------------------------------------------------------------------
+
+# Stored as (display_name, short_y_label) per endpoint. ``short_y_label`` is
+# the FULL label as it appears on the y-axis (including "delta " prefix where
+# semantically appropriate). Priya 2026-05-25 Task 1a v3 review settled on
+# "delta X (unit)" form for V5 (baseline-subtracted) figures; V4 (raw recovery
+# curves) currently reuses these same labels — flagged for Task 1b clarification
+# on whether V4 should drop the "delta " prefix or whether V4 should also
+# become baseline-subtracted. Editable per endpoint; fallback is
+# (slug, "delta value") for any endpoint not in the dict.
+ENDPOINT_DISPLAY_NAMES: dict[str, tuple[str, str]] = {
+    "first_lick_accuracy_all": (
+        "First-lick accuracy (all trials)",
+        "delta accuracy",
+    ),
+    "num_correct_licks_per_trial": (
+        "Correct licks per trial",
+        "delta licks / trial",
+    ),
+    "tongue_lick1_y_peak": (
+        "Tongue lick-1 Y peak",
+        "delta y peak (px)",
+    ),
+    "tongue_lick1_angle_at_ypeak": (
+        "Tongue lick-1 angle at Y-peak",
+        "delta angle (deg)",
+    ),
+    "tongue_lick1_x_at_ypeak": (
+        "Tongue lick-1 X at Y-peak",
+        "delta x (px)",
+    ),
+}
+
+
+def get_endpoint_labels(endpoint_slug: str) -> tuple[str, str]:
+    """Return ``(display_name, short_y_label)`` for one endpoint.
+
+    Lookups go through :data:`ENDPOINT_DISPLAY_NAMES`. Endpoints not yet
+    present fall back to ``(endpoint_slug, "delta value")`` — Priya iterates
+    on the broader 35-endpoint dict at Task 1b / Task 1c.
+    """
+    return ENDPOINT_DISPLAY_NAMES.get(endpoint_slug, (endpoint_slug, "delta value"))
+
+
+def apply_figure_suptitle(
+    fig: Any,
+    display_name: str,
+    *,
+    baseline_subtracted: bool,
+) -> None:
+    """Apply the two-line suptitle layout locked at Task 1a v4.
+
+    Line 1: ``display_name`` (bold, larger). Line 2 (V5 only when
+    ``baseline_subtracted=True``): "baseline-subtracted" (italic, gray
+    rgb 0.4). Subheading omitted on V4 since V4 plots raw recovery curves,
+    not deltas.
+    """
+    fig.suptitle(display_name, fontsize=12, fontweight="bold", y=0.98)
+    if baseline_subtracted:
+        fig.text(
+            0.5, 0.94, "baseline-subtracted",
+            fontsize=8, fontstyle="italic",
+            color=(0.4, 0.4, 0.4), ha="center",
+        )
 
 
 # ---------------------------------------------------------------------------
