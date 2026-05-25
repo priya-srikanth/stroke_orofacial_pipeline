@@ -85,7 +85,87 @@ Priya added one additional figure family during plan-mode review iteration. Land
 2. `14bbdcd` — kickoff doc + initial notes_running.
 3. `0967a83` — chore: scoping-doc disk-verified count reconciliation + NEW LOCK Q-lock 7 source.
 4. `1d62f13` — kickoff: Q-lock 7 added; deliverables, tasks, totals updated.
-5. (this commit) — notes_running: Q-lock 7 entry + Task 0.5 layout question.
+5. `02ff76c` — notes_running: Q-lock 7 entry + Task 0.5 layout question.
 
 ---
+
+## 2026-05-25 (b) second follow-up — Q-lock 8 tongue ipsi-shift figure families
+
+Scoping doc lock landed in commit `08c6bae`; kickoff body landed in commit `73aae59`. Two new figure families targeting memory finding #6 (direction-sensitive tongue endpoints x/angle show ipsi-contra asymmetry post-stroke).
+
+**Source-of-truth pointer:** scoping doc, "NEW LOCK 2026-05-25 (b) second follow-up (Priya) — tongue ipsi-shift figure families" paragraph (added in commit `08c6bae`). Kickoff body §"Q-lock 8 — Tongue ipsi-shift figure families" (commit `73aae59`).
+
+**Two families:**
+- **Family 8.1** — Delta tongue angle at lick1 + lick2 + per-trial median (3 endpoint sub-families: `tongue_lick1_angle_at_ypeak`, `tongue_lick2_angle_at_ypeak`, `tongue_median_angle_at_peak_velocity`); ipsi/contra side-split; ~3 figures.
+- **Family 8.2** — Delta tone-aligned tongue x trajectory (continuous per-frame DLC, NOT x at Y-peak / NOT x at peak velocity per Priya clarification); ipsi/contra side-split; 1-4 figures.
+
+**Locked design elements (apply to both 8.1 and 8.2):**
+- Baseline normalization = per-bin trajectory subtraction (NOT Addendum #6 per-trial scalar subtraction). Per-animal pre-stroke side-matched baseline trajectory; per-session delta(t) = session_mean(t) − baseline(t); phenotype-pool across sessions within (phenotype, epoch, side).
+- Pre-epoch trace REQUIRED as noise-floor reference (NOT omitted). Thin per-session overlay for pre reveals natural session-to-session variability around zero; primary visual comparison the figures support.
+- Two-layer rendering: thin alpha-transparent per-session delta trajectories background (α≈0.2-0.3) + prominent mean ± SEM delta trace foreground; y=0 reference line explicit.
+
+**Tongue angle endpoints get DUAL treatment** (V4/V5 + Q-lock 8 Family 8.1) — NOT a dedup violation per kickoff §"V4/V5 endpoint inventory" callout. Same parquet data, different axes (rel_day vs tone-aligned trial time) + different framing (recovery curve vs per-bin trajectory).
+
+**Open extension** (OPEN-Q 3, deferred to Task 1b / Task 2b scaffold review): retroactive two-layer rendering for V4 (per-animal trajectories underneath phenotype mean) and/or V5. Priya can request at Task 1b/2b if the Q-lock 8 style reads cleanly during Task 5b.
+
+---
+
+## 2026-05-25 (b) third follow-up — Q-lock 9 preview-then-full emit pattern
+
+Scoping doc lock landed in commit `82a4653`; kickoff body landed in commit `73aae59` (combined with Q-lock 8).
+
+**Source-of-truth pointer:** scoping doc, "New lock 2026-05-25 (b) third follow-up — preview-then-full emit pattern (Q-lock 9)" paragraph. Kickoff body §"Q-lock 9 — Preview-then-full emit pattern" (commit `73aae59`).
+
+**Pattern:** every figure-emit task in §9 Tasks splits into 3 steps:
+- **Step Na (preview):** single phenotype tier (default moderate-severe = PS51 alone, n=1). Wall-time ~10-20% of full-cohort.
+- **Step Nb (scaffold review gate):** Priya iterates on style. Changes propagate to all other families before their Nc. Wall-time = Priya bandwidth.
+- **Step Nc (full):** all phenotype tiers regenerated with locked Step Nb style. No retroactive restyling.
+
+**Preview tier override:** CC may propose mild (n=4) cross-session stress test or severe (n=2) small-n pooled stress test if moderate-severe is a poor fit for the family being previewed. Surface in the Step Na commit message.
+
+**Wall-time impact:** total Phase 9.1 wall-time bumped ~10-14 days → ~13-17 days CC. Total commits: 9-12 → 12-16. Figure count: ~120 → ~124-127.
+
+---
+
+## 2026-05-25 — Task 0.5 trajectory-plotting discovery (Family 8.2 loader)
+
+**Result: FOUND.** Existing canonical code is in the consolidated repo. Phase 9.1 Family 8.2 reuses + wraps these; NO new trajectory infrastructure required.
+
+**Trajectory data source:**
+- `pipeline_outputs/dlc_analysis/interpolated_traces/<bodypart>/<animal>/<YYYYMMDD>.parquet` — Phase 7a.2 interpolated_traces output. For Family 8.2 (tongue x trajectory): `bodypart = "tongue"`, columns include `x_final`, `y_final`, plus `fps`, `n_frames`. Same parquet already consumed by `dlc_kinematics.tongue_pertrial`, `dlc_kinematics.tongue_jaw_mismatch`, `dlc_kinematics.mean_sem_visual`.
+
+**Existing loader / aligner to reuse:**
+- `src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py::build_mean_sem_cohort(bodypart, animal, resolver, ...)` — produces tone-aligned mean ± SEM trajectory per (bodypart, animal). Family 8.2 wraps this with phenotype-pool + ipsi/contra split + delta-from-baseline subtraction.
+
+**Existing rendering primitives to reuse:**
+- `src/stroke_orofacial/dlc_kinematics/tongue_angle_cohort.py::_plot_tone_aligned_session_overlays(...)` — thin per-session overlay rendering (the two-layer background layer).
+- `src/stroke_orofacial/dlc_kinematics/tongue_angle_cohort.py::_plot_tone_aligned_binned_overlays(...)` — foreground mean ± SEM binned rendering.
+
+**Per-lick peak-time primitive (Family 8.1):**
+- `src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py::tongue_lick_t_peaks_bylick` — per-lick peak times for placing (peak_t_ms, peak_angle) points at tone-aligned bins.
+
+**Binning convention:**
+- `configs/defaults.yaml::dlc_kinematics.mean_sem_visual.*` — post-tone window + bin width already defined for tone-aligned tongue trajectory plotting. Phase 9.1 inherits; no new binning OPEN-Q.
+
+**L/R → ipsi/contra translation:**
+- `AnimalInfo.mouse_side_to_ipsi_contra(side, stroke_laterality)` (Phase 8a.10 scaffolding).
+
+**Implication for Phase 9.1 execution:** Family 8.2's `phenotype_pooled_ipsi_shift.py` is a *thin wrapper* — phenotype-pool + ipsi/contra split + baseline subtraction layered atop already-tested trajectory primitives. NOT a new trajectory subsystem.
+
+---
+
+## Commit chain on branch (updated)
+
+1. `3390146` — scoping doc 2026-05-25 amendments landed.
+2. `14bbdcd` — kickoff doc + initial notes_running.
+3. `0967a83` — chore: scoping-doc disk-verified count reconciliation + NEW LOCK Q-lock 7 source.
+4. `1d62f13` — kickoff: Q-lock 7 added.
+5. `02ff76c` — notes_running: Q-lock 7 entry.
+6. `08c6bae` — chore: scoping doc Q-lock 8 (tongue ipsi-shift families).
+7. `82a4653` — chore: scoping doc Q-lock 9 (preview-then-full emit pattern).
+8. `73aae59` — kickoff: Q-locks 8 + 9 + task-table preview-then-full restructure (renames Task 3b/3c → Task 4/5, Task 4 → 6, Task 5 → 7, Task 6 → 8, Task 7 → 9).
+9. (this commit) — notes_running: Q-locks 8 + 9 entries + Task 0.5 trajectory-plotting discovery.
+
+---
+
 
