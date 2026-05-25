@@ -124,6 +124,7 @@ def _build_v4_side_split_figure(
     n_by_tier: dict[str, int],
 ):
     """Render V4 with ipsi + contra side-by-side panels (Q-lock 10(a))."""
+    display_name, short_y_label = _layout.get_endpoint_labels(endpoint_slug)
     fig, ipsi_ax, contra_ax = _layout.phenotype_side_split_panels()
     for side, ax in (("L", ipsi_ax), ("R", contra_ax)):
         side_df = pooled[pooled["side"] == side]
@@ -132,10 +133,15 @@ def _build_v4_side_split_figure(
             ax,
             endpoint_slug=endpoint_slug,
             n_by_tier=n_by_tier,
+            ylabel=short_y_label,
             set_title=False,  # ipsi/contra titles already set
         )
         _layout.phenotype_legend(ax, n_by_tier=n_by_tier)
-    _layout.apply_side_split_suptitle(fig, endpoint_slug)
+    # V4 plots cohort recovery curves; not baseline-subtracted, so no
+    # italic subheading. Suptitle = display_name only.
+    _layout.apply_side_split_suptitle(
+        fig, endpoint_slug, baseline_subtracted=False,
+    )
     fig.tight_layout()
     return fig
 
@@ -146,15 +152,20 @@ def _build_v4_cohort_pooled_figure(
     n_by_tier: dict[str, int],
 ):
     """Render V4 single panel — Q-lock 10(c) fallback when side absent."""
+    display_name, short_y_label = _layout.get_endpoint_labels(endpoint_slug)
     fig, ax = _layout.cohort_pooled_panel()
     _draw_v4_traces(ax, pooled)
     _layout.phenotype_panel(
         ax,
         endpoint_slug=endpoint_slug,
         n_by_tier=n_by_tier,
-        set_title=True,
+        ylabel=short_y_label,
+        set_title=False,  # suptitle owns the title
     )
     _layout.phenotype_legend(ax, n_by_tier=n_by_tier)
+    _layout.apply_figure_suptitle(
+        fig, display_name, baseline_subtracted=False,
+    )
     fig.tight_layout()
     return fig
 
@@ -297,6 +308,7 @@ def _build_v5_side_split_figure(
     endpoint_slug: str,
     n_by_tier: dict[str, int],
 ):
+    display_name, short_y_label = _layout.get_endpoint_labels(endpoint_slug)
     fig, ipsi_ax, contra_ax = _layout.phenotype_side_split_panels()
     for side, ax in (("L", ipsi_ax), ("R", contra_ax)):
         pooled_side = pooled[pooled["side"] == side]
@@ -307,12 +319,14 @@ def _build_v5_side_split_figure(
             endpoint_slug=endpoint_slug,
             n_by_tier=n_by_tier,
             xlabel="Epoch",
-            ylabel=f"delta {endpoint_slug} (baseline-subtracted)",
+            ylabel=short_y_label,
             set_title=False,
             draw_stroke_onset=False,
         )
         _layout.phenotype_legend(ax, n_by_tier=n_by_tier)
-    _layout.apply_side_split_suptitle(fig, endpoint_slug)
+    _layout.apply_side_split_suptitle(
+        fig, endpoint_slug, baseline_subtracted=True,
+    )
     fig.tight_layout()
     return fig
 
@@ -323,6 +337,7 @@ def _build_v5_cohort_pooled_figure(
     endpoint_slug: str,
     n_by_tier: dict[str, int],
 ):
+    display_name, short_y_label = _layout.get_endpoint_labels(endpoint_slug)
     fig, ax = _layout.cohort_pooled_panel()
     _draw_v5_delta_line_with_scatter(ax, pooled, sessions_with_delta)
     _layout.phenotype_panel(
@@ -330,11 +345,14 @@ def _build_v5_cohort_pooled_figure(
         endpoint_slug=endpoint_slug,
         n_by_tier=n_by_tier,
         xlabel="Epoch",
-        ylabel=f"delta {endpoint_slug} (baseline-subtracted)",
-        set_title=True,
+        ylabel=short_y_label,
+        set_title=False,  # suptitle owns the title
         draw_stroke_onset=False,
     )
     _layout.phenotype_legend(ax, n_by_tier=n_by_tier)
+    _layout.apply_figure_suptitle(
+        fig, display_name, baseline_subtracted=True,
+    )
     fig.tight_layout()
     return fig
 

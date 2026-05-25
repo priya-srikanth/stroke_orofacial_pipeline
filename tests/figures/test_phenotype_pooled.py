@@ -224,6 +224,32 @@ def test_jittered_x_positions_empty() -> None:
     assert _layout.jittered_x_positions(0, epoch_idx=0) == []
 
 
+def test_get_endpoint_labels_known_endpoint() -> None:
+    """Known endpoint returns its (display_name, short_y_label) tuple."""
+    display, ylabel = _layout.get_endpoint_labels("tongue_lick1_y_peak")
+    assert display == "Tongue lick-1 Y peak"
+    assert ylabel == "delta y peak (px)"
+
+
+def test_get_endpoint_labels_fallback() -> None:
+    """Unknown endpoint falls back to (slug, 'delta value')."""
+    display, ylabel = _layout.get_endpoint_labels("not_in_dict_xyz")
+    assert display == "not_in_dict_xyz"
+    assert ylabel == "delta value"
+
+
+def test_endpoint_display_names_has_all_5_preview_endpoints() -> None:
+    """ENDPOINT_DISPLAY_NAMES dict covers the 5 Task 1a preview endpoints."""
+    expected = {
+        "first_lick_accuracy_all",
+        "num_correct_licks_per_trial",
+        "tongue_lick1_y_peak",
+        "tongue_lick1_angle_at_ypeak",
+        "tongue_lick1_x_at_ypeak",
+    }
+    assert expected <= set(_layout.ENDPOINT_DISPLAY_NAMES)
+
+
 def test_load_endpoint_list_strips_comments(tmp_path) -> None:
     """Comment lines + blanks are ignored; inline ``# tail`` is stripped."""
     p = tmp_path / "list.txt"

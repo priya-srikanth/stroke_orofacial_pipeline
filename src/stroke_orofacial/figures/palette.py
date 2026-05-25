@@ -25,20 +25,30 @@ from typing import Literal
 PhenotypeTier = Literal["mild", "moderate", "moderate-severe", "severe"]
 
 
-# ColorBrewer 2.0 YlOrRd sequential severity ordering, blended:
-# - mild = YlOrRd[6][2] = "#fed976" — shifted from YlOrRd[4][1] = "#ffffb2"
-#   per Priya 2026-05-25 Task 1a v1 review: pale yellow unreadable on
-#   white. The 6-step second swatch is still yellow-dominant but
-#   visible. OPEN-Q 1 partial resolution.
-# - moderate / moderate-severe / severe = YlOrRd[4]{[2],[3],[4]} unchanged.
-# Source: https://colorbrewer2.org/#type=sequential&scheme=YlOrRd
-# Priya may switch to a categorical scheme at Task 1b without touching
-# consumers (they call ``phenotype_palette()`` for the mapping).
+# ColorBrewer 2.0 YlOrRd 9-step indices [2, 4, 6, 7] — spreads the
+# 4-tier mapping across more of the gradient and deepens the severe end.
+# Per Priya 2026-05-25 Task 1a v3 review: prior 4-step mapping (mild
+# #fed976, moderate #fecc5c) compressed mild + moderate into adjacent
+# light-yellow swatches that read as the same tier; severe #e31a1c also
+# wasn't as deep as the end-of-gradient visual wanted.
+#
+# 9-step full palette:
+#   ['#ffffcc', '#ffeda0', '#fed976', '#feb24c', '#fd8d3c', '#fc4e2a',
+#    '#e31a1c', '#bd0026', '#800026']
+# Indices in use:
+#   [2] #fed976 — mild (unchanged)
+#   [4] #fd8d3c — moderate (+2 steps from #fecc5c → clear orange)
+#   [6] #e31a1c — moderate-severe (+2 steps from #fd8d3c → clear red)
+#   [7] #bd0026 — severe (+1 step from #e31a1c → deeper red)
+#
+# OPEN-Q 1 placeholder; Priya may switch to a categorical scheme at
+# Task 1b without touching consumers (they call ``phenotype_palette()``
+# for the mapping).
 _YLORRD_4: dict[str, str] = {
     "mild": "#fed976",
-    "moderate": "#fecc5c",
-    "moderate-severe": "#fd8d3c",
-    "severe": "#e31a1c",
+    "moderate": "#fd8d3c",
+    "moderate-severe": "#e31a1c",
+    "severe": "#bd0026",
 }
 
 # 4-tier order used by panels + legends. Pinned here so callers don't reinvent

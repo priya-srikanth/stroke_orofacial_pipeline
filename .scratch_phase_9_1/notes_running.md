@@ -659,4 +659,159 @@ now covers V4 from v2 + V5 from v3 together. Style decisions at 1b
 propagate to spatial (Task 3) + latency_hist (Task 4) + ipsi-shift
 (Task 5) before their full emits.
 
+---
+
+## 2026-05-25 — Task 1a v4 palette + label cleanup (branch `phase/9.1-figures`)
+
+Priya 2026-05-25 Task 1a v3 review surfaced two stylistic refinements:
+
+1. **Palette compression:** mild `#fed976` + moderate `#fecc5c` too close
+   (both pale yellow-orange; tier distinction unclear). Severe red
+   `#e31a1c` could be deeper for stronger end-of-gradient visual.
+2. **Y-axis labels too long:** "delta X (baseline-subtracted)" suffix
+   should move to a figure-level subheading; y-axis itself should carry
+   the short form ("delta X (unit)").
+
+No new kickoff Q-lock — both changes are stylistic refinements within
+the existing Q-locks 6 + 11. No DLC detection-rate filter touched (that
+work lives on `investigation/dlc-tongue-quality-severe-acute` and lands
+separately).
+
+### Change A — palette spread (YlOrRd 9-step indices [2, 4, 6, 7])
+
+| tier             | v3 hex     | v4 hex     | YlOrRd 9-step index |
+|------------------|------------|------------|---------------------|
+| mild             | `#fed976`  | `#fed976`  | [2] (unchanged)     |
+| moderate         | `#fecc5c`  | `#fd8d3c`  | [4] (+2)            |
+| moderate-severe  | `#fd8d3c`  | `#e31a1c`  | [6] (+2)            |
+| severe           | `#e31a1c`  | `#bd0026`  | [7] (+1, deeper)    |
+
+Source: ColorBrewer YlOrRd 9-step
+`['#ffffcc', '#ffeda0', '#fed976', '#feb24c', '#fd8d3c', '#fc4e2a', '#e31a1c', '#bd0026', '#800026']`.
+
+Spreads mild/moderate clearly apart (now pale yellow vs clear orange)
+while deepening severe to a richer red.
+
+### Change B — short y-axis labels + two-line suptitle
+
+`ENDPOINT_DISPLAY_NAMES` dict in `_layout.py` maps each endpoint slug to
+`(display_name, short_y_label)`:
+
+| slug                              | display_name                          | short_y_label         |
+|-----------------------------------|---------------------------------------|-----------------------|
+| `first_lick_accuracy_all`         | First-lick accuracy (all trials)      | delta accuracy        |
+| `num_correct_licks_per_trial`     | Correct licks per trial               | delta licks / trial   |
+| `tongue_lick1_y_peak`             | Tongue lick-1 Y peak                  | delta y peak (px)     |
+| `tongue_lick1_angle_at_ypeak`     | Tongue lick-1 angle at Y-peak         | delta angle (deg)     |
+| `tongue_lick1_x_at_ypeak`         | Tongue lick-1 X at Y-peak             | delta x (px)          |
+
+Fallback: `(slug, "delta value")` for endpoints not yet in the dict.
+Priya iterates on the broader 35-endpoint dict at Task 1b / Task 1c.
+
+`apply_figure_suptitle(fig, display_name, baseline_subtracted)` lays out
+the suptitle as:
+- Line 1 (bold, size 12): `display_name`
+- Line 2 (italic, gray rgb 0.4, size 8): `"baseline-subtracted"` —
+  only when ``baseline_subtracted=True``.
+
+Wired in:
+- **V4 calls `apply_figure_suptitle(..., baseline_subtracted=False)`** —
+  V4 plots cohort per-bin recovery curves of raw `value`, not delta.
+  Subheading omitted; y-axis label still uses dict's short_y_label.
+- **V5 calls `apply_figure_suptitle(..., baseline_subtracted=True)`** —
+  V5 IS delta-from-baseline per Q-lock 11; italic subheading shows.
+
+`apply_side_split_suptitle` refactored to delegate to
+`apply_figure_suptitle` (so the side-split + cohort-pooled paths share
+the same suptitle styling); cohort-uniformity caveat sentence at the
+bottom of the figure preserved.
+
+### V4 y-axis "delta X" semantic mismatch — Task 1b clarification needed
+
+The dict labels (e.g., "delta y peak (px)") are V5-flavored —
+they're scientifically accurate for V5 (which IS baseline-subtracted)
+but **not literally accurate for V4** (which plots raw values per
+bin midpoint, with magnitudes in the original units, not centered at 0).
+
+Implementing per launch-prompt: both V4 + V5 use the same dict's
+short_y_label, so V4 y-axis says "delta y peak (px)" even though V4's
+numeric range is e.g. 50-200 px (raw), not ±50 px (delta).
+
+**Task 1b question for Priya:** is this intentional (V4 will become
+delta-from-baseline in Task 1a v5+), or should the dict expose two
+separate y-labels (raw vs delta) so V4 drops the "delta " prefix? Inline
+comment in `_layout.py` ENDPOINT_DISPLAY_NAMES flags this.
+
+### Implementation summary
+
+- **`palette.py`** — `_YLORRD_4` updated to the 9-step [2, 4, 6, 7]
+  indices; multi-line comment block above the dict explains the
+  re-spacing rationale + cites the YlOrRd 9-step palette source.
+- **`_layout.py`** — added `ENDPOINT_DISPLAY_NAMES` dict (5 preview
+  endpoints + fallback), `get_endpoint_labels(slug)`,
+  `apply_figure_suptitle(fig, display_name, *, baseline_subtracted)`.
+  Refactored `apply_side_split_suptitle` to delegate to
+  `apply_figure_suptitle` and add the cohort caveat footer.
+- **`phenotype_pooled.py`** — V4 + V5 side-split + cohort-pooled
+  builders all call `get_endpoint_labels` for ylabel + suptitle's
+  `display_name`. `set_title=False` on per-axes calls (the figure
+  suptitle owns the title now). V4 passes `baseline_subtracted=False`;
+  V5 passes `True`.
+
+### Tests
+
+`tests/figures/test_phenotype_pooled.py` extended from 23 → **26
+tests**. New tests:
+
+- `test_get_endpoint_labels_known_endpoint` — known slug returns
+  ("Tongue lick-1 Y peak", "delta y peak (px)").
+- `test_get_endpoint_labels_fallback` — unknown slug returns
+  (slug, "delta value").
+- `test_endpoint_display_names_has_all_5_preview_endpoints` — dict
+  covers the 5 Task 1a preview endpoints.
+
+All 26 PASS in 0.13s.
+
+### Re-emit (5 endpoints × V4 + V5 × {svg, png} = 20 files)
+
+Wall-time ~5s end-to-end. Used `--figure-types v4,v5` to re-emit both.
+
+### Spot-check verdicts
+
+- **Palette spread:** mild yellow vs moderate orange now clearly
+  distinguishable (no longer "two shades of pale yellow"). Severe
+  `#bd0026` deeper than moderate-severe `#e31a1c` — end-of-gradient
+  visual pop achieved.
+- **Suptitle layout:** two-line format renders cleanly on
+  `first_lick_accuracy_all`, `num_correct_licks_per_trial`,
+  `tongue_lick1_y_peak`, `tongue_lick1_angle_at_ypeak`,
+  `tongue_lick1_x_at_ypeak`. For shorter display names (e.g.,
+  "Tongue lick-1 Y peak") the italic subheading sits very close to
+  the bold line — Priya may want to bump the gap from `y=0.94 → 0.91`
+  at Task 1b if separation looks too tight.
+- **V4 vs V5 distinction:** V4 figures show ONLY the bold suptitle
+  (no italic subheading); V5 figures show both. Correct per
+  `baseline_subtracted` flag.
+- **Y-axis labels:** short form rendered correctly (e.g., "delta
+  accuracy", "delta licks / trial", "delta y peak (px)"). No
+  parenthetical "(baseline-subtracted)" suffix on y-axis.
+
+### Tooling
+
+- `ruff check src/stroke_orofacial/figures/ tests/figures/` → **All checks
+  passed!**
+- `pytest tests/figures/test_phenotype_pooled.py` → 26 pass in 0.13s.
+
+### Next
+
+STOP at end of Task 1a v4 per Q-lock 9. Priya's Task 1b scaffold review
+covers V4 (v2 + v4 palette/label polish) + V5 (v3 delta + v4 palette/label
+polish) together. After Task 1b signoff: Task 1c full-cohort emit
+(35 endpoints × V4 + V5 = 70 figures).
+
+Task 1a v5 (FUTURE) will land after the parallel session's DLC
+detection-rate filter ships — that's separate scope.
+
+
+
 
