@@ -266,6 +266,13 @@ Substantially smaller than the 2026-05-15 draft's 2-3 weeks estimate because mos
 
 **Q-C dedup retained:** V4/V5 is scalar-only (`value` column from kinematic + behavioral parquets); spatial-figure pipeline handles Wasserstein/UOT/JS metrics from spatial parquets. Confirmatory Wasserstein endpoints do NOT double-emit.
 
+**New lock 2026-05-25 (b) third follow-up — preview-then-full emit pattern (Q-lock 9):** Every figure-emit task in Phase 9.1 (V4, V5, phenotype-pooled spatial, latency_hist CDF family, Q-lock 8 ipsi-shift families) follows a two-step pattern:
+- **Step 1 — preview emit (single phenotype tier):** generate the full figure family for a SINGLE phenotype tier only (default: moderate-severe = PS51 alone, since n=1 reveals the single-animal-trace caveat annotation behavior AND has enough sessions per epoch to stress-test the two-layer per-session overlay rendering). Wall-time: ~10-20% of full-cohort emit per family.
+- **Step 2 — Priya scaffold review gate:** Priya iterates on plotting/visualization style (colors, alpha, line thickness, layout, axis labels, panel arrangement, etc.) against the small preview set. Any style changes propagate to ALL figure families before Step 3.
+- **Step 3 — full cohort emit:** after Priya signoff, regenerate all phenotype tiers / endpoints with the locked style. No restyling 124+ figures retroactively.
+- **Preview tier override:** if a particular figure family is poorly stress-tested by the moderate-severe single-animal case (e.g., phenotype palette decisions need cross-phenotype comparison), CC can propose a different preview tier (mild = n=4 provides better cross-session stress test; severe = n=2 provides pooled-but-small-n stress test). Default = moderate-severe unless CC flags a reason to switch at task-start.
+- **Polish gating:** Task 4 (typography + palette + ipsi/contra labels) and Task 5 (composites) only run AFTER all figure-family Step 3s complete. The preview cycle locks the per-family rendering BEFORE cross-family harmonization.
+
 ---
 
 ## 10. Next steps
