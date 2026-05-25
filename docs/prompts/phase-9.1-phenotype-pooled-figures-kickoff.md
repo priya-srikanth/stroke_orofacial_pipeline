@@ -805,8 +805,10 @@ git branch --show-current   # must NOT be main or master
                             # DO NOT bypass with --no-verify per ground rule 8
 conda run -n stroke_orofacial pytest --collect-only
 conda run -n stroke_orofacial pytest tests/test_figures_*.py  # if any figure module touched
-conda run -n stroke_orofacial ruff check .                     # pre-existing clean baseline
+conda run -n stroke_orofacial ruff check src/stroke_orofacial/figures/ tests/figures/  # new code MUST be clean
 ```
+
+> **ADDENDUM 2026-05-25 (Task 0 finding — ruff baseline correction):** Task 0 audit revealed `ruff check .` is NOT clean on `main` — 67 pre-existing errors across the repo (16 E402, 15 F541, 10 F821, 8 E702, 6 F401, 6 F841, 4 invalid-syntax, 1 E731, 1 E741). The original "pre-existing clean baseline" wording above was wrong. Phase 9.1 rule (Priya 2026-05-25): **NEW code in `src/stroke_orofacial/figures/` and `tests/figures/` MUST be ruff-clean**; the 67 pre-existing errors are out of Phase 9.1 scope and handled in a separate future chore PR (or left permanent if the broken files turn out to be intentionally untouched legacy artifacts). Validate via the scoped `ruff check src/stroke_orofacial/figures/ tests/figures/` shown above — NOT `ruff check .` until the existing debt is cleaned up separately.
 
 If pre-commit hook fixes blocks a commit, investigate root cause; do not bypass.
 
