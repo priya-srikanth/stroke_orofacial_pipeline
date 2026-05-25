@@ -16,6 +16,7 @@ from stroke_orofacial.animals import AnimalInfo, EpochBoundaries, load_animals
 from stroke_orofacial.stats.recovery_epochs import (
     assign_epoch_label,
     assign_epoch_labels_to_inputs_df,
+    cohort_phenotype_summary,
 )
 
 
@@ -213,3 +214,65 @@ class TestCohortMembershipPin:
                 f"Animal {aid} has no epoch_boundaries — Task 2 "
                 f"materialization will fail at assign_epoch_label."
             )
+
+
+class TestCohortPhenotypeSummary:
+    """Pin the cohort_phenotype_summary output schema + content."""
+
+    def test_returns_one_row_per_animal_sorted_by_id(self):
+        a1 = _animal(animal_id="PS47", acute_max=1, subacute_max=4, chronic_min=5)
+        a2 = _animal(animal_id="PS46", acute_max=5, subacute_max=8, chronic_min=9)
+        df = cohort_phenotype_summary({"PS47": a1, "PS46": a2})
+        assert list(df["animal"]) == ["PS46", "PS47"]
+
+    def test_schema_has_expected_columns(self):
+        a = _animal()
+        df = cohort_phenotype_summary({"PS99": a})
+        expected = {
+            "animal", "recovery_phenotype", "acute_max_rel_day",
+            "subacute_max_rel_day", "chronic_min_rel_day",
+            "transitional_gap_days",
+        }
+        assert set(df.columns) == expected
+
+    def test_transitional_gap_zero_when_contiguous(self):
+        """chronic_min = subacute_max + 1 → no gap."""
+        a = _animal(acute_max=5, subacute_max=10, chronic_min=11)
+        df = cohort_phenotype_summary({"PS99": a})
+        assert df["transitional_gap_days"].iloc[0] == 0
+
+    def test_transitional_gap_positive_when_skip(self):
+        """chronic_min = subacute_max + 5 → 4-day gap (exclusive on both)."""
+        a = _animal(acute_max=5, subacute_max=10, chronic_min=15)
+        df = cohort_phenotype_summary({"PS99": a})
+        assert df["transitional_gap_days"].iloc[0] == 4
+
+    def test_recovery_phenotype_passed_through_when_none(self):
+        a = _animal()  # default helper doesn't stamp recovery_phenotype
+        df = cohort_phenotype_summary({"PS99": a})
+        assert pd.isna(df["recovery_phenotype"].iloc[0])
+
+    def test_real_cohort_phenotype_counts(self):
+        """Lock the 2026-05-23 cohort phenotype distribution.
+
+        Per Phase 9 Task 1.5 stamping in configs/animals.yaml:
+        mild = 4 (PS47-PS50), moderate = 1 (PS46), moderate-severe = 1
+        (PS51), severe = 2 (PS54, PS55).
+        """
+        df = cohort_phenotype_summary(load_animals())
+        counts = df["recovery_phenotype"].value_counts(dropna=False).to_dict()
+        assert counts == {
+            "mild": 4, "moderate": 1, "moderate-severe": 1, "severe": 2,
+        }
+
+    def test_real_cohort_severe_boundaries_diverge(self):
+        """PS54 and PS55 both 'severe' but boundaries differ — guard
+        against phenotype-pooling consumers that assume identical
+        boundaries within tier."""
+        df = cohort_phenotype_summary(load_animals())
+        severe = df[df["recovery_phenotype"] == "severe"].sort_values("animal")
+        ps54, ps55 = severe.iloc[0], severe.iloc[1]
+        assert ps54["animal"] == "PS54"
+        assert ps55["animal"] == "PS55"
+        # PS55 is +10d shifted vs PS54 per the higher-laser-power yaml stamp.
+        assert ps55["chronic_min_rel_day"] - ps54["chronic_min_rel_day"] == 10

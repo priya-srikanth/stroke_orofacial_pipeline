@@ -150,3 +150,84 @@ def assign_epoch_labels_to_inputs_df(
         for a, rd in zip(out["animal"], out["rel_day"])
     ]
     return out
+
+
+def cohort_phenotype_summary(
+    animals: Mapping[str, AnimalInfo],
+) -> pd.DataFrame:
+    """Summarize cohort recovery-phenotype distribution + epoch boundaries.
+
+    Phase 9 Task 3b primitive. Used by Task 4 mixed-effects modeling and
+    Phase 9.1 phenotype-pooled figure generation to (a) check phenotype
+    representation before fitting per-tier models and (b) surface
+    per-animal boundary divergence within a phenotype tier (e.g. PS54 vs
+    PS55 both "severe" but with chronic_min_rel_day = 39 vs 49).
+
+    Parameters
+    ----------
+    animals : Mapping[str, AnimalInfo]
+        Animal-ID → AnimalInfo for the cohort to summarize.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per animal, sorted by animal ID. Columns:
+
+        - ``animal`` (str): animal ID
+        - ``recovery_phenotype`` (str or None): one of
+          ``{"mild", "moderate", "moderate-severe", "severe", None}``
+          (None when an animal has no phenotype stamped, valid per the
+          ``recovery_phenotype: RecoveryPhenotype | None`` schema)
+        - ``acute_max_rel_day`` (int)
+        - ``subacute_max_rel_day`` (int)
+        - ``chronic_min_rel_day`` (int)
+        - ``transitional_gap_days`` (int): non-negative count of days
+          between ``subacute_max_rel_day`` and ``chronic_min_rel_day``
+          (exclusive on both ends). Zero when boundaries are contiguous
+          (``chronic_min = subacute_max + 1``); positive when the
+          experimenter stamped a deliberate gap (e.g. data-quality
+          downtime between sub-acute and chronic phases).
+
+    Notes
+    -----
+    The returned DataFrame is the canonical input for phenotype-pooling
+    sanity checks. To get just the phenotype counts:
+
+    >>> summary = cohort_phenotype_summary(load_animals())
+    >>> summary["recovery_phenotype"].value_counts(dropna=False)
+
+    For the 2026-05-23 cohort the expected distribution is
+    ``{mild: 4, moderate: 1, moderate-severe: 1, severe: 2}`` — encoded
+    as a regression test in :mod:`tests.test_animals`.
+
+    Sorting is by animal ID (lexical) — stable across runs so downstream
+    consumers can rely on row order without explicit ``sort_values``.
+
+    Examples
+    --------
+    >>> from stroke_orofacial.animals import load_animals
+    >>> from stroke_orofacial.stats.recovery_epochs import cohort_phenotype_summary
+    >>> df = cohort_phenotype_summary(load_animals())
+    >>> df[df["recovery_phenotype"] == "severe"][
+    ...     ["animal", "chronic_min_rel_day"]
+    ... ]
+       animal  chronic_min_rel_day
+    6    PS54                   40
+    7    PS55                   50
+    """
+    rows: list[dict[str, object]] = []
+    for animal_id in sorted(animals):
+        info = animals[animal_id]
+        eb = info.epoch_boundaries
+        # transitional_gap = days STRICTLY between subacute_max and
+        # chronic_min. When chronic_min = subacute_max + 1 → 0 gap.
+        gap = max(0, eb.chronic_min_rel_day - eb.subacute_max_rel_day - 1)
+        rows.append({
+            "animal": animal_id,
+            "recovery_phenotype": info.recovery_phenotype,
+            "acute_max_rel_day": eb.acute_max_rel_day,
+            "subacute_max_rel_day": eb.subacute_max_rel_day,
+            "chronic_min_rel_day": eb.chronic_min_rel_day,
+            "transitional_gap_days": gap,
+        })
+    return pd.DataFrame(rows)
