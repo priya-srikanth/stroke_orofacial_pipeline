@@ -1,0 +1,201 @@
+{
+  "methodology_sanity": [
+    [
+      "pre_post",
+      "first_lick_accuracy_all",
+      "-0.437",
+      "1.87e-02",
+      -1,
+      "stroke reduces accuracy",
+      "OK"
+    ],
+    [
+      "pre_post",
+      "num_correct_licks_per_trial",
+      "-11.3",
+      "1.87e-02",
+      -1,
+      "stroke reduces correct licks/trial",
+      "OK"
+    ],
+    [
+      "pre_post",
+      "tongue_lick1_t_peak_ms",
+      "+72.8",
+      "1.87e-02",
+      1,
+      "stroke increases lick latency",
+      "OK"
+    ],
+    [
+      "recovery",
+      "first_lick_accuracy_all",
+      "+0.0123",
+      "5.69e-39",
+      1,
+      "recovery slope positive (returns to baseline)",
+      "OK"
+    ],
+    [
+      "recovery",
+      "num_incorrect_licks_per_trial",
+      "+0.0455",
+      "6.47e-18",
+      -1,
+      "incorrect licks decline over time",
+      "REVIEW"
+    ],
+    [
+      "recovery",
+      "tongue_lick1_y_peak",
+      "-0.561",
+      "1.61e-88",
+      -1,
+      "y_peak declines toward baseline post-acute spike",
+      "OK"
+    ],
+    [
+      "ipsi_contra",
+      "tongue_lick1_x_at_ypeak",
+      "+35",
+      "1.56e-02",
+      1,
+      "tongue X shifts toward ipsi (stroke-side bias)",
+      "OK"
+    ],
+    [
+      "ipsi_contra",
+      "tongue_lick1_angle_at_ypeak",
+      "+3.59",
+      "1.56e-02",
+      1,
+      "angle shifts toward ipsi",
+      "OK"
+    ]
+  ],
+  "internal_consistency": [
+    [
+      "first_lick_accuracy_all",
+      "7.812e-03",
+      "8.418e-04",
+      "AGREE"
+    ],
+    [
+      "num_correct_licks_per_trial",
+      "7.812e-03",
+      "4.363e-03",
+      "AGREE"
+    ],
+    [
+      "tongue_lick1_y_peak",
+      "6.406e-01",
+      "3.860e-01",
+      "AGREE"
+    ],
+    [
+      "tongue_lick1_t_peak_ms",
+      "7.812e-03",
+      "5.617e-02",
+      "DIVERGE"
+    ],
+    [
+      "spatial_wasserstein_jaw_eye_midpoint_tone_aligned_all",
+      "2.344e-02",
+      "4.879e-02",
+      "AGREE"
+    ]
+  ],
+  "permutation_reproducibility": {
+    "verdict": "PASS",
+    "same_seed_identical": true,
+    "different_seed_differs": true,
+    "p_value_reproducible": true,
+    "obs_p_value": 0.000999000999000999
+  },
+  "sensitivity_loo": [
+    [
+      "latency_hist",
+      "+0.08743",
+      "-0.373",
+      "PS51",
+      "FLAG"
+    ],
+    [
+      "tongue_lick2_x_at_ypeak",
+      "+21.82",
+      "-0.292",
+      "PS51",
+      "OK"
+    ],
+    [
+      "tongue_lick1_angle_at_ypeak",
+      "+1.838",
+      "-0.286",
+      "PS54",
+      "OK"
+    ],
+    [
+      "tongue_lick1_x_at_ypeak",
+      "+17.18",
+      "-0.277",
+      "PS54",
+      "OK"
+    ],
+    [
+      "num_incorrect_licks_per_trial",
+      "-0.1358",
+      "-0.253",
+      "PS55",
+      "OK"
+    ],
+    [
+      "tongue_lick1_y_peak",
+      "+16.48",
+      "-0.244",
+      "PS50",
+      "OK"
+    ],
+    [
+      "tongue_lick2_angle_at_ypeak",
+      "+2.351",
+      "-0.240",
+      "PS51",
+      "OK"
+    ],
+    [
+      "tongue_lick1_t_peak_ms",
+      "+370.3",
+      "+0.230",
+      "PS55",
+      "OK"
+    ],
+    [
+      "tongue_first_peak_t_ms",
+      "+626.2",
+      "+0.206",
+      "PS55",
+      "OK"
+    ],
+    [
+      "num_correct_licks_per_trial",
+      "-9.542",
+      "+0.200",
+      "PS47",
+      "OK"
+    ],
+    [
+      "tongue_median_vxy_peak_per_trial",
+      "+3164",
+      "+0.190",
+      "PS51",
+      "OK"
+    ],
+    [
+      "first_lick_accuracy_all",
+      "-0.4729",
+      "-0.188",
+      "PS54",
+      "OK"
+    ]
+  ]
+}
