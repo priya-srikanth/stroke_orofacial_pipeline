@@ -239,6 +239,50 @@ Wilcoxon p_value reported as 0 (not NaN — visible in summary CSV).
 
 ---
 
+## Task 6 implementation notes (2026-05-25)
+
+1. **`plot_recovery_trajectories_with_fit` adds `cohort_points` kwarg** for
+   per-mouse visual-gate panels. The new function takes `points` (driving
+   scatter + animal-mean line) and an optional `cohort_points` (driving
+   the bootstrap CI ribbon). Per-mouse panels pass cohort-wide points
+   for the ribbon while displaying only the focal animal's points; cohort
+   plots pass `points` alone (and the wrapper uses them for both).
+   Bootstrap requires ≥3 animals to be informative — single-animal
+   `points` would otherwise produce a degenerate ribbon.
+
+2. **CI ribbon clipped to per-animal x-range.** The cohort bootstrap
+   spans all cohort post-stroke days (e.g. PS54/PS55 extend to ~70 days
+   post); per-mouse panels for PS46-50 (mild, ~14 days post) would
+   otherwise show a meaningless extrapolated ribbon. The renderer
+   clips the ribbon to the per-animal `points` x-range while keeping
+   the LMM fit line at the same range.
+
+3. **`_parse_recovery_fit_details` handles `nan` literals.** statsmodels
+   serializes degenerate AIC/SE values as bare `nan` in the str(dict)
+   repr stored in `_all.csv` `details` column. `ast.literal_eval`
+   rejects `nan`/`inf` literals; the parser substitutes them with
+   `None` before parsing. Same fix mirrored in
+   `build_task_5_headline_summary.py`. Documented in both modules.
+
+4. **`render_recovery_trajectories` per-mouse pattern.** Loads cohort-
+   wide parquets from `stats/inputs/<slug>/*.parquet` to build
+   cohort_points for the ribbon (~50-200 points/animal × 8 animals);
+   reads the cohort recovery LMM result CSV at
+   `stats/results/recovery/per_session/<slug>.csv` for slope +
+   intercept. Output path:
+   `spout_behavior_figures/<animal>/recovery_trajectories.<slug>.{svg,png}`
+   — endpoint slug embedded in the filename so multiple endpoints
+   coexist per animal.
+
+5. **Phase 8a.10 forward-pointer discharge.** Phase 8a.10's kickoff
+   listed `recovery_trajectories` as a forward-pointer plot family
+   that needed Phase 9 stats fits before it could land. Task 6
+   discharges that pointer. The `DECISIONS.md` entry happens at Task 9
+   close per Phase 8a.10 `eb0cd5a` post-hoc convention; the discharge
+   is logged here as a forward-pointer-close pre-cursor.
+
+---
+
 ## Task 4 implementation notes (2026-05-24)
 
 1. **`latency_hist` parquet uses flat per-trial schema, not

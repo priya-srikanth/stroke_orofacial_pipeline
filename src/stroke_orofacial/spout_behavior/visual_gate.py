@@ -2066,3 +2066,163 @@ def render_switchiness_bySession(
     )
     plt.close(fig)
     return paths
+
+
+# ---------------------------------------------------------------------------
+# recovery_trajectories — Phase 9 Task 6 (discharges Phase 8a.10 forward-pointer)
+# ---------------------------------------------------------------------------
+
+def _parse_recovery_fit_details(details_str: str) -> dict[str, Any]:
+    """Parse the str(dict) repr stored in the results CSV `details` column.
+
+    Handles ``nan``/``inf`` literals (which ``ast.literal_eval`` rejects)
+    by substituting ``None`` before parsing. Numpy types similarly
+    serialize as bare identifiers (e.g. ``True_``); those are
+    substituted to plain ``True``/``False``.
+    """
+    if not isinstance(details_str, str) or not details_str.strip():
+        return {}
+    try:
+        import ast
+        cleaned = re.sub(
+            r"\b(nan|NaN|NAN|inf|-inf|Inf)\b", "None", details_str,
+        )
+        return ast.literal_eval(cleaned)
+    except Exception:
+        return {}
+
+
+def _load_recovery_fit_result(
+    endpoint_slug: str, resolver: PathResolver,
+) -> Any | None:
+    """Load the cohort-wide recovery LMM FitResult for one endpoint slug.
+
+    Reads ``stats/results/recovery/per_session/<endpoint_slug>.csv``
+    (written by ``scripts/phase_9_stats/run_stats_axis.py``) and
+    reconstructs a minimal object with ``details`` dict for the plot
+    overlay. Returns None if the CSV doesn't exist.
+    """
+    csv_path = (
+        resolver.pipeline_outputs(subdir="stats") / "results" / "recovery"
+        / "per_session" / f"{endpoint_slug}.csv"
+    )
+    if not csv_path.exists():
+        return None
+    import csv as _csv
+    rows = list(_csv.DictReader(open(csv_path, "r", encoding="utf-8")))
+    if not rows:
+        return None
+    r = rows[0]
+    details = _parse_recovery_fit_details(r.get("details", ""))
+    # Shape a minimal FitResult-like proxy for the plot fn (it only
+    # accesses .details on the object).
+    class _Proxy:
+        pass
+    proxy = _Proxy()
+    proxy.details = details
+    proxy.model_name = r.get("model_name", "")
+    proxy.statistic = float(r["statistic"]) if r.get("statistic") else float("nan")
+    proxy.p_value = float(r["p_value"]) if r.get("p_value") else float("nan")
+    return proxy
+
+
+def render_recovery_trajectories(
+    animal: str,
+    endpoint_slug: str,
+    resolver: PathResolver,
+    *,
+    align_to_stroke: bool = True,
+    config: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    overwrite: Literal["force", "skip", "raise"] = "force",
+) -> tuple[Path, Path]:
+    """Render the per-mouse recovery-trajectory panel for one endpoint.
+
+    Phase 9 Task 6 / Addendum #6 Option C — overlays the cohort-wide
+    recovery LMM fit (read from `stats/results/recovery/per_session/
+    <endpoint_slug>.csv`) on this animal's per-session scatter +
+    cohort mean ribbon. Bootstrap CI ribbon is computed on the per-
+    animal bootstrap (all 8 animals); see
+    :func:`stroke_orofacial.spout_behavior.recovery_trajectories.
+    plot_recovery_trajectories_with_fit`.
+
+    Discharges the Phase 8a.10 forward-pointer for the
+    ``recovery_trajectories`` plot family (the family was listed in
+    8a.10's kickoff but landed only at Phase 9 Task 6 because it
+    depends on Phase 9 stats-fit outputs).
+
+    Returns ``(svg_path, png_path)`` per visual-gate convention.
+    """
+    config = config or load_visual_gate_config()
+    animal_info = animal_info or get_animal(animal)
+
+    from stroke_orofacial.spout_behavior.recovery_trajectories import (
+        TrajectoryPoint,
+        plot_recovery_trajectories_with_fit,
+    )
+    import pandas as _pd
+
+    def _parquet_to_points(animal_id: str, parquet_path: Path) -> list[Any]:
+        df = _pd.read_parquet(parquet_path)
+        df_clean = df[~df["is_sentinel"].astype(bool)].dropna(subset=["value"])
+        if df_clean.empty:
+            return []
+        per_session = (
+            df_clean.groupby(["date", "rel_day"], as_index=False)["value"].mean()
+        )
+        return [
+            TrajectoryPoint(
+                animal=animal_id,
+                date=(row["date"] if isinstance(row["date"], datetime.date)
+                      else datetime.date.fromisoformat(str(row["date"]))),
+                day_relative_to_stroke=int(row["rel_day"]),
+                endpoint_name=endpoint_slug,
+                metric_path=endpoint_slug,
+                value=float(row["value"]),
+                group="all",
+            )
+            for _, row in per_session.iterrows()
+        ]
+
+    # Per-mouse scatter: this animal only.
+    parquet_path = (
+        resolver.pipeline_outputs(subdir="stats") / "inputs"
+        / endpoint_slug / f"{animal}.parquet"
+    )
+    if not parquet_path.exists():
+        raise FileNotFoundError(
+            f"recovery_trajectories: no stats input parquet at {parquet_path}. "
+            f"Run scripts/phase_9_stats/materialize_inputs.py "
+            f"--endpoints {endpoint_slug} --animals {animal} first.",
+        )
+    points = _parquet_to_points(animal, parquet_path)
+    if not points:
+        raise ValueError(
+            f"recovery_trajectories: no non-sentinel rows for "
+            f"{animal}/{endpoint_slug} in {parquet_path.name}.",
+        )
+
+    # Cohort points (all 8 animals' parquets in the same endpoint dir)
+    # for the bootstrap CI ribbon. Per-mouse scatter uses only this
+    # animal; ribbon is cohort-wide.
+    cohort_dir = parquet_path.parent
+    cohort_points = []
+    for sibling in cohort_dir.glob("*.parquet"):
+        cohort_points.extend(_parquet_to_points(sibling.stem, sibling))
+
+    fit_proxy = _load_recovery_fit_result(endpoint_slug, resolver)
+
+    fig = plot_recovery_trajectories_with_fit(
+        points, fit_proxy,
+        title=f"{animal} — {endpoint_slug}",
+        ylabel=endpoint_slug,
+        stroke_boundary_x=config.get("stroke_vline_x", 0.5),
+        cohort_points=cohort_points,
+    )
+    paths = save_visual_gate_figure(
+        fig, animal, f"recovery_trajectories.{endpoint_slug}",
+        "" if align_to_stroke else "_unaligned",
+        resolver, overwrite=overwrite,
+    )
+    plt.close(fig)
+    return paths

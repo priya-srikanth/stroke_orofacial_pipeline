@@ -119,13 +119,21 @@ def _load_axis_gran_all_csv(
 
 
 def _parse_details_dict(details_str: str) -> dict:
-    """Parse the str(dict) repr stored in the _all.csv `details` column."""
+    """Parse the str(dict) repr stored in the _all.csv `details` column.
+
+    Substitutes nan/inf literals (which ``ast.literal_eval`` rejects)
+    with None before parsing — matches the parser in
+    ``visual_gate._parse_recovery_fit_details``.
+    """
     if not isinstance(details_str, str) or not details_str.strip():
         return {}
     try:
-        # Safe-ish: details is dumped via str(dict), so ast.literal_eval works.
         import ast
-        return ast.literal_eval(details_str)
+        import re
+        cleaned = re.sub(
+            r"\b(nan|NaN|NAN|inf|-inf|Inf)\b", "None", details_str,
+        )
+        return ast.literal_eval(cleaned)
     except Exception:
         return {}
 

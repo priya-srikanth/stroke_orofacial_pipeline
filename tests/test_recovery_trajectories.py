@@ -203,3 +203,144 @@ class TestPlotting:
             import matplotlib.pyplot as plt
 
             plt.close(fig)
+
+
+class TestPlotRecoveryTrajectoriesWithFit:
+    """Phase 9 Task 6 — overlay FitResult + bootstrap CI on recovery trajectories."""
+
+    def _make_points(self, animals, pre_n=4, post_n=10, post_shift=0.3, rng_seed=0):
+        import datetime as _dt
+        import numpy as np
+        from stroke_orofacial.spout_behavior.recovery_trajectories import TrajectoryPoint
+        rng = np.random.default_rng(rng_seed)
+        points = []
+        for a in animals:
+            offset = float(rng.normal(0, 0.1))
+            for i in range(pre_n):
+                rd = -pre_n + i
+                points.append(TrajectoryPoint(
+                    animal=a, date=_dt.date(2025, 3, 1) + _dt.timedelta(days=pre_n + i),
+                    day_relative_to_stroke=rd,
+                    endpoint_name="ep", metric_path="ep",
+                    value=offset + 0.5 + float(rng.normal(0, 0.05)),
+                    group="all",
+                ))
+            for j in range(1, post_n + 1):
+                points.append(TrajectoryPoint(
+                    animal=a, date=_dt.date(2025, 3, 10) + _dt.timedelta(days=j),
+                    day_relative_to_stroke=j,
+                    endpoint_name="ep", metric_path="ep",
+                    value=offset + 0.5 + post_shift * j + float(rng.normal(0, 0.05)),
+                    group="all",
+                ))
+        return points
+
+    def _fit_proxy(self, slope: float, intercept: float):
+        class _P:
+            pass
+        p = _P()
+        p.details = {"status": "ok", "slope": slope, "intercept": intercept, "slope_se": 0.01}
+        p.model_name = "recovery_mixedlm"
+        p.statistic = slope
+        p.p_value = 1e-6
+        return p
+
+    def test_overlays_fit_line_with_slope_label(self, tmp_path):
+        if not _can_import_matplotlib():
+            pytest.skip("Matplotlib import unavailable in this environment")
+        import matplotlib
+        matplotlib.use("Agg", force=True)
+        from stroke_orofacial.spout_behavior.recovery_trajectories import (
+            plot_recovery_trajectories_with_fit, save_trajectory_figure,
+        )
+        points = self._make_points(["PS46", "PS47", "PS48", "PS49"])
+        fit = self._fit_proxy(slope=0.3, intercept=0.5)
+        fig = plot_recovery_trajectories_with_fit(
+            points, fit, title="Test", ylabel="ep", n_boot=100,
+        )
+        try:
+            out = save_trajectory_figure(fig, tmp_path / "withfit.png")
+            assert out.exists()
+            # Slope label should appear in one of the legend handles.
+            ax = fig.axes[0]
+            labels = [t.get_text() for t in ax.get_legend().get_texts()]
+            assert any("slope" in label.lower() for label in labels)
+        finally:
+            import matplotlib.pyplot as plt
+            plt.close(fig)
+
+    def test_renders_without_fit_when_details_missing(self, tmp_path):
+        """FitResult with no slope/intercept → plot still renders (just
+        scatter + mean/SEM) + tagged with [fit status: ...]."""
+        if not _can_import_matplotlib():
+            pytest.skip("Matplotlib import unavailable in this environment")
+        import matplotlib
+        matplotlib.use("Agg", force=True)
+        from stroke_orofacial.spout_behavior.recovery_trajectories import (
+            plot_recovery_trajectories_with_fit,
+        )
+        points = self._make_points(["PS46", "PS47", "PS48"])
+
+        class _P:
+            pass
+
+        p = _P()
+        p.details = {"status": "insufficient_data"}
+        p.model_name = "recovery_mixedlm"
+        p.statistic = float("nan")
+        p.p_value = float("nan")
+        fig = plot_recovery_trajectories_with_fit(points, p, n_boot=50)
+        try:
+            ax = fig.axes[0]
+            # Status annotation should be present.
+            texts = [t.get_text() for t in ax.texts]
+            assert any("fit status" in t for t in texts)
+        finally:
+            import matplotlib.pyplot as plt
+            plt.close(fig)
+
+    def test_cohort_points_kwarg_used_for_bootstrap(self):
+        """When `points` is from one animal but `cohort_points` is from
+        many, the bootstrap CI ribbon should be computed off
+        `cohort_points`."""
+        if not _can_import_matplotlib():
+            pytest.skip("Matplotlib import unavailable in this environment")
+        import matplotlib
+        matplotlib.use("Agg", force=True)
+        from stroke_orofacial.spout_behavior.recovery_trajectories import (
+            plot_recovery_trajectories_with_fit,
+        )
+        cohort = self._make_points(["PS46", "PS47", "PS48", "PS49"], pre_n=4, post_n=10)
+        per_animal = [p for p in cohort if p.animal == "PS46"]
+        fit = self._fit_proxy(slope=0.3, intercept=0.5)
+        fig = plot_recovery_trajectories_with_fit(
+            per_animal, fit, cohort_points=cohort, n_boot=100,
+        )
+        try:
+            ax = fig.axes[0]
+            labels = [t.get_text() for t in ax.get_legend().get_texts()]
+            assert any("bootstrap CI" in label for label in labels), (
+                "Expected bootstrap CI label when cohort_points provided."
+            )
+        finally:
+            import matplotlib.pyplot as plt
+            plt.close(fig)
+
+    def test_ci_zero_skips_ribbon(self):
+        if not _can_import_matplotlib():
+            pytest.skip("Matplotlib import unavailable in this environment")
+        import matplotlib
+        matplotlib.use("Agg", force=True)
+        from stroke_orofacial.spout_behavior.recovery_trajectories import (
+            plot_recovery_trajectories_with_fit,
+        )
+        points = self._make_points(["PS46", "PS47", "PS48"])
+        fit = self._fit_proxy(slope=0.3, intercept=0.5)
+        fig = plot_recovery_trajectories_with_fit(points, fit, ci=0.0)
+        try:
+            ax = fig.axes[0]
+            labels = [t.get_text() for t in ax.get_legend().get_texts()]
+            assert not any("bootstrap CI" in label for label in labels)
+        finally:
+            import matplotlib.pyplot as plt
+            plt.close(fig)
