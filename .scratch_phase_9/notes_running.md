@@ -429,6 +429,82 @@ or unexpected magnitudes early when re-running cohort is cheap
 
 ---
 
+## Task 8 closure (2026-05-25)
+
+### Trial-count bias investigation — RESOLVED (no bias confirmed)
+
+Priya's methodological concern at Task 8 mid-flight review: do low-
+trial-count sessions in PS51/PS54/PS55 acute periods skew the elevated
+tongue kinematic acute results (outlier dominance + DLC tracking
+degradation inflating session means)? CC's non-destructive analysis
+[`.scratch_phase_9/_trial_count_bias_investigation.py`](
+_trial_count_bias_investigation.py) +
+[`_trial_count_bias_findings.md`](_trial_count_bias_findings.md) at
+commit `329c4ce`:
+
+- **Direction mismatch:** Low-trial sessions show LOWER (not higher)
+  session means than high-trial sessions in all 4 suspect endpoints'
+  acute periods. Ratios across PS51 + severe cohort: 0.67-1.00
+  (low/high). Hypothesized outlier-inflation pattern is OPPOSITE.
+- **Magnitude:** Counterfactual LMM acute coefficients shift by ≤4%
+  when n_trials < 10 sessions are excluded (10 of 247 sessions
+  dropped, 4%). p-values remain < 1e-15.
+- **Alternative mechanism (documented):** engagement-correlated trial
+  count + excursion — low-n acute = deep deficit; high-n acute =
+  partial recovery. Trial count and per-trial deflection both
+  correlate POSITIVELY with engagement. **Strengthens the recovery
+  interpretation** of the headline acute → sub_acute → chronic
+  trajectory.
+- **Recommendation:** Phase 9 acute results for the 4 suspect tongue
+  endpoints stand as published in Task 5 headline summary v2.
+- **Addendum #11 (doc-only) landed** documenting the closure + the
+  alternative mechanism explanation. **Total addenda count: 11
+  (was 10).**
+
+### Task 8 adjudication items — Cowork 2026-05-25
+
+1. **`num_incorrect_licks_per_trial` positive recovery slope: APPROVED.**
+   "Engagement restoration" interpretation accepted (recovery means
+   more lick attempts including more incorrect ones). DECISIONS note
+   at Task 9 close: **use ratio metrics (`first_lick_accuracy` /
+   `criteria_performance`) for accuracy framing in the paper** rather
+   than raw incorrect-lick counts.
+2. **`latency_hist` LOO PS51 amplification: APPROVED.** Cohort effect
+   accepted with PS51-driven-amplification caveat in the Task 8
+   verdict. **Per-phenotype resolution deferred to Phase 9.x**
+   per-phenotype stats.
+
+### Forward pointers to Phase 9.x (scoping doc §7.5)
+
+Two items from the trial-count investigation that don't affect Phase 9
+verdict but warrant follow-up in Phase 9.x:
+
+- **Sub_acute low-n vs high-n vxy divergence** in severe cohort (ratio
+  1.12-1.50 for vxy endpoints, opposite direction to acute). Real but
+  separate finding; could reflect a different mechanism — by
+  sub_acute, persistent-low-engagement animals may have systematically
+  different per-trial kinematics than partially-recovered high-
+  engagement animals.
+- **PS55 acute uniformly low-engagement** (no ≥20-trial sessions in
+  acute). DLC tracking quality sanity-check warranted at some point;
+  doesn't affect cohort LMM verdict.
+
+Both added to `docs/prompts/phase-9.x-nonlinear-recovery-fit-scoping.md`
+§7.5.
+
+### Pending Task 8 gates (await Priya eyeball)
+
+- **Gate 5** — 76 stats figures at `pipeline_outputs/stats/figures/`
+  (V1/V2/V3 headlines + per_animal recovery curves + forest plots).
+  PASS/ITERATE/FAIL checkbox in [`verdict.md`](verdict.md) §Gate 5.
+- **Gate 6** — `recovery_trajectories.<endpoint>.{svg,png}` per-mouse
+  panels at `spout_behavior_figures/<animal>/` for the 5 animals not
+  yet sampled (PS46, PS48, PS49, PS50, PS55; PS47/PS51/PS54 spot-
+  checked at Task 6 close). PASS/ITERATE/FAIL checkbox in
+  [`verdict.md`](verdict.md) §Gate 6.
+
+---
+
 ## Reconciliation / open
 
 *Items needing Priya adjudication at Task 9 close.*
