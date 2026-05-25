@@ -13,6 +13,7 @@ from stroke_orofacial.stats.multiple_comparisons import (
     apply_correction_to_results_df,
     benjamini_hochberg_fdr,
     bonferroni_correct,
+    bonferroni_holm_within_endpoint,
 )
 
 
@@ -174,3 +175,61 @@ class TestApplyCorrectionToResultsDf:
         df = self._toy_results()
         with pytest.raises(ValueError, match="method"):
             apply_correction_to_results_df(df, method="invalid")
+
+
+class TestBonferroniHolmWithinEndpoint:
+    """Addendum #10 — Bonferroni-Holm sequential correction for
+    3 pre-vs-each-post-epoch comparisons within an endpoint."""
+
+    def test_addendum_10_known_input(self):
+        """Verification case from Addendum #10:
+        {0.001, 0.02, 0.05} → {0.003, 0.04, 0.05}."""
+        inp = {
+            "pre_vs_acute": 0.001,
+            "pre_vs_sub_acute": 0.02,
+            "pre_vs_chronic": 0.05,
+        }
+        out = bonferroni_holm_within_endpoint(inp)
+        assert out["pre_vs_acute"] == pytest.approx(0.003)
+        assert out["pre_vs_sub_acute"] == pytest.approx(0.04)
+        assert out["pre_vs_chronic"] == pytest.approx(0.05)
+
+    def test_monotone_non_decreasing(self):
+        """When raw * (n-rank+1) is non-monotone, output enforces
+        monotone non-decreasing per Holm step-down."""
+        # Sorted ascending: 0.001, 0.04, 0.06; multiplied by [3,2,1]
+        # → 0.003, 0.08, 0.06 — last is < prev; Holm clamps to 0.08.
+        inp = {"a": 0.04, "b": 0.001, "c": 0.06}
+        out = bonferroni_holm_within_endpoint(inp)
+        # In input order keys → q values; verify monotone non-decreasing
+        # in sorted-by-input-p order.
+        sorted_by_p = sorted(inp.items(), key=lambda kv: kv[1])
+        qs_in_p_order = [out[k] for k, _ in sorted_by_p]
+        for i in range(1, len(qs_in_p_order)):
+            assert qs_in_p_order[i] >= qs_in_p_order[i - 1]
+
+    def test_clipped_at_one(self):
+        inp = {"a": 0.5, "b": 0.6, "c": 0.9}
+        out = bonferroni_holm_within_endpoint(inp)
+        # 0.5*3 = 1.5 clamps to 1.0; subsequent must be >= 1.0 also.
+        assert all(q <= 1.0 for q in out.values())
+
+    def test_nan_propagates(self):
+        inp = {"a": 0.01, "b": np.nan, "c": 0.05}
+        out = bonferroni_holm_within_endpoint(inp)
+        assert np.isnan(out["b"])
+        # n=2 finite values; a (rank 1) → 0.01*2 = 0.02; c → 0.05*1 = 0.05.
+        assert out["a"] == pytest.approx(0.02)
+        assert out["c"] == pytest.approx(0.05)
+
+    def test_empty_input(self):
+        assert bonferroni_holm_within_endpoint({}) == {}
+
+    def test_all_nan_input(self):
+        out = bonferroni_holm_within_endpoint({"a": np.nan, "b": np.nan})
+        assert all(np.isnan(v) for v in out.values())
+
+    def test_preserves_input_key_order(self):
+        inp = {"chronic": 0.05, "acute": 0.001, "sub_acute": 0.02}
+        out = bonferroni_holm_within_endpoint(inp)
+        assert list(out.keys()) == ["chronic", "acute", "sub_acute"]

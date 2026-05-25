@@ -137,6 +137,72 @@ def bonferroni_correct(
     return p_adj, reject
 
 
+def bonferroni_holm_within_endpoint(
+    p_values_dict: dict[str, float],
+) -> dict[str, float]:
+    """Bonferroni-Holm sequential correction within a single endpoint
+    (Addendum #10 spec).
+
+    Standard Holm-Bonferroni step-down: sort p-values ascending, multiply
+    each by ``(n - rank + 1)``, clamp monotone non-decreasing + at most
+    ``1.0``. Designed for the 3 pre-vs-each-post-epoch comparisons per
+    endpoint produced by ``fit_per_epoch_lmm`` (acute / sub_acute /
+    chronic).
+
+    Parameters
+    ----------
+    p_values_dict : dict[str, float]
+        Map of comparison-label → raw p-value, e.g.
+        ``{"pre_vs_acute": 0.001, "pre_vs_sub_acute": 0.02,
+        "pre_vs_chronic": 0.05}``.
+
+    Returns
+    -------
+    dict[str, float]
+        Same keys, with Holm-adjusted q-values. Order of input keys is
+        preserved (the sort is internal to the algorithm; output dict
+        retains input iteration order).
+
+    Notes
+    -----
+    Verification: input ``{0.001, 0.02, 0.05}`` produces
+    ``{0.003, 0.04, 0.05}``:
+
+    - Sorted: 0.001 (rank 1, n=3) → 0.001 * 3 = 0.003
+    - 0.02 (rank 2, n=3) → 0.02 * 2 = 0.04, monotone OK (>0.003)
+    - 0.05 (rank 3, n=3) → 0.05 * 1 = 0.05, monotone OK (>0.04)
+    - All ≤ 1.0; no clamping triggered.
+
+    NaN inputs propagate as NaN q-values; not counted toward n.
+    """
+    if not p_values_dict:
+        return {}
+    # Separate NaN from finite to keep them out of the rank-based correction.
+    finite_items = [(k, v) for k, v in p_values_dict.items() if not pd.isna(v)]
+    n = len(finite_items)
+    if n == 0:
+        return {k: float("nan") for k in p_values_dict}
+
+    sorted_items = sorted(finite_items, key=lambda kv: kv[1])
+    q_by_key: dict[str, float] = {}
+    prev_q = 0.0
+    for rank, (comp, p) in enumerate(sorted_items, start=1):
+        q_raw = float(p) * (n - rank + 1)
+        q_clipped = min(1.0, max(prev_q, q_raw))
+        q_by_key[comp] = q_clipped
+        prev_q = q_clipped
+
+    # Re-emit in input order so callers can rely on dict iteration matching
+    # their input.
+    out: dict[str, float] = {}
+    for k in p_values_dict:
+        if k in q_by_key:
+            out[k] = q_by_key[k]
+        else:
+            out[k] = float("nan")  # NaN passthrough
+    return out
+
+
 def apply_correction_to_results_df(
     results_df: pd.DataFrame,
     *,

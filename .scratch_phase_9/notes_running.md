@@ -199,18 +199,19 @@ explaining WHY the choice was made).
    an identifiable LMM on raw values.
 
 3. **`fit_per_epoch_lmm.statistic = -log10(min_p)` across non-reference
-   epoch coefficients.** Kickoff + Addendum #6 didn't specify a summary
-   statistic for the multi-coefficient LMM. Picked `-log10(min_p)` to
-   give each FitResult a single FDR-comparable scalar interpretable as
-   "strongest per-epoch effect, on a tail-visible scale". The
-   unsummarized per-coefficient `{coef, se, p_value}` dict is in
-   `details["per_epoch"]` for downstream consumers that want the full
-   set. **Chosen for FDR-comparability across endpoints.** Alternative
-   Wald chi-square omnibus available via statsmodels but adds a single
-   "any difference" p-value rather than localizing to a specific epoch
-   — the min-p approach inherits the "most-significant-epoch" localization
-   for free. Revisitable as an Addendum if scientific framing shifts
-   toward omnibus testing for the LMM tier.
+   epoch coefficients.**
+   **VESTIGIAL under Addendum #10 (Priya 2026-05-25).** Headline summary
+   v2 surfaces each pre-vs-each-post-epoch comparison as a separate
+   row (`comparison ∈ {pre_vs_acute, pre_vs_sub_acute, pre_vs_chronic}`)
+   with `details["per_epoch"][epoch]["coef"]` as the effect size and
+   `["p_value"]` as the raw p-value — per-coefficient extraction, not
+   a collapsed min-p summary. The min-p still lives in
+   `FitResult.statistic` of `fit_per_epoch_lmm` for code-readers; the
+   headline summary v2 + Phase 9.1 V5 boxplot renderers read the
+   per-epoch dict, not statistic. Min-p remains as a forward-compat
+   scalar for any caller that wants a single "strongest effect"
+   summary without iterating the dict. Locked default; no further
+   revisit planned.
 
 ---
 
@@ -300,12 +301,17 @@ Wilcoxon p_value reported as 0 (not NaN — visible in summary CSV).
 
 2. **Confirmatory granularity dispatch encoded in driver, not inventory.**
    Per Addendum #5 (E) defaults: per_session for non-spatial,
-   per_bin for spatial (value_type=scalar_per_animal_time). Currently
-   the driver writes BH-FDR for ALL family rows + Bonferroni for the
-   confirmatory subset at EVERY granularity. A future tightening
-   could restrict Bonferroni emission to the per-value-type
-   confirmatory granularity only; for now the more-permissive
-   "emit at every granularity, caller filters" is the simpler MVP.
+   per_bin for spatial (value_type=scalar_per_animal_time).
+   **RESOLVED under Addendum #10 (Priya 2026-05-25).** Headline
+   summary v2 now applies BH-FDR within `(axis, comparison)` family
+   at the confirmatory granularity per value_type — not at every
+   granularity. The per-axis result CSVs (`run_stats_axis.py` output)
+   still emit at every granularity (no change there); the headline
+   summary builder is the layer that picks the canonical granularity
+   per value_type. The original v1 "Bonferroni-at-every-granularity"
+   behavior was dropped from v2; the original v1 file was overwritten
+   in place per Addendum #10 (E) (no downstream consumers depended
+   on v1).
 
 3. **`trial_group` axis is largely a no-op for the current inventory.**
    Only 2 endpoints have `trial_group` in `comparison_axes_in_scope`,
@@ -350,14 +356,29 @@ or unexpected magnitudes early when re-running cohort is cheap
 
 ---
 
+## Forward pointers for future phases
+
+- **Phase 9.x-nonlinear-recovery-fit** (scoping doc at
+  [docs/prompts/phase-9.x-nonlinear-recovery-fit-scoping.md](../docs/prompts/phase-9.x-nonlinear-recovery-fit-scoping.md))
+  — captures the Task 6 finding that the cohort linear LMM doesn't
+  fit severe-phenotype bimodal recovery (PS54/PS55 step-change at
+  sub_acute→chronic boundary). Future phase for per-animal /
+  per-phenotype nonlinear fits (exponential / piecewise / GAM
+  candidates per scoping). ~7-10 days CC; runs after Phase 9 + 9.1.
+  At Task 9 close, this forward-pointer goes into DECISIONS +
+  MIGRATION_LOG alongside the Phase 9.1 reference.
+
+---
+
 ## Reconciliation / open
 
 *Items needing Priya adjudication at Task 9 close.*
 
-- (Task 3 deviation #3, `fit_per_epoch_lmm.statistic = -log10(min_p)`)
-  Confirm at Task 9 close that the min-p summary statistic is the
-  preferred scientific framing, OR direct switch to Wald chi-square.
-  Locked default for now; revisitable.
+- ~~(Task 3 deviation #3, `fit_per_epoch_lmm.statistic = -log10(min_p)`)~~
+  **RESOLVED under Addendum #10** — headline summary v2 reads
+  per-coefficient details rather than the min-p summary scalar.
+  Min-p stays in FitResult.statistic as a forward-compat scalar.
+  Flagged VESTIGIAL above.
 
 - (Task 4 implementation note #1, `latency_hist` flat per-trial
   schema) Confirm at Task 9 close that the runner-level KS bridge is
@@ -366,12 +387,24 @@ or unexpected magnitudes early when re-running cohort is cheap
   produces the expected KS p-values, but lives at the runner layer
   rather than the parquet layer.
 
-- (Task 4 implementation note #2, Bonferroni granularity policy)
-  Confirm at Task 9 close that Bonferroni-at-every-granularity is
-  acceptable, OR tighten to confirmatory-granularity-only emission.
+- ~~(Task 4 implementation note #2, Bonferroni granularity policy)~~
+  **RESOLVED under Addendum #10** — headline summary v2 applies
+  BH-FDR within `(axis, comparison)` at the confirmatory granularity
+  per value_type. Per-axis result CSVs unchanged.
 
 - (Addendum #9, 2026-05-24) Adopted: `fit_per_epoch_lmm` runs on
   RAW values; LMM random intercept absorbs between-animal baseline
   shifts. Plot-time additive normalization deferred to Task 7
   figure render code per Addendum #9 (D). Task 3 deviation #2
   flagged VESTIGIAL above.
+
+- (Addendum #10, 2026-05-25) Adopted: headline summary v2 surfaces
+  per-coefficient pre-vs-each-epoch comparisons as separate rows;
+  Bonferroni-Holm sequential correction within each endpoint's 3
+  comparisons; cross-endpoint BH-FDR within (axis, comparison)
+  family. Builder script: `scripts/phase_9_stats/
+  build_task_5_headline_summary.py`. Verified row count = 306
+  (vs Addendum #10 estimate 180-220; my count is higher because
+  the inventory has more endpoints with all 4 axes-in-scope than
+  the estimate accounted for — math: 71 endpoints × (1.5 non-
+  recovery axes + 4 recovery rows) ≈ 320 expected).
