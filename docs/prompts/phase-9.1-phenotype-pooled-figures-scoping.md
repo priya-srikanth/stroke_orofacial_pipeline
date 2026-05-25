@@ -12,22 +12,42 @@
 > - **Pub-polish work** (typography, multi-panel composites, ipsi/contra labeling) per Addendum #1 (C) is Phase 9.1's tertiary deliverable.
 > - **Phase 9.2 references** are obsolete (no separate 9.2; what was 9.2 is now Phase 9 Tasks 3-5).
 
+> **AMENDMENT 2026-05-25 (scoping locks ahead of kickoff drafting).** Four scoping questions locked during pre-kickoff planning conversation (Priya, 2026-05-25). These supersede the OPEN-Q defaults in §9 and update §1 primary deliverables + §6 figure inventory + §7 task table:
+>
+> - **Phenotype grouping (new lock):** **4-tier retained** (mild / moderate / moderate-severe / severe), faithful to `AnimalInfo.recovery_phenotype`. Phase 9.x's 3-tier `moderate-pool` grouping is NOT adopted for 9.1; the n=1 moderate and moderate-severe tiers render as single-animal descriptive traces (per §2 caveat). Rationale: 9.1 is figure work where descriptive single-animal traces are publishable; 9.x is stats work where pooled n≥2 is required for LMM convergence.
+> - **V4/V5 figure scope (OPEN-Q 3):** **All ~20 confirmatory primary scalars** (NOT just the 7 headline kinematics). Every endpoint in the confirmatory family from Phase 9 gets V4 + V5 phenotype-pooled figures. ~40 figures total (20 endpoints × V4/V5). Headlines remain prominent in composites at Task 5. **SUPERSEDED by Amendment 2026-05-25 (b) below — see expanded exploratory-scalar scope.**
+> - **Spatial scope (OPEN-Q 4):** **Wasserstein-all-scopes (12 figures).** Emit Wasserstein at all 4 scope/trial_group combos × 4 families ≈ 12 (some duplicates per family). UOT + JS divergence supplementary figures DEFERRED — re-evaluate after paper-figure review whether they add narrative value. Narrows from the 48-figure full grid in original scoping draft. **SUPERSEDED by Amendment 2026-05-25 (b) below — UOT + JS un-deferred.**
+> - **Ipsi/contra labeling (OPEN-Q 5):** **Relabel axes ipsi/contra directly + caption caveat for cohort uniformity.** All per-side figure axes/legends show 'ipsi' and 'contra' directly. Each figure caption notes "All 8 cohort animals are L-stroke; ipsi = mouse-L, contra = mouse-R" for future R-stroke-cohort reproducibility.
+>
+> Two OPEN-Qs remain unlocked and defer to within-phase iteration: palette finalization (OPEN-Q 1, Task 4) and composite figure inventory (OPEN-Q 2, Task 5).
+
+> **AMENDMENT 2026-05-25 (b) — Exploratory-figure scope expansion + parameterized runner.** Three scoping decisions taken during plan-mode review of CC's kickoff-drafting plan (Priya, 2026-05-25). Supersedes the V4/V5 scope (OPEN-Q 3) and spatial scope (OPEN-Q 4) locks from Amendment 2026-05-25 above. Rationale: Priya wants comprehensive exploratory-figure coverage to visualize how non-confirmatory endpoints behave, not just paper-headline figures.
+>
+> - **V4/V5 figure scope (revises OPEN-Q 3):** **ALL Phase 9 LMM-run scalar endpoints** (~80-100 endpoints depending on exclusions). Includes all confirmatory + non-confirmatory scalars: per-trial tongue + jaw kinematics, session-aggregate behavioral (lick counts + accuracy), latency-histogram features, and any other endpoint where Phase 9's stats runner emitted per_bin + per_epoch results. ~160-200 V4/V5 figures total. Confirmatory + headline subsets get featured placement in Task 5 composites; the broader exploratory inventory is supplementary / data-exploration material.
+> - **Spatial scope (revises OPEN-Q 4):** **All 3 distributional metrics × all 4 scope/trial_group combos × 4 families = 48 phenotype-pooled spatial figures.** Wasserstein (16) + UOT cost (16) + JS divergence (16). UOT + JS supplementary figures NO LONGER deferred. Wasserstein at scope=tone_aligned/all (Addendum #3 HEADLINE METRIC) still gets prominent placement in composites; UOT + JS provide cross-metric corroboration in supplementary.
+> - **Parameterized figure runner (new lock):** Figure runner accepts an `--endpoint-list <path>` CLI flag and defaults to the expanded Phase 9.1 endpoint set (config file or sentinel value). Future exploratory emit (e.g., new endpoint families post-9.1, scope narrowing for paper-figure subset) becomes a single-command rerun against a different endpoint-list file. ~0.5 day design uplift; pays off if scope shifts during paper-figure review or 9.x. Same flag/pattern applies to both V4/V5 runners and the phenotype-pooled-spatial runner.
+>
+> **Updated estimated scope:** ~200+ V4/V5 + 48 spatial ≈ **~250 figures total** (vs. 46 in the prior amendment). Per-figure code is unchanged (Phase 9.1 is consumer + visualization); the scale-up is loop iterations, not new algorithms. Wall-time estimate revised to ~10-14 days CC (vs prior 6-9 days), driven by figure-style iteration cost + verification time across the broader inventory.
+>
+> **Q-C dedup (from CC plan-mode review) RETAINED:** confirmatory Wasserstein endpoints emit ONLY as phenotype-pooled-spatial figures (Task 3), NOT also as V4/V5 (Tasks 1-2). Same de-dup applies to UOT + JS — they go in spatial-figure pipeline, not V4/V5. V4/V5 is **scalar-only** (`value` column from kinematic + behavioral parquets); spatial-figure pipeline handles Wasserstein/UOT/JS distance metrics from spatial parquets.
+
 ---
 
 ## 1. Goals + scope
 
 Phase 9.1 produces the cross-animal phenotype-pooled figure tier of the Phase 9 paper-figure system, plus pub-quality polish. It consumes Phase 9's already-materialized inputs + stats results; it does NOT re-implement materialization or per-animal stats.
 
-**Primary deliverables:**
-1. **V4 + V5 figure grid** per Addendum #8 for the 7 headline kinematic endpoints (and optionally any other primary scalar endpoints flagged for phenotype-pooled visualization):
+**Primary deliverables (per 2026-05-25 amendment locks):**
+1. **V4 + V5 figure grid** per Addendum #8 for **all ~20 confirmatory primary scalar endpoints** (OPEN-Q 3 LOCKED). ~40 figures total.
    - V4: per_bin phenotype-pooled — one panel per endpoint; multiple traces (one per phenotype tier); bin_midpoint_rel_day vs cohort mean ± SEM within phenotype.
    - V5: per_epoch phenotype-pooled — one panel per endpoint; boxplots grouped by (phenotype × epoch).
-2. **Phenotype-pooled spatial figures** per Addendum #1's deferred figure tiers + Addendum #7's 48 cross-scope spatial endpoints — recovery curves of Wasserstein-2 (headline), UOT cost (supplementary), JS divergence (supplementary) at per_bin granularity, pooled across animals within each phenotype tier.
+   - 7 headline kinematics (per Addendum #8) get featured placement in Task 5 composites; remaining ~13 confirmatory scalars provide supporting figure inventory.
+2. **Phenotype-pooled spatial figures** for the **Wasserstein-all-scopes set (~12 figures: 4 families × 3-4 scope/trial_group combos)** (OPEN-Q 4 LOCKED). UOT + JS divergence supplementary figures DEFERRED pending paper-figure review. Wasserstein at scope=tone_aligned/all (Addendum #3 HEADLINE METRIC) gets prominent placement in composites.
 3. **Pub-quality polish** per Addendum #1 (C):
    - Typography (consistent font sizes; readable in 2-column journal layout)
-   - Color-palette harmonization (consistent phenotype colors; ipsi/contra mapping)
+   - Color-palette harmonization (consistent phenotype colors via 4-tier scheme; OPEN-Q 1 finalizes palette at Task 4)
    - Multi-panel composite figures for the paper
-   - ipsi/contra labeling per `AnimalInfo.mouse_side_to_ipsi_contra()` (all 8 current cohort animals are L-stroke → mouse-L = ipsi, mouse-R = contra)
+   - **ipsi/contra labeling: relabel axes/legends ipsi/contra directly + figure-caption caveat** "All 8 cohort animals are L-stroke; ipsi = mouse-L, contra = mouse-R" (OPEN-Q 5 LOCKED)
 
 **Out of scope:**
 - Statistical tests (Phase 9 produces all stats results CSVs at `pipeline_outputs/stats/results/<axis>/<granularity>/<endpoint>.csv`; Phase 9.1 consumes them).
@@ -192,11 +212,17 @@ Substantially smaller than the 2026-05-15 draft's 2-3 weeks estimate because mos
 
 ## 9. Open scoping questions
 
-- **OPEN-Q 1:** Phenotype palette choice — sequential (severity ordering) vs categorical (4 distinct colors). Suggestion: ColorBrewer YlOrRd 4-step (light yellow = mild → dark red = severe) for severity-ordering clarity. Priya finalizes during Task 4.
-- **OPEN-Q 2:** Composite figure inventory — Priya enumerates which V4/V5/spatial panels combine into which paper figures. Defer to Task 5 review.
-- **OPEN-Q 3:** V4/V5 figure scope — only the 7 headline kinematic endpoints (per Addendum #8), or extend to all primary scalar endpoints? Default per Addendum #8: just the 7 headlines; other primaries get V1/V2 in Phase 9 only.
-- **OPEN-Q 4:** Phenotype-pooled spatial figure scope — all 48 combos, or only the 4 Wasserstein headlines (tone_aligned/all per Addendum #3 HEADLINE)? Default: all 48 emitted, but composite figures feature only headlines.
-- **OPEN-Q 5:** ipsi/contra figure axis convention — show mouse-L/R on axes with ipsi/contra annotation, or relabel axes ipsi/contra directly? Affects every figure with per-side data.
+- **OPEN-Q 1 (still open, defers to Task 4):** Phenotype palette choice — sequential (severity ordering) vs categorical (4 distinct colors). Suggestion: ColorBrewer YlOrRd 4-step (light yellow = mild → dark red = severe) for severity-ordering clarity. Priya finalizes during Task 4 scaffold review.
+- **OPEN-Q 2 (still open, defers to Task 5):** Composite figure inventory — Priya enumerates which V4/V5/spatial panels combine into which paper figures. Defer to Task 5 review.
+- **OPEN-Q 3 — LOCKED 2026-05-25 (b):** V4/V5 figure scope = **ALL Phase 9 LMM-run scalar endpoints (~80-100)**. Supersedes the prior 2026-05-25 "~20 confirmatory only" lock — expanded to comprehensive exploratory-scalar coverage per Priya's "visualize what these look like" framing. ~160-200 V4/V5 figures. Confirmatory subset still featured in composites at Task 5.
+- **OPEN-Q 4 — LOCKED 2026-05-25 (b):** Phenotype-pooled spatial figure scope = **all 3 distributional metrics × all 4 scope/trial_group combos × 4 families = 48 figures** (Wasserstein 16 + UOT 16 + JS 16). Supersedes the prior 2026-05-25 "Wasserstein-only-12-figures" lock — UOT + JS un-deferred. Wasserstein at tone_aligned/all (HEADLINE) still featured in composites; UOT + JS provide cross-metric corroboration.
+- **OPEN-Q 5 — LOCKED 2026-05-25:** Ipsi/contra axis convention = **relabel axes ipsi/contra directly + figure-caption caveat for cohort uniformity** ("All 8 cohort animals are L-stroke; ipsi = mouse-L, contra = mouse-R").
+
+**New lock 2026-05-25 (phenotype grouping):** Phase 9.1 retains **4-tier grouping** (mild / moderate / moderate-severe / severe) faithful to `AnimalInfo.recovery_phenotype`. Phase 9.x's 3-tier `moderate-pool` (PS46+PS51) is NOT adopted in 9.1; the n=1 tiers render as single-animal descriptive traces per §2 caveat.
+
+**New lock 2026-05-25 (b) (parameterized runner):** Figure runner accepts `--endpoint-list <path>` CLI flag and defaults to the expanded Phase 9.1 endpoint set. Future exploratory emit becomes a single-command rerun against a different endpoint list. Applies to both V4/V5 and phenotype-pooled-spatial runners.
+
+**Q-C dedup retained:** V4/V5 is scalar-only (`value` column from kinematic + behavioral parquets); spatial-figure pipeline handles Wasserstein/UOT/JS metrics from spatial parquets. Confirmatory Wasserstein endpoints do NOT double-emit.
 
 ---
 
