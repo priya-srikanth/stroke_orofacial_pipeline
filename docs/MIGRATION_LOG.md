@@ -6333,6 +6333,36 @@ Sum: 21 + 21 + 23 + 22 + 19 + 53 + 63 + 58 = **280** ✓. New tree is now author
 
 ---
 
+## Chore — Tongue-jaw-mismatch comparison_grids/ subtree deletion (audit PR #127 follow-up)
+
+**Date:** 2026-05-25
+**Tag on merge:** none (chore-PR per F-P-6 convention)
+**Branch:** `chore/cleanup-tongue-jaw-mismatch-comparison-grids`
+
+**Scope.** Discharge the single LEGACY-CANDIDATE identified by audit PR #127 (`chore/audit-stale-output-dirs`): `pipeline_outputs/dlc_kinematics/tongue_jaw_mismatch/comparison_grids/` (20.0 MB). Leftover from a Phase 7a.6 cohort_run iteration when the parity runner emitted into `pipeline_outputs/`; current `tests/scripts/parity_phase7a6_visual_gate.py` writes to `.scratch_7a6/cohort_run/comparison_grids/` by default. No `src/` or active-notebook reference for the `pipeline_outputs/` subtree.
+
+**What landed.** Single commit on `chore/cleanup-tongue-jaw-mismatch-comparison-grids`:
+
+1. `rm -rf` of the on-disk subtree after per-invocation Priya approval ("go ahead", 2026-05-25).
+2. [`docs/DECISIONS.md`](DECISIONS.md) entry (2026-05-25).
+3. This MIGRATION_LOG entry.
+
+**Tree deleted** (size from audit report's pre-`rm` `du`):
+
+- `pipeline_outputs/dlc_kinematics/tongue_jaw_mismatch/comparison_grids/` — 20.0 MB
+
+Pre-`rm` `du -sh` re-verification: 20.0 MB ✓ (matches audit report baseline at PR #127). Post-`rm` re-verification: `PATH_NOT_FOUND`. Sibling subtrees verified intact (`candidate_trials/`, `cross_session/`, `within_session/`).
+
+**Intentional behavior differences vs legacy.** None. The deleted subtree was not consumed by any active source path. `tests/scripts/parity_phase7a6_visual_gate.py` retains its `.scratch_7a6/cohort_run/comparison_grids/` default emit target.
+
+**Total reclaimable to date** (Phase 7c.2 PR #126 + this chore): ~160 MB across 4 dirs.
+
+**Forward-pointers queued.** None.
+
+**Tag:** none (chore-PR per F-P-6 pattern).
+
+---
+
 ## Chore — Stale Phase 7c.2 spatial output trees deletion + notebooks 11/12 deprecation
 
 **Date:** 2026-05-23

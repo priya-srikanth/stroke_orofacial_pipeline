@@ -15,6 +15,16 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-25 — Tongue-jaw-mismatch comparison_grids/ subtree deletion (audit PR #127 follow-up)
+
+- **Date:** 2026-05-25.
+- *Context:* Audit chore PR #127 (`chore/audit-stale-output-dirs`, merge TBD) identified `pipeline_outputs/dlc_kinematics/tongue_jaw_mismatch/comparison_grids/` (20.0 MB) as the sole LEGACY-CANDIDATE remaining after the Phase 7c.2 cleanup discharged by PR #126. The subtree is a leftover from a Phase 7a.6 cohort_run iteration when the parity runner emitted into `pipeline_outputs/`; current `tests/scripts/parity_phase7a6_visual_gate.py` writes to `.scratch_7a6/cohort_run/comparison_grids/` by default — no `src/` or active-notebook reference points at the `pipeline_outputs/` subtree.
+- *Decision:* Deleted the 20.0 MB subtree. Sibling subtrees (`candidate_trials/`, `cross_session/`, `within_session/`) verified intact post-`rm`.
+- *Rationale:* Discharges the audit's single deletion recommendation. The subtree was unreferenced by current source code; deletion was approved per-invocation by Priya 2026-05-25 (CLAUDE.md Rule 7). Done as a separate chore PR rather than bundled into PR #127 per the audit report's "audit-only" framing + Rule 7's same-session anti-pattern guidance (PR #126 already consumed 3 `rm -rf`s on 2026-05-24; this single follow-up `rm` is the cleanest minimum-compounding path).
+- *Enforced at:* Chore branch `chore/cleanup-tongue-jaw-mismatch-comparison-grids`; PR (TBD); MIGRATION_LOG chore entry below.
+
+---
+
 ## 2026-05-23 — Phase 7c.2 deferred-cleanup chore — stale spatial output trees deleted + notebooks 11/12 deprecated
 
 - **Date:** 2026-05-23.
