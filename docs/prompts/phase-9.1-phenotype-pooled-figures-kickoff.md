@@ -3,7 +3,7 @@
 **Branch:** `phase/9.1-kickoff-draft` off latest `origin/main` (post-Phase-9-close; current main HEAD `29eb078`, tag `v9-stats-behavioral`).
 **Tag on phase-close merge:** `v9.1-phenotype-pooled-figures`.
 **Prerequisites:** Phase 9 closed (PR #129 merged 2026-05-25); conda env `stroke_orofacial` active; CC has read `docs/prompts/phase-9.1-phenotype-pooled-figures-scoping.md` (with 2026-05-23 + 2026-05-25 + 2026-05-25 (b) amendments) and Phase 9 kickoff Addenda #7/#8/#10; memory entries `feedback_iterative_addenda_pattern.md` (mid-phase re-spec etiquette) + `feedback_audit_legacy_before_speculating_on_render_params.md` (port legacy verbatim before iterating layout).
-**Estimated scope:** 8-11 commits, **~10-14 days CC wall-time** (excluding Priya scientific review). Driven by ~118 figure inventory (70 V4/V5 scalar + 48 spatial) × figure-style iteration + verification.
+**Estimated scope:** 9-12 commits, **~10-14 days CC wall-time** (excluding Priya scientific review). Driven by ~120 figure inventory (70 V4/V5 scalar + 48 spatial + 1-4 latency_hist phenotype-pooled CDFs) × figure-style iteration + verification.
 
 **This kickoff supersedes `docs/prompts/phase-9.1-phenotype-pooled-figures-scoping.md` for execution.** Where the two conflict, this kickoff wins; the scoping doc remains as the historical planning record (with both 2026-05-25 amendments now committed at `3390146`).
 
@@ -15,7 +15,8 @@ Phase 9.1 is the second phase in the consolidation that CONSUMES consolidated ou
 
 1. The **cross-animal phenotype-pooled figure tier** (V4 per_bin curves + V5 per_epoch boxplots) for every Phase 9 LMM-run scalar endpoint.
 2. **Phenotype-pooled spatial recovery curves** for all 48 (3 metrics × 4 scope/trial_group combos × 4 families) spatial endpoints.
-3. **Pub-quality polish:** typography + palette harmonization + multi-panel composites + ipsi/contra labeling per `AnimalInfo.mouse_side_to_ipsi_contra()`.
+3. **Phenotype-pooled `latency_hist` CDF family (1-4 figures)** — separate runner pooling per-trial first-correct-lick latencies across animals within each phenotype tier × epoch. `latency_hist` is confirmatory but uses KS-bridge methodology (Phase 9 Addendum #4), not LMM, so it's outside V4/V5 scope per Q-lock 2 and gets its own figure family per Q-lock 7.
+4. **Pub-quality polish:** typography + palette harmonization + multi-panel composites + ipsi/contra labeling per `AnimalInfo.mouse_side_to_ipsi_contra()`.
 
 The 2026-05-25 (b) amendment expanded V4/V5 + spatial scope significantly vs. the original 2026-05-25 locks (which restricted V4/V5 to ~20 confirmatory and spatial to Wasserstein-only). Priya's rationale: visualize how non-confirmatory endpoints behave across phenotype tiers, not just paper-headline figures. The broader inventory is supplementary / data-exploration material; headline subsets feature prominently in Task 5 composites.
 
@@ -31,7 +32,7 @@ The 2026-05-25 (b) amendment expanded V4/V5 + spatial scope significantly vs. th
 
 ## Q-locks (locked decisions; not re-litigatable during execution)
 
-Q-locks Q1-Q6 below were locked during 2026-05-25 amendments (original + (b)) + plan-mode review (Q-A/B/C + 8 review comments). They are NOT re-litigatable during Phase 9.1 execution. Re-spec lands as numbered Addenda per `feedback_iterative_addenda_pattern.md`. Q-A/Q-B/Q-C below are plan-mode inputs (not execution locks) — included here for traceability.
+Q-locks Q1-Q7 below were locked during 2026-05-25 amendments (original + (b) + (b)-follow-up) + plan-mode review (Q-A/B/C + 8 review comments). They are NOT re-litigatable during Phase 9.1 execution. Re-spec lands as numbered Addenda per `feedback_iterative_addenda_pattern.md`. Q-A/Q-B/Q-C below are plan-mode inputs (not execution locks) — included here for traceability.
 
 ### Q-A — Amendment-commit strategy (plan-mode input)
 
@@ -90,6 +91,21 @@ pipeline_outputs/phase_9_1_figures/
 Both V4/V5 and phenotype-pooled-spatial runners accept `--endpoint-list <path>` CLI flag, defaulting to the committed Phase 9.1 endpoint set. Future exploratory emit (post-9.1 endpoint families, paper-figure narrowing, 9.x reuse) becomes a single-command rerun against a different endpoint-list file.
 
 Q-C dedup RETAINED: V4/V5 is scalar-only; spatial-figure pipeline handles distance metrics. No double-emit of confirmatory Wasserstein endpoints.
+
+### Q-lock 7 — `latency_hist` phenotype-pooled CDF figure family
+
+Per NEW LOCK 2026-05-25 (b) follow-up. `latency_hist` is confirmatory per Phase 9 Addendum #4 (KS-bridge methodology) but is `value_type=vector_per_session` and has NO `recovery/per_epoch/` LMM result CSV — therefore excluded from V4/V5 scope per Q-lock 2. Phase 9.1 emits a separate phenotype-pooled CDF figure family for it.
+
+- **Endpoint:** `latency_hist` — confirmatory per Phase 9 Addendum #4.
+- **Source data:** `pipeline_outputs/stats/inputs/latency_hist/<animal>.parquet` (one row per trial; per-trial first-correct-lick latency in `value` column).
+- **Pooling:** per-trial latencies pooled across animals **within each phenotype tier × epoch** (4-tier grouping per Q-lock 1; epoch from `epoch_label` column populated by Phase 9 `assign_epoch_label`).
+- **Figure type:** phenotype-pooled empirical CDFs. One trace per epoch (`pre` / `acute` / `sub_acute` / `chronic`) within each phenotype panel; x-axis = latency (s or ms TBD at Task 0.5); y-axis = empirical CDF (0..1).
+- **Layout (1-4 figures; finalized at Task 0.5 review):**
+   - (a) **One figure per phenotype tier × 4 traces = 4 figures** — easier inspection of within-phenotype epoch progression; 4 separate SVG/PNGs at `pipeline_outputs/phase_9_1_figures/phenotype_pooled_latency_hist/<phenotype>.{svg,png}`.
+   - (b) **Single 4-panel composite (one panel per phenotype) = 1 figure** — easier cross-phenotype comparison at a glance; one SVG/PNG at `pipeline_outputs/phase_9_1_figures/phenotype_pooled_latency_hist/all_phenotypes_4panel.{svg,png}`.
+- **Stats:** no new stats methodology. Existing KS-bridge p-values from `pipeline_outputs/stats/results/pre_post/per_session/latency_hist.csv` (or `pipeline_outputs/stats/results/recovery/<granularity>/latency_hist.csv` if Phase 9 emitted there) feed figure caption annotations. Task 0.5 audits the actual result-CSV location during list-pinning.
+- **Runner:** same parameterized `--endpoint-list` flag pattern per Q-lock 6 (separate endpoint-list YAML at `configs/phase_9_1_endpoint_lists/phenotype_pooled_latency_hist_endpoints.yaml`).
+- **Figure count:** 1-4 figures (locked at Task 0.5 review). Total Phase 9.1 figure inventory revised: ~118 + 1-4 latency_hist ≈ **~120 figures**.
 
 ---
 
@@ -232,9 +248,11 @@ Each per_bin row in stats results = one (animal, bin_midpoint_rel_day) data poin
 
 **Total: 35 V4/V5 endpoints × (V4 + V5) = 70 figures.**
 
-### Q-lock 6 dedup callout (V4/V5 inventory)
+### Q-lock 6 + Q-lock 7 dedup callouts (V4/V5 inventory)
 
-The confirmatory Wasserstein endpoints (`spatial_wasserstein_{jaw_eye_midpoint, nose_eye_midpoint, tongue_spout_midpoint, whiskers_eye_midpoint}_tone_aligned_all`) are **NOT in this V4/V5 inventory**. They appear only in §"Phenotype-pooled spatial inventory" below, and their figures emit only to `pipeline_outputs/phase_9_1_figures/phenotype_pooled_spatial/<family>/wasserstein/tone_aligned_all.{svg,png}`. Same applies to all UOT + JS spatial endpoints.
+**Spatial distance metrics (Q-lock 6):** The confirmatory Wasserstein endpoints (`spatial_wasserstein_{jaw_eye_midpoint, nose_eye_midpoint, tongue_spout_midpoint, whiskers_eye_midpoint}_tone_aligned_all`) are **NOT in this V4/V5 inventory**. They appear only in §"Phenotype-pooled spatial inventory" below, and their figures emit only to `pipeline_outputs/phase_9_1_figures/phenotype_pooled_spatial/<family>/wasserstein/tone_aligned_all.{svg,png}`. Same applies to all UOT + JS spatial endpoints.
+
+**`latency_hist` (Q-lock 7):** `latency_hist` is confirmatory per Phase 9 Addendum #4 but is **NOT in this V4/V5 inventory** — it's a `vector_per_session` KS-bridge endpoint with no `recovery/per_epoch/` LMM result CSV. It gets its own phenotype-pooled CDF family per Q-lock 7 (Task 3b emit; `pipeline_outputs/phase_9_1_figures/phenotype_pooled_latency_hist/...`).
 
 ### Phase 9 headline overlap (per Addendum #8)
 
@@ -429,6 +447,30 @@ Implement `src/stroke_orofacial/figures/phenotype_pooled_spatial.py::emit_spatia
 
 **Output:** `pipeline_outputs/phase_9_1_figures/phenotype_pooled_spatial/<family>/<metric>/<combo>.{svg,png}`.
 
+### Task 3b — `latency_hist` phenotype-pooled CDF family (1-4 figures, per Q-lock 7)
+
+Implement `src/stroke_orofacial/figures/phenotype_pooled_latency_hist.py::emit_phenotype_pooled_latency_cdfs(resolver, layout="four_separate" | "single_4panel", ...)`.
+
+**Per-figure plot:** phenotype-pooled empirical CDFs. Layout choice locked at Task 0.5 review:
+- **Layout (a) `four_separate`** — one figure per phenotype tier; 4 traces (one per epoch) within each.
+- **Layout (b) `single_4panel`** — single figure with 4 panels (one panel per phenotype); 4 traces (one per epoch) per panel.
+
+Defaults to (b) until Task 0.5 locks the choice.
+
+**Source:** `pipeline_outputs/stats/inputs/latency_hist/<animal>.parquet`. Pool per-trial latencies across animals within (phenotype × epoch); compute empirical CDF per (phenotype, epoch) cell; one trace per epoch per phenotype panel.
+
+**KS-bridge p-value annotation:** consume `pipeline_outputs/stats/results/<axis>/<granularity>/latency_hist.csv` (location confirmed at Task 0.5). Annotate each phenotype panel with the pre-vs-{acute,sub_acute,chronic} KS-test p-values.
+
+**Driver:** `scripts/phase_9_1_figures/build_phenotype_pooled_latency_hist.py --endpoint-list configs/phase_9_1_endpoint_lists/phenotype_pooled_latency_hist_endpoints.yaml --layout {four_separate,single_4panel}`.
+
+**Output:**
+- Layout (a): `pipeline_outputs/phase_9_1_figures/phenotype_pooled_latency_hist/{mild,moderate,moderate_severe,severe}.{svg,png}` (4 figures).
+- Layout (b): `pipeline_outputs/phase_9_1_figures/phenotype_pooled_latency_hist/all_phenotypes_4panel.{svg,png}` (1 figure).
+
+**Wall time:** ~0.5 day (small data shape; no new stats; ~150 lines new code; ~50 lines test).
+
+**Tests:** `tests/test_figures_phenotype_pooled_latency_hist.py` — fixture-based; uses `PathResolver(output_root=tmp_path)`.
+
 ### Task 4 — Pub-quality polish
 
 `src/stroke_orofacial/figures/pub_polish.py` — module with:
@@ -455,7 +497,7 @@ OPEN-Q 2 (composite inventory) resolves here. Priya enumerates which panels comb
 
 ### Task 6 — Verification + Priya scientific review
 
-Visual gate across the ~118 figure inventory (70 V4/V5 + 48 spatial, minus composites which Priya signs off panel-by-panel at Task 5).
+Visual gate across the ~120 figure inventory (70 V4/V5 + 48 spatial + 1-4 latency_hist CDFs, minus composites which Priya signs off panel-by-panel at Task 5).
 
 CC-owned automated checks:
 1. All 70 V4/V5 figures + 48 spatial figures exist at expected paths.
@@ -506,10 +548,11 @@ gh pr create --title "Phase 9.1: phenotype-pooled figures + pub-polish" \
 ## Summary
 - V4 + V5 phenotype-pooled figures for all 35 LMM-run scalar endpoints (~70 figures).
 - 48 phenotype-pooled spatial figures (3 metrics × 4 scope/trial_group × 4 families).
+- 1-4 phenotype-pooled `latency_hist` CDF figures (per Q-lock 7 KS-bridge family).
 - Pub-polish: typography + palette + ipsi/contra labeling + composites.
 
 ## Test plan
-- [ ] All ~118 figures exist at expected paths + have SVG + PNG variants.
+- [ ] All ~120 figures exist at expected paths + have SVG + PNG variants.
 - [ ] Phenotype-tier n-labels visible on every figure.
 - [ ] Priya visual gate-5 PASS in `.scratch_phase_9_1/verdict.md`.
 
@@ -540,6 +583,7 @@ git tag --list | tail -3  # confirm
 - **Scoping doc:** [`docs/prompts/phase-9.1-phenotype-pooled-figures-scoping.md`](phase-9.1-phenotype-pooled-figures-scoping.md) — with 2026-05-23 + 2026-05-25 + 2026-05-25 (b) amendments. Both 2026-05-25 amendments landed as commit `3390146` on this branch.
 - **Phase 9 kickoff:** [`docs/prompts/phase-9-stats-kickoff.md`](phase-9-stats-kickoff.md) — 11 addenda; source of truth for what Phase 9 produces.
 - **Phase 9.x scoping:** [`docs/prompts/phase-9.x-nonlinear-recovery-fit-scoping.md`](phase-9.x-nonlinear-recovery-fit-scoping.md) — divergent 3-tier convention.
+- **Phase 9 Addendum #4** (KS-bridge for `latency_hist` `vector_per_session` endpoint; Q-lock 7 source): Phase 9 kickoff lines 784-863.
 - **Phase 9 Addendum #7** (cross-scope spatial inventory): Phase 9 kickoff lines 1113-1216.
 - **Phase 9 Addendum #8** (V1-V5 grid + 7 headlines): Phase 9 kickoff lines 1218-1312.
 - **Phase 9 Addendum #10** (per-coefficient headline summary v2): Phase 9 kickoff lines 1422-1527.
