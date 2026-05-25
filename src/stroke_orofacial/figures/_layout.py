@@ -123,20 +123,22 @@ def phenotype_side_split_panels(
 
     Q-lock 10(a) — ipsi panel + contra panel, side-by-side, sharing y-range
     for direct visual comparison. All 8 cohort animals are L-stroke (Q-lock 4),
-    so panel labels are ``"ipsi" = mouse-L`` and ``"contra" = mouse-R``; the
-    cohort-uniformity caveat goes in the figure caption via
+    so panel labels are ``"Ipsi (mouse-L)"`` and ``"Contra (mouse-R)"``
+    (capitalized per Task 1a v5 casing convention; mouse-side designations
+    stay lowercase per technical convention). The cohort-uniformity caveat
+    goes in the figure caption via
     :func:`stroke_orofacial.figures.palette.figure_caption_caveat`.
 
-    Caller draws traces + SEM bands (V4) or boxplots (V5) into the two axes;
-    then calls :func:`phenotype_panel` and :func:`phenotype_legend` per panel
-    to apply consistent decorations.
+    Caller draws traces + SEM bands (V4) or line+scatter (V5) into the two
+    axes; then calls :func:`phenotype_panel` and :func:`phenotype_legend`
+    per panel to apply consistent decorations.
     """
     import matplotlib.pyplot as plt
     fig, (ipsi_ax, contra_ax) = plt.subplots(
         1, 2, figsize=figsize, sharey=sharey,
     )
-    ipsi_ax.set_title("ipsi (mouse-L)")
-    contra_ax.set_title("contra (mouse-R)")
+    ipsi_ax.set_title("Ipsi (mouse-L)")
+    contra_ax.set_title("Contra (mouse-R)")
     return fig, ipsi_ax, contra_ax
 
 
@@ -204,23 +206,23 @@ def apply_side_split_suptitle(
 ENDPOINT_DISPLAY_NAMES: dict[str, tuple[str, str]] = {
     "first_lick_accuracy_all": (
         "First-lick accuracy (all trials)",
-        "delta accuracy",
+        "Delta accuracy",
     ),
     "num_correct_licks_per_trial": (
         "Correct licks per trial",
-        "delta licks / trial",
+        "Delta licks / trial",
     ),
     "tongue_lick1_y_peak": (
         "Tongue lick-1 Y peak",
-        "delta y peak (px)",
+        "Delta Y peak (px)",
     ),
     "tongue_lick1_angle_at_ypeak": (
         "Tongue lick-1 angle at Y-peak",
-        "delta angle (deg)",
+        "Delta angle (deg)",
     ),
     "tongue_lick1_x_at_ypeak": (
         "Tongue lick-1 X at Y-peak",
-        "delta x (px)",
+        "Delta X (px)",
     ),
 }
 
@@ -229,10 +231,36 @@ def get_endpoint_labels(endpoint_slug: str) -> tuple[str, str]:
     """Return ``(display_name, short_y_label)`` for one endpoint.
 
     Lookups go through :data:`ENDPOINT_DISPLAY_NAMES`. Endpoints not yet
-    present fall back to ``(endpoint_slug, "delta value")`` — Priya iterates
+    present fall back to ``(endpoint_slug, "Delta value")`` — Priya iterates
     on the broader 35-endpoint dict at Task 1b / Task 1c.
     """
-    return ENDPOINT_DISPLAY_NAMES.get(endpoint_slug, (endpoint_slug, "delta value"))
+    return ENDPOINT_DISPLAY_NAMES.get(endpoint_slug, (endpoint_slug, "Delta value"))
+
+
+# ---------------------------------------------------------------------------
+# Epoch display labels (Task 1a v5 — relabel + capitalize for x-ticks)
+# ---------------------------------------------------------------------------
+
+# Per Priya 2026-05-25 Task 1a v4 review: replace raw ``epoch_label`` values
+# with publication-ready capitalized + relabeled equivalents. Used by V5
+# x-tick labels (and any future epoch-axis figure). ``epoch_label`` values
+# in the underlying parquet stay as-is for stats / data consistency; the
+# display mapping is purely cosmetic.
+EPOCH_DISPLAY_LABELS: dict[str, str] = {
+    "pre":       "Pre-stroke",
+    "acute":     "Acute",
+    "sub_acute": "Subacute",
+    "chronic":   "Chronic",
+}
+
+
+def get_epoch_display(epoch_label: str) -> str:
+    """Return the publication-facing display label for one epoch.
+
+    Falls back to ``epoch_label`` verbatim for any value not in
+    :data:`EPOCH_DISPLAY_LABELS` (e.g., a future epoch added upstream).
+    """
+    return EPOCH_DISPLAY_LABELS.get(epoch_label, epoch_label)
 
 
 def apply_figure_suptitle(
@@ -241,20 +269,39 @@ def apply_figure_suptitle(
     *,
     baseline_subtracted: bool,
 ) -> None:
-    """Apply the two-line suptitle layout locked at Task 1a v4.
+    """Apply the two-line suptitle layout locked at Task 1a v5.
 
-    Line 1: ``display_name`` (bold, larger). Line 2 (V5 only when
-    ``baseline_subtracted=True``): "baseline-subtracted" (italic, gray
-    rgb 0.4). Subheading omitted on V4 since V4 plots raw recovery curves,
-    not deltas.
+    Line 1: ``display_name`` at y=0.99 (bold, larger). Line 2 (V5 only when
+    ``baseline_subtracted=True``): "baseline-subtracted" at y=0.93 (italic,
+    gray rgb 0.4). Subheading omitted on V4 since V4 plots raw recovery
+    curves, not deltas.
+
+    Callers should use :func:`apply_top_room` AFTER drawing all panels to
+    reserve top whitespace; without it ``fig.tight_layout()`` would crowd
+    the suptitle.
     """
-    fig.suptitle(display_name, fontsize=12, fontweight="bold", y=0.98)
+    fig.suptitle(display_name, fontsize=12, fontweight="bold", y=0.99)
     if baseline_subtracted:
         fig.text(
-            0.5, 0.94, "baseline-subtracted",
+            0.5, 0.93, "baseline-subtracted",
             fontsize=8, fontstyle="italic",
             color=(0.4, 0.4, 0.4), ha="center",
         )
+
+
+def apply_top_room(fig: Any, *, top: float = 0.86) -> None:
+    """Reserve top whitespace for the two-line suptitle (Task 1a v5).
+
+    Calls ``fig.tight_layout(rect=[0, 0, 1, top])`` so subplot axes don't
+    crowd the suptitle / subheading. Default ``top=0.86`` matches the
+    suptitle at y=0.99 + subheading at y=0.93 layout from
+    :func:`apply_figure_suptitle`.
+
+    Use this in place of ``fig.tight_layout()`` after all panel drawing
+    finishes; it composes with matplotlib's auto-layout via the ``rect``
+    parameter (which reserves the top 14% for the suptitle band).
+    """
+    fig.tight_layout(rect=[0.0, 0.0, 1.0, top])
 
 
 # ---------------------------------------------------------------------------

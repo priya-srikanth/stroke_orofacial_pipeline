@@ -228,14 +228,14 @@ def test_get_endpoint_labels_known_endpoint() -> None:
     """Known endpoint returns its (display_name, short_y_label) tuple."""
     display, ylabel = _layout.get_endpoint_labels("tongue_lick1_y_peak")
     assert display == "Tongue lick-1 Y peak"
-    assert ylabel == "delta y peak (px)"
+    assert ylabel == "Delta Y peak (px)"
 
 
 def test_get_endpoint_labels_fallback() -> None:
-    """Unknown endpoint falls back to (slug, 'delta value')."""
+    """Unknown endpoint falls back to (slug, 'Delta value')."""
     display, ylabel = _layout.get_endpoint_labels("not_in_dict_xyz")
     assert display == "not_in_dict_xyz"
-    assert ylabel == "delta value"
+    assert ylabel == "Delta value"
 
 
 def test_endpoint_display_names_has_all_5_preview_endpoints() -> None:
@@ -248,6 +248,43 @@ def test_endpoint_display_names_has_all_5_preview_endpoints() -> None:
         "tongue_lick1_x_at_ypeak",
     }
     assert expected <= set(_layout.ENDPOINT_DISPLAY_NAMES)
+
+
+def test_endpoint_display_names_capitalized() -> None:
+    """Task 1a v5 capitalization: y-labels start with 'Delta', not 'delta'."""
+    from stroke_orofacial.figures._layout import ENDPOINT_DISPLAY_NAMES
+    for slug, (_display, ylabel) in ENDPOINT_DISPLAY_NAMES.items():
+        assert ylabel.startswith("Delta"), (
+            f"y-label for {slug!r} must start with 'Delta' (capital), got {ylabel!r}"
+        )
+    # X and Y axis names also capitalized (Task 1a v5).
+    assert _layout.get_endpoint_labels("tongue_lick1_x_at_ypeak")[1] == "Delta X (px)"
+    assert _layout.get_endpoint_labels("tongue_lick1_y_peak")[1] == "Delta Y peak (px)"
+
+
+def test_phenotype_marker_returns_distinct_shapes() -> None:
+    """Each of the 4 tiers gets a distinct marker silhouette (Task 1a v5)."""
+    from stroke_orofacial.figures.palette import PHENOTYPE_ORDER, phenotype_marker
+    markers = [phenotype_marker(t) for t in PHENOTYPE_ORDER]
+    assert markers == ["o", "s", "^", "D"]
+    assert len(set(markers)) == 4  # all distinct
+
+
+def test_phenotype_marker_unknown_raises() -> None:
+    """Unknown tier raises KeyError (parallels phenotype_palette behavior)."""
+    from stroke_orofacial.figures.palette import phenotype_marker
+    with pytest.raises(KeyError):
+        phenotype_marker("not_a_tier")
+
+
+def test_get_epoch_display_mapping() -> None:
+    """4 known epochs map to publication-facing labels (Task 1a v5)."""
+    assert _layout.get_epoch_display("pre") == "Pre-stroke"
+    assert _layout.get_epoch_display("acute") == "Acute"
+    assert _layout.get_epoch_display("sub_acute") == "Subacute"
+    assert _layout.get_epoch_display("chronic") == "Chronic"
+    # Unknown epoch falls back to verbatim (forward-compat).
+    assert _layout.get_epoch_display("future_epoch") == "future_epoch"
 
 
 def test_load_endpoint_list_strips_comments(tmp_path) -> None:
