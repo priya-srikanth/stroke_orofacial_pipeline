@@ -549,19 +549,20 @@ def fit_per_epoch_lmm(
     value_col: str = "value",
     epoch_col: str = "epoch_label",
     animal_col: str = "animal",
-    apply_additive_baseline: bool = True,
+    apply_additive_baseline: bool = False,
     reference_epoch: str = "pre",
 ) -> FitResult:
-    """Per-epoch LMM with additive baseline normalization (Addendum #6).
+    """Per-epoch LMM ``value ~ C(epoch_label) + (1|animal)`` (Addendum #9).
 
     Tests whether the per-epoch mean of ``value`` differs across
-    epochs. Random intercept per animal absorbs animal-level offsets.
+    epochs. Random intercept per animal absorbs between-animal baseline
+    offsets — no additive baseline subtraction needed at test time
+    (per Addendum #9 (B), which supersedes Addendum #6 D-F).
 
-    Per Addendum #6: applying additive baseline normalization
-    (subtracting each animal's pre-stroke mean before fitting) is the
-    canonical preprocessing step. The reference epoch (default
-    ``"pre"``) is set as the categorical baseline so the fixed-effect
-    coefficients are interpretable as "post-epoch shift from pre".
+    Each non-reference epoch coefficient directly tests "this epoch
+    differs from pre by X units" on the raw value scale. Cross-epoch
+    contrasts (e.g. acute vs chronic) are available as linear
+    combinations of the fitted coefficients in ``details["per_epoch"]``.
 
     Parameters
     ----------
@@ -569,9 +570,16 @@ def fit_per_epoch_lmm(
     value_col : str, default "value"
     epoch_col : str, default "epoch_label"
     animal_col : str, default "animal"
-    apply_additive_baseline : bool, default True
+    apply_additive_baseline : bool, default False (Addendum #9)
         If True, computes per-animal mean of ``value`` for rows with
         ``epoch == reference_epoch`` and subtracts before fitting.
+        **Not recommended for inferential use** — the LMM's random
+        intercept already absorbs between-animal shifts; subtracting
+        pre-mean only creates the singular matrix pin (see Edge case
+        below). The parameter is preserved as a callable for legacy
+        / inspection use and for the figure-render-time normalization
+        path (Addendum #9 D moves that to Task 7 / Phase 9.1 render
+        code, not here).
     reference_epoch : str, default "pre"
         Categorical reference level.
 
@@ -592,14 +600,15 @@ def fit_per_epoch_lmm(
     summarizes them via the min-p — analogous to a Wald chi-square
     omnibus but reported as -log10(p) for tail visibility.
 
-    **Edge case (degenerate design):** with
-    ``apply_additive_baseline=True`` AND only 2 epoch levels (pre + 1
-    post), the reference level's rows become exactly zero-mean per
-    animal after baseline subtraction. The random intercept variance
-    becomes unidentifiable and MixedLM raises a SingularError — caught
-    and surfaced as ``status="convergence_failed", error="Singular
-    matrix"``. For 2-epoch comparisons under additive normalization
-    use :func:`fit_paired_pre_post_wilcoxon` instead.
+    **Edge case (degenerate design) — VESTIGIAL under Addendum #9:**
+    The singular-matrix path that fires with
+    ``apply_additive_baseline=True`` + 2-epoch input is preserved as a
+    safety net but is no longer reachable from the current Task 5
+    cohort emit (which uses ``apply_additive_baseline=False`` per
+    Addendum #9). Documented here for forward-compat if a future
+    caller flips ``apply_additive_baseline=True``. For 2-epoch
+    paired tests prefer :func:`fit_paired_pre_post_wilcoxon`
+    regardless.
     """
     model_name = "per_epoch_lmm"
     required = {value_col, epoch_col, animal_col}

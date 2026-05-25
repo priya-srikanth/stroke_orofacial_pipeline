@@ -185,16 +185,18 @@ explaining WHY the choice was made).
 
 2. **`fit_per_epoch_lmm` 2-epoch + `apply_additive_baseline=True` =
    `SingularError`; surfaced as `status="convergence_failed"` + redirect
-   to `fit_paired_pre_post_wilcoxon`.** With baseline subtraction applied
-   AND only 2 epoch levels (pre + 1 post), the reference-level rows become
-   exactly zero-mean per animal → random intercept variance unidentifiable
-   → statsmodels MixedLM raises SingularError. Caught + surfaced as a
-   NaN FitResult. **Forward-compatibility safety net** — not an active
-   concern for the current 8-animal cohort which has 3+ post-epoch levels,
-   but the case will arise if a future analyst splits to a 2-epoch design.
-   3+ epoch case works correctly (verified by
-   `test_additive_baseline_normalization_recovers_known_shift` recovering
-   the known acute + chronic shifts within 0.3 absolute tolerance).
+   to `fit_paired_pre_post_wilcoxon`.**
+   **VESTIGIAL under Addendum #9 (Priya 2026-05-24) — no longer reachable
+   from cohort data; preserved as safety net.** Addendum #9 (B) flipped
+   `apply_additive_baseline` default to `False` for all endpoint types
+   (was True for non-spatial under Addendum #6 D). The Task 5 cohort
+   emit uses the False default, so the singular-matrix path no longer
+   fires on the 2-epoch case. Path kept in source as a forward-compat
+   safety net for genuinely-degenerate inputs (single-observation-per-
+   animal etc.) but the redirect-to-Wilcoxon advice is no longer needed
+   for the current cohort. Test `test_per_epoch_lmm_2epoch_no_singular
+   _matrix_raw` (Addendum #9 F) verifies the 2-epoch case now produces
+   an identifiable LMM on raw values.
 
 3. **`fit_per_epoch_lmm.statistic = -log10(min_p)` across non-reference
    epoch coefficients.** Kickoff + Addendum #6 didn't specify a summary
@@ -298,3 +300,9 @@ or unexpected magnitudes early when re-running cohort is cheap
 - (Task 4 implementation note #2, Bonferroni granularity policy)
   Confirm at Task 9 close that Bonferroni-at-every-granularity is
   acceptable, OR tighten to confirmatory-granularity-only emission.
+
+- (Addendum #9, 2026-05-24) Adopted: `fit_per_epoch_lmm` runs on
+  RAW values; LMM random intercept absorbs between-animal baseline
+  shifts. Plot-time additive normalization deferred to Task 7
+  figure render code per Addendum #9 (D). Task 3 deviation #2
+  flagged VESTIGIAL above.

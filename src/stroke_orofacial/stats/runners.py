@@ -505,22 +505,18 @@ def run_per_epoch(
     axis: Axis = "pre_post",
     value_type: ValueType = "scalar_per_session",
     is_confirmatory: bool = False,
-    apply_additive_baseline: bool | None = None,
+    apply_additive_baseline: bool = False,
 ) -> FitResult:
-    """Per-epoch LMM runner (Addendum #6).
+    """Per-epoch LMM runner — fits ``value ~ C(epoch_label) + (1|animal)``
+    on RAW values per Addendum #9 (revises Addendum #6 D-F).
 
-    Filters to post-stroke rows + apply additive baseline subtraction
-    (per animal) + fits ``value ~ C(epoch_label) + (1|animal)``.
-
-    Per Task 3 deviation #2: with ``apply_additive_baseline=True`` AND
-    only 2 epoch levels (pre + 1 post), the LMM hits a singular matrix
-    because reference-level rows become zero-mean per animal. Caller
-    falls back to :func:`run_pre_post` for that case.
-
-    Spatial endpoints (``scalar_per_animal_time``): the LOO pre-stroke
-    baseline is already in raw values, so ``apply_additive_baseline``
-    defaults to False for those. For non-spatial scalar endpoints it
-    defaults to True (the canonical Addendum #6 choice).
+    The LMM's random intercept ``(1|animal)`` absorbs between-animal
+    baseline shifts; no additive baseline subtraction at test time.
+    Each non-reference epoch coefficient directly tests "this epoch
+    differs from pre by X units" on the raw value scale. Spatial
+    endpoints continue using raw values per Addendum #6 (D) leave-one-
+    out pre-stroke baseline construction — this addendum aligns
+    non-spatial handling with the spatial pattern.
 
     Parameters
     ----------
@@ -531,8 +527,12 @@ def run_per_epoch(
         ``pre_post`` and ``recovery`` per_epoch runners by design.
     value_type : ValueType
     is_confirmatory : bool
-    apply_additive_baseline : bool, optional
-        Override the default (False for spatial, True otherwise).
+    apply_additive_baseline : bool, default False (Addendum #9)
+        Preserved as a callable parameter for legacy / inspection use,
+        but the canonical Task 5 cohort emit relies on the
+        ``apply_additive_baseline=False`` default. Plot-time additive
+        normalization moves to Task 7 figure render code per Addendum
+        #9 (D), NOT here.
     """
     spec = AxisRunnerSpec(
         axis=axis, granularity="per_epoch",
@@ -540,8 +540,6 @@ def run_per_epoch(
     )
     if value_type in _SKIPPED_VALUE_TYPES:
         return _skip(spec, f"value_type={value_type} not supported for per_epoch")
-    if apply_additive_baseline is None:
-        apply_additive_baseline = value_type != _SPATIAL_VALUE_TYPE
 
     df = _filter_to_per_session(inputs_df)
     result = fit_per_epoch_lmm(

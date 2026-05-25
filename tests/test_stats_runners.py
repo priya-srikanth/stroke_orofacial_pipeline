@@ -313,20 +313,22 @@ class TestRunPerEpoch:
 
     def test_spatial_no_additive_baseline(self):
         """For scalar_per_animal_time, apply_additive_baseline defaults
-        to False (LOO pre-stroke baseline is in raw values per
-        Addendum #6 D)."""
+        to False per Addendum #6 (D) / Addendum #9 (B): LOO pre-stroke
+        baseline already in raw values."""
         df = _toy_per_session(n_animals=8, post_n=20)
         res = run_per_epoch(df, value_type="scalar_per_animal_time")
-        # The runner should NOT have applied additive baseline.
-        # Check via the details from fit_per_epoch_lmm.
         if res.details["status"] == "ok":
             assert res.details["additive_baseline_applied"] is False
 
-    def test_non_spatial_applies_additive_baseline(self):
+    def test_non_spatial_no_additive_baseline_addendum_9(self):
+        """Addendum #9 (B): apply_additive_baseline defaults to False
+        for ALL endpoint types (was True for non-spatial under
+        Addendum #6 D). LMM's random intercept absorbs between-animal
+        baseline shifts; no test-time normalization needed."""
         df = _toy_per_session(n_animals=8, post_n=20)
         res = run_per_epoch(df, value_type="scalar_per_session")
         if res.details["status"] == "ok":
-            assert res.details["additive_baseline_applied"] is True
+            assert res.details["additive_baseline_applied"] is False
 
 
 # ===========================================================================

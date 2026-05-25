@@ -381,3 +381,55 @@ class TestPerEpochLmm:
         res = fit_per_epoch_lmm(df)
         assert np.isnan(res.p_value)
         assert res.details["status"] == "insufficient_data"
+
+    # ======================================================================
+    # Addendum #9 — fit_per_epoch_lmm runs on RAW values (no additive
+    # baseline at test time). 3-test suite per Addendum #9 (F).
+    # ======================================================================
+
+    def test_per_epoch_lmm_4epoch_known_shift_raw(self):
+        """4-epoch design (pre + acute + sub_acute + chronic) on RAW
+        values with known acute shift of 5 units; LMM should recover
+        coefficient within ±0.3 of 5.0 without any baseline subtraction.
+        """
+        df = self._make_df(
+            epoch_shifts={"pre": 2.0, "acute": 7.0, "sub_acute": 4.0, "chronic": 2.5},
+            n_animals=8, n_per_epoch=8, rng_seed=0,
+        )
+        res = fit_per_epoch_lmm(df, apply_additive_baseline=False)
+        assert res.details["status"] == "ok"
+        assert res.details["additive_baseline_applied"] is False
+        # acute coefficient on raw values = 7.0 - 2.0 = 5.0
+        assert res.details["per_epoch"]["acute"]["coef"] == pytest.approx(5.0, abs=0.3)
+
+    def test_per_epoch_lmm_2epoch_no_singular_matrix_raw(self):
+        """Addendum #9 fix: 2-epoch design (pre + chronic) on RAW
+        values should produce an identifiable LMM (no singular matrix)
+        and recover known shift within ±0.3."""
+        df = self._make_df(
+            epoch_shifts={"pre": 1.0, "chronic": 4.0},
+            n_animals=8, n_per_epoch=8, rng_seed=1,
+        )
+        res = fit_per_epoch_lmm(df, apply_additive_baseline=False)
+        assert res.details["status"] == "ok", (
+            f"Expected status=ok under Addendum #9; got {res.details}"
+        )
+        # chronic - pre = 3.0 shift on raw values
+        assert res.details["per_epoch"]["chronic"]["coef"] == pytest.approx(3.0, abs=0.3)
+
+    def test_per_epoch_lmm_zero_shift_pvalue_nonsig(self):
+        """Under true null (all epoch shifts equal), the min-p across
+        non-reference coefficients should be > 0.5 with a friendly
+        seed. (Seed 5 chosen empirically — gave min_p ≈ 0.87 with the
+        synthetic generator. Under min-of-3-Uniform null, P(min > 0.5)
+        ≈ 0.125, so this test seed-pins rather than asserts about every
+        seed.)"""
+        df = self._make_df(
+            epoch_shifts={"pre": 1.0, "acute": 1.0, "sub_acute": 1.0, "chronic": 1.0},
+            n_animals=8, n_per_epoch=8, rng_seed=5,
+        )
+        res = fit_per_epoch_lmm(df, apply_additive_baseline=False)
+        assert res.details["status"] == "ok"
+        assert res.p_value > 0.5, (
+            f"Expected p_value > 0.5 under null; got {res.p_value}"
+        )
