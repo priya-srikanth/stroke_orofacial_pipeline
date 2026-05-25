@@ -6403,3 +6403,91 @@ Pre-`rm` `du -sh` re-verification: 20.0 MB ✓ (matches audit report baseline at
 
 ---
 
+## Phase 9 — Behavioral statistical analyses on consolidated outputs
+
+**Date:** 2026-05-25
+**Tag on merge:** `v9-stats-behavioral`
+**Branch:** `phase/9-stats`
+**Kickoff:** [`docs/prompts/phase-9-stats-kickoff.md`](prompts/phase-9-stats-kickoff.md) (**11 addenda**)
+**Scoping docs queued for follow-on phases:**
+- [`docs/prompts/phase-9.1-phenotype-pooled-figures-scoping.md`](prompts/phase-9.1-phenotype-pooled-figures-scoping.md) (Phase 9.1 — V4/V5 + pub-polish; ~5-7 days CC)
+- [`docs/prompts/phase-9.x-nonlinear-recovery-fit-scoping.md`](prompts/phase-9.x-nonlinear-recovery-fit-scoping.md) (Phase 9.x — per-phenotype stats + per-animal nonlinear fits; ~10-15 days CC)
+
+**DECISIONS entry:** 2026-05-25 (8 sub-decisions covering architecture, methodology, deviations, headline findings).
+**Verdict doc:** [`.scratch_phase_9/verdict.md`](../.scratch_phase_9/verdict.md) (Task 8 verification gates; 4 CC-owned + 2 Priya-eyeball).
+**Trial-count bias investigation:** [`.scratch_phase_9/_trial_count_bias_findings.md`](../.scratch_phase_9/_trial_count_bias_findings.md) (Addendum #11; NO BIAS CONFIRMED).
+**Running close-state notes:** [`.scratch_phase_9/notes_running.md`](../.scratch_phase_9/notes_running.md).
+
+**Scope.** Behavioral statistical analyses on the consolidated Phase 7c.2 spatial + Phase 7a kinematics + Phase 8a.10 spout-behavior outputs. Materializes a per-endpoint long-format parquet tree under `pipeline_outputs/stats/inputs/`; runs per-axis hypothesis tests with multi-granularity dispatch; emits a structured result tree + headline summary CSV + figure family. Discharges the Phase 8a.10 `recovery_trajectories` plot-family forward-pointer.
+
+**What landed.** ~30 commits on `phase/9-stats`:
+
+**Stats module (Task 3, commit `17650e6`).** 5 modules + 115 tests under `src/stroke_orofacial/stats/`:
+- `recovery_epochs.py` — `assign_epoch_label` + `cohort_phenotype_summary`
+- `normalization.py` — `per_animal_baseline_stats`, `difference_from_baseline` (additive Task 4 LMM input), `zscore_to_baseline`, `ratio_to_baseline`, `log1p_transform`, `rank_within_animal`
+- `multiple_comparisons.py` — `benjamini_hochberg_fdr`, `bonferroni_correct`, `bonferroni_holm_within_endpoint` (Addendum #10), `apply_correction_to_results_df`
+- `permutation.py` — `paired_permutation_null`, `unpaired_permutation_null`, `permutation_p_value`, `bootstrap_ci` (BCa)
+- `models.py` — `FitResult` + 7 fit_* model wrappers (`fit_paired_pre_post_wilcoxon`, `fit_ipsi_contra_wilcoxon`, `fit_trial_group_friedman`, `fit_pre_post_ks_distribution_shape`, `fit_recovery_mixedlm`, `fit_per_epoch_lmm`)
+
+**Per-axis runners (Task 4, commit `e608fe2`).** `src/stroke_orofacial/stats/runners.py` + `scripts/phase_9_stats/run_stats_axis.py`. 4 axes (`pre_post`, `recovery`, `ipsi_contra`, `trial_group`) × 3 granularities (`per_session`, `per_bin`, `per_epoch`) dispatch. Result tree: `pipeline_outputs/stats/results/<axis>/per_<granularity>/<endpoint>.csv` + `_all.csv` concat. **456 fits × 465 CSV files** at cohort emit; BH-FDR within (axis, comparison) family + Bonferroni within confirmatory subset.
+
+**Cohort spatial emit (Task 2, commits `dcf4458` → `45383e8` → `5723b04`).** 384 spatial parquets (3 metrics × 4 families × 4 scope/trial_group combos × 8 animals) emitted serial at `n_jobs=1` in **23.9 hr** (parallel attempts at `n_jobs=4` showed 1.1× speedup due to SMB I/O contention). 651-row unified materialize manifest with `materializer_pass` provenance column.
+
+**Headline summary CSV (Task 5 + Addendum #10, commit `bb5d09f`).** `.scratch_phase_9/task_5_headline_summary.csv`:
+- v1: 105 rows (initial single-summary per per_epoch endpoint)
+- **v2: 306 rows** (per-coefficient pre-vs-each-epoch extraction; canonical Phase 9 deliverable)
+
+Per-(axis × comparison) confirmatory significance at v2:
+- `recovery` × `pre_vs_acute`: 15/15 Bonferroni-pass
+- `recovery` × `pre_vs_sub_acute`: 15/15
+- `recovery` × `pre_vs_chronic`: 12/15
+- `recovery` × `continuous_rel_day_slope`: 11/11
+- `recovery` × `continuous_bin_midpoint_slope` (spatial): 4/4
+- `ipsi_contra` × `collapsed_post`: 6/10
+- `pre_post` × `collapsed_post`: 5/12
+
+**Recovery-axis dominance:** 13/14 Bonferroni-pass — the headline result of Phase 9. Pattern is "transient deficit recovers" — pre_post collapsed-post weak, per-epoch strong.
+
+**recovery_trajectories plot family (Task 6, commit `682cefd`).** `src/stroke_orofacial/spout_behavior/recovery_trajectories.py::plot_recovery_trajectories_with_fit` + `visual_gate.py::render_recovery_trajectories` + `notebooks/15_spout_behavior_visual_gate.ipynb` `INCLUDE_RECOVERY_TRAJECTORIES` toggle. Per-mouse scatter + cohort LMM fit + bootstrap CI ribbon (clipped to per-animal x-range). Discharges Phase 8a.10 forward-pointer.
+
+**Task 7 figure family (commit `19c507b`).** `src/stroke_orofacial/stats/figures.py` + `scripts/phase_9_stats/build_task_7_figures.py`. **76 figures × 2 formats = 152 files** at `pipeline_outputs/stats/figures/`:
+- `headlines/<endpoint>/` — V1 per_session scatter + LMM, V2 per_bin mean/SEM, V3 per_epoch boxplot with Bonferroni-Holm asterisk annotations (21 figures for 7 headline kinematics)
+- `per_animal/<endpoint>/` — recovery_curve + paired_diff distributions per axis (48 figures for 16 confirmatory)
+- `forest_plots/` — one per (axis, comparison) family (7 figures)
+
+**Verification (Task 8, commit `783fa05`).** 4 CC-owned gates + 2 Priya-eyeball gates. All 4 CC gates PASS (7/8 methodology sanity + 4/5 internal consistency + permutation reproducibility + 1/12 LOO flag at `latency_hist` deferred to Phase 9.x). Priya signed off Gate 5 + Gate 6 PASS 2026-05-25.
+
+**Trial-count bias investigation (Task 8 mid-flight, commit `329c4ce`; Addendum #11).** Hypothesis tested 2026-05-25 (Priya methodological concern): tongue acute coefficients may be inflated by low-n-trial sessions in PS51/PS54/PS55 acute. **Verdict: BIAS NOT CONFIRMED.** Direction was OPPOSITE the predicted pattern (low-n acute sessions had LOWER, not higher, session means). Counterfactual LMM at n_min=10 filter shifted acute coefficients by ≤4%. Alternative mechanism documented: engagement-correlated trial count + excursion. **Strengthens** recovery-dynamics interpretation. No production change.
+
+**Outputs.**
+
+| deliverable | path | count / size |
+|---|---|---|
+| Stats inputs parquets | `pipeline_outputs/stats/inputs/<endpoint>/<animal>.parquet` | 651 parquets, ~9 MB |
+| Stats results CSVs | `pipeline_outputs/stats/results/<axis>/per_<gran>/<endpoint>.csv` + `_all.csv` | 465 CSVs |
+| Stats figures | `pipeline_outputs/stats/figures/{headlines,per_animal,forest_plots}/` | 76 figures × 2 formats |
+| recovery_trajectories per-mouse | `pipeline_outputs/spout_behavior/spout_behavior_figures/<animal>/recovery_trajectories.<endpoint>.{svg,png}` | per-mouse × 15 default endpoints |
+| Headline summary CSV | `.scratch_phase_9/task_5_headline_summary.csv` | 306 rows (v2) |
+| Manifest | `.scratch_phase_9/materialize_manifest_full.csv` | 651 rows |
+
+**Intentional behavior differences vs legacy.** This is a new analysis tier with no legacy counterpart — `behavior_report_PS.py` style analyses produced per-animal figures + raw stats tables but no consolidated multi-axis hypothesis-test sweep. Phase 9's output tree is the new canonical reference; legacy outputs preserved on disk for archival comparison.
+
+**Behavior diff caveats.**
+- `lickRate_byTrial` (24,793 rows) vs tongue per-trial (24,023 rows) — 770 row diff from different trial-inclusion sources. Documented in Decision 6.
+- `lick_switch_rate` "to" semantics flip vs initial Commit A "from" semantics — matches legacy `render_switchiness_bySession` destination convention.
+- `latency_hist` flat-per-trial schema (Commit B emit choice) vs Addendum #4 `vector_per_session` spec — runner bridge in `runners._ks_on_flat_per_trial` (Task 4 deviation #2).
+
+**Forward-pointers carried out of Phase 9.**
+
+- **Phase 9.1** — V4/V5 phenotype-pooled figures + phenotype-pooled spatial + pub-polish. Scoping at `docs/prompts/phase-9.1-phenotype-pooled-figures-scoping.md`. ~5-7 days CC.
+- **Phase 9.x** — Per-phenotype stats + per-animal nonlinear recovery fits (combined per Priya 2026-05-25 expanded scope). Scoping at `docs/prompts/phase-9.x-nonlinear-recovery-fit-scoping.md`. 3-tier grouping: mild=4 / moderate-pool=2 (PS46+PS51) / severe=2. §7.5 sub_acute vxy + PS55-DLC-QC pointers from trial-count investigation. ~10-15 days CC.
+- **Pub-figures phase** (speculative) — paper-quality polish phase blocked on Phase 9 + 9.1.
+
+**Discharged in-phase.**
+- Phase 8a.10 `recovery_trajectories` plot family (Task 6).
+- Cohort-enumeration YAML-driven forward-pointer (co-discharged via Phase 9's use of canonical YAML-driven pattern throughout).
+
+**Tag:** `v9-stats-behavioral` on the merge commit. Tag message: "Phase 9: behavioral statistical analyses on Phase 7c.2 + 7a kinematics + 8a.10 spout-behavior outputs".
+
+---
+
