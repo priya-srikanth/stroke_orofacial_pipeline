@@ -6491,3 +6491,17 @@ Per-(axis × comparison) confirmatory significance at v2:
 
 ---
 
+## Phase 7e (DRAFTED 2026-05-25, not yet executed) — DLC tongue pre-clean + v7 detector
+
+**Kickoff:** [`docs/prompts/phase-7e-dlc-tongue-preclean-v7-kickoff.md`](prompts/phase-7e-dlc-tongue-preclean-v7-kickoff.md). Branch: `phase/7e-dlc-tongue-preclean-v7` (to be created off main at session start). Estimated tag: `v7e-dlc-tongue-preclean-v7`.
+
+**Predecessor work:** CC investigation in `.scratch_phase_9_1/` 2026-05-23 through 2026-05-25 designed and validated the v7 algorithm. Reference impl at `.scratch_phase_9_1/inv_p3a_step2j_unified_preclean.py`. Validation outputs at `.scratch_phase_9_1/dlc_tongue_quality_investigation/part3b_cohort_validation_v7/` (35 outlier figures + `part3b_stats.csv`).
+
+**Scope:** Port v7 algorithm into `src/stroke_orofacial/dlc_kinematics/` (3 new modules: `preclean.py`, `detector_v2.py`, `gates.py`); externalize all constants to `configs/defaults.yaml`; add new PathResolver methods + parquet outputs (`cleaned_traces/`, `lick_events/`); wire into `tongue_pertrial.py` behind `use_v7_pipeline: true`; update downstream `tongue_velocity` (kept-lick gating) and `lick_angle` (imputed y); 9-canonical-trial fixture parity test + 80-trial cohort parity test.
+
+**Out of scope:** cohort re-emit, downstream Phase 9 stats regeneration, jaw interpolation revisit. All deferred to follow-ons after Phase 7e merge.
+
+**Key behavioral changes vs. legacy:** mean v7 detected-lick counts run 1-10 licks LOWER per trial than legacy across the 80-trial cohort sample (PS48 -9.6, PS46 -4.6, PS47 -3.4, others 0.2 to 2.9). The delta is largely v7 correctly rejecting plateau-drift wobbles + late-trial fixture artifacts that legacy was counting as licks. A few real-lick drops exist as documented edge cases (M-gate confidence trade-off on 58L-style close pairs; F-gate on wide-flat lick tops).
+
+---
+
