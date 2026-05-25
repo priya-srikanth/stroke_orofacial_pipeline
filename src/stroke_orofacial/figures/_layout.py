@@ -42,9 +42,7 @@ def phenotype_panel(
     endpoint_slug : str
         Endpoint identifier used in the title (when ``set_title=True``).
     n_by_tier : dict[str, int]
-        ``{phenotype_tier: n_animals}`` for the legend / annotation. n=1
-        tiers (moderate, moderate-severe) get the "n=1 single-animal trace"
-        marker per kickoff Critical Caveat 1.
+        ``{phenotype_tier: n_animals}`` for the legend ``(n=N)`` suffix.
     xlabel : str, optional
         X-axis label. Default tracks the V4 ``bin_midpoint_rel_day`` convention.
     ylabel : str, optional
@@ -77,10 +75,11 @@ def phenotype_legend(
     n_by_tier: dict[str, int],
     loc: str = "best",
 ) -> None:
-    """Emit a 4-tier phenotype legend with per-tier n labels.
+    """Emit a 4-tier phenotype legend with per-tier ``(n=N)`` suffix.
 
-    Single-animal tiers (n=1) get an explicit "(n=1, single-animal trace)"
-    suffix per Critical Caveat 1.
+    The bare ``(n=1)`` label is sufficient to mark single-animal tiers
+    (Priya 2026-05-25 Task 1a v5 review — the verbose
+    "single-animal trace" addendum was visual clutter).
     """
     handles_labels = ax.get_legend_handles_labels()
     handles, labels = handles_labels
@@ -92,9 +91,8 @@ def phenotype_legend(
         if tier not in by_label:
             continue
         n = n_by_tier.get(tier, 0)
-        suffix = " (n=1, single-animal trace)" if n == 1 else f" (n={n})"
         ordered_handles.append(by_label[tier])
-        ordered_labels.append(f"{tier}{suffix}")
+        ordered_labels.append(f"{tier} (n={n})")
     if ordered_handles:
         ax.legend(
             ordered_handles, ordered_labels,
