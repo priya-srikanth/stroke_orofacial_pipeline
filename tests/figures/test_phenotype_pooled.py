@@ -277,6 +277,22 @@ def test_phenotype_marker_unknown_raises() -> None:
         phenotype_marker("not_a_tier")
 
 
+def test_phenotype_display_name_shortens_moderate_severe() -> None:
+    """'moderate-severe' → 'mod-severe' for legend compactness; others identity."""
+    from stroke_orofacial.figures.palette import phenotype_display_name
+    assert phenotype_display_name("mild") == "mild"
+    assert phenotype_display_name("moderate") == "moderate"
+    assert phenotype_display_name("moderate-severe") == "mod-severe"
+    assert phenotype_display_name("severe") == "severe"
+
+
+def test_phenotype_display_name_unknown_raises() -> None:
+    """Unknown tier raises KeyError (parallel to palette + marker behavior)."""
+    from stroke_orofacial.figures.palette import phenotype_display_name
+    with pytest.raises(KeyError):
+        phenotype_display_name("not_a_tier")
+
+
 def test_get_epoch_display_mapping() -> None:
     """4 known epochs map to publication-facing labels (Task 1a v5)."""
     assert _layout.get_epoch_display("pre") == "Pre-stroke"
