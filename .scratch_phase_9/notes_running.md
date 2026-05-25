@@ -166,10 +166,57 @@ time of Task 2 close. Priya may want to add items I missed.*
 
 ---
 
+## Task 3 implementation deviations from kickoff/addenda spec (2026-05-24)
+
+Each deviation is also documented in the relevant source-file docstring
+(canonical for code-readers); these entries are the canonical seed for
+the Task 9 DECISIONS write-up (canonical for future-Priya / future-Cowork
+explaining WHY the choice was made).
+
+1. **`fit_trial_group_friedman` 2-group case: explicit
+   `status="insufficient_data"` + redirect to `fit_ipsi_contra_wilcoxon`.**
+   scipy's `friedmanchisquare` requires ≥ 3 samples. For 2-group endpoints
+   (e.g. `lick_switch_rate` with side ∈ {L, R}) the function returns a NaN
+   FitResult tagged `reason="friedman_requires_3_or_more_groups"` rather
+   than silently degrading to a paired Wilcoxon equivalent. **Auditability
+   over silent fallback** — silent fallbacks make multi-comparison results
+   harder to audit; the explicit redirect points callers at the right tool
+   for the right test.
+
+2. **`fit_per_epoch_lmm` 2-epoch + `apply_additive_baseline=True` =
+   `SingularError`; surfaced as `status="convergence_failed"` + redirect
+   to `fit_paired_pre_post_wilcoxon`.** With baseline subtraction applied
+   AND only 2 epoch levels (pre + 1 post), the reference-level rows become
+   exactly zero-mean per animal → random intercept variance unidentifiable
+   → statsmodels MixedLM raises SingularError. Caught + surfaced as a
+   NaN FitResult. **Forward-compatibility safety net** — not an active
+   concern for the current 8-animal cohort which has 3+ post-epoch levels,
+   but the case will arise if a future analyst splits to a 2-epoch design.
+   3+ epoch case works correctly (verified by
+   `test_additive_baseline_normalization_recovers_known_shift` recovering
+   the known acute + chronic shifts within 0.3 absolute tolerance).
+
+3. **`fit_per_epoch_lmm.statistic = -log10(min_p)` across non-reference
+   epoch coefficients.** Kickoff + Addendum #6 didn't specify a summary
+   statistic for the multi-coefficient LMM. Picked `-log10(min_p)` to
+   give each FitResult a single FDR-comparable scalar interpretable as
+   "strongest per-epoch effect, on a tail-visible scale". The
+   unsummarized per-coefficient `{coef, se, p_value}` dict is in
+   `details["per_epoch"]` for downstream consumers that want the full
+   set. **Chosen for FDR-comparability across endpoints.** Alternative
+   Wald chi-square omnibus available via statsmodels but adds a single
+   "any difference" p-value rather than localizing to a specific epoch
+   — the min-p approach inherits the "most-significant-epoch" localization
+   for free. Revisitable as an Addendum if scientific framing shifts
+   toward omnibus testing for the LMM tier.
+
+---
+
 ## Reconciliation / open
 
-*Items needing Priya adjudication at Task 9 close. Currently empty — no
-adjudication-required residuals from Task 2 close. Will accumulate during
-Task 3-8 implementation work.*
+*Items needing Priya adjudication at Task 9 close.*
 
-(none at Task 2 close)
+- (Task 3 deviation #3, `fit_per_epoch_lmm.statistic = -log10(min_p)`)
+  Confirm at Task 9 close that the min-p summary statistic is the
+  preferred scientific framing, OR direct switch to Wald chi-square.
+  Locked default for now; revisitable.
