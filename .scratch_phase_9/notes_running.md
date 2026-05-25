@@ -212,6 +212,73 @@ explaining WHY the choice was made).
 
 ---
 
+## Task 4 implementation notes (2026-05-24)
+
+1. **`latency_hist` parquet uses flat per-trial schema, not
+   `value_vector` per-row vectors.** Addendum #4 spec said
+   ``vector_per_session`` emits a per-session vector; the Phase 9
+   Commit B implementation chose to emit one row per trial with a
+   scalar `value` column instead (matches the rest of the parquet
+   convention). The Task 4 runner bridges the gap via
+   `runners._ks_on_flat_per_trial` — pools scalar `value` across
+   pre/post rows + calls `scipy.stats.ks_2samp` directly. The
+   `model_name` is preserved as `"pre_post_ks_distribution_shape"` so
+   downstream consumers see a uniform model identifier;
+   `details["schema"] = "flat_per_trial"` flags the bridge for
+   audit. Documented in `runners.run_pre_post` + tested.
+
+2. **Confirmatory granularity dispatch encoded in driver, not inventory.**
+   Per Addendum #5 (E) defaults: per_session for non-spatial,
+   per_bin for spatial (value_type=scalar_per_animal_time). Currently
+   the driver writes BH-FDR for ALL family rows + Bonferroni for the
+   confirmatory subset at EVERY granularity. A future tightening
+   could restrict Bonferroni emission to the per-value-type
+   confirmatory granularity only; for now the more-permissive
+   "emit at every granularity, caller filters" is the simpler MVP.
+
+3. **`trial_group` axis is largely a no-op for the current inventory.**
+   Only 2 endpoints have `trial_group` in `comparison_axes_in_scope`,
+   both `scalar_per_session_trial_group` value_type. After Friedman's
+   ≥3-group requirement (Task 3 deviation #1), the runner skips them
+   if their `side` column carries only `{L, R}`. No CSVs emitted for
+   `trial_group/*`. Surfaced here as a "not used in current cohort"
+   note, not a deviation.
+
+---
+
+## Forward pointer — Task 5 headline summary CSV (Priya 2026-05-24 directive)
+
+At Task 5 close (cohort run finalization), CC writes
+``.scratch_phase_9/task_5_headline_summary.csv`` for Priya's
+intermediate spot-check BEFORE Task 6 figure work starts.
+
+**Scope.** One row per (endpoint, axis) pair, restricted to endpoints
+where EITHER `is_confirmatory=true` OR `n_permutations_override=100000`
+(the "headline + priority" set per Addenda #2/#3/#8). At each
+endpoint's default confirmatory granularity per value_type:
+
+- scalar_per_session → per_session
+- scalar_per_trial → per_session (mean-across-trials)
+- vector_per_session → per_session (KS via Addendum #4)
+- scalar_per_animal_time (spatial) → per_bin
+
+**Columns.** endpoint_slug, category, is_confirmatory, n_permutations,
+axis, granularity, effect_size (signed), effect_size_metric,
+p_value, q_value_within_axis_granularity_family (BH-FDR),
+bonferroni_passed (bool for confirmatory only; null otherwise),
+n_animals, n_observations, ci_lower, ci_upper (bootstrap CI),
+status (FitResult.status).
+
+**Sort.** category → axis → abs(effect_size) DESC. Eyeball-friendly.
+
+**Purpose.** ~70-100 rows for Priya to verify effect directions +
+magnitudes vs expectation for headline + priority endpoints, BEFORE
+Task 6/7 figure work consumes ~6-8 CC-days. Catches direction errors
+or unexpected magnitudes early when re-running cohort is cheap
+(~1-2 hr).
+
+---
+
 ## Reconciliation / open
 
 *Items needing Priya adjudication at Task 9 close.*
@@ -220,3 +287,14 @@ explaining WHY the choice was made).
   Confirm at Task 9 close that the min-p summary statistic is the
   preferred scientific framing, OR direct switch to Wald chi-square.
   Locked default for now; revisitable.
+
+- (Task 4 implementation note #1, `latency_hist` flat per-trial
+  schema) Confirm at Task 9 close that the runner-level KS bridge is
+  the preferred resolution, OR re-emit `latency_hist` with a true
+  `value_vector` column. The current bridge works correctly +
+  produces the expected KS p-values, but lives at the runner layer
+  rather than the parquet layer.
+
+- (Task 4 implementation note #2, Bonferroni granularity policy)
+  Confirm at Task 9 close that Bonferroni-at-every-granularity is
+  acceptable, OR tighten to confirmatory-granularity-only emission.
