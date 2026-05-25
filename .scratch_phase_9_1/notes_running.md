@@ -168,4 +168,68 @@ Scoping doc lock landed in commit `82a4653`; kickoff body landed in commit `73aa
 
 ---
 
+## 2026-05-25 — Task 0 start (branch `phase/9.1-figures`)
+
+**Branch cut.** `phase/9.1-figures` branched from `main` HEAD `81f89c9` (post Phase 9.1 kickoff merge PR #130 `81f89c9`; the kickoff body's expected base SHA `29eb078` was Phase 9 close — `main` advanced past it during the kickoff PR merge, which is the explicit fallback in kickoff §"Task 0 — Setup + branch verification" ("If `git rev-parse main` does NOT match `29eb078`, branch off the new tip regardless").
+
+**Warm-start verifications:**
+
+- `git status` clean post `git pull origin main`. Tag audit: `v9-stats-behavioral` present; no `v9.1` tag yet (correct — tags land only at phase close).
+- Conda env smoke (`conda run -n stroke_orofacial python -c "import stroke_orofacial"`): OK; module resolves to repo-tree `src/stroke_orofacial/__init__.py`.
+- `pytest --collect-only`: **1743 tests collected in 1.52s**, no import errors.
+- `ruff check .`: **67 pre-existing errors on `main`** (16 E402 + 15 F541 + 10 F821 + 8 E702 + 6 F401 + 6 F841 + 4 invalid-syntax + 1 E731 + 1 E741). NOT introduced by Task 0; the working tree was clean against main when audit ran. Two `Access is denied` warnings on `.pytest_tmp_*/` dirs are environmental (Windows ACL on harness-created tmp dirs). The kickoff §"Pre-commit checks" comment "pre-existing clean baseline" overstates current state — flagged for Priya. Investigation deferred (out of Task 0 scope).
+
+**Phase 9 disk-state audit (pre-Task-0.5 sanity sweep against kickoff Q-lock counts):**
+
+| Anchor | Kickoff expectation | Disk reality | Status |
+|---|---|---|---|
+| Q-lock 2 — `pipeline_outputs/stats/results/recovery/per_epoch/` non-spatial, non-`_all.csv` | 35 LMM-run scalar endpoints | **35** | MATCHES |
+| Q-lock 3 — `pipeline_outputs/stats/results/recovery/per_epoch/spatial_*` | 48 spatial endpoints | **48** | MATCHES |
+| Q-lock 3 — `pipeline_outputs/stats/inputs/spatial_*` input dirs | 48 spatial + 2 orphan bare slugs (Wasserstein only per kickoff §"Task 0.5") | **52 total → 48 canonical + 4 orphan bare slugs** | MINOR DISCREPANCY (see below) |
+| Q-lock 7 — `pipeline_outputs/stats/inputs/latency_hist/<animal>.parquet` | 8 animals | **8 (PS46-50, PS51, PS54, PS55)** | MATCHES |
+
+**Orphan bare-slug count discrepancy (4, not 2).** Kickoff line 565 mentions only `spatial_wasserstein_jaw_eye_midpoint` and `spatial_wasserstein_tongue_spout_midpoint` as Addendum-7 rename artifacts. Disk audit shows **4** orphan bare-slug dirs:
+
+1. `spatial_wasserstein_jaw_eye_midpoint`
+2. `spatial_wasserstein_tongue_spout_midpoint`
+3. `spatial_uot_cost_tongue_spout_midpoint`
+4. `spatial_js_divergence_tongue_spout_midpoint`
+
+Task 0.5 endpoint-list YAML construction must exclude all 4 (not just 2). Net canonical = 52 − 4 = 48 ✓ (matches Q-lock 3 count). Flag for Priya: kickoff body exclusion list at line 565 needs an addendum to add the UOT + JS orphans.
+
+**Figure module scaffold (per launch prompt's 7-stub structure; deviates from kickoff §"Module organization" 6-file plan):**
+
+Existing `src/stroke_orofacial/figures/` from Phase 0 skeleton (`d874dde`) contains 5 placeholder files (`__init__.py` + `behavior_plots.py` + `kinematic_plots.py` + `spatial_plots.py` + `style.py`) — each a 1-line docstring; zero importers in the repo. **Preserved untouched per CLAUDE.md "don't refactor beyond what task requires"**; Phase 0 stubs and Phase 9.1 stubs coexist in the same dir under different names.
+
+Phase 9.1 stubs added by Task 0 (matching the launch prompt's "one file per concern" pattern modeled on `src/stroke_orofacial/stats/`):
+
+1. `phenotype_pooled.py` — V4/V5 base + parameterized runner (Tasks 1-2; Q-locks 2 + 5 + 6 + 9).
+2. `phenotype_pooled_spatial.py` — 48-figure W/UOT/JS spatial emitter (Task 3; Q-locks 3 + 5 + 6 + 9; Q-C dedup retained).
+3. `latency_hist_cdf.py` — empirical-CDF family (Task 4; Q-lock 7 + 9; layout choice locked at Task 0.5/4b review).
+4. `ipsi_shift.py` — Q-lock 8 Family 8.1 (angle) + 8.2 (x trajectory); reuses `dlc_kinematics.mean_sem_visual.build_mean_sem_cohort` + `dlc_kinematics.tongue_angle_cohort._plot_tone_aligned_*` primitives (no new trajectory code).
+5. `palette.py` — 4-tier phenotype palette + ipsi/contra style; OPEN-Q 1 placeholder until Task 6 review.
+6. `_io.py` — module-private parquet loaders + phenotype-pool helpers (per-session equal-weight per Phase 9 Addendum #6).
+7. `_layout.py` — module-private panel-grid + ipsi/contra side-split + n-label + y=0 reference helpers.
+
+Each stub is docstring-only (no business logic; that lands in Tasks 1-5).
+
+**Test stubs (per launch prompt's `tests/figures/` subdir directive):**
+
+Existing repo convention is flat `tests/test_*.py` (no per-package subdirs). The kickoff body §"Module organization" lists flat `tests/test_figures_*.py`. Launch prompt directs `tests/figures/test_*.py` subdir. **Deviation from kickoff + existing convention**; honoring launch prompt's explicit directive. `pyproject.toml` `[tool.pytest.ini_options]` `testpaths = ["tests"]` autodiscovers subdirs — no config change needed.
+
+5 test stubs created mirroring the 5 public src modules (skipping `_io`/`_layout`; those test transitively via the emit modules):
+
+1. `tests/figures/__init__.py` (empty).
+2. `tests/figures/test_phenotype_pooled.py` (docstring only).
+3. `tests/figures/test_phenotype_pooled_spatial.py` (docstring only).
+4. `tests/figures/test_latency_hist_cdf.py` (docstring only).
+5. `tests/figures/test_ipsi_shift.py` (docstring only).
+6. `tests/figures/test_palette.py` (docstring only).
+
+Post-scaffold `pytest --collect-only` re-run: **1743 tests collected** (unchanged from baseline) — confirms the stubs contribute zero collected tests and don't break collection.
+
+**Q-lock 9 reminder.** No `pipeline_outputs/` writes in Task 0. First write happens at Task 1a preview emit (single phenotype tier; default moderate-severe / PS51 per kickoff §"Q-lock 9").
+
+**Next:** STOP at end of Task 0 per launch-prompt instruction. Priya reviews scaffold + tooling state before authorizing Task 1a (V4 moderate-severe preview emit).
+
 
