@@ -302,6 +302,25 @@ def apply_top_room(fig: Any, *, top: float = 0.86) -> None:
     fig.tight_layout(rect=[0.0, 0.0, 1.0, top])
 
 
+def expand_y_axis(ax: Any, *, frac: float = 0.08) -> None:
+    """Add ``frac × span`` padding above and below the current y-axis range.
+
+    Prevents data points + SEM bars from sitting right at the axis edge
+    (Priya 2026-05-25 — observed moderate-severe acute ipsi on
+    ``num_correct_licks_per_trial`` V5 at delta ≈ −19.94, autoscaled axis
+    bottom at −20, marker touching the spine). Call AFTER all data is
+    drawn into ``ax``; works on whatever range matplotlib's autoscale
+    settled on. With ``sharey=True`` panels (V4/V5 side-split) one call
+    propagates to both panels via the shared y-axis link.
+    """
+    ymin, ymax = ax.get_ylim()
+    span = ymax - ymin
+    if span <= 0:
+        return
+    pad = frac * span
+    ax.set_ylim(ymin - pad, ymax + pad)
+
+
 # ---------------------------------------------------------------------------
 # Scatter underlay jitter (Q-lock 11 V5 + reusable for any categorical-x plot)
 # ---------------------------------------------------------------------------

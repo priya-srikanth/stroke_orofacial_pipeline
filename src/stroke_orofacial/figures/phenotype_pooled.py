@@ -191,6 +191,7 @@ def _draw_v4_traces(ax, sub: pd.DataFrame) -> None:
                 tier_df["mean"] + tier_df["sem"].fillna(0.0),
                 color=color, alpha=0.25, linewidth=0, zorder=2,
             )
+    _layout.expand_y_axis(ax)
 
 
 # ---------------------------------------------------------------------------
@@ -422,6 +423,7 @@ def _draw_v5_delta_line_with_scatter(
         [_layout.get_epoch_display(e) for e in _V5_EPOCH_ORDER]
     )
     ax.set_xlim(-0.5, len(_V5_EPOCH_ORDER) - 0.5)
+    _layout.expand_y_axis(ax)
 
 
 # ---------------------------------------------------------------------------
