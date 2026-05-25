@@ -142,7 +142,7 @@ def _build_v4_side_split_figure(
     _layout.apply_side_split_suptitle(
         fig, endpoint_slug, baseline_subtracted=False,
     )
-    fig.tight_layout()
+    _layout.apply_top_room(fig)
     return fig
 
 
@@ -166,7 +166,7 @@ def _build_v4_cohort_pooled_figure(
     _layout.apply_figure_suptitle(
         fig, display_name, baseline_subtracted=False,
     )
-    fig.tight_layout()
+    _layout.apply_top_room(fig)
     return fig
 
 
@@ -178,9 +178,10 @@ def _draw_v4_traces(ax, sub: pd.DataFrame) -> None:
             continue
         tier_df = tier_df.sort_values("bin_midpoint_rel_day")
         color = _palette.phenotype_palette(tier)
+        marker = _palette.phenotype_marker(tier)
         ax.plot(
             tier_df["bin_midpoint_rel_day"], tier_df["mean"],
-            color=color, marker="o", linewidth=2.0, markersize=4.0,
+            color=color, marker=marker, linewidth=2.0, markersize=5.0,
             label=tier, zorder=3,
         )
         if tier_df["sem"].notna().any():
@@ -327,7 +328,7 @@ def _build_v5_side_split_figure(
     _layout.apply_side_split_suptitle(
         fig, endpoint_slug, baseline_subtracted=True,
     )
-    fig.tight_layout()
+    _layout.apply_top_room(fig)
     return fig
 
 
@@ -353,7 +354,7 @@ def _build_v5_cohort_pooled_figure(
     _layout.apply_figure_suptitle(
         fig, display_name, baseline_subtracted=True,
     )
-    fig.tight_layout()
+    _layout.apply_top_room(fig)
     return fig
 
 
@@ -372,6 +373,8 @@ def _draw_v5_delta_line_with_scatter(
     :func:`phenotype_panel`).
     """
     # Background scatter underlay — per-(animal, session) jittered dots.
+    # Per-tier marker shape carries through to background (Task 1a v5) so
+    # silhouette identity stays even when the faded color washes out.
     for tier in _palette.PHENOTYPE_ORDER:
         tier_scatter = sessions_with_delta[
             sessions_with_delta["phenotype_tier"] == tier
@@ -379,6 +382,7 @@ def _draw_v5_delta_line_with_scatter(
         if tier_scatter.empty:
             continue
         color = _palette.phenotype_palette(tier)
+        marker = _palette.phenotype_marker(tier)
         for epoch_idx, epoch in enumerate(_V5_EPOCH_ORDER):
             cell = tier_scatter[tier_scatter["epoch_label"] == epoch]
             if cell.empty:
@@ -388,7 +392,7 @@ def _draw_v5_delta_line_with_scatter(
             )
             ax.scatter(
                 xs, cell["delta_value"].to_numpy(),
-                s=12.0, marker="o",
+                s=12.0, marker=marker,
                 facecolor=color, edgecolor="none",
                 alpha=0.25, zorder=1,
             )
@@ -404,16 +408,19 @@ def _draw_v5_delta_line_with_scatter(
             epoch_idx=tier_pool["epoch_label"].map(order_idx)
         ).sort_values("epoch_idx")
         color = _palette.phenotype_palette(tier)
+        marker = _palette.phenotype_marker(tier)
         ax.errorbar(
             tier_pool["epoch_idx"], tier_pool["mean"],
             yerr=tier_pool["sem"],
-            color=color, marker="o", markersize=5.0,
+            color=color, marker=marker, markersize=6.0,
             linewidth=2.0, capsize=3.5,
             label=tier, zorder=3,
         )
 
     ax.set_xticks(range(len(_V5_EPOCH_ORDER)))
-    ax.set_xticklabels(_V5_EPOCH_ORDER)
+    ax.set_xticklabels(
+        [_layout.get_epoch_display(e) for e in _V5_EPOCH_ORDER]
+    )
     ax.set_xlim(-0.5, len(_V5_EPOCH_ORDER) - 0.5)
 
 

@@ -57,6 +57,18 @@ PHENOTYPE_ORDER: tuple[str, ...] = (
     "mild", "moderate", "moderate-severe", "severe",
 )
 
+# Per-phenotype marker shapes (Task 1a v5; Priya 2026-05-25 review).
+# In addition to color (which can be hard to distinguish for some readers /
+# in grayscale prints), each tier gets a distinct silhouette. Applies to V4
+# + V5 foreground line markers AND V5 scatter underlay (same shape per tier,
+# smaller + α=0.25 in the background layer).
+PHENOTYPE_MARKERS: dict[str, str] = {
+    "mild":            "o",   # circle
+    "moderate":        "s",   # square
+    "moderate-severe": "^",   # triangle up
+    "severe":          "D",   # diamond
+}
+
 # Caption caveat sentence per Q-lock 4. All 8 cohort animals are L-stroke;
 # ipsi = mouse-L, contra = mouse-R. Used for every figure with an ipsi/contra
 # axis (Q-lock 8 trajectory families today; future per-side V4/V5 splits).
@@ -88,6 +100,20 @@ def phenotype_palette(tier: str) -> str:
             f"unknown phenotype tier {tier!r}; expected one of {tuple(_YLORRD_4)}",
         )
     return _YLORRD_4[tier]
+
+
+def phenotype_marker(tier: str) -> str:
+    """Return the matplotlib marker glyph for one phenotype tier (Task 1a v5).
+
+    See :data:`PHENOTYPE_MARKERS`. Domain is the 4-tier Q-lock 1 set; raises
+    :class:`KeyError` for any other tier name.
+    """
+    if tier not in PHENOTYPE_MARKERS:
+        raise KeyError(
+            f"unknown phenotype tier {tier!r}; expected one of "
+            f"{tuple(PHENOTYPE_MARKERS)}",
+        )
+    return PHENOTYPE_MARKERS[tier]
 
 
 def figure_caption_caveat() -> str:

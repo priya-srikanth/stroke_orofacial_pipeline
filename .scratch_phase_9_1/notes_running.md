@@ -812,6 +812,180 @@ polish) together. After Task 1b signoff: Task 1c full-cohort emit
 Task 1a v5 (FUTURE) will land after the parallel session's DLC
 detection-rate filter ships — that's separate scope.
 
+---
+
+## 2026-05-25 — Task 1a v5 style polish (branch `phase/9.1-figures`)
+
+Priya 2026-05-25 Task 1a v4 review surfaced five small style refinements.
+None affect data semantics or Q-locks; all live within existing
+`figures/` module surface.
+
+### Change A — per-phenotype marker shapes
+
+`PHENOTYPE_MARKERS` dict + `phenotype_marker(tier)` helper added to
+`palette.py`. Each tier now has a distinct silhouette in addition to
+color, so the figures stay legible for color-blind readers + grayscale
+prints.
+
+| tier             | marker | glyph |
+|------------------|--------|-------|
+| mild             | `"o"`  | circle |
+| moderate         | `"s"`  | square |
+| moderate-severe  | `"^"`  | triangle up |
+| severe           | `"D"`  | diamond |
+
+Applied to V4 line markers (every per_bin data point), V5 foreground
+line markers (mean ± SEM at each epoch), AND V5 scatter underlay
+(faded per-(animal, session) dots — same shape per tier, smaller +
+α=0.25). The matplotlib legend automatically reflects the new shapes via
+the line2D `marker` kwarg.
+
+**Scatter-shape decision:** kept per-phenotype scatter shapes (not
+fallback-to-circles). The scatter rendering shows mixed silhouettes
+without dominating the foreground line — diamonds are slightly visually
+heavier than circles at the same `s=12.0` but still readable; the
+α=0.25 transparency keeps the underlay sufficiently de-emphasized.
+
+### Change B — suptitle / subheading spacing
+
+`apply_figure_suptitle` updated:
+- Title at `y=0.99` (was `y=0.98`).
+- Subheading at `y=0.93` (was `y=0.94`).
+- Net gap widened from 0.04 → 0.06.
+
+New helper `apply_top_room(fig, top=0.86)` replaces plain
+`fig.tight_layout()` in every V4 + V5 builder; reserves the top 14% of
+figure height via `tight_layout(rect=[0, 0, 1, 0.86])` so subplots don't
+crowd the suptitle. Spot-check on `tongue_lick1_y_peak` V5 confirms the
+italic "baseline-subtracted" text now sits clearly below the bold
+"Tongue lick-1 Y peak" title with no visual overlap (~36px of
+breathing room between bold-bottom and italic-top at default DPI).
+
+### Change C — y-axis label capitalization
+
+`ENDPOINT_DISPLAY_NAMES` dict entries updated:
+
+| slug | new short_y_label |
+|---|---|
+| `first_lick_accuracy_all` | `"Delta accuracy"` |
+| `num_correct_licks_per_trial` | `"Delta licks / trial"` |
+| `tongue_lick1_y_peak` | `"Delta Y peak (px)"` |
+| `tongue_lick1_angle_at_ypeak` | `"Delta angle (deg)"` |
+| `tongue_lick1_x_at_ypeak` | `"Delta X (px)"` |
+
+Fallback updated to `"Delta value"` (capital D). Unit suffixes (`px`,
+`deg`) stay lowercase per standard unit conventions.
+
+### Change D — x-tick label relabel + capitalization
+
+`EPOCH_DISPLAY_LABELS` dict + `get_epoch_display(epoch_label)` added to
+`_layout.py`. Maps raw `epoch_label` values used in stats input parquets
+to publication-ready labels at V5 x-tick render time:
+
+| `epoch_label` (data) | display (figures) |
+|---|---|
+| `pre` | `Pre-stroke` |
+| `acute` | `Acute` |
+| `sub_acute` | `Subacute` |
+| `chronic` | `Chronic` |
+
+Wired in `_draw_v5_delta_line_with_scatter` — `ax.set_xticklabels(...)`
+now calls `get_epoch_display` per epoch. Underlying parquet data is
+unchanged (still uses raw `pre`/`acute`/`sub_acute`/`chronic` for stats
+consistency).
+
+**No x-tick rotation applied** — "Pre-stroke" + "Subacute" fit at default
+0° rotation on the 12×4 inch figure without truncation or adjacent-label
+collision. If a future Task 1b/1c iteration needs rotation (e.g.
+narrower figure size or longer labels), bump
+`ax.tick_params(axis='x', rotation=15)` in `_draw_v5_delta_line_with_scatter`.
+
+### Change E — panel title capitalization
+
+`phenotype_side_split_panels()` panel titles updated:
+- `"ipsi (mouse-L)"` → `"Ipsi (mouse-L)"`
+- `"contra (mouse-R)"` → `"Contra (mouse-R)"`
+
+Mouse-side designations (`mouse-L`/`mouse-R`) stay lowercase per technical
+convention.
+
+### Implementation summary
+
+- **`palette.py`** — `PHENOTYPE_MARKERS` dict + `phenotype_marker()`
+  helper.
+- **`_layout.py`** — `EPOCH_DISPLAY_LABELS` + `get_epoch_display`;
+  `apply_top_room(fig, top=0.86)` for tight_layout-with-top-rect;
+  `apply_figure_suptitle` spacing tuned (y=0.99/0.93);
+  `phenotype_side_split_panels` capitalized titles;
+  `ENDPOINT_DISPLAY_NAMES` capitalized + fallback updated.
+- **`phenotype_pooled.py`** — V4 `_draw_v4_traces` uses
+  `phenotype_marker(tier)` + `markersize=5.0`; V5
+  `_draw_v5_delta_line_with_scatter` uses per-tier marker for both
+  scatter underlay AND errorbar foreground (`markersize=6.0`); V5
+  x-tick labels go through `get_epoch_display`; all 4 builder funcs
+  swap `fig.tight_layout()` → `_layout.apply_top_room(fig)`.
+
+### Tests
+
+`tests/figures/test_phenotype_pooled.py` extended from 26 → **30 tests**
+(+4 new + 2 updated):
+
+- `test_endpoint_display_names_capitalized` — every entry's y-label
+  starts with `"Delta"` (capital D); X/Y axis names capitalized.
+- `test_phenotype_marker_returns_distinct_shapes` — 4 distinct markers
+  in canonical order (o, s, ^, D).
+- `test_phenotype_marker_unknown_raises` — unknown tier raises KeyError.
+- `test_get_epoch_display_mapping` — 4 known epochs + fallback for
+  unknown.
+- Updated `test_get_endpoint_labels_known_endpoint` + `_fallback` for
+  new capitalization.
+
+All 30 PASS in 0.15s.
+
+### Re-emit (5 endpoints × V4 + V5 × {svg, png} = 20 files)
+
+Used `--figure-types v4,v5 --overwrite force`. Wall-time ~5s end-to-end.
+
+### Spot-check verdicts
+
+- **Suptitle/subheading no overlap** (y=0.99/0.93, top=0.86): bold
+  title + italic "baseline-subtracted" subheading clearly separated on
+  every V5 figure including the previously-tight "Tongue lick-1 Y peak"
+  case.
+- **Distinct marker shapes visible:** legend on every figure shows 4
+  distinct silhouettes (○ □ △ ◇). Foreground line markers in V5 + every
+  data point in V4 carry the per-tier shape.
+- **Epoch x-tick labels:** "Pre-stroke" / "Acute" / "Subacute" /
+  "Chronic" render correctly without truncation. No tick rotation
+  applied.
+- **Panel titles:** "Ipsi (mouse-L)" / "Contra (mouse-R)" capitalized.
+- **V5 scatter underlay:** per-tier shapes preserved through the
+  background layer. Visual density manageable; foreground line + SEM
+  still dominate.
+
+### Tooling
+
+- `ruff check src/stroke_orofacial/figures/ tests/figures/` → **All checks
+  passed!**
+- `pytest tests/figures/test_phenotype_pooled.py` → 30 pass in 0.15s.
+
+### Next
+
+STOP at end of Task 1a v5 per Q-lock 9. Priya's Task 1b scaffold review
+now covers the fully-polished V4 (v2 base + v4 labels + v5 markers/casing)
++ V5 (v3 delta + v4 labels + v5 spacing/markers/casing) together. After
+Task 1b signoff: Task 1c full-cohort emit (35 endpoints × V4 + V5 = ~70
+figures).
+
+The DLC investigation Part 3a (on
+`investigation/dlc-tongue-quality-severe-acute`) is in flight; when
+that work ships a refined interpolation / lick-detector policy + a
+re-materialization of the relevant stats inputs, Task 1a v6 (future)
+will re-emit consuming the refined data. Style locks at v5 transfer
+unchanged to v6.
+
+
+
 
 
 
