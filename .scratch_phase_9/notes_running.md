@@ -214,6 +214,31 @@ explaining WHY the choice was made).
 
 ---
 
+## Task 5 close fixup — Addendum #8 vxy endpoint materialization (2026-05-25)
+
+The 3 Addendum #8 derived endpoints (`tongue_lick1_vxy_peak`,
+`tongue_max_vxy_peak_first5`, `tongue_mean_vxy_peak_first5`) were
+added AFTER Task 2 Commit A's cohort materialization, so only PS46
+(from Commit C smoke) had parquets on disk through Task 5 close.
+Headline summary CSV rows for those endpoints showed `insufficient_data`
+status across all 3 axes.
+
+**Fixup (parallel to Task 6 start):** re-ran `materialize_inputs.py
+--endpoints tongue_lick1_vxy_peak tongue_max_vxy_peak_first5
+tongue_mean_vxy_peak_first5 --animals PS47-PS55` to emit the 21 missing
+parquets (3 endpoints × 7 animals = 21). Verified 8/8 animals per
+endpoint on disk post-emit. Re-ran the full axis sweep + headline
+summary; the 9 vxy rows (3 endpoints × 3 axes-in-scope) now show
+`status="ok"` with computed effect sizes + bootstrap CIs.
+
+Cohort totals unchanged (105 headline rows; 14 Bonferroni passes) —
+none of the 3 vxy endpoints are `is_confirmatory=true` but all 3 are
+`n_permutations_override=100000` priority. Their `recovery` axis
+fits produced p_value=0 (very strong slope) but with the standard
+Wilcoxon p_value reported as 0 (not NaN — visible in summary CSV).
+
+---
+
 ## Task 4 implementation notes (2026-05-24)
 
 1. **`latency_hist` parquet uses flat per-trial schema, not
