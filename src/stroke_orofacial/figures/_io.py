@@ -217,32 +217,123 @@ def attach_per_bin_columns(
     return df
 
 
-def per_animal_bin_means(df: pd.DataFrame) -> pd.DataFrame:
-    """Collapse to one row per (animal, bin_midpoint_rel_day) via mean(value).
+def per_animal_bin_means(
+    df: pd.DataFrame,
+    *,
+    by_side: bool = False,
+) -> pd.DataFrame:
+    """Collapse to one row per (animal[, side], bin_midpoint_rel_day) via mean.
 
     Phase 9 V2 precedent: aggregating to per-(animal, bin) means before
     phenotype-pooling avoids weighting phenotype-tier traces by an animal's
     trial count. Trial-grain endpoints (e.g. tongue per-trial) and
     session-grain endpoints (e.g. first_lick_accuracy_all) collapse to the
     same per-animal-bin layer.
+
+    Parameters
+    ----------
+    by_side : bool, optional
+        When True, includes the ``side`` column in the groupby keys so V4
+        side-split (Q-lock 10(a)) consumes a per-side per-animal layer.
+        Caller is responsible for verifying ``side`` is present + populated
+        (use :func:`endpoint_has_side` first).
     """
-    by = ["animal", "phenotype_tier", "bin_idx", "bin_x", "bin_midpoint_rel_day"]
+    by = ["animal", "phenotype_tier"]
+    if by_side:
+        by.append("side")
+    by.extend(["bin_idx", "bin_midpoint_rel_day"])
     keep = [c for c in by if c in df.columns]
     return df.groupby(keep, as_index=False)["value"].mean()
 
 
-def phenotype_pooled_per_bin(per_animal: pd.DataFrame) -> pd.DataFrame:
-    """Pool across animals within each (phenotype_tier, bin) to mean ± SEM.
+def phenotype_pooled_per_bin(
+    per_animal: pd.DataFrame,
+    *,
+    by_side: bool = False,
+) -> pd.DataFrame:
+    """Pool across animals within each (phenotype_tier[, side], bin) to mean ± SEM.
 
-    Per Phase 9 Addendum #6 the unit of pooling is the per-(animal, bin) mean,
-    not the per-trial value. Output columns: ``phenotype_tier``,
-    ``bin_midpoint_rel_day``, ``mean``, ``sem``, ``n_animals``. n=1 tiers
-    (moderate, moderate-severe) get ``sem = NaN`` (single-animal traces;
-    rendered as a line without ribbon).
+    Per Phase 9 Addendum #6 the unit of pooling is the per-(animal[, side],
+    bin) mean, not the per-trial value. Output columns: ``phenotype_tier``,
+    optionally ``side``, ``bin_midpoint_rel_day``, ``mean``, ``sem``,
+    ``n_animals``. n=1 tiers (moderate, moderate-severe) get ``sem = NaN``
+    (single-animal traces; rendered as a line without ribbon).
     """
-    grp = per_animal.groupby(
-        ["phenotype_tier", "bin_midpoint_rel_day"], as_index=False,
-    )
+    keys = ["phenotype_tier"]
+    if by_side and "side" in per_animal.columns:
+        keys.append("side")
+    keys.append("bin_midpoint_rel_day")
+    grp = per_animal.groupby(keys, as_index=False)
     agg = grp["value"].agg(["mean", "sem", "count"]).reset_index()
-    agg = agg.rename(columns={"count": "n_animals"})
-    return agg
+    return agg.rename(columns={"count": "n_animals"})
+
+
+# ---------------------------------------------------------------------------
+# Per-epoch aggregation (V5)
+# ---------------------------------------------------------------------------
+
+VALID_EPOCHS: tuple[str, ...] = ("pre", "acute", "sub_acute", "chronic")
+
+
+def attach_phenotype_column(
+    df: pd.DataFrame,
+    animals: dict[str, AnimalInfo],
+) -> pd.DataFrame:
+    """Add ``phenotype_tier`` column without per-bin columns.
+
+    For V5 (per_epoch boxplots) we don't need bin_idx / bin_midpoint_rel_day —
+    just the phenotype label per row. ``epoch_label`` is already populated in
+    the stats inputs parquets by Phase 9 Task 2 per Addendum #6.
+    """
+    if df.empty:
+        return df
+    phenotype_by_animal = phenotype_map(animals)
+    df = df.copy()
+    df["phenotype_tier"] = df["animal"].map(phenotype_by_animal)
+    return df
+
+
+def per_session_within_epoch(
+    df: pd.DataFrame,
+    *,
+    by_side: bool = False,
+) -> pd.DataFrame:
+    """Collapse to one row per (animal, date[, side], epoch_label) via mean(value).
+
+    V5 unit of analysis is the per-session value within an epoch (Phase 9
+    Addendum #6 — "unit of pooling is the per-session mean, not the
+    per-trial value"). Trial-grain endpoints collapse to per-session means
+    here; session-grain endpoints pass through (their ``date`` is already
+    1 row per session).
+
+    Rows with ``epoch_label`` missing (transitional gap per
+    :class:`stroke_orofacial.animals.EpochBoundaries`) are dropped.
+    """
+    if df.empty or "epoch_label" not in df.columns:
+        return df.iloc[:0]
+    df = df.dropna(subset=["epoch_label"])
+    by = ["animal", "phenotype_tier", "date", "epoch_label"]
+    if by_side and "side" in df.columns:
+        by.append("side")
+    keep = [c for c in by if c in df.columns]
+    return df.groupby(keep, as_index=False)["value"].mean()
+
+
+# ---------------------------------------------------------------------------
+# Side-column presence audit (Q-lock 10 fallback)
+# ---------------------------------------------------------------------------
+
+def endpoint_has_side(df: pd.DataFrame) -> bool:
+    """Return True if the DataFrame has a usable ``side`` column.
+
+    "Usable" means: column is present AND has at least one non-null value
+    AND at least one of {"L", "R"} appears. Endpoints without a usable side
+    column degrade to single-panel cohort-pooled rendering per Q-lock 10(c)
+    fallback.
+    """
+    if "side" not in df.columns or df.empty:
+        return False
+    nonnull = df["side"].dropna()
+    if nonnull.empty:
+        return False
+    return bool({"L", "R"} & set(nonnull.unique()))

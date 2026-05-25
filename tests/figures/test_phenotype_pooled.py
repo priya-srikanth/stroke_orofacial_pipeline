@@ -1,7 +1,8 @@
 """Tests for ``figures.phenotype_pooled`` — V4/V5 phenotype-pooled emitters.
 
-Phase 9.1 Task 1a skeleton. CLI smoke + binning helpers. Full output-validation
-tests deferred until Task 1b scaffold review locks the rendering style.
+Phase 9.1 Task 1a v2 skeleton. CLI smoke + binning helpers + side-presence
+audit + V5 boxplot smoke. Full output-validation tests deferred until Task 1b
+scaffold review locks the rendering style.
 
 Per [docs/testing-conventions.md](../../docs/testing-conventions.md), any test
 that invokes a pipeline writer must use ``PathResolver(output_root=tmp_path)``.
@@ -9,6 +10,7 @@ The smoke tests below do not touch the real ``pipeline_outputs/`` tree.
 """
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
 from stroke_orofacial.figures import _io, phenotype_pooled
@@ -41,13 +43,34 @@ def test_cli_all_flags() -> None:
     ns = phenotype_pooled._parse_args([
         "--endpoint-list", "list.txt",
         "--phenotype-tiers", "mild,severe",
+        "--figure-types", "v4,v5",
         "--output-dir", "/tmp/out",
         "--overwrite", "force",
         "--dpi", "300",
     ])
     assert ns.phenotype_tiers == "mild,severe"
+    assert ns.figure_types == "v4,v5"
     assert ns.overwrite == "force"
     assert ns.dpi == 300
+
+
+def test_cli_figure_types_default_both() -> None:
+    """--figure-types defaults to v4,v5 (both)."""
+    ns = phenotype_pooled._parse_args(["--endpoint-list", "list.txt"])
+    assert ns.figure_types == "v4,v5"
+
+
+def test_parse_figure_types_valid() -> None:
+    """v4 / v5 / v4,v5 all parse."""
+    assert phenotype_pooled._parse_figure_types("v4") == ("v4",)
+    assert phenotype_pooled._parse_figure_types("v5") == ("v5",)
+    assert phenotype_pooled._parse_figure_types("v4,v5") == ("v4", "v5")
+
+
+def test_parse_figure_types_invalid() -> None:
+    """Unknown figure type exits non-zero."""
+    with pytest.raises(SystemExit):
+        phenotype_pooled._parse_figure_types("v4,v9")
 
 
 def test_bin_rel_day_post_stroke() -> None:
@@ -77,6 +100,36 @@ def test_bin_midpoint_is_bin_center() -> None:
     # Pre mirrors.
     assert _io._bin_midpoint_rel_day(-1, 2) == -1.5
     assert _io._bin_midpoint_rel_day(0, 2) == 0.0
+
+
+def test_endpoint_has_side_present_and_populated() -> None:
+    """Both L and R appear → has_side True (side-split renders)."""
+    df = pd.DataFrame({"side": ["L", "R", "L", "R"], "value": [1.0, 2.0, 3.0, 4.0]})
+    assert _io.endpoint_has_side(df) is True
+
+
+def test_endpoint_has_side_only_one_side() -> None:
+    """Only L (or only R) still counts as usable per the {L, R} intersect check."""
+    df = pd.DataFrame({"side": ["L", "L", "L"], "value": [1.0, 2.0, 3.0]})
+    assert _io.endpoint_has_side(df) is True
+
+
+def test_endpoint_has_side_absent_column() -> None:
+    """No side column → degraded (Q-lock 10(c) fallback)."""
+    df = pd.DataFrame({"value": [1.0, 2.0, 3.0]})
+    assert _io.endpoint_has_side(df) is False
+
+
+def test_endpoint_has_side_all_nan() -> None:
+    """Side column present but all NaN → degraded."""
+    df = pd.DataFrame({"side": [None, None], "value": [1.0, 2.0]})
+    assert _io.endpoint_has_side(df) is False
+
+
+def test_endpoint_has_side_empty_df() -> None:
+    """Empty DataFrame → degraded."""
+    df = pd.DataFrame({"side": [], "value": []})
+    assert _io.endpoint_has_side(df) is False
 
 
 def test_load_endpoint_list_strips_comments(tmp_path) -> None:
