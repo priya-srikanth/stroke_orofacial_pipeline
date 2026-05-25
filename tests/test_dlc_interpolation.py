@@ -23,7 +23,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 import pytest
 
-from stroke_orofacial.animals import AnimalInfo, Exclusion
+from stroke_orofacial.animals import AnimalInfo, Exclusion, EpochBoundaries
 from stroke_orofacial.dlc_io.parquet import _param_sig
 from stroke_orofacial.dlc_kinematics.interpolation import (
     INTERPOLATION_VERSION,
@@ -126,6 +126,7 @@ def _animal_info(
         stroke_date=date_,
         session_start=date_,
         session_end=date_,
+        epoch_boundaries=EpochBoundaries(1, 4, 5),
         exclusions=exclusions or [],
         kinematics_baselines=baselines,
         wavesurfer_sides_match_mouse_sides=False,

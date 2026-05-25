@@ -15,6 +15,127 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-25 — Phase 9: Behavioral statistical analyses on Phase 7c.2 + 7a kinematics + 8a.10 spout-behavior outputs
+
+Phase 9 closed against `phase/9-stats`; branched 2026-05-23 off `main` (post-Phase 7-pre-alignment-templates merge `a24cf03`). Tag `v9-stats-behavioral` on the merge commit. Kickoff [`docs/prompts/phase-9-stats-kickoff.md`](prompts/phase-9-stats-kickoff.md) accumulated **11 addenda**. Three scoping docs land alongside: [`phase-9-stats-kickoff.md`](prompts/phase-9-stats-kickoff.md) (with addenda), [`phase-9.1-phenotype-pooled-figures-scoping.md`](prompts/phase-9.1-phenotype-pooled-figures-scoping.md), [`phase-9.x-nonlinear-recovery-fit-scoping.md`](prompts/phase-9.x-nonlinear-recovery-fit-scoping.md). Per-axis acceptance verdict at [`.scratch_phase_9/verdict.md`](../.scratch_phase_9/verdict.md); running close-state notes at [`.scratch_phase_9/notes_running.md`](../.scratch_phase_9/notes_running.md); trial-count bias investigation at [`.scratch_phase_9/_trial_count_bias_findings.md`](../.scratch_phase_9/_trial_count_bias_findings.md).
+
+### Decision 1 — Architecture + methodology locks
+
+The 12 OPEN-Q locks from the kickoff scoping doc landed unchanged: (a) materialize stats inputs to disk under `pipeline_outputs/stats/inputs/`; (b) defer spatial-distribution stats to Phase 9.x — **partial override** under Addenda #1 + #7 which moved 48 spatial-scalar endpoints into Phase 9 scope (per-bin slope + per-coefficient pre-vs-each-epoch); (c) pool `cohort_bin_size` as fixed effect; (d) one default test per axis (paired Wilcoxon / MixedLM / paired Wilcoxon / Friedman); (e) FDR-exploratory default with Bonferroni for confirmatory; (f) `n_perm=10_000` default with `n_permutations_override=100_000` for priority endpoints; (g) no Bayesian methods in Phase 9; (h) split work into 9 sub-tasks; (i) Task 1 inventory + Priya stamping; (j) no pre-registration upfront (inventory becomes pre-registration artifact if/when Priya decides); (k) no classifier work in this phase.
+
+**Option C recovery-organization lock.** `src/stroke_orofacial/stats/models.py` hosts the fit_* functions; `src/stroke_orofacial/spout_behavior/recovery_trajectories.py` extends with `plot_recovery_trajectories_with_fit(points, fit_result, ax, **kwargs) -> Figure` overlaying FitResult-driven mean + bootstrap CI ribbon on the existing scatter + mean/SEM plot.
+
+**Per-animal `epoch_boundaries` lock — Option 1 manual YAML stamping** (over data-derived inflection alternatives). Stamped in `configs/animals.yaml` per the 2026-05-23 design discussion; explicit-judgment auditability prioritized over reproducibility-via-data-inflection. Schema in `AnimalInfo.epoch_boundaries` frozen dataclass with `__post_init__` validation.
+
+**4-tier `RecoveryPhenotype` enum** stamped per `AnimalInfo`: `{mild, moderate, moderate-severe, severe}`. Cohort distribution: mild=4 (PS47, PS48, PS49, PS50); moderate=1 (PS46); moderate-severe=1 (PS51); severe=2 (PS54, PS55).
+
+**PS54 vs PS55 boundary divergence locked.** Both severe-tier but `chronic_min_rel_day = 40` (PS54) vs `50` (PS55). +10d shift for PS55 due to higher laser power (5.0 mW vs PS54's 3.0 mW). Phenotype-pooled analyses MUST look up boundaries per-animal, not by phenotype.
+
+**Single-stroke-laterality caveat.** All 8 cohort animals received L-hemisphere strokes. Ipsi-contra results frame `mouse-L = ipsi` and `mouse-R = contra`. Phase 9 ipsi-contra axis is therefore a single-regime cohort summary; cross-laterality generalization is OUT OF SCOPE.
+
+**KS test methodology for `vector_per_session`** (Addendum #4): per-animal `scipy.stats.ks_2samp` + Fisher's combined p-value across animals. Used for `latency_hist` endpoint. Runner bridge `runners._ks_on_flat_per_trial` handles the flat per-trial parquet schema (Commit B implementation choice — see Decision 5).
+
+**Multi-granularity stats runner** per Addendum #5: 4 axes × 3 granularities (`per_session`, `per_bin`, `per_epoch`) emit to `pipeline_outputs/stats/results/<axis>/per_<granularity>/<endpoint>.csv` + `_all.csv` concat.
+
+**Per_epoch semantics** per Addendum #6 (revised by Addendum #9): the LMM fits `value ~ C(epoch_label) + (1|animal)` on RAW values (no additive baseline subtraction at test time). The LMM's random intercept absorbs between-animal baseline shifts. Plot-time additive baseline subtraction is preserved per Addendum #6's original intent but RELOCATED to figure-render code (Task 7 V3 + Phase 9.1 V5), not the test layer.
+
+**Cross-scope/trial_group spatial endpoints** per Addendum #7: 12 baseline spatial endpoints (Addendum #1) × {tone_aligned_all, tone_aligned_L, tone_aligned_R, whole_session} = 48 endpoints. Option C confirmatory framing locked — only the **original 12 stay confirmatory**; the 36 new cross-scope endpoints are exploratory.
+
+**V1-V5 figure grid** per Addendum #8 for the 7 headline kinematic endpoints (tongue_lick1_y_peak / tongue_lick1_t_peak_ms / tongue_lick1_x_at_ypeak / tongue_lick2_x_at_ypeak / 3 vxy endpoints). V1/V2/V3 in Phase 9 (`pipeline_outputs/stats/figures/headlines/<endpoint>/`); V4/V5 phenotype-pooled deferred to Phase 9.1.
+
+**Phase 9.1 scope partial-revert** per Addendum #8 (E). Originally pub-polish-only under Addendum #1 (C); now V4/V5 phenotype-pooled figures + phenotype-pooled spatial + pub-polish.
+
+**Test-time vs plot-time normalization separation** per Addendum #9. Resolves Task 3 deviation #2 (singular matrix at 2-epoch + additive baseline) by removing the additive baseline subtraction from the LMM layer. The vestigial singular-matrix code path is preserved as forward-compat safety net for genuinely-degenerate inputs.
+
+**Per-coefficient pre-vs-each-epoch headline summary v2** per Addendum #10. Headline summary CSV emits one row per (endpoint × axis × comparison) at the endpoint's default confirmatory granularity per value_type. `comparison ∈ {collapsed_post, continuous_rel_day_slope, continuous_bin_midpoint_slope, pre_vs_acute, pre_vs_sub_acute, pre_vs_chronic}`. Within-endpoint Bonferroni-Holm sequential correction (3 epoch comparisons per endpoint) PLUS cross-endpoint BH-FDR within (axis, comparison) family. `bonferroni_passed` for per-epoch rows: confirmatory → both Holm AND BH-FDR < 0.05; non-confirmatory → just Holm < 0.05.
+
+*Enforced at:* `src/stroke_orofacial/stats/` (5 modules + 115 tests), `src/stroke_orofacial/animals.py` (EpochBoundaries + RecoveryPhenotype), `configs/animals.yaml` (per-animal stamping), `scripts/phase_9_stats/{materialize_inputs,materialize_spatial,run_stats_axis,build_task_5_headline_summary,build_task_7_figures}.py`, kickoff doc Addenda #1-#11.
+
+### Decision 2 — Trial-count bias investigation (Addendum #11) — NO BIAS CONFIRMED
+
+Hypothesis tested 2026-05-25 (Priya methodological concern at Task 8 review): tongue acute coefficients (`tongue_lick1_y_peak`, 3 vxy endpoints) may be inflated by low-trial-count sessions in PS51/PS54/PS55 acute periods. **Verdict: BIAS NOT CONFIRMED.**
+
+- **Direction mismatch:** Low-n (<10 trials) acute sessions had LOWER per-session means than high-n (≥10 trials), opposite the outlier-inflation prediction. Ratios 0.67-1.00 across PS51 + severe cohort.
+- **Magnitude:** Counterfactual LMM at `n_min=10` filter shifts acute coefficients by ≤4% (one direction +, three −); p-values remain < 1e-15.
+- **Alternative mechanism documented:** engagement-correlated trial count + excursion — low-n acute = deep deficit; high-n acute = partial recovery. Trial count and per-trial deflection both correlate POSITIVELY with engagement. **Strengthens the recovery-dynamics interpretation** of the headline acute → sub_acute → chronic trajectory.
+- Phase 9 acute results for the 4 suspect endpoints stand as published in `.scratch_phase_9/task_5_headline_summary.csv` (Addendum #10 v2).
+- Forward pointers folded into `docs/prompts/phase-9.x-nonlinear-recovery-fit-scoping.md` §7.5: (a) sub_acute low-n vs high-n vxy divergence in severe cohort (ratio 1.12-1.50 for vxy; different mechanism likely); (b) PS55 acute uniformly low-engagement (no ≥20-trial sessions; DLC tracking QC sanity-check warranted).
+
+*Enforced at:* [`.scratch_phase_9/_trial_count_bias_investigation.py`](../.scratch_phase_9/_trial_count_bias_investigation.py) + [`_trial_count_bias_findings.md`](../.scratch_phase_9/_trial_count_bias_findings.md); Addendum #11 of the kickoff doc.
+
+### Decision 3 — Scientific adjudications (Task 8 close)
+
+**`num_incorrect_licks_per_trial` positive recovery slope: APPROVED.** Observed slope +0.045 (incorrect licks INCREASE post-stroke). Interpreted as **engagement restoration** — recovery means more lick attempts including more incorrect ones, not deteriorating accuracy. **Paper accuracy framing should use ratio metrics** (`first_lick_accuracy`, `criteria_performance`) which control for total lick count.
+
+**`latency_hist` LOO sensitivity (PS51-drop |Cohen's d|=0.37 above 0.3 threshold): APPROVED.** Phase 9 cohort result accepted with PS51-driven-amplification caveat in the Task 8 verdict. Per-phenotype resolution deferred to Phase 9.x per-phenotype stats.
+
+**3 confirmatory endpoints fully recover by chronic** (pre_vs_chronic NS under Bonferroni-Holm):
+- `first_lick_accuracy_all` — q_holm=0.881, coef=+0.004 (clear recovery)
+- `tongue_median_vxy_peak_per_trial` — q_holm=0.665, coef=+14.5 (clear recovery)
+- `spatial_wasserstein_jaw_eye_midpoint_tone_aligned_all` — q_holm=0.0505 (borderline, just barely NS at α=0.05)
+
+The other 12 confirmatory endpoints show persistent chronic deficits, with tongue kinematics dominating (`tongue_lick1_t_peak_ms`, `tongue_lick1_angle_at_ypeak`, `tongue_lick1_x_at_ypeak`, `tongue_lick2_angle_at_ypeak` all with q_holm < 10⁻¹⁰⁰; `tongue_first_peak_t_ms` q_holm = 4e-98; `tongue_lick2_x_at_ypeak` q_holm = 7e-85).
+
+### Decision 4 — Headline scientific findings (paper-relevant)
+
+- **Recovery axis dominance.** 13/14 confirmatory rows in the recovery axis Bonferroni-pass; only 5/12 in pre_post; 5/10 in ipsi_contra. The pattern is "transient deficit recovers" — pre_post collapsed-post weak (acute mostly normalized by the time it's averaged with sub_acute + chronic) but per-epoch strong.
+- **`tongue_lick1_y_peak` BIMODAL UNIFORM recovery across ALL 8 animals.** Acute coefficient +21.79 → sub_acute −12.16 → chronic −6.45 (raw-scale LMM on per_epoch granularity). All 8 animals show the SAME qualitative pattern per V3 boxplot inspection. Uniform-across-cohort = real biological signal, not severe-phenotype heterogeneity. Likely paper figure 2-3 material.
+- **Tongue ipsi-contra asymmetry in X/angle but NOT Y.** `tongue_lick1_x_at_ypeak` (q≈0.02) and `tongue_lick1_angle_at_ypeak` (q≈0.02) significant; `tongue_lick1_y_peak` ipsi-contra (q=0.35-0.49) not significant. **Stroke affects directional control more than amplitude.**
+- **Spatial Bonferroni hierarchy at `tone_aligned_all`:** jaw + nose dominate (q=9e-15, q=3e-7); tongue marginal (q=0.058); whiskers FDR pass but Bonferroni fail (q=0.006).
+- **Whole_session spatial signals sometimes stronger than tone_aligned.** E.g. jaw whole_session p=7e-12 vs jaw tone_aligned_all q=9e-15 (both strong); some endpoints reverse this. Suggests stroke-induced postural / activity changes extend beyond peri-tone behavior.
+- **Linear LMM doesn't capture severe-phenotype bimodal recovery.** PS54 / PS55 show a step-change at sub_acute → chronic boundary that linear LMM can't represent. Phase 9.x will address with per-animal nonlinear fits (exponential / piecewise / GAM candidates per scoping doc).
+
+### Decision 5 — Implementation deviations (resolved + vestigial)
+
+- **Task 3 deviation #1** (`fit_trial_group_friedman` 2-group case): explicit `status="insufficient_data"` + redirect to `fit_ipsi_contra_wilcoxon`. scipy hard 3-group requirement; auditability > silent fallback.
+- **Task 3 deviation #2** (`fit_per_epoch_lmm` singular matrix at 2-epoch + additive baseline): **VESTIGIAL under Addendum #9** raw-values fix. Preserved as forward-compat safety net.
+- **Task 3 deviation #3** (`fit_per_epoch_lmm.statistic = -log10(min_p)`): **VESTIGIAL under Addendum #10** per-coefficient extraction. Min-p stays in FitResult.statistic; headline summary v2 reads per-coefficient dict.
+- **Task 4 deviation #1** (Bonferroni emission scope at every axis-granularity): **RESOLVED under Addendum #10** — new scope = within (axis, comparison) family at confirmatory granularity per value_type.
+- **Task 4 deviation #2** (`latency_hist` flat-per-trial schema bridge): runtime bridge preserved (`runners._ks_on_flat_per_trial`); reconciliation deferred to Phase 9.1 or 9.x at maintainer's option.
+
+### Decision 6 — Operational implementation choices
+
+- **`ConfigValidationError(ValueError)` subclass** (Task 1.5) — backward-compat for callers catching `ValueError` from `load_animals()`; new validation errors get the more specific class.
+- **Bool-as-int rejection** in `EpochBoundaries.__post_init__` (Task 1.5) — defensive against accidental `True`/`False` literals in YAML.
+- **SUPERSEDED rename** for Task 1 Part B draft (commit `4821ce5`): `proposed_epoch_boundaries.yaml` → `proposed_epoch_boundaries.SUPERSEDED.yaml` with stub header pointing at the canonical `configs/animals.yaml` stamping.
+- **`spout_endpoints.json` was conceptual.** The materializer (`materialize_inputs.py`) recomputes via `_compute_per_session_stats` (Commit A finding) — the JSON was never an on-disk product.
+- **`lickRate_byTrial` (24,793 rows) vs tongue per-trial (24,023 rows)** — 770 row discrepancy from different trial-inclusion sources (visual_gate per-trial vs DLC per-trial). Documented; not a bug.
+- **`lick_switch_rate` "to" semantics flip** (commit `5e78807`) — matches legacy `render_switchiness_bySession` destination convention.
+- **Wasserstein numItermax bumped 1M → 10M** (Commit C v3) — chases convergence warnings on borderline-similar distributions; POT default 100k is too low for 80×80 histograms.
+- **UOT reg/reg_m direct port** from Phase 7c.2 `_compute_unbalanced_ot_plan` (render_on_demand.py:2839-2844) — ensures cross-bin commensurability with existing 7c.2 figures.
+- **Whiskers SUM-of-counts aggregation** — single OT scalar per (animal, granularity, anchor) using summed-across-6-bps histogram. "Tip ensemble" interpretation.
+- **Cohort spatial emit ran serial at `n_jobs=1`** in 23.9 hr (parallel attempts at `n_jobs=4` showed I/O-bound 1.1× speedup due to SMB share contention). Serial overnight was the right call.
+- **Path B for Commit C v1 orphan parquets** — annotated as `materializer_pass=commit_c_v1_orphan_superseded_by_addendum_7_rename` in `materialize_manifest_full.csv`; 30 KB total preserved on disk per CLAUDE.md Rule 7 anti-pattern guidance (chore PR #126 already did 3 destructive `rm -rf` operations the same day).
+- **Per-worker centered-parquet cache attempt** (commit `77cf97c`) reverted (commit `b74f909`) — measured 3.3× regression in single-combo smoke; the I/O bottleneck was SMB concurrent-bandwidth contention (sibling workers), not within-worker redundancy.
+- **JS dynamic-range observation:** pre baseline ≈ 0.19, post mean ≈ 0.32 means JS spans ~20% of bounded [0, ln(2)] range. Task 7 plot axes should clip to ~(0.15, 0.5); deferred to Phase 9.1 polish work.
+- **Task 7 V1/V2/V3 implemented as cohort-overlay** (8 animals as colored series in one panel) rather than Addendum #8 (D)'s per-animal panel reading. Defensible interpretation; per-animal panels available as supplementary in Phase 9.1 if needed.
+- **Forest plot scale limitation** (5 orders of magnitude per-epoch effect sizes): accepted for Phase 9; Phase 9.1 polish will refine layout (log-scale or rank-normalized alternatives).
+
+### Decision 7 — Headline summary CSV provenance + manifest
+
+- **v1: 105 rows** (initial; one summary row per per_epoch endpoint with `-log10(min_p)`). Superseded by v2.
+- **v2: 306 rows** (Addendum #10 per-coefficient extraction; final canonical Phase 9 deliverable at `.scratch_phase_9/task_5_headline_summary.csv`).
+- **651-row unified materialize manifest** at `.scratch_phase_9/materialize_manifest_full.csv` with `materializer_pass` provenance column: 256 Commit A + 8 Commit B latency_hist + 384 Commit C v3 spatial + 8 lick_switch_rate re-emit + 3 Commit C v1 orphan annotations - 8 superseded LSR rows (de-duped) = 651. See `materialize_manifest_full.README.md` legend.
+- **76 figures × 2 formats = 152 files** at `pipeline_outputs/stats/figures/`: 21 V1/V2/V3 headlines + 48 per-animal recovery_curve + paired_diff + 7 forest plots.
+- **LMM bootstrap CI semantics caveat.** Headline summary v2 CI columns computed via per-animal pre-vs-post mean diffs as a pragmatic proxy (n_boot=2000, BCa) — full LMM bootstrap is too slow for a 70-row sweep. **Pub-figure stats should use proper LMM bootstrap CIs** (Phase 9.1 pub-polish).
+
+### Decision 8 — Forward pointers
+
+**Discharged in-phase:**
+
+- **Phase 8a.10 `recovery_trajectories` plot family** — discharged via Task 6 (commit `682cefd`). New `render_recovery_trajectories(animal, endpoint_slug, resolver, ...)` per-mouse plot family in `spout_behavior/visual_gate.py` + notebook 15 `INCLUDE_RECOVERY_TRAJECTORIES` toggle.
+- **Cohort-enumeration YAML-driven forward-pointer** — co-discharged via Phase 7c.2 Q67 + this phase's consistent use of the canonical YAML-driven pattern.
+
+**Carried out of Phase 9:**
+
+- **Phase 9.1 — V4/V5 phenotype-pooled figures + phenotype-pooled spatial + pub-polish.** Scoping at [`docs/prompts/phase-9.1-phenotype-pooled-figures-scoping.md`](prompts/phase-9.1-phenotype-pooled-figures-scoping.md); updated 2026-05-23 to reflect post-Addendum-8 scope. ~5-7 days CC.
+- **Phase 9.x — Per-phenotype stats + per-animal nonlinear recovery fits (combined).** Scoping at [`docs/prompts/phase-9.x-nonlinear-recovery-fit-scoping.md`](prompts/phase-9.x-nonlinear-recovery-fit-scoping.md); expanded 2026-05-25 from nonlinear-only to combined. 3-tier grouping per Priya lock: mild=4 (PS47-PS50) / moderate-pool=2 (PS46 + PS51 pooled) / severe=2 (PS54, PS55). §7.5 includes the 2 sub_acute / PS55-DLC-QC pointers from the trial-count bias investigation. ~10-15 days CC.
+- **Phase 9.1 V5 pub-figures phase boundary** — visualization vs paper-quality polish split. Pub-figures phase blocked on Phase 9 + 9.1.
+
+*Enforced at:* All Phase 9 source modules + tests + scripts + docs/prompts/* + this DECISIONS entry + MIGRATION_LOG entry below + tag `v9-stats-behavioral`.
+
+---
+
 ## 2026-05-25 — Tongue-jaw-mismatch comparison_grids/ subtree deletion (audit PR #127 follow-up)
 
 - **Date:** 2026-05-25.

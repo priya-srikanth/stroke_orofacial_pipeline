@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from stroke_orofacial.animals import AnimalInfo, Exclusion, get_animal
+from stroke_orofacial.animals import AnimalInfo, Exclusion, get_animal, EpochBoundaries
 from stroke_orofacial.cohort_enumeration import yaml_driven_session_dates
 from stroke_orofacial.paths import PathResolver
 
@@ -111,6 +111,7 @@ def _synthetic_animal(
         stroke_date=start,  # arbitrary; not exercised by enumeration
         session_start=start,
         session_end=end,
+        epoch_boundaries=EpochBoundaries(1, 4, 5),
         exclusions=exclusions or [],
         kinematics_baselines={
             "tongue": {"x0": 0.0, "y0": 0.0},

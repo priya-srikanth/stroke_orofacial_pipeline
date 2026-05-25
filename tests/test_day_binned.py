@@ -33,7 +33,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from stroke_orofacial.animals import AnimalInfo
+from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
 from stroke_orofacial.config_loader import load_defaults
 from stroke_orofacial.dlc_kinematics._day_binned import (
     DAY_BINNED_VERSION,
@@ -131,6 +131,7 @@ def _make_animal_info(
         stroke_date=stroke_date,
         session_start=stroke_date - datetime.timedelta(days=10),
         session_end=stroke_date + datetime.timedelta(days=30),
+        epoch_boundaries=EpochBoundaries(1, 4, 5),
         bin_days=bin_days,
         kinematics_baselines={
             "tongue": {"x0": 0.0, "y0": -110.0},

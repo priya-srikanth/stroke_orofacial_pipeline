@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from stroke_orofacial.animals import AnimalInfo
+from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
 from stroke_orofacial.paths import PathResolver
 from stroke_orofacial.spout_behavior.spout_close_vs_std import (
     COHORT_B_REL_DAY_MIN,
@@ -61,6 +61,7 @@ def _make_animal_info(
         session_end=(
             session_end or stroke_date + datetime.timedelta(days=120)
         ),
+        epoch_boundaries=EpochBoundaries(1, 4, 5),
     )
 
 

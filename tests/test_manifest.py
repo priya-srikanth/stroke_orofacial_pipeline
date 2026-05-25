@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from stroke_orofacial.animals import AnimalInfo, Exclusion
+from stroke_orofacial.animals import AnimalInfo, Exclusion, EpochBoundaries
 from stroke_orofacial.manifest import (
     SessionManifest,
     build_manifest,
@@ -48,6 +48,7 @@ def ps46_info() -> AnimalInfo:
         stroke_date=datetime.date(2025, 3, 13),
         session_start=datetime.date(2025, 3, 7),
         session_end=datetime.date(2025, 4, 6),
+        epoch_boundaries=EpochBoundaries(1, 4, 5),
     )
 
 
@@ -122,6 +123,7 @@ class TestBuildManifest:
             stroke_date=datetime.date(2025, 3, 13),
             session_start=datetime.date(2025, 3, 7),
             session_end=datetime.date(2025, 4, 6),
+            epoch_boundaries=EpochBoundaries(1, 4, 5),
         )
         manifest = build_manifest("PS46", datetime.date(2025, 3, 20), mock_resolver, info)
         assert manifest.phase == "post_stroke"
@@ -136,6 +138,7 @@ class TestBuildManifest:
             stroke_date=datetime.date(2025, 3, 13),
             session_start=datetime.date(2025, 3, 7),
             session_end=datetime.date(2025, 4, 6),
+            epoch_boundaries=EpochBoundaries(1, 4, 5),
             exclusions=[
                 Exclusion(
                     datetime.date(2025, 3, 7),
@@ -160,6 +163,7 @@ class TestBuildManifest:
             stroke_date=datetime.date(2025, 3, 13),
             session_start=datetime.date(2025, 3, 7),
             session_end=datetime.date(2025, 4, 6),
+            epoch_boundaries=EpochBoundaries(1, 4, 5),
             exclusions=[
                 Exclusion(
                     datetime.date(2025, 3, 7),
@@ -233,6 +237,7 @@ def _ps51_info() -> AnimalInfo:
         stroke_date=datetime.date(2025, 4, 30),
         session_start=datetime.date(2025, 4, 16),
         session_end=datetime.date(2025, 7, 9),
+        epoch_boundaries=EpochBoundaries(1, 4, 5),
     )
 
 
@@ -242,6 +247,7 @@ def _ps55_info() -> AnimalInfo:
         stroke_date=datetime.date(2025, 5, 1),
         session_start=datetime.date(2025, 4, 16),
         session_end=datetime.date(2025, 7, 9),
+        epoch_boundaries=EpochBoundaries(1, 4, 5),
     )
 
 
@@ -252,6 +258,7 @@ def _ps48_info() -> AnimalInfo:
         stroke_date=datetime.date(2025, 3, 13),
         session_start=datetime.date(2025, 3, 7),
         session_end=datetime.date(2025, 4, 6),
+        epoch_boundaries=EpochBoundaries(1, 4, 5),
     )
 
 
@@ -414,6 +421,7 @@ class TestBuildManifestSessionSuffix:
                     stroke_date=datetime.date(2025, 3, 13),
                     session_start=datetime.date(2025, 3, 7),
                     session_end=datetime.date(2025, 4, 6),
+                    epoch_boundaries=EpochBoundaries(1, 4, 5),
                 ),
                 overrides_config={}, session_suffix="b",
             )
@@ -497,6 +505,7 @@ class TestBuildManifestSessionSuffix:
             stroke_date=datetime.date(2026, 1, 1),
             session_start=datetime.date(2026, 1, 1),
             session_end=datetime.date(2026, 1, 31),
+            epoch_boundaries=EpochBoundaries(1, 4, 5),
         )
         # No registry entries → defensive check fires.
         with pytest.raises(MultiHalfNotDeclaredError):
@@ -521,6 +530,7 @@ class TestWavesurferFileOverride:
             stroke_date=datetime.date(2026, 1, 15),
             session_start=datetime.date(2026, 1, 1),
             session_end=datetime.date(2026, 1, 31),
+            epoch_boundaries=EpochBoundaries(1, 4, 5),
         )
 
     @pytest.fixture()
@@ -614,6 +624,7 @@ class TestIntegrationManifest:
             stroke_date=datetime.date(2025, 3, 13),
             session_start=datetime.date(2025, 3, 7),
             session_end=datetime.date(2025, 4, 6),
+            epoch_boundaries=EpochBoundaries(1, 4, 5),
         )
         manifest = build_manifest("PS46", datetime.date(2025, 3, 7), resolver, info)
 

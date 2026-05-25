@@ -1,198 +1,157 @@
-# Phase 9.1 — Phenotype-Pooled Pre-Stroke-Normalized Figures — SCOPING DOCUMENT
+# Phase 9.1 — Phenotype-Pooled Figures + Pub-Polish — SCOPING DOCUMENT
 
-> **⚠️ THIS IS A SCOPING DOC.** Drafted 2026-05-15 by Cowork during Phase 7c.2 in-flight period after Priya's forward-thinking message. Most design decisions LOCKED by Priya in the originating discussion; remaining open questions are flagged inline with **OPEN-Q:**. PS47 scaffold work follows this scoping; cohort-pooled emit happens after Phase 7c.2 close.
+> **⚠️ MAJOR AMENDMENT 2026-05-23.** Original scoping draft was written 2026-05-15 during Phase 7c.2 in-flight, BEFORE Phase 9 was drafted or any of its 8 addenda landed. The original scope ("phenotype-pooled descriptive figures with bespoke per-animal baseline normalization") has been largely absorbed into Phase 9 itself, with Phase 9.1 now specifically owning the cross-animal phenotype-pooled figure tier (V4/V5 of Addendum #8's grid) plus phenotype-pooled spatial figures (Addendum #1) plus pub-quality polish (typography, palettes, composites, ipsi/contra labeling).
+>
+> This document is a complete rewrite reflecting post-Addendum-8 scope. Major changes vs. the 2026-05-15 draft:
+>
+> - **Phenotype groupings updated** to 4-tier (mild / moderate / moderate-severe / severe) matching the `AnimalInfo.recovery_phenotype` Phase 9 Task 1.5 stamping.
+> - **Per-animal baseline normalization** is now Phase 9 Task 4 stats-runner work (Addendum #6: per-session within epoch + additive normalization). Phase 9.1 consumes the already-normalized values; doesn't re-implement.
+> - **Binning scheme** uses per-animal `AnimalInfo.bin_days` (PS46-50 = 2d; PS51-55 = 7d) AND Phase 9's per_epoch granularity (from per-animal `AnimalInfo.epoch_boundaries`). The cohort-uniform "hybrid 2d/7d" scheme proposed in the 2026-05-15 draft is OBSOLETE.
+> - **V4 + V5 figure grid** for the 7 headline kinematic endpoints (per Addendum #8) is Phase 9.1's primary new deliverable.
+> - **Phenotype-pooled spatial figures** (per Addendum #1's deferred figure tiers; now per Addendum #7's 48 cross-scope spatial endpoints) are Phase 9.1's secondary new deliverable.
+> - **Pub-polish work** (typography, multi-panel composites, ipsi/contra labeling) per Addendum #1 (C) is Phase 9.1's tertiary deliverable.
+> - **Phase 9.2 references** are obsolete (no separate 9.2; what was 9.2 is now Phase 9 Tasks 3-5).
 
 ---
 
 ## 1. Goals + scope
 
-Phase 9.1 emits **phenotype-pooled, pre-stroke-baseline-normalized** versions of the per-animal descriptive figures already produced by Phase 7c.2 + Phase 7a kinematics. The pooled plots highlight stroke-recovery dynamics by phenotype severity, with per-animal baseline variance removed via per-animal pre-stroke subtraction.
+Phase 9.1 produces the cross-animal phenotype-pooled figure tier of the Phase 9 paper-figure system, plus pub-quality polish. It consumes Phase 9's already-materialized inputs + stats results; it does NOT re-implement materialization or per-animal stats.
 
-**Primary deliverable:** new figure directory `pipeline_outputs/dlc_kinematics/phenotype_pooled/<figure_family>/<phenotype>/...` containing per-phenotype pooled plots for each figure family.
+**Primary deliverables:**
+1. **V4 + V5 figure grid** per Addendum #8 for the 7 headline kinematic endpoints (and optionally any other primary scalar endpoints flagged for phenotype-pooled visualization):
+   - V4: per_bin phenotype-pooled — one panel per endpoint; multiple traces (one per phenotype tier); bin_midpoint_rel_day vs cohort mean ± SEM within phenotype.
+   - V5: per_epoch phenotype-pooled — one panel per endpoint; boxplots grouped by (phenotype × epoch).
+2. **Phenotype-pooled spatial figures** per Addendum #1's deferred figure tiers + Addendum #7's 48 cross-scope spatial endpoints — recovery curves of Wasserstein-2 (headline), UOT cost (supplementary), JS divergence (supplementary) at per_bin granularity, pooled across animals within each phenotype tier.
+3. **Pub-quality polish** per Addendum #1 (C):
+   - Typography (consistent font sizes; readable in 2-column journal layout)
+   - Color-palette harmonization (consistent phenotype colors; ipsi/contra mapping)
+   - Multi-panel composite figures for the paper
+   - ipsi/contra labeling per `AnimalInfo.mouse_side_to_ipsi_contra()` (all 8 current cohort animals are L-stroke → mouse-L = ipsi, mouse-R = contra)
 
 **Out of scope:**
-- Statistical tests (Phase 9.2 stats — descriptive figures precede stats).
-- Aesthetic-tier polish for paper figures (pub-figures phase).
-- New endpoint computation (uses existing Phase 7c.2 + 7a outputs as-is).
-- Stats-summary plots like forest plots / recovery curves with p-values (Phase 9.2).
+- Statistical tests (Phase 9 produces all stats results CSVs at `pipeline_outputs/stats/results/<axis>/<granularity>/<endpoint>.csv`; Phase 9.1 consumes them).
+- New endpoint computation (uses Phase 9-materialized parquets at `pipeline_outputs/stats/inputs/<slug>/<animal>.parquet`).
+- Per-animal figures (V1/V2/V3 per Addendum #8) — those land in Phase 9 Task 7.
+- New scientific axes or comparisons (Phase 9's 4 axes × multi-granularity dispatch covers what's tested).
 
 ---
 
-## 2. Phenotype groupings (LOCKED Priya 2026-05-15)
+## 2. Phenotype groupings (LOCKED per Phase 9 Task 1.5 stamping, 2026-05-23)
 
-| Phenotype | Animals | n |
-|---|---|---|
-| Mild | PS47, PS48, PS49, PS50 | 4 |
-| Mod-severe | PS46, PS51 | 2 |
-| Severe | PS54, PS55 | 2 |
+Per `configs/animals.yaml` `recovery_phenotype` field stamped during Phase 9 Task 1.5:
 
-PS55 confirmed in all analyses. The 4/2/2 sizes are small — pooled figures show per-session points (multiple per animal) for within-phenotype density, plus phenotype-level summary; the small n caveat is unavoidable but mitigated by per-session multiplicity.
+| Phenotype | Animals | n | Per-animal epoch_boundaries (acute_max / subacute_max / chronic_min) |
+|---|---|---|---|
+| Mild | PS47, PS48, PS49, PS50 | 4 | 1 / 4 / 5 |
+| Moderate | PS46 | 1 | 5 / 8 / 9 |
+| Moderate-severe | PS51 | 1 | 6 / 30 / 31 |
+| Severe | PS54, PS55 | 2 | PS54: 17 / 39 / 40; PS55: 17 / 49 / 50 |
 
-**Encoding:** add `phenotype: mild | mod-severe | severe` field to `configs/animals.yaml` per-animal entry. Reads via `get_animal(animal).phenotype` in pooling scripts.
+**Critical caveat:** moderate (n=1) and moderate-severe (n=1) phenotypes have single-animal cohorts. Phenotype-pooled figures for these tiers render as single-animal traces with explicit n=1 annotations — no SEM band, no cross-animal averaging. The mild (n=4) and severe (n=2) tiers carry meaningful pooled statistics. Phase 9.1 figures must show n labels per tier prominently.
+
+**PS54 vs PS55 epoch boundary divergence** — both are "severe" phenotype but have different boundaries (PS55 sub_acute and chronic shifted +10 days due to higher laser power 5.0 mW vs 3.0 mW). Phenotype-pooled epoch comparisons must respect per-animal boundaries; the `epoch_label` column in stats inputs parquets handles this correctly via Phase 9's `assign_epoch_label(rel_day, animal_info)`.
 
 ---
 
-## 3. Pooling approach (LOCKED Priya 2026-05-15)
+## 3. Inputs — what Phase 9.1 consumes from Phase 9
 
-**Multiple per-session points per animal** in pooled analyses, NOT "per-animal mean then pool." Each animal contributes as many points as it has sessions; phenotype-pool aggregates across all sessions across all animals in the phenotype.
+**Materialized parquets** (Phase 9 Task 2 outputs):
+- `pipeline_outputs/stats/inputs/<endpoint_slug>/<animal>.parquet` — 656+ parquets covering all primary endpoints (scalar/vector/spatial) × all 8 cohort animals.
+- Schema: 11 standard columns + (for spatial endpoints) 4 spatial-specific columns (granularity, rel_day_anchor, n_sessions_aggregated, n_frames_aggregated).
+- `epoch_label` column populated for every row per Phase 9 Addendum #6 (per-animal boundaries, not cohort-uniform).
 
-**Why:** small per-animal session counts means per-animal means lose data; per-session multiplicity preserves within-animal variance + handles different per-animal session timings honestly. Visualization shows per-session points scattered + phenotype-level summary.
+**Stats results** (Phase 9 Task 4-5 outputs):
+- `pipeline_outputs/stats/results/<axis>/<granularity>/<endpoint>.csv` — per-(axis, granularity, endpoint) FitResult rows.
+- Granularity subdirectories: `per_session/`, `per_bin/`, `per_epoch/`.
+- Axes: `pre_post/`, `recovery/`, `ipsi_contra/`, `trial_group/`.
+- `_all.csv` master per axis aggregates across granularities.
+
+**Per-animal recovery_phenotype + epoch_boundaries** loadable via `from stroke_orofacial.animals import load_animals; animals = load_animals(); animals['PS46'].recovery_phenotype, animals['PS46'].epoch_boundaries`.
+
+**stats/recovery_epochs.py helpers** (Phase 9 Task 3b):
+- `cohort_phenotype_summary(animals)` → `{phenotype: [animal_ids]}` mapping.
+- `assign_epoch_label(rel_day, animal_info)` for any post-hoc epoch labeling.
+- `assign_epoch_labels_to_inputs_df(df, animals_map)` batch helper.
+
+---
+
+## 4. Pooling approach (LOCKED per Phase 9 Addendum #6 conventions)
+
+Per-animal baseline normalization happens at Phase 9 Task 4 (not Phase 9.1):
+- Baseline = mean of pre-stroke (rel_day ≤ 0) `value` rows per animal.
+- Normalized value = raw value − per_animal_baseline_mean (additive normalization per Addendum #6).
+- Applied at stats-runner time; not stored in parquet.
+
+Phase 9.1 figures:
+- For V4 (per_bin phenotype-pooled): consume per_bin stats results CSV → multiple traces per panel (one per phenotype tier) showing bin_midpoint_rel_day vs cohort mean ± SEM within phenotype.
+- For V5 (per_epoch phenotype-pooled): consume per_epoch stats results CSV → boxplots grouped by (phenotype × epoch).
+
+**Multiple per-session points per animal** in pooled figures (NOT "per-animal mean then pool"). Each animal's sessions are individual data points in the underlying parquet; phenotype-pool aggregation in the stats runner uses per-animal weights only when explicitly opted in (default: equal-weight per session).
 
 **Visualization style:**
-- **Per-phenotype separate panels** (3 panels per figure, one per mild / mod-severe / severe). Direct cross-phenotype comparison via panel adjacency. Default layout: 1×3 row or 3×1 column depending on figure family.
-- **Per-session points visible:** scatter / faint individual lines per session within phenotype.
-- **Phenotype-level summary:** mean (or median) + SEM (or IQR) band overlaid.
-- **Per-animal color or marker** within a panel so reader can identify which session belongs to which animal (small categorical palette per phenotype; 4 colors mild, 2 each mod-severe + severe).
+- **Per-phenotype color coding** (consistent palette across all V4/V5 figures): mild = blue, moderate = green, moderate-severe = orange, severe = red (placeholder; finalize during scaffold review).
+- **n labels prominent** per phenotype tier; moderate (n=1) and moderate-severe (n=1) get explicit "single-animal trace" annotation.
+- **Per-animal marker style** within each phenotype color for within-tier identification (matters for severe's n=2 case especially: distinguishing PS54 vs PS55 trajectories).
 
 ---
 
-## 4. Per-animal pre-stroke baseline normalization (Options LOCKED per figure family)
+## 5. Binning scheme — per-animal `bin_days` + per_epoch from Phase 9
 
-For each (animal, trial_type) compute baseline from pre-stroke sessions (`rel_day <= 0`), then normalize per-session post-stroke data. Per-figure-family normalization choice:
+The binning question (single most consequential design call in the 2026-05-15 draft, which proposed a hybrid 2d/7d cohort-uniform scheme) is now resolved by Phase 9's architecture:
 
-| Figure family | Normalization option | Reasoning |
-|---|---|---|
-| mean_sem (time-course) | **Option B** (per-time-point subtractive) OR **Option C** (per-time-point z-score) | Time-course has natural temporal structure; per-time-point matters. C if cross-animal scale dominates B's signal. Priya: pick B for default; C as sanity check. |
-| Phase plots (velocity-vs-position etc., parametric in time) | **Option B or C** (per-time-point subtractive in 2D phase-space) | Phase plots are time-course in 2D; subtract pre-stroke trajectory at corresponding time-point. |
-| tongue_angle (distribution-level) | **Option A** (aggregate baseline subtraction) OR diverging-cmap difference histogram | Distribution-level; scalar baseline. Diverging cmap mirrors Phase 7c.2 spatial proportion-diff if visual consistency wanted. |
-| Tongue metrics (scalar per-trial endpoints) | **Per-animal subtractive** (each trial's metric − animal's pre-stroke mean of that metric) | Standard delta-from-baseline. Plotted as scatter / violin per phenotype × time-bin. |
-| Proportion-diff (Phase 7c.2 spatial heatmaps) | Already pre-stroke-normalized; phenotype-pool = animal-wise average of H_diff arrays | Existing Phase 7c.2 output is per-bin Δ proportion vs all-pre-stroke. Pool by averaging across animals in phenotype. |
-| UOT displacement (Phase 7c.2 mass_change + arrows) | Already pre-stroke-normalized; phenotype-pool = animal-wise average of mass_change + mean OT cost across phenotype | Existing Phase 7c.2 output. Per-bin mean of mass_change; arrows averaged per bin if uniform-grid (mean direction + magnitude per bin). |
+**Per_bin granularity** uses per-animal `AnimalInfo.bin_days` (PS46-50 = 2d; PS51-55 = 7d). Each per_bin row in the stats results CSV is one (animal, bin_midpoint_rel_day) data point. Phenotype-pooling across mixed-cadence animals (e.g., moderate-severe pool has only PS51 = 7d) is automatic via the bin_midpoint_rel_day x-axis.
 
-**Option B vs C tie-break (TODO during scaffold work on PS47):**
+**Per_epoch granularity** uses per-animal `AnimalInfo.epoch_boundaries` (4 distinct schemas across the cohort per §2 table). Phenotype-pooling within an epoch label is straightforward — each animal's per_epoch row in stats results contributes one data point per phenotype-pool aggregation.
 
-- B (subtractive): preserves units; readable as "how much did post change from baseline."
-- C (z-score): unitless; emphasizes pre-stroke trial-to-trial variance as noise scale; better if absolute units vary wildly across animals.
+**Cross-bin cadence mixing** (the original §5 concern):
+- For severe phenotype (PS54 + PS55): both have bin_days=7 but different chronic_min (40 vs 50). Per_bin aggregation aligns on bin_midpoint; per_epoch aggregation aligns on epoch_label. No additional handling needed.
+- For mild phenotype (PS47-50): all have bin_days=2 + identical epoch boundaries (1/4/5). Cleanest pool.
+- For moderate-severe (PS51 alone) and moderate (PS46 alone): no cross-animal averaging; single-animal traces only.
 
-CC + Priya iterate on PS47 scaffold to pick B vs C visually, OR emit BOTH and pick post-hoc.
-
----
-
-## 5. The binning challenge — combining 2d-cohort and 7d-cohort animals in one phenotype
-
-**The problem:** Mod-severe = PS46 (2-day bin cadence) + PS51 (7-day bin cadence). Pooled time-course plots need a common time axis. Current Phase 7c.2 binned outputs use the per-animal singleton bin_size (Q23) — PS46 emits 2d bins; PS51 emits 7d bins. Their bin boundaries don't align; their session-count-per-bin densities differ; you can't directly average a "days 0-2" PS46 bin with a "days 0-7" PS51 bin.
-
-**Options for handling this:**
-
-### Option (a) — Continuous `rel_day` axis with smoothing
-
-Don't bin pooled data at all. Plot every per-session point at its actual `rel_day` value on a continuous x-axis. Phenotype-level summary via local smoothing (LOESS, rolling mean, kernel regression). Handles per-animal cadence differences transparently.
-
-**Pros:** Most honest about timing; no information loss from binning; works across any cadence mix.
-**Cons:** Plots can look noisy with small n; smoothing parameters (kernel width, bandwidth) become a tuning knob; readers don't get "this is the 7-day-post-stroke effect" type statements as easily.
-
-### Option (b) — Re-bin everyone to a common bin size
-
-Force all animals into a common bin grid for pooled analyses. E.g., re-bin PS51's 7d cadence to 14d (multiples of 7d) while re-binning PS46's 2d to 14d — common 14d grid both can be averaged onto. Or pick 7d as the common grid (PS46 collapses 2d → 7d via re-aggregation).
-
-**Pros:** Familiar binned-plot style; direct cross-phenotype comparability via shared x-bins.
-**Cons:** Loses PS46's 2d temporal resolution; arbitrary choice of common bin size; need to re-aggregate per-animal sessions into the new bins.
-
-### Option (c) — Phenotype-specific bin grids (separate axes)
-
-Each phenotype uses its OWN appropriate bin grid for the time axis; cross-phenotype comparison is by panel, not by overlay. PS46-bin animals use 2d bins; PS51-bin animals use 7d bins; severe (PS54+PS55) uses 7d bins. Mod-severe is the only mixed-cadence phenotype; for it, pick one of (a) or (b).
-
-**Pros:** Each phenotype's panel uses its natural cadence; no information loss.
-**Cons:** Cross-phenotype time-axis is no longer numerically aligned; comparisons are qualitative (panel-by-panel).
-
-### Option (d) — Define new common bin grid by post-stroke time epochs
-
-Define semantic time-epochs that span all animals: acute (rel_day 1-3), subacute (4-14), chronic (15-42), late (43+). Each per-session point assigned to its epoch. Phenotype-pool = aggregate within (phenotype, epoch). Plotted as 4 bins per panel with per-animal points in each.
-
-**Pros:** Common semantic axis across all animals + phenotypes; meaningful scientific grouping.
-**Cons:** Coarser resolution than the underlying per-animal binning; epoch boundaries need scientific justification.
-
-**My recommendation:** Option (a) **for time-course plots (mean_sem, tongue metrics continuous version)** + Option (d) **for phase plots (recovery-phase-stratified panels per §6.2)**. Continuous + smoothed for trajectories (where time-axis precision matters); epoch bins for the phase-plot variant where epoch IS the panel axis.
-
-**OPEN-Q 1 (RESOLVED Priya 2026-05-15):** Option (a) continuous rel_day + smoothing locked tentatively; may iterate after PS47 scaffold review.
-
-**OPEN-Q 2 (RESOLVED via OPEN-Q 5 hybrid scheme):** Epoch boundaries locked as acute 1-3 / subacute 4-14 / chronic 15-42 / late 43+. Aligns with the OPEN-Q 5 bin-granularity transition at day 14 (2d→7d).
-
-**OPEN-Q 5 (RESOLVED Priya 2026-05-15):** Hybrid bin scheme — 2d bins for first 14 days post-stroke; 7d bins thereafter. Applies to all per-epoch bin-aggregating plots across all animals (corrected understanding: PS51, PS54, PS55 have dense first-2-week session data; their `bin_days = 7` config is the DEFAULT cross-session aggregate granularity, NOT a session-cadence spec, so the 2d-bin region works for all phenotypes).
+**The 2026-05-15 draft's hybrid 2d/7d cohort-uniform scheme is OBSOLETE.** Phase 9 uses per-animal `bin_days` + per-animal `epoch_boundaries`, both stamped by Priya at Task 1.5.
 
 ---
 
 ## 6. Figure family inventory + per-family plan
 
-### 6.1 mean_sem time-course (Phase 7a.6 output)
+### 6.1 V4 — per_bin phenotype-pooled recovery curves (7 headline kinematic endpoints)
 
-**Source:** `pipeline_outputs/dlc_kinematics/mean_sem/<bodypart>/<center_mode>/<trial_group>/<plot_family>/<animal>/` time-course traces.
+**Source:** `pipeline_outputs/stats/results/recovery/per_bin/<endpoint>.csv` for the 7 headline kinematic endpoints from Addendum #8:
+- `tongue_lick1_y_peak`, `tongue_lick1_t_peak_ms`, `tongue_lick1_x_at_ypeak`, `tongue_lick2_x_at_ypeak`, `tongue_lick1_vxy_peak`, `tongue_max_vxy_peak_first5`, `tongue_mean_vxy_peak_first5`.
 
-**Normalization:** Option B per-time-point subtractive. For each (animal, trial_type, time-point t): delta(t) = post_mean(t) − pre_mean(t).
+**Plot:** one panel per endpoint; multiple traces (one per phenotype tier); bin_midpoint_rel_day on x-axis vs phenotype-mean ± SEM of normalized value on y-axis. L/R sides as overlaid colors within phenotype lines (per Addendum #8 (H) default).
 
-**Pooled plot:** 3 panels (one per phenotype). X-axis: time relative to tone or other alignment event. Y-axis: delta from pre-stroke baseline. Per-session traces faint in animal-color; per-phenotype mean + SEM band bold. Continuous `rel_day` color overlay OR Option-(d) epoch faceting (additional dimension).
+**Output:** `pipeline_outputs/phase_9_1_figures/phenotype_pooled/<endpoint>/v4_per_bin_phenotype_pooled.svg` + `.png`.
 
-**Per-phenotype per-trial-type fanout:** L trials + R trials separate panels (or trial-group as a 3rd column dimension in the panel grid).
+### 6.2 V5 — per_epoch phenotype-pooled boxplots (7 headline kinematic endpoints)
 
-### 6.2 Phase plots (recovery-phase-stratified panel views — LOCKED Priya 2026-05-15)
+**Source:** `pipeline_outputs/stats/results/recovery/per_epoch/<endpoint>.csv` for the 7 headline kinematics.
 
-**NOT 2D state-space trajectories.** "Phase" here means stroke recovery phase (acute / subacute / chronic / late) as a STRATIFICATION axis. Phase plots take the same underlying data as the continuous time-course figures (§6.1 mean_sem, §6.4 tongue metrics) and replicate them in a per-recovery-phase panel layout.
+**Plot:** one panel per endpoint; boxplots grouped by (phenotype × epoch). Phenotype on x-axis, boxplot per epoch within each phenotype group.
 
-**Source:** Same as mean_sem / tongue metrics / tongue_angle — no new data computation. Phase plots are a presentational re-layout.
+**Output:** `pipeline_outputs/phase_9_1_figures/phenotype_pooled/<endpoint>/v5_per_epoch_phenotype_pooled.svg` + `.png`.
 
-**Epoch boundaries (LOCKED — aligned with hybrid bin scheme from OPEN-Q 5):**
+### 6.3 Phenotype-pooled spatial recovery curves (12 family-metric combos × 4 scope/trial_group)
 
-| Epoch | rel_day range | Bin granularity (per OPEN-Q 5 hybrid scheme) |
-|---|---|---|
-| Acute | 1-3 | 2d bins |
-| Subacute | 4-14 | 2d bins |
-| Chronic | 15-42 | 7d bins |
-| Late | 43+ | 7d bins |
+**Source:** `pipeline_outputs/stats/inputs/spatial_<metric>_<family>_<combo>/<animal>.parquet` (48 endpoints per Addendum #7) → phenotype-pool at per_bin granularity.
 
-Boundary at day 14 aligns with the bin-granularity transition (2d→7d) per OPEN-Q 5.
+**Plot:** for each (family_entry, metric, scope+trial_group) = 4 family × 3 metric × 4 combo = 48 figures. Each figure: one panel; multiple traces (one per phenotype tier); bin_midpoint_rel_day vs cohort mean Wasserstein/UOT/JS within phenotype.
 
-**Pooled plot:** for each figure family that supports phase-stratification (mean_sem, tongue metrics, tongue_angle), emit 4 figures (one per epoch) × 3 phenotype panels each. Each panel shows the same metric as the continuous time-course version but restricted to data within that epoch window. Pre-stroke baseline subtraction (Option B/C per family) applied identically; phenotype pooling identically.
+**Headline emphasis:** Wasserstein at scope=tone_aligned/all (the Addendum #3 HEADLINE METRIC) gets prominent placement in the curated figure set. Other 47 combos are supplementary.
 
-Alternative: 4 epochs × 3 phenotypes = 12-panel grid per figure (3 rows × 4 cols). CC iterates with Priya during PS47 scaffold to pick 4-separate-figures vs 12-panel-grid layout based on readability.
+**Output:** `pipeline_outputs/phase_9_1_figures/phenotype_pooled_spatial/<family>/<metric>/<combo>.svg` + `.png`.
 
-**Phase plots are an ADDITIONAL figure family layered on top of the continuous time-course figures** — they don't replace mean_sem / tongue metric / tongue_angle continuous figures, just add an alternative phase-stratified view of the same data.
+### 6.4 Pub-quality polish
 
-### 6.3 tongue_angle (Phase 7a.4 cross-session output)
+**Scope:** typography + palette harmonization + multi-panel composite figures + ipsi/contra labeling.
 
-**Source:** `pipeline_outputs/dlc_kinematics/tongue_angle/within_session/<animal>/...` + `cross_session/<animal>/...` distributions.
+- **Typography:** consistent font sizes across all V4/V5/spatial-phenotype-pooled figures; readable in 2-column journal layout (~3.5 inch panel width); axis labels with units; legend placement standardized.
+- **Palette:** finalize phenotype colors (suggested: ColorBrewer sequential for severity ordering OR distinct categorical for clarity). Apply across all figures uniformly.
+- **Composites:** multi-panel paper figures combining specific V4 + V5 + spatial panels per Priya's paper narrative. E.g., "Figure 3: cross-modality tongue recovery" might combine V4 of `tongue_lick1_y_peak` + V4 of `spatial_wasserstein_tongue_spout_midpoint_tone_aligned_all` + V5 of both.
+- **ipsi/contra labeling:** per `AnimalInfo.mouse_side_to_ipsi_contra()` helper. All 8 current cohort animals are L-stroke → mouse-L = ipsi, mouse-R = contra. Side labels in figure legends/axis labels.
 
-**Normalization:** Option A aggregate baseline subtraction (scalar per animal). For each post-stroke session: delta_angle = post_angle_distribution − pre_angle_average.
-
-Alternative: diverging-cmap "delta histogram" mirroring Phase 7c.2 proportion_diff convention.
-
-**Pooled plot:** 3 panels per phenotype. X-axis: tongue angle. Y-axis: count or proportion. Pre-stroke distribution + post-stroke distribution overlaid; difference curve as third trace. OR diverging-cmap difference histogram below.
-
-### 6.4 Tongue metrics (per-trial scalar endpoints)
-
-**Source:** `pipeline_outputs/dlc_kinematics/per_trial/tongue/<animal>/<date>.json` (post-Phase-7d) OR `dlc_kinematics/endpoints/<animal>/<date>.json` (current pre-7d).
-
-**Suggested metric inventory (Priya 2026-05-15):**
-- max excursion 1st lick (presumably tongue position peak)
-- max excursion 2nd lick
-- max abs x excursion 1st lick
-- max abs x excursion 2nd lick
-- max velocity (1st lick? 2nd lick? Per-lick overall?)
-
-**OPEN-Q 4:** Full metric list — Priya enumerates. Probably ~10-20 scalars total. CC's Task 1 generates the full inventory from the per_trial JSON schema.
-
-**Normalization:** Per-trial delta = per-trial metric − per-animal pre-stroke mean of that metric. Optionally z-score if scales vary.
-
-**Pooled plot:** 3 panels per phenotype, one metric per figure (or grid of metrics in one figure). Y-axis: delta from per-animal pre-stroke mean. X-axis: rel_day (Option (a) continuous) or epoch (Option (d)). Per-session points scatter; phenotype mean+SEM bold.
-
-### 6.5 Proportion difference (Phase 7c.2 spatial heatmaps)
-
-**Source:** Per-bin H_diff arrays computed on-demand from Phase 7c.2 centered parquets per family entry + bin_size + trial_group.
-
-**Already pre-stroke-normalized.** Phenotype-pool = animal-wise average of H_diff across animals within phenotype, per bin.
-
-**Pooled plot:** 3 panels per phenotype × original per-bin grid layout (Q36). Diverging cmap unchanged from Phase 7c.2 (red=increased, blue=decreased, grey-at-zero midpoint, white-for-no-data per Q25/Q43.B). Q42 percentile-95 vmax applied at pooled scale (across all bins in (phenotype, family, scope, bin_size, trial_group)).
-
-**Mod-severe pooling caveat:** PS46 (2d bins) and PS51 (7d bins) bin grids don't align. Either Option (c) per-bin_size separate panels OR re-aggregate per Option (b) common-bin-size. Per Option (a) doesn't apply here since proportion_diff is inherently binned.
-
-### 6.6 UOT displacement (Phase 7c.2 mass_change + arrows)
-
-**Source:** Per-bin mass_change + arrow plans computed on-demand from Phase 7c.2.
-
-**Already pre-stroke-normalized.** Phenotype-pool = animal-wise average of mass_change per bin + mean OT cost across animals.
-
-**Pooled plot:** 3 panels per phenotype × per-bin grid layout. mass_change diverging cmap unchanged. Arrows: per-bin mean direction + magnitude averaged across animals' arrows for that bin.
-
-**Mod-severe binning:** same bin alignment issue as proportion_diff. Same resolution options.
+**Output:** `pipeline_outputs/phase_9_1_figures/composites/<composite_name>.svg` + `.png` + final-paper-asset variants.
 
 ---
 
@@ -200,69 +159,64 @@ Alternative: diverging-cmap "delta histogram" mirroring Phase 7c.2 proportion_di
 
 | Task | Deliverable | Est. commits | Wall time |
 |---|---|---|---|
-| Task 0 — Setup + branch | (none) | 0 | <5 min |
-| Task 1 — Endpoint + figure-family inventory | `.scratch_phase_9.1/figure_inventory.md` + tongue metric list (per OPEN-Q 4) | 0 | 1-2 hr + Priya review |
-| Task 2 — Per-animal baseline computation helper | `phase_9_1/baseline.py` (per-animal pre-stroke baseline computation, Options A/B/C all supported) | 2 | half day |
-| Task 3 — PS47 scaffold (one figure family at a time) | render code per family, iterate visually with Priya | 3-5 | 1-2 weeks (Priya bandwidth-dependent) |
-| Task 4 — Cohort pooled emit | all phenotypes × all families × per-family normalization | 1-2 | 2-4 hr cohort compute |
-| Task 5 — Verification + Priya sign-off | `.scratch_phase_9.1/verdict.md` | 0 | 1-2 days (Priya review) |
-| Task 6 — DECISIONS + MIGRATION_LOG | 2 docs files | 1 | 30-60 min |
+| Task 0 — Setup + branch (off post-Phase-9-close main) | (none) | 0 | <5 min |
+| Task 1 — V4 phenotype-pooled curves (7 headline kinematic) | `pipeline_outputs/phase_9_1_figures/phenotype_pooled/<endpoint>/v4_*.svg` × 7 | 1-2 | 1-2 days |
+| Task 2 — V5 phenotype-pooled boxplots (7 headline kinematic) | `pipeline_outputs/phase_9_1_figures/phenotype_pooled/<endpoint>/v5_*.svg` × 7 | 1 | 1 day |
+| Task 3 — Phenotype-pooled spatial recovery curves (48 spatial endpoints) | `pipeline_outputs/phase_9_1_figures/phenotype_pooled_spatial/...` × 48 | 1-2 | 1-2 days |
+| Task 4 — Pub-quality polish: typography + palette + ipsi/contra labels | Style module + applied to all figures | 2 | 2 days |
+| Task 5 — Composite figures per Priya paper narrative | `pipeline_outputs/phase_9_1_figures/composites/...` | 1-2 | 1-2 days |
+| Task 6 — Verification + Priya scientific review | `.scratch_phase_9_1/verdict.md` | 0 | 1-3 days (Priya bandwidth) |
+| Task 7 — DECISIONS + MIGRATION_LOG + PR | 2 docs files + PR | 1 | 30-60 min |
 
-**Estimated total: ~10-15 commits, ~2-3 weeks CC wall time (Priya-review-bound, not compute-bound).**
+**Estimated total: ~7-10 commits, ~5-7 days CC wall time (excluding Priya review).**
+
+Substantially smaller than the 2026-05-15 draft's 2-3 weeks estimate because most compute is now in Phase 9 (per-animal baselines, stats results, per-axis tests). Phase 9.1 is consumer + visualization + polish.
 
 ---
 
 ## 8. Dependencies + ordering
 
 **Hard prerequisites:**
-- Phase 7c.2 closed (compute-on-demand spatial figure infrastructure + canonical post-fix kinematics outputs).
-- Phase 7d closed (per_frame/per_trial path conventions stable before scaffold code targets them).
+- **Phase 9 closed** (all 9 Tasks; Task 9 close + PR merged). Phase 9.1 reads from Phase 9's `pipeline_outputs/stats/inputs/` + `pipeline_outputs/stats/results/`.
 
-**Soft prerequisites:**
-- F-P-7 alignment-templates closed (so the new pipeline is self-sufficient).
+**Soft prerequisites (for full paper-quality polish):**
+- Phenotype color palette agreed with Priya before Task 4 to avoid rework.
+- Composite figure layouts agreed with Priya before Task 5 (paper narrative-driven).
 
 **Could happen concurrently:**
-- Phase 9.2 stats kickoff drafting (Phase 9.2 consumes the per-animal-baseline-normalized arrays that Phase 9.1 produces; partial parallelization possible).
+- Pub-figures phase (if Priya wants explicit paper-figure phase distinct from 9.1 polish) — likely overlap; 9.1's pub-polish IS the pub-figures work.
 
-**Phase 9.1 precedes Phase 9.2 stats** — descriptive figures inform what stats are scientifically interesting before pre-registration.
+**Phase 9.1 → no downstream phase blocked.** Phase 9.1 close is effectively phase-end for the consolidation; what remains is paper writing + figure-specific polish that happens out-of-pipeline.
 
 ---
 
-## 9. Remaining open questions
+## 9. Open scoping questions
 
-**RESOLVED Priya 2026-05-15:**
-
-- **OPEN-Q 1:** Continuous rel_day + smoothing (Option a); may iterate after PS47 scaffold review.
-- **OPEN-Q 2:** Epoch boundaries acute 1-3 / subacute 4-14 / chronic 15-42 / late 43+ (resolved via OPEN-Q 5 hybrid scheme).
-- **OPEN-Q 3:** DISSOLVED — "phase plots" = recovery-phase-stratified panels per §6.2, NOT 2D state-space trajectories. No phase-plane pairs to enumerate.
-- **OPEN-Q 4:** CC enumerates from per_trial JSON schema during Task 1.
-- **OPEN-Q 5:** Hybrid bin scheme — 2d bins for first 14d post-stroke, 7d bins thereafter, all animals. PS51/PS54/PS55 dense first-2-week data confirmed.
-
-**REMAINING (tactical, deferred to scaffold iteration with PS47 outputs):**
-
-- **OPEN-Q 6:** Pre-stroke baseline computation — include ALL pre-stroke sessions per animal, or restrict to recent pre-stroke (e.g., last 5 sessions before stroke)? Recent-only is more conservative; all-pre-stroke gives more statistical power.
-- **OPEN-Q 7:** Outlier handling in pre-stroke pool — robust statistics (median, IQR) vs parametric (mean, SD)? Affects Option A (baseline statistic) + Option C (scale).
-- **OPEN-Q 8:** Mean_sem normalization B vs C — default B, optional C? Or emit both for direct comparison?
-- **OPEN-Q 9:** Per-animal color/marker palette — Suggested: cycle Phase 7c.2 whiskers Q39 categorical palette (red/orange/yellow/blue/cyan/purple) within each phenotype panel.
-- **OPEN-Q 10:** Output path structure — Suggested: `pipeline_outputs/dlc_kinematics/phenotype_pooled/<figure_family>/<phenotype>/<plot_specifier>.svg`. CC's call.
+- **OPEN-Q 1:** Phenotype palette choice — sequential (severity ordering) vs categorical (4 distinct colors). Suggestion: ColorBrewer YlOrRd 4-step (light yellow = mild → dark red = severe) for severity-ordering clarity. Priya finalizes during Task 4.
+- **OPEN-Q 2:** Composite figure inventory — Priya enumerates which V4/V5/spatial panels combine into which paper figures. Defer to Task 5 review.
+- **OPEN-Q 3:** V4/V5 figure scope — only the 7 headline kinematic endpoints (per Addendum #8), or extend to all primary scalar endpoints? Default per Addendum #8: just the 7 headlines; other primaries get V1/V2 in Phase 9 only.
+- **OPEN-Q 4:** Phenotype-pooled spatial figure scope — all 48 combos, or only the 4 Wasserstein headlines (tone_aligned/all per Addendum #3 HEADLINE)? Default: all 48 emitted, but composite figures feature only headlines.
+- **OPEN-Q 5:** ipsi/contra figure axis convention — show mouse-L/R on axes with ipsi/contra annotation, or relabel axes ipsi/contra directly? Affects every figure with per-side data.
 
 ---
 
 ## 10. Next steps
 
-1. Priya answers the OPEN-Qs (especially Q1, Q2, Q4, Q5).
-2. CC + Cowork begin Task 2 — per-animal baseline computation helper. Implementation works on PS47 once `bs2o2pohl` outputs are available.
-3. Task 3 PS47 scaffold iterates with Priya visual review for one figure family at a time:
-   - Iteration order: mean_sem (most-developed normalization story) → tongue metrics (scalar; simpler) → tongue_angle (distribution; conceptually new) → proportion_diff + UOT (already-normalized; phenotype-pooling validation) → phase plots (newest; depends on per_frame data).
-4. After PS47 scaffold acceptance, Task 4 cohort-pooled emit.
-5. Phase 9.1 close → Phase 9.2 stats kickoff drafting starts (using Phase 9.1's per-animal-baseline-normalized arrays as primary input).
+1. **Phase 9 closes** (Task 9 close + PR merged). Phase 9.1 cannot start until Phase 9 outputs are on main.
+2. Phase 9.1 Task 0 — branch off post-Phase-9-close main.
+3. Phase 9.1 Tasks 1-2 — V4 + V5 for 7 headline kinematics. Iterate on layout with Priya per-figure-family.
+4. Phase 9.1 Task 3 — phenotype-pooled spatial. Headline Wasserstein at tone_aligned/all first; expand to full 48 once layout settled.
+5. Phase 9.1 Tasks 4-5 — pub polish + composites. Iterate with Priya on paper narrative.
+6. Phase 9.1 Tasks 6-7 — verification + close.
 
 ---
 
 ## 11. References
 
-- Phase 9 stats scoping: `docs/prompts/phase-9-stats-scoping.md` (Phase 9.1 is its descriptive-figures precursor).
-- Phase 7c.2 kickoff: spatial proportion_diff + UOT outputs that Phase 9.1 phenotype-pools.
-- Phase 7a kinematics outputs: mean_sem, tongue_angle, per_trial endpoints.
-- `configs/animals.yaml`: cohort definition + per-animal `stroke_side` + new `phenotype` field.
-- Memory: `project_eye_midpoint_convention.md` (relevant if phase plots use eye-centered coordinates).
+- **Phase 9 kickoff:** `docs/prompts/phase-9-stats-kickoff.md` (with all 8 addenda; the source of truth for what Phase 9 produces).
+- **Phase 9 inventory:** `.scratch_phase_9/endpoint_inventory.csv` (115 rows; tells Phase 9.1 what stats results to expect).
+- **`configs/animals.yaml`:** per-animal `recovery_phenotype` + `epoch_boundaries` + `bin_days` + `stroke_laterality` — all stamped at Phase 9 Task 1.5.
+- **`stats/recovery_epochs.py`:** `cohort_phenotype_summary` + `assign_epoch_label` helpers Phase 9.1 may invoke.
+- **`AnimalInfo.mouse_side_to_ipsi_contra()`:** Phase 8a.10 scaffolding for ipsi/contra labeling.
+- **Memory `project_eye_midpoint_convention.md`:** relevant if any figures use eye-centered coordinates.
+- **Memory `feedback_iterative_addenda_pattern.md`:** Phase 9.1 may need its own addenda during scaffold review.

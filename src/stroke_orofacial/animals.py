@@ -9,9 +9,109 @@ from __future__ import annotations
 import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 import yaml
+
+
+# ---------------------------------------------------------------------------
+# Phase 9 Task 1.5 — recovery_phenotype enum + EpochBoundaries
+# ---------------------------------------------------------------------------
+
+RecoveryPhenotype = Literal["mild", "moderate", "moderate-severe", "severe"]
+
+
+_VALID_RECOVERY_PHENOTYPES: tuple[str, ...] = get_args(RecoveryPhenotype)
+
+
+class ConfigValidationError(ValueError):
+    """Raised when ``configs/animals.yaml`` violates a schema constraint.
+
+    Subclasses :class:`ValueError` to preserve backward compatibility with
+    callers that catch ``ValueError`` from :func:`load_animals` (the
+    pre-Phase-9 contract). New Phase-9 validation paths raise this more
+    specific class so consumers can pattern-match on it directly.
+    """
+
+
+@dataclass(frozen=True)
+class EpochBoundaries:
+    """Per-animal recovery-epoch day boundaries (Phase 9 lock 2026-05-23).
+
+    Schema (all values are days-relative-to-stroke; ``rel_day = 1`` is
+    the first post-stroke day; pre-stroke is ``rel_day <= 0``):
+
+    - acute     = ``[1, acute_max_rel_day]`` (inclusive)
+    - sub_acute = ``[acute_max_rel_day + 1, subacute_max_rel_day]`` (inclusive)
+    - chronic   = ``[chronic_min_rel_day, +inf)`` (inclusive)
+
+    Constraints (enforced in :meth:`__post_init__`):
+
+    - ``acute_max_rel_day >= 1``
+    - ``subacute_max_rel_day >= acute_max_rel_day + 1``
+      (sub-acute window must be at least 1 day wide)
+    - ``chronic_min_rel_day > subacute_max_rel_day``
+      (chronic begins strictly after sub-acute; may leave a transitional
+      gap when ``chronic_min_rel_day > subacute_max_rel_day + 1``)
+
+    ``chronic_min_rel_day`` may be set to a large sentinel
+    (e.g. ``9999``) for animals that never reach a chronic plateau within
+    their dataset; in that case
+    :func:`stroke_orofacial.stats.recovery_epochs.assign_epoch_label`
+    returns ``"sub_acute"`` for every observed post-stroke session.
+
+    Data-availability gaps (e.g. no sessions on rel_day 18-19 for a
+    "severe" phenotype) are NOT encoded here — the schema represents
+    epoch INTENT; per-session label assignment happens at materialization
+    using only days where sessions actually exist.
+
+    Stamped manually per animal in ``configs/animals.yaml``. Data-derived
+    alternatives explicitly rejected at the 2026-05-23 design discussion
+    in favor of explicit-judgment auditability.
+    """
+
+    acute_max_rel_day: int
+    subacute_max_rel_day: int
+    chronic_min_rel_day: int
+
+    def __post_init__(self) -> None:
+        # Type-check before constraint-check so a stray bool or float gives
+        # a clear error instead of a confusing comparison message.
+        for name in (
+            "acute_max_rel_day", "subacute_max_rel_day", "chronic_min_rel_day",
+        ):
+            v = getattr(self, name)
+            if isinstance(v, bool) or not isinstance(v, int):
+                raise ConfigValidationError(
+                    f"EpochBoundaries.{name} must be int; got "
+                    f"{type(v).__name__}={v!r}.",
+                )
+        if self.acute_max_rel_day < 1:
+            raise ConfigValidationError(
+                f"EpochBoundaries: acute_max_rel_day must be >= 1; got "
+                f"{self.acute_max_rel_day!r}. acute window is [1, "
+                f"acute_max_rel_day] inclusive, so acute_max_rel_day < 1 "
+                f"would yield an empty acute window.",
+            )
+        if self.subacute_max_rel_day < self.acute_max_rel_day + 1:
+            raise ConfigValidationError(
+                f"EpochBoundaries: subacute_max_rel_day "
+                f"({self.subacute_max_rel_day!r}) must be >= "
+                f"acute_max_rel_day + 1 "
+                f"({self.acute_max_rel_day + 1!r}); the sub-acute window "
+                f"is [acute_max_rel_day + 1, subacute_max_rel_day] and "
+                f"must be at least 1 day wide.",
+            )
+        if self.chronic_min_rel_day <= self.subacute_max_rel_day:
+            raise ConfigValidationError(
+                f"EpochBoundaries: chronic_min_rel_day "
+                f"({self.chronic_min_rel_day!r}) must be > "
+                f"subacute_max_rel_day ({self.subacute_max_rel_day!r}); "
+                f"chronic begins strictly after the sub-acute window. "
+                f"To declare a transitional gap, set chronic_min_rel_day "
+                f"> subacute_max_rel_day + 1; for never-recovered "
+                f"animals, use a sentinel like 9999.",
+            )
 
 
 def _default_config_path() -> Path:
@@ -95,10 +195,26 @@ class AnimalInfo:
         First session date in the analysis range.
     session_end : datetime.date
         Last session date in the analysis range.
+    epoch_boundaries : EpochBoundaries
+        Per-animal recovery-epoch day boundaries (Phase 9 lock 2026-05-23).
+        REQUIRED — every cohort animal must have stamped boundaries before
+        Phase 9 inputs materialization. See :class:`EpochBoundaries` for the
+        schema + constraints. Stamped manually in ``configs/animals.yaml``;
+        cohort phenotype-level defaults are NOT used as a fallback (PS54
+        and PS55 share ``recovery_phenotype="severe"`` but have different
+        boundaries — phenotype labels are categorical clinical judgments,
+        epoch boundaries reflect each animal's actual observed timeline).
     exclusions : list[Exclusion]
         Sessions excluded from analysis.
-    recovery_phenotype : str or None
-        Recovery phenotype label (filled in later by recovery_epochs module).
+    recovery_phenotype : RecoveryPhenotype or None
+        Recovery phenotype label, one of ``"mild"``, ``"moderate"``,
+        ``"moderate-severe"``, ``"severe"``. Field remains optional in the
+        dataclass for forward compatibility with future cohort animals where
+        the phenotype hasn't been stamped yet; the loader raises
+        :class:`ConfigValidationError` on a non-null YAML value outside the
+        enum. Phase 9 cohort distribution (2026-05-23): mild=4 (PS47, PS48,
+        PS49, PS50), moderate=1 (PS46), moderate-severe=1 (PS51), severe=2
+        (PS54, PS55).
     analysis_params : dict
         Per-animal analysis parameters (e.g. break thresholds).
     sex : {"M", "F"} or None
@@ -173,8 +289,12 @@ class AnimalInfo:
     stroke_date: datetime.date
     session_start: datetime.date
     session_end: datetime.date
+    # Phase 9 Task 1.5 (2026-05-23): REQUIRED — no default. Positioned
+    # immediately after the existing required fields so the dataclass stays
+    # syntactically valid (no defaulted field precedes a non-defaulted one).
+    epoch_boundaries: EpochBoundaries
     exclusions: list[Exclusion] = field(default_factory=list)
-    recovery_phenotype: str | None = None
+    recovery_phenotype: RecoveryPhenotype | None = None
     analysis_params: dict[str, Any] = field(default_factory=dict)
     # Cohort metadata (added 2026-04-20 per Audit-10 Q7 / task #18).
     # Optional — each field may be None for animals where the data is not
@@ -362,6 +482,76 @@ def _parse_exclusions(
     return exclusions
 
 
+def _parse_epoch_boundaries(raw: Any, animal_id: str) -> EpochBoundaries:
+    """Parse the ``epoch_boundaries`` YAML block for one animal.
+
+    Required for every animal (no default sentinel — every cohort animal
+    must have stamped boundaries before Phase 9 stats materialization).
+    Validates the 3 required int keys, then delegates ordering /
+    minimum-value constraints to :meth:`EpochBoundaries.__post_init__`.
+    """
+    if raw is None:
+        raise ConfigValidationError(
+            f"Animal {animal_id!r}: epoch_boundaries block is required "
+            f"(Phase 9 lock 2026-05-23). Add an epoch_boundaries section "
+            f"with acute_max_rel_day, subacute_max_rel_day, and "
+            f"chronic_min_rel_day keys. See "
+            f"src/stroke_orofacial/animals.py::EpochBoundaries for the "
+            f"schema + constraints.",
+        )
+    if not isinstance(raw, dict):
+        raise ConfigValidationError(
+            f"Animal {animal_id!r}: epoch_boundaries must be a mapping; "
+            f"got {type(raw).__name__}.",
+        )
+    expected = ("acute_max_rel_day", "subacute_max_rel_day", "chronic_min_rel_day")
+    missing = [k for k in expected if k not in raw]
+    if missing:
+        raise ConfigValidationError(
+            f"Animal {animal_id!r}: epoch_boundaries missing required "
+            f"key(s) {missing}. Required: {list(expected)}.",
+        )
+    extra = sorted(set(raw) - set(expected))
+    if extra:
+        raise ConfigValidationError(
+            f"Animal {animal_id!r}: epoch_boundaries has unknown "
+            f"key(s) {extra}. Allowed: {list(expected)}.",
+        )
+    # Type-check at parse time (bool would silently coerce to int inside
+    # dataclass construction); EpochBoundaries.__post_init__ runs the
+    # cross-field constraint validation.
+    parsed: dict[str, int] = {}
+    for key in expected:
+        v = raw[key]
+        if isinstance(v, bool) or not isinstance(v, int):
+            raise ConfigValidationError(
+                f"Animal {animal_id!r}: epoch_boundaries.{key} must be "
+                f"int; got {type(v).__name__}={v!r}.",
+            )
+        parsed[key] = v
+    return EpochBoundaries(**parsed)
+
+
+def _parse_recovery_phenotype(raw: Any, animal_id: str) -> RecoveryPhenotype | None:
+    """Validate ``recovery_phenotype`` against the locked 4-tier enum.
+
+    None / missing is allowed (forward compatibility for future cohort
+    animals where the phenotype hasn't been stamped). Non-null values
+    outside the enum raise :class:`ConfigValidationError` with a message
+    that names both the offending value and the valid set, so a typo can
+    be self-corrected without digging through source.
+    """
+    if raw is None:
+        return None
+    if raw not in _VALID_RECOVERY_PHENOTYPES:
+        raise ConfigValidationError(
+            f"Animal {animal_id!r}: recovery_phenotype must be one of "
+            f"{list(_VALID_RECOVERY_PHENOTYPES)} or null/unset; got "
+            f"{raw!r}.",
+        )
+    return raw  # type: ignore[return-value]  # Literal narrowed by membership check
+
+
 _REQUIRED_KINEMATICS_BODYPARTS: frozenset[str] = frozenset({"tongue", "jaw"})
 
 
@@ -519,8 +709,13 @@ def load_animals(config_path: Path | str | None = None) -> dict[str, AnimalInfo]
             stroke_date=_parse_date(spec["stroke_date"]),
             session_start=_parse_date(spec["sessions"]["start"]),
             session_end=_parse_date(spec["sessions"]["end"]),
+            epoch_boundaries=_parse_epoch_boundaries(
+                spec.get("epoch_boundaries"), animal_id,
+            ),
             exclusions=_parse_exclusions(spec.get("exclusions"), animal_id),
-            recovery_phenotype=spec.get("recovery_phenotype"),
+            recovery_phenotype=_parse_recovery_phenotype(
+                spec.get("recovery_phenotype"), animal_id,
+            ),
             analysis_params=spec.get("analysis_params", {}),
             sex=sex_raw,
             date_of_birth=dob,

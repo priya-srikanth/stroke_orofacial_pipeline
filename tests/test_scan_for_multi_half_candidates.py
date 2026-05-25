@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from stroke_orofacial.animals import AnimalInfo
+from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
 
 
 # ---------- Module load (script lives outside src/, no package import) ----------
@@ -81,6 +81,7 @@ def _make_animal_info(animal_id: str, start: datetime.date, end: datetime.date) 
         stroke_date=start + datetime.timedelta(days=10),
         session_start=start,
         session_end=end,
+        epoch_boundaries=EpochBoundaries(1, 4, 5),
     )
 
 

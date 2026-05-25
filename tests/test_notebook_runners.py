@@ -21,7 +21,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from stroke_orofacial.animals import AnimalInfo
+from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
 from stroke_orofacial.manifest import SessionManifest
 
 
@@ -35,6 +35,7 @@ def _make_animal_info(animal_id: str) -> AnimalInfo:
         stroke_date=datetime.date(2025, 4, 29),
         session_start=datetime.date(2025, 4, 30),
         session_end=datetime.date(2025, 4, 30),
+        epoch_boundaries=EpochBoundaries(1, 4, 5),
         wavesurfer_sides_match_mouse_sides=False,
     )
 
