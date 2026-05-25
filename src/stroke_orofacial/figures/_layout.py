@@ -170,3 +170,51 @@ def apply_side_split_suptitle(fig: Any, endpoint_slug: str) -> None:
         figure_caption_caveat(),
         ha="center", va="top", fontsize=8, color="0.35",
     )
+
+
+# ---------------------------------------------------------------------------
+# Scatter underlay jitter (Q-lock 11 V5 + reusable for any categorical-x plot)
+# ---------------------------------------------------------------------------
+
+# Fixed seed for reproducibility — the V5 scatter jitter is purely cosmetic
+# (avoids overplotting at identical x), so a deterministic shuffle is
+# preferable to an emit-time-varying one. Seed picked at task draft;
+# never change without bumping all V5 figures together.
+_JITTER_SEED: int = 42
+
+
+def jittered_x_positions(
+    n_points: int,
+    epoch_idx: int,
+    *,
+    width: float = 0.15,
+    seed: int = _JITTER_SEED,
+) -> list[float]:
+    """Return n_points x-coordinates centered at epoch_idx with uniform jitter.
+
+    Q-lock 11 — V5 scatter underlay overplot mitigation. Each per-(animal,
+    session) data point sits within ``±width`` of the epoch's nominal
+    x-position. A deterministic seed ensures the same emit produces the
+    same scatter every time (important for SVG diffs at PR review).
+
+    Parameters
+    ----------
+    n_points : int
+        Number of jittered positions to return.
+    epoch_idx : int
+        Nominal x-position (0=pre, 1=acute, 2=sub_acute, 3=chronic).
+    width : float, optional
+        Half-width of the jitter band. Default 0.15 → jitter spans ±0.15
+        epoch units around the epoch center, well within the 0.5-unit
+        gap between adjacent epoch positions.
+    seed : int, optional
+        RNG seed for reproducibility. Default ``_JITTER_SEED`` (= 42).
+    """
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    if n_points <= 0:
+        return []
+    return [
+        float(epoch_idx) + float(off)
+        for off in rng.uniform(-width, width, n_points)
+    ]

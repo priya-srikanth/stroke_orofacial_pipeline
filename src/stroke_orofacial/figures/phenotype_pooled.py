@@ -182,8 +182,17 @@ def _draw_v4_traces(ax, sub: pd.DataFrame) -> None:
 
 
 # ---------------------------------------------------------------------------
-# V5 — per_epoch phenotype-pooled boxplots
+# V5 — per_epoch phenotype-pooled delta line + scatter underlay (Q-lock 11)
 # ---------------------------------------------------------------------------
+
+# 4 epochs along x at positions 0..3. Phenotype lines run THROUGH each
+# epoch position (no horizontal offset — overlapping points + lines stay
+# vertically distinguishable by color/SEM). Scatter underlay applies a
+# small jitter ±_V5_JITTER_WIDTH around each epoch x-position to defang
+# overplotting at identical x.
+_V5_EPOCH_ORDER: tuple[str, ...] = ("pre", "acute", "sub_acute", "chronic")
+_V5_JITTER_WIDTH: float = 0.15
+
 
 def emit_v5_per_endpoint(
     endpoint_slug: str,
@@ -194,12 +203,22 @@ def emit_v5_per_endpoint(
     overwrite: Literal["skip", "force"] = "skip",
     dpi: int = 150,
 ) -> tuple[Path, Path] | None:
-    """Emit one V5 phenotype-pooled per_epoch boxplot as SVG + PNG.
+    """Emit one V5 phenotype-pooled per_epoch delta line as SVG + PNG.
 
-    Side-split per Q-lock 10(a); single-panel fallback per Q-lock 10(c).
-    Per Phase 9 Addendum #6 the unit of pooling is the per-session value
-    within an epoch (NOT per-trial), so this runner aggregates trial-grain
-    parquets to per-session means before boxplot rendering.
+    Q-lock 11 — delta-from-baseline (per-animal pre-epoch mean) line plot
+    with faded per-session scatter underlay. Side-split per Q-lock 10(a);
+    single-panel fallback per Q-lock 10(c).
+
+    Pipeline:
+    1. Load raw stats input parquets.
+    2. Compute per-(animal[, side]) baseline mean from pre-epoch rows.
+    3. Collapse to per-(animal, date[, side], epoch) means; subtract
+       baseline to get ``delta_value`` per session.
+    4. Pool deltas across (animal, session) within (phenotype[, side],
+       epoch) to mean ± SEM.
+    5. Render: phenotype-colored line connectors with SEM bars across
+       the 4 epoch positions (foreground); per-session jittered scatter
+       at α≈0.25 (background); y=0 reference at zorder=0.
     """
     if endpoint_slug.startswith("spatial_"):
         logger.warning(
@@ -237,20 +256,32 @@ def emit_v5_per_endpoint(
             )
             return None
 
+    # Q-lock 11 pipeline: baseline → per-session → delta → phenotype-pool.
+    baseline = _io.per_animal_side_baseline(df, by_side=has_side)
     per_session = _io.per_session_within_epoch(df, by_side=has_side)
-    if per_session.empty:
+    sessions_with_delta = _io.apply_baseline_delta(
+        per_session, baseline, by_side=has_side,
+    )
+    if sessions_with_delta.empty:
         logger.warning(
-            "no per-session-within-epoch rows for endpoint %r (epoch_label "
-            "all missing?); skipping", endpoint_slug,
+            "no per-session deltas computable for endpoint %r (no pre-epoch "
+            "rows for any animal[/side]?); skipping", endpoint_slug,
         )
         return None
+    pooled = _io.phenotype_pooled_per_epoch_delta(
+        sessions_with_delta, by_side=has_side,
+    )
 
-    n_by_tier = _count_animals_per_tier(per_session)
+    n_by_tier = _count_animals_per_tier(sessions_with_delta)
 
     if has_side:
-        fig = _build_v5_side_split_figure(per_session, endpoint_slug, n_by_tier)
+        fig = _build_v5_side_split_figure(
+            pooled, sessions_with_delta, endpoint_slug, n_by_tier,
+        )
     else:
-        fig = _build_v5_cohort_pooled_figure(per_session, endpoint_slug, n_by_tier)
+        fig = _build_v5_cohort_pooled_figure(
+            pooled, sessions_with_delta, endpoint_slug, n_by_tier,
+        )
 
     endpoint_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(svg_path, bbox_inches="tight")
@@ -261,19 +292,22 @@ def emit_v5_per_endpoint(
 
 
 def _build_v5_side_split_figure(
-    per_session: pd.DataFrame,
+    pooled: pd.DataFrame,
+    sessions_with_delta: pd.DataFrame,
     endpoint_slug: str,
     n_by_tier: dict[str, int],
 ):
     fig, ipsi_ax, contra_ax = _layout.phenotype_side_split_panels()
     for side, ax in (("L", ipsi_ax), ("R", contra_ax)):
-        side_df = per_session[per_session["side"] == side]
-        _draw_v5_boxplots(ax, side_df)
+        pooled_side = pooled[pooled["side"] == side]
+        scatter_side = sessions_with_delta[sessions_with_delta["side"] == side]
+        _draw_v5_delta_line_with_scatter(ax, pooled_side, scatter_side)
         _layout.phenotype_panel(
             ax,
             endpoint_slug=endpoint_slug,
             n_by_tier=n_by_tier,
             xlabel="Epoch",
+            ylabel=f"delta {endpoint_slug} (baseline-subtracted)",
             set_title=False,
             draw_stroke_onset=False,
         )
@@ -284,17 +318,19 @@ def _build_v5_side_split_figure(
 
 
 def _build_v5_cohort_pooled_figure(
-    per_session: pd.DataFrame,
+    pooled: pd.DataFrame,
+    sessions_with_delta: pd.DataFrame,
     endpoint_slug: str,
     n_by_tier: dict[str, int],
 ):
     fig, ax = _layout.cohort_pooled_panel()
-    _draw_v5_boxplots(ax, per_session)
+    _draw_v5_delta_line_with_scatter(ax, pooled, sessions_with_delta)
     _layout.phenotype_panel(
         ax,
         endpoint_slug=endpoint_slug,
         n_by_tier=n_by_tier,
         xlabel="Epoch",
+        ylabel=f"delta {endpoint_slug} (baseline-subtracted)",
         set_title=True,
         draw_stroke_onset=False,
     )
@@ -303,67 +339,64 @@ def _build_v5_cohort_pooled_figure(
     return fig
 
 
-# V5 boxplot layout: epochs along x; phenotypes grouped within each epoch.
-# 4 phenotype boxes per epoch, offset by ±_V5_PHENOTYPE_OFFSETS from the
-# epoch center so they don't overlap.
-_V5_EPOCH_ORDER: tuple[str, ...] = ("pre", "acute", "sub_acute", "chronic")
-_V5_BOX_WIDTH: float = 0.18
-_V5_PHENOTYPE_OFFSETS: dict[str, float] = {
-    "mild": -0.30,
-    "moderate": -0.10,
-    "moderate-severe": +0.10,
-    "severe": +0.30,
-}
+def _draw_v5_delta_line_with_scatter(
+    ax,
+    pooled: pd.DataFrame,
+    sessions_with_delta: pd.DataFrame,
+) -> None:
+    """Render Q-lock 11 V5: per-phenotype delta lines + faded scatter underlay.
 
-
-def _draw_v5_boxplots(ax, per_session: pd.DataFrame) -> None:
-    """Draw phenotype-grouped boxplots: 4 phenotype boxes per epoch position.
-
-    Layout: epochs on x (pre/acute/sub_acute/chronic at positions 0..3); 4
-    phenotype boxes per epoch, offset by ±0.30 around the epoch center.
-    Whiskers default to matplotlib's 1.5*IQR; outliers = open circles in
-    palette color. Box fill at α=0.55; box edge + whisker/cap in palette
-    color; median line in dark gray for contrast.
+    Background layer: per-(animal, session) scatter dots at epoch positions
+    with horizontal jitter; same color as the phenotype's connecting line;
+    α=0.25; zorder=1. Foreground: phenotype-colored line connecting the
+    cohort-mean delta across the 4 epoch positions, with SEM error bars;
+    zorder=3. y=0 reference line at zorder=0 (drawn separately by
+    :func:`phenotype_panel`).
     """
-    seen_tiers: set[str] = set()
-    for epoch_idx, epoch in enumerate(_V5_EPOCH_ORDER):
-        epoch_df = per_session[per_session["epoch_label"] == epoch]
-        if epoch_df.empty:
+    # Background scatter underlay — per-(animal, session) jittered dots.
+    for tier in _palette.PHENOTYPE_ORDER:
+        tier_scatter = sessions_with_delta[
+            sessions_with_delta["phenotype_tier"] == tier
+        ]
+        if tier_scatter.empty:
             continue
-        for tier in _palette.PHENOTYPE_ORDER:
-            tier_df = epoch_df[epoch_df["phenotype_tier"] == tier]
-            if tier_df.empty:
+        color = _palette.phenotype_palette(tier)
+        for epoch_idx, epoch in enumerate(_V5_EPOCH_ORDER):
+            cell = tier_scatter[tier_scatter["epoch_label"] == epoch]
+            if cell.empty:
                 continue
-            color = _palette.phenotype_palette(tier)
-            x_position = float(epoch_idx) + _V5_PHENOTYPE_OFFSETS[tier]
-            box = ax.boxplot(
-                tier_df["value"].to_numpy(),
-                positions=[x_position],
-                widths=_V5_BOX_WIDTH,
-                patch_artist=True,
-                showfliers=True,
-                flierprops=dict(
-                    marker="o", markersize=3.0, markerfacecolor="none",
-                    markeredgecolor=color, alpha=0.5,
-                ),
-                medianprops=dict(color="0.15", linewidth=1.5),
-                whiskerprops=dict(color=color, linewidth=1.0),
-                capprops=dict(color=color, linewidth=1.0),
-                manage_ticks=False,
+            xs = _layout.jittered_x_positions(
+                len(cell), epoch_idx, width=_V5_JITTER_WIDTH,
             )
-            for patch in box["boxes"]:
-                patch.set_facecolor(color)
-                patch.set_edgecolor(color)
-                patch.set_alpha(0.55)
-            # Add a single legend handle per phenotype tier (across the whole
-            # ax) so phenotype_legend has something to grab via labels.
-            if tier not in seen_tiers:
-                ax.plot([], [], color=color, linewidth=6.0, label=tier)
-                seen_tiers.add(tier)
+            ax.scatter(
+                xs, cell["delta_value"].to_numpy(),
+                s=12.0, marker="o",
+                facecolor=color, edgecolor="none",
+                alpha=0.25, zorder=1,
+            )
+
+    # Foreground line connectors + SEM error bars (one per phenotype).
+    for tier in _palette.PHENOTYPE_ORDER:
+        tier_pool = pooled[pooled["phenotype_tier"] == tier]
+        if tier_pool.empty:
+            continue
+        # Reindex to canonical epoch order so the line walks pre→chronic.
+        order_idx = {e: i for i, e in enumerate(_V5_EPOCH_ORDER)}
+        tier_pool = tier_pool.assign(
+            epoch_idx=tier_pool["epoch_label"].map(order_idx)
+        ).sort_values("epoch_idx")
+        color = _palette.phenotype_palette(tier)
+        ax.errorbar(
+            tier_pool["epoch_idx"], tier_pool["mean"],
+            yerr=tier_pool["sem"],
+            color=color, marker="o", markersize=5.0,
+            linewidth=2.0, capsize=3.5,
+            label=tier, zorder=3,
+        )
 
     ax.set_xticks(range(len(_V5_EPOCH_ORDER)))
     ax.set_xticklabels(_V5_EPOCH_ORDER)
-    ax.set_xlim(-0.6, len(_V5_EPOCH_ORDER) - 0.4)
+    ax.set_xlim(-0.5, len(_V5_EPOCH_ORDER) - 0.5)
 
 
 # ---------------------------------------------------------------------------
