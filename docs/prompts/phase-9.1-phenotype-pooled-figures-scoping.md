@@ -12,22 +12,84 @@
 > - **Pub-polish work** (typography, multi-panel composites, ipsi/contra labeling) per Addendum #1 (C) is Phase 9.1's tertiary deliverable.
 > - **Phase 9.2 references** are obsolete (no separate 9.2; what was 9.2 is now Phase 9 Tasks 3-5).
 
+> **AMENDMENT 2026-05-25 (scoping locks ahead of kickoff drafting).** Four scoping questions locked during pre-kickoff planning conversation (Priya, 2026-05-25). These supersede the OPEN-Q defaults in §9 and update §1 primary deliverables + §6 figure inventory + §7 task table:
+>
+> - **Phenotype grouping (new lock):** **4-tier retained** (mild / moderate / moderate-severe / severe), faithful to `AnimalInfo.recovery_phenotype`. Phase 9.x's 3-tier `moderate-pool` grouping is NOT adopted for 9.1; the n=1 moderate and moderate-severe tiers render as single-animal descriptive traces (per §2 caveat). Rationale: 9.1 is figure work where descriptive single-animal traces are publishable; 9.x is stats work where pooled n≥2 is required for LMM convergence.
+> - **V4/V5 figure scope (OPEN-Q 3):** **All ~20 confirmatory primary scalars** (NOT just the 7 headline kinematics). Every endpoint in the confirmatory family from Phase 9 gets V4 + V5 phenotype-pooled figures. ~40 figures total (20 endpoints × V4/V5). Headlines remain prominent in composites at Task 5. **SUPERSEDED by Amendment 2026-05-25 (b) below — see expanded exploratory-scalar scope.**
+> - **Spatial scope (OPEN-Q 4):** **Wasserstein-all-scopes (12 figures).** Emit Wasserstein at all 4 scope/trial_group combos × 4 families ≈ 12 (some duplicates per family). UOT + JS divergence supplementary figures DEFERRED — re-evaluate after paper-figure review whether they add narrative value. Narrows from the 48-figure full grid in original scoping draft. **SUPERSEDED by Amendment 2026-05-25 (b) below — UOT + JS un-deferred.**
+> - **Ipsi/contra labeling (OPEN-Q 5):** **Relabel axes ipsi/contra directly + caption caveat for cohort uniformity.** All per-side figure axes/legends show 'ipsi' and 'contra' directly. Each figure caption notes "All 8 cohort animals are L-stroke; ipsi = mouse-L, contra = mouse-R" for future R-stroke-cohort reproducibility.
+>
+> Two OPEN-Qs remain unlocked and defer to within-phase iteration: palette finalization (OPEN-Q 1, Task 4) and composite figure inventory (OPEN-Q 2, Task 5).
+
+> **AMENDMENT 2026-05-25 (b) — Exploratory-figure scope expansion + parameterized runner.** Three scoping decisions taken during plan-mode review of CC's kickoff-drafting plan (Priya, 2026-05-25). Supersedes the V4/V5 scope (OPEN-Q 3) and spatial scope (OPEN-Q 4) locks from Amendment 2026-05-25 above. Rationale: Priya wants comprehensive exploratory-figure coverage to visualize how non-confirmatory endpoints behave, not just paper-headline figures.
+>
+> - **V4/V5 figure scope (revises OPEN-Q 3):** **ALL Phase 9 LMM-run scalar endpoints** (disk-verified count: **35** endpoints per `ls pipeline_outputs/stats/results/recovery/per_epoch/ | wc -l` excluding spatial + `_all.csv` aggregates; see Phase 9.1 kickoff §V4/V5 inventory for canonical list). Includes all confirmatory + non-confirmatory scalars: per-trial tongue + jaw kinematics, session-aggregate behavioral, derived velocity headlines, etc. **~70 V4/V5 figures total (35 × 2)**. Confirmatory + headline subsets get featured placement in Task 5 composites; the broader exploratory inventory is supplementary / data-exploration material. *(Original estimate "~80-100 endpoints / ~160-200 figures" REVISED DOWNWARD per disk audit during kickoff drafting 2026-05-25.)*
+> - **Spatial scope (revises OPEN-Q 4):** **All 3 distributional metrics × all 4 scope/trial_group combos × 4 families = 48 phenotype-pooled spatial figures.** Wasserstein (16) + UOT cost (16) + JS divergence (16). UOT + JS supplementary figures NO LONGER deferred. Wasserstein at scope=tone_aligned/all (Addendum #3 HEADLINE METRIC) still gets prominent placement in composites; UOT + JS provide cross-metric corroboration in supplementary. *(Note: 2 orphan bare-slug spatial parquets [`spatial_wasserstein_jaw_eye_midpoint`, `spatial_wasserstein_tongue_spout_midpoint`] survive on disk from pre-Addendum-7 emit; Phase 9.1 Task 0.5 excludes them from emit.)*
+> - **Parameterized figure runner (new lock):** Figure runner accepts an `--endpoint-list <path>` CLI flag and defaults to the expanded Phase 9.1 endpoint set (config file or sentinel value). Future exploratory emit (e.g., new endpoint families post-9.1, scope narrowing for paper-figure subset) becomes a single-command rerun against a different endpoint-list file. ~0.5 day design uplift; pays off if scope shifts during paper-figure review or 9.x. Same flag/pattern applies to both V4/V5 runners and the phenotype-pooled-spatial runner.
+>
+> **Updated estimated scope (disk-verified):** ~70 V4/V5 + 48 spatial ≈ **~118 figures total** (vs. 46 in the prior amendment). Per-figure code is unchanged (Phase 9.1 is consumer + visualization); the scale-up is loop iterations, not new algorithms. Wall-time estimate ~10-14 days CC (driven by figure-style iteration cost + verification time across the broader inventory, not by figure-count scaling).
+>
+> **Excluded from V4/V5 by design:** `latency_hist` is confirmatory but is a `vector_per_session` endpoint without LMM treatment (KS-bridge methodology per Phase 9 Addendum #4) — it has no `recovery/per_epoch/` stats result CSV. **NEW LOCK 2026-05-25 (b) follow-up (Priya):** Phase 9.1 adds a separate phenotype-pooled CDF/histogram figure family for `latency_hist`. Methodology: pool per-trial first-correct-lick latencies across animals within each phenotype tier × epoch; emit phenotype-pooled CDFs (one trace per epoch within each phenotype panel) consuming the existing `stats/inputs/latency_hist/<animal>.parquet` rows. Estimated figure count: 1-4 figures (final layout determined at Task 0.5 review — single 4-panel composite vs. one figure per phenotype). No new stats methodology needed; KS-bridge from Addendum #4 already provides cross-epoch p-values for caption annotations. Same `--endpoint-list` parameterized runner per Q-lock 6 applies. Total figure count revised: ~118 + 1-4 latency_hist ≈ **~120 figures**.
+
+> **NEW LOCK 2026-05-25 (b) second follow-up (Priya) — tongue ipsi-shift figure families.** Phase 9.1 adds two new figure families specifically to visualize whether tongue position/orientation shows a consistent ipsi-side shift after stroke (memory finding #6: direction-sensitive endpoints x/angle show ipsi-contra asymmetry; amplitude endpoints y don't). Both families plot on **tone-aligned trial time** as the x-axis (seconds post-tone) and use the existing 4-tier phenotype grouping per Q-lock 1 with epoch traces (pre / acute / sub_acute / chronic). Ipsi/contra side-split per Q-lock 4 (axes labeled directly + caption caveat for cohort-uniformity).
+>
+> **Baseline normalization (LOCKED — delta-from-baseline at every tone-aligned time bin):** Y-axis values are **delta** (post − pre-stroke baseline), NOT raw tongue angle / x. This is per-bin trajectory subtraction (not Addendum #6's per-trial scalar subtraction):
+> - **Per-animal baseline trajectory:** computed from PRE-stroke sessions only, separately for each trial side (ipsi-trials baseline = mean over pre-stroke mouse-L trials per animal; contra-trials baseline = mean over pre-stroke mouse-R trials per animal — since all 8 cohort animals are L-stroke, mouse-L = ipsi, mouse-R = contra).
+> - **Per-session delta trajectory:** for any session (pre or post-stroke) in any animal, compute the session's mean trajectory(t) across trials of the given side, then subtract that animal's pre-stroke side-matched baseline trajectory(t) at each tone-aligned time bin. The result is a per-session delta(t) trajectory.
+> - **Pooling:** delta(t) trajectories from all sessions within (phenotype, epoch, side) get pooled to produce the cohort-level mean ± SEM delta trace for that cell.
+> - **Pre-epoch trace REQUIRED as a baseline-noise reference (LOCKED):** Pre-stroke is plotted as a full epoch trace alongside acute / sub_acute / chronic — NOT omitted or implicitly assumed zero. Each pre-stroke session's delta trajectory is ≈0 with session-to-session fluctuations around 0 driven by intrinsic baseline variability (between-session trial composition, animal day-to-day state, etc.).
+> - **Scientific role of the pre trace:** the thin per-session overlay (two-layer rendering, see below) for the pre epoch reveals the natural session-to-session variability "band" around zero. This visually communicates what "no change" looks like — and any post-stroke epoch trace that stays within the pre band is consistent with noise, while traces that exceed the pre band are evidence of a real stroke-induced shift. Reading the magnitude of post-stroke deltas against the pre band is the key visual comparison.
+> - **Caption convention:** y-axis label reads "delta tongue angle (deg, baseline-subtracted)" or "delta tongue x (px, baseline-subtracted)" — the y=0 reference line should be drawn explicitly in each panel.
+>
+> *(2026-05-25 amendment: Originally drafted as 3 families; Family 8.1 [cohort/phenotype-pooled phase-aligned angle, NOT side-split] DROPPED per Priya — redundant with side-split Family 8.1 [angle, lick1/lick2/median] below.)*
+>
+> **Time-binning convention (LOCKED, applies to both families):** Match the existing tongue_angle / mean_sem plot convention used elsewhere in the codebase. Phase 9.1 figure code reuses the existing trajectory-plotting machinery (whatever bin width + post-tone window are already coded for tone-aligned tongue_angle / x trajectory plots — likely under `src/stroke_orofacial/dlc_kinematics/` or downstream rendering scripts). CC discovers the convention from the existing plotting code at Task 0.5 and inherits it. No new binning OPEN-Q.
+>
+> **Family 8.1 — Tongue angle at lick 1 + lick 2 + per-trial median (ipsi/contra side-split):**
+> - **X-axis:** tone-aligned trial time (sec post-tone), binned per existing convention. **Y-axis:** tongue angle (deg), baseline-normalized.
+> - **3 endpoint sub-families:** `tongue_lick1_angle_at_ypeak` (one (lick1_t_peak_ms, lick1_angle) point per trial), `tongue_lick2_angle_at_ypeak` (same for lick 2), `tongue_median_angle_at_peak_velocity` (one (median_peak_t_ms, median_angle) point per trial via median across licks).
+> - **Trace:** mean ± SEM across trials pooled into tone-aligned time bins within (phenotype, epoch, trial side).
+> - **Layout:** **side-by-side panels per phenotype** — ipsi panel + contra panel — with multiple epoch traces in each. Panels labeled "ipsi" and "contra" with caption caveat for cohort-uniformity per Q-lock 4 (all 8 cohort animals L-stroke).
+> - **Figure count:** 3 endpoint sub-families × (4 phenotype × 2 side panels = 8 panels) ≈ 3 figures.
+>
+> **Family 8.2 — Tone-aligned tongue x trajectory (ipsi/contra side-split):**
+> - **X-axis:** tone-aligned trial time (sec post-tone), binned per existing convention. **Y-axis:** baseline-normalized raw tongue x position (continuous per-frame DLC trajectory, NOT x at Y-peak / NOT x at peak velocity per Priya 2026-05-25 clarification).
+> - **Trace:** mean ± SEM tongue x(t) trajectory pooled across trials within (phenotype, epoch, trial side). Per-frame DLC tongue x data aligned to tone onset.
+> - **Layout:** side-by-side ipsi/contra panels per phenotype with multi-epoch traces (same as Family 8.1).
+> - **Data source:** continuous DLC tongue x time-series data (CC finds canonical source during kickoff amendment — likely from `pipeline_outputs/dlc_kinematics/<animal>/...` per-trial tongue x arrays; this is NOT in `stats/inputs/` but IS what the existing tongue_x mean_sem trajectory plots consume). Reuse the existing trajectory plotting machinery + add phenotype-pool + ipsi/contra split wrappers.
+> - **Figure count:** 1 figure (4 phenotype × 2 side panels = 8 panels packed in one composite) or 4 figures (one per phenotype) — locked at Task 0.5.
+> - **Scientific framing:** most direct visual test of the ipsi-shift hypothesis. If tongue preferentially shifts toward the ipsi side after stroke, contra-trial panels show a sustained ipsi-ward x offset post-tone (where the animal is "trying" to lick contra but the deficit pulls tongue position ipsi). Likely paper-narrative figure for memory finding #6.
+>
+> **Q-lock 8 packaging:** Both families share the same x-axis (tone-aligned trial time per existing binning) and reuse existing trajectory-plotting machinery wherever possible (NOT new mean_sem code). The Phase 9.1 lift is adding phenotype-pool + ipsi/contra split wrappers around existing plotting primitives.
+>
+> **Rendering style (LOCKED, applies to both Q-lock 8 families):** Each epoch trace within a panel is rendered as a TWO-LAYER overlay:
+> - **Background layer:** thin transparent (low-alpha, suggest α≈0.2-0.3) per-session traces, one line per (animal, session) contributing to that epoch's pool, rendered in the same color as the epoch trace. Allows visual inspection of session-to-session consistency and reveals whether the pooled mean is driven by all sessions vs. by outliers.
+> - **Foreground layer:** prominent mean ± SEM trace for the epoch (solid line at higher alpha + SEM band), rendered on top of the per-session traces in the same color.
+> - **Per-session trace definition:** for Family 8.1 (per-lick angle), a session trace is that session's tone-aligned time-binned mean angle trajectory across all licks in the session (one bin-value per time bin). For Family 8.2 (continuous x trajectory), a session trace is that session's mean x(t) trajectory across trials in the session.
+> - **Caveat:** session-trace overlay is for visualization only; underlying stats remain at the LMM-on-session-level granularity per Phase 9 Addendum #6.
+> - **Open extension consideration:** the same two-layer rendering style may be desirable for V4 (per_bin phenotype-pooled recovery curves) and/or V5 (per_epoch boxplots) — for V4, "session trace" would be per-animal trajectory; for V5, individual session-points already render via boxplot whiskers/scatter. Defer V4/V5 extension to Task 1-2 scaffold review (Priya can request retroactive application if the Q-lock 8 style reads cleanly).
+>
+> **Total figure count revised:** ~120 + ~4-7 ipsi-shift figures (3 family-8.1 + 1-4 family-8.2, depending on phenotype-packing layout decisions at Task 0.5) ≈ **~124-127 figures**.
+>
+> **Q-C dedup (from CC plan-mode review) RETAINED:** confirmatory Wasserstein endpoints emit ONLY as phenotype-pooled-spatial figures (Task 3), NOT also as V4/V5 (Tasks 1-2). Same de-dup applies to UOT + JS — they go in spatial-figure pipeline, not V4/V5. V4/V5 is **scalar-only** (`value` column from kinematic + behavioral parquets); spatial-figure pipeline handles Wasserstein/UOT/JS distance metrics from spatial parquets.
+
 ---
 
 ## 1. Goals + scope
 
 Phase 9.1 produces the cross-animal phenotype-pooled figure tier of the Phase 9 paper-figure system, plus pub-quality polish. It consumes Phase 9's already-materialized inputs + stats results; it does NOT re-implement materialization or per-animal stats.
 
-**Primary deliverables:**
-1. **V4 + V5 figure grid** per Addendum #8 for the 7 headline kinematic endpoints (and optionally any other primary scalar endpoints flagged for phenotype-pooled visualization):
+**Primary deliverables (per 2026-05-25 amendment locks):**
+1. **V4 + V5 figure grid** per Addendum #8 for **all ~20 confirmatory primary scalar endpoints** (OPEN-Q 3 LOCKED). ~40 figures total.
    - V4: per_bin phenotype-pooled — one panel per endpoint; multiple traces (one per phenotype tier); bin_midpoint_rel_day vs cohort mean ± SEM within phenotype.
    - V5: per_epoch phenotype-pooled — one panel per endpoint; boxplots grouped by (phenotype × epoch).
-2. **Phenotype-pooled spatial figures** per Addendum #1's deferred figure tiers + Addendum #7's 48 cross-scope spatial endpoints — recovery curves of Wasserstein-2 (headline), UOT cost (supplementary), JS divergence (supplementary) at per_bin granularity, pooled across animals within each phenotype tier.
+   - 7 headline kinematics (per Addendum #8) get featured placement in Task 5 composites; remaining ~13 confirmatory scalars provide supporting figure inventory.
+2. **Phenotype-pooled spatial figures** for the **Wasserstein-all-scopes set (~12 figures: 4 families × 3-4 scope/trial_group combos)** (OPEN-Q 4 LOCKED). UOT + JS divergence supplementary figures DEFERRED pending paper-figure review. Wasserstein at scope=tone_aligned/all (Addendum #3 HEADLINE METRIC) gets prominent placement in composites.
 3. **Pub-quality polish** per Addendum #1 (C):
    - Typography (consistent font sizes; readable in 2-column journal layout)
-   - Color-palette harmonization (consistent phenotype colors; ipsi/contra mapping)
+   - Color-palette harmonization (consistent phenotype colors via 4-tier scheme; OPEN-Q 1 finalizes palette at Task 4)
    - Multi-panel composite figures for the paper
-   - ipsi/contra labeling per `AnimalInfo.mouse_side_to_ipsi_contra()` (all 8 current cohort animals are L-stroke → mouse-L = ipsi, mouse-R = contra)
+   - **ipsi/contra labeling: relabel axes/legends ipsi/contra directly + figure-caption caveat** "All 8 cohort animals are L-stroke; ipsi = mouse-L, contra = mouse-R" (OPEN-Q 5 LOCKED)
 
 **Out of scope:**
 - Statistical tests (Phase 9 produces all stats results CSVs at `pipeline_outputs/stats/results/<axis>/<granularity>/<endpoint>.csv`; Phase 9.1 consumes them).
@@ -192,11 +254,24 @@ Substantially smaller than the 2026-05-15 draft's 2-3 weeks estimate because mos
 
 ## 9. Open scoping questions
 
-- **OPEN-Q 1:** Phenotype palette choice — sequential (severity ordering) vs categorical (4 distinct colors). Suggestion: ColorBrewer YlOrRd 4-step (light yellow = mild → dark red = severe) for severity-ordering clarity. Priya finalizes during Task 4.
-- **OPEN-Q 2:** Composite figure inventory — Priya enumerates which V4/V5/spatial panels combine into which paper figures. Defer to Task 5 review.
-- **OPEN-Q 3:** V4/V5 figure scope — only the 7 headline kinematic endpoints (per Addendum #8), or extend to all primary scalar endpoints? Default per Addendum #8: just the 7 headlines; other primaries get V1/V2 in Phase 9 only.
-- **OPEN-Q 4:** Phenotype-pooled spatial figure scope — all 48 combos, or only the 4 Wasserstein headlines (tone_aligned/all per Addendum #3 HEADLINE)? Default: all 48 emitted, but composite figures feature only headlines.
-- **OPEN-Q 5:** ipsi/contra figure axis convention — show mouse-L/R on axes with ipsi/contra annotation, or relabel axes ipsi/contra directly? Affects every figure with per-side data.
+- **OPEN-Q 1 (still open, defers to Task 4):** Phenotype palette choice — sequential (severity ordering) vs categorical (4 distinct colors). Suggestion: ColorBrewer YlOrRd 4-step (light yellow = mild → dark red = severe) for severity-ordering clarity. Priya finalizes during Task 4 scaffold review.
+- **OPEN-Q 2 (still open, defers to Task 5):** Composite figure inventory — Priya enumerates which V4/V5/spatial panels combine into which paper figures. Defer to Task 5 review.
+- **OPEN-Q 3 — LOCKED 2026-05-25 (b):** V4/V5 figure scope = **ALL Phase 9 LMM-run scalar endpoints (~80-100)**. Supersedes the prior 2026-05-25 "~20 confirmatory only" lock — expanded to comprehensive exploratory-scalar coverage per Priya's "visualize what these look like" framing. ~160-200 V4/V5 figures. Confirmatory subset still featured in composites at Task 5.
+- **OPEN-Q 4 — LOCKED 2026-05-25 (b):** Phenotype-pooled spatial figure scope = **all 3 distributional metrics × all 4 scope/trial_group combos × 4 families = 48 figures** (Wasserstein 16 + UOT 16 + JS 16). Supersedes the prior 2026-05-25 "Wasserstein-only-12-figures" lock — UOT + JS un-deferred. Wasserstein at tone_aligned/all (HEADLINE) still featured in composites; UOT + JS provide cross-metric corroboration.
+- **OPEN-Q 5 — LOCKED 2026-05-25:** Ipsi/contra axis convention = **relabel axes ipsi/contra directly + figure-caption caveat for cohort uniformity** ("All 8 cohort animals are L-stroke; ipsi = mouse-L, contra = mouse-R").
+
+**New lock 2026-05-25 (phenotype grouping):** Phase 9.1 retains **4-tier grouping** (mild / moderate / moderate-severe / severe) faithful to `AnimalInfo.recovery_phenotype`. Phase 9.x's 3-tier `moderate-pool` (PS46+PS51) is NOT adopted in 9.1; the n=1 tiers render as single-animal descriptive traces per §2 caveat.
+
+**New lock 2026-05-25 (b) (parameterized runner):** Figure runner accepts `--endpoint-list <path>` CLI flag and defaults to the expanded Phase 9.1 endpoint set. Future exploratory emit becomes a single-command rerun against a different endpoint list. Applies to both V4/V5 and phenotype-pooled-spatial runners.
+
+**Q-C dedup retained:** V4/V5 is scalar-only (`value` column from kinematic + behavioral parquets); spatial-figure pipeline handles Wasserstein/UOT/JS metrics from spatial parquets. Confirmatory Wasserstein endpoints do NOT double-emit.
+
+**New lock 2026-05-25 (b) third follow-up — preview-then-full emit pattern (Q-lock 9):** Every figure-emit task in Phase 9.1 (V4, V5, phenotype-pooled spatial, latency_hist CDF family, Q-lock 8 ipsi-shift families) follows a two-step pattern:
+- **Step 1 — preview emit (single phenotype tier):** generate the full figure family for a SINGLE phenotype tier only (default: moderate-severe = PS51 alone, since n=1 reveals the single-animal-trace caveat annotation behavior AND has enough sessions per epoch to stress-test the two-layer per-session overlay rendering). Wall-time: ~10-20% of full-cohort emit per family.
+- **Step 2 — Priya scaffold review gate:** Priya iterates on plotting/visualization style (colors, alpha, line thickness, layout, axis labels, panel arrangement, etc.) against the small preview set. Any style changes propagate to ALL figure families before Step 3.
+- **Step 3 — full cohort emit:** after Priya signoff, regenerate all phenotype tiers / endpoints with the locked style. No restyling 124+ figures retroactively.
+- **Preview tier override:** if a particular figure family is poorly stress-tested by the moderate-severe single-animal case (e.g., phenotype palette decisions need cross-phenotype comparison), CC can propose a different preview tier (mild = n=4 provides better cross-session stress test; severe = n=2 provides pooled-but-small-n stress test). Default = moderate-severe unless CC flags a reason to switch at task-start.
+- **Polish gating:** Task 4 (typography + palette + ipsi/contra labels) and Task 5 (composites) only run AFTER all figure-family Step 3s complete. The preview cycle locks the per-family rendering BEFORE cross-family harmonization.
 
 ---
 
