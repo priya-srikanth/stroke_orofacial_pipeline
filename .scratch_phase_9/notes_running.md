@@ -362,11 +362,70 @@ or unexpected magnitudes early when re-running cohort is cheap
   [docs/prompts/phase-9.x-nonlinear-recovery-fit-scoping.md](../docs/prompts/phase-9.x-nonlinear-recovery-fit-scoping.md))
   — captures the Task 6 finding that the cohort linear LMM doesn't
   fit severe-phenotype bimodal recovery (PS54/PS55 step-change at
-  sub_acute→chronic boundary). Future phase for per-animal /
-  per-phenotype nonlinear fits (exponential / piecewise / GAM
-  candidates per scoping). ~7-10 days CC; runs after Phase 9 + 9.1.
-  At Task 9 close, this forward-pointer goes into DECISIONS +
-  MIGRATION_LOG alongside the Phase 9.1 reference.
+  sub_acute→chronic boundary).
+  **SCOPE EXPANDED 2026-05-25 (Priya).** Combined per-phenotype stats
+  (all 4 axes, 3-tier grouping per Priya: mild n=4 /
+  moderate-pool n=2 [PS46 + PS51 pooled] / severe n=2) + per-animal
+  nonlinear recovery fits. ~10-15 days CC. Phase 9 stays cohort-only
+  at close; Phase 9.x is the per-phenotype layer. At Task 9 close,
+  the scoping doc lands alongside the kickoff-addenda commit (per
+  Phase 8a.10 `eb0cd5a` post-hoc convention; same docs commit as
+  the Phase 9 addenda).
+
+---
+
+## Task 7 implementation notes (2026-05-25)
+
+1. **V1/V2/V3 design per Addendum #8 + Addendum #10 q-value plumbing.**
+   `src/stroke_orofacial/stats/figures.py` (+~580 LOC) implements
+   `plot_v1_per_session_recovery` (scatter + cohort LMM fit + bootstrap
+   CI ribbon via Task 6's `plot_recovery_trajectories_with_fit`),
+   `plot_v2_per_bin_recovery` (per-side L/R lines + cohort mean/SEM),
+   and `plot_v3_per_epoch_boxplot` (side-by-side L/R boxes per epoch
+   with `q_within_endpoint_holm`-driven asterisk annotations: `***`
+   for q<0.001, `**` <0.01, `*` <0.05, `ns` otherwise).
+
+2. **Forest plot scale limitation.** Forest plots for axes with
+   per-coefficient comparisons (recovery pre_vs_*) span ~5 orders of
+   magnitude in effect size — tongue_lick1_t_peak_ms (+195 ms shift)
+   crowds out spatial Wasserstein deltas at ~0.001. The metric-split
+   subplot (one panel per `effect_size_metric`) doesn't help because
+   all per_epoch_lmm rows share metric=`epoch_coef`. Acceptable for
+   the headline-finding visualization (top entries are visible); a
+   log-or-normalized forest plot is a Phase 9.1 figure-tier polish
+   concern. Documented limitation, not a runner bug.
+
+3. **3 confirmatory endpoints fully recover by chronic** (bonferroni_passed=False
+   for pre_vs_chronic):
+   - `first_lick_accuracy_all` (q_holm=0.88, coef=+0.004) — strong
+     recovery to baseline
+   - `tongue_median_vxy_peak_per_trial` (q_holm=0.67, coef=+14.5) —
+     velocity returns to baseline range
+   - `spatial_wasserstein_jaw_eye_midpoint_tone_aligned_all`
+     (q_holm=0.0505, coef=+0.0014) — **borderline**; just barely NS
+     at α=0.05. Worth flagging as "marginally recovered" in the
+     paper narrative.
+   The remaining 12 confirmatory endpoints have persistent chronic
+   deficits — tongue kinematics dominate (lick1/lick2 angle, x_at_ypeak,
+   t_peak_ms all show q_holm < 10⁻⁸⁰).
+
+4. **tongue_lick1_y_peak sign-flip across epochs is uniform across
+   animals** per V3 boxplot inspection. acute coef=+21.79 → sub_acute
+   −12.16 → chronic −6.45. Pre baseline ~120 ms; acute jumps to
+   ~140-150 (both L + R); sub_acute drops to ~100 (below pre);
+   chronic stays at ~100-115 (still below pre). Bimodal trajectory
+   visible in V2 per_bin (cohort-overlay). All 8 animals show the
+   same pattern qualitatively. Featured in Task 8 verdict per Cowork
+   directive.
+
+5. **Output tree summary (76 figures × 2 formats = 152 files):**
+   - `pipeline_outputs/stats/figures/headlines/<endpoint>/` —
+     21 figures (7 headlines × V1/V2/V3)
+   - `pipeline_outputs/stats/figures/per_animal/<endpoint>/` —
+     48 figures (16 confirmatory × {recovery_curve,
+     paired_diff_pre_post, paired_diff_ipsi_contra})
+   - `pipeline_outputs/stats/figures/forest_plots/` —
+     7 figures (one per (axis, comparison) family with confirmatory rows)
 
 ---
 
