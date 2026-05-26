@@ -199,3 +199,69 @@ F-P-1 is **out-of-scope** of this Event B chore. Land it as a separate chore PR 
 ## Approval needed
 
 Priya: approve the scope + verification gates + new dedicated driver script + manifest pattern above, and CC will proceed to Stage 1 on this same branch. Address any feedback as Addendum #1, #2, etc. (focused per-addendum revisions, "ALL OTHER LOCKS UNCHANGED" footer) rather than redrafting.
+
+---
+
+## Addendum #1 (2026-05-26) — secondary-spout exclusion + output path doc fix
+
+Two pre-compute corrections to the kickoff. **No Stage 1+ work touched.** Append-only delta narrative per the iterative-addenda pattern — the original "Scope (LOCKED)" in-scope list and "Driver invocation" table are **superseded by the deltas below**; the original prose stays as-is for diff legibility.
+
+### Correction 1 — exclude secondary-spout sessions from the cohort
+
+**Problem.** The kickoff's "Current cohort count: 375 sessions" is the raw output of `yaml_driven_session_dates(animal, analysis_context="dlc")`. Per Priya 2026-05-26: the +20 growth since Phase 7c.2 close (~355 → 375) is the secondary-spout sessions registered under `secondary_spout_sessions:` in [configs/session_overrides.yaml](../../configs/session_overrides.yaml). Those sessions do NOT have DLC inference outputs upstream of `tongue_pertrial` — running v7 against them would `FileNotFoundError` on `resolver.interpolated_trace(bodypart="tongue", ...)` and trip the per-session-failure anomaly counter on the first secondary-spout session encountered.
+
+**Why option (a) does not work.** The `analysis_context` parameter on `yaml_driven_session_dates` filters `Exclusion` entries in `animals.yaml` by their `applies_to` tag list (per [src/stroke_orofacial/animals.py:148-176](../../src/stroke_orofacial/animals.py#L148-L176)). Secondary-spout sessions are NOT exclusions — they are Pattern B variants registered in `session_overrides.yaml` for dates that ARE in the YAML date range. No analysis_context value (`"dlc"`, `"dlc.kinematics"`, etc.) skips them. Filing this confirmation here so future readers do not re-litigate.
+
+**Fix mechanism — (c) primary + (b) defensive.**
+
+- **(c) Runtime existence pre-check (PRIMARY).** Before each per-session re-emit, the driver computes `resolver.interpolated_trace(bodypart="tongue", animal=animal, date=date)`. If the parquet does not exist, the session is recorded in the manifest as `status="SKIP"` with `anomaly_notes="no_tongue_interpolated_trace"` and is **not** counted toward the per-animal or cohort failure anomaly thresholds. This catches secondary-spout-only sessions AND any other DLC-input gap (partial inference uploads, missed sessions) without requiring schema knowledge of `bare_ws_subdir_override` vs. empty-`{}` semantics in `secondary_spout_sessions:`.
+- **(b) YAML-driven pre-filter (DEFENSIVE).** Before the per-session loop, the driver reads `configs/session_overrides.yaml` `secondary_spout_sessions:` and constructs a `set[(animal, date)]` of all entries. Sessions in this set are pre-filtered out of the per-animal date list BEFORE the loop begins, so the manifest does not even attempt them. This is belt-and-suspenders for the (c) check — if MICROSCOPE temporarily becomes reachable and the existence check accidentally returns `True` for a secondary-spout entry that was uploaded by mistake, the pre-filter still skips it.
+
+**Corrected cohort count: ~355 sessions.** Per-animal breakdown (verified against `secondary_spout_sessions:` YAML entries 2026-05-26):
+
+| Animal | Raw enum | Secondary-spout entries | Corrected primary-cohort count |
+|---|---|---|---|
+| PS46 | 31 | 0 | 31 |
+| PS47 | 31 | 0 | 31 |
+| PS48 | 31 | 0 | 31 |
+| PS49 | 28 | 0 | 28 |
+| PS50 | 19 | 0 | 19 |
+| PS51 | 78 | 4 (2 b-only after `bare_ws_subdir_override` carve-out) | 76 |
+| PS54 | 79 | 13 (2 b-only after `bare_ws_subdir_override` carve-out) | 68 |
+| PS55 | 78 | 7 (all b-only per Priya 2026-05-26) | 71 |
+| **TOTAL** | **375** | **20** | **355** |
+
+These per-animal counts match the corrected entry in `docs/COWORK_SESSION_STATE.md` (docs PR #136, awaiting merge). The driver's option-(c) runtime check will compute the empirically-final number at execution time and the manifest will record it — if the empirical number differs from 355 (e.g. by a few sessions due to additional missing-DLC cases beyond pure secondary-spout), the manifest is the authority and Stage 1's first stop-and-report will flag the delta.
+
+**Supersedes** (delta-only):
+
+- "Current cohort count: 375 sessions" in the "Scope (LOCKED)" → "In-scope" #1 → "Cohort enumeration" → second bullet — **corrected to: ~355 sessions** (PS46=31, PS47=31, PS48=31, PS49=28, PS50=19, PS51=76, PS54=68, PS55=71). Secondary-spout sessions registered in `configs/session_overrides.yaml` `secondary_spout_sessions:` are **excluded** at the driver level via the (b)+(c) mechanism above.
+- "Stage 1: tongue_pertrial cohort re-emit" row in the "Driver invocation" table — **corrected session count: ~355** (~5% reduction; wall-time bracket 1–3 hr unchanged at this resolution).
+- Verification gate (b) "Cohort-level smoke" first bullet — **corrected expected manifest-OK count: 355** (with up to ~20 `SKIP` rows for secondary-spout sessions).
+
+### Correction 2 — output path doc bug in the in-scope list
+
+**Problem.** The "Scope (LOCKED)" → "In-scope" #1 list has the two v7 parquet output paths wrong. They contradict the doc's own Context section (which has them right). Verified against [src/stroke_orofacial/paths.py:497-560](../../src/stroke_orofacial/paths.py#L497-L560) — `cleaned_trace()` and `lick_events()` resolver methods.
+
+**Wrong (in current in-scope list):**
+
+- `pipeline_outputs/dlc_kinematics/licking_dynamics/cleaned_traces/<animal>/<YYYYMMDD>.parquet`
+- `pipeline_outputs/dlc_kinematics/licking_dynamics/lick_events/<animal>/<YYYYMMDD>.parquet`
+
+**Correct (per PathResolver):**
+
+- `pipeline_outputs/dlc_kinematics/cleaned_traces/tongue/<animal>/<YYYYMMDD>.parquet`
+- `pipeline_outputs/dlc_kinematics/lick_events/tongue/<animal>/<YYYYMMDD>.parquet`
+
+(Note the `tongue/` body-part token in the path. The methods are body-part-parameterized; future jaw or whisker extensions would land at `cleaned_traces/jaw/...`, etc.)
+
+**Supersedes** (delta-only):
+
+- The two `licking_dynamics/{cleaned_traces,lick_events}/...` paths under "Scope (LOCKED)" → "In-scope" #1 → "With `use_v7_pipeline: true` (default), two additional outputs" — corrected to the paths above.
+- "Failure-recovery pattern" → manifest schema → `output_sha256s_json` key naming — the key labels `"cleaned_traces"` and `"lick_events"` remain semantically correct but now match the path layout; no schema change, cosmetic alignment only.
+
+### Footer
+
+**ALL OTHER LOCKS UNCHANGED.** Scope-1, scope-2, scope-3 in-scope/out-of-scope items beyond the two deltas above stand. Driver invocation table structure, manifest schema, verification gates (a)/(c)/(d), failure-recovery semantics, F-P-1 forward-pointer, DECISIONS + MIGRATION_LOG plans, branch hygiene, stop-and-report points — all unchanged.
+
+Awaiting Priya re-approval on the kickoff (now reflecting Addendum #1) before Stage 1 begins.
