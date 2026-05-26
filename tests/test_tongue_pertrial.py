@@ -840,6 +840,129 @@ class TestCell36:
         # Smoothing reduces peak velocity (averaging across rising edge).
         assert out_smooth["vy_peaks_bylick"][0] < out_raw["vy_peaks_bylick"][0]
 
+    # ---- Phase 7e.2: v7_trial_result routing ----
+
+    @staticmethod
+    def _make_v7_result_with_window(
+        kept_licks: list[dict[str, float]],
+        y_clean: np.ndarray, x_clean: np.ndarray,
+        is_baseline_fill_clean: np.ndarray, t_ms: np.ndarray,
+    ) -> _V7TrialResult:
+        return _V7TrialResult(
+            trial_index=0, side="L",
+            y_clean=y_clean, x_clean=x_clean,
+            is_baseline_fill_clean=is_baseline_fill_clean,
+            t_ms=t_ms, kept_licks=kept_licks,
+            preclean_diag=_PrecleanDiagnostics(),
+        )
+
+    # 13a — Phase 7e.2
+    def test_extract_peak_velocity_first5_v7_empty_kept_licks_all_nan(self, base_params):
+        # Synthetic trace would produce a legacy peak; v7_trial_result has
+        # no kept licks (gates rejected) → all 5 slots NaN.
+        y_t, x_t, t_ms = _make_lick_trace(
+            duration_ms=2500.0, peak_centers_ms=[500.0], amplitude=30.0,
+        )
+        n = len(y_t)
+        v7 = self._make_v7_result_with_window(
+            kept_licks=[], y_clean=y_t.copy(), x_clean=x_t.copy(),
+            is_baseline_fill_clean=np.zeros(n, dtype=bool), t_ms=t_ms,
+        )
+        out = _extract_peak_velocity_first5(
+            y_t, x_t, t_ms, _SYNTH_FPS, params=base_params,
+            v7_trial_result=v7,
+        )
+        for k in ("vy_peaks_bylick", "vxy_peaks_bylick", "lick_t_peaks_bylick"):
+            assert np.all(np.isnan(out[k])), f"{k!r} should be all NaN; got {out[k]!r}"
+
+    # 13b — Phase 7e.2
+    def test_extract_peak_velocity_first5_v7_single_kept_lick(self, base_params):
+        # Single kept lick on a synthetic rising-then-falling bump. Verify
+        # the v7-routed path computes a finite vy peak at slot 0; slot 1+
+        # stays NaN.
+        y_t, x_t, t_ms = _make_lick_trace(
+            duration_ms=2500.0, peak_centers_ms=[500.0], amplitude=30.0,
+        )
+        n = len(y_t)
+        # Find peak frame index for the synthetic bump at 500 ms; rise/fall
+        # window covers the bump.
+        peak_frame = int(np.argmax(y_t))
+        rsf = max(0, peak_frame - 20)
+        fef = min(n - 1, peak_frame + 20)
+        kept = [{
+            "lick_idx": 0, "t_ms": 500.0, "y": float(y_t[peak_frame]),
+            "x": 0.0, "rise_start_frame": rsf, "fall_end_frame": fef,
+        }]
+        v7 = self._make_v7_result_with_window(
+            kept, y_t.copy(), x_t.copy(),
+            np.zeros(n, dtype=bool), t_ms,
+        )
+        out = _extract_peak_velocity_first5(
+            y_t, x_t, t_ms, _SYNTH_FPS, params=base_params,
+            v7_trial_result=v7,
+        )
+        assert np.isfinite(out["vy_peaks_bylick"][0])
+        assert out["vy_peaks_bylick"][0] > 0  # rising edge → positive vy
+        assert np.isfinite(out["vxy_peaks_bylick"][0])
+        assert out["lick_t_peaks_bylick"][0] == pytest.approx(500.0)
+        for j in range(1, 5):
+            assert np.isnan(out["vy_peaks_bylick"][j])
+            assert np.isnan(out["vxy_peaks_bylick"][j])
+
+    # 13c — Phase 7e.2
+    def test_extract_peak_velocity_first5_v7_baseline_fill_masked(self, base_params):
+        # Baseline-fill frames inside the lick window must NOT contribute
+        # to the velocity peak. Construct a bump where the rising edge is
+        # marked as baseline-fill → vy peak should be NaN or much smaller.
+        y_t, x_t, t_ms = _make_lick_trace(
+            duration_ms=2500.0, peak_centers_ms=[500.0], amplitude=30.0,
+        )
+        n = len(y_t)
+        peak_frame = int(np.argmax(y_t))
+        rsf = max(0, peak_frame - 20)
+        fef = min(n - 1, peak_frame + 20)
+        # Mask the entire rise→fall window as baseline-fill.
+        is_base = np.zeros(n, dtype=bool)
+        is_base[rsf:fef + 1] = True
+        kept = [{
+            "lick_idx": 0, "t_ms": 500.0, "y": float(y_t[peak_frame]),
+            "x": 0.0, "rise_start_frame": rsf, "fall_end_frame": fef,
+        }]
+        v7 = self._make_v7_result_with_window(
+            kept, y_t.copy(), x_t.copy(), is_base, t_ms,
+        )
+        out = _extract_peak_velocity_first5(
+            y_t, x_t, t_ms, _SYNTH_FPS, params=base_params,
+            v7_trial_result=v7,
+        )
+        # All baseline-fill → no finite y → vy/vxy NaN. t_peak still emitted.
+        assert np.isnan(out["vy_peaks_bylick"][0])
+        assert np.isnan(out["vxy_peaks_bylick"][0])
+        assert out["lick_t_peaks_bylick"][0] == pytest.approx(500.0)
+
+    # 13d — Phase 7e.2
+    def test_extract_peak_velocity_first5_v7_none_falls_back_to_legacy(self, base_params):
+        # Backwards-compat: omitting v7_trial_result must hit the legacy
+        # slope-detector path with byte-equal output.
+        y_t, x_t, t_ms = _make_lick_trace(
+            duration_ms=2500.0, peak_centers_ms=[500.0, 1500.0], amplitude=30.0,
+        )
+        out_explicit_none = _extract_peak_velocity_first5(
+            y_t, x_t, t_ms, _SYNTH_FPS, params=base_params,
+            v7_trial_result=None,
+        )
+        out_default = _extract_peak_velocity_first5(
+            y_t, x_t, t_ms, _SYNTH_FPS, params=base_params,
+        )
+        for k in ("vy_peaks_bylick", "vxy_peaks_bylick", "lick_t_peaks_bylick"):
+            for j in range(5):
+                ev = out_explicit_none[k][j]
+                dv = out_default[k][j]
+                assert (np.isnan(ev) and np.isnan(dv)) or ev == dv
+        # And the legacy path actually finds the synthetic peaks.
+        assert np.isfinite(out_default["vy_peaks_bylick"][0])
+        assert np.isfinite(out_default["vy_peaks_bylick"][1])
+
 
 # ===========================================================================
 # 14-17. Cell 39 — n_licks family
