@@ -89,7 +89,9 @@ from stroke_orofacial.dlc_kinematics._preclean import (
 )
 from stroke_orofacial.dlc_kinematics._writers import (
     _write_angle_parquet_atomic,
+    _write_cleaned_trace_parquet_atomic,
     _write_endpoints_json_atomic,
+    _write_lick_events_parquet_atomic,
     _write_traces_parquet_atomic,
 )
 from stroke_orofacial.manifest import SessionManifest, build_manifest
@@ -99,6 +101,12 @@ from stroke_orofacial.paths import PathResolver
 # DECISIONS entry + 14-session legacy_approximate parity re-run.
 FEATURE_EXTRACTION_VERSION: str = "v7a.3"
 INTERPOLATION_VERSION: str = "v5p3"
+# Phase 7e — v7 pipeline output versioning (Decision 4 + Addendum #1).
+# Stamped into cleaned_traces and lick_events parquets when
+# use_v7_pipeline=True. Separate from FEATURE_EXTRACTION_VERSION so v7
+# outputs can be versioned independently of the legacy 7a.3 V3 emit set.
+V7_FEATURE_EXTRACTION_VERSION: str = "v7e.0"
+V7_ALGORITHM_VERSION: str = "v7"
 
 # Legacy default; consolidated callers read fps from upstream parquet metadata.
 _DEFAULT_FPS: float = 250.0
@@ -248,6 +256,12 @@ class _V7TrialResult:
     t_ms: np.ndarray         # per-frame trial-relative ms (post-tone)
     kept_licks: list[dict[str, Any]]
     preclean_diag: _PrecleanDiagnostics
+    # Task 6: session-frame indices spanned by this trial slice. Lets
+    # cleaned_traces parquet writer map trial-local frames back to
+    # session-level frame_idx.
+    session_frame_lo: int = -1
+    session_frame_hi: int = -1
+    tone_frame_idx: int = -1
 
 
 # ===========================================================================
@@ -1214,6 +1228,20 @@ def build_tongue_pertrial(
             manifest.animal, manifest.date,
         ),
     }
+    # Phase 7e Task 6: add v7 parquet paths when the feature flag is on.
+    # Kept separate from the legacy 7a.3 V3 emit set so backwards-compat
+    # callers (use_v7_pipeline=False) see exactly the same out_paths
+    # shape as before.
+    _use_v7_pipeline = bool(
+        params["dlc_kinematics"]["tongue_pertrial"].get("use_v7_pipeline", False)
+    )
+    if _use_v7_pipeline:
+        out_paths["cleaned_traces_parquet"] = resolver.cleaned_trace(
+            bodypart="tongue", animal=manifest.animal, date=manifest.date,
+        )
+        out_paths["lick_events_parquet"] = resolver.lick_events(
+            bodypart="tongue", animal=manifest.animal, date=manifest.date,
+        )
 
     if overwrite == "skip" and all(p.exists() for p in out_paths.values()):
         return out_paths
@@ -1238,6 +1266,31 @@ def build_tongue_pertrial(
         tp_result.licking_dynamics_metadata,
     )
     _write_endpoints_json_atomic(out_paths["endpoints_json"], tp_result.endpoints)
+
+    # Phase 7e Task 6: emit cleaned_traces + lick_events parquets when
+    # the v7 pipeline ran. Builds the DataFrames from the per-trial v7
+    # results carried in core.v7_trial_results; writes via atomic
+    # helpers; stamps v7e.0 + algorithm_version=v7 + v5p3 metadata.
+    if _use_v7_pipeline and core.v7_trial_results is not None:
+        _interpolated_df, _ = _load_tongue_centered_trace(manifest, resolver)
+        cleaned_df = _build_cleaned_trace_df(_interpolated_df, core.v7_trial_results)
+        lick_events_df = _build_lick_events_df(
+            animal=manifest.animal, date=manifest.date,
+            v7_trial_results=core.v7_trial_results,
+        )
+        v7_metadata = {
+            "animal": manifest.animal,
+            "date": manifest.date.isoformat(),
+            "feature_extraction_version": V7_FEATURE_EXTRACTION_VERSION,
+            "algorithm_version": V7_ALGORITHM_VERSION,
+            "interpolation_version": INTERPOLATION_VERSION,
+        }
+        _write_cleaned_trace_parquet_atomic(
+            out_paths["cleaned_traces_parquet"], cleaned_df, v7_metadata,
+        )
+        _write_lick_events_parquet_atomic(
+            out_paths["lick_events_parquet"], lick_events_df, v7_metadata,
+        )
 
     return out_paths
 
@@ -1748,6 +1801,86 @@ def _legacy_peaks_to_peak_list(
     )
 
 
+def _build_cleaned_trace_df(
+    interpolated_df: pd.DataFrame,
+    v7_trial_results: list[_V7TrialResult],
+) -> pd.DataFrame:
+    """Task 6: build the Phase 7e cleaned_traces parquet DataFrame.
+
+    Starts from the Phase 7a.2 interpolated_traces DataFrame (full
+    session), then overwrites ``y_final`` / ``x_final`` /
+    ``is_baseline_fill`` columns for each trial-covered frame range
+    with the v7-cleaned values. Frames outside any trial slice keep
+    their Phase 7a.2 values (no v7 cleaning applied).
+
+    Mirrors the Phase 7a.2 schema (frame_idx, x_final, y_final,
+    likelihood_raw, is_interp_fill, is_baseline_fill, fill_method) so
+    downstream consumers can read cleaned_traces as a drop-in
+    replacement for interpolated_traces (Decision 4 schema lock).
+    """
+    df = interpolated_df.copy()
+    for trial in v7_trial_results:
+        lo = trial.session_frame_lo
+        hi = trial.session_frame_hi
+        if lo < 0 or hi < 0 or lo > hi:
+            continue
+        span = hi - lo + 1
+        if len(trial.y_clean) != span:
+            # Slice length mismatch — skip rather than corrupt the
+            # session-frame array. Shouldn't happen but defensive.
+            continue
+        df.loc[lo:hi, "y_final"] = trial.y_clean
+        df.loc[lo:hi, "x_final"] = trial.x_clean
+        df.loc[lo:hi, "is_baseline_fill"] = trial.is_baseline_fill_clean
+    return df
+
+
+def _build_lick_events_df(
+    animal: str,
+    date: datetime.date,
+    v7_trial_results: list[_V7TrialResult],
+) -> pd.DataFrame:
+    """Task 6: build the Phase 7e lick_events parquet DataFrame.
+
+    One row per KEPT lick across all trials in the session. Schema per
+    :class:`._gates.LickEventRecord` (15 fields per row). Trials with no
+    kept licks contribute zero rows; the returned DataFrame may be
+    empty (still gets written with full-schema columns to make
+    downstream concatenation safe).
+    """
+    rows: list[dict[str, Any]] = []
+    date_str = date.isoformat()
+    for trial in v7_trial_results:
+        for kept in trial.kept_licks:
+            rows.append({
+                "animal": animal,
+                "date": date_str,
+                "trial": trial.trial_index,
+                "side": trial.side,
+                "lick_idx": kept["lick_idx"],
+                "t_ms": kept["t_ms"],
+                "y": kept["y"],
+                "x": kept["x"],
+                "y_original": kept["y_original"],
+                "rise_start_ms": kept["rise_start_ms"],
+                "fall_end_ms": kept["fall_end_ms"],
+                "imputed": kept["imputed"],
+                "source": kept["source"],
+                "confidence": kept["confidence"],
+                "likelihood": kept["likelihood"],
+            })
+    if not rows:
+        # Empty DataFrame with the full schema so the parquet writer
+        # produces a well-formed file.
+        return pd.DataFrame(columns=[
+            "animal", "date", "trial", "side", "lick_idx",
+            "t_ms", "y", "x", "y_original",
+            "rise_start_ms", "fall_end_ms",
+            "imputed", "source", "confidence", "likelihood",
+        ])
+    return pd.DataFrame(rows)
+
+
 def _run_v7_pipeline_per_trial(
     y_slice: np.ndarray,
     x_slice: np.ndarray,
@@ -1759,6 +1892,9 @@ def _run_v7_pipeline_per_trial(
     *,
     trial_index: int,
     side: Literal["L", "R"],
+    tone_frame_idx: int,
+    session_frame_lo: int,
+    session_frame_hi: int,
     params: dict[str, Any],
 ) -> _V7TrialResult:
     """Run the full Phase 7e v7 pipeline on one trial slice.
@@ -2039,6 +2175,9 @@ def _run_v7_pipeline_per_trial(
         t_ms=t_ms,
         kept_licks=kept_licks,
         preclean_diag=diag,
+        session_frame_lo=session_frame_lo,
+        session_frame_hi=session_frame_hi,
+        tone_frame_idx=tone_frame_idx,
     )
 
 
@@ -3000,6 +3139,20 @@ def _build_tongue_pertrial_core(
             lik_slice, _ = _extract_trial_slice(
                 likelihood_raw_session, ev.tone_frame_idx, widest_detect, fps,
             )
+            # Derive session-frame range for this trial slice (matches
+            # _extract_trial_slice's lo/hi computation) so the v7 result
+            # carries enough context for the cleaned_traces writer to
+            # map trial-local frames back to session-level frame_idx.
+            _lo_fi = max(
+                0,
+                int(ev.tone_frame_idx
+                    + np.floor(widest_detect[0] / 1000.0 * fps)),
+            )
+            _hi_fi = min(
+                n_frames_session - 1,
+                int(ev.tone_frame_idx
+                    + np.ceil(widest_detect[1] / 1000.0 * fps)),
+            )
             v7_trial_results.append(_run_v7_pipeline_per_trial(
                 y_slice=y_slice, x_slice=x_slice,
                 is_interp_fill_slice=is_intp_slice,
@@ -3007,6 +3160,9 @@ def _build_tongue_pertrial_core(
                 likelihood_slice=lik_slice,
                 t_ms=t_ms, fps=fps,
                 trial_index=int(ev.trial_index), side=ev.side,
+                tone_frame_idx=int(ev.tone_frame_idx),
+                session_frame_lo=_lo_fi,
+                session_frame_hi=_hi_fi,
                 params=params,
             ))
 

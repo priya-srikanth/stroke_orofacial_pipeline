@@ -494,6 +494,71 @@ class PathResolver:
             / animal
         )
 
+    def cleaned_trace(
+        self,
+        bodypart: str,
+        animal: str,
+        date: datetime.date,
+        *,
+        session_suffix: str | None = None,
+    ) -> Path:
+        """Phase 7e output path for the cleaned_traces parquet (Decision 4).
+
+        E.g. ``<outputs>/dlc_kinematics/cleaned_traces/tongue/PS46/20250307.parquet``.
+
+        Same per-session, per-(animal, date) structure as
+        :meth:`interpolated_trace`; emitted alongside the
+        :meth:`lick_events` parquet by the v7 pipeline. Schema mirrors
+        the 7a.2 interpolated_traces parquet but with
+        ``is_baseline_fill`` updated to reflect the v7 pre-clean wipes
+        (artifact clusters + frame outliers + PCHIP-extend + bracketed-
+        interp + Addendum #1 x-side Rules 1-4).
+
+        Parent directory is created eagerly.
+        """
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
+        out = (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "cleaned_traces"
+            / bodypart
+            / animal
+            / f"{date_str}.parquet"
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
+    def lick_events(
+        self,
+        bodypart: str,
+        animal: str,
+        date: datetime.date,
+        *,
+        session_suffix: str | None = None,
+    ) -> Path:
+        """Phase 7e output path for the lick_events parquet (Decision 4).
+
+        E.g. ``<outputs>/dlc_kinematics/lick_events/tongue/PS46/20250307.parquet``.
+
+        One row per KEPT lick across all trials in the session, post all
+        v7 gates (F/D/E/M). Schema per
+        :class:`stroke_orofacial.dlc_kinematics._gates.LickEventRecord`.
+        Becomes the canonical kept-lick source for downstream consumers
+        (lick_angle, tongue_velocity, etc.) — cleaned_traces is the
+        canonical TRACE source; lick_events is the canonical LICK LIST.
+
+        Parent directory is created eagerly.
+        """
+        date_str = date.strftime("%Y%m%d") + (session_suffix or "")
+        out = (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "lick_events"
+            / bodypart
+            / animal
+            / f"{date_str}.parquet"
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        return out
+
     def tongue_pertrial_angle_parquet(
         self, animal: str, date: datetime.date,
         *, session_suffix: str | None = None,

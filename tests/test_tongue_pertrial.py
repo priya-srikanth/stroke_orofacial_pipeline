@@ -1217,8 +1217,12 @@ class TestDriverAndSchema:
     def test_build_tongue_pertrial_emits_three_files(
         self, monkeypatch, tmp_path, base_params,
     ):
+        """Legacy 3-emit-set behavior — preserved when use_v7_pipeline=False
+        (Phase 7e backwards-compat contract per kickoff)."""
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver, manifest, trial_events = self._setup_session_outputs(tmp_path)
+        # Disable v7 to preserve legacy 3-emit-set contract.
+        base_params["dlc_kinematics"]["tongue_pertrial"]["use_v7_pipeline"] = False
         out = build_tongue_pertrial(
             manifest=manifest, resolver=resolver,
             trial_events=trial_events, params=base_params,
@@ -1234,6 +1238,34 @@ class TestDriverAndSchema:
             assert path.exists(), f"{name} did not write to {path}"
             assert path.stat().st_size > 0
             # No leftover .tmp files from atomic write.
+            assert not path.with_name(path.name + ".tmp").exists()
+
+    def test_build_tongue_pertrial_emits_v7_parquets_when_flag_on(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """Phase 7e Task 6: when use_v7_pipeline=True (the new default),
+        build_tongue_pertrial also emits cleaned_traces + lick_events
+        parquets (Decision 4 outputs)."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver, manifest, trial_events = self._setup_session_outputs(tmp_path)
+        # use_v7_pipeline defaults to True in YAML — keep it.
+        base_params["dlc_kinematics"]["tongue_pertrial"]["use_v7_pipeline"] = True
+        out = build_tongue_pertrial(
+            manifest=manifest, resolver=resolver,
+            trial_events=trial_events, params=base_params,
+            overwrite="force",
+        )
+        assert out is not None
+        assert set(out.keys()) == {
+            "angle_parquet",
+            "licking_dynamics_traces_parquet",
+            "endpoints_json",
+            "cleaned_traces_parquet",
+            "lick_events_parquet",
+        }
+        for name, path in out.items():
+            assert path.exists(), f"{name} did not write to {path}"
+            assert path.stat().st_size > 0
             assert not path.with_name(path.name + ".tmp").exists()
 
     # 34

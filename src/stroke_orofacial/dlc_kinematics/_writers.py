@@ -80,6 +80,60 @@ def _write_endpoints_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     os.replace(tmp_path, path)
 
 
+def _write_cleaned_trace_parquet_atomic(
+    path: Path, df: pd.DataFrame, metadata: dict[str, str],
+) -> None:
+    """Write the Phase 7e cleaned_traces parquet atomically (Decision 4).
+
+    Same shape as the 7a.2 ``interpolated_traces/`` parquet (one row per
+    session frame): frame_idx, y_final, x_final, is_interp_fill,
+    is_baseline_fill, likelihood_raw — with ``is_baseline_fill`` updated
+    to reflect Phase 7e pre-clean wipes (artifact clusters + frame
+    outliers + PCHIP-extend + bracketed-interp + x-side Rules 1-4).
+    File-level metadata stamps ``algorithm_version="v7"`` +
+    ``feature_extraction_version="v7e.0"`` + ``interpolation_version="v5p3"``.
+
+    Atomic write pattern matches the other 7a.3 V3 writers in this
+    module: write to ``path.name + ".tmp"`` then ``os.replace``.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    table = pa.Table.from_pandas(df, preserve_index=False)
+    meta_bytes = {k.encode("utf-8"): v.encode("utf-8") for k, v in metadata.items()}
+    existing = table.schema.metadata or {}
+    merged = {**{bytes(k): bytes(v) for k, v in existing.items()}, **meta_bytes}
+    table = table.replace_schema_metadata(merged)
+    tmp_path = path.with_name(path.name + ".tmp")
+    pq.write_table(table, str(tmp_path), compression="snappy")
+    os.replace(tmp_path, path)
+
+
+def _write_lick_events_parquet_atomic(
+    path: Path, df: pd.DataFrame, metadata: dict[str, str],
+) -> None:
+    """Write the Phase 7e lick_events parquet atomically (Decision 4).
+
+    One row per KEPT lick (post-F/D/E/M-gate). Schema per
+    :class:`stroke_orofacial.dlc_kinematics._gates.LickEventRecord`:
+    ``animal, date, trial, side, lick_idx, t_ms, y, x, y_original,
+    rise_start_ms, fall_end_ms, imputed, source, confidence, likelihood``.
+
+    File-level metadata stamps ``algorithm_version="v7"`` +
+    ``feature_extraction_version="v7e.0"`` + ``interpolation_version="v5p3"``.
+
+    Atomic write pattern matches the other 7a.3 V3 writers in this
+    module: write to ``path.name + ".tmp"`` then ``os.replace``.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    table = pa.Table.from_pandas(df, preserve_index=False)
+    meta_bytes = {k.encode("utf-8"): v.encode("utf-8") for k, v in metadata.items()}
+    existing = table.schema.metadata or {}
+    merged = {**{bytes(k): bytes(v) for k, v in existing.items()}, **meta_bytes}
+    table = table.replace_schema_metadata(merged)
+    tmp_path = path.with_name(path.name + ".tmp")
+    pq.write_table(table, str(tmp_path), compression="snappy")
+    os.replace(tmp_path, path)
+
+
 def _jsonify(o: Any) -> Any:
     """Default for :func:`json.dump` to handle numpy types + Path."""
     if isinstance(o, np.ndarray):
