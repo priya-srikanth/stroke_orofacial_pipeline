@@ -57,6 +57,35 @@
 > is where the cluster + frame artifacts hide — cohort means understate
 > the contamination.
 
+> **AMENDMENT 2026-05-26 #8 (cleanup v3.2 — cross-cluster R3 closes a
+> coverage gap).** Priya 2026-05-26 visual review of v3 spotted a
+> single-frame low-y outlier at t=184ms in PS54 / 5-01 / t013 R (y=-36
+> surrounded by raw at y≈38). v3.1 (threshold 80→70) didn't catch it
+> because the outlier sits in a coverage gap of v3's rule set: R1
+> Y-ceiling is positive-side only, R2 isolated-short requires no nearby
+> raw cluster (this outlier has one 8ms away), R3's within-cluster
+> median skips single-frame clusters. Threshold tightening alone
+> doesn't help.
+>
+> **v3.2 fix:** Changed R3 from "within-cluster rolling median" to
+> "K-nearest raw-frame median" — for each raw frame, the local median
+> is computed over the K=11 nearest raw frames REGARDLESS of cluster
+> identity. In dense regions equivalent to the original ±20ms time
+> window; in sparse regions bridges cluster boundaries to catch
+> single-frame outliers between baseline-fill bands. Vectorized via
+> `scipy.ndimage.median_filter` on the raw-frame array.
+>
+> **Result:** R3 fires on the PS54 t013 R outlier (deviation 74 px,
+> above threshold 70). Cohort impact tiny: severe-acute mean 10.85 →
+> 10.82 (−0.3%); no over-wiping on any of the 8 severe-acute visual
+> renders; `pass_qc` rates identical to v3 cohort-wide.
+>
+> **v3.2 is the locked design for Phase 7f Option B kickoff.**
+> Constants: Y_CEILING=80, ISOLATED_MAX_N=5, ISOLATED_RADIUS_MS=30,
+> FRAME_JUMP_THR_PX=70, FRAME_OUTLIER_LOCAL_MEDIAN_MS=20,
+> MAX_GAP_MS_PCHIP=120. The cross-cluster R3 definition is the only
+> architectural delta from v3.
+
 > **AMENDMENT 2026-05-26 #7 (cleanup v3 — order-of-ops fix validated).**
 > Scoping audit #5 (v3, §3.10) implemented Addendum #6's pre-Stage-4
 > design: same rules as v2 (R1 Y-ceiling=80, R2 isolated-short, R3
@@ -916,6 +945,52 @@ The order-of-ops fix is robust; the Y-ceiling calibration is the only
 remaining open knob. Phase 7f Task 1 should empirically calibrate via
 a per-phenotype `y99` sweep on lk≥0.85 raw DLC + sensitivity analysis
 on `candidate_no_lick_with_jaw_move` rate.
+
+### 3.11 Frame-outlier R3 refinement (v3.1 + v3.2)
+
+Priya 2026-05-26 visual review of v3 spotted a residual artifact in
+PS54 / 5-01 / t013 R: a clear low-y outlier at t=184ms (y=-36, lk=0.54,
+surrounded by raw frames at y≈38). The cluster-mean threshold and
+isolated-short rule both missed it.
+
+**v3.1 (FRAME_JUMP_THR_PX 80 → 70):** simple threshold tightening.
+Result: **no change** in cohort means or visual render. Diagnostic
+([`.scratch_phase_7f_scoping/_find_outlier_PS54_t013.py`](../../.scratch_phase_7f_scoping/_find_outlier_PS54_t013.py))
+revealed the cause — the outlier is a **single-frame raw cluster**
+with another raw cluster only 8ms away, falling into a coverage gap:
+- R1 doesn't fire (negative deflection, ceiling is positive-side only)
+- R2 doesn't fire (another raw cluster within ±30ms violates "isolated")
+- R3 doesn't fire (cluster length < 3 guard, plus within-cluster median
+  is degenerate for single-frame clusters)
+
+So no amount of threshold tightening on the v3.1 architecture catches
+this. The fix is structural, not numeric.
+
+**v3.2 — cross-cluster R3.** Changed R3 from "within-cluster
+rolling median" to "K-nearest raw-frame median" via
+`scipy.ndimage.median_filter` on the raw-frame index array. For each
+raw frame, the local median is computed over the K=11 (W=5 each side)
+nearest raw frames regardless of cluster identity. In dense regions
+this is equivalent to the original ±20ms time window; in sparse regions
+it bridges cluster boundaries and catches single-frame outliers between
+baseline-fill bands. Audit script:
+[`audit_jaw_cleanup_sim_v3p2.py`](../../.scratch_phase_7f_scoping/audit_jaw_cleanup_sim_v3p2.py).
+
+**Result:** R3 fires on the PS54 t013 R outlier (frame 213464, y=-36)
+— deviation from local raw-neighbor median (~38) is ~74 px, above
+threshold 70. Visible as the red `R3 frame-outlier (n=1)` marker at
+y≈-35 in the v3.2 render.
+
+**Cohort sanity:** R3 firing rate increased slightly from v3 (still
+< 0.001% in all cells), severe-acute cohort mean 10.85 → 10.82
+(−0.3%). `pass_qc` rates identical to v3 cohort-wide. **No
+over-wiping detected on any of the 8 severe-acute visual renders.**
+
+**Net v3 → v3.2:** the order-of-ops fix from v3 remains the decisive
+architectural change. v3.2 closes one residual coverage gap with a
+small refinement to R3's neighbor definition. Constants unchanged
+from v3 (Y_CEILING=80, ISOLATED_MAX_N=5, ISOLATED_RADIUS_MS=30,
+FRAME_JUMP_THR_PX=70, FRAME_OUTLIER_LOCAL_MEDIAN_MS=20, MAX_GAP_MS_PCHIP=120).
 
 ---
 
