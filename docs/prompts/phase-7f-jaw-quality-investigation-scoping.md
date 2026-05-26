@@ -57,6 +57,39 @@
 > is where the cluster + frame artifacts hide — cohort means understate
 > the contamination.
 
+> **AMENDMENT 2026-05-26 #10 (Y_CEILING locked at 125 — v3.3 cohort
+> + pre-stroke + severe-acute verification).** Priya 2026-05-26 ("from
+> the healthy trials I'm convinced we should loosen the max to 125").
+> v3.3 = v3.2 with `Y_CEILING_PX = 125` (all other constants unchanged).
+> Full results in §3.13.
+>
+> **Headline results:**
+> - **Cohort means drop 1-5% across all cells** (vs. 20-30% in v3.2).
+> - **Severe-acute mean 11.2 → 10.92 (−2.5%)** — paper-narrative signal
+>   preserved.
+> - **Pre-stroke median trials unchanged** (peaks ≤ 125 survive intact);
+>   top trials clipped 30-70 px (vs. 60-90 px in v3.2).
+> - **PS49 mild_top real licking preserved** — no more bulk wipes
+>   dropping to y=0; only the 200 px outlier spike at t=3404ms wiped.
+> - **PS54 t095 single-frame outlier still caught** — R1 fires on the
+>   125.1 px spike (deflection 139.6 > 125 ceiling).
+> - **PS54 t013 R `pass_qc` flipped back to True** — higher ceiling
+>   preserves supra-threshold frames in the real-movement region.
+> - `jaw_pass_qc` worst flip 2.7% in moderate/pre (down from 5.3%).
+>
+> **Locked design for Phase 7f Option B kickoff:**
+> - `Y_CEILING_PX = 125`
+> - `ISOLATED_MAX_N = 5`
+> - `ISOLATED_RADIUS_MS = 30`
+> - `FRAME_JUMP_THR_PX = 70`
+> - `FRAME_OUTLIER_LOCAL_MEDIAN_MS = 20`
+> - `MAX_GAP_MS_PCHIP = 120` (jaw v5p3 default unchanged)
+> - Pre-Stage-4 application order (R1 + R3 + R2 + re-PCHIP).
+> - Cross-cluster R3 (K=11 nearest raw frames via `median_filter`).
+>
+> **No remaining open knobs.** v3.3 is the locked design for Phase 7f
+> Task 1 production implementation.
+
 > **AMENDMENT 2026-05-26 #9 (pre-stroke healthy-licking verification —
 > Y-ceiling=80 too tight, must raise).** Per Priya 2026-05-26 ("could
 > we check some pre-stroke sessions too?"), 8 pre-stroke trials rendered
@@ -975,6 +1008,92 @@ The order-of-ops fix is robust; the Y-ceiling calibration is the only
 remaining open knob. Phase 7f Task 1 should empirically calibrate via
 a per-phenotype `y99` sweep on lk≥0.85 raw DLC + sensitivity analysis
 on `candidate_no_lick_with_jaw_move` rate.
+
+### 3.13 v3.3 — Y_CEILING raised to 125 (Priya 2026-05-26 lock)
+
+Per Priya 2026-05-26 ("from the healthy trials I'm convinced we
+should loosen the max to 125"), v3.3 is v3.2 with `Y_CEILING_PX`
+raised from 80 to 125. All other constants unchanged. Audit script:
+[`audit_jaw_cleanup_sim_v3p3.py`](../../.scratch_phase_7f_scoping/audit_jaw_cleanup_sim_v3p3.py).
+Outputs at
+[`.scratch_phase_7f_scoping/audit_results/cleanup_sim_v3p3/`](../../.scratch_phase_7f_scoping/audit_results/cleanup_sim_v3p3/);
+severe-acute renders at
+[`visual_renders_cleanup_v3p3/`](../../.scratch_phase_7f_scoping/visual_renders_cleanup_v3p3/);
+pre-stroke renders at
+[`visual_renders_pre_stroke_v3p3/`](../../.scratch_phase_7f_scoping/visual_renders_pre_stroke_v3p3/).
+
+**Cohort means — major recovery from v3.2:**
+
+| cell | prod | v3.2 clean | **v3.3 clean** | v3.3 Δ |
+| --- | --- | --- | --- | --- |
+| mild / pre        | 102.6 | 79.4 | **100.1** | **−2.4%** |
+| mild / acute      | 100.4 | 77.3 | **96.9**  | **−3.4%** |
+| mild / chronic    | 105.8 | 79.0 | **101.8** | **−3.7%** |
+| mild / sub_acute  | 106.7 | 78.5 | **101.9** | **−4.5%** |
+| moderate / acute  | 89.1  | 68.2 | **86.8**  | **−2.6%** |
+| moderate / pre    | 87.9  | 78.5 | **83.7**  | **−4.7%** |
+| **mod-sev / acute** | **11.3** | **11.2** | **11.3**  | **0.0%** |
+| mod-sev / pre     | 106.4 | 79.4 | **103.6** | **−2.6%** |
+| mod-sev / chronic | 94.7  | 75.7 | **90.8**  | **−4.2%** |
+| **severe / acute** | **11.2** | **10.85** | **10.92** | **−2.5%** |
+| severe / pre      | 101.2 | 76.8 | **96.3**  | **−4.8%** |
+| severe / chronic  | 74.8  | 67.0 | **73.8**  | **−1.3%** |
+| severe / sub_acute | 65.6  | 56.2 | **62.2**  | **−5.1%** |
+
+Cohort means now drop **1-5% across all cells** (vs. 20-30% in v3.2).
+Severe-acute paper-narrative effectively unchanged (11.2 → 10.92).
+
+**`jaw_pass_qc` flip rates** also dropped: worst is 2.7% in moderate/pre
+(down from 5.3% in v3.2). Severe-acute 0.0% flip.
+
+**Wipe rates by rule** (mean per-trial detect-window fraction):
+- R1 Y-ceiling: 0.0-0.6% per cell (down from 0-25% in v3.2)
+- R2 isolated-short: 0.0-0.07% (unchanged)
+- R3 frame-outlier: <0.0001% (unchanged — still catches rare outliers)
+
+**Pre-stroke verification under v3.3** (same 8 trials as §3.12):
+
+| trial | prod |defl| | v3.2 clean | **v3.3 clean** | qc |
+| --- | --- | --- | --- | --- | --- |
+| PS49 / mild_top | 180.7 | 88.7 | **107.9** | ✓ |
+| PS50 / mild_median | 102.5 | 73.1 | **102.5 (unchanged)** | ✓ |
+| PS46 / moderate_top | 176.2 | 117.9 | **139.8** | ✓ |
+| PS46 / moderate_median | 82.7 | 82.7 | **82.7 (unchanged)** | ✓ |
+| PS51 / mod-sev_top | 169.1 | 76.8 | **110.0** | ✓ |
+| PS51 / mod-sev_median | 104.7 | 82.1 | **104.7 (unchanged)** | ✓ |
+| PS54 / severe_top (pre-stroke) | 168.7 | 90.8 | **111.0** | ✓ |
+| PS55 / severe_median (pre-stroke) | 102.1 | 84.8 | **102.1 (unchanged)** | ✓ |
+
+**All median trials unchanged** (peaks below 125). Top trials clipped
+30-70 px (vs. 60-90 px in v3.2). PS49 mild_top render shows the
+qualitative difference: real licking activity at 100-130 px from
+t=200-1000ms is now PRESERVED (vs. v3.2 which dropped large stretches
+to y=0). The 200 px spike at t=3404ms is correctly wiped as the only
+obvious artifact in that trial.
+
+**Severe-acute renders under v3.3:**
+
+| trial | v3.2 |defl|/lk/qc | **v3.3 |defl|/lk/qc** |
+| --- | --- | --- |
+| PS54 / 5-01 / t013 R | 57.9 / 0.51 / **False** | **111.7 / 0.54 / True** (qc preserved!) |
+| PS54 / 5-06 / t095 L (single-frame outlier) | 9.7 / 0.81 / True | **9.7 / 0.81 / True (unchanged)** |
+| PS55 / 5-14 / t033 L (active licking) | 62.1 / 0.92 / True | (preserved similar) |
+
+PS54 t013 R `pass_qc` flips back to True under v3.3 — the higher
+ceiling lets enough supra-threshold frames survive in the
+post-1300ms real-movement region. PS54 t095 single-frame outlier
+still correctly wiped (R1 fires on the 125.1 px spike since deflection
+= 139.6 > 125 ceiling).
+
+**Verdict: v3.3 (`Y_CEILING_PX = 125`) is the locked design for Phase
+7f Option B kickoff.** All v2-era pre-clean rules carry over (R1 + R2
++ R3 + R4 + re-PCHIP-interpolation at pre-Stage-4 stage). Constants:
+- `Y_CEILING_PX = 125` (Priya 2026-05-26 lock)
+- `ISOLATED_MAX_N = 5`
+- `ISOLATED_RADIUS_MS = 30`
+- `FRAME_JUMP_THR_PX = 70`
+- `FRAME_OUTLIER_LOCAL_MEDIAN_MS = 20`
+- `MAX_GAP_MS_PCHIP = 120` (jaw v5p3 default unchanged)
 
 ### 3.12 Pre-stroke (healthy) verification under v3.2
 
