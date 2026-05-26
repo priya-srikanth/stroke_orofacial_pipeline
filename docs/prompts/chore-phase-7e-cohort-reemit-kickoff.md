@@ -176,6 +176,26 @@ Following the Phase 7c.2 format (entry name, scope, what changed, parity strateg
 
 ---
 
+## Forward-pointers from this chore
+
+**F-P-1 — v7-spatial-impact-audit follow-on chore PR** (Priya 2026-05-26). Spatial heatmaps currently consume Phase 4 centered parquets via an independent code path from Phase 7e `cleaned_traces`, so the DLC artifacts v7 fixes at the per-lick-endpoint stage are **not** cleaned out of spatial heatmaps. Severe-acute heatmaps may carry artifactual density. This audit fires as a focused chore PR **after this Event B chore PR merges** — finding #7's per-lick-endpoint baseline must be the v7-cleaned version for apples-to-apples comparison against the spatial verdict.
+
+- **Sessions (3, spanning artifact range):** PS54 / `<acute-date>` (severe-acute, high artifact load); PS51 / `<acute-date>` (mod-severe-acute, intermediate); PS47 / `<acute-date>` (mild-acute control, ~0 artifacts expected).
+- **Scope dimensions per session (4):** `whole_session`, `tone_aligned` × `trial_group=all`, `tone_aligned` × `trial_group=L`, `tone_aligned` × `trial_group=R`.
+- **Render versions per scope (2):** **baseline** = Phase-4-centered parquet as-is (current production); **masked** = same input but frames where v7 `cleaned_traces` has `is_baseline_fill=True` are excluded from the 2D histogram. Implemented as a compute-on-demand mask wrapper — **not** a Phase 4 parquet rewrite.
+- **Total deliverables:** 3 sessions × 4 scopes × 2 renders = 24 heatmaps; one side-by-side PNG per (session, scope) = 12 comparison figures.
+- **Quantitative metric per (session, scope):** Wasserstein or KL divergence between baseline-density and masked-density, normalized so identical densities → 0. Threshold for "materially different" TBD by Priya at audit start.
+- **Verdict classes (DECISIONS entry at close):**
+  - `v7-spatial-impact-NULL` — no material difference; finding #7 stands as-is; no further action.
+  - `v7-spatial-impact-MATERIAL` — escalate to a Phase 7e-spatial follow-on phase to decide production wiring: (a) re-emit spatial heatmaps from `cleaned_traces` tongue-only, (b) apply v7-style cleaning to Phase 4 centered tongue parquet, or (c) compute-on-demand mask wrapper as production default.
+- **Scope guard:** audit is tongue-only at the heatmap level. Jaw / nose / whisker spatial unchanged (no v7 equivalent yet; Phase 7f deferred).
+- **Wall-time estimate:** ~0.5–1 day CC. 24 renders are fast; the work is side-by-side framing + quantitative metric + verdict drafting.
+- **Prerequisite:** this Event B chore PR must merge first.
+
+F-P-1 is **out-of-scope** of this Event B chore. Land it as a separate chore PR sequenced after Event B merge.
+
+---
+
 ## Approval needed
 
 Priya: approve the scope + verification gates + new dedicated driver script + manifest pattern above, and CC will proceed to Stage 1 on this same branch. Address any feedback as Addendum #1, #2, etc. (focused per-addendum revisions, "ALL OTHER LOCKS UNCHANGED" footer) rather than redrafting.
