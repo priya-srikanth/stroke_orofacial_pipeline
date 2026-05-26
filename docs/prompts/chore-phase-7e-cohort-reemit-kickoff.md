@@ -337,3 +337,72 @@ Insert between existing point 4 (gate-d Phase 9 stats verdict) and point 5 (chor
 **ALL OTHER LOCKS UNCHANGED.** Stage 1/2/3 scope + gates (c)+(d) PS54 acute distribution check + manifest schema + branch hygiene + F-P-1 forward-pointer + DECISIONS + MIGRATION_LOG plans — all unchanged. Stage 4/5/5b execute AFTER gate-d passes.
 
 Jaw kinematics + spatial outputs out of scope (separate work).
+
+---
+
+## Addendum #3 (2026-05-26) — Stage 6 stale-output audit + adjudication
+
+Per Priya 2026-05-26 (post Phase 7e.1 architectural finding): when v7 cleanup changes per-trial endpoint values in-place (Phase 7e.1 routing), there are **stale-frozen artifacts** on disk that consume the pre-v7 values and won't auto-refresh through Stages 1-5. Examples: Phase 9 figures rendered at Phase 9 close time, notebook output cells, orphan output paths from prior phases. Without an explicit audit, these become land mines — someone re-uses a figure or CSV months later without realizing it embeds deprecated numbers.
+
+### Stage 6 — stale-output audit + adjudication
+
+Insert AFTER Stages 1-5 + Gates (a)-(d), BEFORE chore close. **Run only if Gates (a)-(d) all pass.**
+
+#### Stage 6.1 — Static audit (grep + filesystem enumeration)
+
+- Grep `src/` + `scripts/` + `notebooks/` for write sites that emit files referencing tongue per-trial endpoints (e.g., callers of `tongue_pertrial_endpoints_json`, consumers of `stats/inputs/tongue_*`, consumers of `lick_events` / `cleaned_traces` parquets, figure-renderers that overlay `lick1_*` / `lick2_*` markers). Compare against Stages 1-5 re-emit coverage. Flag any uncovered write sites.
+- Walk `pipeline_outputs/` for tongue-relevant subtrees. For each subtree, classify as:
+  - **(a) REFRESHED** by Event B Stages 1-5.
+  - **(b) NOT-A-CONSUMER** (jaw / whisker / nose / spatial spaces — out of scope).
+  - **(c) STALE-FROZEN** (consumes tongue endpoints + not refreshed by Stages 1-5).
+
+For (c) further classify:
+- **(c1) STATIC FIGURES** embedding pre-v7 values — re-render or delete.
+- **(c2) DERIVED DATA** files (CSVs, parquets) that consume tongue endpoints — re-emit, delete, or deprecate-in-place.
+- **(c3) ORPHAN PATHS** — directories with files on disk but no current code writes to them.
+
+#### Stage 6.2 — Adjudication report
+
+Produce `.scratch_chore_phase_7e_reemit/stale_output_audit.md` with one section per (c1/c2/c3) classification:
+- For each affected subtree: list path + file count + total bytes + recommended action.
+- For **(c1) STATIC FIGURES**: recommend re-render IF on paper critical path; deletion otherwise. **Don't make this call autonomously** — list options + Priya picks per-subtree.
+- For **(c2) DERIVED DATA**: recommend deletion if no current code path consumes; re-emit if consumed; deprecate-in-place with sidecar README if uncertain.
+- For **(c3) ORPHAN PATHS**: recommend deletion after confirming no code writes to them and they're not in any current resolver method. Phase 7c.2's 2.15 GB cleanup is the precedent (DECISIONS 2026-05-21).
+
+#### Stage 6.3 — Notebook audit
+
+For each `.ipynb` under `notebooks/` that imports tongue-pertrial endpoints (grep for relevant imports / output paths), check whether the notebook's executed output cells embed pre-v7 numbers. Recommend per-notebook:
+- **re-execute** (clean output cells, re-run all)
+- **strip outputs** (git-clean for reproducibility — outputs regenerated on demand)
+- **leave + deprecation comment cell** at the top citing Phase 7e.1 + Event B close SHA
+
+#### Stage 6.4 — Adjudication gate
+
+STOP and report `stale_output_audit.md` to Priya. **NO destructive ops on any (c1/c2/c3) subtree without explicit per-invocation Priya approval per CLAUDE.md Ground Rule 7.**
+
+- If Priya approves deletions: execute via the one-time-only pattern per [[feedback-cleanup-timing-explicit-in-addenda]], with mandatory companion-state reset for any manifest CSVs that referenced the deleted paths.
+- If Priya approves re-renders: identify the driver scripts + queue a per-subtree re-emit. (If a re-render needs a different phase's tooling, document as a forward-pointer rather than executing here.)
+- Document all decisions in the chore-close DECISIONS entry: **NEW** "Stage 6 — stale-output audit + cleanup verdicts".
+
+### Updated verification gates
+
+Existing gates (a)-(d) cover Stages 1-5. Add:
+
+- **Gate (e) — Stale-output audit comprehensiveness.** `stale_output_audit.md` exists + classifies every tongue-endpoint-relevant subtree under `pipeline_outputs/`. No "unclassified" subtrees. Notebook audit covers every `.ipynb` under `notebooks/`.
+- **Gate (f) — Adjudication closure.** Every (c1/c2/c3) entry has a Priya-approved action (re-render | delete | retain-deprecated) documented. Any deletes execute one-time only with companion-state reset (manifest CSVs zeroed where they referenced deleted paths).
+
+### Updated stop-and-report points
+
+Add to the existing list:
+- **6. After Stage 6.1+6.2+6.3 audit** — report `stale_output_audit.md` to Priya for per-subtree adjudication.
+- **7. After Stage 6.4 adjudication** — report executed deletes + queued re-renders to Priya before chore close.
+
+### What stays out of Stage 6 scope
+
+- **Jaw / whisker / nose / spatial outputs** that don't consume tongue endpoints — separate audit if needed (jaw work folds into parallel `investigation/jaw-quality-audit` branch).
+- **Documentation text** in DECISIONS / MIGRATION_LOG / memory citing pre-v7 numbers — that's a doc edit, handled per-file by Cowork after Event B close, not in this chore.
+- **Paper draft text** citing pre-v7 numbers — owned by Priya, out of pipeline scope.
+
+### Footer
+
+**ALL OTHER LOCKS UNCHANGED.** Stage 1/2/3/4/5/5b scope + gates (a)-(d) + manifest schema + branch hygiene + F-P-1 forward-pointer + DECISIONS + MIGRATION_LOG plans — all unchanged. Stage 6 executes AFTER Stage 5/5b completes + Gates (a)-(d) all pass, BEFORE chore close. Per CLAUDE.md Ground Rule 7 + the cleanup-timing-explicit memory: no destructive ops without per-invocation approval; one-time-only cleanup; mandatory companion-state reset.
