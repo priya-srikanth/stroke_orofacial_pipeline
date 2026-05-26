@@ -57,6 +57,43 @@
 > is where the cluster + frame artifacts hide — cohort means understate
 > the contamination.
 
+> **AMENDMENT 2026-05-26 #6 (order-of-ops pivot — Priya).** Priya
+> 2026-05-26 (post v2 audit visual review): "Seems like we're
+> interpolating BEFORE applying our exclusion filters. Like tongue,
+> we should probably exclude based on likelihood and value (above our
+> ceiling of 80), outlier, etc, THEN interpolate."
+>
+> **Diagnostic evidence**: PS54 / 2025-05-05 / trial 10 / side L
+> visual render showed `clean_peak` at `lk = 0.05`. The frame's raw
+> DLC likelihood was 0.05 — well below v5p3's Stage 2 `lk_thr = 0.5`
+> gate, so it was DROPPED as raw and PCHIP-interpolated at Stage 4.
+> The "peak" my v2 cleanup picked was actually a PCHIP-bridge value,
+> NOT a real DLC frame. The post-v5p3 cleanup framework cannot see
+> this — by the time it operates on `y_final`, the trace has been
+> smoothed by interpolation across the artifact gap.
+>
+> **Pivot:** the exclusion rules need to live at the RAW DLC level,
+> BETWEEN Stage 3 (drop low-lk + isolated-hi-lk) and Stage 4
+> (PCHIP gap-fill). This matches tongue v7's architecture exactly
+> (pre-clean lives in Stages 1-3, not post-Stage-5). My audits #3
+> and #4 were post-v5p3 simulations — informative for catching the
+> Y-ceiling=75-vs-80 calibration and the cluster-mean-lk over-wiping,
+> but **fundamentally the wrong order of operations** for production.
+>
+> **Concretely: Phase 7f Option B (bodypart-parametric v7 port +
+> v5p3 re-emit) is the only design that gets this right.** Option A
+> (post-v5p3 cleanup inside jaw_pertrial) is now formally obsolete:
+> a post-Stage-5 patch CANNOT see what was dropped at Stage 2 +
+> bridged at Stage 4.
+>
+> **Audit #5 (v3 design — pending)**: re-implement v5p3 in the audit
+> script with the new pre-clean rules inserted between Stages 3 and
+> 4. Constants from Addendum #5 (R1 Y-ceiling=80, R2 isolated-short,
+> R3 frame-outlier wipe, R4 PCHIP-extend) carry over, but applied to
+> raw DLC (`{bodypart}_x`, `{bodypart}_y`, `{bodypart}_likelihood`)
+> rather than `y_final`. Then re-run Stage 4-6 and compute
+> jaw_pertrial scalars on the result.
+
 > **AMENDMENT 2026-05-26 #5 (cleanup v2 — likelihood-free design,
 > Y-ceiling=80, frame-outlier wipe works).** Per Priya 2026-05-26
 > (a) "we should keep likelihood threshold at 0.5", (b) "loosen max to
