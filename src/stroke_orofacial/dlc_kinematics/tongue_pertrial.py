@@ -2296,19 +2296,20 @@ def _per_cell_bout(params: dict[str, Any], cell_key: str) -> dict[str, Any]:
 def _extract_lick1_lick2(
     y_t: np.ndarray, x_t: np.ndarray, t_ms: np.ndarray, fps: float,
     *, params: dict[str, Any],
+    v7_trial_result: "_V7TrialResult | None" = None,
 ) -> dict[str, float]:
     """Per-trial 6 scalars for lick1 / lick2 (NaN where lick missing).
+
+    When ``v7_trial_result`` is provided (Phase 7e.1, use_v7_pipeline=True),
+    lick1 / lick2 come from the v7 gate-stack-kept licks
+    (``v7_trial_result.kept_licks``), so this endpoint reflects v7's
+    pre-clean + F/D/E/M gating instead of the legacy raw-trace slope
+    detector. When ``None`` (use_v7_pipeline=False or legacy callers),
+    the slope detector on ``y_t``/``x_t`` is used unchanged.
 
     Window: ``lick12_detect_win_ms`` (V3: ``[70, 3000]``; legacy was
     ``[70, 2000]``).
     """
-    tp = params["dlc_kinematics"]["tongue_pertrial"]
-    detect_win = tuple(tp["lick12_detect_win_ms"])
-    detector = _per_cell_detector(params, "cell33")
-    peaks = _slope_detect_lick_peaks(
-        y_t, x_t, t_ms, fps,
-        detect_win_ms=detect_win, detector_params=detector, n_max=2,
-    )
     out = {
         "lick1_y_peak": np.nan,
         "lick1_t_peak_ms": np.nan,
@@ -2317,6 +2318,26 @@ def _extract_lick1_lick2(
         "lick2_t_peak_ms": np.nan,
         "lick2_x_at_ypeak": np.nan,
     }
+
+    if v7_trial_result is not None:
+        kept = v7_trial_result.kept_licks
+        if len(kept) >= 1:
+            out["lick1_y_peak"] = float(kept[0]["y"])
+            out["lick1_t_peak_ms"] = float(kept[0]["t_ms"])
+            out["lick1_x_at_ypeak"] = float(kept[0]["x"])
+        if len(kept) >= 2:
+            out["lick2_y_peak"] = float(kept[1]["y"])
+            out["lick2_t_peak_ms"] = float(kept[1]["t_ms"])
+            out["lick2_x_at_ypeak"] = float(kept[1]["x"])
+        return out
+
+    tp = params["dlc_kinematics"]["tongue_pertrial"]
+    detect_win = tuple(tp["lick12_detect_win_ms"])
+    detector = _per_cell_detector(params, "cell33")
+    peaks = _slope_detect_lick_peaks(
+        y_t, x_t, t_ms, fps,
+        detect_win_ms=detect_win, detector_params=detector, n_max=2,
+    )
     if len(peaks) >= 1:
         out["lick1_y_peak"] = float(peaks.peak_y[0])
         out["lick1_t_peak_ms"] = float(peaks.peak_times_ms[0])
@@ -3177,11 +3198,13 @@ def _build_tongue_pertrial_core(
         trial_indices.append(int(ev.trial_index))
         sides.append(ev.side)
 
-        # Phase 7e v7 pipeline (Task 5) — run in parallel with the
-        # legacy per-cell extractions when the feature flag is on. The
-        # v7 result is collected for Task 6 (parquet writers) + Task 7
-        # (downstream metric consumers); legacy outputs below are NOT
-        # affected by this branch.
+        # Phase 7e v7 pipeline (Task 5) — run BEFORE the legacy per-cell
+        # extractions when the feature flag is on, so the per-trial v7
+        # result can be routed into _extract_lick1_lick2 (Phase 7e.1).
+        # _extract_peak_velocity_first5 + downstream cells still consume
+        # the original y_slice/x_slice; only lick1/lick2 are v7-routed in
+        # this phase (matched scope to the gate-(d) regression).
+        v7_result_for_trial: "_V7TrialResult | None" = None
         if use_v7_pipeline:
             is_intp_slice, _ = _extract_trial_slice(
                 is_interp_fill_session, ev.tone_frame_idx, widest_detect, fps,
@@ -3206,7 +3229,7 @@ def _build_tongue_pertrial_core(
                 int(ev.tone_frame_idx
                     + np.ceil(widest_detect[1] / 1000.0 * fps)),
             )
-            v7_trial_results.append(_run_v7_pipeline_per_trial(
+            v7_result_for_trial = _run_v7_pipeline_per_trial(
                 y_slice=y_slice, x_slice=x_slice,
                 is_interp_fill_slice=is_intp_slice,
                 is_baseline_fill_slice=is_base_slice,
@@ -3219,9 +3242,13 @@ def _build_tongue_pertrial_core(
                 eye_x_in_spout_frame=eye_x,
                 eye_y_in_spout_frame=eye_y,
                 params=params,
-            ))
+            )
+            v7_trial_results.append(v7_result_for_trial)
 
-        lick12 = _extract_lick1_lick2(y_slice, x_slice, t_ms, fps, params=params)
+        lick12 = _extract_lick1_lick2(
+            y_slice, x_slice, t_ms, fps, params=params,
+            v7_trial_result=v7_result_for_trial,
+        )
         lick12_records.append(lick12)
 
         vel = _extract_peak_velocity_first5(
