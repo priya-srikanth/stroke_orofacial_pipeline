@@ -138,7 +138,14 @@ def _append_manifest_row(row: dict[str, Any]) -> None:
 
 
 def _per_session_smoke(endpoints_json_path: Path) -> tuple[bool, str]:
-    """Gate (a): endpoints JSON loads + at least one non-null lick1_y_peak."""
+    """Gate (a): endpoints JSON loads + schema intact.
+
+    Schema-broken => FAIL. Biology-empty (all-null lick1_y_peak from a
+    session with no kept licks post v7 gates F/D/E/M) => OK with
+    anomaly_notes="zero_kept_licks_session". Relaxed 2026-05-26 after
+    PS55/2025-05-07 (severe acute, 6 raw events across 97 trials, all
+    rejected by gates — biologically valid, not a schema anomaly).
+    """
     try:
         payload = json.loads(endpoints_json_path.read_text())
     except Exception as exc:
@@ -159,7 +166,7 @@ def _per_session_smoke(endpoints_json_path: Path) -> tuple[bool, str]:
         for v in y_peaks
     )
     if not has_non_null:
-        return False, "lick1_y_peak_all_null"
+        return True, "zero_kept_licks_session"
     return True, ""
 
 
@@ -234,6 +241,7 @@ def _process_one_session(
     row["n_outputs_written"] = len(paths)
     row["output_sha256s_json"] = json.dumps(shas, sort_keys=True)
     row["status"] = "OK"
+    row["anomaly_notes"] = smoke_reason  # "" or "zero_kept_licks_session"
     return row
 
 
