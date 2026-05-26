@@ -57,6 +57,49 @@
 > is where the cluster + frame artifacts hide — cohort means understate
 > the contamination.
 
+> **AMENDMENT 2026-05-26 #2 (Priya — cluster-classifier scope + v5p3
+> re-emit lock).** Two corrections to Addendum #1:
+>
+> 1. **Drop tongue v7 Rule A (intra-cluster shape gate) for jaw.**
+>    Tongue's Rule A (Phase 7e Decision 9) keeps clusters where
+>    `cluster_min < 80 OR cluster_range > 50` — it KEEPS only clusters
+>    that span baseline-to-peak (real lick shape) and WIPES clusters
+>    flat at high y (plateau artifact). This does NOT translate to
+>    jaw: **real jaw trajectories can look "flat" at sustained high-y
+>    postures**, so a shape-based filter would falsely wipe real jaw
+>    activity. Phase 7f must invent a jaw-appropriate cluster
+>    discriminator. Candidate criteria for kickoff exploration:
+>    - **Cluster contiguity / duration:** real jaw movement is
+>      contiguous (PS54 t013 from ~1300 ms onwards); artifact clusters
+>      are short and surrounded by Stage-5 baseline-fill bands within
+>      the same trial.
+>    - **Mean / median likelihood within the cluster:** real jaw
+>      activity sustains `lk > 0.85`; artifact clusters tend toward
+>      `lk = 0.3-0.5`. Cluster-mean-lk gate may be a better
+>      discriminator than per-frame lk gates.
+>    - **Hard Y-ceiling + frame-level outlier wipe** (Rules 1 and 3
+>      from Addendum #1) port cleanly and are NOT affected by this
+>      revision.
+>    - **Isolated-short override** (Phase 7e Decision 11) likely still
+>      applies — short isolated clusters surrounded by long baseline-
+>      fill are artifacts in both tongue and jaw, regardless of shape.
+> 2. **Jaw v5p3 re-emit is desired.** Priya 2026-05-26 explicitly
+>    wants a cohort jaw v5p3 re-emit after the cleanup. This **locks
+>    Option B (`bodypart-parametric v7 port` with cohort v5p3
+>    re-emit) as the chosen architecture**, NOT Option A. Option A's
+>    "all logic inside `jaw_pertrial.py`, no v5p3 re-emit" framing is
+>    now obsolete; treat it as a fallback only if Option B is
+>    infeasible. Phase 7f kickoff scope expands to include v5p3
+>    `max_gap_ms` review + per-bodypart preclean constants.
+>
+> **Net effect on §5 verdict:** scope firmly in the bodypart-
+> parametric v7 port tier (Option B). Cluster classifier needs a
+> jaw-specific rule set, NOT a direct tongue port. Wall-time stays
+> ~2-3 weeks CC; the cluster-discriminator design phase may add 1-3
+> days at the front for empirical exploration on the audit
+> visual-render set. Q-1 in §7 is now answered (Option B locked);
+> Q-2 + Q-3 still open.
+
 ---
 
 ## 1. Context + motivation
