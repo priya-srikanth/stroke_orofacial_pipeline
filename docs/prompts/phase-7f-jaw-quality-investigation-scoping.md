@@ -57,6 +57,36 @@
 > is where the cluster + frame artifacts hide — cohort means understate
 > the contamination.
 
+> **AMENDMENT 2026-05-26 #9 (pre-stroke healthy-licking verification —
+> Y-ceiling=80 too tight, must raise).** Per Priya 2026-05-26 ("could
+> we check some pre-stroke sessions too?"), 8 pre-stroke trials rendered
+> under v3.2 (top-peak + median-peak per phenotype). Full results in
+> §3.12. Headline:
+>
+> - **`jaw_pass_qc` preserved on ALL 8 pre-stroke trials** — mismatch
+>   classifier is safe.
+> - **Real licking peaks in healthy mice reach 110-200 px**, well above
+>   the Y_CEILING=80. Top-peak trials get clipped 30-90 px.
+> - **Long high-amplitude licking bursts drop to baseline (y=0)** for
+>   entire stretches (e.g., PS49 t7 ~500-700ms; PS50 t81 ~2700-3000ms)
+>   — R1 wipes consecutive frames + gaps > 120ms fall to Stage 5.
+> - **PCHIP overshoot leaks above the Y-ceiling** in PS46 moderate_top
+>   (clean peak 117.9 px, above the 73 px ceiling) because surrounding
+>   anchors are near-ceiling and PCHIP overshoots between them.
+>
+> **Verdict: v3.2 with Y_CEILING=80 is structurally too tight for
+> healthy mice.** Phase 7f Task 1 must raise the Y-ceiling and/or use
+> a per-phenotype value. Updated recommendation (§3.12):
+> - Drop **option (i) "keep 80"** — pre-stroke confirms this wipes real
+>   movement.
+> - **Lead candidate: Y_CEILING = 200 px global** (preserves healthy
+>   peaks up to ~200 px).
+> - **Sensitivity comparison: per-phenotype** (e.g., severe 100, others
+>   200) — most honest but adds complexity.
+>
+> Suggested Phase 7f Task 1 first iteration: 200 global + per-phenotype
+> sensitivity sweep. Decision deferred to kickoff.
+
 > **AMENDMENT 2026-05-26 #8 (cleanup v3.2 — cross-cluster R3 closes a
 > coverage gap).** Priya 2026-05-26 visual review of v3 spotted a
 > single-frame low-y outlier at t=184ms in PS54 / 5-01 / t013 R (y=-36
@@ -945,6 +975,71 @@ The order-of-ops fix is robust; the Y-ceiling calibration is the only
 remaining open knob. Phase 7f Task 1 should empirically calibrate via
 a per-phenotype `y99` sweep on lk≥0.85 raw DLC + sensitivity analysis
 on `candidate_no_lick_with_jaw_move` rate.
+
+### 3.12 Pre-stroke (healthy) verification under v3.2
+
+Per Priya 2026-05-26: "could we check some pre-stroke sessions too?"
+The original 8-trial visual set was severe-acute only. To verify v3.2
+doesn't break healthy licking, 8 pre-stroke trials (2 per phenotype:
+top-peak_abs and median-peak_abs) were rendered under v3.2 cleanup.
+Renders at
+[`.scratch_phase_7f_scoping/visual_renders_pre_stroke_v3p2/`](../../.scratch_phase_7f_scoping/visual_renders_pre_stroke_v3p2/).
+
+| trial | prod |defl| | clean |defl| | qc preserved? |
+| --- | --- | --- | --- | --- |
+| PS49 / 3-10 / t7 R **mild_top** | 180.7 | 88.7 | ✓ |
+| PS50 / 3-19 / t81 L **mild_median** | 102.5 | 73.1 | ✓ |
+| PS46 / 3-12 / t0 R **moderate_top** | 176.2 | 117.9 | ✓ |
+| PS46 / 3-07 / t90 L **moderate_median** | 82.7 | 82.7 (unchanged) | ✓ |
+| PS51 / 4-27 / t53 R **mod-sev_top** | 169.1 | 76.8 | ✓ |
+| PS51 / 4-29 / t55 L **mod-sev_median** | 104.7 | 82.1 | ✓ |
+| PS54 / 4-21 / t46 L **severe_top** (pre-stroke) | 168.7 | 90.8 | ✓ |
+| PS55 / 4-26 / t89 R **severe_median** (pre-stroke) | 102.1 | 84.8 | ✓ |
+
+**Findings:**
+
+- **`jaw_pass_qc` preserved on ALL 8 pre-stroke trials** — the
+  mismatch-classifier input survives the cleanup for healthy mice.
+- **Real licking peaks in healthy mice reach 110-200 px**, well above
+  the Y-ceiling=80. Top-peak trials get clipped 30-90 px.
+- **In long high-amplitude licking bursts, the cleanup trace drops to
+  baseline (y=0) for entire stretches** — visible in PS49 t007
+  (~500-700 ms zero stretch) and PS50 t081 (~2700-3000 ms zero stretch).
+  This is R1 wiping consecutive frames + R4 PCHIP-extend wiping
+  adjacent interp frames; gaps > 120 ms then fall to Stage 5 baseline.
+- **PCHIP overshoot is "leaky" at the Y-ceiling**: PS46 moderate_top
+  cleanup peak landed at 117.9 px even though Y-ceiling is 73 (baseline=−7,
+  ceiling at +80). The peak is on a PCHIP-bridge value that
+  overshoots the ceiling because surrounding kept anchors are near
+  the ceiling. The Y-ceiling is enforced on RAW frames only; the
+  re-PCHIP-interpolation can produce post-cleanup values above the
+  ceiling.
+
+**Conclusion:** v3.2 with Y_CEILING=80 is **structurally too tight for
+healthy mice**. The cleanup doesn't break `pass_qc` (mismatch
+classifier is safe), but it materially distorts healthy peak amplitudes
+and drops entire licking bursts to baseline. **Phase 7f Task 1 must
+raise the Y-ceiling and/or use a per-phenotype value**.
+
+Updated recommendation for the Y-ceiling open knob:
+- **(i) Keep Y_CEILING=80** — **NO**, pre-stroke renders confirm this
+  wipes real movement aggressively.
+- **(ii) Raise to 150-200 px** — preserves healthy licking (peaks reach
+  180-200 px in mild_top, so 200 ceiling preserves all). Risk: some
+  severe-acute pre-1300ms cluster artifacts at 100-150 px (e.g., PS54
+  t013 R) would survive. R2 + R3 still catch most of those because
+  they're embedded in low-confidence baseline-fill-bracketed contexts.
+- **(iii) Per-phenotype ceiling** — e.g., 80 for severe/mod-sev, 200
+  for mild/moderate. Requires phenotype lookup in jaw_pertrial. Most
+  honest but adds complexity.
+- **(iv) Drop Y-ceiling entirely** — rely on R2 + R3 alone. Audit
+  showed R3 catches outliers cohort-wide; R2 catches isolated-short
+  clusters. May miss some long-duration cluster artifacts that R2
+  doesn't recognize as "isolated".
+
+Suggested Phase 7f Task 1 first iteration: **Y_CEILING = 200 px**
+(global) + Y_CEILING_GROUPS={severe: 100, others: 200} as a
+sensitivity comparison.
 
 ### 3.11 Frame-outlier R3 refinement (v3.1 + v3.2)
 
