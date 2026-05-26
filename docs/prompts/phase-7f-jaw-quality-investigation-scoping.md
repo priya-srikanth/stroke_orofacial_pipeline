@@ -57,6 +57,58 @@
 > is where the cluster + frame artifacts hide — cohort means understate
 > the contamination.
 
+> **AMENDMENT 2026-05-26 #4 (cleanup-simulation audit — Y-ceiling
+> recalibration needed).** Scoping audit #3 (22,363 trials,
+> §3.8) applied the candidate cleanup
+> (`Y_ceiling = 75 px` + `cluster_mean_lk ≥ 0.85`) and revealed:
+>
+> - **Severe-acute cohort mean barely moves** (11.2 → 10.9 px, −3%).
+>   13% of severe-acute trials have their peak wiped to NaN
+>   entirely; the surviving 87% still average ~11 px — the paper-
+>   narrative biological signal is preserved.
+> - **Sign-flip rate at severe-acute drops 9.5% → 4.1%** (clear
+>   improvement over prod audit #1).
+> - **PS54 / 5-06 / t095 L (single-frame outlier) is correctly
+>   wiped**: 125 px → 9.7 px after cleanup. ✓
+> - **BUT mild epochs drop 27-31% in cohort mean** because real jaw
+>   licking peaks in healthy mice reach 100-180 px, exceeding the
+>   75 px ceiling. The cleanup median peak_abs_clean clamps to
+>   ~74.9 px in every mild cell — exactly at the ceiling. Real
+>   movement is being wiped along with artifacts.
+> - **PS55 / 5-14 / t033 L (active licking with multiple real
+>   peaks) collapses from 183 px to 71 px** — real licking peaks
+>   wiped indiscriminately with artifact peaks.
+> - **Single-frame outliers below 75 px escape cleanup** (PS54 /
+>   5-01 / t013 R: cleanup picked a 72.8 px peak with `lk = 0.34`
+>   inside the artifact-cluster region; Rule 2's `cluster_len ≥ 2`
+>   guard excluded this single-frame mid-lk spike).
+>
+> **Revised guidance for Phase 7f kickoff:**
+>
+> 1. **Y_ceiling = 75 is too tight** — needs recalibration. Three
+>    options:
+>    - **Option (i)**: Remove Y-ceiling entirely; rely on cluster-LK
+>      + frame-outlier rules alone.
+>    - **Option (ii)**: Raise to ~200 px (well above healthy active-
+>      licking peaks; only catches extreme outliers).
+>    - **Option (iii)**: Per-phenotype Y-ceiling (e.g., 75 for
+>      severe, 250 for mild). More invasive; requires phenotype
+>      lookup in jaw_pertrial.
+> 2. **Cluster-mean-lk gate at 0.85 is doing useful work** —
+>    catches the cluster artifacts in severe-acute (40.9% wipe
+>    rate in mod-sev-acute, 27.8% in severe-acute). Keep.
+> 3. **Add Rule 3: frame-level outlier wipe** (tongue v7
+>    Decision 12 analog): single frames where
+>    `|y - local_median ±20ms| > FRAME_JUMP_THR_JAW` (calibrate;
+>    suggest 80-100 px). Catches PS54 t095-style single-frame spikes
+>    that Rule 2's length ≥ 2 guard excludes.
+>
+> The cleanup ARCHITECTURE (cluster-LK + Y-ceiling + frame-outlier)
+> is correct per Addenda #2 and #4. The constants need an iteration
+> in Phase 7f Task 1 (likely with a visual-gate review on the
+> 8 severe-acute renders + a healthy-baseline sanity check on the
+> mild-acute / mild-pre cohort means).
+
 > **AMENDMENT 2026-05-26 #3 (interpolation audit findings).** Scoping
 > audit #2 (jaw v5p3 interpolation quality, 1.9 M gap records across
 > 8-animal × 2-bodypart cohort, full results §3.7) produced a
@@ -462,6 +514,89 @@ baseline-fill bands), not at the gap-fill level. Tightening would
 mostly affect active-licking sessions (mild/moderate epochs) where
 short PCHIP fills bridge real movement transients — likely
 counterproductive.
+
+### 3.8 Cleanup simulation (Y-ceiling + cluster-mean-lk filter)
+
+Phase 7f scoping audit #3 (run 2026-05-26) applied a candidate
+post-v5p3 cleanup in-memory and recomputed the per-trial peak
+metrics. Audit script:
+[`.scratch_phase_7f_scoping/audit_jaw_cleanup_sim.py`](../../.scratch_phase_7f_scoping/audit_jaw_cleanup_sim.py).
+22,363 trials across 8-animal cohort. Outputs at
+[`.scratch_phase_7f_scoping/audit_results/cleanup_sim/`](../../.scratch_phase_7f_scoping/audit_results/cleanup_sim/)
++ visual renders at
+[`.scratch_phase_7f_scoping/visual_renders_cleanup/`](../../.scratch_phase_7f_scoping/visual_renders_cleanup/).
+
+**Cleanup rules applied:**
+1. **Y-ceiling (Rule 1):** any frame with
+   `(y_final − baseline_mean) > 75 px` → wiped to NaN (positive side
+   only; negative jaw deflections are physiological).
+2. **Cluster-mean-lk (Rule 2):** for each contiguous raw cluster
+   (`fill_method == 0`) of length ≥ 2, if `mean(likelihood_raw) <
+   0.85`, wipe the whole cluster to NaN.
+
+After cleanup: `argmax(|y_clean − baseline_mean|)` over detect window;
+wiped frames are NaN and excluded from argmax.
+
+**Cohort means (full table:
+[`by_phenotype_epoch_cleanup.csv`](../../.scratch_phase_7f_scoping/audit_results/cleanup_sim/by_phenotype_epoch_cleanup.csv);
+visual:
+[`cohort_mean_delta_bar.png`](../../.scratch_phase_7f_scoping/audit_results/cleanup_sim/cohort_mean_delta_bar.png)):**
+
+| cell | prod mean | clean mean | Δ | wipe Y | wipe LK | peak→NaN rate |
+| --- | --- | --- | --- | --- | --- | --- |
+| mild / pre        | 102.6 | 74.2 | **−28%** | 21.9% | 7.7% | 0.04% |
+| mild / acute      | 100.4 | 73.2 | **−27%** | 17.6% | 9.9% | 0.0% |
+| mild / chronic    | 105.8 | 73.9 | **−30%** | 22.4% | 7.3% | 0.0% |
+| moderate / acute  | 89.1 | 66.4 | **−25%** | 16.0% | 4.8% | 0.0% |
+| **mod-sev / acute** | **11.3** | **10.2** | **−10%** | 0.0% | **40.9%** | **19.8%** |
+| mod-sev / pre     | 106.4 | 74.5 | −30% | 24.3% | 6.1% | 0.0% |
+| **severe / acute** | **11.2** | **10.9** | **−3%** | 0.01% | **27.8%** | **13.0%** |
+| severe / chronic  | 74.8 | 64.3 | −14% | 1.7% | 10.0% | 0.06% |
+| severe / pre      | 101.2 | 72.5 | −28% | 15.2% | 28.1% | 0.28% |
+| severe / sub_acute | 65.6 | 54.1 | −18% | 2.5% | 11.2% | 0.92% |
+
+**Sign-flip rates** (peak signed prod vs cleanup): severe-acute **drops
+from 9.5% (lk≥0.9 counterfactual in audit #1) to 4.1% (cleanup)**.
+Mod-sev acute drops from 13.6% to 7.1%. Improvement.
+
+**Two failure modes visible:**
+
+**(F1) Y-ceiling = 75 is TOO TIGHT for healthy/active-licking sessions.**
+Mild epochs drop 27-31% in cohort mean because **real licking peaks
+exceed 75 px in healthy mice**. The cleanup `median peak_abs_clean`
+clamps to ~74.9 in every mild cell — exactly at the ceiling. Per
+`audit #1` the prod median was 102-106 px. The Y-ceiling is wiping
+real movement, not artifact. **Recommend raising Y-ceiling
+substantially (≥ 200 px, or per-phenotype) OR removing entirely +
+relying on cluster-LK + a frame-level outlier rule.**
+
+**(F2) Single-frame outliers below Y-ceiling escape cleanup.** Rule 2
+excludes clusters of length 1 (by design — single frames don't have
+intra-cluster mean lk). A single-frame outlier with `y_final = 60` and
+`lk = 0.5` passes both rules. Visible in PS54 / 2025-05-01 / t013 R:
+the cleanup picked a 72.8 px peak at `t = 476 ms` with `lk = 0.34`,
+inside the artifact-cluster region — the cleanup couldn't reach it
+because the Y-ceiling didn't fire AND the surrounding cluster wasn't
+contiguous-and-low-LK enough. **Recommend adding a frame-level
+outlier wipe (tongue v7 Decision 12 analog: `|y - local_median ±20ms|
+> threshold`) as Rule 3.**
+
+**Per-trial visual renders** ([`visual_renders_cleanup/*.png`](../../.scratch_phase_7f_scoping/visual_renders_cleanup/)):
+
+| trial | prod |defl| | clean |defl| | verdict |
+| --- | --- | --- | --- |
+| PS54 / 5-06 / t095 L (single-frame outlier) | 125 | **9.7** | **Cleanup works** — wipes the spike, finds reasonable post-spike peak |
+| PS55 / 5-14 / t033 L (active licking + bands) | 183 | 71.2 | **Real licking peaks wiped** — Y-ceiling too tight |
+| PS54 / 5-01 / t013 R (cluster artifact) | 138 | 72.8 | **Partial** — wipes the worst spike but lands on still-suspect 72.8 frame |
+
+**Conclusion:** the cleanup architecture (cluster classifier +
+likelihood-based filter + per-frame rules) is the right direction.
+**The specific constants need recalibration**: `Y_CEILING = 75 px` is
+too tight; `cluster_lk gate = 0.85` is doing useful work; need to add
+a frame-level outlier rule (Rule 3) for single-frame mid-confidence
+spikes. Recalibration candidates for kickoff: Y-ceiling ≥ 200 px (or
+per-phenotype, or removed), frame-jump threshold ~80-100 px from
+local median over ±20-30 ms.
 
 ---
 
