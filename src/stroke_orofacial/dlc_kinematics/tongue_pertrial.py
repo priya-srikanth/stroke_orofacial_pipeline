@@ -2210,6 +2210,13 @@ def _run_v7_pipeline_per_trial(
             "y_original": float(r.get("y_original", float("nan"))),
             "rise_start_ms": rise_start_ms,
             "fall_end_ms": fall_end_ms,
+            # Phase 7e.2: trial-local frame indices for the rise->fall
+            # window. In-memory only — NOT in the lick_events parquet
+            # schema (Decision 5). Consumed by Phase 7e.2's v7-routed
+            # _extract_peak_velocity_first5 to mirror the per-lick
+            # velocity window used for max_velocity_y_px_per_s.
+            "rise_start_frame": int(rsf),
+            "fall_end_frame": int(fef),
             "imputed": is_imputed,
             "source": str(r["src"]),
             "confidence": confidence,
@@ -2357,11 +2364,22 @@ def _extract_lick1_lick2(
 def _extract_peak_velocity_first5(
     y_t: np.ndarray, x_t: np.ndarray, t_ms: np.ndarray, fps: float,
     *, params: dict[str, Any],
+    v7_trial_result: "_V7TrialResult | None" = None,
 ) -> dict[str, np.ndarray]:
     """Per-trial first-5 lick velocity peaks + peak times.
 
     Smoothing happens AT VELOCITY STAGE (post-differentiation), not on the
     detection y. Output shape ``(5,)`` NaN-padded.
+
+    When ``v7_trial_result`` is provided (Phase 7e.2, use_v7_pipeline=True),
+    the "first 5 licks" come from ``v7_trial_result.kept_licks`` (the
+    gate-stack-survivors), and per-lick velocity is computed from the
+    v7-cleaned trace (``y_clean``/``x_clean``) with ``is_baseline_fill_clean``
+    masked to NaN inside each lick's [rise_start_frame, fall_end_frame]
+    window. This mirrors the per-lick ``max_velocity_y_px_per_s`` computation
+    that v7 already does for the lick_events parquet (Decision 5), extended
+    to also emit the vxy peak. The legacy slope-detector path (used when
+    ``v7_trial_result is None``) is unchanged for backwards compat.
     """
     tp = params["dlc_kinematics"]["tongue_pertrial"]
     detect_win = tuple(tp["peak_velocity_detect_win_ms"])
@@ -2369,6 +2387,60 @@ def _extract_peak_velocity_first5(
     smooth_vel = bool(detector["do_smooth_vel"])
     smooth_ms_vel = float(detector["smooth_ms_vel"])
     min_finite = int(detector["min_finite_samples_per_lick"])
+
+    n_lick = 5
+    vy_out = np.full(n_lick, np.nan, dtype=np.float64)
+    vxy_out = np.full(n_lick, np.nan, dtype=np.float64)
+    t_out = np.full(n_lick, np.nan, dtype=np.float64)
+
+    if v7_trial_result is not None:
+        # Phase 7e.2: derive per-lick velocity from v7-cleaned trace, with
+        # is_baseline_fill_clean masked to NaN. Per-kept-lick window
+        # [rise_start_frame, fall_end_frame] mirrors v7's max_velocity_y
+        # computation. Detect window filter applied via t_ms (kept licks
+        # outside [detect_win[0], detect_win[1]] are skipped).
+        y_clean = v7_trial_result.y_clean
+        x_clean = v7_trial_result.x_clean
+        is_base = v7_trial_result.is_baseline_fill_clean
+        n_frames_clean = len(y_clean)
+        j = 0
+        for kept in v7_trial_result.kept_licks:
+            if j >= n_lick:
+                break
+            t_peak_ms = float(kept["t_ms"])
+            if t_peak_ms < detect_win[0] or t_peak_ms > detect_win[1]:
+                continue
+            rsf = int(kept.get("rise_start_frame", -1))
+            fef = int(kept.get("fall_end_frame", -1))
+            if not (0 <= rsf <= fef < n_frames_clean):
+                # No valid window — emit t_peak but NaN velocity.
+                t_out[j] = t_peak_ms
+                j += 1
+                continue
+            y_win = y_clean[rsf:fef + 1].astype(np.float64, copy=True)
+            x_win = x_clean[rsf:fef + 1].astype(np.float64, copy=True)
+            is_base_win = is_base[rsf:fef + 1]
+            y_win_masked = np.where(is_base_win, np.nan, y_win)
+            x_win_masked = np.where(is_base_win, np.nan, x_win)
+            both_finite = (
+                np.isfinite(y_win_masked) & np.isfinite(x_win_masked)
+            )
+            n_finite_both = int(np.count_nonzero(both_finite))
+            t_out[j] = t_peak_ms
+            if n_finite_both >= min_finite:
+                dy = np.gradient(y_win_masked) * fps  # px/s
+                dx = np.gradient(x_win_masked) * fps
+                vxy = np.sqrt(dx ** 2 + dy ** 2)
+                if np.isfinite(dy).any():
+                    vy_out[j] = float(np.nanmax(dy))
+                if np.isfinite(vxy).any():
+                    vxy_out[j] = float(np.nanmax(vxy))
+            j += 1
+        return {
+            "vy_peaks_bylick": vy_out,
+            "vxy_peaks_bylick": vxy_out,
+            "lick_t_peaks_bylick": t_out,
+        }
 
     peaks = _slope_detect_lick_peaks(
         y_t, x_t, t_ms, fps,
@@ -3253,6 +3325,7 @@ def _build_tongue_pertrial_core(
 
         vel = _extract_peak_velocity_first5(
             y_slice, x_slice, t_ms, fps, params=params,
+            v7_trial_result=v7_result_for_trial,
         )
         velocity_records.append(vel)
 
