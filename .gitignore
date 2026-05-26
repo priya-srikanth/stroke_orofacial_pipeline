@@ -29,3 +29,10 @@ Thumbs.db
 scratch/
 .scratch_*/
 scripts/parity_external_bnpm.py
+
+# Test fixtures need to override the top-level *.parquet / *.h5 / *.npz rules
+# so canonical-trial input data can be committed alongside the parity tests
+# (Phase 7e Task 8 - see tests/fixtures/v7_canonical/README.md).
+!tests/fixtures/**/*.parquet
+!tests/fixtures/**/*.h5
+!tests/fixtures/**/*.npz

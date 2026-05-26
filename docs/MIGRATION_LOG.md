@@ -6491,17 +6491,62 @@ Per-(axis × comparison) confirmatory significance at v2:
 
 ---
 
-## Phase 7e (DRAFTED 2026-05-25, not yet executed) — DLC tongue pre-clean + v7 detector
+## Phase 7e close — DLC tongue pre-clean + v7 detector pipeline migrated to production
 
-**Kickoff:** [`docs/prompts/phase-7e-dlc-tongue-preclean-v7-kickoff.md`](prompts/phase-7e-dlc-tongue-preclean-v7-kickoff.md). Branch: `phase/7e-dlc-tongue-preclean-v7` (to be created off main at session start). Estimated tag: `v7e-dlc-tongue-preclean-v7`.
+**Date:** 2026-05-26
 
-**Predecessor work:** CC investigation in `.scratch_phase_9_1/` 2026-05-23 through 2026-05-25 designed and validated the v7 algorithm. Reference impl at `.scratch_phase_9_1/inv_p3a_step2j_unified_preclean.py`. Validation outputs at `.scratch_phase_9_1/dlc_tongue_quality_investigation/part3b_cohort_validation_v7/` (35 outlier figures + `part3b_stats.csv`).
+**Tag:** `v7e-dlc-tongue-preclean-v7` (applied to merge commit on main).
+**Branch:** `phase/7e-dlc-tongue-preclean-v7`.
+**Kickoff:** [`docs/prompts/phase-7e-dlc-tongue-preclean-v7-kickoff.md`](prompts/phase-7e-dlc-tongue-preclean-v7-kickoff.md) + [Addendum #1](prompts/phase-7e-addendum-1-task0-x-audit-verdict.md).
+**DECISIONS entry:** 2026-05-26 (Decisions 1-6) supersedes 2026-05-25 drafted-state Decisions 1, 2, 3, 6 (amended per Addendum #1) and confirms Decision 14 scope shipped. 2026-05-25 drafted entry preserved as historical record.
 
-**Scope:** Port v7 algorithm into `src/stroke_orofacial/dlc_kinematics/` (3 new modules: `preclean.py`, `detector_v2.py`, `gates.py`); externalize all constants to `configs/defaults.yaml`; add new PathResolver methods + parquet outputs (`cleaned_traces/`, `lick_events/`); wire into `tongue_pertrial.py` behind `use_v7_pipeline: true`; update downstream `tongue_velocity` (kept-lick gating) and `lick_angle` (imputed y); 9-canonical-trial fixture parity test + 80-trial cohort parity test.
+**What shipped:**
 
-**Out of scope:** cohort re-emit, downstream Phase 9 stats regeneration, jaw interpolation revisit. All deferred to follow-ons after Phase 7e merge.
+- **3 new private modules** under `src/stroke_orofacial/dlc_kinematics/` (~1,610 lines total): `_preclean.py` (646 lines — cluster classifier Rules A/B + isolated-short override + frame-level outlier + PCHIP-extend + bracketed-interp + x-side Rules 1-4), `_detector_v2.py` (368 lines — find_peaks local-maxima detector + cross-detector dedupe), `_gates.py` (598 lines — F/D/E/M gates + parabolic_excise + spline_excise + early-M relaxation). Underscore-prefix signals internal API per DECISIONS 2026-05-26 Decision 6.
+- **3 new private support files**: `_detector.py` extended with parameterized `_slope_detect_lick_peaks(mode="bounded"|"legacy")` per DECISIONS 2026-05-26 Decision 3 (avoids re-porting `detect_bounded_fall` from scratch); `_writers.py` (151 lines) extends existing writer pattern with `_write_cleaned_traces_atomic` + `_write_lick_events_atomic`; `LickEventRecord` dataclass per DECISIONS 2026-05-26 Decision 5.
+- **2 new PathResolver methods**: `cleaned_trace(bodypart, animal, date)` + `lick_events(bodypart, animal, date)` in `src/stroke_orofacial/paths.py:497-560` returning `pipeline_outputs/dlc_kinematics/cleaned_traces/<bodypart>/<animal>/<date>.parquet` and `.../lick_events/<bodypart>/<animal>/<date>.parquet`.
+- **37 new YAML keys** in `configs/defaults.yaml` under `dlc_kinematics.tongue_pertrial.{preclean, detector_v2, gates}` + `use_v7_pipeline: true` top-level flag. Every numeric constant from the scratch reference + Addendum #1 refinements externalized; no magic numbers in source per kickoff Hardcoded constants section.
+- **2 new parquet outputs**:
+  - `pipeline_outputs/dlc_kinematics/cleaned_traces/tongue/<animal>/<date>.parquet` — same schema as `interpolated_traces/` (y_final, x_final, is_interp_fill, is_baseline_fill) with `is_baseline_fill` updated to reflect pre-clean wipes per DECISIONS 2026-05-25 Decision 3. File-level metadata: `algorithm_version="v7"`, `feature_extraction_version="v7e.0"`, `interpolation_version="v5p3"`.
+  - `pipeline_outputs/dlc_kinematics/lick_events/tongue/<animal>/<date>.parquet` — per-trial-per-lick schema: `animal, date, trial, side, lick_idx, t_ms, y, x, y_original, rise_start_ms, fall_end_ms, imputed, source, confidence, likelihood, peak_angle_deg, max_velocity_y_px_per_s`. Last two columns per DECISIONS 2026-05-26 Decision 5 (Task 7 metric updates folded into the lick_events schema rather than separate files).
+- **Addendum #1 x-side Rules 1-5** all shipped: x snaps to x0 at baseline-fill (Rule 1); y-wiped frames excluded from x's PCHIP anchor set (Rule 2); `|x|>110 px` hard wipe (Rule 3); joint x+y short-burst wipe with direction-aware nearest-raw-flank rule (Rule 4); early-window M-gate relaxation 80→60 ms for peaks in `t_ms<250 ms` (Rule 5). Decision 6 from 2026-05-25 RESOLVED via DECISIONS 2026-05-26 Decisions 1 + 2.
+- **80 new unit tests** under `tests/`: `test_preclean.py` (628 lines, 32 tests covering cluster classifier Rules A/B/isolated-short, frame outlier, PCHIP-extend, bracketed-interp, x-side Rules 1-4), `test_detector_v2.py` (444 lines, 16 tests covering find_peaks rise/fall validation + cross-detector dedupe), `test_gates.py` (526 lines, 23 tests covering F/D/E/M gates + parabolic/spline excise + early-M relaxation). 1 new fixture-based parity test (`test_v7_parity.py`, auto-skipped pending fixture population by a CC follow-up commit on this branch).
+- **Parity validation harness** at `.scratch_phase_7e/parity_v7_canonical.py` (gitignored scratch — runs against real MICROSCOPE data). On the 9 canonical hard trials: 6 exact PASS + 3 EXPECTED-PER-ADDENDUM-1 + 0 TRUE FAIL per DECISIONS 2026-05-26 Decision 4.
+- **CI-portable fixture-based parity test scaffolding** at `tests/test_v7_parity.py` + `.scratch_phase_7e/gen_v7_canonical_fixtures.py` + `tests/fixtures/v7_canonical/README.md`. Test auto-skips when fixtures absent; CC follow-up commit runs generator + populates fixtures (~15-40 MB across 4 unique canonical-9 sessions) + un-skips test.
 
-**Key behavioral changes vs. legacy:** mean v7 detected-lick counts run 1-10 licks LOWER per trial than legacy across the 80-trial cohort sample (PS48 -9.6, PS46 -4.6, PS47 -3.4, others 0.2 to 2.9). The delta is largely v7 correctly rejecting plateau-drift wobbles + late-trial fixture artifacts that legacy was counting as licks. A few real-lick drops exist as documented edge cases (M-gate confidence trade-off on 58L-style close pairs; F-gate on wide-flat lick tops).
+**Numeric verification (smoking-gun cases):**
+
+- PS54 46L (canonical E-impute) — production `new_peak_x = +55.6991` = audit `+55.6991` (byte-equal); |Δangle| 7.75° → 0.0° (full correction delivered per DECISIONS 2026-05-26 Decision 2).
+- PS51 26R (cross-detector verification after Task 5c three-detector restore) — production `new_peak_x = −38.2752` = audit `−38.2752` (byte-equal); confirms `_slope_detect_lick_peaks(mode="bounded")` parameterization preserves the bounded-fall detection behavior end-to-end.
+
+**Behavior changes vs prior phases:**
+
+- **Mean v7 detected-lick counts run 1-10 licks LOWER per trial than legacy** across the 80-trial cohort sample (PS48 -9.6, PS46 -4.6, PS47 -3.4, others 0.2 to 2.9). The delta is largely v7 correctly rejecting plateau-drift wobbles + late-trial fixture artifacts that legacy was counting as licks. A few real-lick drops exist as documented edge cases (M-gate confidence trade-off on 58L-style close pairs; F-gate on wide-flat lick tops). Per kickoff "Known limitations — documented and accepted".
+- **`use_v7_pipeline: true` default ON** for new tongue_pertrial runs. Legacy path preserved behind the flag for backward compat; opt-out is per-invocation `use_v7_pipeline: false` in `configs/session_overrides.yaml`.
+- **No cohort re-emit in this phase.** Materialized cohort-wide v7 outputs (cleaned_traces, lick_events, updated endpoints) gated on per-invocation Priya approval per CLAUDE.md Ground Rule 7. Per DECISIONS 2025-05-25 Decision 7 (deferred out of phase).
+
+**Forward-pointers carried out of this phase:**
+
+- **Cohort re-emit (~7-14 hr wall-time).** Per-invocation Priya approval per CLAUDE.md Ground Rule 7. Blocks Phase 9.1 + Phase 9 stats re-materialization. Co-trigger with the Phase 9.1 bundled finding #4 revision (per the Phase 9.1 / Phase 7e merge-dependency memory note).
+- **80-trial cohort parity test** (`tests/test_v7_cohort_parity.py`). Deferred to follow-up chore PR per Priya 2026-05-26 AskUserQuestion answer. Fixture footprint ~40-100 MB across 8 sessions — needs design discussion on git-lfs vs. inline vs. MICROSCOPE-marker before landing.
+- **Fixture-based 9-canonical-trial test** un-skip + fixture population on this branch. CC follow-up commit (`.scratch_phase_7e/gen_v7_canonical_fixtures.py` regeneration command in `tests/fixtures/v7_canonical/README.md`).
+- **Phase 7f — jaw interpolation revisit** (DECISIONS 2025-05-25 Decision 8). v7 architecture generalizes (cluster classifier + frame outliers + PCHIP-extend + find_peaks + gates) but params are tongue-specific. Deferred until after Phase 7e tongue migration lands + downstream effects are validated.
+- **F-gate refinement for wide-flat lick tops** (PS48 58L 1924 ms case). Hard to fix without shape-based discrimination (parabolic vs. triangular vs. flat). Documented limitation; no immediate fix queued.
+- **M-gate non-greedy global selection** for 3-peak clusters within 150 ms (PS47 54R case). Documented limitation; current confidence-greedy approach is the accepted trade-off per DECISIONS 2025-05-25 Decision 2.
+- **PS47 33L drops 14 vs legacy 15** — one unexplained gap; not a v7 regression vs. v6 but never fully diagnosed. Likely downstream detector quirk in a single-detector pass. Documented residual; no immediate diagnosis queued.
+
+**Test count:** 1702 baseline → 1782 passing / 40 skipped / 0 fail (+80 new tests). `pytest --collect-only` passes with no collection errors.
+
+**Acceptance criteria (kickoff Task 9 + Addendum #1 footer):**
+
+1. Test suite passes at post-Phase-9.1-kickoff-draft baseline + 80 new tests (1782 passing, full suite green).
+2. Numeric gate on PS54 46L + PS51 26R byte-equal vs audit (Δx=0.0, Δangle=0.0° both cases).
+3. 9-canonical-trial parity harness: 6 exact PASS + 3 EXPECTED-PER-ADDENDUM-1 (rule-annotated) + 0 TRUE FAIL.
+4. Addendum #1 Rules 1-5 shipped + Decision 14 three-detector scope shipped.
+5. No files modified outside scope: `src/stroke_orofacial/dlc_kinematics/{_preclean,_detector,_detector_v2,_gates,tongue_pertrial,_writers}.py`, `src/stroke_orofacial/paths.py`, `configs/defaults.yaml`, `tests/`, `docs/prompts/phase-7e-addendum-1-task0-x-audit-verdict.md` (Task 5b footer), `docs/DECISIONS.md` (close-out section), `docs/MIGRATION_LOG.md` (this entry).
+6. No destructive ops on `pipeline_outputs/`. No new branches. No force-push.
+
+**Tag:** `v7e-dlc-tongue-preclean-v7` on the merge commit. Tag message: "Phase 7e: DLC tongue pre-clean + v7 detector pipeline migrated to production — find_peaks + bounded + legacy three-detector scope + Addendum #1 5 trace-level x rules + early-M relaxation".
 
 ---
 

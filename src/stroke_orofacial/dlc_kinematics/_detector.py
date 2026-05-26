@@ -17,7 +17,7 @@ V3-NEW knob additions (Task 1.5 + Q1–Q9 lock):
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import numpy as np
@@ -59,6 +59,15 @@ class _LickPeaks:
     rise_starts: np.ndarray    # int, yseg-local i_rise per lick
     turnover: np.ndarray       # int, yseg-local i_turn (where dy crosses 0)
     peak_indices: np.ndarray   # int, yseg-local i_peak (argmax in [r0, k+pad])
+    # Phase 7e Task 5c: end-of-fall-run frame index per lick (yseg-local).
+    # Defaults to empty for backwards compat with callers that construct
+    # _LickPeaks without setting it explicitly. _slope_detect_lick_peaks
+    # populates it with the loop's ``end_idx`` value per peak (= f1 - 1
+    # when a fall run was found, or i_peak + 1 for implicit-baseline-fall
+    # acceptance, or i_peak otherwise). Consumed by the v7 orchestrator's
+    # _legacy_peaks_to_peak_list adapter to populate the lick_events
+    # parquet's fall_end_ms column.
+    fall_ends: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
 
     @classmethod
     def empty(cls) -> "_LickPeaks":
@@ -69,6 +78,7 @@ class _LickPeaks:
             rise_starts=np.zeros(0, dtype=np.int64),
             turnover=np.zeros(0, dtype=np.int64),
             peak_indices=np.zeros(0, dtype=np.int64),
+            fall_ends=np.zeros(0, dtype=np.int64),
         )
 
     def __len__(self) -> int:  # n_peaks
@@ -118,6 +128,7 @@ def _slope_detect_lick_peaks(
     y_t: np.ndarray, x_t: np.ndarray, t_ms: np.ndarray, fps: float,
     *, detect_win_ms: tuple[float, float], detector_params: dict[str, Any],
     n_max: int | None = None,
+    is_baseline_fill: np.ndarray | None = None,
 ) -> _LickPeaks:
     """Slope-based rise/fall detector. Cells 33/36/39/42/50 share this routine.
 
@@ -132,6 +143,25 @@ def _slope_detect_lick_peaks(
         >= ``min_finite_samples_per_lick`` (V3-NEW for Cells 33/39/42)
 
     Returns peaks whose ``t_ms`` falls inside ``detect_win_ms``.
+
+    **Phase 7e Task 5c — bounded-fall mode** (optional, gated by two
+    detector_params keys + the ``is_baseline_fill`` kwarg):
+      * If ``max_fall_search_ms`` is set in ``detector_params``, the fall
+        search after a peak is BOUNDED to ±max_fall_search_ms frames
+        (mirrors scratch's ``detect_bounded_fall``). When unset (default
+        None / missing key), fall search is unbounded (legacy behavior
+        for Cells 33/36/39/42/50).
+      * If ``accept_implicit_baseline_fall`` is True in ``detector_params``
+        AND ``is_baseline_fill`` is provided, peaks with no fall run found
+        within the bounded search are ACCEPTED if the immediately-next
+        frame is ``is_baseline_fill=True`` (implicit baseline retraction).
+        Mirrors scratch's bounded_fall acceptance path.
+
+    With both keys set, the function behaves as the scratch's
+    ``detect_bounded_fall``; with neither set, behavior is unchanged
+    (legacy Cell 33/36/39/42/50 detector). Used by the v7 orchestrator
+    in :mod:`.tongue_pertrial._run_v7_pipeline_per_trial` to invoke the
+    same function in both "bounded" and "legacy" modes per Decision 14.
     """
     slope_thr = float(detector_params["slope_thr_px_per_s"])
     rise_min_ms = float(detector_params["rise_min_ms"])
@@ -149,6 +179,17 @@ def _slope_detect_lick_peaks(
     # legacy_approximate flips Cells 36/39/42 to legacy's accept-always
     # semantics.
     accept_no_fall = bool(detector_params.get("accept_peaks_without_fall_run", False))
+    # Phase 7e Task 5c — bounded-fall mode knobs (default-off; legacy
+    # callers unaffected). See function docstring.
+    _max_fall_search_ms_raw = detector_params.get("max_fall_search_ms")
+    max_fall_search_n: int | None = (
+        max(1, int(round(float(_max_fall_search_ms_raw) / 1000.0 * fps)))
+        if _max_fall_search_ms_raw is not None
+        else None
+    )
+    accept_implicit_baseline_fall = bool(
+        detector_params.get("accept_implicit_baseline_fall", False)
+    )
 
     if y_t.size == 0:
         return _LickPeaks.empty()
@@ -162,6 +203,13 @@ def _slope_detect_lick_peaks(
     yseg = y_t[i_lo:i_hi + 1].astype(np.float64, copy=True)
     xseg = x_t[i_lo:i_hi + 1].astype(np.float64, copy=True)
     tseg = t_ms[i_lo:i_hi + 1]
+    # Task 5c: slice is_baseline_fill to match yseg (for implicit-baseline-
+    # fall acceptance). None if caller didn't pass it (legacy callers).
+    is_base_seg = (
+        is_baseline_fill[i_lo:i_hi + 1]
+        if is_baseline_fill is not None
+        else None
+    )
 
     # Smooth y for slope evaluation only (per V3 detector knobs).
     y_for_slope = (
@@ -186,6 +234,7 @@ def _slope_detect_lick_peaks(
     times: list[float] = []
     ys: list[float] = []
     xs: list[float] = []
+    fall_ends: list[int] = []   # Task 5c
     start = 0
     while True:
         if n_max is not None and len(peaks) >= n_max:
@@ -251,9 +300,32 @@ def _slope_detect_lick_peaks(
         # knob (per-cell, default False) controls this branch.
         end_idx = i_peak
         if fall_min_n > 1:
-            f0, f1 = _first_run_from(fall_mask, fall_min_n, i_peak)
+            # Task 5c bounded-fall mode: bound the fall search to
+            # [i_peak, i_peak + max_fall_search_n] if the knob is set.
+            # Default (None) preserves legacy unbounded search.
+            if max_fall_search_n is not None:
+                search_hi = min(L, i_peak + max_fall_search_n + 1)
+                effective_fall_mask = fall_mask.copy()
+                effective_fall_mask[search_hi:] = False
+            else:
+                effective_fall_mask = fall_mask
+            f0, f1 = _first_run_from(effective_fall_mask, fall_min_n, i_peak)
             if f0 is None:
-                if strict_no_fallback and not accept_no_fall:
+                # Task 5c implicit-baseline-fall acceptance: if the knob
+                # is True AND is_baseline_fill was provided AND the next
+                # frame is baseline-fill, accept the peak with end_idx
+                # = i_peak + 1. Mirrors scratch's bounded_fall acceptance
+                # path. Falls through to legacy strict / accept_no_fall
+                # otherwise.
+                implicit_baseline_accept = (
+                    accept_implicit_baseline_fall
+                    and is_base_seg is not None
+                    and (i_peak + 1) < L
+                    and bool(is_base_seg[i_peak + 1])
+                )
+                if implicit_baseline_accept:
+                    end_idx = i_peak + 1
+                elif strict_no_fallback and not accept_no_fall:
                     start = i_peak + 1  # advance past peak; do not append
                     continue
                 # else: accept the peak with end_idx = i_peak (no fall extension).
@@ -266,6 +338,7 @@ def _slope_detect_lick_peaks(
         ys.append(float(y_peak_val))
         xs.append(float(xseg[i_peak]))
         times.append(float(tseg[i_peak]))
+        fall_ends.append(end_idx)   # Task 5c
         start = end_idx + 1
 
     return _LickPeaks(
@@ -275,6 +348,7 @@ def _slope_detect_lick_peaks(
         rise_starts=np.asarray(rise_starts, dtype=np.int64),
         turnover=np.asarray(turnovers, dtype=np.int64),
         peak_indices=np.asarray(peaks, dtype=np.int64),
+        fall_ends=np.asarray(fall_ends, dtype=np.int64),
     )
 
 
@@ -337,6 +411,15 @@ def _filter_peaks_by_bout_mode(
         keep = multi[0]
     else:
         raise ValueError(f"unknown bout mode {mode!r}")
+    # Task 5c: preserve fall_ends through the filter; tolerate the
+    # backwards-compat case where the input _LickPeaks has empty
+    # fall_ends (some callers construct without setting it).
+    fall_ends_in = peaks.fall_ends
+    fall_ends_out = (
+        fall_ends_in[keep]
+        if len(fall_ends_in) == len(peaks.peak_indices)
+        else np.zeros(0, dtype=np.int64)
+    )
     return _LickPeaks(
         peak_times_ms=peaks.peak_times_ms[keep],
         peak_y=peaks.peak_y[keep],
@@ -344,4 +427,5 @@ def _filter_peaks_by_bout_mode(
         rise_starts=peaks.rise_starts[keep],
         turnover=peaks.turnover[keep],
         peak_indices=peaks.peak_indices[keep],
+        fall_ends=fall_ends_out,
     )

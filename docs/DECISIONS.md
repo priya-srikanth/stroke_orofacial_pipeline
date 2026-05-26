@@ -15,6 +15,95 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-26 — Phase 7e close — DLC tongue pre-clean + v7 detector pipeline migrated to production
+
+Tag on merge: `v7e-dlc-tongue-preclean-v7`. Branch: `phase/7e-dlc-tongue-preclean-v7`. Kickoff: [`docs/prompts/phase-7e-dlc-tongue-preclean-v7-kickoff.md`](prompts/phase-7e-dlc-tongue-preclean-v7-kickoff.md) + [Addendum #1](prompts/phase-7e-addendum-1-task0-x-audit-verdict.md). Test suite 1702 baseline → 1782 passing (+80 / 40 skipped / 0 fail).
+
+Supersedes the 2026-05-25 "drafted" entry's open items (Decisions 1, 2, 3, 6 amended per Addendum #1; Decision 14 scope confirmed shipped). The 2026-05-25 entry is preserved below for traceability.
+
+### Decision 1 — v7 pipeline shipped at scratch state PLUS Addendum #1 refinements (5 rules + early-M relaxation)
+
+*Context:* The 2026-05-25 Decision 1 locked the v7 algorithm at `.scratch_phase_9_1/inv_p3a_step2j_unified_preclean.py` as of that date. Task 0's visual review of the canonical-9 trials surfaced x-coordinate corruption at the canonical E-impute case (PS54 46L: production `peak_x = −13.79` vs audit `+55.70`, |Δangle|=7.75°) plus three additional concerns (raw |x| outliers, joint x+y bursts inside otherwise-real clusters, first-lick close-pair sacrifice by strict M-gate). These are documented in [Phase 7e Addendum #1](prompts/phase-7e-addendum-1-task0-x-audit-verdict.md).
+
+*Decision:* The shipped v7 algorithm = scratch state at 2026-05-25 + 5 trace-level x rules + early-window M-gate relaxation:
+
+- **Rule 1** — x snaps to per-session `x0` (= `median(x_final[is_baseline_fill_orig])`) at all y-side baseline-fill frames, symmetric with the y=0 convention.
+- **Rule 2** — y-wiped frames are dropped from x's PCHIP anchor set when re-interpolating x.
+- **Rule 3** — `|x| > 110 px` hard wipe (defensive bound; 0/89 canonical hits, workhorse is Rule 4).
+- **Rule 4** — joint x+y short-burst wipe with direction-aware nearest-raw-flank rule: x deviates >30 px from BOTH nearest raw flanks AND is closer to x0 than both flanks → flagged for joint x+y wipe + re-PCHIP through outlier-excluded anchors.
+- **Rule 5** — early-window M-gate relaxation: `M_MIN_INTERVAL_MS` relaxes 80→60 ms for peak pairs where both peaks have `t_ms < 250 ms` (first-lick coordinates + angle are critical downstream; strict 80 ms drops real close-paired first licks).
+
+*Rationale:* Each rule was calibrated against the canonical-9 trial set with explicit hit-rate validation (Rule 3 = 0/9, Rule 4 = 1/9 = 51L target, Rule 5 = 1/9 = 76L target). The joint-rule discriminator was validated against four near-miss cases (24L peak with x near flanks NOT flagged; 76L first lick with x=+90 real protrusion NOT flagged; 33L active-licking troughs NOT flagged; 51L target IS flagged) so the rule catches the target without over-firing. Early-M relaxation preserves PS54 76L first lick (~280 ms) without compromising late-trial wobble removal.
+
+*Enforced at:* `_preclean.py:_preclean_x_side` (Rules 1-4) and `_gates.py:_gate_m_with_early_relaxation` (Rule 5); YAML keys `dlc_kinematics.tongue_pertrial.preclean.{x_abs_max_px, x_pchip_extend_ms, x_jump_thr_px, x_flank_max_distance}` and `dlc_kinematics.tongue_pertrial.gates.{m_early_interval_ms, m_early_win_ms}` in `configs/defaults.yaml`.
+
+### Decision 2 — Decision 6 RESOLVED — per-peak `new_peak_x` reintroduced into parabolic/spline excise (Task 5b correction)
+
+*Context:* The 2026-05-25 Decision 6 left x-coordinate handling at imputed peaks open pending Task 0. Task 0's verdict (x-audit-flag, |Δangle|=7.75° on PS54 46L canonical E-impute case) drove Addendum #1's 5 trace-level rules (above). Initial Task 1 scaffolding interpreted "trace-level x cleaning is canonical" as a reason to DROP the `x` input from `parabolic_excise` / `spline_excise` and read x from cleaned traces at the imputed peak frame ("option (a)"). This was wrong, and the Task 5 production-vs-audit numeric gate on PS54 46L surfaced the lapse: production reported `peak_x = −13.79` (the Phase 7a.2 PCHIP value anchored on the outlier itself) instead of the audit-derived `+55.70`.
+
+*Decision:* Reintroduce `new_peak_x` to `parabolic_excise` / `spline_excise` return shape (Task 5b). Computed via the same `local_pchip_x` mechanism as the audit script — wide PCHIP anchors (±`spline_anchor_win_ms` = 160 ms) with ±`x_outlier_excise_ms` (8 ms, new YAML key) excluded from the anchor set around the outlier peak frame. `LickEventRecord.x` for imputed licks reads `excise_result['new_peak_x']`; for non-imputed licks, reads `cleaned_x[new_peak_frame]` per Rules 1-4 (unchanged).
+
+*Rationale:* The trace-level rules don't catch every x-side problem because (a) the y-side cluster classifier can keep an outlier-containing cluster as `keep_real` when it has rise+fall structure, leaving the outlier frame in the trace; (b) Rule 4's nearest-raw-flank scan abstains when an outlier sits inside a run of `is_intp` neighbors (no raw flank within ±5 frames); (c) Rule 2 only fires IF the y-side wipes the frame. Gate E catches these cases AFTER detection via z-score, but by that point the production reported `peak_x` is the Phase 7a.2 PCHIP value anchored on the outlier. Per-peak `new_peak_x` via outlier-excluded local PCHIP closes this gap.
+
+The separate `x_outlier_excise_ms` (8 ms, vs y-side `spline_excise_radius_ms`) lets x and y excision widths tune independently — y needs a tight window to preserve real peak shape; x can use the same or tighter (8 ms = 2 frames at 250 fps catches the outlier without over-eroding the anchor set).
+
+*Verification:* PS54 46L (canonical E-impute) byte-equal: audit `+55.6991` = production `+55.6991`; |Δx|=0.0, |Δangle|=0.0° (7.75° → 0.0° bias drop, full correction delivered). PS51 26R cross-verified after Task 5c three-detector restore (next entry): audit `−38.2752` = production `−38.2752`; |Δx|=0.0, |Δangle|=0.0°.
+
+*Enforced at:* `_gates.py:parabolic_excise` and `_gates.py:spline_excise` signature + return shape; `_gates.py:_compute_new_peak_x` helper; YAML key `dlc_kinematics.tongue_pertrial.gates.x_outlier_excise_ms` (8.0).
+
+### Decision 3 — Decision 14 three-detector scope restored via parameterized `_slope_detect_lick_peaks` (Task 5c)
+
+*Context:* The 2026-05-25 Decision 14 locked the v7 detection stage as `lmax → bounded → legacy` with 50 ms cross-detector dedupe and find_peaks winning on overlap. Mid-Task-5 wiring deferred bounded-fall + legacy-slope to a follow-on commit ("lmax-only scope") to land find_peaks in production first. The deferral surfaced as a verification gap on PS51 26R: scratch finds the 26R impute peak via `detect_bounded_fall` (4 of 6 peaks have `src=bounded`); under lmax-only, the production code couldn't be cross-tested at all on 26R.
+
+*Decision:* Restore the full three-detector scope per the original Decision 14 lock (Task 5c). Rather than re-porting `detect_bounded_fall` from scratch, parameterize the existing `_slope_detect_lick_peaks` to expose both behaviors (legacy = wide argmax-in-window; bounded = `max_fall_search_ms` constrained slope walker). Cross-detector dedupe loop runs all three sources in `lmax → bounded → legacy` order; find_peaks wins on overlap because its local-max location is the true peak.
+
+*Rationale:* The `_slope_detect_lick_peaks` function already had the slope-walker logic and the fall-search mechanism; the bounded variant is the same algorithm with a tighter `max_fall_search_ms` parameter (52 vs legacy's wider value) and explicit baseline-retraction handling. Parameterizing avoids duplicating slope-walking code in a separate `detect_bounded_fall` function and keeps the maintenance surface minimal.
+
+*Verification:* PS51 26R numeric gate post-Task-5c re-run byte-equal: production `new_peak_x = −38.2752` = audit `−38.2752` (the impute peak that under lmax-only was unreachable). Decision 14's scope is fully shipped.
+
+*Enforced at:* `_detector_v2.py:detect_local_maxima` (Task 3) + `_detector.py:_slope_detect_lick_peaks(mode="bounded"|"legacy")` parameterization (Task 5c) + cross-detector dedupe in `tongue_pertrial.py:_build_tongue_pertrial_core` v7 branch.
+
+### Decision 4 — Parity framing for the 9-canonical-trial harness: 6 exact PASS + 3 EXPECTED-PER-ADDENDUM-1 + 0 TRUE FAIL
+
+*Context:* The Phase 7e Task 8 parity harness (`.scratch_phase_7e/parity_v7_canonical.py`) compares production v7 output against scratch v7 (`inv_p3a_step2j_unified_preclean.py`) on the 9 canonical hard trials. Byte-equal parity was originally framed as a binary PASS/FAIL gate. Addendum #1's Rules 4 and 5 are by-design behaviors not present in the scratch reference at 2026-05-25 (the scratch reference was the baseline; Addendum #1 refinements were added in the production port). Three of the 9 canonical trials show output deltas that are by-design Addendum #1 effects, not parity slippage.
+
+*Decision:* Parity gate is "6 exact PASS + 3 EXPECTED-PER-ADDENDUM-1 (rule-annotated) + 0 TRUE FAIL". Each EXPECTED divergence is annotated in the harness output with the specific Addendum #1 rule causing it + the expected count delta (sign-checked):
+
+- **PS54 35L** — Rule 4 (joint x+y wipe) drops 1 scratch-kept peak that has an x outlier inside an otherwise-real lick cluster. Expected delta: −1.
+- **PS54 51L** — Rule 4 (joint x+y wipe at frame 197, x=−2 raw outlier inside first lick) wipes y_clean → detector finds a neighboring peak. Expected delta: 0 (same count, different peak content).
+- **PS54 76L** — Rule 5 (early-M relaxation) rescues first lick at ~280 ms that scratch's strict 80 ms M-gate drops. Expected delta: +1.
+
+The other 6 trials (PS54 24L/46L/35R/34L/25L + PS47 33L) are exact byte-equal on count + (t_ms, y, imputed, source).
+
+*Rationale:* The 3 divergences are the smoking-gun evidence that Addendum #1's rules are working correctly. Treating them as "FAIL" would force the algorithm to revert; treating them as "PASS" without rule-annotation would hide the by-design behavior from future readers. The rule-annotated EXPECTED tier preserves the parity gate's discriminative power for true regressions while encoding the intentional Addendum #1 deltas as documentation.
+
+*Enforced at:* `.scratch_phase_7e/parity_v7_canonical.py:EXPECTED_DIVERGENCES` dict + `main()` direction-of-delta sign check; CI-portable fixture-based equivalent at `tests/test_v7_parity.py` (this PR, with `.scratch_phase_7e/gen_v7_canonical_fixtures.py` running once in a CC session with MICROSCOPE mount to populate `tests/fixtures/v7_canonical/`).
+
+### Decision 5 — Per-trial-per-lick parquet schema extended: `peak_angle_deg` + `max_velocity_y_px_per_s` (Task 7)
+
+*Context:* The 2026-05-25 Decision 4 locked the per-trial-per-lick parquet schema as `animal, date, trial, side, lick_idx, t_ms, y, x, y_original, rise_start_ms, fall_end_ms, imputed, source, confidence, likelihood`. Task 7 in the kickoff specified two downstream metric updates: tongue_velocity (kept-lick gating, 2026-05-25 Decision 5) and lick_angle (imputed y, 2026-05-25 Decision 6). The natural consumer surface is per-kept-lick columns in `lick_events/`, not separate parquet files.
+
+*Decision:* Extend the `lick_events/` schema with two new per-kept-lick columns:
+
+- **`peak_angle_deg`** — lick angle in degrees, computed from the post-pre-clean `(x_final, y_final)` at `new_peak_frame` for non-imputed licks; from `(excise_result['new_peak_x'], excise_result['new_peak_y'])` for imputed licks. Per Decision 2 above + 2026-05-25 Decision 6.
+- **`max_velocity_y_px_per_s`** — max `|dy/dt|` within `[rise_start_ms, fall_end_ms]` of the kept lick, with `is_baseline_fill=True` frames masked. Per 2026-05-25 Decision 5.
+
+*Rationale:* Co-locating the angle + velocity per-kept-lick with the rest of the lick metadata keeps the lick_events parquet as the canonical "one row per lick with everything you need" downstream surface. Avoids forcing consumers to join lick_events with per_frame cleaned_traces or per_trial endpoints JSONs to compute these metrics — the columns are pre-computed and consistent with the Decision 2 imputed-x mechanism.
+
+*Enforced at:* `_writers.py:_write_lick_events_atomic` parquet writer + schema definition; `tongue_pertrial.py:_build_tongue_pertrial_core` v7 branch populates the columns; `LickEventRecord` dataclass extended with the two fields.
+
+### Decision 6 — Private-module convention (`_preclean.py`, `_detector_v2.py`, `_gates.py`) + `use_v7_pipeline: true` default ON
+
+*Context:* The kickoff Task 1 named the three new modules `preclean.py`, `detector_v2.py`, `gates.py` (public-API style). The kickoff Task 5 specified `use_v7_pipeline: true` as default ON for new runs with the legacy path preserved behind the flag for backward compat.
+
+*Decision:* Modules ship as underscore-prefix private (`_preclean.py`, `_detector_v2.py`, `_gates.py`). `use_v7_pipeline: true` is the YAML default in `configs/defaults.yaml` under `dlc_kinematics.tongue_pertrial.use_v7_pipeline`.
+
+*Rationale:* The v7 pipeline modules are internal implementation detail of `tongue_pertrial.py`, not a public dlc_kinematics API. Underscore prefix signals "do not import directly from outside the package" — the public consumer surface is `_build_tongue_pertrial_core` + the `cleaned_traces/` + `lick_events/` parquet outputs. Default-ON matches the kickoff intent (new runs get v7); the flag lets a downstream debugging session opt back to legacy without code change. Cohort re-emit (Decision 7 from 2026-05-25, deferred out of phase) IS the trigger for cohort-wide v7 application.
+
+*Enforced at:* file naming `src/stroke_orofacial/dlc_kinematics/_preclean.py` + `_detector_v2.py` + `_gates.py` + `_writers.py`; YAML key `dlc_kinematics.tongue_pertrial.use_v7_pipeline: true` in `configs/defaults.yaml`; `tongue_pertrial.py:_build_tongue_pertrial_core` flag branch.
+
+---
+
 ## 2026-05-25 — Phase 9: Behavioral statistical analyses on Phase 7c.2 + 7a kinematics + 8a.10 spout-behavior outputs
 
 Phase 9 closed against `phase/9-stats`; branched 2026-05-23 off `main` (post-Phase 7-pre-alignment-templates merge `a24cf03`). Tag `v9-stats-behavioral` on the merge commit. Kickoff [`docs/prompts/phase-9-stats-kickoff.md`](prompts/phase-9-stats-kickoff.md) accumulated **11 addenda**. Three scoping docs land alongside: [`phase-9-stats-kickoff.md`](prompts/phase-9-stats-kickoff.md) (with addenda), [`phase-9.1-phenotype-pooled-figures-scoping.md`](prompts/phase-9.1-phenotype-pooled-figures-scoping.md), [`phase-9.x-nonlinear-recovery-fit-scoping.md`](prompts/phase-9.x-nonlinear-recovery-fit-scoping.md). Per-axis acceptance verdict at [`.scratch_phase_9/verdict.md`](../.scratch_phase_9/verdict.md); running close-state notes at [`.scratch_phase_9/notes_running.md`](../.scratch_phase_9/notes_running.md); trial-count bias investigation at [`.scratch_phase_9/_trial_count_bias_findings.md`](../.scratch_phase_9/_trial_count_bias_findings.md).

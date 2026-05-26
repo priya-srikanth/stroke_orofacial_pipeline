@@ -66,9 +66,32 @@ from stroke_orofacial.dlc_kinematics._detector import (
     _moving_avg_nan,
     _slope_detect_lick_peaks,
 )
+# Task 5c: alias the legacy slope detector for use as both the
+# "bounded" and "legacy" source in the v7 orchestrator (called twice
+# with different detector_params).
+_slope_detect_lick_peaks_legacy = _slope_detect_lick_peaks
+from stroke_orofacial.dlc_kinematics._detector_v2 import (
+    _PeakList as _PeakList_v2,
+    detect_local_maxima as _detect_local_maxima_v2,
+    merge_detector_outputs as _merge_detector_outputs_v2,
+)
+from stroke_orofacial.dlc_kinematics._gates import (
+    gate_D as _gate_D_v7,
+    gate_E as _gate_E_v7,
+    gate_F as _gate_F_v7,
+    parabolic_excise as _parabolic_excise_v7,
+    run_m_gate as _run_m_gate_v7,
+    spline_excise as _spline_excise_v7,
+)
+from stroke_orofacial.dlc_kinematics._preclean import (
+    _PrecleanDiagnostics,
+    preclean_trace as _preclean_trace_v7,
+)
 from stroke_orofacial.dlc_kinematics._writers import (
     _write_angle_parquet_atomic,
+    _write_cleaned_trace_parquet_atomic,
     _write_endpoints_json_atomic,
+    _write_lick_events_parquet_atomic,
     _write_traces_parquet_atomic,
 )
 from stroke_orofacial.manifest import SessionManifest, build_manifest
@@ -78,6 +101,12 @@ from stroke_orofacial.paths import PathResolver
 # DECISIONS entry + 14-session legacy_approximate parity re-run.
 FEATURE_EXTRACTION_VERSION: str = "v7a.3"
 INTERPOLATION_VERSION: str = "v5p3"
+# Phase 7e — v7 pipeline output versioning (Decision 4 + Addendum #1).
+# Stamped into cleaned_traces and lick_events parquets when
+# use_v7_pipeline=True. Separate from FEATURE_EXTRACTION_VERSION so v7
+# outputs can be versioned independently of the legacy 7a.3 V3 emit set.
+V7_FEATURE_EXTRACTION_VERSION: str = "v7e.0"
+V7_ALGORITHM_VERSION: str = "v7"
 
 # Legacy default; consolidated callers read fps from upstream parquet metadata.
 _DEFAULT_FPS: float = 250.0
@@ -192,6 +221,47 @@ class _PertrialCoreResult:
 
     tongue_pertrial: TonguePertrialResult
     visual_bundle: TongueVisualBundle
+    v7_trial_results: list["_V7TrialResult"] | None = None
+    # ^ NEW Phase 7e — populated ONLY when use_v7_pipeline=True. List of
+    # per-trial v7 results in trial_events order. None when flag is False
+    # (= legacy-only run). Consumed by Task 6 parquet writers + Task 7
+    # downstream metric updates.
+
+
+@dataclass(frozen=True)
+class _V7TrialResult:
+    """Per-trial output of the Phase 7e v7 pipeline (Task 5).
+
+    Produced by :func:`_run_v7_pipeline_per_trial` when
+    ``dlc_kinematics.tongue_pertrial.use_v7_pipeline`` is True. Carries:
+
+    - ``y_clean, x_clean, is_baseline_fill_clean``: post-pre-clean trace
+      (Addendum #1 Rules 1-4 applied). Same shape as the input trial
+      slice; ready to feed the cleaned_traces parquet (Task 6).
+    - ``kept_licks``: list of kept-lick records, one per kept peak after
+      gates F/D/E/M run. Each record has the per-lick fields needed by
+      the ``lick_events/`` parquet (Decision 4 schema minus the session-
+      level fields animal/date/trial/side which the caller adds).
+    - ``preclean_diag``: full :class:`_PrecleanDiagnostics` for
+      bookkeeping + figure rendering.
+
+    All frame indices are trial-slice-local (not session-local).
+    """
+
+    trial_index: int
+    side: Literal["L", "R"]
+    y_clean: np.ndarray
+    x_clean: np.ndarray
+    is_baseline_fill_clean: np.ndarray
+    t_ms: np.ndarray         # per-frame trial-relative ms (post-tone)
+    kept_licks: list[dict[str, Any]]
+    preclean_diag: _PrecleanDiagnostics
+    # Task 6: session-frame indices spanned by this trial slice. Lets
+    # cleaned_traces parquet writer map trial-local frames back to
+    # session-level frame_idx.
+    session_frame_lo: int = -1
+    session_frame_hi: int = -1
+    tone_frame_idx: int = -1
 
 
 # ===========================================================================
@@ -1158,6 +1228,20 @@ def build_tongue_pertrial(
             manifest.animal, manifest.date,
         ),
     }
+    # Phase 7e Task 6: add v7 parquet paths when the feature flag is on.
+    # Kept separate from the legacy 7a.3 V3 emit set so backwards-compat
+    # callers (use_v7_pipeline=False) see exactly the same out_paths
+    # shape as before.
+    _use_v7_pipeline = bool(
+        params["dlc_kinematics"]["tongue_pertrial"].get("use_v7_pipeline", False)
+    )
+    if _use_v7_pipeline:
+        out_paths["cleaned_traces_parquet"] = resolver.cleaned_trace(
+            bodypart="tongue", animal=manifest.animal, date=manifest.date,
+        )
+        out_paths["lick_events_parquet"] = resolver.lick_events(
+            bodypart="tongue", animal=manifest.animal, date=manifest.date,
+        )
 
     if overwrite == "skip" and all(p.exists() for p in out_paths.values()):
         return out_paths
@@ -1182,6 +1266,31 @@ def build_tongue_pertrial(
         tp_result.licking_dynamics_metadata,
     )
     _write_endpoints_json_atomic(out_paths["endpoints_json"], tp_result.endpoints)
+
+    # Phase 7e Task 6: emit cleaned_traces + lick_events parquets when
+    # the v7 pipeline ran. Builds the DataFrames from the per-trial v7
+    # results carried in core.v7_trial_results; writes via atomic
+    # helpers; stamps v7e.0 + algorithm_version=v7 + v5p3 metadata.
+    if _use_v7_pipeline and core.v7_trial_results is not None:
+        _interpolated_df, _ = _load_tongue_centered_trace(manifest, resolver)
+        cleaned_df = _build_cleaned_trace_df(_interpolated_df, core.v7_trial_results)
+        lick_events_df = _build_lick_events_df(
+            animal=manifest.animal, date=manifest.date,
+            v7_trial_results=core.v7_trial_results,
+        )
+        v7_metadata = {
+            "animal": manifest.animal,
+            "date": manifest.date.isoformat(),
+            "feature_extraction_version": V7_FEATURE_EXTRACTION_VERSION,
+            "algorithm_version": V7_ALGORITHM_VERSION,
+            "interpolation_version": INTERPOLATION_VERSION,
+        }
+        _write_cleaned_trace_parquet_atomic(
+            out_paths["cleaned_traces_parquet"], cleaned_df, v7_metadata,
+        )
+        _write_lick_events_parquet_atomic(
+            out_paths["lick_events_parquet"], lick_events_df, v7_metadata,
+        )
 
     return out_paths
 
@@ -1646,6 +1755,483 @@ def _resolve_eye_midpoint_session_median(
 
     # Step 7: return directly. No translation (data is already spout-centered).
     return eye_x, eye_y
+
+
+# ===========================================================================
+# Phase 7e v7 pipeline orchestrator (Task 5)
+# ===========================================================================
+
+
+def _legacy_peaks_to_peak_list(
+    legacy: Any, detector_params: dict[str, Any], fps: float,
+) -> Any:
+    """Task 5c adapter: convert :class:`._detector._LickPeaks` (legacy
+    detector output) → :class:`._detector_v2._PeakList` (v7 dedupe
+    input shape).
+
+    The legacy ``_LickPeaks`` has ``rise_starts`` + ``turnover`` +
+    ``peak_indices`` (post-Task-5c also ``fall_ends``); the v7
+    ``_PeakList`` needs ``peak_indices`` + ``rise_starts`` +
+    ``fall_ends``. We copy the fields directly; ``turnover`` (= dy-
+    crosses-zero frame ≈ peak frame) isn't carried into the v7 shape.
+
+    If the legacy output's ``fall_ends`` is empty (backwards-compat
+    edge case for callers that don't populate it), falls back to a
+    ``i_peak + peak_pad_n`` approximation so dedupe still gets a
+    sensible value.
+    """
+    if len(legacy) == 0:
+        return _PeakList_v2.empty()
+    fall_ends_legacy = legacy.fall_ends
+    if len(fall_ends_legacy) == len(legacy.peak_indices):
+        fall_ends_out = fall_ends_legacy
+    else:
+        # Backwards-compat fallback — approximate via peak_pad_n
+        peak_pad_n = max(1, int(round(
+            float(detector_params["peak_pad_ms"]) / 1000.0 * fps,
+        )))
+        fall_ends_out = legacy.peak_indices + peak_pad_n
+    return _PeakList_v2(
+        peak_times_ms=legacy.peak_times_ms,
+        peak_y=legacy.peak_y,
+        peak_x=legacy.peak_x,
+        peak_indices=legacy.peak_indices,
+        rise_starts=legacy.rise_starts,
+        fall_ends=fall_ends_out,
+    )
+
+
+def _build_cleaned_trace_df(
+    interpolated_df: pd.DataFrame,
+    v7_trial_results: list[_V7TrialResult],
+) -> pd.DataFrame:
+    """Task 6: build the Phase 7e cleaned_traces parquet DataFrame.
+
+    Starts from the Phase 7a.2 interpolated_traces DataFrame (full
+    session), then overwrites ``y_final`` / ``x_final`` /
+    ``is_baseline_fill`` columns for each trial-covered frame range
+    with the v7-cleaned values. Frames outside any trial slice keep
+    their Phase 7a.2 values (no v7 cleaning applied).
+
+    Mirrors the Phase 7a.2 schema (frame_idx, x_final, y_final,
+    likelihood_raw, is_interp_fill, is_baseline_fill, fill_method) so
+    downstream consumers can read cleaned_traces as a drop-in
+    replacement for interpolated_traces (Decision 4 schema lock).
+    """
+    df = interpolated_df.copy()
+    for trial in v7_trial_results:
+        lo = trial.session_frame_lo
+        hi = trial.session_frame_hi
+        if lo < 0 or hi < 0 or lo > hi:
+            continue
+        span = hi - lo + 1
+        if len(trial.y_clean) != span:
+            # Slice length mismatch — skip rather than corrupt the
+            # session-frame array. Shouldn't happen but defensive.
+            continue
+        df.loc[lo:hi, "y_final"] = trial.y_clean
+        df.loc[lo:hi, "x_final"] = trial.x_clean
+        df.loc[lo:hi, "is_baseline_fill"] = trial.is_baseline_fill_clean
+    return df
+
+
+def _build_lick_events_df(
+    animal: str,
+    date: datetime.date,
+    v7_trial_results: list[_V7TrialResult],
+) -> pd.DataFrame:
+    """Task 6: build the Phase 7e lick_events parquet DataFrame.
+
+    One row per KEPT lick across all trials in the session. Schema per
+    :class:`._gates.LickEventRecord` (15 fields per row). Trials with no
+    kept licks contribute zero rows; the returned DataFrame may be
+    empty (still gets written with full-schema columns to make
+    downstream concatenation safe).
+    """
+    rows: list[dict[str, Any]] = []
+    date_str = date.isoformat()
+    for trial in v7_trial_results:
+        for kept in trial.kept_licks:
+            rows.append({
+                "animal": animal,
+                "date": date_str,
+                "trial": trial.trial_index,
+                "side": trial.side,
+                "lick_idx": kept["lick_idx"],
+                "t_ms": kept["t_ms"],
+                "y": kept["y"],
+                "x": kept["x"],
+                "y_original": kept["y_original"],
+                "rise_start_ms": kept["rise_start_ms"],
+                "fall_end_ms": kept["fall_end_ms"],
+                "imputed": kept["imputed"],
+                "source": kept["source"],
+                "confidence": kept["confidence"],
+                "likelihood": kept["likelihood"],
+                # Task 7 fields (Decisions 5 + 6)
+                "peak_angle_deg": kept.get("peak_angle_deg", float("nan")),
+                "max_velocity_y_px_per_s": kept.get(
+                    "max_velocity_y_px_per_s", float("nan"),
+                ),
+            })
+    if not rows:
+        # Empty DataFrame with the full schema so the parquet writer
+        # produces a well-formed file.
+        return pd.DataFrame(columns=[
+            "animal", "date", "trial", "side", "lick_idx",
+            "t_ms", "y", "x", "y_original",
+            "rise_start_ms", "fall_end_ms",
+            "imputed", "source", "confidence", "likelihood",
+            "peak_angle_deg", "max_velocity_y_px_per_s",
+        ])
+    return pd.DataFrame(rows)
+
+
+def _run_v7_pipeline_per_trial(
+    y_slice: np.ndarray,
+    x_slice: np.ndarray,
+    is_interp_fill_slice: np.ndarray,
+    is_baseline_fill_slice: np.ndarray,
+    likelihood_slice: np.ndarray,
+    t_ms: np.ndarray,
+    fps: float,
+    *,
+    trial_index: int,
+    side: Literal["L", "R"],
+    tone_frame_idx: int,
+    session_frame_lo: int,
+    session_frame_hi: int,
+    eye_x_in_spout_frame: float,
+    eye_y_in_spout_frame: float,
+    params: dict[str, Any],
+) -> _V7TrialResult:
+    """Run the full Phase 7e v7 pipeline on one trial slice.
+
+    Composes ``_preclean.preclean_trace`` → ``_detector_v2.detect_local_maxima``
+    → ``_detector_v2.merge_detector_outputs`` → ``_gates.gate_F`` /
+    ``gate_D`` / ``gate_E`` (with parabolic/spline imputation per Decisions
+    16-17) → ``_gates.run_m_gate`` (with Addendum #1 Rule 5 early-window
+    relaxation).
+
+    **Scope (Task 5 minimum):** uses ``detect_local_maxima`` alone. The
+    scratch v7 ran three detectors (lmax + bounded + legacy) deduped via
+    ``merge_detector_outputs``; bounded-fall + legacy are deferred to a
+    follow-up (the lmax detector is the most accurate per Decision 14, so
+    lmax-only is the safest minimum). When bounded-fall lands, add it to
+    the ``peak_lists`` argument to ``merge_detector_outputs``.
+
+    Returns a :class:`_V7TrialResult` carrying the cleaned trace +
+    per-trial kept-lick records (the latter become rows in the
+    ``lick_events/`` parquet per Decision 4, written by Task 6).
+    """
+    tp = params["dlc_kinematics"]["tongue_pertrial"]
+    preclean_params = tp["preclean"]
+    detector_params = tp["detector"]
+    detector_v2_params = tp["detector_v2"]
+    gates_params = tp["gates"]
+    # Match scratch DETECT_WIN_MS (70-3000 ms); v7 metrics use the
+    # same narrow window as the legacy lick1/lick2 extractor (Cell 33).
+    detect_win_ms = tuple(tp["lick12_detect_win_ms"])
+
+    n_frames = len(y_slice)
+
+    # Stage 1: pre-clean (y-side + Addendum Rules 1-4 for x)
+    y_clean, x_clean, is_base_clean, diag = _preclean_trace_v7(
+        y_slice, x_slice, is_interp_fill_slice, is_baseline_fill_slice,
+        n_frames, fps, params=preclean_params,
+    )
+
+    # Stage 2: run all three detectors per Decision 14 (Task 5c —
+    # restored from Task 5's lmax-only deferral).
+    # 1) detect_local_maxima (lmax) — find_peaks based, NEW for v7
+    lmax_pl = _detect_local_maxima_v2(
+        y=y_clean, x=x_clean, t_ms=t_ms, fps=fps,
+        is_baseline_fill=is_base_clean,
+        detect_win_ms=detect_win_ms,
+        detector_params=detector_params,
+        params=detector_v2_params,
+    )
+    # 2) bounded-fall — reuses _slope_detect_lick_peaks with the
+    #    max_fall_search_ms + accept_implicit_baseline_fall knobs
+    #    (Task 5c parameterization). max_fall_search_ms read from
+    #    detector_v2 config block; the implicit-baseline-fall acceptance
+    #    requires the cleaned baseline-fill mask. See scratch lines
+    #    332-423 for the original detect_bounded_fall implementation
+    #    that this configuration reproduces.
+    bounded_detector_params = dict(detector_params)
+    bounded_detector_params["max_fall_search_ms"] = float(
+        detector_v2_params["max_fall_search_ms"]
+    )
+    bounded_detector_params["accept_implicit_baseline_fall"] = True
+    # Bounded-fall doesn't use strict_no_fallback rejection — it has its
+    # own conditional acceptance path via implicit baseline fall. Keep
+    # strict_no_fallback aligned with scratch's behavior (True; the
+    # implicit_baseline_fall path overrides it when applicable).
+    bounded_legacy = _slope_detect_lick_peaks_legacy(
+        y_t=y_clean, x_t=x_clean, t_ms=t_ms, fps=fps,
+        detect_win_ms=detect_win_ms,
+        detector_params=bounded_detector_params,
+        n_max=None,
+        is_baseline_fill=is_base_clean,
+    )
+    bounded_pl = _legacy_peaks_to_peak_list(bounded_legacy, detector_params, fps)
+    # 3) legacy slope detector — unchanged behavior (no bounded-fall knobs)
+    legacy_legacy = _slope_detect_lick_peaks_legacy(
+        y_t=y_clean, x_t=x_clean, t_ms=t_ms, fps=fps,
+        detect_win_ms=detect_win_ms,
+        detector_params=detector_params,
+        n_max=None,
+    )
+    legacy_pl = _legacy_peaks_to_peak_list(legacy_legacy, detector_params, fps)
+
+    # Stage 2.5: cross-detector dedupe per Decision 14. Processing
+    # order lmax → bounded → legacy; lmax wins on overlap (most
+    # accurate peak location).
+    merged_peaks = _merge_detector_outputs_v2(
+        [
+            ("lmax", lmax_pl),
+            ("bounded", bounded_pl),
+            ("legacy", legacy_pl),
+        ],
+        likelihood=likelihood_slice,
+        fps=fps,
+        params=detector_v2_params,
+    )
+
+    # Convert _DetectedPeak list to scratch-shaped decision dicts so
+    # gate_E + run_m_gate (which expect dict access) can iterate.
+    # The decision dict's "peak_frame_local" is trial-slice-local.
+    decisions: list[dict[str, Any]] = []
+    for rank, p in enumerate(merged_peaks):
+        decisions.append({
+            "rank": rank,
+            "src": p.source,
+            "peak_frame_local": p.frame,
+            "t_ms": p.t_ms,
+            "y": p.y,
+            "lik": p.likelihood,
+            "rise_start_frame": p.rise_start_frame,
+            "fall_end_frame": p.fall_end_frame,
+            "keep": True,
+            "imputed": False,
+            "gate": "",
+            "reason": "",
+        })
+
+    # Stage 3: per-peak F → D → E with parabolic/spline imputation.
+    # E runs ONLY for the first un-promoted peak (Decision 17).
+    promoted: dict[str, Any] | None = None
+    min_peak_y_abs = float(detector_params["min_peak_y_abs"])
+    for r in decisions:
+        pf = r["peak_frame_local"]
+        F_rej, F_reason, F_std = _gate_F_v7(
+            y_clean, is_interp_fill_slice, is_base_clean, pf, n_frames, fps,
+            params=gates_params,
+        )
+        if F_rej:
+            r["keep"] = False
+            r["reason"] = F_reason
+            r["gate"] = "F"
+            r["wp_raw_std"] = F_std
+            continue
+        keep_D, reason_D = _gate_D_v7(
+            y_clean, is_interp_fill_slice, is_base_clean, pf, n_frames, fps,
+            params=gates_params,
+        )
+        if not keep_D:
+            r["keep"] = False
+            r["reason"] = reason_D
+            r["gate"] = "D"
+            r["wp_raw_std"] = F_std
+            continue
+        if promoted is None:
+            peer_ys = [pr["y"] for pr in decisions if pr["rank"] != r["rank"]]
+            E_rej, E_reason, z, peer_med = _gate_E_v7(
+                r["y"], r["lik"], peer_ys, params=gates_params,
+            )
+            if E_rej:
+                # Parabolic first (Decision 16), spline fallback. Both
+                # take x_slice and return new_peak_x via wide-anchor
+                # PCHIP with the outlier excise window excluded (Task
+                # 5b correction of Decision 6 — see Addendum #1 footer).
+                # NOTE: x is passed as x_slice (the raw Phase 7a.2 PCHIP
+                # x_final at the trial slice), NOT x_clean. The excise
+                # mechanism needs the original PCHIP values so it can
+                # rebuild a corrected x at new_peak_frame from anchors
+                # that exclude the outlier window.
+                spline = _parabolic_excise_v7(
+                    y_clean, x_slice, is_interp_fill_slice, is_base_clean, pf,
+                    n_frames, fps, params=gates_params,
+                )
+                if spline is None:
+                    spline = _spline_excise_v7(
+                        y_clean, x_slice, is_interp_fill_slice, is_base_clean, pf,
+                        n_frames, fps, params=gates_params,
+                    )
+                if spline is None:
+                    r["keep"] = False
+                    r["reason"] = "E_spline_no_anchors"
+                    r["gate"] = "E_spline_drop"
+                    r["z"] = z
+                    continue
+                if spline["new_peak_y"] < min_peak_y_abs:
+                    r["keep"] = False
+                    r["reason"] = f"E_spline_low_y new={spline['new_peak_y']:.1f}"
+                    r["gate"] = "E_spline_drop"
+                    r["z"] = z
+                    continue
+                # Impute: replace y + peak_frame; track original;
+                # carry new_peak_x for the kept-lick builder below
+                r["y_original"] = r["y"]
+                r["y"] = float(spline["new_peak_y"])
+                r["peak_frame_local"] = int(spline["new_peak_frame"])
+                r["new_peak_x"] = float(spline.get("new_peak_x", float("nan")))
+                r["imputed"] = True
+                r["gate"] = "E_spline_impute"
+                r["reason"] = (
+                    f"E_spline_imputed (orig y={r['y_original']:.0f} "
+                    f"-> {r['y']:.0f})"
+                )
+                r["z"] = z
+                promoted = r
+                continue
+        # Keep with no imputation
+        r["wp_raw_std"] = F_std if "wp_raw_std" not in r else r["wp_raw_std"]
+        if promoted is None:
+            promoted = r
+
+    # Stage 4: M-gate (with Addendum #1 Rule 5 early-window relaxation).
+    promoted = _run_m_gate_v7(
+        decisions, y_clean, likelihood_slice,
+        is_interp_fill_slice, is_base_clean,
+        n_frames, fps, promoted, params=gates_params,
+    )
+
+    # Stage 5: build per-trial kept-lick records (Decision 4 schema minus
+    # session-level fields). x at the (possibly imputed) peak_frame_local
+    # comes from x_clean (trace-level x pre-clean per Addendum Rules 1-4
+    # is canonical — Decision 6 RESOLVED).
+    conf_radius_ms = float(gates_params["m_conf_radius_ms"])
+    conf_radius = max(1, int(round(conf_radius_ms / 1000.0 * fps)))
+    kept_licks: list[dict[str, Any]] = []
+    lick_idx = 0
+    for r in decisions:
+        if not r["keep"]:
+            continue
+        pf = int(r["peak_frame_local"])
+        # Peak confidence per Decision 2 (same formula as M-gate)
+        lo = max(0, pf - conf_radius)
+        hi = min(n_frames, pf + conf_radius + 1)
+        raw_in_win = (~is_interp_fill_slice[lo:hi]) & (~is_base_clean[lo:hi])
+        n_raw_in_win = int(raw_in_win.sum())
+        if n_raw_in_win == 0:
+            confidence = 0.0
+        else:
+            mean_lik = float(np.mean(likelihood_slice[lo:hi][raw_in_win]))
+            confidence = n_raw_in_win * mean_lik
+        rise_start_frame = r.get("rise_start_frame", -1)
+        fall_end_frame = r.get("fall_end_frame", -1)
+        rise_start_ms = (
+            float(t_ms[rise_start_frame])
+            if 0 <= rise_start_frame < n_frames else float("nan")
+        )
+        fall_end_ms = (
+            float(t_ms[fall_end_frame])
+            if 0 <= fall_end_frame < n_frames else float("nan")
+        )
+        # Task 5b: for imputed licks, prefer the excise-derived
+        # new_peak_x (mirrors audit's local_pchip_x at the new peak
+        # frame, with the outlier window excluded). Falls back to
+        # cleaned_x[new_peak_frame] if the excise computation returned
+        # NaN (too-few-anchors edge case). For non-imputed licks,
+        # always use cleaned_x[new_peak_frame] (= the canonical
+        # trace-level x per Addendum #1 Rules 1-4).
+        is_imputed = bool(r.get("imputed", False))
+        if is_imputed:
+            new_peak_x = float(r.get("new_peak_x", float("nan")))
+            if np.isfinite(new_peak_x):
+                x_at_peak = new_peak_x
+            elif 0 <= pf < n_frames:
+                x_at_peak = float(x_clean[pf])
+            else:
+                x_at_peak = float("nan")
+        else:
+            x_at_peak = (
+                float(x_clean[pf]) if 0 <= pf < n_frames else float("nan")
+            )
+
+        # Task 7 (Decision 6 RESOLVED): peak_angle_deg from cleaned (x, y)
+        # at the peak frame, relative to eye-in-spout-frame. Uses the same
+        # atan2-with-sign-flip formula as the per-frame angle
+        # (_angle._compute_signed_tongue_angle_deg). LickEventRecord.x
+        # already carries Task 5b's imputed value for imputed licks; for
+        # non-imputed licks it's cleaned_x[new_peak_frame].
+        sign_flip = float(
+            params["dlc_kinematics"]["tongue_pertrial"]["angle"]["sign_flip"]
+        )
+        ref_x = -eye_x_in_spout_frame
+        ref_y = -eye_y_in_spout_frame
+        vx = x_at_peak - eye_x_in_spout_frame
+        vy = float(r["y"]) - eye_y_in_spout_frame
+        if np.isfinite(vx) and np.isfinite(vy):
+            cross = ref_x * vy - ref_y * vx
+            dot = ref_x * vx + ref_y * vy
+            peak_angle_deg = float(
+                sign_flip * np.degrees(np.arctan2(cross, dot))
+            )
+        else:
+            peak_angle_deg = float("nan")
+
+        # Task 7 (Decision 5): max_velocity_y inside [rise_start_frame,
+        # fall_end_frame] from the CLEANED y trace, with is_baseline_fill
+        # masked. NaN if window empty / all baseline / too few frames.
+        rsf = r.get("rise_start_frame", -1)
+        fef = r.get("fall_end_frame", -1)
+        if 0 <= rsf <= fef < n_frames:
+            y_win = y_clean[rsf:fef + 1].astype(np.float64, copy=True)
+            is_base_win = is_base_clean[rsf:fef + 1]
+            y_win_masked = np.where(is_base_win, np.nan, y_win)
+            if int(np.count_nonzero(np.isfinite(y_win_masked))) >= 2:
+                dy_win = np.gradient(y_win_masked) * fps  # px/s
+                if np.isfinite(dy_win).any():
+                    max_velocity_y = float(np.nanmax(dy_win))
+                else:
+                    max_velocity_y = float("nan")
+            else:
+                max_velocity_y = float("nan")
+        else:
+            max_velocity_y = float("nan")
+
+        kept_licks.append({
+            "lick_idx": lick_idx,
+            "t_ms": float(r["t_ms"]),
+            "y": float(r["y"]),
+            "x": x_at_peak,
+            "y_original": float(r.get("y_original", float("nan"))),
+            "rise_start_ms": rise_start_ms,
+            "fall_end_ms": fall_end_ms,
+            "imputed": is_imputed,
+            "source": str(r["src"]),
+            "confidence": confidence,
+            "likelihood": float(r["lik"]),
+            "peak_angle_deg": peak_angle_deg,
+            "max_velocity_y_px_per_s": max_velocity_y,
+        })
+        lick_idx += 1
+
+    return _V7TrialResult(
+        trial_index=trial_index,
+        side=side,
+        y_clean=y_clean,
+        x_clean=x_clean,
+        is_baseline_fill_clean=is_base_clean,
+        t_ms=t_ms,
+        kept_licks=kept_licks,
+        preclean_diag=diag,
+        session_frame_lo=session_frame_lo,
+        session_frame_hi=session_frame_hi,
+        tone_frame_idx=tone_frame_idx,
+    )
 
 
 def _extract_trial_slice(
@@ -2522,6 +3108,29 @@ def _build_tongue_pertrial_core(
     y_final = tongue_df["y_final"].to_numpy(dtype=np.float64, copy=True)
     n_frames_session = int(len(tongue_df))
 
+    # Phase 7e v7-pipeline flag (Task 5). When True, run the new
+    # preclean → detect_v2 → gates pipeline PARALLEL to the legacy
+    # per-cell extractions and collect per-trial v7 results into
+    # ``v7_trial_results``. Task 5 leaves legacy outputs unchanged;
+    # Tasks 6 + 7 wire the v7 results into parquet writers + downstream
+    # metric consumers.
+    use_v7_pipeline = bool(tp.get("use_v7_pipeline", False))
+    if use_v7_pipeline:
+        # Phase 7a.2 parquet carries is_interp_fill + is_baseline_fill +
+        # likelihood_raw — all required by the v7 pipeline.
+        is_interp_fill_session = tongue_df["is_interp_fill"].to_numpy(
+            dtype=bool, copy=True,
+        )
+        is_baseline_fill_session = tongue_df["is_baseline_fill"].to_numpy(
+            dtype=bool, copy=True,
+        )
+        likelihood_raw_session = tongue_df["likelihood_raw"].to_numpy(
+            dtype=np.float64, copy=True,
+        )
+        v7_trial_results: list[_V7TrialResult] = []
+    else:
+        v7_trial_results = None  # type: ignore[assignment]
+
     # Step 2 + 3: eye landmarks + eye_midpoint resolution.
     eye_df = _load_consolidated_eye_landmarks(manifest, resolver)
     eye_x, eye_y = _resolve_eye_midpoint_session_median(eye_df, params=params)
@@ -2567,6 +3176,50 @@ def _build_tongue_pertrial_core(
 
         trial_indices.append(int(ev.trial_index))
         sides.append(ev.side)
+
+        # Phase 7e v7 pipeline (Task 5) — run in parallel with the
+        # legacy per-cell extractions when the feature flag is on. The
+        # v7 result is collected for Task 6 (parquet writers) + Task 7
+        # (downstream metric consumers); legacy outputs below are NOT
+        # affected by this branch.
+        if use_v7_pipeline:
+            is_intp_slice, _ = _extract_trial_slice(
+                is_interp_fill_session, ev.tone_frame_idx, widest_detect, fps,
+            )
+            is_base_slice, _ = _extract_trial_slice(
+                is_baseline_fill_session, ev.tone_frame_idx, widest_detect, fps,
+            )
+            lik_slice, _ = _extract_trial_slice(
+                likelihood_raw_session, ev.tone_frame_idx, widest_detect, fps,
+            )
+            # Derive session-frame range for this trial slice (matches
+            # _extract_trial_slice's lo/hi computation) so the v7 result
+            # carries enough context for the cleaned_traces writer to
+            # map trial-local frames back to session-level frame_idx.
+            _lo_fi = max(
+                0,
+                int(ev.tone_frame_idx
+                    + np.floor(widest_detect[0] / 1000.0 * fps)),
+            )
+            _hi_fi = min(
+                n_frames_session - 1,
+                int(ev.tone_frame_idx
+                    + np.ceil(widest_detect[1] / 1000.0 * fps)),
+            )
+            v7_trial_results.append(_run_v7_pipeline_per_trial(
+                y_slice=y_slice, x_slice=x_slice,
+                is_interp_fill_slice=is_intp_slice,
+                is_baseline_fill_slice=is_base_slice,
+                likelihood_slice=lik_slice,
+                t_ms=t_ms, fps=fps,
+                trial_index=int(ev.trial_index), side=ev.side,
+                tone_frame_idx=int(ev.tone_frame_idx),
+                session_frame_lo=_lo_fi,
+                session_frame_hi=_hi_fi,
+                eye_x_in_spout_frame=eye_x,
+                eye_y_in_spout_frame=eye_y,
+                params=params,
+            ))
 
         lick12 = _extract_lick1_lick2(y_slice, x_slice, t_ms, fps, params=params)
         lick12_records.append(lick12)
@@ -2884,4 +3537,5 @@ def _build_tongue_pertrial_core(
     return _PertrialCoreResult(
         tongue_pertrial=tp_result,
         visual_bundle=visual_bundle,
+        v7_trial_results=v7_trial_results,
     )
