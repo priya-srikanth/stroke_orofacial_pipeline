@@ -57,6 +57,45 @@
 > is where the cluster + frame artifacts hide — cohort means understate
 > the contamination.
 
+> **AMENDMENT 2026-05-26 #7 (cleanup v3 — order-of-ops fix validated).**
+> Scoping audit #5 (v3, §3.10) implemented Addendum #6's pre-Stage-4
+> design: same rules as v2 (R1 Y-ceiling=80, R2 isolated-short, R3
+> frame-outlier wipe) but applied to RAW DLC frames (fill_method == 0)
+> BEFORE the PCHIP gap-fill. Then re-PCHIP-interpolates from the
+> cleaned anchor set; gaps > 120ms fall to baseline.
+>
+> **Decisive result: v2's "clean peak at lk=0.05" PCHIP-bridge bug is
+> fixed.** Across all 8 severe-acute visual-render trials, v3's clean
+> peak now lands on a real raw DLC frame with `lk ≥ 0.5`:
+>
+> - PS54 / 5-05 / t010 L: v2 clean_peak lk=**0.05** → v3 clean_peak
+>   lk=**0.51** (51.7 px at t=4004 ms, real licking region).
+> - PS54 / 5-01 / t013 R: v2 lk=0.34 → v3 lk=**0.51** (57.9 px).
+> - PS55 / 5-14 / t033 L: v2 lk=0.81 → v3 lk=**0.92** (62.1 px).
+> - PS54 / 5-06 / t095 L (single-frame outlier): both v2 and v3 land
+>   at 9.7 px / lk=0.81 (correctly wiped by R1 in both).
+>
+> **Cohort metrics nearly identical to v2** (same rules, just earlier
+> in the pipeline):
+> - Severe-acute cohort mean: prod 11.2 → clean 10.85 (−3.2%) —
+>   paper-narrative signal preserved exactly.
+> - jaw_pass_qc rates preserved cohort-wide; worst flip is 5.3% in
+>   moderate/pre. Severe-acute flip is 0.04%.
+> - Mild cells still drop 23-26% in cohort mean due to Y-ceiling=80
+>   clipping real licking peaks — same Y-ceiling design question as v2.
+>
+> **Architecture verdict locked: v3 is the right design for Phase 7f
+> Option B (bodypart-parametric v7 port + cohort v5p3 re-emit).**
+> Production implementation should insert the new pre-clean as a new
+> Stage 3.5 in `src/stroke_orofacial/dlc_kinematics/interpolation.py`,
+> with constants in `configs/defaults.yaml dlc_kinematics.jaw.preclean.*`.
+>
+> Remaining open knob: **Y-ceiling threshold + handling of real
+> licking peaks > 80 px in healthy mice**. Four options (i)/(ii)/(iii)/(iv)
+> documented at the end of §3.10. Phase 7f Task 1 should empirically
+> calibrate via per-phenotype `y99` sweep on lk≥0.85 raw DLC +
+> sensitivity analysis on `candidate_no_lick_with_jaw_move` rate.
+
 > **AMENDMENT 2026-05-26 #6 (order-of-ops pivot — Priya).** Priya
 > 2026-05-26 (post v2 audit visual review): "Seems like we're
 > interpolating BEFORE applying our exclusion filters. Like tongue,
@@ -788,6 +827,95 @@ Options for Phase 7f kickoff:
   stage (Priya 2026-05-26 suggested this may come back) — gates the
   surviving max-deflection frame on the v5p3 lk being ≥ 0.5. Would
   need to also gate on PCHIP/baseline-fill frames being skipped.
+
+### 3.10 Cleanup simulation v3 (pre-Stage-4, order-of-ops fix)
+
+Phase 7f scoping audit #5 (run 2026-05-26) per Addendum #6 pivot:
+exclusion rules applied at the RAW DLC level BETWEEN v5p3 Stage 3
+(drop low-lk + isolated-hi-lk) and Stage 4 (PCHIP gap-fill). v3 then
+re-PCHIP-interpolates from the cleaned raw set, so the resulting trace
+bridges only across surviving anchors — never through wiped artifact
+frames. Audit script:
+[`.scratch_phase_7f_scoping/audit_jaw_cleanup_sim_v3.py`](../../.scratch_phase_7f_scoping/audit_jaw_cleanup_sim_v3.py).
+22,363 trials. Outputs at
+[`.scratch_phase_7f_scoping/audit_results/cleanup_sim_v3/`](../../.scratch_phase_7f_scoping/audit_results/cleanup_sim_v3/)
++ renders at
+[`.scratch_phase_7f_scoping/visual_renders_cleanup_v3/`](../../.scratch_phase_7f_scoping/visual_renders_cleanup_v3/).
+
+**Cleanup rules applied (v3, identical to v2 but at pre-Stage-4):**
+
+1. **R1 Y-ceiling = 80 px** above baseline_mean (applied to raw frames).
+2. **R3 Frame-level outlier wipe** on raw clusters (|y - rolling_median ±20 ms| > 80 px).
+3. **R2 Isolated-short cluster wipe** (raw clusters ≤ 5 frames, no other raw cluster within ±30 ms).
+4. **Re-PCHIP interpolation** over the surviving anchor set; gaps > 120 ms (jaw v5p3 `max_gap_ms`) fall to baseline-fill.
+
+**Cohort means (full table:
+[`by_phenotype_epoch_cleanup_v3.csv`](../../.scratch_phase_7f_scoping/audit_results/cleanup_sim_v3/by_phenotype_epoch_cleanup_v3.csv);
+plot:
+[`cohort_mean_delta_bar_v3.png`](../../.scratch_phase_7f_scoping/audit_results/cleanup_sim_v3/cohort_mean_delta_bar_v3.png)):**
+
+| cell | prod peak | clean peak | Δ peak | prod pass_qc | clean pass_qc | Δ pass_qc | any wipe |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| mild / pre        | 102.6 | 79.4 | **−23%** | 0.915 | 0.908 | −0.7% | 15.2% |
+| mild / acute      | 100.4 | 77.3 | **−23%** | 0.892 | 0.892 | 0.0% | 13.6% |
+| mild / chronic    | 105.8 | 79.0 | **−25%** | 0.913 | 0.887 | −2.6% | 16.1% |
+| mild / sub_acute  | 106.7 | 78.5 | **−26%** | 0.907 | 0.888 | −1.9% | 15.8% |
+| moderate / acute  | 89.1 | 68.2 | **−23%** | 0.843 | 0.795 | −4.8% | 8.0% |
+| moderate / pre    | 87.9 | 78.5 | **−11%** | 0.608 | 0.555 | **−5.3%** | 0.2% |
+| **mod-sev / acute** | **11.3** | **11.2** | **−1.2%** | 0.823 | 0.823 | 0.0% | <0.01% |
+| mod-sev / pre     | 106.4 | 79.1 | **−26%** | 0.977 | 0.971 | −0.7% | 19.7% |
+| mod-sev / chronic | 94.7 | 74.8 | **−21%** | 0.853 | 0.830 | −2.3% | 7.5% |
+| **severe / acute** | **11.2** | **10.85** | **−3.2%** | 0.675 | 0.674 | 0.0% | 0.02% |
+| severe / pre      | 101.2 | 77.7 | **−23%** | 0.774 | 0.736 | −3.8% | 12.1% |
+| severe / chronic  | 74.8 | 66.0 | **−12%** | 0.798 | 0.766 | −3.2% | 0.6% |
+| severe / sub_acute | 65.6 | 55.1 | **−16%** | 0.799 | 0.774 | −2.5% | 1.2% |
+
+**v3 vs v2: the order-of-ops fix is decisive for the per-trial
+artifact problem.**
+
+| trial | v2 clean (lk) | **v3 clean (lk)** | difference |
+| --- | --- | --- | --- |
+| PS54 / 5-05 / t010 L | 78.9 px (lk=**0.05**, PCHIP-bridge) | **51.7 px (lk=0.51, real raw frame)** | v3 anchors on real DLC |
+| PS54 / 5-01 / t013 R | 80.0 px (lk=0.34) | **57.9 px (lk=0.51)** | v3 lands on real lick |
+| PS55 / 5-14 / t033 L | 77.9 px (lk=0.81) | **62.1 px (lk=0.92)** | v3 finds higher-confidence peak |
+| PS54 / 5-06 / t095 L | 9.7 px (lk=0.81) | **9.7 px (lk=0.81)** | unchanged (single-frame wipe was correct in both) |
+
+**Across all 8 visual-render trials, v3's clean peak now lands on a
+real raw DLC frame with `lk ≥ 0.5`** — directly resolving the
+"clean peak at lk=0.05" diagnostic Priya flagged after v2.
+
+**Cohort-level observations (v3):**
+
+- **Severe-acute essentially unchanged**: prod 11.2 → clean 10.85
+  (−3.2%). Paper-narrative biological signal preserved exactly.
+- **`jaw_pass_qc` rates very well preserved**: worst flip is
+  moderate/pre at 5.3% (same cell as v2). Severe-acute 0.04%,
+  severe/pre 3.8%, severe/chronic 3.2%, severe/sub_acute 2.5%.
+  Mismatch-classifier dissociation narrative stable.
+- **R1 Y-ceiling=80 still clips real licking peaks** in mild/healthy
+  cells. Mild cohort means drop 23-26% — same pattern as v2.
+  Per-frame R3 frame-outlier and R2 isolated-short fire VERY rarely
+  cohort-wide (<0.1%), as in v2 — they're catching truly rare events.
+- **No PCHIP-bridge "fake peaks" remain**: this is the v2→v3 win.
+
+**Conclusion:** v3 is the correct architecture for Phase 7f Option B
+(bodypart-parametric v7 port + cohort v5p3 re-emit). The remaining
+design choice is the **Y-ceiling threshold + handling of healthy
+high-amplitude peaks > 80 px**:
+
+- **(i) Keep Y-ceiling = 80** (accept mild-cell cohort shift; the
+  shift may capture genuine artifact contamination of healthy peaks).
+- **(ii) Raise to 150-200 px** (preserves real licking in mild cells
+  but lets some pre-1300ms cluster artifacts survive).
+- **(iii) Per-phenotype ceiling** (80 for severe, 200 for mild).
+- **(iv) Add v5p3 lk_thr=0.5 per-frame gate at peak-picking** (Priya
+  suggested this may come back). Wouldn't change the bulk of the
+  cleanup but would gate the surviving peak frame on lk≥0.5 directly.
+
+The order-of-ops fix is robust; the Y-ceiling calibration is the only
+remaining open knob. Phase 7f Task 1 should empirically calibrate via
+a per-phenotype `y99` sweep on lk≥0.85 raw DLC + sensitivity analysis
+on `candidate_no_lick_with_jaw_move` rate.
 
 ---
 
