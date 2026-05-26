@@ -7,14 +7,55 @@
 > Parallel to and independent of Event B
 > (`chore/phase-7e-cohort-reemit`, PR #135).
 >
-> **Verdict: `light-cleanup`** — jaw v5p3 is qualitatively much cleaner
-> than tongue (>98% detection rate cohort-wide; Stage-5 baseline-fill at
-> peaks ≤ 2.4% in any phenotype × epoch cell), so a full v7-style
-> pre-clean + detector + gates rebuild is **NOT warranted**. But the
-> largest severe-acute / mod-sev-acute peaks are visibly contaminated by
-> single-frame DLC outliers at mid-confidence (`lk ≈ 0.5-0.7`). Cohort
-> means shift 13-15% at the tightest gate. Recommended scope is a
-> light intervention scoped to `jaw_pertrial.py` only — see §5 + §6.
+> **Initial verdict (SUPERSEDED by 2026-05-26 amendment below):**
+> `light-cleanup` scoped to `jaw_pertrial.py` only. Kept for context;
+> see Addendum #1 immediately below for the revised verdict.
+
+> **AMENDMENT 2026-05-26 (Priya visual review of renders).** Priya
+> reviewed two renders and corrected my initial framing — the artifact
+> mechanism is **broader than single-frame outliers**:
+>
+> - **PS54 / 2025-05-01 / t013 R** (peak 138 px, lk=0.72): the period
+>   from ~0 to ~1200 ms contains multiple **clusters** of high-y raw
+>   DLC (reaching 100-150 px) interleaved with wide Stage-5 baseline-
+>   fill bands (red). Likelihood during those clusters is mostly < 0.5.
+>   Real continuous jaw tracking starts only at ~1300 ms. **This IS the
+>   structural analog of tongue v7's PCHIP-anchored-spike-against-
+>   Stage-5-zeros pattern.**
+> - **PS54 / 2025-05-06 / t095 L** (peak 125 px, lk=0.66): single-frame
+>   outlier on otherwise-resting trace — the simpler case I had
+>   documented in §4.
+>
+> **Three new rules to scope into Phase 7f** (revises §5 + §6):
+>
+> 1. **Hard physical-ceiling rule:** jaw `y_final ≤ ~75 px` above
+>    baseline is a reasonable physiological maximum. Anything above is
+>    artifact. Threshold needs calibration on the audit cohort — TBD as
+>    part of Phase 7f Task 1.
+> 2. **Within-trial outlier rules analogous to tongue v7:** port the
+>    cluster classifier (Rule A intra-cluster shape + Rule B non-base
+>    neighbor + isolated-short override, per Phase 7e Decisions 9, 11)
+>    AND the frame-level outlier wipe (Decision 12) AND PCHIP-extend
+>    wipe (Decision 13). Constants need jaw-specific calibration.
+> 3. **Interpolation gap-filling tuning may be needed.** Jaw's
+>    `max_gap_ms = 120` (vs. tongue's 56) is more lenient — allowing
+>    PCHIP to bridge larger gaps that may anchor artifact clusters.
+>
+> **Revised verdict:** between `light-cleanup-plus` (Option A: all
+> logic inside `jaw_pertrial.py`, no v5p3 re-emit, ~3-5 days CC) and
+> `bodypart-parametric v7 port` (Option B: full v5p3 integration with
+> jaw-specific constants + cohort v5p3 re-emit, ~2-3 weeks CC).
+> Architecture picked at kickoff. The audit confirms the cleanup is
+> needed; the architecture choice is the open scoping question, not
+> whether to do it.
+>
+> **Cohort-level context (unchanged):** jaw v5p3 is cleaner than tongue
+> cohort-wide (87-99% detection rate vs. tongue's 10-21%; baseline-fill
+> at peaks ≤ 2.4% in any cell). Dominant biological signal
+> (severe-acute / mod-sev-acute collapse to ~11 px) is robust to
+> lk-gate choice (cell ranking preserved). The per-trial extreme tail
+> is where the cluster + frame artifacts hide — cohort means understate
+> the contamination.
 
 ---
 
@@ -279,112 +320,127 @@ is calibrated for a structural pattern that jaw does NOT exhibit.
 
 ---
 
-## 5. Recommended Phase 7f scope (verdict)
+## 5. Recommended Phase 7f scope (verdict, REVISED per amendment)
 
-> **Verdict: `light-cleanup`.**
+> **Verdict:** between `light-cleanup-plus` (Option A) and
+> `bodypart-parametric v7 port` (Option B). Architecture picked at
+> kickoff. Scope substantively larger than the initial single-frame
+> framing.
 
 **Rationale:**
-1. **Stage-5-fill mechanism is essentially never triggered for jaw.**
-   `frac_peak_at_baseline_fill ≤ 2.4%` in any cell; visual renders
-   confirm peaks land on raw DLC frames. The structural concern that
-   motivated tongue v7 does NOT replicate in jaw.
-2. **Cohort detection rate is 87-99% in every cell** (vs. tongue's
-   10-21% in severe-acute). Jaw is not sparsity-limited.
-3. **Dominant biological signal (severe-acute / mod-sev-acute jaw
-   collapse to ~11 px) is robust to the lk gate choice** (15-18% shift
-   at lk≥0.9 does not change the qualitative narrative; cell ranking
-   preserved).
-4. **BUT**: the largest severe-acute peaks are visibly contaminated by
-   single-frame DLC outliers at mid-confidence (lk = 0.5-0.7). 5/8
-   visual-render extremes show classic single-frame-spike artifacts.
-   Sign-flip rate at lk≥0.9 in severe-acute is 9.5% (highest in cohort).
-5. The artifact mechanism is **different from tongue's**; a full v7
-   port would not be the right tool. A lightweight intervention scoped
-   to `jaw_pertrial.py` is sufficient.
 
-**Out-of-scope for Phase 7f:**
+1. **Cluster-level artifact pattern IS present** (per Priya's review
+   of PS54 / 2025-05-01 / t013 R): high-y raw DLC clusters reaching
+   100-150 px bracketed by Stage-5 baseline-fill bands with lk < 0.5.
+   **This IS the structural analog of tongue v7's PCHIP-anchored-spike-
+   against-Stage-5-zeros mechanism.**
+2. **Single-frame outlier pattern is also present** (PS54 t095): mid-
+   confidence single-frame spikes on otherwise-resting traces.
+3. **Cohort-level metrics understate per-trial contamination.** The
+   ≤ 2.4% baseline-fill-at-peak aggregate hides the distribution tail
+   where cluster + frame artifacts produce the largest |defl| values.
+4. **A hard Y-ceiling rule (~75 px above baseline)** is a simple,
+   high-SNR gate. Calibrate from per-animal `y99` of lk≥0.85 raw DLC.
+5. **The v7 architecture DOES apply to jaw** — the architecture is
+   right; the constants need jaw-specific recalibration.
+
+**Out-of-scope for Phase 7f (unchanged):**
 - The headline `spatial_wasserstein_jaw_eye_midpoint_tone_aligned_all`
-  endpoint reads raw frames at lk≥0.80 (NOT v5p3); it is unaffected by
-  any jaw_pertrial cleanup. See Q-4 in §7 for whether a separate
-  raw-DLC audit should be queued.
-- The v5p3 interpolation parameters (`lk_thr=0.50`, `max_gap_ms=120`,
-  etc.) stay as-is. Modifying them would re-emit cohort-wide and
-  invalidate Event B's just-completed re-emit — too costly relative to
-  the small expected benefit.
+  endpoint reads raw frames at lk≥0.80 (NOT v5p3); unaffected by any
+  jaw_pertrial / jaw-v5p3 cleanup. See Q-4 in §7.
+
+**Re-classified in-scope per amendment:**
+- v5p3 `max_gap_ms = 120` (vs. tongue's 56) may need tightening. If
+  so, cohort jaw v5p3 re-emit is required — this is the architecture
+  choice distinguishing Option A from Option B in §6.
 
 ---
 
-## 6. Forward-pointers — Phase 7f scope options
+## 6. Forward-pointers — Phase 7f scope options (REVISED per amendment)
 
-(All three options are scoped to **`jaw_pertrial.py` and its callers
-only**; none touch `interpolation.py` or require cohort v5p3 re-emit.)
+Two architecture choices below; Priya picks at kickoff. The audit
+confirms cleanup is needed; the architecture choice is the open
+scoping question.
 
-### Option L1 — Peak-likelihood gate at jaw_pertrial output
+### Option A — `light-cleanup-plus`: all logic inside `jaw_pertrial.py`
 
-Add a per-peak filter that requires the argmax frame to have
-`likelihood_raw ≥ JAW_PEAK_LK_GATE` (suggest 0.85, matching tongue v7's
-E-gate likelihood threshold). If the argmax frame fails the gate, walk
-to the next local max satisfying the gate; emit NaN if none survives.
+Add the new rules at the jaw_pertrial input snippet level — after
+reading the v5p3 trace but before `_compute_jaw_deflections`. The v5p3
+parquets stay untouched; no cohort v5p3 re-emit.
 
-- **Affects:** `_compute_jaw_deflections` + new config knob
-  `dlc_kinematics.jaw_pertrial.peak_lk_gate`. Re-emit per_trial JSONs
-  only.
-- **Risk:** trials with no high-confidence jaw movement (real
-  severe-acute paralysis) emit NaN peak instead of noise-band peak —
-  this is arguably more honest but may be a downstream-stats
-  inconvenience.
-- **Estimated wall-time:** ~1 day CC (logic + unit test + cohort
-  per_trial re-emit).
+Required rules (apply in order):
+1. **Hard Y-ceiling wipe:** any frame with
+   `y_final - baseline_mean > Y_CEILING_PX` (~75 px per Priya
+   2026-05-26; calibrate on per-animal `y99` of lk≥0.85 raw DLC) is set
+   to NaN. Single threshold, no per-cluster logic.
+2. **Cluster classifier** (port of Phase 7e Decisions 9 + 11): for
+   contiguous runs of `y > HIGH_THR` AND `fill_method == 0` (raw DLC
+   kept):
+   - **artifact_intra_cluster** if intra-cluster shape flat
+     (`cluster_range < SHAPE_RANGE_THR_JAW` AND
+     `cluster_min > SHAPE_LOW_THR_JAW`).
+   - **artifact_isolated_short** if `n ≤ ISOLATED_MAX_N` AND no other
+     raw cluster within `±ISOLATED_RADIUS_MS`.
+   - **kept** otherwise.
+3. **Frame-level outlier wipe** (port of Decision 12): within each
+   kept cluster, wipe single frames where
+   `|y[k] - local_median(±20ms)| > FRAME_JUMP_THR_JAW`.
+4. **PCHIP-extend wipe** (port of Decision 13): after wiping a cluster
+   or frame, also wipe adjacent `is_interp_fill` frames within
+   `±PCHIP_EXTEND_MS` until a non-interp anchor is reached.
+5. **Peak-likelihood gate:** when picking
+   `argmax(|y_clean - baseline_mean|)`, require
+   `likelihood_raw ≥ PEAK_LK_GATE` (suggest 0.85).
 
-### Option L2 — Single-frame outlier wipe (tongue v7 frame-level pass, jaw-parametrized)
+- **Affects:** new module
+  `src/stroke_orofacial/dlc_kinematics/_jaw_preclean.py` consumed by
+  `jaw_pertrial.py` (OR a shared bodypart-parametric helper in
+  `_preclean.py` for tongue/jaw sharing). Re-emit per_trial JSONs only
+  (not v5p3 parquets).
+- **Risk:** cluster predicates depend on `fill_method` — if v5p3 mis-
+  classified a fragment as PCHIP-fill, this option can't recover it.
+  Audit suggests this is rare for jaw (PCHIP-fill rate < 12% in all
+  cells).
+- **Estimated wall-time:** **3-5 days CC** (port + 5+ new constants
+  calibrated + unit tests + cohort per_trial re-emit + visual-gate
+  parity on the 8 severe-acute renders + tongue_jaw_mismatch
+  candidate-rate parity check).
 
-Port the Phase 7e Decision 12 frame-level outlier wipe (`PRECLEAN_FRAME_JUMP_THR=100,
-PRECLEAN_FRAME_RADIUS_MS=20`) to jaw — for each raw DLC frame, compute
-local median (±20ms window) and wipe single frames whose `|y[k] -
-local_median| > 100 px`. Apply at jaw_pertrial input (snippet level),
-not at v5p3 level.
+### Option B — `bodypart-parametric v7 port`: full v5p3 integration
 
-- **Affects:** new helper in `jaw_pertrial.py` (or a shared
-  `_frame_outlier_wipe` utility) + new config block. Re-emit per_trial
-  JSONs only.
-- **Risk:** real peaks atop short raw-DLC sequences (the 30-50 ms
-  rise-peak-fall in actively licking jaw) might be wiped if the
-  threshold is too tight. Need to recalibrate `PRECLEAN_FRAME_JUMP_THR`
-  for jaw's smaller dynamic range vs. tongue.
-- **Estimated wall-time:** ~2 days CC (logic + threshold tuning on
-  severe-acute visual-render set + unit test + cohort re-emit).
+Port the v7 architecture into bodypart-parametric form
+(`_preclean.py`, `_detector_v2.py`, `_gates.py` accept `bodypart` and
+load constants from `configs/defaults.yaml dlc_kinematics.<bp>.preclean.*`).
+Tune `max_gap_ms` at v5p3 level (currently 120 ms for jaw — Priya
+flagged this may be too lenient). Cohort jaw v5p3 re-emit.
 
-### Option L3 — Combined L1+L2 (recommended)
+- **Affects:** all 3 v7 modules become bodypart-parametric (tongue +
+  jaw first-class). `interpolation.py` jaw branch gets a new
+  `max_gap_ms` value. Both v5p3 jaw parquets AND per_trial JSONs
+  re-emit cohort-wide.
+- **Risk:** v5p3 re-emit invalidates downstream stats — Phase 9 axis
+  results consuming jaw_pertrial scalars need re-run. Event B's
+  just-completed re-emit is unaffected (tongue-specific) but Phase 9
+  cohort outputs are.
+- **Estimated wall-time:** **2-3 weeks CC** (tongue v7's algorithm
+  design took 3 days in `.scratch_phase_9_1/`; tongue v7's production
+  phase took ~3 weeks). Jaw inherits the architecture but needs its
+  own calibration + parity harness.
 
-Apply L1 first (cheap, catches mid-confidence single-frame outliers
-like PS54/2025-05-06/t095 — peak_lk=0.66 wipes immediately). Fall back
-to L2 for the residual cases where lk is paradoxically high on a
-single-frame outlier (rare per the audit). Document the order so future
-maintainers know L1 is primary.
+### Recommended option
 
-- **Estimated wall-time:** ~2-3 days CC.
-
-### Why NOT full v7 rebuild
-
-A full v7-style pre-clean (cluster classifier + Rule A/B + PCHIP-extend
-+ find_peaks + gates F/D/E/M) for jaw would require:
-- Re-calibrating all 17 tongue-specific constants for jaw's smaller
-  dynamic range and different lick-event shape (jaw doesn't lick — it
-  shows post-tone open/close cycles).
-- New 14-session legacy-approximate parity harness AND visual gate
-  (analogous to Phase 7e Task 7).
-- Cohort v5p3-equivalent re-emit (if the cluster classifier replaces
-  v5p3's Stage 1-3 dropping rules, which is the architecturally clean
-  design).
-- Multi-week design + implementation timeline (tongue v7 design took
-  3 days in `.scratch_phase_9_1/`; tongue v7 phase implementation took
-  3 weeks).
-- **All to address a problem the audit shows is small at cohort
-  level** (15% mean shift at the tightest gate; sign-flip rate < 10%).
-
-Conclusion: full v7 rebuild for jaw is a poor ROI. The light-cleanup
-options above address the actual artifact mechanism (single-frame
-outliers at mid-confidence) with much smaller surface area.
+**Option A (`light-cleanup-plus`)** unless Priya specifically wants
+v5p3 `max_gap_ms` tuning to land now. Rationale:
+- All needed input columns (`fill_method`, `likelihood_raw`,
+  `is_baseline_fill`) are preserved in the v5p3 parquet — Option A can
+  reach the artifacts via post-v5p3 filtering.
+- No cohort v5p3 re-emit → no invalidation of Event B or upstream
+  stats inputs derived from v5p3 traces.
+- Easier iteration on constants during kickoff.
+- Option B remains a future forward-pointer if Priya later wants to
+  share preclean logic with tongue (re-running tongue under bodypart-
+  parametric form is a no-op when tongue-specific constants are
+  preserved).
 
 ---
 
@@ -392,18 +448,22 @@ outliers at mid-confidence) with much smaller surface area.
 
 > Numbered Q-1 through Q-5 for easy reference in addenda.
 
-- **Q-1.** Verdict acceptance: do you concur with `light-cleanup` over
-  `full-v7-rebuild`?
-- **Q-2.** If yes: which option (L1 / L2 / L3) do you prefer? L3 is
-  the recommendation; L1 alone is the lowest-risk minimum-viable
-  intervention.
-- **Q-3.** Severe-acute peak-deflection floor: with current production
-  jaw_pertrial, `mean peak_abs_deflection` in severe-acute = 11.2 px.
-  After Option L1 (lk≥0.85 gate), the expected value drops to ~10.1 px
-  (per §3.4 counterfactual table). This is a 10% shift in the
-  paper-narrative-load-bearing scalar. Is the more-honest 10.1 px the
-  preferred number to report, or would you want to discuss further
-  before locking in?
+- **Q-1 (REVISED).** Architecture pick: **Option A
+  (`light-cleanup-plus`, all logic inside `jaw_pertrial.py`)** vs.
+  **Option B (`bodypart-parametric v7 port`, full v5p3 integration)**?
+  Recommendation: A unless you want v5p3 `max_gap_ms` tuning to land
+  now rather than later.
+- **Q-2 (NEW per amendment).** Y-ceiling threshold: ~75 px above
+  baseline is the suggested anchor. Should Phase 7f calibrate from
+  per-animal `y99` of lk≥0.85 raw DLC, or pick a cohort-uniform value?
+- **Q-3 (REVISED).** Severe-acute peak-deflection floor: current prod
+  `mean peak_abs_deflection` = 11.2 px. After the full Option A
+  pipeline (Y-ceiling + cluster + frame + PCHIP-extend + lk-gate), the
+  drop will likely be larger than the initial 10% lk-gate-only
+  estimate, since several severe-acute trials have current peaks
+  > 100 px that are clearly artifactual (PS54 t013/t095). Comfortable
+  with the headline floor potentially dropping to ~5-9 px, or want
+  Phase 7f to include a sensitivity analysis before locking?
 - **Q-4.** Headline `spatial_wasserstein_jaw_eye_midpoint_tone_aligned_all`
   reads raw frames at lk≥0.80 — outside v5p3, outside this audit.
   Should we queue a separate forward-pointer to audit that pipeline's
