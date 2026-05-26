@@ -57,6 +57,44 @@
 > is where the cluster + frame artifacts hide — cohort means understate
 > the contamination.
 
+> **AMENDMENT 2026-05-26 #3 (interpolation audit findings).** Scoping
+> audit #2 (jaw v5p3 interpolation quality, 1.9 M gap records across
+> 8-animal × 2-bodypart cohort, full results §3.7) produced a
+> **surprising finding that revises Addendum #1 point 3 (interpolation
+> gap-fill tuning)**:
+>
+> - **Median jaw PCHIP gap = 8 ms cohort-wide** (p90 ≤ 68 ms in every
+>   phenotype × epoch cell). ≤ 1.9% of PCHIP fills bridge gaps near
+>   the 120 ms cap.
+> - **Median severe-acute trial has ZERO gap-fills inside detect
+>   window.** Mild-acute (active licking) has 12.4 gap fills per
+>   trial on average. **Active-licking sessions, not severe-acute, are
+>   what would be affected by a tighter cap.**
+> - **For the 8 severe-acute artifact trials**: 5/8 have substantial
+>   baseline-fill (5-41% of detect window) — but those frames are
+>   already at Stage 5 (gaps > 120 ms; PCHIP couldn't bridge them).
+>   The artifact PEAK is on a raw DLC frame ADJACENT to the
+>   baseline-fill band, not on a gap-fill frame.
+>
+> **Net effect on §6 Option B scope:** the v5p3 `max_gap_ms` parameter
+> review is **no longer recommended as a primary lever** for the
+> cleanup. Tightening to e.g. 60 ms would flip 26% of currently-PCHIP
+> frames to baseline-fill, but those flips would mostly land in
+> mild/moderate active-licking trials (where short PCHIP fills bridge
+> real lick onsets/offsets). That's counterproductive.
+>
+> **The v5p3 re-emit Priya locked in Addendum #2 still happens** — but
+> the v5p3 changes should target different parameters (candidates for
+> kickoff): lk_thr tightening (currently 0.50; consider 0.70-0.85),
+> n_neigh tightening (currently 3 frames in ±16 ms; consider 5),
+> and/or a new Stage-3 cluster-likelihood filter (drop raw clusters
+> with mean lk < threshold). `max_gap_ms` stays at 120 ms or modestly
+> tightens to ~90 ms (which would flip < 8% of PCHIP frames).
+>
+> Addendum #2's cluster-classifier-without-shape-rule design + hard
+> Y-ceiling are **unchanged** by this finding; those still apply at
+> the jaw_pertrial layer.
+
 > **AMENDMENT 2026-05-26 #2 (Priya — cluster-classifier scope + v5p3
 > re-emit lock).** Two corrections to Addendum #1:
 >
@@ -320,6 +358,110 @@ some severe-acute trials) confirm that occasional sessions experience
 extended baseline-fill stretches; but these are individual trials, not
 a cohort pattern, and they do not coincide with the argmax peak in the
 vast majority of cases.
+
+### 3.7 Interpolation gap-fill characteristics (audit #2)
+
+Phase 7f scoping audit #2 (run 2026-05-26) characterized the Stage-4
+PCHIP-fallback-linear gap-fill mechanism. Audit script:
+[`.scratch_phase_7f_scoping/audit_jaw_interpolation.py`](../../.scratch_phase_7f_scoping/audit_jaw_interpolation.py).
+1.9 M gap records across 8-animal × 2-bodypart cohort
+(jaw + tongue reference). Outputs at
+[`.scratch_phase_7f_scoping/audit_results/interpolation/`](../../.scratch_phase_7f_scoping/audit_results/interpolation/).
+
+**(a) PCHIP gap-length distribution.** Across all phenotype × epoch
+cells, jaw PCHIP/LINEAR fills are dominated by short gaps:
+
+| cell | median PCHIP gap (ms) | p90 PCHIP gap (ms) | max PCHIP gap (ms) | frac PCHIP gaps near cap (> 96 ms) |
+| --- | --- | --- | --- | --- |
+| jaw mild / acute      |  8 | 52 | 120 | 0.9% |
+| jaw moderate / acute  | 16 | 68 | 120 | 1.9% |
+| jaw mod-sev / acute   |  8 | 32 | 120 | 1.4% |
+| jaw **severe / acute** |  8 | 48 | 120 | **1.6%** |
+| jaw severe / chronic  |  8 | 52 | 120 | 0.5% |
+| jaw severe / pre      |  8 | 52 | 120 | 1.2% |
+| tongue **severe / acute** |  8 | 32 |  56 | **3.8%** |
+| tongue mild / chronic |  8 | 48 |  56 | 10.6% |
+
+Headline: **median jaw PCHIP gap = 8 ms cohort-wide**; ≤ 2% of jaw
+PCHIP fills bridge gaps near the 120 ms cap. Tongue's PCHIP
+distribution is qualitatively similar — most fills short, with a small
+tail at the cap. Tongue's cap-tail fraction is higher in % because the
+56 ms cap clips a wider real distribution; tongue at 120 ms would
+likely also see only ~1-3% at the new cap.
+
+**(b) Counterfactual max_gap_ms.** If the jaw v5p3 cap were tightened,
+fraction of currently-PCHIP-filled frames that would flip to
+Stage-5 baseline-fill:
+
+| tightened cap (ms) | n gaps flipped | n frames flipped | frac of PCHIP frames flipped |
+| --- | --- | --- | --- |
+|  30 | 204 860 | 2 737 177 | **66.3%** |
+|  60 |  53 530 | 1 064 465 | **25.8%** |
+|  90 |  12 189 |   316 022 |  **7.7%** |
+| 120 (prod) | 0 | 0 | 0% |
+
+Tightening to tongue's 56 ms would flip ~26% of currently-PCHIP
+frames. **But these are mostly in active-licking sessions
+(mild/moderate epochs), not severe-acute** — see (c) below.
+
+**(c) Per-trial gap structure inside detect window.** Distribution of
+the maximum gap-fill duration inside `[0, 5000]` ms across trials:
+
+| cell | n_trials | mean n_gaps in detect | p50 max_gap (ms) | p90 max_gap (ms) | mean frac PCHIP | mean frac baseline |
+| --- | --- | --- | --- | --- | --- | --- |
+| mild / acute       |  408 | 12.4 | 56 |  92 | 5.7% | 0.1% |
+| moderate / acute   |  479 | 15.7 | 76 | 112 | 11.8% | 1.6% |
+| mod-sev / acute    |  384 |  1.1 |  0 |  16 |  0.3% | 0.2% |
+| **severe / acute** | 2316 |  3.1 | **0** | 68 |  1.0% | 0.5% |
+| severe / sub_acute | 2833 | 13.2 | 60 |  92 | 5.8% | 0.2% |
+| severe / chronic   | 1672 | 16.3 | 56 |  84 | 6.7% | 0.0% |
+| severe / pre       | 1056 | 24.7 | 68 | 158 | 9.0% | 1.7% |
+
+**Surprising finding:** **the median severe-acute trial has ZERO gap
+fills in its detect window.** Severe-acute mice are mostly
+not-licking (the dominant biological signal), so DLC has nothing
+moving to lose track of — long contiguous raw-DLC stretches dominate.
+The artifacts live in the **upper tail** of the severe-acute
+distribution.
+
+By contrast, **mild-acute (active licking)** has 12.4 gap fills per
+trial on average, with p50 max_gap = 56 ms — the active licking causes
+DLC tracking blips at lick onsets/offsets. Tightening
+`max_gap_ms` would primarily affect THESE active-licking trials, not
+the severe-acute artifact cases.
+
+**(d) Per-artifact-trial gap context.** For the 8 hand-picked
+severe-acute renders (full table:
+[`artifact_trial_gap_table.csv`](../../.scratch_phase_7f_scoping/audit_results/interpolation/artifact_trial_gap_table.csv)):
+
+| trial | n_gaps | max_gap_ms | frac PCHIP | frac baseline | artifact mechanism |
+| --- | --- | --- | --- | --- | --- |
+| PS55 / 5-14 / t033 L | 36 | 428 | **18.9%** | **41.2%** | Real licking + long baseline-fill bands between licks; low-lk peaks at the licking events |
+| PS54 / 5-01 / t013 R | 14 | 428 | 5.0% | 16.1% | High-y cluster from 0-1200ms bracketed by baseline-fill; real licking starts ~1300ms |
+| PS54 / 5-05 / t010 L | 18 | 292 | 2.6% | 21.3% | Mixed |
+| **PS54 / 5-06 / t095 L** | **11** | **52** | 3.6% | **0.0%** | **Pure single-frame outlier on raw DLC; NO gap-fill involvement** |
+| PS55 / 5-06 / t002 L | 21 | 488 | 6.0% | 26.7% | Real licking + baseline-fill bands |
+| PS55 / 5-09 / t021 L | 12 |  84 | 6.7% |  0.0% | Mid-confidence single-frame; small gaps |
+| PS54 / 5-09 / t006 L | 30 | 156 | **14.9%** | 6.1% | Heavy gap activity (active session) |
+| PS55 / 5-17 / t003 R | 19 |  40 | 5.6% |  0.0% | High-lk real movement; small gaps |
+
+**Key takeaway:** **the largest-|defl| artifact peaks ARE adjacent to
+baseline-fill bands** (6/8 trials have non-zero baseline-fill in
+detect window; 5/8 have substantial baseline-fill > 5%), but the
+artifact PEAK itself is on a raw DLC frame, NOT on a gap-fill frame.
+**The baseline-fill bands are gaps THAT EXCEEDED the 120 ms cap** —
+they already fell through to Stage 5. Tightening max_gap_ms wouldn't
+change them (they're already baseline-filled). The PCHIP fills that
+WOULD have flipped are the short ones (< 120 ms) that bridge real
+licking onsets/offsets in active-licking trials.
+
+**Conclusion:** **v5p3 `max_gap_ms` tightening has limited leverage on
+the jaw artifact problem.** The artifact mechanism is at the raw-DLC
+level (mid-confidence frames with outlier y at the edges of
+baseline-fill bands), not at the gap-fill level. Tightening would
+mostly affect active-licking sessions (mild/moderate epochs) where
+short PCHIP fills bridge real movement transients — likely
+counterproductive.
 
 ---
 
