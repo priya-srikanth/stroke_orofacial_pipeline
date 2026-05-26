@@ -57,6 +57,50 @@
 > is where the cluster + frame artifacts hide — cohort means understate
 > the contamination.
 
+> **AMENDMENT 2026-05-26 #5 (cleanup v2 — likelihood-free design,
+> Y-ceiling=80, frame-outlier wipe works).** Per Priya 2026-05-26
+> (a) "we should keep likelihood threshold at 0.5", (b) "loosen max to
+> 80", and visual confirmation that v1's cluster-mean-lk gate wiped
+> ~99% of real movement in active-licking trials — scoping audit #4
+> (v2, §3.9) dropped the cluster-mean-lk gate and applied a
+> likelihood-free rule set (R1 Y-ceiling=80, R2 isolated-short cluster,
+> R3 frame-outlier wipe via `scipy.ndimage.median_filter`, R4
+> PCHIP-extend). Also tracks `jaw_pass_qc` (the mismatch classifier
+> input) per-trial.
+>
+> **Results:**
+>
+> - **R3 frame-outlier wipe correctly catches single-frame spikes**:
+>   PS54 / 5-06 / t095 L (single-frame outlier) goes 125 → 9.7 px,
+>   R3 fires on the 1 outlier frame, qc preserved as True. Aggregate
+>   wipe stats round to ~0% because R3 fires on truly rare events,
+>   not because R3 is broken.
+> - **v2 preserves the trace much better than v1**: PS55 / 5-14 /
+>   t033 L (active licking + Stage-5-fill bands) keeps 525 raw frames
+>   in v2 vs. 5 in v1. **No bulk wipes of real movement.**
+> - **`jaw_pass_qc` rates essentially preserved cohort-wide**:
+>   severe-acute 0.675 → 0.674 (0.1% flip); worst cell is moderate /
+>   pre at 5.5% flip. **The mismatch-classifier dissociation
+>   narrative is stable** — `candidate_no_lick_with_jaw_move` count
+>   shifts by ≤ 5.5% in any cell.
+> - **Severe-acute / mod-sev-acute essentially unchanged**: prod 11.2
+>   → clean 10.9 px (no biological-signal change).
+> - **BUT Y-ceiling = 80 still clips real licking peaks in healthy
+>   cells**. Mild cells drop 23-26% in cohort mean (clean median
+>   clamps at ~79 px in every mild cell — exactly at the ceiling).
+>   Per-trial PS55 / 5-14 / t033 L collapsed 183 → 78 px because real
+>   licking peaks were clipped at 80.
+>
+> **Open design question for Phase 7f kickoff**: is the mild-cell
+> cohort shift acceptable (could be capturing genuine artifact
+> contamination of healthy peaks), OR should Y-ceiling be raised
+> (150-200 px), or made per-phenotype, or replaced with an
+> `lk >= 0.5` per-frame requirement at peak-picking?
+>
+> Phase 7f Task 1 should empirically calibrate Y-ceiling via a
+> per-phenotype `y99` sweep on lk≥0.85 high-confidence raw DLC, with
+> sensitivity analysis on `candidate_no_lick_with_jaw_move` rate.
+
 > **AMENDMENT 2026-05-26 #4 (cleanup-simulation audit — Y-ceiling
 > recalibration needed).** Scoping audit #3 (22,363 trials,
 > §3.8) applied the candidate cleanup
@@ -597,6 +641,116 @@ a frame-level outlier rule (Rule 3) for single-frame mid-confidence
 spikes. Recalibration candidates for kickoff: Y-ceiling ≥ 200 px (or
 per-phenotype, or removed), frame-jump threshold ~80-100 px from
 local median over ±20-30 ms.
+
+### 3.9 Cleanup simulation v2 (likelihood-free, per Priya direction)
+
+Phase 7f scoping audit #4 (run 2026-05-26) dropped the cluster-mean-lk
+gate per Priya 2026-05-26 ("we should keep likelihood threshold at 0.5"
++ visual review of v1 wiping ~99% of real movement). Replaced with
+likelihood-free rules ported from tongue v7 (jaw-recalibrated). Audit
+script:
+[`.scratch_phase_7f_scoping/audit_jaw_cleanup_sim_v2.py`](../../.scratch_phase_7f_scoping/audit_jaw_cleanup_sim_v2.py).
+22,363 trials. Outputs at
+[`.scratch_phase_7f_scoping/audit_results/cleanup_sim_v2/`](../../.scratch_phase_7f_scoping/audit_results/cleanup_sim_v2/)
++ renders at
+[`.scratch_phase_7f_scoping/visual_renders_cleanup_v2/`](../../.scratch_phase_7f_scoping/visual_renders_cleanup_v2/).
+
+**Cleanup rules applied (v2):**
+1. **R1 Y-ceiling = 80 px** (relaxed from v1's 75 per Priya direction).
+2. **R2 Isolated-short cluster wipe**: raw clusters of length ≤ 5
+   frames AND no other raw cluster within ±30 ms → wipe.
+3. **R3 Frame-level outlier wipe**: within each kept raw cluster,
+   frames where `|y - rolling_median(±20ms)| > 80 px` → wipe.
+   Vectorized via `scipy.ndimage.median_filter`.
+4. **R4 PCHIP-extend wipe**: adjacent `is_interp_fill` frames within
+   ±40 ms of any wiped frame → wipe.
+
+**NO cluster-mean-lk filter.** Production v5p3 Stage 2 `lk_thr=0.5`
+gate stays as-is per Priya 2026-05-26.
+
+Also tracks **`jaw_pass_qc` (the mismatch classifier input)** per-trial
+in addition to peak metrics.
+
+**Cohort means (full table:
+[`by_phenotype_epoch_cleanup_v2.csv`](../../.scratch_phase_7f_scoping/audit_results/cleanup_sim_v2/by_phenotype_epoch_cleanup_v2.csv); plot:
+[`cohort_mean_delta_bar_v2.png`](../../.scratch_phase_7f_scoping/audit_results/cleanup_sim_v2/cohort_mean_delta_bar_v2.png)):**
+
+| cell | prod peak | clean peak | Δ peak | prod pass_qc | clean pass_qc | Δ pass_qc | any wipe |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| mild / pre        | 102.6 | 78.8 | **−23%** | 0.915 | 0.906 | −0.9% | 17.6% |
+| mild / acute      | 100.4 | 77.6 | **−23%** | 0.892 | 0.887 | −0.5% | 14.4% |
+| mild / chronic    | 105.8 | 78.5 | **−26%** | 0.913 | 0.899 | −1.4% | 18.3% |
+| mild / sub_acute  | 106.7 | 78.4 | **−26%** | 0.907 | 0.894 | −1.3% | 17.1% |
+| moderate / acute  | 89.1 | 69.9 | **−21%** | 0.843 | 0.825 | −1.9% | 13.4% |
+| moderate / pre    | 87.9 | 73.3 | **−17%** | 0.608 | 0.553 | **−5.5%** | 8.0% |
+| **mod-sev / acute** | **11.3** | **11.3** | **−0.5%** | 0.823 | 0.823 | 0.0% | 0.01% |
+| mod-sev / pre     | 106.4 | 79.4 | **−25%** | 0.977 | 0.974 | −0.3% | 19.9% |
+| mod-sev / chronic | 94.7 | 75.7 | **−20%** | 0.853 | 0.840 | −1.3% | 7.4% |
+| **severe / acute** | **11.2** | **10.9** | **−2%** | 0.675 | 0.674 | −0.1% | 0.05% |
+| severe / pre      | 101.2 | 76.8 | **−24%** | 0.774 | 0.745 | −2.8% | 12.9% |
+| severe / chronic  | 74.8 | 67.0 | **−10%** | 0.798 | 0.776 | −2.2% | 1.0% |
+| severe / sub_acute | 65.6 | 56.2 | **−14%** | 0.799 | 0.782 | −1.7% | 1.6% |
+
+**Wipe-by-rule breakdown** (mean per-trial detect-window fraction; full table:
+[`wipe_prevalence_v2.csv`](../../.scratch_phase_7f_scoping/audit_results/cleanup_sim_v2/wipe_prevalence_v2.csv)):
+
+- **R1 Y-ceiling**: 0.01% (severe-acute) → 19.9% (mod-sev-pre). Does
+  ALL of the wiping work in mild/moderate cells.
+- **R2 isolated-short**: 0.001-0.001%. Fires rarely — jaw v5p3 has
+  high detection rate so isolated short clusters bracketed by long
+  baseline-fill are uncommon.
+- **R3 frame-outlier**: 0.0% to ~0.0001%. Fires extremely rarely at
+  cohort level — but **WHEN it fires, it nails the right frames**
+  (per the visual renders below).
+- **R4 PCHIP-extend**: 0.0001-0.3%. Follows R1/R2/R3 wipes.
+
+**Per-artifact-trial visual results** (full set:
+[`visual_renders_cleanup_v2/*.png`](../../.scratch_phase_7f_scoping/visual_renders_cleanup_v2/)):
+
+| trial | prod |defl|, qc | clean |defl|, qc | fired | verdict |
+| --- | --- | --- | --- | --- |
+| **PS54 / 5-06 / t095 L** (single-frame outlier) | 125 / qc=True | **9.7 / qc=True** | **R3 n=1** | **Cleanup works perfectly** — R3 nails the single-frame spike, rest of trace preserved (1454 raw kept) |
+| PS55 / 5-14 / t033 L (active licking + bands) | 183 / qc=True | 77.9 / qc=True | R1 n=10, R2 n=20, R4 n=50 | **Real licking peaks clipped at Y-ceiling 80**; trace preserved (525 raw kept), qc unchanged |
+| PS54 / 5-01 / t013 R (cluster artifact) | 138 / qc=True | 80.0 / **qc=False** | R1 n=18, R2 n=4 | **Cluster peaks clipped at ceiling**; post-1300ms real movement preserved (1106 raw kept); **but qc flipped to False** |
+| PS55 / 5-17 / t003 R (clean real movement) | 88 / qc=True | clean preserved | minimal | **No mistreatment** of clean high-confidence trials |
+
+**Conclusion (v2 vs v1):**
+
+- **R3 frame-outlier wipe correctly catches single-frame spikes** (PS54
+  t095: 125 → 9.7 px, R3 fires on 1 frame). Aggregate stats round to
+  near-zero because they're truly rare events, but the rule IS doing
+  its job per trial.
+- **v2 preserves the trace MUCH better than v1** (e.g., PS55 t033 L:
+  525 raw kept in v2 vs. 5 in v1).
+- **`jaw_pass_qc` rates are essentially preserved cohort-wide**: max
+  flip rate is 5.5% (moderate / pre); severe-acute is 0.1%. The
+  mismatch-classifier input is stable — `candidate_no_lick_with_jaw_move`
+  scientific dissociation evidence is preserved.
+- **BUT: Y-ceiling = 80 still clips real licking in healthy/active
+  cells.** Mild cells drop 23-26% in cohort mean. The clean median
+  clamps to ~79 px in every mild cell — exactly at the ceiling.
+- **Severe-acute / mod-sev-acute essentially unchanged**: prod 11.2 →
+  11.3 px (no biological signal change).
+
+**Remaining design question**: is the mild/moderate cohort-mean shift
+(real licking peaks > 80 wiped) acceptable, OR should the Y-ceiling
+be raised further (e.g., 150-200 px) to preserve those peaks? Trade-off:
+raising the ceiling preserves real movement but lets some cluster
+artifacts (PS54 t013 R-style pre-1300ms high-y clusters) survive into
+the peak. Per the audit, R2/R3 don't catch those cluster artifacts
+on their own (R2 fired only 4 frames on PS54 t013 R) — the Y-ceiling
+is doing the heavy lifting there.
+
+Options for Phase 7f kickoff:
+- **(i)** Keep Y-ceiling at 80, accept the mild-cell shift (the shift
+  may be capturing genuine artifact contamination of healthy peaks).
+- **(ii)** Raise Y-ceiling to 150-200, weaken cluster-artifact capture.
+- **(iii)** Per-phenotype Y-ceiling (80 for severe, 200 for mild) —
+  requires phenotype lookup in jaw_pertrial.
+- **(iv)** Add an `lk > 0.5` per-frame requirement at the peak-picking
+  stage (Priya 2026-05-26 suggested this may come back) — gates the
+  surviving max-deflection frame on the v5p3 lk being ≥ 0.5. Would
+  need to also gate on PCHIP/baseline-fill frames being skipped.
 
 ---
 
