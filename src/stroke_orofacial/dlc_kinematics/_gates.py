@@ -136,7 +136,7 @@ def gate_E(
 
 
 def parabolic_excise(
-    y: np.ndarray, x: np.ndarray,
+    y: np.ndarray,
     is_interp_fill: np.ndarray, is_baseline_fill: np.ndarray,
     outlier_peak_frame: int, n_frames: int, fps: float,
     *, params: dict[str, Any],
@@ -146,23 +146,23 @@ def parabolic_excise(
     Fits a quadratic to ±parabolic_tight_radius_ms anchors around the
     outlier (excluding the outlier window). If concave-down with vertex
     in window, returns
-    ``{new_peak_y, new_peak_x, new_peak_frame, interp_y, outlier_lo,
-      outlier_hi, method="parabolic"}``. Else returns None (caller
-    falls back to :func:`spline_excise`).
+    ``{new_peak_y, new_peak_frame, interp_y, outlier_lo, outlier_hi,
+      method="parabolic"}``. Else returns None (caller falls back to
+    :func:`spline_excise`).
 
-    **Addendum #1:** also computes ``new_peak_x`` by applying spline
-    imputation to x at the y-derived ``new_peak_frame`` (per Decision 6
-    RESOLVED — trace-level x pre-clean already cleans this; the field
-    is here for backward consistency but may be omitted if downstream
-    consumers always read x from cleaned_traces).
+    Y-only imputation; the imputed ``x`` at ``new_peak_frame`` is read
+    from the post-pre-clean ``cleaned_x`` (trace-level fix per Addendum
+    #1 Rules 1-4 is canonical for x — Decision 6 RESOLVED). The
+    ``LickEventRecord`` builder reads ``x = cleaned_x[new_peak_frame]``
+    directly; no per-peak ``new_peak_x`` field is carried.
 
-    Direct port of scratch lines 573-617 + Addendum #1 x extension.
+    Direct port of scratch lines 573-617.
     """
     raise NotImplementedError("Port body in Phase 7e Task 4")
 
 
 def spline_excise(
-    y: np.ndarray, x: np.ndarray,
+    y: np.ndarray,
     is_interp_fill: np.ndarray, is_baseline_fill: np.ndarray,
     outlier_peak_frame: int, n_frames: int, fps: float,
     *, params: dict[str, Any],
@@ -170,12 +170,16 @@ def spline_excise(
     """PCHIP-fit imputation for E-rejected peaks (Decision 16 fallback).
 
     Builds PCHIP through ±spline_anchor_win_ms raw anchors with the
-    outlier excise window excluded; finds the max y in ±spline_local_-
-    max_win_ms window. Returns ``{new_peak_y, new_peak_x, new_peak_-
-    frame, interp_y, outlier_lo, outlier_hi}``. Returns None if too few
-    anchors.
+    outlier excise window excluded; finds the max y in
+    ±spline_local_max_win_ms window. Returns
+    ``{new_peak_y, new_peak_frame, interp_y, outlier_lo, outlier_hi}``.
+    Returns None if too few anchors.
 
-    Direct port of scratch lines 620-663 + Addendum #1 x extension.
+    Y-only imputation; ``x`` at ``new_peak_frame`` is read from
+    ``cleaned_x`` (see :func:`parabolic_excise` docstring for the
+    Addendum #1 Decision 6 RESOLVED rationale).
+
+    Direct port of scratch lines 620-663.
     """
     raise NotImplementedError("Port body in Phase 7e Task 4")
 
