@@ -60,8 +60,10 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
     _per_cell_bout,
     _per_cell_detector,
     _resolve_eye_midpoint_session_median,
+    _V7TrialResult,
     build_tongue_pertrial,
 )
+from stroke_orofacial.dlc_kinematics._preclean import _PrecleanDiagnostics
 from stroke_orofacial.lr_convention import (
     SIDE_CONVENTION_MATCH_KEY,
     SIDE_CONVENTION_VERSION,
@@ -671,6 +673,105 @@ class TestCell33:
         out = _extract_lick1_lick2(y_t, x_t, t_ms, _SYNTH_FPS, params=base_params)
         for k in out:
             assert np.isnan(out[k])
+
+    # ---- Phase 7e.1: v7_trial_result routing ----
+
+    @staticmethod
+    def _make_v7_result(kept_licks: list[dict[str, float]]) -> _V7TrialResult:
+        n = int(round(2500.0 / 1000.0 * _SYNTH_FPS)) + 1
+        empty = np.zeros(n, dtype=np.float64)
+        return _V7TrialResult(
+            trial_index=0, side="L",
+            y_clean=empty, x_clean=empty,
+            is_baseline_fill_clean=np.zeros(n, dtype=bool),
+            t_ms=np.arange(n, dtype=np.float64) / _SYNTH_FPS * 1000.0,
+            kept_licks=kept_licks,
+            preclean_diag=_PrecleanDiagnostics(),
+        )
+
+    # 10a — Phase 7e.1
+    def test_extract_lick1_lick2_v7_empty_kept_licks_all_nan(self, base_params):
+        # Trace has a clear peak that the legacy detector would find, but
+        # v7_trial_result has empty kept_licks (all rejected by gates).
+        # Function MUST return NaN for all 6 scalars (no fallback to legacy).
+        y_t, x_t, t_ms = _make_lick_trace(
+            duration_ms=2500.0, peak_centers_ms=[500.0], amplitude=30.0,
+        )
+        v7 = self._make_v7_result(kept_licks=[])
+        out = _extract_lick1_lick2(
+            y_t, x_t, t_ms, _SYNTH_FPS, params=base_params,
+            v7_trial_result=v7,
+        )
+        for k in out:
+            assert np.isnan(out[k]), f"{k!r} should be NaN; got {out[k]!r}"
+
+    # 10b — Phase 7e.1
+    def test_extract_lick1_lick2_v7_single_kept_lick_lick2_nan(self, base_params):
+        y_t, x_t, t_ms = _make_lick_trace(
+            duration_ms=2500.0, peak_centers_ms=[500.0, 1500.0], amplitude=30.0,
+        )
+        # v7 keeps a single lick whose y/t/x come from the v7 (not the
+        # legacy slope detector's argmax) — verify the function returns
+        # those v7 values exactly, and lick2 is NaN.
+        kept = [{"y": 27.5, "t_ms": 530.0, "x": -1.25}]
+        v7 = self._make_v7_result(kept_licks=kept)
+        out = _extract_lick1_lick2(
+            y_t, x_t, t_ms, _SYNTH_FPS, params=base_params,
+            v7_trial_result=v7,
+        )
+        assert out["lick1_y_peak"] == pytest.approx(27.5)
+        assert out["lick1_t_peak_ms"] == pytest.approx(530.0)
+        assert out["lick1_x_at_ypeak"] == pytest.approx(-1.25)
+        assert np.isnan(out["lick2_y_peak"])
+        assert np.isnan(out["lick2_t_peak_ms"])
+        assert np.isnan(out["lick2_x_at_ypeak"])
+
+    # 10c — Phase 7e.1
+    def test_extract_lick1_lick2_v7_multi_kept_only_first_two(self, base_params):
+        y_t, x_t, t_ms = _make_lick_trace(
+            duration_ms=2500.0, peak_centers_ms=[500.0, 1500.0], amplitude=30.0,
+        )
+        # Three kept licks; only the first two flow into the legacy
+        # endpoint schema (lick1, lick2). Third+ are not exposed here.
+        kept = [
+            {"y": 27.5, "t_ms": 530.0, "x": -1.25},
+            {"y": 26.0, "t_ms": 1490.0, "x": +0.75},
+            {"y": 24.8, "t_ms": 2050.0, "x": +1.50},  # ignored
+        ]
+        v7 = self._make_v7_result(kept_licks=kept)
+        out = _extract_lick1_lick2(
+            y_t, x_t, t_ms, _SYNTH_FPS, params=base_params,
+            v7_trial_result=v7,
+        )
+        assert out["lick1_y_peak"] == pytest.approx(27.5)
+        assert out["lick1_t_peak_ms"] == pytest.approx(530.0)
+        assert out["lick1_x_at_ypeak"] == pytest.approx(-1.25)
+        assert out["lick2_y_peak"] == pytest.approx(26.0)
+        assert out["lick2_t_peak_ms"] == pytest.approx(1490.0)
+        assert out["lick2_x_at_ypeak"] == pytest.approx(+0.75)
+
+    # 10d — Phase 7e.1
+    def test_extract_lick1_lick2_v7_none_falls_back_to_legacy(self, base_params):
+        # Backwards-compat: omitting v7_trial_result (or passing None)
+        # MUST hit the legacy slope-detector path with byte-equal output
+        # to the pre-7e.1 emit. Re-uses test 8's fixture.
+        y_t, x_t, t_ms = _make_lick_trace(
+            duration_ms=2500.0, peak_centers_ms=[500.0, 1500.0], amplitude=30.0,
+        )
+        out_explicit_none = _extract_lick1_lick2(
+            y_t, x_t, t_ms, _SYNTH_FPS, params=base_params,
+            v7_trial_result=None,
+        )
+        out_default = _extract_lick1_lick2(
+            y_t, x_t, t_ms, _SYNTH_FPS, params=base_params,
+        )
+        for k in out_default:
+            assert (
+                np.isnan(out_default[k]) and np.isnan(out_explicit_none[k])
+            ) or out_default[k] == out_explicit_none[k]
+        # And the legacy path actually finds the synthetic peaks.
+        assert np.isfinite(out_default["lick1_t_peak_ms"])
+        assert np.isfinite(out_default["lick2_t_peak_ms"])
 
 
 # ===========================================================================
