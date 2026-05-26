@@ -265,3 +265,75 @@ These per-animal counts match the corrected entry in `docs/COWORK_SESSION_STATE.
 **ALL OTHER LOCKS UNCHANGED.** Scope-1, scope-2, scope-3 in-scope/out-of-scope items beyond the two deltas above stand. Driver invocation table structure, manifest schema, verification gates (a)/(c)/(d), failure-recovery semantics, F-P-1 forward-pointer, DECISIONS + MIGRATION_LOG plans, branch hygiene, stop-and-report points — all unchanged.
 
 Awaiting Priya re-approval on the kickoff (now reflecting Addendum #1) before Stage 1 begins.
+
+---
+
+## Addendum #2 (2026-05-26) — tongue mean+SEM + tongue-jaw mismatch + 9-PNG bundle
+
+Per Priya 2026-05-26 (post Phase 7e.1 architectural finding + cohort-wide v7-routing implications): expand Event B scope to cover the **other on-disk consumers of per-trial tongue endpoints + per-frame tongue parquets** that go stale on Event B merge. The original kickoff scoped these as out-of-scope; Phase 7e.1's in-place rewriting of `lick1_y_peak` / `lick1_t_peak_ms` / `lick2_*` (and the angle_at_ypeak derivatives) — plus Stage 1's per_frame/tongue/ re-emit — mean these downstream consumers **also embed pre-7e.1 numbers** and must be re-emitted for consistency.
+
+### Scope additions
+
+**Stage 4 — Tongue mean+SEM re-emit.** Cohort-aggregate mean+SEM CSVs + figures at `pipeline_outputs/dlc_kinematics/mean_sem/<bodypart>/<center_mode>/<window>/<plot_family>/<animal>/...`. Consumed by Phase 9.1 figures + paper visualizations directly. Driver: `scripts/phase_7c2/reemit_cohort_aggregates.py` (Phase 7c.2's `E3` path via `build_mean_sem_cohort`). The script iterates `MEAN_SEM_BODYPARTS = (tongue + jaw)`; for Event B scope we want tongue-only. If the script has no `--bodypart` filter, either (a) add one as a small follow-on change, or (b) accept the jaw side-effect (byte-equal re-emit since jaw per_trial JSONs aren't touched, so output is identical to pre-Stage-4 — wall-time cost only). Decide at stage launch.
+
+**Stage 5 — Tongue-jaw mismatch re-emit.** Per-session candidate-trials parquets + within-session figures + cross-session figures:
+- Per-session candidate-trials: `pipeline_outputs/dlc_kinematics/tongue_jaw_mismatch/candidate_trials/<animal>/<date>.parquet`
+- Per-session within-session figures: `pipeline_outputs/dlc_kinematics/tongue_jaw_mismatch/within_session/<animal>/<date>/*.png`
+- Cross-session figures: `pipeline_outputs/dlc_kinematics/tongue_jaw_mismatch/cross_session/<animal>/*.png`
+
+Note: `tongue_jaw_mismatch/comparison_grids/` was deleted in audit PR #127 follow-up (2026-05-25 chore) — NOT regenerated.
+
+Drivers:
+- Per-session: `classify_tongue_jaw_mismatch_by_animal_date` + `render_within_session_figures` (both imported via `stroke_orofacial.dlc_kinematics`).
+- Cross-session: `render_cross_session_figures` from the aggregates script (`E2` path).
+
+**EXECUTION HOLD (Priya 2026-05-26):** Stage 5 execution is gated on explicit Priya OK at stage launch — jaw interpolation work is in flight on the parallel `investigation/jaw-quality-audit` branch and the mismatch detector consumes jaw interpolated traces. CC must prompt Priya before kicking off Stage 5 and confirm jaw state has stabilized. Stages 4 + 5b proceed independently per their own gates.
+
+**Stage 5b — Within-session 9-PNG tongue-angle bundle.** Per-session Phase 7a.4 bundle at `pipeline_outputs/dlc_kinematics/tongue_angle/within_session/<animal>/<date>/*.png`. Per-trial panels overlay lick1/lick2 markers using the per_trial JSON's `lick1_t_peak_ms` / `lick2_t_peak_ms` values — post-7e.1 sourced from v7 kept-licks. For artifact-rejected trials (e.g., PS54/2025-05-01 35R per the Phase 7e.1 spot-test), the bundle's PRE version shows a marker at the artifactual peak; the POST version correctly shows no marker. **Priya 2026-05-26 override: include in Event B scope.**
+
+Driver: `render_tongue_qc_figures` (per-session, already imported via `stroke_orofacial.dlc_kinematics`).
+
+Also cross-session tongue-angle composite (Phase 7c.2 `E1` path) — 12 PNGs per mouse at `dlc_kinematics/tongue_angle/cross_session/<animal>/...` — consumes per-session angle parquets which Stage 1 re-emits. Re-render via `build_tongue_angle_cohort` from the aggregates script.
+
+### Unified follow-on driver
+
+Single new script: `scripts/phase_7e/reemit_tongue_followons_cohort.py`. Mirrors Stage 1's design:
+- (b) defensive secondary-spout pre-filter + (c) runtime input-existence pre-check.
+- `overwrite="force"` per session/animal; per-stage smoke gate (parquet loads + figures non-zero-byte).
+- Separate manifest at `.scratch_chore_phase_7e_reemit/followon_manifest.csv` (distinct from Stage 1's `cohort_manifest.csv` to avoid intermixing OK/SKIP semantics across stage families).
+- Resume-on-relaunch via status="OK" skip.
+- Anomaly thresholds same as Stage 1: per-session FAIL stops immediately; ≥2 per-animal stops; ≥5 cohort re-scopes.
+- Per-animal commit cadence: `chore(phase-7e-reemit): cohort follow-ons complete for <animal> (N OK / M SKIP)`.
+
+### Wall-time expectations
+
+- Stage 4 (mean+SEM cohort): per Phase 7c.2 aggregates docstring ~1-2 hr full cohort. Tongue-only subset: TBD by stage launch; expect 30-60 min.
+- Stage 5 per-session mismatch: ~5-10 s/session × ~230 OK sessions = **~25-40 min**.
+- Stage 5 cross-session mismatch: minutes per animal × 8 animals = **~5-10 min**.
+- Stage 5b per-session 9-PNG: ~10-20 s/session × ~230 sessions = **~40-80 min**.
+- Stage 5b cross-session tongue-angle composite (12 PNGs/animal): **~10-20 min**.
+
+**Stage 4+5+5b combined: ~2-3.5 hr wall-time.**
+
+### Updated verification gates
+
+- **Gate (a)** extended: per-session smoke verifies stage outputs land + non-zero bytes (mismatch parquet + figure PNGs + 9-PNG tongue-angle bundle).
+- **Gate (b)** extended: cohort-level smoke confirms (i) mean+SEM CSV row counts match expected cohort size + at least one per-phenotype curve renders without NaN-only; (ii) tongue-jaw mismatch outputs land for all 8 animals + at least one candidate_trial PNG renders; (iii) within-session 9-PNG bundle landed for all OK Stage 1 sessions.
+
+Gates (c) + (d) unchanged (Phase 9 stats side; Stages 4+5+5b don't feed those).
+
+### Stop-and-report points (updated)
+
+Insert between existing point 4 (gate-d Phase 9 stats verdict) and point 5 (chore close):
+- **4b. After Stage 4+5+5b combined invocation** — report manifest summary + cohort-level smoke results + spot-check on PS54/2025-05-01 35R confirming the 9-PNG bundle no longer overlays a marker at the artifactual peak.
+
+### Supersedes (delta-only)
+
+- "Out-of-scope" list under "Scope (LOCKED)": **REMOVE** the bullets "Phase 7a.4 tongue-angle within-session 9-PNG bundle (cosmetic re-render; not a Phase 9 stats input)" and "Phase 7a.5 tongue-jaw mismatch outputs". Both now in-scope per this addendum.
+- "Driver invocation" table: **ADD** rows for Stage 4 (mean+SEM via `reemit_cohort_aggregates.py` E3), Stage 5 (mismatch — per-session via new follow-on driver + cross-session via E2), Stage 5b (within-session 9-PNG via new follow-on driver + cross-session tongue-angle composite via E1).
+
+### Footer
+
+**ALL OTHER LOCKS UNCHANGED.** Stage 1/2/3 scope + gates (c)+(d) PS54 acute distribution check + manifest schema + branch hygiene + F-P-1 forward-pointer + DECISIONS + MIGRATION_LOG plans — all unchanged. Stage 4/5/5b execute AFTER gate-d passes.
+
+Jaw kinematics + spatial outputs out of scope (separate work).
