@@ -772,6 +772,73 @@ dlc_kinematics:
       # contributing finite values at each bin) — legacy emits this.
       emit_n_support_sessions: true
 
+    # =========================================================
+    # Phase 7e — v7 pre-clean + detector_v2 + gates
+    # =========================================================
+    # All numeric constants from the scratch reference impl at
+    # `.scratch_phase_9_1/inv_p3a_step2j_unified_preclean.py` (Decision 1)
+    # + Addendum #1 refinements (Rules 1-5; see
+    # `docs/prompts/phase-7e-addendum-1-task0-x-audit-verdict.md`).
+    use_v7_pipeline: true             # Default ON. Set False for backward-compat
+                                       # with the legacy detector path.
+    preclean:
+      # Y-side cluster classifier (Step 1a — Decision 9)
+      high_thr_px: 130.0              # also referenced by gates.d_y_thr_px below
+      shape_low_thr_px: 80.0
+      shape_range_thr_px: 50.0
+      nbrhd_radius_ms: 100.0
+      # Isolated-short cluster override (Decision 11)
+      isolated_max_n: 3
+      isolated_radius_ms: 20.0
+      # Frame-level y outlier (Step 1b — Decision 12)
+      frame_jump_thr_px: 100.0
+      frame_radius_ms: 20.0
+      # PCHIP-extend wipe (Step 1d — Decision 13)
+      pchip_extend_ms: 40.0
+      # Belt-and-suspenders long flat plateau
+      flat_min_len: 20
+      flat_max_range_px: 3.0
+      flat_min_y_px: 30.0
+      # --- Addendum #1: x-side pre-clean rules ---
+      # Rule 1 (x=x0 at y-side baseline-fill): no key; x0 is derived
+      #   per-session as median(x_final[is_baseline_fill_orig]).
+      # Rule 2 (drop y-wiped frames from x's PCHIP anchor set): no key.
+      x_abs_max_px: 110.0             # Rule 3 hard bound on |x|
+      x_pchip_extend_ms: 40.0         # Rule 3 PCHIP-extend (reuses y's value)
+      x_jump_thr_px: 30.0             # Rule 4 burst deviation from both flanks
+      x_flank_max_distance: 5         # Rule 4 max frames to scan for nearest raw flank
+    detector_v2:
+      lm_min_distance_ms: 50.0        # find_peaks distance constraint (Decision 15)
+      dedupe_radius_ms: 50.0          # cross-detector dedupe radius (Decision 14)
+      max_fall_search_ms: 52.0        # bounded-fall detector search window
+    gates:
+      # Gate F — within-peak raw std
+      f_wp_win_ms: 20.0
+      f_wp_std_thr: 1.0
+      f_k_min_raw: 3
+      # Gate D — left/right low context (Decision 10: d_y_thr_px ==
+      # preclean.high_thr_px by design; aligned via cross-reference)
+      d_win_ms: 150.0
+      d_y_thr_px: 130.0
+      # Gate E — z-vs-peers + spline/parabolic imputation (Decision 17)
+      e_z_thr: 3.0
+      e_lik_override: 0.85
+      e_k_min_peers: 4
+      # parabolic_excise tried first (Decision 16)
+      parabolic_tight_radius_ms: 60.0
+      parabolic_min_anchors: 5
+      # spline_excise fallback
+      spline_excise_radius_ms: 8.0
+      spline_anchor_win_ms: 160.0
+      spline_local_max_win_ms: 20.0
+      spline_min_anchors: 4
+      # Gate M — confidence-based inter-lick interval (Decision 2)
+      m_min_interval_ms: 80.0
+      m_conf_radius_ms: 20.0
+      # --- Addendum #1: early-window M-gate relaxation (Rule 5) ---
+      m_early_interval_ms: 60.0       # threshold for peaks where both t_ms < m_early_win_ms
+      m_early_win_ms: 250.0
+
   # =========================================================
   # Tongue visual gate rendering (Phase 7a.4)
   # =========================================================
