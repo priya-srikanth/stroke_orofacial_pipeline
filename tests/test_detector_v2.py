@@ -360,3 +360,85 @@ class TestMergeDetectorOutputs:
         )
         assert len(merged) == 1
         assert merged[0].frame == 50  # first one wins
+
+    # Task 5c — Decision 14 three-detector dedupe coverage
+
+    def test_lmax_only_peaks_survive(self):
+        """If only lmax fires, all its peaks survive (bounded + legacy empty)."""
+        lmax_pl = _make_peak_list([20, 60, 100])
+        merged = merge_detector_outputs(
+            [
+                ("lmax", lmax_pl),
+                ("bounded", _PeakList.empty()),
+                ("legacy", _PeakList.empty()),
+            ],
+            likelihood=np.full(200, 0.9), fps=FPS, params=PARAMS_V2,
+        )
+        assert [p.frame for p in merged] == [20, 60, 100]
+        assert all(p.source == "lmax" for p in merged)
+
+    def test_bounded_only_peaks_survive(self):
+        """If only bounded fires (lmax / legacy empty), all bounded peaks survive."""
+        bounded_pl = _make_peak_list([30, 70])
+        merged = merge_detector_outputs(
+            [
+                ("lmax", _PeakList.empty()),
+                ("bounded", bounded_pl),
+                ("legacy", _PeakList.empty()),
+            ],
+            likelihood=np.full(200, 0.9), fps=FPS, params=PARAMS_V2,
+        )
+        assert [p.frame for p in merged] == [30, 70]
+        assert all(p.source == "bounded" for p in merged)
+
+    def test_overlap_lmax_bounded_lmax_wins(self):
+        """lmax peak at frame 50 + bounded peak at frame 55 (5 < 12-frame
+        dedupe radius) → lmax wins, bounded dropped (Decision 14)."""
+        lmax_pl = _make_peak_list([50])
+        bounded_pl = _make_peak_list([55])
+        merged = merge_detector_outputs(
+            [("lmax", lmax_pl), ("bounded", bounded_pl), ("legacy", _PeakList.empty())],
+            likelihood=np.full(200, 0.9), fps=FPS, params=PARAMS_V2,
+        )
+        assert len(merged) == 1
+        assert merged[0].source == "lmax"
+        assert merged[0].frame == 50
+
+    def test_three_way_overlap_lmax_wins(self):
+        """lmax + bounded + legacy all within dedupe radius → lmax wins."""
+        lmax_pl = _make_peak_list([50])
+        bounded_pl = _make_peak_list([54])
+        legacy_pl = _make_peak_list([56])
+        merged = merge_detector_outputs(
+            [("lmax", lmax_pl), ("bounded", bounded_pl), ("legacy", legacy_pl)],
+            likelihood=np.full(200, 0.9), fps=FPS, params=PARAMS_V2,
+        )
+        assert len(merged) == 1
+        assert merged[0].source == "lmax"
+        assert merged[0].frame == 50
+
+    def test_bounded_legacy_overlap_bounded_wins(self):
+        """No lmax + bounded + legacy within dedupe radius → bounded wins
+        (processing order)."""
+        bounded_pl = _make_peak_list([50])
+        legacy_pl = _make_peak_list([55])
+        merged = merge_detector_outputs(
+            [("lmax", _PeakList.empty()), ("bounded", bounded_pl), ("legacy", legacy_pl)],
+            likelihood=np.full(200, 0.9), fps=FPS, params=PARAMS_V2,
+        )
+        assert len(merged) == 1
+        assert merged[0].source == "bounded"
+        assert merged[0].frame == 50
+
+    def test_well_separated_three_source_peaks_all_survive(self):
+        """Peaks > 50 ms apart from each source → all 3 kept."""
+        lmax_pl = _make_peak_list([20])
+        bounded_pl = _make_peak_list([60])
+        legacy_pl = _make_peak_list([100])
+        merged = merge_detector_outputs(
+            [("lmax", lmax_pl), ("bounded", bounded_pl), ("legacy", legacy_pl)],
+            likelihood=np.full(200, 0.9), fps=FPS, params=PARAMS_V2,
+        )
+        assert len(merged) == 3
+        assert [p.frame for p in merged] == [20, 60, 100]
+        assert [p.source for p in merged] == ["lmax", "bounded", "legacy"]

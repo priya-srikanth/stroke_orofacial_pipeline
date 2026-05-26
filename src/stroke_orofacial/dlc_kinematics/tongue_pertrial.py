@@ -66,7 +66,12 @@ from stroke_orofacial.dlc_kinematics._detector import (
     _moving_avg_nan,
     _slope_detect_lick_peaks,
 )
+# Task 5c: alias the legacy slope detector for use as both the
+# "bounded" and "legacy" source in the v7 orchestrator (called twice
+# with different detector_params).
+_slope_detect_lick_peaks_legacy = _slope_detect_lick_peaks
 from stroke_orofacial.dlc_kinematics._detector_v2 import (
+    _PeakList as _PeakList_v2,
     detect_local_maxima as _detect_local_maxima_v2,
     merge_detector_outputs as _merge_detector_outputs_v2,
 )
@@ -1704,6 +1709,45 @@ def _resolve_eye_midpoint_session_median(
 # ===========================================================================
 
 
+def _legacy_peaks_to_peak_list(
+    legacy: Any, detector_params: dict[str, Any], fps: float,
+) -> Any:
+    """Task 5c adapter: convert :class:`._detector._LickPeaks` (legacy
+    detector output) → :class:`._detector_v2._PeakList` (v7 dedupe
+    input shape).
+
+    The legacy ``_LickPeaks`` has ``rise_starts`` + ``turnover`` +
+    ``peak_indices`` (post-Task-5c also ``fall_ends``); the v7
+    ``_PeakList`` needs ``peak_indices`` + ``rise_starts`` +
+    ``fall_ends``. We copy the fields directly; ``turnover`` (= dy-
+    crosses-zero frame ≈ peak frame) isn't carried into the v7 shape.
+
+    If the legacy output's ``fall_ends`` is empty (backwards-compat
+    edge case for callers that don't populate it), falls back to a
+    ``i_peak + peak_pad_n`` approximation so dedupe still gets a
+    sensible value.
+    """
+    if len(legacy) == 0:
+        return _PeakList_v2.empty()
+    fall_ends_legacy = legacy.fall_ends
+    if len(fall_ends_legacy) == len(legacy.peak_indices):
+        fall_ends_out = fall_ends_legacy
+    else:
+        # Backwards-compat fallback — approximate via peak_pad_n
+        peak_pad_n = max(1, int(round(
+            float(detector_params["peak_pad_ms"]) / 1000.0 * fps,
+        )))
+        fall_ends_out = legacy.peak_indices + peak_pad_n
+    return _PeakList_v2(
+        peak_times_ms=legacy.peak_times_ms,
+        peak_y=legacy.peak_y,
+        peak_x=legacy.peak_x,
+        peak_indices=legacy.peak_indices,
+        rise_starts=legacy.rise_starts,
+        fall_ends=fall_ends_out,
+    )
+
+
 def _run_v7_pipeline_per_trial(
     y_slice: np.ndarray,
     x_slice: np.ndarray,
@@ -1753,7 +1797,9 @@ def _run_v7_pipeline_per_trial(
         n_frames, fps, params=preclean_params,
     )
 
-    # Stage 2: detect_local_maxima on the cleaned trace.
+    # Stage 2: run all three detectors per Decision 14 (Task 5c —
+    # restored from Task 5's lmax-only deferral).
+    # 1) detect_local_maxima (lmax) — find_peaks based, NEW for v7
     lmax_pl = _detect_local_maxima_v2(
         y=y_clean, x=x_clean, t_ms=t_ms, fps=fps,
         is_baseline_fill=is_base_clean,
@@ -1761,11 +1807,48 @@ def _run_v7_pipeline_per_trial(
         detector_params=detector_params,
         params=detector_v2_params,
     )
+    # 2) bounded-fall — reuses _slope_detect_lick_peaks with the
+    #    max_fall_search_ms + accept_implicit_baseline_fall knobs
+    #    (Task 5c parameterization). max_fall_search_ms read from
+    #    detector_v2 config block; the implicit-baseline-fall acceptance
+    #    requires the cleaned baseline-fill mask. See scratch lines
+    #    332-423 for the original detect_bounded_fall implementation
+    #    that this configuration reproduces.
+    bounded_detector_params = dict(detector_params)
+    bounded_detector_params["max_fall_search_ms"] = float(
+        detector_v2_params["max_fall_search_ms"]
+    )
+    bounded_detector_params["accept_implicit_baseline_fall"] = True
+    # Bounded-fall doesn't use strict_no_fallback rejection — it has its
+    # own conditional acceptance path via implicit baseline fall. Keep
+    # strict_no_fallback aligned with scratch's behavior (True; the
+    # implicit_baseline_fall path overrides it when applicable).
+    bounded_legacy = _slope_detect_lick_peaks_legacy(
+        y_t=y_clean, x_t=x_clean, t_ms=t_ms, fps=fps,
+        detect_win_ms=detect_win_ms,
+        detector_params=bounded_detector_params,
+        n_max=None,
+        is_baseline_fill=is_base_clean,
+    )
+    bounded_pl = _legacy_peaks_to_peak_list(bounded_legacy, detector_params, fps)
+    # 3) legacy slope detector — unchanged behavior (no bounded-fall knobs)
+    legacy_legacy = _slope_detect_lick_peaks_legacy(
+        y_t=y_clean, x_t=x_clean, t_ms=t_ms, fps=fps,
+        detect_win_ms=detect_win_ms,
+        detector_params=detector_params,
+        n_max=None,
+    )
+    legacy_pl = _legacy_peaks_to_peak_list(legacy_legacy, detector_params, fps)
 
-    # Stage 2.5: cross-detector dedupe. NOTE: lmax-only at Task 5 scope;
-    # follow-up adds bounded + legacy when detect_bounded_fall is ported.
+    # Stage 2.5: cross-detector dedupe per Decision 14. Processing
+    # order lmax → bounded → legacy; lmax wins on overlap (most
+    # accurate peak location).
     merged_peaks = _merge_detector_outputs_v2(
-        [("lmax", lmax_pl)],
+        [
+            ("lmax", lmax_pl),
+            ("bounded", bounded_pl),
+            ("legacy", legacy_pl),
+        ],
         likelihood=likelihood_slice,
         fps=fps,
         params=detector_v2_params,
