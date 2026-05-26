@@ -94,6 +94,37 @@ These rules bind every Claude Code session working on this project.
      `git branch -D`, `git rebase`, `git checkout -- <file>`, `git clean -fd`,
      force-push), STOP and ask Priya first. Describe exactly what will change
      and request explicit approval.
+9. **Parallel CC sessions on the same repo require git worktrees.** A git
+   repo has ONE working directory; only one branch can be checked out at a
+   time. If two CC sessions are running in parallel against the same repo
+   (e.g., Event B compute on one branch + a separate investigation on
+   another), each MUST work in its own git worktree (`git worktree add
+   <path> <branch>`), NOT just `git checkout -b` in the main path.
+   Otherwise the two sessions collide on every `git checkout`,
+   `git status`, `git add` — branches tangle, commits land on the wrong
+   side, working-tree edits silently switch under one session when the
+   other checks out something else.
+   - **Setup:** from the main repo, create a worktree for the parallel
+     branch: `git worktree add C:\Users\sabatini\GitHub\stroke_orofacial_pipeline-<purpose> <branch>`.
+   - **Parallel CC prompts** must direct CC explicitly to the worktree
+     path at the start (`cd C:\Users\sabatini\GitHub\stroke_orofacial_pipeline-<purpose>`)
+     and never `cd` to the main path.
+   - **Teardown after merge:** `git worktree remove
+     C:\Users\sabatini\GitHub\stroke_orofacial_pipeline-<purpose>` from
+     the main repo + `git branch -d <branch>` (lowercase; refuses
+     unmerged branches as a safety net) after confirming the branch is
+     merged on origin.
+   - **Diagnostic for tangled state:** `git worktree list` shows all
+     active worktrees + their branches; `git reflog | head -30` is the
+     safety net for recovery. Reference incident: Phase 7e Event B +
+     jaw quality audit parallel CC sessions 2026-05-26 — both ran in
+     the main working tree without worktrees, branches tangled,
+     required diagnostic + stash recovery before clean separation.
+   - **Worktrees share `.git/`** so branches, tags, fetches, hooks all
+     stay consistent. Only working directories + index are independent.
+     A branch can only be checked out in ONE worktree at a time —
+     git rejects `git worktree add` for an already-checked-out branch
+     (feature, not bug).
 
 ---
 
