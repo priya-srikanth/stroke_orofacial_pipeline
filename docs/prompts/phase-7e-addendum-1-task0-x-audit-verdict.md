@@ -120,3 +120,31 @@ No new keys for x_imputed schema (per Decision 6 RESOLVED — no field needed).
 
 - PS47 33L active-licking troughs: a few frames have raw x slightly displaced from the surrounding cluster, but the direction check (x not closer to x0 than flanks) correctly skips them. If a re-tune is needed post-merge, the simplest knob is the jump threshold.
 - Other rejected peaks (F/D/E/M) do not propagate trace wipes per the "rejected peaks NOT wiped" convention above.
+
+---
+
+## Mid-phase correction (Task 5b, 2026-05-26)
+
+**Decision 6 partial reversal — per-peak `new_peak_x` reintroduced into the excise mechanism.**
+
+The Task 1 scaffolding chose "option (a)" — drop the `x` input from `parabolic_excise` / `spline_excise` and read x from `cleaned_traces` at the imputed peak frame. Reasoning at the time: trace-level x pre-clean (Rules 1-4) would catch all relevant x outliers, so per-peak `x_imputed` would be redundant.
+
+**This was wrong.** Verified during Task 5 wiring on PS54 46L (the canonical E_spline_impute case):
+
+- The actual raw DLC outlier sits at frame 141 with `is_intp=True` neighbors on the left (5 frames in a row), so Rule 4 (which scans for nearest RAW flanks within ±5 frames) can't find a left raw flank → Rule 4 abstains.
+- The y-side cluster classifier (Step 1a) keeps the cluster as `keep_real` (cluster has rise + fall structure with low y), so the outlier survives pre-clean.
+- Rule 2 (drop y-wiped frames from x anchors) only kicks in IF the y-side wipes the frame — which it doesn't for 46L.
+- Gate E catches the outlier via z-score AFTER detection, but by that point the x at the imputed peak frame is the Phase 7a.2 PCHIP value — anchored on the outlier itself. Production reports `peak_x = −13.79` instead of the audit-derived `+55.70`.
+
+**Task 5b correction:** reintroduce `new_peak_x` to the parabolic/spline excise return shape, computed via the same audit `local_pchip_x` mechanism — wide PCHIP anchors (±`spline_anchor_win_ms` = 160 ms) with a ±`x_outlier_excise_ms` window around `outlier_peak_frame_local` excluded from the anchor set. The new `gates.x_outlier_excise_ms` (default 8 ms) is added to the YAML; separate from `spline_excise_radius_ms` so x and y excise widths can be tuned independently if needed.
+
+**Signature change.** `parabolic_excise` / `spline_excise` now take `x` as input (in addition to `y`) and return `new_peak_x` in their dict. `LickEventRecord.x` for imputed licks reads `parabolic_excise(...)['new_peak_x']` (or `spline_excise(...)['new_peak_x']` if parabolic returned None); for non-imputed licks, reads `cleaned_x[new_peak_frame]` per Rule 1-4 (unchanged).
+
+**Numeric verification.** On PS54 46L (the smoking-gun case):
+- Audit `local_pchip_x`: +55.6991 px
+- Production `new_peak_x` post-Task-5b: +55.6991 px (byte-equal, |Δ| = 0.0)
+- Angle bias drop: from 7.75° (pre-Task-5b production) to 0.00° (post-Task-5b production vs audit) — full correction delivered
+
+**Open from Task 5b** (deferred to morning review): PS51 26R can't be gate-tested under Task 5's lmax-only scope. Scratch finds the 26R impute peak via `detect_bounded_fall` (4 of 6 peaks have `src=bounded`); detect_bounded_fall isn't ported into production yet (deferred per Task 5 commit message). The Task 5b code is verified correct on 46L; 26R verification requires bounded-fall port (Task 5c?) before the cohort-wide parity check at Task 8.
+
+**Implication for Decision 6 (Task 9 close):** the single DECISIONS entry captures the full arc — verdict (x-audit-flag, 1/89 events), option (b) lock from Addendum #1, mid-Task-5 correction restoring option (b) after the Task 1 lapse, ±8 ms excision rule, byte-equal verification on 46L. Phrase as a single resolved decision.

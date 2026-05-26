@@ -233,8 +233,70 @@ def gate_E(
 # ---------------------------------------------------------------------------
 
 
+def _compute_imputed_x(
+    x: np.ndarray, is_interp_fill: np.ndarray, is_baseline_fill: np.ndarray,
+    outlier_peak_frame: int, new_peak_frame: int,
+    n_frames: int, fps: float, *, params: dict[str, Any],
+) -> float:
+    """Task 5b: compute x at the imputed peak frame via PCHIP through
+    wide x anchors, with the ±x_outlier_excise_ms window around
+    ``outlier_peak_frame`` excluded.
+
+    Mirrors the audit's ``local_pchip_x(exclude_outlier_window=True)``
+    used in the visualization audit
+    (``.scratch_phase_7e/visualize_x_imputation.py``). Returns NaN if
+    the anchor set is too sparse to fit a PCHIP, in which case the
+    caller falls back to ``cleaned_x[new_peak_frame]``.
+
+    Used by :func:`parabolic_excise` and :func:`spline_excise` to
+    produce the ``new_peak_x`` return field. Catches the PS54 46L
+    case where trace-level Rule 2/4 can't reach past the is_intp
+    frames around the raw outlier — the imputation step excises the
+    outlier window explicitly here, matching the audit-derived value.
+    """
+    excise_radius_ms = float(params["x_outlier_excise_ms"])
+    anchor_win_ms = float(params["spline_anchor_win_ms"])
+    min_anchors = int(params["spline_min_anchors"])
+
+    excise_radius = max(1, int(round(excise_radius_ms / 1000.0 * fps)))
+    anchor_radius = max(4, int(round(anchor_win_ms / 1000.0 * fps)))
+
+    lo_out = max(0, outlier_peak_frame - excise_radius)
+    hi_out = min(n_frames, outlier_peak_frame + excise_radius + 1)
+    a_lo = max(0, outlier_peak_frame - anchor_radius)
+    a_hi = min(n_frames, outlier_peak_frame + anchor_radius + 1)
+
+    raw_mask = (~is_interp_fill) & (~is_baseline_fill) & np.isfinite(x)
+    candidate_anchor = raw_mask.copy()
+    candidate_anchor[lo_out:hi_out] = False  # excise outlier window
+    window_mask = np.zeros(n_frames, dtype=bool)
+    window_mask[a_lo:a_hi] = True
+    anchor_mask = candidate_anchor & window_mask
+    anchor_idx = np.where(anchor_mask)[0]
+
+    if len(anchor_idx) < min_anchors:
+        return float("nan")
+    if not (
+        (anchor_idx < outlier_peak_frame).any()
+        and (anchor_idx > outlier_peak_frame).any()
+    ):
+        return float("nan")
+    if new_peak_frame < anchor_idx.min() or new_peak_frame > anchor_idx.max():
+        return float("nan")
+    try:
+        pchip = PchipInterpolator(
+            anchor_idx.astype(float), x[anchor_idx], extrapolate=False,
+        )
+    except Exception:  # pragma: no cover  # noqa: BLE001
+        return float("nan")
+    val = float(pchip(float(new_peak_frame)))
+    if not np.isfinite(val):
+        return float("nan")
+    return val
+
+
 def parabolic_excise(
-    y: np.ndarray,
+    y: np.ndarray, x: np.ndarray,
     is_interp_fill: np.ndarray, is_baseline_fill: np.ndarray,
     outlier_peak_frame: int, n_frames: int, fps: float,
     *, params: dict[str, Any],
@@ -244,17 +306,21 @@ def parabolic_excise(
     Fits a quadratic to ±parabolic_tight_radius_ms anchors around the
     outlier (excluding the outlier window). If concave-down with vertex
     in window, returns
-    ``{new_peak_y, new_peak_frame, interp_y, outlier_lo, outlier_hi,
-      method="parabolic"}``. Else returns None (caller falls back to
-    :func:`spline_excise`).
+    ``{new_peak_y, new_peak_x, new_peak_frame, interp_y, outlier_lo,
+      outlier_hi, method="parabolic"}``. Else returns None (caller falls
+    back to :func:`spline_excise`).
 
-    Y-only imputation; the imputed ``x`` at ``new_peak_frame`` is read
-    from the post-pre-clean ``cleaned_x`` (trace-level fix per Addendum
-    #1 Rules 1-4 is canonical for x — Decision 6 RESOLVED). The
-    ``LickEventRecord`` builder reads ``x = cleaned_x[new_peak_frame]``
-    directly; no per-peak ``new_peak_x`` field is carried.
+    **Task 5b correction of Decision 6** (see Addendum #1 footer): also
+    computes ``new_peak_x`` via PCHIP through wide x anchors
+    (±spline_anchor_win_ms, same as y-side fallback) with the outlier
+    excise window (±x_outlier_excise_ms around ``outlier_peak_frame``)
+    excluded. This catches the PS54 46L case where the raw outlier sits
+    on a frame whose neighbors are ``is_intp=True`` (PCHIP-fill that the
+    outlier itself anchored) — trace-level Rule 2/4 can't see past the
+    is_intp frames to drop the raw outlier from x's anchor set, so the
+    imputation step does it explicitly.
 
-    Direct port of scratch lines 573-617.
+    Direct port of scratch lines 573-617 + Task 5b x extension.
     """
     tight_radius_ms = float(params["parabolic_tight_radius_ms"])
     min_anchors = int(params["parabolic_min_anchors"])
@@ -302,15 +368,24 @@ def parabolic_excise(
     new_peak_y = float(vy)
     eval_x = np.arange(lo_out, hi_out, dtype=float)
     interp_y = a * eval_x ** 2 + b * eval_x + c
+    # Task 5b: x at new_peak_frame via wide-anchor PCHIP with the outlier
+    # excise window excluded — matches the audit's local_pchip_x logic.
+    new_peak_x = _compute_imputed_x(
+        x, is_interp_fill, is_baseline_fill,
+        outlier_peak_frame=outlier_peak_frame,
+        new_peak_frame=new_peak_frame,
+        n_frames=n_frames, fps=fps, params=params,
+    )
     return dict(
-        new_peak_y=new_peak_y, new_peak_frame=new_peak_frame,
+        new_peak_y=new_peak_y, new_peak_x=new_peak_x,
+        new_peak_frame=new_peak_frame,
         interp_y=interp_y, outlier_lo=lo_out, outlier_hi=hi_out,
         method="parabolic",
     )
 
 
 def spline_excise(
-    y: np.ndarray,
+    y: np.ndarray, x: np.ndarray,
     is_interp_fill: np.ndarray, is_baseline_fill: np.ndarray,
     outlier_peak_frame: int, n_frames: int, fps: float,
     *, params: dict[str, Any],
@@ -320,14 +395,14 @@ def spline_excise(
     Builds PCHIP through ±spline_anchor_win_ms raw anchors with the
     outlier excise window excluded; finds the max y in
     ±spline_local_max_win_ms window. Returns
-    ``{new_peak_y, new_peak_frame, interp_y, outlier_lo, outlier_hi}``.
-    Returns None if too few anchors.
+    ``{new_peak_y, new_peak_x, new_peak_frame, interp_y, outlier_lo,
+      outlier_hi}``. Returns None if too few anchors.
 
-    Y-only imputation; ``x`` at ``new_peak_frame`` is read from
-    ``cleaned_x`` (see :func:`parabolic_excise` docstring for the
-    Addendum #1 Decision 6 RESOLVED rationale).
+    **Task 5b correction:** also computes ``new_peak_x`` via wide-anchor
+    PCHIP with ±x_outlier_excise_ms window excluded (see
+    :func:`parabolic_excise` docstring for full rationale).
 
-    Direct port of scratch lines 620-663.
+    Direct port of scratch lines 620-663 + Task 5b x extension.
     """
     excise_radius_ms = float(params["spline_excise_radius_ms"])
     anchor_win_ms = float(params["spline_anchor_win_ms"])
@@ -389,8 +464,17 @@ def spline_excise(
     new_peak_y = float(np.max(all_vals))
     new_peak_local = int(np.argmax(all_vals))
     new_peak_frame = lm_lo + new_peak_local
+    # Task 5b: x at new_peak_frame via wide-anchor PCHIP with the outlier
+    # excise window excluded — matches the audit's local_pchip_x logic.
+    new_peak_x = _compute_imputed_x(
+        x, is_interp_fill, is_baseline_fill,
+        outlier_peak_frame=outlier_peak_frame,
+        new_peak_frame=new_peak_frame,
+        n_frames=n_frames, fps=fps, params=params,
+    )
     return dict(
-        new_peak_y=new_peak_y, new_peak_frame=new_peak_frame,
+        new_peak_y=new_peak_y, new_peak_x=new_peak_x,
+        new_peak_frame=new_peak_frame,
         interp_y=interp_y, outlier_lo=lo_out, outlier_hi=hi_out,
     )
 

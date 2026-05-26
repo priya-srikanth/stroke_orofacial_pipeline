@@ -40,6 +40,7 @@ GATES_PARAMS: dict = {
     "spline_anchor_win_ms": 160.0,
     "spline_local_max_win_ms": 20.0,
     "spline_min_anchors": 4,
+    "x_outlier_excise_ms": 8.0,    # Task 5b — x-side outlier-window excision width
     "m_min_interval_ms": 80.0,
     "m_conf_radius_ms": 20.0,
     "m_early_interval_ms": 60.0,
@@ -221,17 +222,18 @@ class TestGateE:
 
 class TestParabolicExcise:
     def test_concave_down_returns_vertex(self):
-        """Smooth concave-down parabola → vertex returned."""
+        """Smooth concave-down parabola → vertex returned + new_peak_x."""
         n = 50
         # y = -2*(x-25)^2 + 200  has vertex at x=25, y=200
         x_arr = np.arange(n, dtype=float)
         y = -2.0 * (x_arr - 25.0) ** 2 + 200.0
+        x = np.full(n, 50.0)  # flat x for the smooth case
         is_intp = np.zeros(n, dtype=bool)
         is_base = np.zeros(n, dtype=bool)
         # outlier_peak_frame at 25 (the true vertex); the excise window
         # near it doesn't really matter — surrounding anchors fit cleanly
         result = parabolic_excise(
-            y, is_intp, is_base, outlier_peak_frame=25, n_frames=n, fps=FPS,
+            y, x, is_intp, is_base, outlier_peak_frame=25, n_frames=n, fps=FPS,
             params=GATES_PARAMS,
         )
         assert result is not None
@@ -239,16 +241,20 @@ class TestParabolicExcise:
         # Vertex of the true parabola at frame 25, y=200
         assert result["new_peak_frame"] == 25
         assert result["new_peak_y"] == pytest.approx(200.0, abs=1.0)
+        # Task 5b: new_peak_x via wide-anchor PCHIP excluding outlier window.
+        # Since x is flat at 50, the result should be ~50.
+        assert result["new_peak_x"] == pytest.approx(50.0, abs=1.0)
 
     def test_concave_up_returns_none(self):
         """Concave-up data (no peak shape) → returns None."""
         n = 50
         x_arr = np.arange(n, dtype=float)
         y = 2.0 * (x_arr - 25.0) ** 2 + 10.0  # concave UP (valley not peak)
+        x = np.full(n, 50.0)
         is_intp = np.zeros(n, dtype=bool)
         is_base = np.zeros(n, dtype=bool)
         result = parabolic_excise(
-            y, is_intp, is_base, outlier_peak_frame=25, n_frames=n, fps=FPS,
+            y, x, is_intp, is_base, outlier_peak_frame=25, n_frames=n, fps=FPS,
             params=GATES_PARAMS,
         )
         assert result is None
@@ -257,13 +263,38 @@ class TestParabolicExcise:
         """When the anchor window has < parabolic_min_anchors raw frames → None."""
         n = 50
         y = np.full(n, 100.0)
+        x = np.full(n, 50.0)
         is_intp = np.ones(n, dtype=bool)   # everything is PCHIP-fill
         is_base = np.zeros(n, dtype=bool)
         result = parabolic_excise(
-            y, is_intp, is_base, outlier_peak_frame=25, n_frames=n, fps=FPS,
+            y, x, is_intp, is_base, outlier_peak_frame=25, n_frames=n, fps=FPS,
             params=GATES_PARAMS,
         )
         assert result is None
+
+    def test_new_peak_x_excludes_outlier_window(self):
+        """Task 5b: x at outlier frame is anomalous; new_peak_x should
+        IGNORE it and use wide flank values via PCHIP. Mirrors PS54
+        46L pattern at synthetic scale."""
+        n = 100
+        # Smooth concave-down y centered at frame 50
+        x_arr = np.arange(n, dtype=float)
+        y = -2.0 * (x_arr - 50.0) ** 2 + 200.0
+        # x is flat at +50 everywhere EXCEPT the outlier window (±2 frames
+        # around frame 50 — within x_outlier_excise_ms=8ms = ±2 frames)
+        x = np.full(n, 50.0)
+        x[48:53] = -45.0   # outlier value at and around frame 50
+        is_intp = np.zeros(n, dtype=bool)
+        is_base = np.zeros(n, dtype=bool)
+        result = parabolic_excise(
+            y, x, is_intp, is_base, outlier_peak_frame=50, n_frames=n, fps=FPS,
+            params=GATES_PARAMS,
+        )
+        assert result is not None
+        # new_peak_x should ignore the outlier-window values and produce
+        # ~+50 from the flanking anchors. Without the excise, it would be
+        # pulled toward -45.
+        assert result["new_peak_x"] == pytest.approx(50.0, abs=2.0)
 
 
 # ===========================================================================
@@ -277,10 +308,11 @@ class TestSplineExcise:
         n = 100
         x_arr = np.arange(n, dtype=float)
         y = 150.0 * np.exp(-((x_arr - 50.0) ** 2) / (2 * 8.0 ** 2))
+        x = np.full(n, 50.0)
         is_intp = np.zeros(n, dtype=bool)
         is_base = np.zeros(n, dtype=bool)
         result = spline_excise(
-            y, is_intp, is_base, outlier_peak_frame=50, n_frames=n, fps=FPS,
+            y, x, is_intp, is_base, outlier_peak_frame=50, n_frames=n, fps=FPS,
             params=GATES_PARAMS,
         )
         assert result is not None
@@ -292,15 +324,18 @@ class TestSplineExcise:
         # peak (~140 instead of 150 — ~7% under). Tolerance reflects this
         # excise-window-induced undershoot.
         assert result["new_peak_y"] == pytest.approx(150.0, abs=15.0)
+        # Task 5b: new_peak_x via wide-anchor PCHIP. Flat x → ~50.
+        assert result["new_peak_x"] == pytest.approx(50.0, abs=1.0)
 
     def test_too_few_anchors_returns_none(self):
         """Anchor window with < spline_min_anchors raw frames → None."""
         n = 50
         y = np.full(n, 100.0)
+        x = np.full(n, 50.0)
         is_intp = np.ones(n, dtype=bool)
         is_base = np.zeros(n, dtype=bool)
         result = spline_excise(
-            y, is_intp, is_base, outlier_peak_frame=25, n_frames=n, fps=FPS,
+            y, x, is_intp, is_base, outlier_peak_frame=25, n_frames=n, fps=FPS,
             params=GATES_PARAMS,
         )
         assert result is None

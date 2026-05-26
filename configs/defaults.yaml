@@ -832,6 +832,14 @@ dlc_kinematics:
       spline_anchor_win_ms: 160.0
       spline_local_max_win_ms: 20.0
       spline_min_anchors: 4
+      # X-imputation outlier-window excision (Task 5b mid-phase correction
+      # of Decision 6 — see Addendum #1 footer). Width of the window
+      # AROUND the original outlier_peak_frame_local that gets excluded
+      # from x's anchor set when computing new_peak_x via parabolic/
+      # spline excise. Separate from spline_excise_radius_ms so x and y
+      # excise widths can be tuned independently if needed. Applies to
+      # x-imputation only; y-imputation uses spline_excise_radius_ms.
+      x_outlier_excise_ms: 8.0
       # Gate M — confidence-based inter-lick interval (Decision 2)
       m_min_interval_ms: 80.0
       m_conf_radius_ms: 20.0

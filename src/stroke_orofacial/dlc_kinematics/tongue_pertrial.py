@@ -1823,14 +1823,22 @@ def _run_v7_pipeline_per_trial(
                 r["y"], r["lik"], peer_ys, params=gates_params,
             )
             if E_rej:
-                # Parabolic first (Decision 16), spline fallback.
+                # Parabolic first (Decision 16), spline fallback. Both
+                # take x_slice and return new_peak_x via wide-anchor
+                # PCHIP with the outlier excise window excluded (Task
+                # 5b correction of Decision 6 — see Addendum #1 footer).
+                # NOTE: x is passed as x_slice (the raw Phase 7a.2 PCHIP
+                # x_final at the trial slice), NOT x_clean. The excise
+                # mechanism needs the original PCHIP values so it can
+                # rebuild a corrected x at new_peak_frame from anchors
+                # that exclude the outlier window.
                 spline = _parabolic_excise_v7(
-                    y_clean, is_interp_fill_slice, is_base_clean, pf,
+                    y_clean, x_slice, is_interp_fill_slice, is_base_clean, pf,
                     n_frames, fps, params=gates_params,
                 )
                 if spline is None:
                     spline = _spline_excise_v7(
-                        y_clean, is_interp_fill_slice, is_base_clean, pf,
+                        y_clean, x_slice, is_interp_fill_slice, is_base_clean, pf,
                         n_frames, fps, params=gates_params,
                     )
                 if spline is None:
@@ -1845,10 +1853,12 @@ def _run_v7_pipeline_per_trial(
                     r["gate"] = "E_spline_drop"
                     r["z"] = z
                     continue
-                # Impute: replace y + peak_frame; track original
+                # Impute: replace y + peak_frame; track original;
+                # carry new_peak_x for the kept-lick builder below
                 r["y_original"] = r["y"]
                 r["y"] = float(spline["new_peak_y"])
                 r["peak_frame_local"] = int(spline["new_peak_frame"])
+                r["new_peak_x"] = float(spline.get("new_peak_x", float("nan")))
                 r["imputed"] = True
                 r["gate"] = "E_spline_impute"
                 r["reason"] = (
@@ -1902,9 +1912,26 @@ def _run_v7_pipeline_per_trial(
             float(t_ms[fall_end_frame])
             if 0 <= fall_end_frame < n_frames else float("nan")
         )
-        x_at_peak = (
-            float(x_clean[pf]) if 0 <= pf < n_frames else float("nan")
-        )
+        # Task 5b: for imputed licks, prefer the excise-derived
+        # new_peak_x (mirrors audit's local_pchip_x at the new peak
+        # frame, with the outlier window excluded). Falls back to
+        # cleaned_x[new_peak_frame] if the excise computation returned
+        # NaN (too-few-anchors edge case). For non-imputed licks,
+        # always use cleaned_x[new_peak_frame] (= the canonical
+        # trace-level x per Addendum #1 Rules 1-4).
+        is_imputed = bool(r.get("imputed", False))
+        if is_imputed:
+            new_peak_x = float(r.get("new_peak_x", float("nan")))
+            if np.isfinite(new_peak_x):
+                x_at_peak = new_peak_x
+            elif 0 <= pf < n_frames:
+                x_at_peak = float(x_clean[pf])
+            else:
+                x_at_peak = float("nan")
+        else:
+            x_at_peak = (
+                float(x_clean[pf]) if 0 <= pf < n_frames else float("nan")
+            )
         kept_licks.append({
             "lick_idx": lick_idx,
             "t_ms": float(r["t_ms"]),
@@ -1913,7 +1940,7 @@ def _run_v7_pipeline_per_trial(
             "y_original": float(r.get("y_original", float("nan"))),
             "rise_start_ms": rise_start_ms,
             "fall_end_ms": fall_end_ms,
-            "imputed": bool(r.get("imputed", False)),
+            "imputed": is_imputed,
             "source": str(r["src"]),
             "confidence": confidence,
             "likelihood": float(r["lik"]),
