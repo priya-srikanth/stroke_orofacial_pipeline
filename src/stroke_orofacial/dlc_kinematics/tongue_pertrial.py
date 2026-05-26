@@ -1868,6 +1868,11 @@ def _build_lick_events_df(
                 "source": kept["source"],
                 "confidence": kept["confidence"],
                 "likelihood": kept["likelihood"],
+                # Task 7 fields (Decisions 5 + 6)
+                "peak_angle_deg": kept.get("peak_angle_deg", float("nan")),
+                "max_velocity_y_px_per_s": kept.get(
+                    "max_velocity_y_px_per_s", float("nan"),
+                ),
             })
     if not rows:
         # Empty DataFrame with the full schema so the parquet writer
@@ -1877,6 +1882,7 @@ def _build_lick_events_df(
             "t_ms", "y", "x", "y_original",
             "rise_start_ms", "fall_end_ms",
             "imputed", "source", "confidence", "likelihood",
+            "peak_angle_deg", "max_velocity_y_px_per_s",
         ])
     return pd.DataFrame(rows)
 
@@ -1895,6 +1901,8 @@ def _run_v7_pipeline_per_trial(
     tone_frame_idx: int,
     session_frame_lo: int,
     session_frame_hi: int,
+    eye_x_in_spout_frame: float,
+    eye_y_in_spout_frame: float,
     params: dict[str, Any],
 ) -> _V7TrialResult:
     """Run the full Phase 7e v7 pipeline on one trial slice.
@@ -2151,6 +2159,49 @@ def _run_v7_pipeline_per_trial(
             x_at_peak = (
                 float(x_clean[pf]) if 0 <= pf < n_frames else float("nan")
             )
+
+        # Task 7 (Decision 6 RESOLVED): peak_angle_deg from cleaned (x, y)
+        # at the peak frame, relative to eye-in-spout-frame. Uses the same
+        # atan2-with-sign-flip formula as the per-frame angle
+        # (_angle._compute_signed_tongue_angle_deg). LickEventRecord.x
+        # already carries Task 5b's imputed value for imputed licks; for
+        # non-imputed licks it's cleaned_x[new_peak_frame].
+        sign_flip = float(
+            params["dlc_kinematics"]["tongue_pertrial"]["angle"]["sign_flip"]
+        )
+        ref_x = -eye_x_in_spout_frame
+        ref_y = -eye_y_in_spout_frame
+        vx = x_at_peak - eye_x_in_spout_frame
+        vy = float(r["y"]) - eye_y_in_spout_frame
+        if np.isfinite(vx) and np.isfinite(vy):
+            cross = ref_x * vy - ref_y * vx
+            dot = ref_x * vx + ref_y * vy
+            peak_angle_deg = float(
+                sign_flip * np.degrees(np.arctan2(cross, dot))
+            )
+        else:
+            peak_angle_deg = float("nan")
+
+        # Task 7 (Decision 5): max_velocity_y inside [rise_start_frame,
+        # fall_end_frame] from the CLEANED y trace, with is_baseline_fill
+        # masked. NaN if window empty / all baseline / too few frames.
+        rsf = r.get("rise_start_frame", -1)
+        fef = r.get("fall_end_frame", -1)
+        if 0 <= rsf <= fef < n_frames:
+            y_win = y_clean[rsf:fef + 1].astype(np.float64, copy=True)
+            is_base_win = is_base_clean[rsf:fef + 1]
+            y_win_masked = np.where(is_base_win, np.nan, y_win)
+            if int(np.count_nonzero(np.isfinite(y_win_masked))) >= 2:
+                dy_win = np.gradient(y_win_masked) * fps  # px/s
+                if np.isfinite(dy_win).any():
+                    max_velocity_y = float(np.nanmax(dy_win))
+                else:
+                    max_velocity_y = float("nan")
+            else:
+                max_velocity_y = float("nan")
+        else:
+            max_velocity_y = float("nan")
+
         kept_licks.append({
             "lick_idx": lick_idx,
             "t_ms": float(r["t_ms"]),
@@ -2163,6 +2214,8 @@ def _run_v7_pipeline_per_trial(
             "source": str(r["src"]),
             "confidence": confidence,
             "likelihood": float(r["lik"]),
+            "peak_angle_deg": peak_angle_deg,
+            "max_velocity_y_px_per_s": max_velocity_y,
         })
         lick_idx += 1
 
@@ -3163,6 +3216,8 @@ def _build_tongue_pertrial_core(
                 tone_frame_idx=int(ev.tone_frame_idx),
                 session_frame_lo=_lo_fi,
                 session_frame_hi=_hi_fi,
+                eye_x_in_spout_frame=eye_x,
+                eye_y_in_spout_frame=eye_y,
                 params=params,
             ))
 

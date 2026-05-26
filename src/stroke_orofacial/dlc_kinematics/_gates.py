@@ -92,6 +92,16 @@ class LickEventRecord:
     source: str             # "lmax" | "bounded" | "legacy"
     confidence: float
     likelihood: float
+    # Phase 7e Task 7 additions per Decisions 5 + 6.
+    # peak_angle_deg: signed lick angle at the (imputed) peak frame, computed
+    #   from cleaned (x, y) relative to the session's eye-in-spout-frame
+    #   origin. Consumes Task 5b's imputed x (LickEventRecord.x is already
+    #   the post-Task-5b x_imputed for imputed licks).
+    # max_velocity_y_px_per_s: max dy/dt inside the kept lick's
+    #   [rise_start_frame, fall_end_frame] window, with is_baseline_fill=True
+    #   frames masked. Computed from the cleaned y trace (per Decision 5).
+    peak_angle_deg: float = float("nan")
+    max_velocity_y_px_per_s: float = float("nan")
 
 
 # ---------------------------------------------------------------------------

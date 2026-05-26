@@ -509,3 +509,18 @@ class TestLickEventRecord:
         assert rec.imputed is False
         assert np.isnan(rec.y_original)
         assert rec.source == "lmax"
+        # Task 7 fields default to NaN when not supplied
+        assert np.isnan(rec.peak_angle_deg)
+        assert np.isnan(rec.max_velocity_y_px_per_s)
+
+    def test_dataclass_with_task7_fields(self):
+        """Task 7: peak_angle_deg + max_velocity_y_px_per_s can be set."""
+        rec = LickEventRecord(
+            animal="PS54", date="2025-06-13", trial=51, side="L",
+            lick_idx=0, t_ms=860.0, y=129.4, x=39.31, y_original=float("nan"),
+            rise_start_ms=844.0, fall_end_ms=876.0, imputed=False,
+            source="lmax", confidence=5.5, likelihood=0.78,
+            peak_angle_deg=12.3, max_velocity_y_px_per_s=1850.0,
+        )
+        assert rec.peak_angle_deg == 12.3
+        assert rec.max_velocity_y_px_per_s == 1850.0
