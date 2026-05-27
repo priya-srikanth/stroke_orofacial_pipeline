@@ -1,0 +1,8 @@
+# Phase 9.1 Task 1a V4 preview endpoint list
+# All 4 phenotype tiers; 5 representative endpoints chosen to cover diverse
+# Phase 9 recovery patterns.
+first_lick_accuracy_all
+num_correct_licks_per_trial
+tongue_lick1_y_peak
+tongue_lick1_angle_at_ypeak
+tongue_lick1_x_at_ypeak

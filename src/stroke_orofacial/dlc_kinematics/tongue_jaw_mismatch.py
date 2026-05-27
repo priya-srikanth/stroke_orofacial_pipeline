@@ -28,6 +28,25 @@ Inputs
 - :class:`SessionManifest` + ``trial_events`` (auto-derivable from
   spout_behavior via the 7a.3 V3 helper)
 
+Phase 7e.3 (optional v7-cleaned input routing)
+-----------------------------------------------
+When ``use_v7_cleaned=True`` is passed to the public API
+(:func:`classify_tongue_jaw_mismatch`,
+:func:`classify_tongue_jaw_mismatch_by_animal_date`,
+:func:`render_within_session_figures`,
+:func:`render_cross_session_figures`), the data loaders
+:func:`_load_bodypart_y_final` and :func:`_load_tongue_x_final` switch
+from reading Phase 7a.2 ``interpolated_traces`` parquets to reading
+Phase 7e ``cleaned_traces`` parquets, AND mask ``y_final`` / ``x_final``
+to NaN at frames where ``is_baseline_fill=True``. The slope detector
+consumes the masked traces; baseline-fill placeholder values
+(``y=0`` per the Phase 7a.2 + 7e convention) are correctly treated as
+no-data rather than biological tongue-at-rest signal for the mismatch
+detector's ``quiet_tongue_pass`` predicate. Mirrors the Phase 7e.1
+(``_extract_lick1_lick2``) and Phase 7e.2 (``_extract_peak_velocity_first5``)
+routing patterns that landed for per-trial endpoints. Default
+``use_v7_cleaned=False`` preserves backwards compat.
+
 Outputs (atomic)
 ----------------
 - ``<outputs>/dlc_kinematics/tongue_jaw_mismatch/candidate_trials/<animal>/<YYYYMMDD>.parquet``
@@ -152,6 +171,7 @@ def classify_tongue_jaw_mismatch(
     *,
     overwrite: Literal["skip", "force"] = "skip",
     animal_info: AnimalInfo | None = None,
+    use_v7_cleaned: bool = False,
 ) -> Path | None:
     """Classify mismatch trials for one session and write the parquet atomically.
 
@@ -205,6 +225,7 @@ def classify_tongue_jaw_mismatch(
         manifest=manifest, resolver=resolver,
         trial_events=trial_events, jaw_endpoints=jaw_endpoints,
         params=params, animal_info=animal_info,
+        use_v7_cleaned=use_v7_cleaned,
     )
     _write_candidate_trials_parquet_atomic(out_path, result.trials, result.metadata)
     return out_path
@@ -244,6 +265,7 @@ def render_within_session_figures(
     *,
     candidate_trials_df: pd.DataFrame | None = None,
     overwrite: Literal["skip", "force"] = "skip",
+    use_v7_cleaned: bool = False,
 ) -> dict[str, list[Path]]:
     """Render the 2 within-session figure families for one ``(animal, date)``.
 
@@ -301,12 +323,15 @@ def render_within_session_figures(
             )
         candidate_trials_df = pd.read_parquet(ct_path)
 
-    # Need traces for plotting — re-load both bodyparts from 7a.2 parquets.
+    # Need traces for plotting. When use_v7_cleaned=True, both bodyparts'
+    # y_final come from cleaned_traces with is_baseline_fill NaN-masked.
     jaw_y, fps_jaw, n_frames_jaw = _load_bodypart_y_final(
         resolver, animal, date, bodypart="jaw",
+        use_v7_cleaned=use_v7_cleaned,
     )
     tongue_y, _, _ = _load_bodypart_y_final(
         resolver, animal, date, bodypart="tongue",
+        use_v7_cleaned=use_v7_cleaned,
     )
 
     plotter_cfg = params["dlc_kinematics"]["tongue_jaw_mismatch"]["plotter"]
@@ -337,6 +362,7 @@ def render_cross_session_figures(
     *,
     overwrite: Literal["skip", "force"] = "skip",
     animal_info: AnimalInfo | None = None,
+    use_v7_cleaned: bool = False,
 ) -> dict[str, Path]:
     """Render the 2 cross-session figure families for one mouse.
 
@@ -383,7 +409,9 @@ def render_cross_session_figures(
 
     plotter_cfg = params["dlc_kinematics"]["tongue_jaw_mismatch"]["plotter"]
 
-    sessions = _gather_sessions_for_animal(animal, resolver, animal_info)
+    sessions = _gather_sessions_for_animal(
+        animal, resolver, animal_info, use_v7_cleaned=use_v7_cleaned,
+    )
     if not sessions:
         raise FileNotFoundError(
             f"No candidate_trials parquets found for {animal} under "
@@ -421,6 +449,8 @@ def _build_classifier_result(
     jaw_endpoints: dict[str, Any],
     params: dict[str, Any],
     animal_info: AnimalInfo,
+    *,
+    use_v7_cleaned: bool = False,
 ) -> TongueJawMismatchResult:
     """Pure-compute path: build the per-trial DataFrame + metadata dict."""
     cfg = params["dlc_kinematics"]["tongue_jaw_mismatch"]
@@ -431,16 +461,18 @@ def _build_classifier_result(
     jp_params = params["dlc_kinematics"]["jaw_pertrial"]
 
     # Load tongue trace for the local detector. Jaw is read by the
-    # plotter on demand; classifier doesn't need it.
+    # plotter on demand; classifier doesn't need it. When
+    # use_v7_cleaned=True, both y and x come from cleaned_traces with
+    # is_baseline_fill frames NaN-masked so the slope detector's
+    # quiet_tongue_pass predicate reflects v7 cleanup.
     tongue_y, fps, n_frames = _load_bodypart_y_final(
         resolver, manifest.animal, manifest.date, bodypart="tongue",
+        use_v7_cleaned=use_v7_cleaned,
     )
-    tongue_x_path = resolver.interpolated_trace(
-        bodypart="tongue", animal=manifest.animal, date=manifest.date,
+    tongue_x = _load_tongue_x_final(
+        resolver, manifest.animal, manifest.date,
+        use_v7_cleaned=use_v7_cleaned,
     )
-    tongue_x = pd.read_parquet(tongue_x_path, columns=["x_final"])[
-        "x_final"
-    ].to_numpy(dtype=np.float64, copy=False)
 
     # Per-trial detector run (count tongue licks in the quiet window).
     rows: list[dict[str, Any]] = []
@@ -607,8 +639,55 @@ def _build_tongue_detector_params(tongue_detector_cfg: dict[str, Any]) -> dict[s
 def _load_bodypart_y_final(
     resolver: PathResolver, animal: str, date: datetime.date,
     *, bodypart: Literal["tongue", "jaw"],
+    use_v7_cleaned: bool = False,
 ) -> tuple[np.ndarray, float, int]:
-    """Read ``y_final`` + ``fps`` + ``n_frames`` from a 7a.2 interpolated_traces parquet."""
+    """Read ``y_final`` + ``fps`` + ``n_frames``.
+
+    When ``use_v7_cleaned=False`` (default, legacy): read from Phase 7a.2
+    interpolated_traces parquet.
+
+    When ``use_v7_cleaned=True`` (Phase 7e.3): read from Phase 7e
+    cleaned_traces parquet instead, AND mask ``y_final`` to NaN at
+    ``is_baseline_fill=True`` frames. The slope detector consumes the
+    masked trace; baseline-fill placeholder values (y=0) are correctly
+    treated as no-data rather than biological tongue-at-rest signal for
+    the mismatch detector's quiet_tongue_pass predicate.
+    """
+    if use_v7_cleaned:
+        path = resolver.cleaned_trace(
+            bodypart=bodypart, animal=animal, date=date,
+        )
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Phase 7e {bodypart} cleaned_traces parquet missing for "
+                f"{animal}/{date.isoformat()} at {path}. "
+                f"Run build_tongue_pertrial or jaw equivalent first.",
+            )
+        df = pd.read_parquet(path, columns=["y_final", "is_baseline_fill"])
+        # cleaned_traces parquets from different writers carry different
+        # metadata schemas (jaw cleaned_traces from Phase 7f Step 1 has
+        # fps + n_frames; tongue cleaned_traces from Phase 7e Stage 1 has
+        # only algorithm_version + feature_extraction_version). Try
+        # cleaned_traces metadata first; fall back to interpolated_traces
+        # metadata (sibling source, always carries fps + n_frames).
+        cleaned_schema = pq.read_schema(path)
+        cleaned_meta = cleaned_schema.metadata or {}
+        if b"fps" in cleaned_meta and b"n_frames" in cleaned_meta:
+            fps = float(cleaned_meta[b"fps"].decode("utf-8"))
+            n_frames = int(cleaned_meta[b"n_frames"].decode("utf-8"))
+        else:
+            interp_path = resolver.interpolated_trace(
+                bodypart=bodypart, animal=animal, date=date,
+            )
+            schema = pq.read_schema(interp_path)
+            raw_meta = schema.metadata or {}
+            fps = float(raw_meta[b"fps"].decode("utf-8"))
+            n_frames = int(raw_meta[b"n_frames"].decode("utf-8"))
+        y_final = df["y_final"].to_numpy(dtype=np.float64, copy=True)
+        is_baseline_fill = df["is_baseline_fill"].to_numpy(dtype=bool, copy=False)
+        y_final[is_baseline_fill] = np.nan
+        return y_final, fps, n_frames
+
     path = resolver.interpolated_trace(
         bodypart=bodypart, animal=animal, date=date,
     )
@@ -625,6 +704,35 @@ def _load_bodypart_y_final(
     n_frames = int(raw_meta[b"n_frames"].decode("utf-8"))
     y_final = df["y_final"].to_numpy(dtype=np.float64, copy=False)
     return y_final, fps, n_frames
+
+
+def _load_tongue_x_final(
+    resolver: PathResolver, animal: str, date: datetime.date,
+    *, use_v7_cleaned: bool = False,
+) -> np.ndarray:
+    """Read tongue ``x_final``.
+
+    Phase 7e.3 sibling of :func:`_load_bodypart_y_final` for x. When
+    ``use_v7_cleaned=True``, reads from cleaned_traces with NaN-masking
+    at ``is_baseline_fill=True`` frames; matches the y_final masking
+    semantics so x and y co-evolve consistently in the slope detector.
+    """
+    if use_v7_cleaned:
+        path = resolver.cleaned_trace(
+            bodypart="tongue", animal=animal, date=date,
+        )
+        df = pd.read_parquet(path, columns=["x_final", "is_baseline_fill"])
+        x_final = df["x_final"].to_numpy(dtype=np.float64, copy=True)
+        is_baseline_fill = df["is_baseline_fill"].to_numpy(dtype=bool, copy=False)
+        x_final[is_baseline_fill] = np.nan
+        return x_final
+
+    path = resolver.interpolated_trace(
+        bodypart="tongue", animal=animal, date=date,
+    )
+    return pd.read_parquet(path, columns=["x_final"])[
+        "x_final"
+    ].to_numpy(dtype=np.float64, copy=False)
 
 
 def _ms_to_frames(ms: float, fps: float) -> int:
@@ -656,6 +764,7 @@ def _snippet(
 
 def _gather_sessions_for_animal(
     animal: str, resolver: PathResolver, animal_info: AnimalInfo,
+    *, use_v7_cleaned: bool = False,
 ) -> list[dict[str, Any]]:
     """Discover all per-session candidate_trials parquets for ``animal``,
     pair with their tongue + jaw traces, and decorate with rel_day.
@@ -677,9 +786,11 @@ def _gather_sessions_for_animal(
         try:
             jaw_y, fps, n_frames = _load_bodypart_y_final(
                 resolver, animal, d, bodypart="jaw",
+                use_v7_cleaned=use_v7_cleaned,
             )
             tongue_y, _, _ = _load_bodypart_y_final(
                 resolver, animal, d, bodypart="tongue",
+                use_v7_cleaned=use_v7_cleaned,
             )
         except FileNotFoundError as e:
             print(f"[warn] {animal}/{d.isoformat()}: skipping ({e})")

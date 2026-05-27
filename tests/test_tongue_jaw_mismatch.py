@@ -1529,3 +1529,175 @@ class TestModuleEdges:
         )
         with pytest.raises(Exception):  # noqa: B017
             result.trials = pd.DataFrame({"y": [2]})  # type: ignore[misc]
+
+
+# ===========================================================================
+# Phase 7e.3 — v7-cleaned routing tests (mirroring 7e.1/7e.2 4-test pattern)
+# ===========================================================================
+
+
+def _make_synthetic_cleaned_trace_parquet(
+    path: Path, n_frames: int, *, fps: float = _SYNTH_FPS,
+    y_final: np.ndarray | None = None,
+    x_final: np.ndarray | None = None,
+    is_baseline_fill: np.ndarray | None = None,
+) -> None:
+    """Write a Phase 7e cleaned_traces parquet (same schema as interpolated_traces)."""
+    if y_final is None:
+        y_final = np.zeros(n_frames, dtype=np.float64)
+    if x_final is None:
+        x_final = np.zeros(n_frames, dtype=np.float64)
+    if is_baseline_fill is None:
+        is_baseline_fill = np.zeros(n_frames, dtype=bool)
+    df = pd.DataFrame({
+        "frame_idx": np.arange(n_frames, dtype=np.int64),
+        "x_final": x_final.astype(np.float64),
+        "y_final": y_final.astype(np.float64),
+        "likelihood_raw": np.full(n_frames, 0.95, dtype=np.float64),
+        "is_interp_fill": np.zeros(n_frames, dtype=bool),
+        "is_baseline_fill": is_baseline_fill.astype(bool),
+        "fill_method": np.zeros(n_frames, dtype=np.int8),
+    })
+    table = pa.Table.from_pandas(df, preserve_index=False)
+    meta = {
+        b"X0": b"0.0", b"Y0": b"0.0",
+        b"baseline_stage": b"drop",
+        b"center_mode": b"centered_eye_midpoint",
+        b"fps": repr(fps).encode(),
+        b"interpolation_version": INTERPOLATION_VERSION.encode(),
+        b"n_frames": str(n_frames).encode(),
+        b"side_convention_version": b"1",
+        b"wavesurfer_sides_match_mouse_sides": b"False",
+    }
+    existing = table.schema.metadata or {}
+    merged = {**{bytes(k): bytes(v) for k, v in existing.items()}, **meta}
+    table = table.replace_schema_metadata(merged)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(table, str(path), compression="snappy")
+
+
+class TestPhase7e3V7CleanedRouting:
+    """Phase 7e.3 — route mismatch detector through cleaned_traces with
+    is_baseline_fill masking when use_v7_cleaned=True. Default False
+    preserves backwards compat (legacy interpolated_traces path)."""
+
+    def test_use_v7_cleaned_false_default_reads_interpolated(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """use_v7_cleaned=False (default) reads from interpolated_traces.
+        Backwards compat: behavior must match pre-7e.3 byte-for-byte."""
+        resolver, manifest, trial_events = _setup_session(
+            tmp_path, monkeypatch,
+            reward_frames=(1500,), sides=("L",),
+            jaw_amps=((30.0, 1),), tongue_lick_times=((),),
+        )
+        # Do NOT write cleaned_traces — confirming the legacy path doesn't
+        # look for them.
+        out = classify_tongue_jaw_mismatch(
+            manifest=manifest, resolver=resolver, trial_events=trial_events,
+            params=base_params, overwrite="force",
+        )
+        df = pd.read_parquet(out)
+        assert bool(df["quiet_tongue_pass"].iloc[0]) is True
+        assert bool(df["jaw_pass_qc"].iloc[0]) is True
+        assert bool(df["candidate_no_lick_with_jaw_move"].iloc[0]) is True
+
+    def test_use_v7_cleaned_true_reads_cleaned_traces(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """use_v7_cleaned=True reads from cleaned_traces (Phase 7e output)
+        instead of interpolated_traces."""
+        resolver, manifest, trial_events = _setup_session(
+            tmp_path, monkeypatch,
+            reward_frames=(1500,), sides=("L",),
+            jaw_amps=((30.0, 1),), tongue_lick_times=((),),
+        )
+        # Write cleaned_traces alongside (same content as interpolated;
+        # no baseline_fill so behavior matches the legacy path).
+        n_frames = 7500
+        rng = np.random.default_rng(0)
+        jaw_y = 100.0 + rng.normal(0.0, 0.5, n_frames)
+        _add_jaw_deflection(jaw_y, _SYNTH_FPS, 1500, amplitude_px=30.0, sign=1)
+        tongue_y = rng.normal(0.0, 0.5, n_frames)
+        _make_synthetic_cleaned_trace_parquet(
+            resolver.cleaned_trace(bodypart="jaw", animal="PS46", date=datetime.date(2025, 3, 7)),
+            n_frames, y_final=jaw_y,
+        )
+        _make_synthetic_cleaned_trace_parquet(
+            resolver.cleaned_trace(bodypart="tongue", animal="PS46", date=datetime.date(2025, 3, 7)),
+            n_frames, y_final=tongue_y,
+        )
+        out = classify_tongue_jaw_mismatch(
+            manifest=manifest, resolver=resolver, trial_events=trial_events,
+            params=base_params, overwrite="force", use_v7_cleaned=True,
+        )
+        df = pd.read_parquet(out)
+        assert bool(df["quiet_tongue_pass"].iloc[0]) is True
+
+    def test_use_v7_cleaned_true_masks_baseline_fill_frames(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """is_baseline_fill=True frames in the cleaned_traces parquet
+        get NaN-masked before the slope detector runs. So even if the
+        placeholder y_final values at those frames would otherwise trigger
+        the detector, the masking prevents quiet_tongue_pass from going
+        False. This is the science-correctness property for Phase 7e.3."""
+        resolver, manifest, trial_events = _setup_session(
+            tmp_path, monkeypatch,
+            reward_frames=(1500,), sides=("L",),
+            jaw_amps=((30.0, 1),), tongue_lick_times=((),),
+        )
+        n_frames = 7500
+        rng = np.random.default_rng(0)
+        jaw_y = 100.0 + rng.normal(0.0, 0.5, n_frames)
+        _add_jaw_deflection(jaw_y, _SYNTH_FPS, 1500, amplitude_px=30.0, sign=1)
+        # Tongue cleaned_traces: place a "fake lick" (large amplitude bump)
+        # but mark it is_baseline_fill=True. Without masking, the slope
+        # detector would catch it; with masking, it should be NaN'd out.
+        tongue_y = np.zeros(n_frames, dtype=np.float64)
+        _add_tongue_lick(tongue_y, _SYNTH_FPS, 1500, peak_time_ms=200.0)
+        is_baseline_fill = np.zeros(n_frames, dtype=bool)
+        # Mark the fake-lick region as baseline-fill.
+        bump_lo = 1500 + int(0.18 * _SYNTH_FPS)   # ~180 ms post-tone
+        bump_hi = 1500 + int(0.22 * _SYNTH_FPS)   # ~220 ms post-tone
+        is_baseline_fill[bump_lo:bump_hi] = True
+        _make_synthetic_cleaned_trace_parquet(
+            resolver.cleaned_trace(bodypart="jaw", animal="PS46", date=datetime.date(2025, 3, 7)),
+            n_frames, y_final=jaw_y,
+        )
+        _make_synthetic_cleaned_trace_parquet(
+            resolver.cleaned_trace(bodypart="tongue", animal="PS46", date=datetime.date(2025, 3, 7)),
+            n_frames, y_final=tongue_y, is_baseline_fill=is_baseline_fill,
+        )
+        out = classify_tongue_jaw_mismatch(
+            manifest=manifest, resolver=resolver, trial_events=trial_events,
+            params=base_params, overwrite="force", use_v7_cleaned=True,
+        )
+        df = pd.read_parquet(out)
+        # The masked-out bump should NOT be detected → quiet_tongue_pass=True.
+        assert bool(df["quiet_tongue_pass"].iloc[0]) is True
+        assert int(df["n_licks_in_quiet_win"].iloc[0]) == 0
+
+    def test_load_bodypart_y_final_v7_cleaned_masks_directly(self, tmp_path):
+        """Direct unit test on _load_bodypart_y_final's masking semantics."""
+        from stroke_orofacial.dlc_kinematics.tongue_jaw_mismatch import (
+            _load_bodypart_y_final,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        n_frames = 100
+        y = np.linspace(0.0, 10.0, n_frames, dtype=np.float64)
+        is_baseline_fill = np.zeros(n_frames, dtype=bool)
+        is_baseline_fill[40:50] = True  # 10 baseline-fill frames in middle
+        _make_synthetic_cleaned_trace_parquet(
+            resolver.cleaned_trace(bodypart="tongue", animal="PS46", date=datetime.date(2025, 3, 7)),
+            n_frames, y_final=y, is_baseline_fill=is_baseline_fill,
+        )
+        # use_v7_cleaned=True path: masked frames return as NaN.
+        y_out, fps, n_out = _load_bodypart_y_final(
+            resolver, "PS46", datetime.date(2025, 3, 7),
+            bodypart="tongue", use_v7_cleaned=True,
+        )
+        assert n_out == n_frames
+        assert np.isnan(y_out[40:50]).all()
+        assert np.isfinite(y_out[:40]).all()
+        assert np.isfinite(y_out[50:]).all()
