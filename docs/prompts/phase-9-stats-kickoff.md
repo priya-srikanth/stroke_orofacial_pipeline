@@ -545,7 +545,7 @@ Discharges Phase 8a.10 forward-pointer for the `recovery_trajectories` plot fami
 
 2. **Wire into `spout_behavior/visual_gate.py`** as a new per-mouse plot family `recovery_trajectories`. The Phase 8a.10 cohort-summary tile-grid (`spout_behavior/cohort_summary.py`) gains a corresponding tile. Per-mouse panel grid loops over PRIMARY endpoints with `recovery` in `comparison_axes_in_scope`.
 
-3. **Notebook integration:** add a `INCLUDE_RECOVERY_TRAJECTORIES = True` knob in `notebooks/15_spout_behavior_visual_gate.ipynb` USER INPUTS cell. Re-render cohort.
+3. **Notebook integration:** add a `INCLUDE_RECOVERY_TRAJECTORIES = True` knob in `notebooks/01_spout_behavior_figures.ipynb` USER INPUTS cell. Re-render cohort.
 
 4. **Visual gate verdict:** Priya eyeballs the cohort tile-grid + 1-2 per-mouse panels; verdict captured in Task 8 `verdict.md`.
 

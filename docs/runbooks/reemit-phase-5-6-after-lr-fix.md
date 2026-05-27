@@ -221,7 +221,7 @@ for animal in load_animals():
 ```
 
 If counts are well below the cohort size, run Phase 4 first via either
-`notebooks/10_dlc_build_parquets.ipynb` (interactive) or
+`notebooks/11_dlc_build_parquets.ipynb` (interactive) or
 `scripts/run_notebook_10_phase_4_centering.py` (unattended — the
 right choice for headless machines).
 

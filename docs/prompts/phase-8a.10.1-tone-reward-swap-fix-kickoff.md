@@ -307,7 +307,7 @@ Per Q2.A (Phase 8a.10 figure re-render — LOCKED):
 ```
 src/stroke_orofacial/spout_behavior/visual_gate.py                          (NO source change — re-render only)
 src/stroke_orofacial/spout_behavior/spout_close_vs_std.py                   (NO source change — re-render only)
-notebooks/15_spout_behavior_visual_gate.ipynb                               (re-run only; no code change unless verdict surfaces a bug)
+notebooks/01_spout_behavior_figures.ipynb                               (re-run only; no code change unless verdict surfaces a bug)
 ```
 
 NO other files touched. Specifically:
@@ -420,7 +420,7 @@ Inserts between Task 0.5 (closed) and Task 1 (WS swap fix). Required to identify
    - `src/stroke_orofacial/spout_behavior/criteria.py`.
    - `src/stroke_orofacial/dlc_analysis/alignment_templates*.py` — Phase 3 alignment is to the auditory cue.
    - `src/stroke_orofacial/io/wavesurfer_io.py` itself — variable names in the reader may be misleading.
-   - `notebooks/15_spout_behavior_visual_gate.ipynb` — USER INPUTS + orchestration.
+   - `notebooks/01_spout_behavior_figures.ipynb` — USER INPUTS + orchestration.
    - All NPZ schema documentation in `docs/`.
    - All tests under `tests/` that pin the field names.
 
@@ -480,7 +480,7 @@ src/stroke_orofacial/spout_behavior/session_manifest.py    (any reward/tone refe
 src/stroke_orofacial/spout_behavior/spout_close_vs_std.py  (Cohort B renderer; consumers of trial-lick delays)
 src/stroke_orofacial/spout_behavior/cohort_summary.py      (sub-A cohort tiler)
 src/stroke_orofacial/dlc_analysis/alignment_templates*.py  (Phase 3 alignment generation)
-notebooks/15_spout_behavior_visual_gate.ipynb              (orchestration + USER INPUTS naming)
+notebooks/01_spout_behavior_figures.ipynb              (orchestration + USER INPUTS naming)
 tests/test_visual_gate.py, test_spout_close_vs_std.py, test_criteria.py, test_endpoints_writer.py  (test pins)
 ```
 

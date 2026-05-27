@@ -84,7 +84,7 @@ Expected shape:
      manifest from `(animal, date)` for backward compatibility with
      notebook callers. Update tests.
    - **6.7b**: Refactor Phase 3 alignment (`timebase.py`,
-     `01_alignment.ipynb`) to use `SessionManifest`. `wavesurfer_file` and
+     `02_alignment.ipynb`) to use `SessionManifest`. `wavesurfer_file` and
      `video_files` fields already populated by `build_manifest()` — use
      them.
    - **6.7c**: Refactor Phase 4 parquet builder

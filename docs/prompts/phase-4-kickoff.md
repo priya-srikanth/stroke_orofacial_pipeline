@@ -11,7 +11,7 @@ to invoke:
 
 Phase 4 per `docs/DESIGN.md` §7: port the DeepLabCut output loading, filtering,
 centering, and parquet-writing pipeline into `src/stroke_orofacial/dlc_io/` +
-`notebooks/10_dlc_build_parquets.ipynb`. Phase 4 is **I/O + centering only for
+`notebooks/11_dlc_build_parquets.ipynb`. Phase 4 is **I/O + centering only for
 whole-session parquets**; the reward-aligned / trial-windowed variants are
 Phase 6 scope.
 
@@ -116,7 +116,7 @@ Likely shape of the ported modules:
   parquet format. Match the existing parquet schema exactly (column names,
   dtypes, multi-index structure if any). Include metadata columns for
   `session_id`, `centering_method`, `session_time_s` (from alignment).
-- `notebooks/10_dlc_build_parquets.ipynb` — thin orchestrator with USER
+- `notebooks/11_dlc_build_parquets.ipynb` — thin orchestrator with USER
   INPUTS cell (animal list, date range, centering method, overwrite mode).
 - Overwrite protection (`"skip"` / `"prompt"` / `"force"`) matching Phase 2's
   convention, default `"skip"`. Per-session `params.json` at

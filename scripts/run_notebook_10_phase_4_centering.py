@@ -1,7 +1,7 @@
 """Standalone runner that reproduces notebook 10's Phase 4 centering emit loop.
 
 Companion to ``scripts/run_notebook_12_first_emit.py``. Notebook 10
-(``notebooks/10_dlc_build_parquets.ipynb``) is the interactive entry
+(``notebooks/11_dlc_build_parquets.ipynb``) is the interactive entry
 point for DLC centering (Phase 4); this script is the non-interactive
 equivalent so cohort-scale parquet emission can run unattended on a
 headless machine (e.g. the Windows box while Priya's Mac is closed).

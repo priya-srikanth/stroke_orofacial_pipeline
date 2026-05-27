@@ -33,7 +33,7 @@ Ported from `20251112_DLC_batch_video_analysis_O2.ipynb` (canonical per Rule 1).
 
 ## Workflow
 
-Use `notebooks/20_dlc_inference.ipynb` as the day-to-day driver. The notebook:
+Use `notebooks/10_dlc_inference.ipynb` as the day-to-day driver. The notebook:
 - Takes USER INPUTS (animals, dates, username)
 - Generates all paths, YAML configs, scripts, and shell commands
 - Pure local actions execute directly in the notebook

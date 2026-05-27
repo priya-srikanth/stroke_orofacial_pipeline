@@ -88,7 +88,7 @@ PR #135 (this chore) merges after PR #137 (Phase 7e.1 — legacy lick1/lick2 end
 - **2 (b) NOT-A-CONSUMER subtrees**: `dlc_analysis/interpolated_traces/tongue/` (Phase 7a.2 v5p3 SOURCE for v7, **NOT** stale — v7 reads from here; bytes unchanged), `spout_behavior/` (orthogonal pipeline).
 - **0 (c1) STATIC FIGURES** remaining: all tongue-relevant stats figures re-rendered in Stage 5c; phase_9_1_figures/phenotype_pooled/tongue_* (6 PNGs) reclassified to **(d) IN-FLIGHT** (writer at `src/stroke_orofacial/figures/phenotype_pooled.py` on `phase/9.1-figures` branch, not yet merged; phase/9.1-figures Task 1c will re-emit against v7-routed stats inputs after PR merge).
 - **0 (c3) ORPHAN PATHS**, **0 uncovered write sites**.
-- **1 notebook** (`15_spout_behavior_visual_gate.ipynb`) needs re-execution against fresh Stage 2 stats inputs — handed off to Cowork.
+- **1 notebook** (`01_spout_behavior_figures.ipynb`) needs re-execution against fresh Stage 2 stats inputs — handed off to Cowork.
 
 *Rationale:* `interpolated_traces` is the SOURCE-OF-TRUTH input to v7 pre-clean, not a v7 derivative. Re-emitting it would require re-running upstream Phase 7a.2 DLC interpolation (out of Event B scope). Deleting it would break every future Event B re-run + future Phase 7f jaw work (which also consumes it). The naming-confusion concern raised mid-chore is addressed via this DECISIONS entry pinning the source-vs-derivative relationship.
 
@@ -1590,7 +1590,7 @@ PS54 worked example (densest cohort, 10 post-stroke sessions × ~48 trials/side/
 - Combined: 262 tests pass + 1 skipped; ruff clean.
 
 **Notebooks.**
-- [`notebooks/15_spout_behavior_visual_gate.ipynb`](../notebooks/15_spout_behavior_visual_gate.ipynb) — orchestrator. USER INPUTS: `ANIMALS`, `OVERWRITE`, `INCLUDE_PER_MOUSE_RENDERS`, `INCLUDE_COHORT_SUMMARY`, `ALIGN_TO_STROKE`, `ANIMALS_SPOUT_CLOSE_VS_STD`, `CLEAN_ORPHANED_PER_SESSION_OUTPUTS`, `INCLUDE_SPOUT_CLOSE_VS_STD`. Renders Sub-A per-mouse + cohort summary + Sub-B summary + per_trial in a single execution.
+- [`notebooks/01_spout_behavior_figures.ipynb`](../notebooks/01_spout_behavior_figures.ipynb) — orchestrator. USER INPUTS: `ANIMALS`, `OVERWRITE`, `INCLUDE_PER_MOUSE_RENDERS`, `INCLUDE_COHORT_SUMMARY`, `ALIGN_TO_STROKE`, `ANIMALS_SPOUT_CLOSE_VS_STD`, `CLEAN_ORPHANED_PER_SESSION_OUTPUTS`, `INCLUDE_SPOUT_CLOSE_VS_STD`. Renders Sub-A per-mouse + cohort summary + Sub-B summary + per_trial in a single execution.
 
 **Docs.**
 - [`docs/MIGRATION_LOG.md`](MIGRATION_LOG.md) — Phase 8a.10 section (this commit's sibling).
@@ -2908,7 +2908,7 @@ one PR-close record.
   `time_summary: "all_bouts"` retained as documentation-only;
   new `dlc_kinematics.tongue_angle_cohort:` block (visual
   styling, colormap, `min_sessions_per_bin`).
-- `notebooks/13_dlc_kinematics_tongue.ipynb` — cell 1 USER
+- `notebooks/12_dlc_kinematics_tongue.ipynb` — cell 1 USER
   INPUTS gain `INCLUDE_TONGUE_ANGLE_COHORT` +
   `OVERWRITE_TONGUE_ANGLE_COHORT`; cell 2 imports gain
   `build_tongue_angle_cohort`; new cell 9 per-mouse loop.
@@ -3100,7 +3100,7 @@ reviewing the post-orientation-flip state:
   deleted; `render_comparison_grid` import removed.
 - `tests/scripts/_deprecated/README.md` — new; documents
   rationale + frozen-artifact status + future re-derivation path.
-- `notebooks/13_dlc_kinematics_tongue.ipynb` — cell 1 USER INPUTS
+- `notebooks/12_dlc_kinematics_tongue.ipynb` — cell 1 USER INPUTS
   gains `INCLUDE_CROSS_SESSION_MISMATCH` + `OVERWRITE_CROSS_SESSION`
   knobs; cell 2 import gains `render_cross_session_figures`; new
   cell 8 per-mouse cross-session loop.
@@ -3390,7 +3390,7 @@ exact rendering boundary where the user can fix it.
 - [`environment.yml`](../environment.yml) — `ffmpeg` in Core runtime deps
 - [`tests/test_mean_sem_visual.py`](../tests/test_mean_sem_visual.py) (118 tests)
 - [`tests/scripts/parity_phase7a6_mean_sem.py`](../tests/scripts/parity_phase7a6_mean_sem.py) (cohort + parity harness; `--allow-gif-fallback` + `--mean-video-windows` CLI flags)
-- [`notebooks/13_dlc_kinematics_tongue.ipynb`](../notebooks/13_dlc_kinematics_tongue.ipynb), [`notebooks/14_dlc_kinematics_jaw.ipynb`](../notebooks/14_dlc_kinematics_jaw.ipynb) — orchestration
+- [`notebooks/12_dlc_kinematics_tongue.ipynb`](../notebooks/12_dlc_kinematics_tongue.ipynb), [`notebooks/13_dlc_kinematics_jaw.ipynb`](../notebooks/13_dlc_kinematics_jaw.ipynb) — orchestration
 
 ---
 
@@ -5423,8 +5423,8 @@ PR #79's baseline-seed probe and scipy-version pilot findings.
     `load_centered_fresh()`.
   - `src/stroke_orofacial/dlc_spatial/heatmaps.py` —
     `save_heatmap_npz()`.
-  - Notebooks `00_session_processing.ipynb`, `01_alignment.ipynb`,
-    `10_dlc_build_parquets.ipynb`,
+  - Notebooks `00_session_processing.ipynb`, `02_alignment.ipynb`,
+    `11_dlc_build_parquets.ipynb`,
     `11_dlc_spatial_whole_session.ipynb`,
     `12_dlc_spatial_reward_aligned.ipynb` — each grew from 4 → 5 cells
     with a manifest-build cell.
@@ -5585,7 +5585,7 @@ PR #79's baseline-seed probe and scipy-version pilot findings.
 
 ## 2026-04-19 — Audit Item 8 (DLC inference / SSH workflow) — current design sound, five polish items batched
 
-- *Context:* Audit Item 8 reviewed `src/stroke_orofacial/dlc_inference_o2/` (runner, batch, o2_job, transfer + README), `notebooks/20_dlc_inference.ipynb`, and `tests/test_dlc_inference.py`. The core architectural decision (Python generates shell-command strings; user pastes into terminal; never SSH from Python; never handle passwords) is already captured in the 2026-04-18 DECISIONS entry and is the right approach given HMS O2's DUO 2FA requirement.
+- *Context:* Audit Item 8 reviewed `src/stroke_orofacial/dlc_inference_o2/` (runner, batch, o2_job, transfer + README), `notebooks/10_dlc_inference.ipynb`, and `tests/test_dlc_inference.py`. The core architectural decision (Python generates shell-command strings; user pastes into terminal; never SSH from Python; never handle passwords) is already captured in the 2026-04-18 DECISIONS entry and is the right approach given HMS O2's DUO 2FA requirement.
 - *Decision:* No architectural changes. Five polish items (8.1–8.5) batched into a new "Phase 5.5 polish" mini-PR (task #16) — all README / notebook / small-helper additions, no behavior change. Item 8.6 (split `configs/defaults.yaml` infrastructure section from analysis section) rolls into task #13 (env unification). No new task dependencies.
 - *Rationale:* The command-generation-not-execution pattern works as-is; the polish items are all UX improvements (status helper, recovery docs, SSH setup walkthrough, ControlMaster tip, auto-rename on copy) rather than correctness fixes. Bundling them as one polish PR avoids creating 5 micro-tasks.
 - *Enforced at:* Task #16 polish PR, when executed. No code or docs change from this decision itself — just the task queue entry.
@@ -5631,7 +5631,7 @@ PR #79's baseline-seed probe and scipy-version pilot findings.
 - *Context:* Phase 5.5's inference workflow requires SSH to O2 and rsync of large video/output files. Executing these from the notebook would require password/credential handling inside the automation layer.
 - *Decision:* Local actions (YAML generation, script writing, post-copy file rename) execute directly in the notebook. SSH/rsync/sbatch commands are generated as strings with user-specific inputs substituted and printed for the user to paste into their own Terminal. No SSH connection is made from within the notebook or any Python module.
 - *Rationale:* Keeps secrets out of the automation layer entirely. User retains manual control over when SSH connections are made. Matches the password-handling rules in DECISIONS.md "DLC inference port scheduled as dedicated mini-phase."
-- *Enforced at:* `notebooks/20_dlc_inference.ipynb`, `src/stroke_orofacial/dlc_inference_o2/transfer.py`.
+- *Enforced at:* `notebooks/10_dlc_inference.ipynb`, `src/stroke_orofacial/dlc_inference_o2/transfer.py`.
 
 ## 2026-04-18 — Plot axis limits must be per-(bodypart, center_mode)
 
@@ -5720,7 +5720,7 @@ PR #79's baseline-seed probe and scipy-version pilot findings.
 - *Context:* The legacy DLC parquet-building notebook accumulated state (loaded parquets in memory, globals) so moving to the next animal required clearing + restarting the notebook. Priya wants the new pipeline to loop over animals and dates cleanly.
 - *Decision:* Phase 4's orchestrator exposes a pure function `build_centered_parquet(animal, date, center_mode, resolver) -> Path` callable in a loop without accumulating module-level state. The notebook orchestrates via an animal × date × center_mode loop. All three center modes (NOSE, SPOUT_MIDPOINT, EYE_MIDPOINT) are built by default; USER INPUTS cell can restrict to a subset. Matches the Phase 2 `process_animal()` pattern.
 - *Rationale:* Removes a major friction point from downstream analyses; makes cohort-wide processing a single notebook run.
-- *Enforced at:* `src/stroke_orofacial/dlc_io/` orchestrator (Phase 4c), `notebooks/10_dlc_build_parquets.ipynb`.
+- *Enforced at:* `src/stroke_orofacial/dlc_io/` orchestrator (Phase 4c), `notebooks/11_dlc_build_parquets.ipynb`.
 
 ## 2026-04-18 — Phase 5+ downstream analyses: preserve per-(bodypart, center_mode) plotting parameters
 

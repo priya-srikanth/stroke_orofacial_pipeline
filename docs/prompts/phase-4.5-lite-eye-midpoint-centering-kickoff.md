@@ -95,7 +95,7 @@ Expected shape:
      verify via hash comparison against the Phase 4 parity hashes
      `c23dc714`, `2a6efb6a`, `b13af51c` listed in
      `docs/MIGRATION_LOG.md` Phase 4 entry.
-     Run through the existing `notebooks/10_dlc_build_parquets.ipynb` with
+     Run through the existing `notebooks/11_dlc_build_parquets.ipynb` with
      the updated config; capture hash signatures for the new eye_midpoint
      parquets so future parity checks have a baseline.
    - **4.5d — Phase 5 + 6 axis limits for new combos** (~15 lines config):
