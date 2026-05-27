@@ -41,6 +41,8 @@ def plot_heatmap(
     title: str = "",
     figsize: tuple[float, float] = (8, 6),
     window: Any | None = None,
+    baseline_fill_mask: np.ndarray | None = None,
+    drop_likelihood_gate: bool = False,
 ) -> plt.Figure:
     """Render a 2D histogram heatmap for one bodypart in one session.
 
@@ -98,7 +100,12 @@ def plot_heatmap(
     if window is not None:
         frame_mask = window.select_frames(df)
 
-    x, y = get_masked_xy(df, bodypart, lik_thr, x_range=x_range, frame_mask=frame_mask)
+    x, y = get_masked_xy(
+        df, bodypart, lik_thr,
+        x_range=x_range, frame_mask=frame_mask,
+        baseline_fill_mask=baseline_fill_mask,
+        drop_likelihood_gate=drop_likelihood_gate,
+    )
 
     fig, ax = plt.subplots(figsize=figsize)
 
@@ -165,6 +172,8 @@ def save_heatmap_npz(
     wavesurfer_sides_match_mouse_sides: bool | None = None,
     trial_group: str | None = None,
     window_ms: tuple[float, float] | None = None,
+    baseline_fill_mask: np.ndarray | None = None,
+    drop_likelihood_gate: bool = False,
 ) -> bool:
     """Save the fine-grid heatmap histogram array as NPZ alongside the PNG.
 
@@ -248,6 +257,8 @@ def save_heatmap_npz(
         x_range=x_range,
         nbins=nbins,
         window=window,
+        baseline_fill_mask=baseline_fill_mask,
+        drop_likelihood_gate=drop_likelihood_gate,
     )
     if hist is None:
         return False
@@ -263,6 +274,12 @@ def save_heatmap_npz(
         "x_limits": np.asarray([extent[0], extent[1]], dtype=np.float64),
         "y_limits": np.asarray([extent[2], extent[3]], dtype=np.float64),
         "nbins": int(nbins),
+        # Phase 7e.4: stamp the cleaned-traces routing decision so
+        # downstream NPZ consumers (Phase 9 stats, audit comparators)
+        # can tell which filter pipeline produced the H_counts. Bool
+        # scalars; default-False values match pre-7e.4 NPZ semantics.
+        "applied_cleaned_traces_mask": np.bool_(baseline_fill_mask is not None),
+        "dropped_likelihood_gate": np.bool_(drop_likelihood_gate),
     }
 
     # Phase 6.8a: optional self-describing scalars. Added conditionally
