@@ -431,6 +431,56 @@ none of which are part of the bp-level filter chain.**
 
 ## 10. Addenda
 
+### Addendum #3 — proportion_diff family confirmed in scope + path convention locked to `dlc_kinematics/` (Priya 2026-05-27)
+
+**Scope confirmation (Priya 2026-05-27 question):** The Phase 7c.2
+cohort-level proportion_diff figure family IS in Phase 7e.4 scope —
+implicitly via the §9.2 consumer enumeration entry
+`scripts/phase_7c2/render_heatmaps.py`, which imports
+`precompute_proportion_diffs` from `render_on_demand` along with
+`precompute_individual_session_h_proportions` and
+`precompute_binned_sessions_h_proportions`. All three precompute
+helpers cascade through `compute_animal_aggregated_histogram`'s
+default-True (Stage 2 commit `03d3f33`), so any driver invocation of
+`render_heatmaps.py` after Stage 3 wiring will re-emit ALL of
+{individual_session, binned_sessions, proportion_diff} families to
+`_cleaned_trace` paths in lockstep.
+
+Paper-relevance + Q-lock 12 (Phase 9.1 phenotype-pooled
+proportion_diff, 80 figures) gating both reinforce that this family
+must close cleanly in 7e.4. Now explicit in Stage 5 verdict criteria:
+
+- Stage 5 cohort re-emit MUST produce non-empty `_cleaned_trace`
+  outputs for all 3 family entries × all bp scopes (tongue + jaw)
+  the proportion_diff plot type renders.
+
+**Path convention locked (resolves Addendum #2 open question):** the
+new cleaned_trace spatial outputs land under `dlc_kinematics/` (NOT
+the `dlc_analysis/` family that Phase 7c.2 / Phase 9 legacy outputs
+live under). Priya's 2026-05-27 path hint
+(`pipeline_outputs/dlc_kinematics/proportion_diff_cleaned_trace/`)
+matches the same prefix as Q-lock 12's compute-source
+(`dlc_kinematics/tone_aligned_heatmaps_cleaned_trace/`).
+
+Stage 3 resolver methods land at:
+
+| artifact | new resolver method | output path |
+|---|---|---|
+| tone-aligned heatmap NPZ | `tone_aligned_heatmap_npz_cleaned_trace(...)` | `pipeline_outputs/dlc_kinematics/tone_aligned_heatmaps_cleaned_trace/{bp}_{cm}/trials-{tg}_{win}/{animal}/heatmap_{date}_cleaned_trace.npz` |
+| whole-session heatmap NPZ | `whole_session_heatmap_npz_cleaned_trace(...)` | `pipeline_outputs/dlc_kinematics/whole_session_heatmaps_cleaned_trace/{bp}_{cm}/{animal}/heatmap_{date}_cleaned_trace.npz` |
+| individual-session heatmap PNG | `individual_session_heatmap_png_cleaned_trace(...)` | `pipeline_outputs/dlc_kinematics/individual_session_heatmaps_cleaned_trace/{family}_{scope}/{animal}/heatmap_{date}_cleaned_trace.png` |
+| binned-sessions heatmap PNG | `binned_sessions_heatmap_png_cleaned_trace(...)` | `pipeline_outputs/dlc_kinematics/binned_sessions_heatmaps_cleaned_trace/{family}_{scope}_{bin_size}d/{animal}/heatmap_{rel_day_bin}_cleaned_trace.png` |
+| proportion_diff heatmap PNG | `proportion_diff_heatmap_png_cleaned_trace(...)` | `pipeline_outputs/dlc_kinematics/proportion_diff_cleaned_trace/{family}_{scope}_{bin_size}d/{animal}/diff_{rel_day_bin}_cleaned_trace.png` |
+| Phase 9 stats output | `phase_9_stats_spatial_cleaned_trace(...)` | `pipeline_outputs/phase_9_stats/spatial_cleaned_trace/...` |
+
+Filename includes `_cleaned_trace` per Q-lock 15.2 (so a misplaced
+file outside its `_cleaned_trace/` directory still self-identifies).
+Subtitle/footer per Q-lock 15.3 — implemented in the
+`scripts/phase_7c2/render_heatmaps.py` figure-render call path.
+
+Legacy paths (no `_cleaned_trace` suffix on directory or filename)
+remain on disk untouched as the historical audit trail.
+
 ### Addendum #2 — Q-lock 15 cleaned_trace marker convention applied (Priya 2026-05-26 amendment)
 
 Priya's 2026-05-26 evening directive (Phase 9.1 trajectory expansion +
@@ -470,16 +520,9 @@ Stage 3 implementation impact:
 - Phase 9.1's Q-lock 12 (80 phenotype-pooled proportion_diff figures)
   consumes the cleaned_trace NPZ tree that Stage 5 emits.
 - Compute-source path per Q-lock 12: `pipeline_outputs/
-  dlc_kinematics/tone_aligned_heatmaps_cleaned_trace/`. **Open
-  question for Priya:** this path is under `dlc_kinematics/` not the
-  `dlc_analysis/` path family that Phase 7c.2 / Phase 9 spatial
-  outputs currently live under (§4.5 §1-2). Two interpretations:
-    (a) Typo in the amendment — actual path is
-        `dlc_analysis/spatial_tone_aligned_cleaned_trace/`.
-    (b) Intentional — Phase 7e.4 should write to a NEW path under
-        `dlc_kinematics/tone_aligned_heatmaps_cleaned_trace/`.
-  Will ask in PR #148 comment. Stage 5 driver implementation gated on
-  Priya's answer.
+  dlc_kinematics/tone_aligned_heatmaps_cleaned_trace/`.
+- **Open question RESOLVED in Addendum #3:** option (b) — Phase 7e.4
+  writes to `dlc_kinematics/<artifact>_cleaned_trace/` paths.
 
 ### Addendum #1 — Section 8 inputs locked (Priya, 2026-05-27)
 
