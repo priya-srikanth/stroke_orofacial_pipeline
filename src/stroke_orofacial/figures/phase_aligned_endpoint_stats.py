@@ -64,6 +64,15 @@ EPOCH_ORDER: tuple[str, ...] = ("pre", "acute", "sub_acute", "chronic")
 POST_EPOCHS: tuple[str, ...] = ("acute", "sub_acute", "chronic")
 SIDE_ORDER: tuple[str, ...] = ("L", "R")
 
+# Display names for epoch x-tick labels (capitalized, "Subacute" as one
+# word per Priya 2026-05-27 figure review).
+EPOCH_DISPLAY_NAMES: dict[str, str] = {
+    "pre": "Pre",
+    "acute": "Acute",
+    "sub_acute": "Subacute",
+    "chronic": "Chronic",
+}
+
 # Human-readable endpoint labels for figure titles + axis text.
 ENDPOINT_DISPLAY_NAMES: dict[str, str] = {
     "peak_angle_deg":
@@ -286,9 +295,15 @@ def render_phase_aligned_endpoint_figure(
                     median_line.set_linewidth(1.0)
 
     ax.set_xticks(list(range(len(EPOCH_ORDER))))
-    ax.set_xticklabels(list(EPOCH_ORDER))
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel(ENDPOINT_DISPLAY_NAMES.get(endpoint, endpoint))
+    ax.set_xticklabels(
+        [EPOCH_DISPLAY_NAMES.get(e, e) for e in EPOCH_ORDER],
+        fontsize=13,
+    )
+    ax.set_xlabel("Epoch", fontsize=14)
+    ax.set_ylabel(
+        ENDPOINT_DISPLAY_NAMES.get(endpoint, endpoint), fontsize=13,
+    )
+    ax.tick_params(axis="y", labelsize=12)
     ax.set_xlim(-0.5, len(EPOCH_ORDER) - 0.5)
 
     # Title + subtitle.
@@ -296,8 +311,8 @@ def render_phase_aligned_endpoint_figure(
         f"{ENDPOINT_DISPLAY_NAMES.get(endpoint, endpoint)} "
         f"(side={side})"
     )
-    fig.suptitle(title, fontsize=11, y=0.98)
-    ax.set_title(FIGURE_SUBTITLE, fontsize=8, loc="left")
+    fig.suptitle(title, fontsize=14, y=0.98)
+    ax.set_title(FIGURE_SUBTITLE, fontsize=10, loc="left")
 
     # Legend (one entry per phenotype).
     handles = []
@@ -307,7 +322,7 @@ def render_phase_aligned_endpoint_figure(
             edgecolor="black", linewidth=0.5,
             label=phenotype_display_name(phenotype),
         ))
-    ax.legend(handles=handles, loc="best", fontsize=8, framealpha=0.9)
+    ax.legend(handles=handles, loc="best", fontsize=11, framealpha=0.9)
 
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)

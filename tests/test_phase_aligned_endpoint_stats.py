@@ -225,9 +225,14 @@ class TestRenderPhaseAlignedEndpointFigure:
         assert FIGURE_SUBTITLE in svg_text
         # Endpoint display name must appear (title carries it).
         assert "Peak tongue angle" in svg_text
-        # X-axis epoch labels must all appear.
+        # X-axis epoch display labels must all appear (capitalized,
+        # "Subacute" as one word per Priya 2026-05-27).
+        from stroke_orofacial.figures.phase_aligned_endpoint_stats import (
+            EPOCH_DISPLAY_NAMES,
+        )
         for epoch in EPOCH_ORDER:
-            assert epoch in svg_text
+            display = EPOCH_DISPLAY_NAMES[epoch]
+            assert display in svg_text, f"expected {display!r} in SVG text"
 
 
 class TestEmitPhaseAlignedEndpointFigures:
