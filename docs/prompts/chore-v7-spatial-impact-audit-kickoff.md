@@ -295,6 +295,55 @@ Implementation outline:
 
 ## 11. Addenda
 
+### Addendum #2 — audit verdict: **FAIL** (2026-05-27)
+
+24 cells computed. **14 FAIL** / 10 PASS / 0 NA. Overall verdict: **FAIL**.
+
+Raw outputs: `docs/audit_results/v7_spatial/verdict.json` +
+`wasserstein_kl.csv`. Per-cell PNGs in `.scratch_v7_spatial_audit/renders/`
+(gitignored; on local disk only).
+
+**Per-bodypart breakdown:**
+
+- **Tongue: 12/12 FAIL.** Every (session × scope) cell for tongue exceeds
+  at least one threshold by a large margin. Smallest tongue distance is
+  PS47 / tone_R: W1=7.22 / W2=9.38 / KL=0.33 — already 1.4× over W_max
+  and 3× over KL_max. Largest is PS54 / tone_R: W1=96.00 / W2=111.79 /
+  KL=5.91. The 99.17% baseline_fill load (verified §3) drags R1's mass
+  to the y=0 spout baseline; R3 excludes that mass, so the two
+  distributions disagree wildly.
+- **Jaw: 10/12 PASS, 2/12 FAIL.** Most jaw cells have W1<1px, W2<3px,
+  KL<0.03. The two FAILs are both on PS47 (mild) tone-aligned scopes:
+  - PS47 / jaw / tone_all: W1=1.71 / W2=4.15 / **KL=0.139** (KL exceeds)
+  - PS47 / jaw / tone_L:   W1=2.80 / **W2=5.96** / **KL=0.298** (W2 + KL exceed)
+
+**Per-session severity gradient (max-W2 over the bodypart's 4 scopes):**
+
+| animal | severity | tongue max-W2 | jaw max-W2 |
+|---|---|---:|---:|
+| PS54 | severe     | 111.79 | 1.54 |
+| PS51 | mod-severe |  38.93 | 2.86 |
+| PS47 | mild       |  15.17 | 5.96 |
+
+Tongue magnitudes correlate inversely with severity (PS54 has the most
+absent-tongue frames), which is the expected behavioral signature of the
+stroke deficit on tongue protrusion: the more severe the deficit, the
+larger the placeholder-y=0 mass, the larger the R1↔R3 distance under R1's
+permissive lik-only gate.
+
+**Production fix recommended (Phase 7e.x ticket to open):**
+
+1. Wire `~is_baseline_fill` into `pixel_bins.get_masked_xy` for both
+   tongue and jaw. The jaw 10/12 PASS rate could justify a tongue-only
+   fix, but the 2 PS47 jaw FAILs (driven by KL on small mass) show the
+   bug is structural, not bodypart-specific.
+2. Drop the per-bodypart `likelihood_threshold` gate from
+   `render_on_demand` callers (or set to 0.0) — the cleaned_traces
+   cleanup is already the membership classifier.
+3. Re-emit the cohort's spatial outputs under R3 semantics. Reference
+   pattern: the Phase 7e same-class kinematic fix
+   (7e.1 / 7e.2 / 7e.3 — `use_v7_cleaned=True` kwarg routing pattern).
+
 ### Addendum #1 — Step-9 inputs locked (Priya, 2026-05-27)
 
 | input | locked value | note |
