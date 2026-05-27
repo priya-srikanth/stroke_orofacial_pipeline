@@ -234,3 +234,77 @@ Cowork's Stage 0 pre-implementation check now includes:
 ### Unblock signal
 
 Q-lock 13b is ready for CC kickoff-prompt drafting (Stages 1–6) the moment Phase 7e.4 lands on `main`. Cowork drafts the CC prompt after PR #148 merges + `v7e.4-…` tag is pushed.
+
+---
+
+## Addendum #2 — Stage 0 divergence resolutions (2026-05-27)
+
+**Status:** LOCKED. Implementation-time corrections to four Addendum-#1 / kickoff-body items that CC surfaced during Stage 0 read-through. **ALL OTHER LOCKS UNCHANGED.**
+
+### D1 — Per-trial storage (corrects Addendum #1 Q2 wording)
+
+**LOCKED:** Endpoints A + B + C all land in the existing per-trial tongue endpoints JSON at `dlc_kinematics/per_trial/tongue/<animal>/<date>.json`, under a new top-level block `tongue.phase_aligned_endpoints` (alongside the existing `tongue.cell50_own_bout_scalars`).
+
+**Background.** Addendum #1 Q2 LOCKED option (a) as "Extend the existing per-trial tongue features parquet schema with new columns." The kickoff body's Endpoints table claimed endpoint A `peak_angle_deg` lives at `dlc_kinematics/per_frame/tongue/<animal>/<date>.parquet`. Stage 0 verification revealed:
+
+- The actual per-frame parquet schema is `{frame_idx, angle_deg_smoothed}` only — no `peak_angle_deg`.
+- `peak_angle_deg` lives per-LICK at `dlc_kinematics/lick_events/tongue/<animal>/<date>.parquet`, NOT per-trial.
+- The canonical per-trial tongue artifact is `dlc_kinematics/per_trial/tongue/<animal>/<date>.json` (JSON, not parquet) — see `tongue_pertrial_endpoints_json` in `paths.py`, `tongue.cell50_own_bout_scalars` block in `tongue_pertrial.py`.
+- No per-trial tongue parquet exists.
+
+The spirit of Q2(a) ("extend existing per-trial artifact; no sibling") is satisfied by the JSON-extension pattern. Q2(b) (sibling parquet) is rejected as originally intended.
+
+**Endpoint A re-emit.** The kickoff erroneously treated endpoint A as already-emitted at per-trial grain. It is not — `peak_angle_deg` is per-lick. Stage 1 re-emits A into the same `tongue.phase_aligned_endpoints` JSON block as B + C, all computed from the same `build_first_lick_centered_phase_rows()` substrate. Downstream aggregator consumes one per-trial block carrying all three endpoints.
+
+**Schema of the new `tongue.phase_aligned_endpoints` block.** Three parallel lists, indexed by trial × side (same shape as `cell50_own_bout_scalars`):
+
+- `peak_angle_deg`: tongue angle at `phase = 0.5` (lick-1 peak time).
+- `max_abs_angle_phase_0_075_deg`: `max(abs(angle_deg))` over `phase ∈ [0, 0.75]`.
+- `signed_x_at_max_abs_phase_0_075_px`: `x_centered[argmax(|x_centered|)]` over `phase ∈ [0, 0.75]` (selection by magnitude, reported value signed).
+
+### D2 — Substrate extension for `x_centered`
+
+**LOCKED:** Thread `x_snip` through the centered-phase substrate; emit `x_centered` column equal to raw `x_snip` (NO additional subtraction).
+
+CC's proposed approach (a) + (b) is adopted:
+
+- (a) Add `"x_snip": x_snip.copy()` to the `trial_row` dict in `_build_visual_bundle_per_trial` so `df_trials` exposes per-trial x arrays. In-memory bundle field only; no on-disk schema change.
+- (b) Extend `_centered_phase_rows_from_peaks` + `_trial_arrays` + `build_first_lick_centered_phase_rows` to thread `x_snip` through and emit an `x_centered` column on the returned phase-rows DataFrame.
+
+CC's proposed (c) (subtract `eye_in_spout_frame_x`) is **REJECTED**. Reason: `x_snip` is read from `dlc_centered_spout_midpoint_parquet` via `_load_consolidated_eye_landmarks` (`tongue_pertrial.py:1608`-`1624`), and the per-frame angle metadata at `tongue_pertrial.py:3452` confirms `"center_mode": "centered_spout_midpoint"`. The x values are already in spout-midpoint frame (x = 0 ↔ tongue aligned with spout midline) — which IS the project's canonical centered coordinate for tongue laterality.
+
+Subtracting `eye_in_spout_frame_x` would conflate eye position offset with tongue laterality and break the science question ("how far laterally did the tongue go relative to the lick target"). The column name `x_centered` in this context refers to its spout-midpoint origin, not an eye-relative re-centering.
+
+### D3 — Epoch axis + test count (corrects kickoff Stage 3 + Q5 wording)
+
+**LOCKED:** Epoch axis is `epoch_label ∈ {pre, acute, sub_acute, chronic}` (assigned by `stroke_orofacial.stats.recovery_epochs.assign_epoch_label`), NOT `rel_day_bin`. Wilcoxon scope is pre-vs-each-post-epoch per phenotype × endpoint × side.
+
+**Test-count arithmetic.** The kickoff's "3 endpoints × 2 sides × 4 phenotype-pairs = 24 tests" reflected under-specified "4 phenotype-pairs" wording. The actual test grid:
+
+`3 endpoints × 2 sides × 4 phenotypes × 3 post_epochs = 72 tests`
+
+— one BH-FDR family, NaN-aware. The `correct_pvalues(..., method="bh_fdr")` wrapper (`apply_correction_to_results_df` in `stats/multiple_comparisons.py`) excludes NaN p-values from the rank-based adjustment and reinserts them as NaN, so n=1 phenotypes participating in the family is safe.
+
+**Aggregator flip.** `fit_paired_pre_post_wilcoxon(..., aggregator="median")` matches Q-lock 13b's median+IQR aggregation convention. The function already exposes the `median` choice — no signature change needed.
+
+**Cross-phenotype within-epoch comparison dropped from this ticket.** Cross-phenotype is unpaired (different animals across phenotypes); paired Wilcoxon is the wrong test class. Deferred to a future ticket — candidate tests are Mann-Whitney U (per-side per-epoch) or a mixed-effects model with phenotype as a fixed effect. Documented as forward-pointer below.
+
+**Known limitations (carry into the manifest / stats CSV).**
+
+- `moderate` (PS46, n=1) and `moderate-severe` (PS51, n=1) phenotypes will every Wilcoxon they participate in return `status="insufficient_data"` + NaN p-value — paired Wilcoxon requires n ≥ 2 paired animals. The NaN-aware BH-FDR correction handles these correctly. Included in the FDR family anyway so results-table provenance is uniform.
+
+### D4 — Aggregator helper module location
+
+**LOCKED:** Stage 2 + Stage 3 helpers (median+IQR per-session + phenotype-pooled median+IQR) land at `src/stroke_orofacial/stats/aggregators.py` (new module).
+
+The Q-lock 8 analog at `src/stroke_orofacial/figures/_io.py` is figure-private and mean-based. Q-lock 13b's helpers are stats-grain (consumed by `fit_paired_pre_post_wilcoxon`) and median-based — fresh module is the right structural call. Patterns reused from `figures/_io.py` (load_cohort_animals semantics, phenotype_map shape) are reimplemented in `stats/aggregators.py` (or imported from `stats/recovery_epochs.cohort_phenotype_summary` + `animals.load_animals` where they already live in stats-grain).
+
+### Forward-pointers added by Addendum #2
+
+- **Q-lock 13b cross-phenotype within-epoch test.** Unpaired test for cross-phenotype comparisons (Mann-Whitney U per-side per-epoch, or mixed-effects with phenotype fixed effect). Out of Q-lock 13b scope; future ticket.
+
+### Stage 0 prereq verification — Addendum #2 outcome
+
+Stage 0 verification ran 2026-05-27 and resolved all four divergences in this addendum. CC proceeds directly to Stage 1 implementation under the locks in Addenda #1 + #2.
+
+
