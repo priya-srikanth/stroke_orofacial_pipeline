@@ -150,26 +150,52 @@ traces at all. Confirm at kickoff approval.
 
 ### Step 6 — figure re-renders
 
-**What.** Re-render figures that consume jaw scalars or
-mismatch-classifier outputs.
+**What.** Re-render every figure that consumes jaw scalars or
+mismatch-classifier outputs. Per Priya's directive ("make sure you
+generate all data and plots that used the legacy jaw interpolated
+traces"), this is the comprehensive figure regeneration.
 
-**In scope.**
-- Phase 9.1 V4/V5 figures for jaw endpoints (4 jaw_peak_* + n_over)
-- `recovery_trajectories` for jaw_peak_abs_deflection (the paper-narrative scalar)
-- Cross-session `tongue_jaw_mismatch` candidate-rate plots
-- Phase 7a.6 cross-session mean/SEM jaw plots (covered by Step 4 above)
-- Any per-mouse jaw figures (from notebook 14)
+**In scope** (explicit enumeration so nothing gets missed):
+
+1. **Per-session jaw figures** (notebook 14, post-Step 2):
+   - Per-mouse jaw kinematic plots (Cell 32/34 outputs)
+   - Per-session jaw mean/SEM trace overlays (Phase 7a.6 — Step 4 emits)
+2. **Cross-session jaw figures** (Step 4 outputs):
+   - Per-mouse cross-session mean trajectory plots
+   - Per-mouse cross-session XY trajectory plots
+   - Cross-session videos (gated by Q-2 decision)
+3. **Tongue-jaw mismatch figures** (notebook 13, post-Step 3):
+   - Within-session candidate-trial plots (per-session, per-trial)
+   - Cross-session mismatch candidate-rate plots (per-mouse longitudinal)
+   - Cohort summary plots
+4. **Phase 9.1 V4/V5 jaw figures** (post-Step 5):
+   - V4 per_bin phenotype-pooled recovery curves for all jaw endpoints
+     in the Phase 9.1 LMM set
+   - V5 per_epoch phenotype-pooled boxplots for same endpoints
+5. **Phase 9 recovery_trajectories** (post-Step 5):
+   - Per-mouse panels overlaying cohort recovery-LMM fit + CI ribbon
+     on each animal's per-session trajectory, for jaw endpoints listed
+     in [`notebooks/15_spout_behavior_visual_gate.ipynb`](../../notebooks/15_spout_behavior_visual_gate.ipynb)
+     `RECOVERY_TRAJECTORY_ENDPOINTS` (currently includes `tongue_lick1_*`,
+     `tongue_first_peak_*`, plus the spatial Wasserstein endpoints — jaw
+     scalar endpoints will need to be added to that list if not already
+     there)
+6. **Any per-trial diagnostic figures** that downstream notebooks emit
+   from the cleaned jaw outputs.
 
 **Drivers.** Existing figure scripts under `src/stroke_orofacial/figures/`
-+ notebook 14 (`14_dlc_kinematics_jaw.ipynb`) execution.
++ Phase 9.1 figure scripts + notebooks 13 + 14 execution.
 
-**Wall-time estimate:** ~30-60 min (figure generation + visual review).
+**Wall-time estimate:** ~60-90 min (figure generation + visual review).
+Videos add ~30-60 min if enabled (Q-2).
 
-**Decision needed:** which V4/V5 jaw endpoints are required for the
-paper now, vs deferred to a future Phase 9.x figure refresh? Per
-[`phase-9.1-phenotype-pooled-figures-scoping.md`](phase-9.1-phenotype-pooled-figures-scoping.md),
-35 V4/V5 endpoints are in the locked Phase 9.1 inventory. Jaw subset
-is ~5-10 of those.
+**Decision needed (Q-4 revised):** the Phase 9.1 V4/V5 figure inventory
+is the full LMM set per the locked Phase 9.1 scoping doc. Jaw subset
+includes `jaw_peak_pos_deflection`, `jaw_peak_neg_deflection`,
+`jaw_peak_abs_deflection`, `jaw_peak_selected_deflection`,
+`jaw_n_frames_over_thresh`, and `candidate_no_lick_with_jaw_move`
+(downstream of jaw_pertrial). Per Priya's "generate all" directive,
+recommend ALL of those V4/V5 figures get refreshed.
 
 ---
 
@@ -235,22 +261,67 @@ Append-only; resume-on-relaunch skips `status="OK"` rows.
 
 ---
 
-## 5. Production code changes (minimal surface)
+## 5. Comprehensive consumer inventory (jaw v5p3 OR jaw_pertrial JSON readers)
 
-The scoping investigation touched zero production code. This phase
-makes minimal targeted changes:
+Grep audit 2026-05-26 confirmed every production consumer that reads
+the legacy jaw `interpolated_trace` or downstream `per_trial/jaw/*.json`.
+All of these need to be re-emit'd or re-executed under v3.4 inputs:
 
-| File | Change |
-| --- | --- |
-| `src/stroke_orofacial/dlc_kinematics/jaw_pertrial.py` | `_load_jaw_y_final` (+ `_load_jaw_x_final`?) switches input source per `use_cleaned_traces` flag |
-| `src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py` | Jaw branch reads from `cleaned_trace` (same flag) |
-| `configs/defaults.yaml` | Add `dlc_kinematics.jaw_pertrial.use_cleaned_traces: true` default |
-| `scripts/phase_7f/reemit_jaw_pertrial_cohort.py` | NEW — Step 2 driver |
-| `scripts/phase_7f/reemit_tongue_jaw_mismatch_cohort.py` | NEW — Step 3 driver |
-| `scripts/phase_7f/reemit_jaw_mean_sem_cohort.py` | NEW — Step 4 driver |
-| (Phase 9 stats drivers) | Existing — no changes needed, just invoke |
+| Reader (file:line) | Reads | Step |
+| --- | --- | --- |
+| `jaw_pertrial.py:290` (`_load_jaw_y_final`) | `interpolated_trace("jaw")` | **2** |
+| `tongue_jaw_mismatch.py:612` (`_load_bodypart_y_final(bp="jaw")`) | `interpolated_trace("jaw")` for within-session plots | **3** |
+| `tongue_jaw_mismatch.py:486-510` | `per_trial/jaw/*.json` (`jaw_pass_qc` + scalars) | **3** |
+| `mean_sem_visual.py:540,661,760,2239` | `interpolated_trace("jaw")` (Phase 7a.6 jaw branch) | **4** |
+| `scripts/phase_9_stats/materialize_inputs.py:336-633` | `per_trial/jaw/*.json` (Phase 9 stats inputs) | **5** |
+| Notebook 13 mismatch cells | runs mismatch classifier | re-execute after Step 3 |
+| Notebook 14 jaw cells | runs `build_jaw_pertrial_by_animal_date` | re-execute after Step 2 |
 
-No new modules; no new path resolvers (Step 1 already uses tongue's
+**Cross-cutting design — bodypart-scoped flag:**
+
+Add ONE config key shared by all jaw consumers:
+```yaml
+# configs/defaults.yaml
+dlc_kinematics:
+  jaw:
+    use_cleaned_traces: true   # NEW (default ON post-Phase 7f)
+```
+
+Concrete production-code changes:
+
+**A. `src/stroke_orofacial/dlc_kinematics/jaw_pertrial.py`**
+```python
+# in _load_jaw_y_final:
+use_cleaned = params["dlc_kinematics"]["jaw"].get("use_cleaned_traces", True)
+if use_cleaned:
+    path = resolver.cleaned_trace("jaw", manifest.animal, manifest.date)
+else:
+    path = resolver.interpolated_trace("jaw", manifest.animal, manifest.date)
+```
+
+**B. `src/stroke_orofacial/dlc_kinematics/tongue_jaw_mismatch.py`**
+`_load_bodypart_y_final` takes a `params` dict and branches when
+`bodypart == "jaw"` and the flag is set. **Tongue path stays
+unchanged** (out of scope; tongue already uses Phase 7e v7 outputs
+elsewhere — switching tongue here is a separate decision).
+
+**C. `src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py`**
+Jaw branch reads via the flag; tongue branch unchanged.
+
+**D. New scripts under `scripts/phase_7f/`** (templated from
+`scripts/phase_7e/reemit_tongue_*_cohort.py`):
+- `reemit_jaw_pertrial_cohort.py` (Step 2)
+- `reemit_tongue_jaw_mismatch_cohort.py` (Step 3)
+- `reemit_jaw_mean_sem_cohort.py` (Step 4)
+
+**E. Phase 9 stats drivers** (`scripts/phase_9_stats/`) — invoked
+unchanged; no source-code edits needed (the materializer just reads
+the updated jaw_pertrial JSONs).
+
+**F. Notebook re-execution** — notebooks 13 + 14 cells that consume
+jaw outputs run after their predecessor step completes.
+
+No new modules; no new path resolvers (Step 1 used tongue's
 `resolver.cleaned_trace`).
 
 ---
@@ -260,20 +331,25 @@ No new modules; no new path resolvers (Step 1 already uses tongue's
 > Numbered Q-1 through Q-N for easy reference in addenda.
 
 - **Q-1.** Step 2 design pick: (A) flag pattern matching tongue v7
-  (`use_cleaned_traces: true` default), or (B) hard switch?
-  Recommendation: A.
+  (bodypart-scoped `dlc_kinematics.jaw.use_cleaned_traces: true`
+  default; applied by jaw_pertrial + mismatch loader + mean_sem) vs
+  (B) hard switch. Recommendation: **A** (flag).
 - **Q-2.** Step 4 videos: re-render cross-session jaw trajectory videos
-  now, or defer to paper-figure-finalization? Videos are
-  time-consuming; cleaner traces may not change qualitatively.
+  now, or defer? Videos take ~30-60 min; cleaner traces may not change
+  qualitatively. Recommendation: re-render now per "generate all"
+  directive.
 - **Q-3.** Step 5 scope: confirm `spatial_wasserstein_jaw_eye_midpoint_*`
-  is OUT of scope (reads RAW DLC, not v5p3). Recommendation: yes, out.
-- **Q-4.** Step 6 V4/V5 jaw inventory: refresh ALL jaw V4/V5 figures
-  from Phase 9.1's locked set, or only the headline
-  `jaw_peak_abs_deflection` + `candidate_no_lick_with_jaw_move`?
+  is OUT of scope (reads RAW DLC at lk≥0.80, NOT v5p3 — unaffected by
+  this cleanup). Recommendation: **yes, out**.
+- **Q-4.** Step 6 V4/V5 jaw inventory: per Priya 2026-05-26 ("generate
+  all data and plots"), refresh ALL Phase 9.1 V4/V5 figures for jaw
+  endpoints (5-6 figures × V4 + V5 = ~12 figures) + all recovery
+  trajectories + all mismatch candidate-rate plots. Recommendation:
+  **all** per directive.
 - **Q-5.** Sequencing: do all 5 steps in one continuous cycle, or pause
   after each step for visual / stats review? Recommendation: pause
-  after Steps 2, 4, 5 for verification; Step 3 + 6 can flow with
-  their predecessors.
+  after Steps 2, 4, 5 for verification; Steps 3 + 6 flow with their
+  predecessors.
 - **Q-6.** Per CLAUDE.md Ground Rule 7, this kickoff itself is the
   approval gate before any production code changes. Confirm sign-off
   to proceed?
