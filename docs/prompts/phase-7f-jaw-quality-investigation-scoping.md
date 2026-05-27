@@ -57,6 +57,44 @@
 > is where the cluster + frame artifacts hide — cohort means understate
 > the contamination.
 
+> **AMENDMENT 2026-05-26 #11 (v3.4: add R1-x bidirectional ceiling at
+> ±40 px from baseline_mean_x).** Per Priya 2026-05-26 ("can we add a
+> filter for x values > 40 px above/below baseline?"), v3.4 = v3.3 +
+> a symmetric R1-x rule: `|x_final − baseline_mean_x| > 40 → wipe`
+> (raw frames only).
+>
+> Cohort impact (v3.3 → v3.4):
+> - severe-acute clean mean 10.85 → 10.92 (+0.07 px — paper-narrative
+>   signal unchanged)
+> - mild/chronic clean mean 101.81 → 101.47 (−0.34 px)
+> - severe/chronic clean mean 73.81 → 72.74 (−1.07 px)
+> - severe/sub_acute clean mean 62.20 → 61.57 (−0.63 px)
+> - max pass_qc flip rate 2.8% (moderate/pre) — same as v3.3
+> - R1-x wipe rates: 0.01% (severe-acute) to 2.0% (mod-sev/chronic)
+>
+> Per-trial verification:
+> - **Pre-stroke (8 trials):** 1/8 affected (PS50 mild_median 102.5 →
+>   98.96; pass_qc preserved). 7/8 unchanged from v3.3.
+> - **Severe-acute (8 trials):** essentially unchanged from v3.3.
+>
+> **Locked design for Phase 7f Option B kickoff:**
+> ```
+> Y_CEILING_PX = 125  (positive-side only)
+> X_CEILING_PX = 40   (bidirectional)
+> ISOLATED_MAX_N = 5
+> ISOLATED_RADIUS_MS = 30
+> FRAME_JUMP_THR_PX = 70
+> FRAME_OUTLIER_LOCAL_MEDIAN_MS = 20
+> MAX_GAP_MS_PCHIP = 120  (jaw v5p3 default)
+> ```
+>
+> R1-x is bidirectional (symmetric ± from baseline_mean_x) since
+> jaw x deviates both positive and negative. R1-y stays positive-only
+> (negative deflection is physiological closing). Cross-cluster R3
+> still operates on y only (per audit findings: R3-x adds < 0.005%
+> additional wipes cohort-wide and provides no visible benefit on
+> any of the 16 inspected trials).
+
 > **AMENDMENT 2026-05-26 #10 (Y_CEILING locked at 125 — v3.3 cohort
 > + pre-stroke + severe-acute verification).** Priya 2026-05-26 ("from
 > the healthy trials I'm convinced we should loosen the max to 125").
