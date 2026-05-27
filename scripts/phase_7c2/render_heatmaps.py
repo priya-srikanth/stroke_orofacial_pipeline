@@ -146,6 +146,34 @@ def _bin_dates_by_rel_day(
     return bins
 
 
+def _filter_dates_with_cleaned_traces(
+    animal: str, dates: list[dt.date], bodyparts: list[str],
+    resolver: PathResolver,
+) -> list[dt.date]:
+    """Phase 7e.4 — drop YAML-range dates that have no cleaned_traces
+    parquet for the family's bodyparts.
+
+    Under ``use_v7_cleaned=True``, the legacy emit-one-SVG-per-YAML-date
+    behavior (which produced "no data" placeholder SVGs for days without
+    DLC sessions) becomes misleading: those placeholders pretend the
+    cleaned_trace re-emit has output for dates that never had a
+    recording. This filter restricts the date list to dates with an
+    on-disk cleaned_traces parquet for **all** family bodyparts (so
+    composites + single-bp families behave the same).
+    """
+    kept: list[dt.date] = []
+    for d in dates:
+        all_present = True
+        for bp in bodyparts:
+            p = resolver.cleaned_trace(bodypart=bp, animal=animal, date=d)
+            if not p.exists():
+                all_present = False
+                break
+        if all_present:
+            kept.append(d)
+    return kept
+
+
 def _individual_session_out_path(
     resolver: PathResolver, scope: str, animal: str,
     family_entry: str, date: dt.date,
@@ -354,6 +382,28 @@ def _process_animal(
     bin_sizes_days = (int(animal_info.bin_days),)
     log.info(f"  Q23 bin_sizes_days = {bin_sizes_days} (animal_info.bin_days={animal_info.bin_days})")
     for family_entry in families_iter:
+        # Phase 7e.4: under use_v7_cleaned, drop YAML-range dates that
+        # have no cleaned_traces parquet for this family's bodyparts.
+        # The legacy emit-one-SVG-per-YAML-date behavior produced
+        # misleading "no data" placeholders for non-recording days; the
+        # cleaned_trace re-emit only emits for dates that actually have
+        # a v7 cleanup on disk. Legacy mode keeps the full date list
+        # so any --no-use-v7-cleaned re-run is byte-identical to the
+        # historical legacy outputs.
+        family_meta = EXPECTED_TONE_ALIGNED_FAMILIES[family_entry]
+        is_pattern_b = len(family_meta["bodyparts"]) > 1
+        if use_v7_cleaned:
+            family_bps = list(family_meta["bodyparts"])
+            dates_family = _filter_dates_with_cleaned_traces(
+                animal, dates, family_bps, resolver,
+            )
+            log.info(
+                f"  family={family_entry}: "
+                f"{len(dates_family)}/{len(dates)} dates have cleaned_traces "
+                f"for {family_bps}"
+            )
+        else:
+            dates_family = dates
         for scope in SCOPES:
             # ----- Q18 Pass 1 (per (family, scope)) — bucket-shared
             # LogNorm range for IS + BS. Q18 path uses scalar
@@ -362,8 +412,6 @@ def _process_animal(
             # norms for Pattern B composite families (whiskers +
             # fiducial pairs). One of the two precomputes runs per
             # (family, scope) depending on family arity. -----
-            family_meta = EXPECTED_TONE_ALIGNED_FAMILIES[family_entry]
-            is_pattern_b = len(family_meta["bodyparts"]) > 1
             # Q60 Addendum #50: IS rendered only when emit_is. The
             # IS Pass 1 precompute is now scoped to the IS render so
             # we don't pay its cost when only BS / PD / UOT is
@@ -376,7 +424,8 @@ def _process_animal(
                     try:
                         is_bucket_per_bp_norms = (
                             precompute_pattern_b_bucket_per_bp_norms_is(
-                                animal, family_entry, scope, dates, resolver,
+                                animal, family_entry, scope, dates_family,
+                                resolver,
                                 defaults=defaults, animal_info=animal_info,
                             )
                         )
@@ -388,7 +437,8 @@ def _process_animal(
                 else:
                     try:
                         is_arrays = precompute_individual_session_h_proportions(
-                            animal, family_entry, scope, dates, resolver,
+                            animal, family_entry, scope, dates_family,
+                            resolver,
                             defaults=defaults, animal_info=animal_info,
                         )
                         is_vmin, is_vmax = derive_log_norm_range(is_arrays)
@@ -396,7 +446,7 @@ def _process_animal(
                         log.error(f"    pre1/IS/{family_entry}/{scope}: {ex!r}")
                 # ----- Pass 2 — render IS for each (date) with the shared
                 # IS bucket range. -----
-                for date in dates:
+                for date in dates_family:
                     try:
                         fig = render_individual_session_heatmap(
                             animal=animal, family_entry=family_entry,
@@ -434,7 +484,8 @@ def _process_animal(
                 for bin_size_days in bin_sizes_days:
                     try:
                         bs_arrays = precompute_binned_sessions_h_proportions(
-                            animal, family_entry, scope, bin_size_days, dates,
+                            animal, family_entry, scope, bin_size_days,
+                            dates_family,
                             resolver,
                             defaults=defaults, animal_info=animal_info,
                         )
@@ -451,7 +502,7 @@ def _process_animal(
                                 scope=scope,
                                 bin_size_days=bin_size_days,
                                 trial_group=tg,
-                                dates=dates,
+                                dates=dates_family,
                                 resolver=resolver,
                                 defaults=defaults, animal_info=animal_info,
                                 shared_vmin=bs_vmin, shared_vmax=bs_vmax,
@@ -500,7 +551,8 @@ def _process_animal(
                     pattern_b_pd_per_tg = {}
                     try:
                         pd_arrays = precompute_proportion_diffs(
-                            animal, family_entry, scope, bin_size_days, dates, resolver,
+                            animal, family_entry, scope, bin_size_days,
+                            dates_family, resolver,
                             defaults=defaults, animal_info=animal_info,
                         )
                         pd_vmax = derive_symmetric_diff_vmax(
@@ -517,7 +569,7 @@ def _process_animal(
                             pattern_b_pd_per_tg[tg] = (
                                 precompute_pattern_b_pd_bucket_per_layer_vmax(
                                     animal, family_entry, scope,
-                                    bin_size_days, dates, resolver,
+                                    bin_size_days, dates_family, resolver,
                                     trial_group=tg,
                                     defaults=defaults, animal_info=animal_info,
                                 )
@@ -534,7 +586,7 @@ def _process_animal(
                             scope=scope, resolver=resolver,
                             bin_size_days=bin_size_days,
                             trial_group=tg,
-                            dates=dates,
+                            dates=dates_family,
                             defaults=defaults, animal_info=animal_info,
                             shared_vmax=pd_vmax,
                             bucket_per_layer_vmax=(
@@ -589,7 +641,8 @@ def _process_animal(
                     pattern_b_uot_per_tg = {}
                     try:
                         uot_plans = precompute_unbalanced_ot_plans(
-                            animal, family_entry, scope, bin_size_days, dates,
+                            animal, family_entry, scope, bin_size_days,
+                            dates_family,
                             resolver,
                             defaults=defaults, animal_info=animal_info,
                         )
@@ -612,7 +665,7 @@ def _process_animal(
                             pattern_b_uot_per_tg[tg] = (
                                 precompute_pattern_b_uot_bucket_per_layer_vmax(
                                     animal, family_entry, scope,
-                                    bin_size_days, dates, resolver,
+                                    bin_size_days, dates_family, resolver,
                                     trial_group=tg,
                                     defaults=defaults, animal_info=animal_info,
                                 )
@@ -629,7 +682,7 @@ def _process_animal(
                             scope=scope, resolver=resolver,
                             bin_size_days=bin_size_days,
                             trial_group=tg,
-                            dates=dates,
+                            dates=dates_family,
                             defaults=defaults, animal_info=animal_info,
                             shared_mass_change_vmax_abs=mass_change_vmax_abs,
                             shared_arrow_logmag_lo=logmag_lo,
