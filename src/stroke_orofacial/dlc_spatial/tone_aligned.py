@@ -274,6 +274,7 @@ def build_tone_aligned_analysis(
     *,
     wavesurfer_sides_match_mouse_sides: bool | None = None,
     emit_cache: bool = False,
+    use_v7_cleaned: bool = True,
 ) -> dict[str, Any] | None:
     """Run a complete tone-aligned spatial analysis for one session.
 
@@ -486,6 +487,24 @@ def build_tone_aligned_analysis(
     # Phase 5's value otherwise by passing x_range=None to build_histogram.
     x_range_override = tuple(bp_x_range_tone) if bp_x_range_tone is not None else None
 
+    # Phase 7e.4: when use_v7_cleaned=True (default), load the bodypart's
+    # cleaned_traces parquet, extract `is_baseline_fill`, and pass it
+    # through to build_histogram along with drop_likelihood_gate=True.
+    # When use_v7_cleaned=False, behavior is byte-identical to pre-7e.4.
+    # Tongue + jaw have cleaned_traces; other bodyparts raise
+    # FileNotFoundError inside load_baseline_fill_mask — caller is
+    # expected to set use_v7_cleaned=False for those.
+    baseline_fill_mask = None
+    drop_lik_gate = False
+    if use_v7_cleaned:
+        from stroke_orofacial.dlc_kinematics.cleaned_traces_io import (
+            load_baseline_fill_mask,
+        )
+        baseline_fill_mask = load_baseline_fill_mask(
+            bodypart, animal, date, resolver, expected_n_frames=n_frames,
+        )
+        drop_lik_gate = True
+
     # Q17 Addendum #16: pass total-frame denominator (window.n_selected
     # for tone-aligned scope). The returned hist["H_proportion"] is then
     # H_counts / n_total_frames — the universal Q17 normalization.
@@ -496,6 +515,8 @@ def build_tone_aligned_analysis(
         nbins=nbins,
         window=window,
         n_total_frames=int(window.n_selected),
+        baseline_fill_mask=baseline_fill_mask,
+        drop_likelihood_gate=drop_lik_gate,
     )
 
     # NOTE: dict keys ``"n_tones"``, ``"n_selected_frames"`` are
@@ -512,6 +533,10 @@ def build_tone_aligned_analysis(
         "bodypart": bodypart,
         "center_mode": center_mode,
         "wavesurfer_sides_match_mouse_sides": effective_flag,
+        # Phase 7e.4 routing stamps; consumed by save_tone_aligned_npz
+        # to record which filter pipeline produced the H_counts.
+        "applied_cleaned_traces_mask": bool(use_v7_cleaned),
+        "dropped_likelihood_gate": bool(drop_lik_gate),
     }
 
     # Phase 7c.2 Addendum #3 Q2.B: emit_cache is off by default — no NPZ
@@ -544,6 +569,7 @@ def build_tone_aligned_analysis_by_animal_date(
     *,
     wavesurfer_sides_match_mouse_sides: bool | None = None,
     emit_cache: bool = False,
+    use_v7_cleaned: bool = True,
 ) -> dict[str, Any] | None:
     """Convenience wrapper: builds a SessionManifest then calls build_tone_aligned_analysis().
 
@@ -600,6 +626,7 @@ def build_tone_aligned_analysis_by_animal_date(
         resolver, spatial_config, tone_config,
         wavesurfer_sides_match_mouse_sides=effective_flag,
         emit_cache=emit_cache,
+        use_v7_cleaned=use_v7_cleaned,
     )
 
 
@@ -677,6 +704,20 @@ def save_tone_aligned_npz(
         "n_selected_frames": int(result["n_selected_frames"]),
         "bodypart": np.asarray(result["bodypart"]),
         "center_mode": np.asarray(result["center_mode"]),
+        # Phase 7e.4 routing stamps. Default-False stamps are written
+        # when the build_tone_aligned_analysis caller passed
+        # use_v7_cleaned=False (legacy path); default-True stamps mark
+        # H_counts that consumed the cleaned_traces baseline-fill mask
+        # + dropped the per-bp likelihood gate. Keys present
+        # unconditionally (unlike Phase 6.8a's optional trial_group /
+        # window_ms additions) so the NPZ schema is self-describing
+        # whether or not the writer opted in.
+        "applied_cleaned_traces_mask": np.bool_(
+            result.get("applied_cleaned_traces_mask", False),
+        ),
+        "dropped_likelihood_gate": np.bool_(
+            result.get("dropped_likelihood_gate", False),
+        ),
     }
     stamp_side_convention(
         payload, result["wavesurfer_sides_match_mouse_sides"],

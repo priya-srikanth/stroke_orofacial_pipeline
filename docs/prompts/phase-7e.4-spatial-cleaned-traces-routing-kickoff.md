@@ -431,6 +431,56 @@ none of which are part of the bp-level filter chain.**
 
 ## 10. Addenda
 
+### Addendum #2 — Q-lock 15 cleaned_trace marker convention applied (Priya 2026-05-26 amendment)
+
+Priya's 2026-05-26 evening directive (Phase 9.1 trajectory expansion +
+cleaned_trace marker convention) added three new locks that Phase 7e.4
+must honor on its output side because Q-lock 12 (phenotype-pooled
+proportion_diff figures, 80 figures) gates on Phase 7e.4 close and
+consumes 7e.4's outputs as input.
+
+**Q-lock 15 marker convention** (binding on Phase 7e.4 Stage 3 + 5):
+
+1. **Directory-level:** outputs land at `..._cleaned_trace/` suffixed
+   paths (already aligned with §4.5).
+2. **Filename:** every emitted artifact (PNG, NPZ, CSV) must include
+   the `_cleaned_trace` token in its filename — not just the
+   directory. Example:
+   - PNG: `heatmap_PS54_20250506_tongue_spout_midpoint_tone_all_cleaned_trace.png`
+     (NOT `heatmap_PS54_20250506_tongue_spout_midpoint_tone_all.png`
+     under a `_cleaned_trace/` directory)
+   - NPZ: `heatmap_PS54_20250506_..._cleaned_trace.npz`
+3. **Figure subtitle/footer:** suptitle suffix or right-bottom-corner
+   annotation reading literally: `"Source: v7-cleaned-trace cohort
+   re-emit (Phase 7e + Phase 7e.4)"`. Survives PDF/paper export so
+   downstream readers can trace provenance from the figure alone.
+
+Stage 3 implementation impact:
+- Resolver `*_cleaned_trace()` methods (already in §4.5) build paths
+  with the `_cleaned_trace` suffix on the directory **and** prepend
+  the token to the filename slug.
+- Driver scripts (`scripts/phase_7c2/render_heatmaps.py`,
+  `scripts/phase_7c2/reemit_cohort.py`) pass the routing flag to the
+  figure renderer, which appends the §15.3 footer to every figure.
+- For figures that mix tongue+jaw (composites), `_cleaned_trace`
+  applies when **any** input bp routed through the new filter — i.e.,
+  always for tongue+jaw composites in Phase 7e.4's scope.
+
+**Q-lock 12 gating** (informational; not binding on 7e.4 source code):
+- Phase 9.1's Q-lock 12 (80 phenotype-pooled proportion_diff figures)
+  consumes the cleaned_trace NPZ tree that Stage 5 emits.
+- Compute-source path per Q-lock 12: `pipeline_outputs/
+  dlc_kinematics/tone_aligned_heatmaps_cleaned_trace/`. **Open
+  question for Priya:** this path is under `dlc_kinematics/` not the
+  `dlc_analysis/` path family that Phase 7c.2 / Phase 9 spatial
+  outputs currently live under (§4.5 §1-2). Two interpretations:
+    (a) Typo in the amendment — actual path is
+        `dlc_analysis/spatial_tone_aligned_cleaned_trace/`.
+    (b) Intentional — Phase 7e.4 should write to a NEW path under
+        `dlc_kinematics/tone_aligned_heatmaps_cleaned_trace/`.
+  Will ask in PR #148 comment. Stage 5 driver implementation gated on
+  Priya's answer.
+
 ### Addendum #1 — Section 8 inputs locked (Priya, 2026-05-27)
 
 | input | locked value | note |

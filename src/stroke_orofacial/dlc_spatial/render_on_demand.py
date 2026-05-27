@@ -284,6 +284,7 @@ def render_tone_aligned_heatmap_session(
     *,
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
+    use_v7_cleaned: bool = True,
 ) -> plt.Figure | None:
     """Render a tone-aligned heatmap for one (animal, date) cell.
 
@@ -330,12 +331,26 @@ def render_tone_aligned_heatmap_session(
     bp_existing["likelihood_threshold"] = lik_thr
     config_for_hist["bodyparts"][bodypart] = bp_existing
 
+    # Phase 7e.4: load baseline-fill mask when opted in (default).
+    baseline_fill_mask = None
+    drop_lik_gate = False
+    if use_v7_cleaned:
+        from stroke_orofacial.dlc_kinematics.cleaned_traces_io import (
+            load_baseline_fill_mask,
+        )
+        baseline_fill_mask = load_baseline_fill_mask(
+            bodypart, animal, date, resolver, expected_n_frames=n_frames,
+        )
+        drop_lik_gate = True
+
     hist = build_histogram(
         df, bodypart, config_for_hist,
         center_mode=center_mode,
         x_range=bp_x_range,
         nbins=nbins,
         window=window,
+        baseline_fill_mask=baseline_fill_mask,
+        drop_likelihood_gate=drop_lik_gate,
     )
 
     win_label = f"[{int(window_ms[0])}, {int(window_ms[1])}] ms"
@@ -358,6 +373,7 @@ def render_whole_session_heatmap(
     *,
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
+    use_v7_cleaned: bool = True,
 ) -> plt.Figure:
     """Render a whole-session heatmap (no tone alignment) for one
     (animal, date) cell. Frames are all session frames passing the
@@ -375,10 +391,24 @@ def render_whole_session_heatmap(
         analysis_context="dlc.spatial",
     )
     df = _load_centered_df_for(manifest, center_mode, resolver)
+    # Phase 7e.4: load baseline-fill mask at PRE-slice length so the
+    # ws_lo..ws_hi slice below can take a matching slice of the mask.
+    baseline_fill_mask = None
+    drop_lik_gate = False
+    if use_v7_cleaned:
+        from stroke_orofacial.dlc_kinematics.cleaned_traces_io import (
+            load_baseline_fill_mask,
+        )
+        baseline_fill_mask = load_baseline_fill_mask(
+            bodypart, animal, date, resolver, expected_n_frames=len(df),
+        )
+        drop_lik_gate = True
     # Q19 Addendum #41 / Q49 (2026-05-17): WS-session-time cam-frame
     # filter for the whole_session scope; see ``_ws_cam_frame_bounds``.
     ws_lo, ws_hi = _ws_cam_frame_bounds(manifest, resolver, len(df))
     df = df.iloc[ws_lo : ws_hi + 1]
+    if baseline_fill_mask is not None:
+        baseline_fill_mask = baseline_fill_mask[ws_lo : ws_hi + 1]
 
     family = _resolve_family_params(tone_config, bodypart, center_mode)
     bp_x_range = (
@@ -401,6 +431,8 @@ def render_whole_session_heatmap(
         x_range=bp_x_range,
         nbins=nbins,
         window=None,  # whole-session = no frame mask
+        baseline_fill_mask=baseline_fill_mask,
+        drop_likelihood_gate=drop_lik_gate,
     )
 
     title = (
@@ -425,6 +457,7 @@ def compute_animal_aggregated_histogram(
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
     nbins_override: int | None = None,
+    use_v7_cleaned: bool = True,
 ) -> tuple[np.ndarray | None, list[float] | None, int, int, int]:
     """Compute-only variant of :func:`render_animal_aggregated_heatmap`.
 
@@ -510,6 +543,28 @@ def compute_animal_aggregated_histogram(
         except FileNotFoundError:
             continue
 
+        # Phase 7e.4: per-session baseline-fill mask load (use_v7_cleaned
+        # path). Sized to the pre-slice df length so the tone-aligned
+        # branch (no slice) AND the whole_session branch (df.iloc slice
+        # below) both have a correctly-aligned mask. If the cleaned_traces
+        # parquet is missing for this (animal, date, bp), skip this
+        # session — same skip semantics as a missing centered parquet
+        # above.
+        baseline_fill_mask_full: np.ndarray | None = None
+        drop_lik_gate = False
+        if use_v7_cleaned:
+            from stroke_orofacial.dlc_kinematics.cleaned_traces_io import (
+                load_baseline_fill_mask,
+            )
+            try:
+                baseline_fill_mask_full = load_baseline_fill_mask(
+                    bodypart, animal, date, resolver,
+                    expected_n_frames=len(df),
+                )
+                drop_lik_gate = True
+            except FileNotFoundError:
+                continue
+
         if window_ms is not None and trial_group is not None:
             try:
                 window = _build_tone_window(
@@ -525,6 +580,9 @@ def compute_animal_aggregated_histogram(
             # Q17/Q19: tone-aligned denominator = frames within window
             # (after dedup of overlapping windows).
             session_n_total = int(window.n_selected)
+            # Tone-aligned branch keeps df full-length; pass the
+            # unsliced baseline-fill mask through unchanged.
+            baseline_fill_mask_for_call = baseline_fill_mask_full
         else:
             window = None
             # Q19 Addendum #41 / Q49 (2026-05-17): restrict to WS-session-
@@ -538,6 +596,14 @@ def compute_animal_aggregated_histogram(
             ws_lo, ws_hi = _ws_cam_frame_bounds(manifest, resolver, len(df))
             df = df.iloc[ws_lo : ws_hi + 1]
             session_n_total = int(len(df))
+            # Whole-session branch sliced df; slice the mask the same
+            # way to keep length-alignment with the post-slice df.
+            if baseline_fill_mask_full is not None:
+                baseline_fill_mask_for_call = baseline_fill_mask_full[
+                    ws_lo : ws_hi + 1
+                ]
+            else:
+                baseline_fill_mask_for_call = None
 
         hist = build_histogram(
             df, bodypart, config_for_hist,
@@ -546,6 +612,8 @@ def compute_animal_aggregated_histogram(
             nbins=nbins,
             window=window,
             n_total_frames=session_n_total,
+            baseline_fill_mask=baseline_fill_mask_for_call,
+            drop_likelihood_gate=drop_lik_gate,
         )
         n_sessions_contributing += 1
         n_total_frames_aggregated += session_n_total
@@ -757,6 +825,7 @@ def render_animal_aggregated_heatmap(
     window_ms: tuple[float, float] | None,
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
+    use_v7_cleaned: bool = True,
 ) -> plt.Figure:
     """Render a per-animal heatmap aggregating frames across all in-scope
     sessions for one (bodypart, center_mode) cell.
@@ -801,6 +870,7 @@ def render_animal_aggregated_heatmap(
             animal, dates, bodypart, center_mode, resolver,
             trial_group=trial_group, window_ms=window_ms,
             defaults=defaults, animal_info=animal_info,
+            use_v7_cleaned=use_v7_cleaned,
         )
     )
     if window_ms is not None:
