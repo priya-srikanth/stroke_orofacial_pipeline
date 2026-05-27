@@ -87,7 +87,14 @@ from stroke_orofacial.paths import PathResolver
 # Version stamped into every emitted JSON. Bumping requires a DECISIONS
 # entry + 14-session legacy_approximate parity re-run.
 JAW_PERTRIAL_VERSION: str = "v7a.5"
-INTERPOLATION_VERSION: str = "v5p3"
+# Trace-source version stamps. Selected dynamically based on the
+# dlc_kinematics.jaw.use_cleaned_traces flag.
+INTERPOLATION_VERSION_V5P3: str = "v5p3"
+INTERPOLATION_VERSION_CLEANED: str = "v3.4-cleaned"
+# Backward-compat alias (legacy callers reading this constant). Defaults
+# to the v5p3 string; cleaned-trace runs stamp "v3.4-cleaned" into the
+# JSON metadata directly.
+INTERPOLATION_VERSION: str = INTERPOLATION_VERSION_V5P3
 
 
 # ===========================================================================
@@ -219,7 +226,12 @@ def _build_jaw_pertrial_core(
     density_thr = float(jp_params["sustained_density_threshold"])
     window_n = int(jp_params["sustained_window_n_frames"])
 
-    jaw_y, fps, n_frames = _load_jaw_y_final(manifest, resolver)
+    use_cleaned = bool(
+        params.get("dlc_kinematics", {})
+        .get("jaw", {})
+        .get("use_cleaned_traces", True),
+    )
+    jaw_y, fps, n_frames = _load_jaw_y_final(manifest, resolver, params)
 
     rows: list[dict[str, Any]] = []
     for ev in trial_events:
@@ -235,7 +247,11 @@ def _build_jaw_pertrial_core(
         "fps": float(fps),
         "n_frames": int(n_frames),
         "feature_extraction_version": JAW_PERTRIAL_VERSION,
-        "interpolation_version": INTERPOLATION_VERSION,
+        "interpolation_version": (
+            INTERPOLATION_VERSION_CLEANED if use_cleaned
+            else INTERPOLATION_VERSION_V5P3
+        ),
+        "use_cleaned_traces": bool(use_cleaned),
         "detect_win_ms": list(detect_win_ms),
         "baseline_win_ms": list(baseline_win_ms),
         "deflection_threshold_sd_multiplier": sd_mult,
@@ -279,22 +295,49 @@ def _build_jaw_pertrial_core(
 
 def _load_jaw_y_final(
     manifest: SessionManifest, resolver: PathResolver,
+    params: dict[str, Any] | None = None,
 ) -> tuple[np.ndarray, float, int]:
-    """Read the 7a.2 jaw interpolated_traces parquet for this session.
+    """Read the jaw trace parquet for this session.
+
+    By default (Phase 7f, ``dlc_kinematics.jaw.use_cleaned_traces=true``)
+    reads from ``cleaned_traces/jaw/`` (Phase 7f v3.4 post-clean
+    outputs). Set the flag to False to fall back to ``interpolated_traces/jaw/``
+    (Phase 7a.2 v5p3 raw) for A/B audits. Schema is identical
+    (v5p3-compatible drop-in) so the rest of jaw_pertrial doesn't change.
 
     Returns ``(y_final, fps, n_frames)``. Only ``y_final`` is needed by
     Cell 53 logic; ``x_final`` is unread (jaw deflection is a Y-axis
     quantity in spout-centered coordinates, not a 2D distance).
     """
-    path = resolver.interpolated_trace(
-        bodypart="jaw", animal=manifest.animal, date=manifest.date,
-    )
-    if not path.exists():
-        raise FileNotFoundError(
-            f"7a.2 jaw interpolated_traces parquet missing for "
-            f"{manifest.animal}/{manifest.date.isoformat()}: expected at {path}. "
-            f"Run build_interpolated_trace first.",
+    use_cleaned = True
+    if params is not None:
+        use_cleaned = bool(
+            params.get("dlc_kinematics", {})
+            .get("jaw", {})
+            .get("use_cleaned_traces", True),
         )
+
+    if use_cleaned:
+        path = resolver.cleaned_trace(
+            bodypart="jaw", animal=manifest.animal, date=manifest.date,
+        )
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Phase 7f cleaned_traces/jaw parquet missing for "
+                f"{manifest.animal}/{manifest.date.isoformat()}: expected at {path}. "
+                f"Either run the Phase 7f Step 1 re-emit, or set "
+                f"dlc_kinematics.jaw.use_cleaned_traces=false to fall back to v5p3.",
+            )
+    else:
+        path = resolver.interpolated_trace(
+            bodypart="jaw", animal=manifest.animal, date=manifest.date,
+        )
+        if not path.exists():
+            raise FileNotFoundError(
+                f"7a.2 jaw interpolated_traces parquet missing for "
+                f"{manifest.animal}/{manifest.date.isoformat()}: expected at {path}. "
+                f"Run build_interpolated_trace first.",
+            )
     df = pd.read_parquet(path, columns=["y_final"])
     schema = pq.read_schema(path)
     raw_meta = schema.metadata or {}
@@ -302,7 +345,7 @@ def _load_jaw_y_final(
     n_frames_meta = raw_meta.get(b"n_frames")
     if fps_meta is None or n_frames_meta is None:
         raise ValueError(
-            f"7a.2 jaw parquet at {path} missing required 'fps' / 'n_frames' "
+            f"jaw parquet at {path} missing required 'fps' / 'n_frames' "
             f"metadata keys (expected per the 7a.2 schema lock).",
         )
     fps = float(fps_meta.decode("utf-8"))

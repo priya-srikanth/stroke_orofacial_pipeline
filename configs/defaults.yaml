@@ -560,6 +560,13 @@ dlc_kinematics:
       y0_percentile: 5.0
       x0: "median_of_y_percentile_subset"
   jaw:
+    # Phase 7f bodypart-scoped flag — when True, all jaw consumers
+    # (jaw_pertrial, tongue_jaw_mismatch jaw loader, mean_sem jaw
+    # branch) read from `cleaned_traces/jaw/` (Phase 7f v3.4 cleanup
+    # outputs) instead of `interpolated_traces/jaw/` (Phase 7a.2 v5p3
+    # raw). Default True post-Phase 7f. Set False for v5p3-input A/B
+    # audits without touching code.
+    use_cleaned_traces: true
     center_mode: centered_eye_midpoint
     interpolation:
       x_range_pm: 75.0

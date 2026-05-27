@@ -23,7 +23,7 @@ import pytest
 
 from stroke_orofacial.config_loader import load_defaults
 from stroke_orofacial.dlc_kinematics.jaw_pertrial import (
-    INTERPOLATION_VERSION,
+    INTERPOLATION_VERSION_V5P3,
     JAW_PERTRIAL_VERSION,
     JawPertrialResult,
     _check_sustained_density,
@@ -68,7 +68,7 @@ def _make_synthetic_jaw_parquet(
         b"baseline_stage": b"drop",
         b"center_mode": b"centered_eye_midpoint",
         b"fps": repr(fps).encode(),
-        b"interpolation_version": INTERPOLATION_VERSION.encode(),
+        b"interpolation_version": INTERPOLATION_VERSION_V5P3.encode(),
         b"n_frames": str(n_frames).encode(),
         b"side_convention_version": b"1",
         b"wavesurfer_sides_match_mouse_sides": b"False",
@@ -127,7 +127,14 @@ def _build_trial_jaw_y(
 
 @pytest.fixture()
 def base_params() -> dict:
-    return copy.deepcopy(load_defaults())
+    # Tests write synthetic parquets to the v5p3 ``interpolated_traces/jaw/``
+    # path; disable the Phase 7f ``use_cleaned_traces`` flag so the driver
+    # reads from there rather than the (absent) ``cleaned_traces/jaw/`` path.
+    params = copy.deepcopy(load_defaults())
+    params.setdefault("dlc_kinematics", {}).setdefault("jaw", {})[
+        "use_cleaned_traces"
+    ] = False
+    return params
 
 
 # ===========================================================================
@@ -350,7 +357,8 @@ class TestJawPertrialDriver:
         meta = ep["metadata"]
         assert meta["fps"] == pytest.approx(_SYNTH_FPS, abs=1e-9)
         assert meta["feature_extraction_version"] == JAW_PERTRIAL_VERSION
-        assert meta["interpolation_version"] == INTERPOLATION_VERSION
+        assert meta["interpolation_version"] == INTERPOLATION_VERSION_V5P3
+        assert meta["use_cleaned_traces"] is False
         assert meta["detect_win_ms"] == [0, 5000]
         assert meta["baseline_win_ms"] == [-500, 0]
         assert meta["sustained_density_threshold"] == 0.625

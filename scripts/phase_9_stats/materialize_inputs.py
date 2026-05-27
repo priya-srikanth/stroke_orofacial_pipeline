@@ -463,6 +463,21 @@ _JAW_SCALAR_FIELDS: tuple[str, ...] = (
     "jaw_peak_pos_deflection",
     "jaw_peak_selected_deflection",
     "jaw_n_frames_over_thresh",
+    # Phase 7f Step 5 expansion (2026-05-27, Priya request) — secondary
+    # signed/unsigned deflection scalars, axes in inventory: pre_post +
+    # recovery + ipsi_contra. is_primary=false in inventory; only run
+    # when explicitly named via --endpoints.
+    "jaw_peak_neg_deflection",
+    "jaw_peak_abs_deflection",
+)
+
+# Phase 7f Step 5 expansion — jaw_pass_qc is a bool_per_trial endpoint
+# sourced from jaw_pertrial JSON (NOT the mismatch parquet). Same
+# (date, trial_idx, side) row shape as the scalar jaw endpoints but
+# value=0.0/1.0 per Phase 9 schema. is_primary=false; only run when
+# explicitly named via --endpoints.
+_JAW_BOOL_FIELDS: tuple[str, ...] = (
+    "jaw_pass_qc",
 )
 
 
@@ -653,6 +668,59 @@ def _materialize_jaw_scalar_per_trial(
     return rows
 
 
+def _materialize_jaw_bool_per_trial(
+    spec: EndpointSpec,
+    animal: str,
+    animal_info: AnimalInfo,
+    session_scalars: _SessionScalars,
+    resolver: PathResolver,
+) -> list[dict[str, Any]]:
+    """One row per (date, trial_idx, side) for a jaw bool_per_trial scalar.
+
+    Phase 7f Step 5 expansion (2026-05-27). Currently scoped to
+    ``jaw_pass_qc`` (the only jaw bool endpoint in inventory). Source =
+    Phase 7f v3.4-cleaned ``jaw_pertrial`` JSON, same
+    ``(trial_indices, sides)`` co-indexing as the scalar jaw endpoints.
+    Bool → 0.0/1.0 cast per Phase 9 schema (mirrors
+    ``_materialize_mismatch_bool_per_trial``).
+    """
+    field_name = spec.slug
+    rows: list[dict[str, Any]] = []
+    for date_label in session_scalars.dates:
+        payload = _load_jaw_pertrial_json(animal, date_label, resolver)
+        if payload is None:
+            continue
+        rel_day = session_scalars.rel_days[date_label]
+        session_date = datetime.date(
+            int(date_label[:4]), int(date_label[4:6]), int(date_label[6:8]),
+        )
+        values = payload["jaw_pertrial"][field_name]
+        trial_indices = payload["trial_indices"]
+        sides = payload["sides"]
+        for v, ti, side in zip(values, trial_indices, sides):
+            # Bool-coerce; treat None/missing as sentinel (no row data
+            # in upstream JSON).
+            if v is None:
+                v_float, is_sentinel = None, True
+            else:
+                v_float = 1.0 if bool(v) else 0.0
+                is_sentinel = False
+            rows.append({
+                "animal": animal,
+                "date": session_date,
+                "rel_day": int(rel_day),
+                "trial_idx": int(ti),
+                "side": str(side),
+                "ipsi_contra": animal_info.mouse_side_to_ipsi_contra(side),
+                "endpoint_slug": spec.slug,
+                "value": v_float,
+                "is_sentinel": bool(is_sentinel),
+                "cohort_bin_size": int(animal_info.bin_days),
+                "epoch_label": assign_epoch_label(int(rel_day), animal_info),
+            })
+    return rows
+
+
 def _materialize_mismatch_bool_per_trial(
     spec: EndpointSpec,
     animal: str,
@@ -810,6 +878,10 @@ def _dispatch_materializer(
         return _materialize_jaw_scalar_per_trial(
             spec, animal, animal_info, session_scalars, resolver,
         )
+    if spec.slug in _JAW_BOOL_FIELDS:
+        return _materialize_jaw_bool_per_trial(
+            spec, animal, animal_info, session_scalars, resolver,
+        )
     if spec.value_type == "bool_per_trial":
         return _materialize_mismatch_bool_per_trial(
             spec, animal, animal_info, session_scalars, resolver,
@@ -906,10 +978,22 @@ _commit_a_endpoints = _commit_ab_endpoints
 def main() -> int:
     args = _parse_args()
     specs = load_inventory(args.inventory)
-    target_specs = [
-        s for s in _commit_ab_endpoints(specs)
-        if args.endpoints is None or s.slug in args.endpoints
-    ]
+    if args.endpoints is not None:
+        # Explicit endpoint names bypass the is_primary filter — caller
+        # opt-in for secondary / diagnostic endpoints (Phase 7f Step 5
+        # 2026-05-27 expansion for jaw_peak_neg, jaw_peak_abs, jaw_pass_qc).
+        # Still honors the value_type deferrals via the same set.
+        explicit = set(args.endpoints)
+        deferred_vts = {
+            "scalar_per_animal_time", "scalar_per_animal_bin",
+            "trajectory_per_animal",
+        }
+        target_specs = [
+            s for s in specs
+            if s.slug in explicit and s.value_type not in deferred_vts
+        ]
+    else:
+        target_specs = list(_commit_ab_endpoints(specs))
     animals_map = load_animals()
     cohort = sorted(animals_map.keys())
     target_animals = [
