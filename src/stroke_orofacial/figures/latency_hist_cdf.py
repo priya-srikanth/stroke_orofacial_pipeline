@@ -15,7 +15,7 @@ Q-locks:
 - Q-lock 1 — 4-tier phenotype grouping (n=1 single-animal CDFs rendered
   descriptively).
 - Q-lock 5 — outputs under
-  ``pipeline_outputs/phase_9_1_figures/phenotype_pooled_latency_hist/...``.
+  ``pipeline_outputs/stats/figures/phenotype_pooled_latency_hist/...``.
 - Q-lock 6 — parameterized ``--endpoint-list`` + ``--layout`` runner.
 - Q-lock 7 — emit one of two layouts (locked at Task 0.5 review):
   (a) ``four_separate`` — 4 figures, one per phenotype × 4 epoch traces each;

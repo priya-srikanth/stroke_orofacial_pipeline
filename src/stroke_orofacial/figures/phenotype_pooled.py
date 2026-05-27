@@ -13,7 +13,7 @@ Q-locks:
 - Q-lock 4 — ipsi/contra panel labels (mouse-L = ipsi, mouse-R = contra per
   cohort-uniformity caveat).
 - Q-lock 5 — outputs under
-  ``pipeline_outputs/phase_9_1_figures/phenotype_pooled/<endpoint_slug>/``.
+  ``pipeline_outputs/stats/figures/phenotype_pooled/<endpoint_slug>/``.
 - Q-lock 6 — parameterized ``--endpoint-list`` runner; ``spatial_*`` slugs
   skipped at runner level (V4/V5 scalar-only).
 - Q-lock 9 — preview-then-full task structure (Tasks 1a/1b/1c).
@@ -39,7 +39,7 @@ from . import _io, _layout, palette as _palette
 logger = logging.getLogger(__name__)
 
 # Phase 9.1 Q-lock 5 output subtree under pipeline_outputs.
-PHASE_9_1_FIGURES_SUBDIR = "phase_9_1_figures"
+PHASE_9_1_FIGURES_SUBDIR = "stats/figures"
 V4_VARIANT_FILENAME = "v4_per_bin_phenotype_pooled"
 V5_VARIANT_FILENAME = "v5_per_epoch_phenotype_pooled"
 
@@ -471,7 +471,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--output-dir", type=Path, default=None,
         help="Override default output dir "
-             "(<pipeline_outputs>/phase_9_1_figures/phenotype_pooled).",
+             "(<pipeline_outputs>/stats/figures/phenotype_pooled).",
     )
     parser.add_argument(
         "--overwrite", choices=("skip", "force"), default="skip",
