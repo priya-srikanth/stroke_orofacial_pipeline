@@ -1548,7 +1548,9 @@ class TestDriverAndSchema:
         assert payload["trial_indices"] == [0, 1]
         assert payload["sides"] == ["L", "R"]
 
-        # tongue.* sub-blocks present.
+        # tongue.* sub-blocks present. Phase 9.1 Q-lock 13b Addendum #2 D1
+        # (2026-05-27) added phase_aligned_endpoints alongside the existing
+        # cell50_own_bout_scalars per-trial scalar block.
         assert set(payload["tongue"].keys()) == {
             "lick1_lick2_metrics",
             "peak_velocity_per_lick",
@@ -1556,7 +1558,20 @@ class TestDriverAndSchema:
             "licking_dynamics_reductions",
             "tongue_angle",
             "cell50_own_bout_scalars",
+            "phase_aligned_endpoints",
         }
+
+        # Q-lock 13b Addendum #2 D1 lock: phase_aligned_endpoints carries
+        # three NaN-fillable parallel lists indexed by trial_indices/sides.
+        pae = payload["tongue"]["phase_aligned_endpoints"]
+        assert set(pae.keys()) == {
+            "peak_angle_deg",
+            "max_abs_angle_phase_0_075_deg",
+            "signed_x_at_max_abs_phase_0_075_px",
+        }
+        assert len(pae["peak_angle_deg"]) == payload["n_trials"]
+        assert len(pae["max_abs_angle_phase_0_075_deg"]) == payload["n_trials"]
+        assert len(pae["signed_x_at_max_abs_phase_0_075_px"]) == payload["n_trials"]
 
         # Q8 lock: licking_dynamics_reductions has 3 fields (Q9 metric moved
         # to cell50_own_bout_scalars).

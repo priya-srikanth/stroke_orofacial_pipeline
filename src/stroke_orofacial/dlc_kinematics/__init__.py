@@ -72,6 +72,11 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
     extract_first_vs_second_peak_pairs,
     get_pre_stroke_median_ili_ms,
 )
+from stroke_orofacial.dlc_kinematics.tongue_phase_aligned_endpoints import (
+    PHASE_ALIGNED_ENDPOINT_COLUMNS,
+    align_endpoints_to_trial_order,
+    compute_phase_aligned_endpoints_per_trial,
+)
 from stroke_orofacial.dlc_kinematics.tongue_visual import (
     render_tongue_qc_figures,
 )
@@ -80,6 +85,9 @@ __all__ = [
     "DAY_BINNED_VERSION",
     "DayBinnedResult",
     "FEATURE_EXTRACTION_VERSION",
+    "PHASE_ALIGNED_ENDPOINT_COLUMNS",
+    "align_endpoints_to_trial_order",
+    "compute_phase_aligned_endpoints_per_trial",
     "INTERPOLATION_VERSION",
     "InterpolationResult",
     "JAW_PERTRIAL_VERSION",
