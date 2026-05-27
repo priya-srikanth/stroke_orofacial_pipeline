@@ -49,9 +49,12 @@ from stroke_orofacial.stats.multiple_comparisons import (
 )
 
 
-# Q-lock 15 marker convention (three layers).
+# Q-lock 15 marker convention (three layers). Output directory corrected
+# per Priya 2026-05-27: figures land under stats/figures/phenotype_pooled/
+# (matching the existing V4/V5 phenotype-pooled figure tree) rather than
+# a separate phase_9_1_figures/ tree.
 FIGURE_SUBDIR: str = (
-    "phase_9_1_figures/phenotype_pooled_cleaned_trace/phase_aligned_endpoints"
+    "stats/figures/phenotype_pooled/phase_aligned_endpoints"
 )
 FIGURE_SUBTITLE: str = (
     "Source: v7-cleaned-trace cohort re-emit (Phase 7e + Phase 7e.4)"
