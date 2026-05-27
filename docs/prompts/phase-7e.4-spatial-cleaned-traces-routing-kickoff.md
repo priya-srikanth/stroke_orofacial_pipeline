@@ -350,6 +350,116 @@ No production-code or test changes are written until Q1-Q4 are pinned.
 
 ---
 
-## 9. Addenda
+## 9. Exhaustive consumer enumeration (Priya 2026-05-27 EXTRA REQUEST)
 
-(none yet — Addendum #1 will record Priya's Section 8 answers)
+Grep result from `from stroke_orofacial.dlc_spatial` across `src/` +
+`scripts/` + `tests/` + `notebooks/`. Each consumer classified by what
+it imports and whether routing is required.
+
+### 9.1 Spatial-internal modules (filter logic lives here — ROUTE)
+
+| consumer | symbols imported | routing change |
+|---|---|---|
+| `src/stroke_orofacial/dlc_spatial/pixel_bins.py` | (defines `get_masked_xy`, `build_histogram`, `build_stats_grid`, `build_baseline_histogram`) | **Stage 1.** Add `baseline_fill_mask` + `drop_likelihood_gate` kwargs to `get_masked_xy`; passthrough on `build_histogram`/`build_stats_grid`/`build_baseline_histogram` |
+| `src/stroke_orofacial/dlc_spatial/heatmaps.py` | `_get_per_center_mode_params`, `build_histogram`, `get_masked_xy` | **Stage 1.** `plot_heatmap` + `save_heatmap_npz` gain `baseline_fill_mask` + `drop_likelihood_gate` kwargs (low-level pass-through, no default-True because they don't load cleaned_traces themselves) |
+| `src/stroke_orofacial/dlc_spatial/tone_aligned.py` | `build_histogram` (line 382) | **Stage 2.** `build_tone_aligned_analysis(use_v7_cleaned=True)` default; loads cleaned_traces from (manifest.animal, manifest.date, bodypart) and forwards the mask. `build_tone_aligned_analysis_by_animal_date(use_v7_cleaned=True)` mirror default. NPZ schema gains `applied_cleaned_traces_mask` + `dropped_likelihood_gate` keys |
+| `src/stroke_orofacial/dlc_spatial/render_on_demand.py` | `_get_per_center_mode_params`, `build_histogram`, `build_tone_aligned_window`, `load_tone_events` | **Stage 2.** `compute_animal_aggregated_histogram(use_v7_cleaned=True)` default; loads per-session cleaned_traces. All 7 public `render_*` entry points gain `use_v7_cleaned=True` default passthrough. ~46 internal call sites get the mask passed through |
+| `src/stroke_orofacial/dlc_spatial/difference_maps.py` | (none from spatial filter chain) | **No change.** Consumes pre-computed `H_counts` arrays; inherits filter via upstream callers |
+
+### 9.2 Production driver scripts (output emitters — ROUTE + path)
+
+| consumer | imports | routing change |
+|---|---|---|
+| `scripts/phase_7c2/reemit_cohort.py` | (per Section 2 — Phase 7c.2 cohort entry) | **Stage 3.** `--use-v7-cleaned` CLI flag default True; routes writes to resolver's `*_cleaned_trace()` path methods when True |
+| `scripts/phase_7c2/render_heatmaps.py` (NEW finding) | `derive_log_norm_range`, `derive_symmetric_diff_vmax`, `derive_uot_bucket_ranges`, `precompute_individual_session_h_proportions`, `precompute_binned_sessions_h_proportions` from render_on_demand | **Stage 3.** Same `--use-v7-cleaned` CLI + path routing. Calls the pre-compute helpers; routing flows through `compute_animal_aggregated_histogram`'s default-True |
+| `scripts/phase_7c1/reemit_pilot.py` | `build_tone_aligned_analysis_by_animal_date`, `save_tone_aligned_npz` | **Stage 3.** Same CLI + path routing |
+| `scripts/phase_9_stats/materialize_spatial.py` | `compute_animal_aggregated_histogram`, `TASK5_TONE_WINDOW_MS`, `_resolve_family_entry`, `_split_pre_post_dates` | **Stage 3.** Same CLI + path routing. Phase 9 stats land in `pipeline_outputs/phase_9_stats/spatial_cleaned_trace/` by default |
+| `scripts/run_notebook_12_first_emit.py` | `build_tone_aligned_analysis`, `save_tone_aligned_npz` | **Stage 3.** Same CLI + path routing |
+
+### 9.3 Kinematic modules importing spatial (utility-only — NO ROUTING)
+
+These import `load_tone_events` / `ws_samples_to_frame_indices` —
+pure utility helpers that read tone events from the Phase 2 NPZ and
+convert WS samples to camera frames. **Zero semantic interaction with
+the bp-level filter chain**; routing is irrelevant here.
+
+| consumer | imports | rationale |
+|---|---|---|
+| `src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py` | `load_tone_events`, `ws_samples_to_frame_indices` | Phase 7e.1 consumer; already on cleaned_traces via `use_v7_cleaned=True` on its own surface (kinematic side). Spatial-side imports here are for tone-window construction, NOT bp histogram filtering |
+| `src/stroke_orofacial/dlc_kinematics/interpolation.py` | `load_tone_events` | Used to slice tone windows during interpolation; not a spatial-filter call site |
+| `src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py` | `load_tone_events`, `ws_samples_to_frame_indices` | Same — tone-window helpers only |
+
+### 9.4 Experimental notebooks (private; no routing)
+
+| consumer | imports | rationale |
+|---|---|---|
+| `notebooks/experiments/q65_pd_comparison.py` | `TASK5_TONE_WINDOW_MS`, `_build_tone_window`, `_ws_cam_frame_bounds` | Constants + private window helpers. Notebook has its OWN local `_build_histogram` at line 246 (independent of `dlc_spatial.pixel_bins`). Stays on legacy semantics |
+| `notebooks/experiments/per_bin_numeric_comparison.py` | same | Same — exploratory notebook, no production output writes |
+| `notebooks/experiments/per_bin_numeric_comparison_pre_stroke.py` | same | Same |
+
+### 9.5 Tests (mirror routing of their target)
+
+| consumer | imports | routing change |
+|---|---|---|
+| `tests/test_pixel_bins.py` | `_get_per_center_mode_params`, `build_baseline_histogram`, `build_histogram`, `build_stats_grid`, `get_masked_xy` | **Stage 4.** New tests for `baseline_fill_mask` + `drop_likelihood_gate` kwarg paths; existing legacy assertions stay valid (low-level functions still default to legacy when mask=None) |
+| `tests/test_heatmaps.py` | `plot_heatmap`, `save_heatmap_npz`, `save_heatmap_png`, `build_histogram` | **Stage 4.** Mirror — new tests for the new kwargs |
+| `tests/test_tone_aligned.py` | `load_tone_events`, `ws_samples_to_frame_indices` + dynamic imports of `build_tone_aligned_analysis`, `build_tone_aligned_analysis_by_animal_date` | **Stage 4.** Existing default-checking assertions (`emit_cache=False` at line 294) need a parallel `use_v7_cleaned=True` default check. New tests for the routing path. **CAUTION:** `assert sig.parameters["emit_cache"].default is False` style assertions will fail if I get the default wrong — update lockstep with source |
+| `tests/test_dlc_spatial_side_convention.py` | `build_tone_aligned_analysis`, `build_tone_aligned_analysis_by_animal_date`, `save_tone_aligned_npz` | **Stage 4 (audit).** Stamps `wavesurfer_sides_match_mouse_sides`; routing only matters if the new path stamps differ. Recommend adding a smoke test that the new path still stamps correctly |
+| `tests/test_difference_maps.py` | `compute_difference_map`, `plot_difference_map`, `save_difference_map_png` | **No change** (consumes pre-computed `H_counts`) |
+| `tests/test_materialize_spatial.py` | (Phase 9 stats driver smoke) | **Stage 4.** Smoke test the new path-routing in the driver — CLI flag flips output path |
+| `tests/test_window_selector.py` | `EventAlignedWindow`, `ToneAlignedWindow`, `WholeSessionWindow`, `_ws_to_cam_frames` | **No change** (pure window selectors, no filter) |
+| `tests/test_notebook_runners.py` | (referenced in Section 2) | **Verify only** — likely no change; smoke-test the runner script flag |
+| `tests/test_manifest_multi_half.py` | (referenced in Section 2) | **No change** (manifest tests) |
+| `tests/test_tongue_pertrial.py` | mocks `stroke_orofacial.dlc_spatial.tone_aligned` (line 1893) | **No change** — mock-only, the mock target string stays stable |
+| `tests/test_config_loader.py` | (referenced in Section 2) | **No change** — config schema tests |
+
+### 9.6 Total source/test file impact (updated count)
+
+Initial Section 2 estimate: 16 files. Section 9 enumeration revealed **2
+additional consumers** (`scripts/phase_7c2/render_heatmaps.py` and
+`src/stroke_orofacial/dlc_spatial/difference_maps.py`), bringing the
+production-side consumer count to 9 (up from 8 in Section 2).
+`difference_maps.py` is no-op (consumes downstream of the filter), so
+the actual source-edit count is 9 production files (4 spatial modules +
+5 driver scripts) + 7 affected test files. Section 2 line-count
+estimates remain valid.
+
+**The 3 kinematic-module imports and 3 experiment-notebook imports are
+verified no-ops for routing — they only consume `load_tone_events` /
+`ws_samples_to_frame_indices` / constants / private window helpers,
+none of which are part of the bp-level filter chain.**
+
+## 10. Addenda
+
+### Addendum #1 — Section 8 inputs locked (Priya, 2026-05-27)
+
+| input | locked value | note |
+|---|---|---|
+| Q1 API pattern | **APPROVED — `use_v7_cleaned` kwarg, Phase 7e.X precedent** | matches 7e.1/7e.2/7e.3 |
+| Q2 default value | **PUSHBACK — default `True` (NOT False)** | Cowork rationale: default-False is the exact shape that caused the 7e.1/7e.2/7e.3/F-P-1 cascade; F-P-1 validated v7 is material on both bodyparts + has a clean severity gradient; conservative-default-False is moot. Default True ensures downstream consumers auto-pick-up v7 unless explicitly opted out. Parallel-outputs preservation per §4.5 is still on (defensive A/B) but consumer defaults point to v7 |
+| Q3 re-emit scope | **APPROVED (a) — tongue + jaw only** | Only option that's possible: nose/whiskers don't have cleaned_traces yet. If a future audit finds nose impact, queue as Phase 7g forward-pointer |
+| Q4 re-emit timing | **APPROVED — immediate post-Stage-4, continuous within phase** | Gate (d) closes 7e.4 cleanly |
+| §8 EXTRA REQUEST | **DONE — see §9 exhaustive consumer enumeration** | 2 new consumers discovered (`render_heatmaps.py` + `difference_maps.py`); 3 kinematic + 3 notebook imports verified no-op |
+
+**Default-True implication (revised from §3 / §4.5):**
+
+- Low-level pure functions (`pixel_bins.get_masked_xy`,
+  `pixel_bins.build_histogram`, `heatmaps.plot_heatmap`,
+  `heatmaps.save_heatmap_npz`) cannot default to True at the API level
+  because they don't have access to (animal, date, bp) tuples needed
+  to load cleaned_traces. They take `baseline_fill_mask=None` +
+  `drop_likelihood_gate=False` as **caller-supplied inputs**;
+  default behavior is byte-identical to legacy when mask=None.
+- High-level functions that DO have (animal, date, bp) resolution
+  (`tone_aligned.build_tone_aligned_analysis`,
+  `render_on_demand.compute_animal_aggregated_histogram`, all 7 public
+  `render_*` entry points) get `use_v7_cleaned=True` default and
+  internally load cleaned_traces.
+- Driver scripts get `--use-v7-cleaned` CLI flag, default True; flag
+  determines both the source-level kwarg AND the output path
+  (legacy vs `_cleaned_trace`).
+- Stage 4 parity test `test_phase_7e_4_parity.py` exercises BOTH paths:
+  default True must match F-P-1 R3 arrays; explicit False must match
+  F-P-1 R1 arrays (=current production).
+
+§8 inputs locked; Stage 1 can begin.
