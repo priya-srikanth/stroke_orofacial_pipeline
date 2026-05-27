@@ -128,6 +128,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "--verbose", "-v", action="store_true",
         help="Increase log verbosity (DEBUG instead of INFO).",
     )
+    # Phase 7e.4 — cleaned_trace routing flag. Default ON per Q2 PUSHBACK.
+    cleaned_group = parser.add_mutually_exclusive_group()
+    cleaned_group.add_argument(
+        "--use-v7-cleaned",
+        dest="use_v7_cleaned", action="store_true", default=True,
+        help="(default) Compute heatmaps via v7 cleaned_traces filter "
+        "AND route output to *_cleaned_trace path family with filename "
+        "marker + Q-lock 15.3 subtitle.",
+    )
+    cleaned_group.add_argument(
+        "--no-use-v7-cleaned",
+        dest="use_v7_cleaned", action="store_false",
+        help="Legacy spatial filter; legacy output path family. Use "
+        "only for explicit audit-trail re-emission.",
+    )
     return parser
 
 
@@ -256,11 +271,26 @@ def main(argv: list[str] | None = None) -> int:
 
                     for animal_id, date, manifest in manifests:
                         date_str = date.strftime("%Y%m%d")
-                        out_dir = (
-                            output_root / f"{bodypart}_{center_mode}"
-                            / f"trials-{trial_group}_{win_tag}" / animal_id
-                        )
-                        out_path = out_dir / f"heatmap_{date_str}.png"
+                        # Phase 7e.4: Q-lock 15.1+15.2 marker convention.
+                        # cleaned_trace routing lands outputs at a parallel
+                        # _cleaned_trace tree with the same path layout +
+                        # a _cleaned_trace token in the filename slug.
+                        if args.use_v7_cleaned:
+                            out_dir = (
+                                output_root.parent
+                                / (output_root.name + "_cleaned_trace")
+                                / f"{bodypart}_{center_mode}"
+                                / f"trials-{trial_group}_{win_tag}" / animal_id
+                            )
+                            out_path = out_dir / (
+                                f"heatmap_{date_str}_cleaned_trace.png"
+                            )
+                        else:
+                            out_dir = (
+                                output_root / f"{bodypart}_{center_mode}"
+                                / f"trials-{trial_group}_{win_tag}" / animal_id
+                            )
+                            out_path = out_dir / f"heatmap_{date_str}.png"
 
                         if args.overwrite == "skip" and out_path.exists():
                             n_skip += 1
@@ -275,6 +305,7 @@ def main(argv: list[str] | None = None) -> int:
                                 wavesurfer_sides_match_mouse_sides=(
                                     animal_info.wavesurfer_sides_match_mouse_sides
                                 ),
+                                use_v7_cleaned=args.use_v7_cleaned,
                             )
                             # Phase 6.8a.3: split the two legitimate-empty
                             # skip conditions so the emit log

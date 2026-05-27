@@ -1266,27 +1266,165 @@ class TestTonguePertrialPaths:
 
     # -----------------------------------------------------------------
     # Phase 7e.4 (Addendum #3) — cleaned_trace parallel paths.
-    # Six paired-with-legacy resolvers landing under dlc_kinematics/.
-    # Each test asserts:
-    #   - path matches the kickoff Addendum #3 §10 table exactly
-    #   - directory carries the _cleaned_trace token (Q-lock 15.1)
-    #   - filename carries the _cleaned_trace token (Q-lock 15.2)
-    #   - no eager directory creation (matches the existing read-only
-    #     resolver pattern)
+    # Mirrors the legacy heatmap resolver structure 1:1 (animal/family/
+    # plot_type/<file>.svg) with `_cleaned_trace` token appended to BOTH
+    # the directory root (`tone_aligned_heatmaps_cleaned_trace/` vs
+    # legacy `tone_aligned_heatmaps/`) AND the filename per Q-lock 15.
+    # SVG format matches render_heatmaps.py's writer.
     # -----------------------------------------------------------------
 
-    def test_tone_aligned_heatmap_npz_cleaned_trace_path(
+    def test_tone_aligned_heatmap_individual_session_path_cleaned_trace(
         self, monkeypatch, tmp_path,
     ):
         monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
         resolver = PathResolver(output_root=tmp_path)
-        path = resolver.tone_aligned_heatmap_npz_cleaned_trace(
-            bodypart="tongue",
-            center_mode="spout_midpoint",
-            trial_group="all",
-            window_ms=(0, 8000),
-            animal="PS54",
+        path = resolver.tone_aligned_heatmap_individual_session_path_cleaned_trace(
+            animal="PS54", family_entry="tongue_spout_midpoint",
             date=datetime.date(2025, 5, 6),
+        )
+        expected = (
+            tmp_path / "dlc_kinematics"
+            / "tone_aligned_heatmaps_cleaned_trace"
+            / "PS54" / "tongue_spout_midpoint" / "individual_session"
+            / "20250506_cleaned_trace.svg"
+        )
+        assert path == expected
+        # Q-lock 15.1 + 15.2: marker at both directory + filename levels.
+        assert "tone_aligned_heatmaps_cleaned_trace" in path.parts
+        assert path.name.endswith("_cleaned_trace.svg")
+
+    def test_tone_aligned_heatmap_binned_sessions_path_cleaned_trace(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tone_aligned_heatmap_binned_sessions_path_cleaned_trace(
+            animal="PS54", family_entry="tongue_spout_midpoint",
+            bin_size_days=2, trial_group="all",
+        )
+        expected = (
+            tmp_path / "dlc_kinematics"
+            / "tone_aligned_heatmaps_cleaned_trace"
+            / "PS54" / "tongue_spout_midpoint" / "binned_sessions"
+            / "binned_sessions_grid_bin2d_all_cleaned_trace.svg"
+        )
+        assert path == expected
+
+    def test_tone_aligned_heatmap_proportion_differences_path_cleaned_trace(
+        self, monkeypatch, tmp_path,
+    ):
+        """Q-lock 12 (Phase 9.1 phenotype-pooled proportion_diff)
+        consumes this path family; locking it here pins the contract."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tone_aligned_heatmap_proportion_differences_path_cleaned_trace(
+            animal="PS54", family_entry="tongue_spout_midpoint",
+            bin_size_days=2, trial_group="all",
+        )
+        expected = (
+            tmp_path / "dlc_kinematics"
+            / "tone_aligned_heatmaps_cleaned_trace"
+            / "PS54" / "tongue_spout_midpoint" / "proportion_differences"
+            / "bin2d_all_cleaned_trace.svg"
+        )
+        assert path == expected
+        assert "proportion_differences" in path.parts
+
+    def test_tone_aligned_heatmap_unbalanced_ot_path_cleaned_trace(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.tone_aligned_heatmap_unbalanced_ot_path_cleaned_trace(
+            animal="PS54", family_entry="tongue_spout_midpoint",
+            bin_size_days=2, trial_group="all",
+        )
+        expected = (
+            tmp_path / "dlc_kinematics"
+            / "tone_aligned_heatmaps_cleaned_trace"
+            / "PS54" / "tongue_spout_midpoint" / "unbalanced_ot"
+            / "unbalanced_ot_grid_bin2d_all_cleaned_trace.svg"
+        )
+        assert path == expected
+
+    def test_whole_session_heatmap_individual_session_path_cleaned_trace(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.whole_session_heatmap_individual_session_path_cleaned_trace(
+            animal="PS47", family_entry="jaw_eye_midpoint",
+            date=datetime.date(2025, 3, 19),
+        )
+        expected = (
+            tmp_path / "dlc_kinematics"
+            / "whole_session_heatmaps_cleaned_trace"
+            / "PS47" / "jaw_eye_midpoint" / "individual_session"
+            / "20250319_cleaned_trace.svg"
+        )
+        assert path == expected
+
+    def test_whole_session_heatmap_binned_sessions_path_cleaned_trace(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.whole_session_heatmap_binned_sessions_path_cleaned_trace(
+            animal="PS47", family_entry="jaw_eye_midpoint",
+            bin_size_days=2,
+        )
+        expected = (
+            tmp_path / "dlc_kinematics"
+            / "whole_session_heatmaps_cleaned_trace"
+            / "PS47" / "jaw_eye_midpoint" / "binned_sessions"
+            / "binned_sessions_grid_bin2d_cleaned_trace.svg"
+        )
+        assert path == expected
+
+    def test_whole_session_heatmap_proportion_differences_path_cleaned_trace(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.whole_session_heatmap_proportion_differences_path_cleaned_trace(
+            animal="PS47", family_entry="jaw_eye_midpoint",
+            bin_size_days=2,
+        )
+        expected = (
+            tmp_path / "dlc_kinematics"
+            / "whole_session_heatmaps_cleaned_trace"
+            / "PS47" / "jaw_eye_midpoint" / "proportion_differences"
+            / "bin2d_cleaned_trace.svg"
+        )
+        assert path == expected
+
+    def test_whole_session_heatmap_unbalanced_ot_path_cleaned_trace(
+        self, monkeypatch, tmp_path,
+    ):
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.whole_session_heatmap_unbalanced_ot_path_cleaned_trace(
+            animal="PS47", family_entry="jaw_eye_midpoint",
+            bin_size_days=2,
+        )
+        expected = (
+            tmp_path / "dlc_kinematics"
+            / "whole_session_heatmaps_cleaned_trace"
+            / "PS47" / "jaw_eye_midpoint" / "unbalanced_ot"
+            / "unbalanced_ot_grid_bin2d_cleaned_trace.svg"
+        )
+        assert path == expected
+
+    def test_spatial_tone_aligned_npz_cleaned_trace_path(
+        self, monkeypatch, tmp_path,
+    ):
+        """Notebook 12 + Phase 7c.1 pilot opt-in cache write path."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        resolver = PathResolver(output_root=tmp_path)
+        path = resolver.spatial_tone_aligned_npz_cleaned_trace(
+            bodypart="tongue", center_mode="spout_midpoint",
+            trial_group="all", window_ms=(0, 8000),
+            animal="PS54", date=datetime.date(2025, 5, 6),
         )
         expected = (
             tmp_path / "dlc_kinematics"
@@ -1295,95 +1433,6 @@ class TestTonguePertrialPaths:
             / "heatmap_20250506_cleaned_trace.npz"
         )
         assert path == expected
-        # Q-lock 15.1 + 15.2 marker tokens present at both levels.
-        assert "_cleaned_trace" in path.parent.parent.parent.parent.name
-        assert path.name.endswith("_cleaned_trace.npz")
-        assert not path.exists()
-
-    def test_whole_session_heatmap_npz_cleaned_trace_path(
-        self, monkeypatch, tmp_path,
-    ):
-        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
-        resolver = PathResolver(output_root=tmp_path)
-        path = resolver.whole_session_heatmap_npz_cleaned_trace(
-            bodypart="jaw",
-            center_mode="eye_midpoint",
-            animal="PS47",
-            date=datetime.date(2025, 3, 19),
-        )
-        expected = (
-            tmp_path / "dlc_kinematics"
-            / "whole_session_heatmaps_cleaned_trace"
-            / "jaw_eye_midpoint" / "PS47"
-            / "heatmap_20250319_cleaned_trace.npz"
-        )
-        assert path == expected
-        assert path.name.endswith("_cleaned_trace.npz")
-
-    def test_individual_session_heatmap_png_cleaned_trace_path(
-        self, monkeypatch, tmp_path,
-    ):
-        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
-        resolver = PathResolver(output_root=tmp_path)
-        path = resolver.individual_session_heatmap_png_cleaned_trace(
-            family_entry="tongue_spout_midpoint",
-            scope="tone_aligned",
-            animal="PS51",
-            date=datetime.date(2025, 5, 6),
-        )
-        expected = (
-            tmp_path / "dlc_kinematics"
-            / "individual_session_heatmaps_cleaned_trace"
-            / "tongue_spout_midpoint_tone_aligned" / "PS51"
-            / "heatmap_20250506_cleaned_trace.png"
-        )
-        assert path == expected
-        assert path.name.endswith("_cleaned_trace.png")
-
-    def test_binned_sessions_heatmap_png_cleaned_trace_path(
-        self, monkeypatch, tmp_path,
-    ):
-        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
-        resolver = PathResolver(output_root=tmp_path)
-        path = resolver.binned_sessions_heatmap_png_cleaned_trace(
-            family_entry="jaw_eye_midpoint",
-            scope="whole_session",
-            bin_size_days=10,
-            animal="PS54",
-            rel_day_bin_label="d+10_to_d+19",
-        )
-        expected = (
-            tmp_path / "dlc_kinematics"
-            / "binned_sessions_heatmaps_cleaned_trace"
-            / "jaw_eye_midpoint_whole_session_10d" / "PS54"
-            / "heatmap_d+10_to_d+19_cleaned_trace.png"
-        )
-        assert path == expected
-        assert path.name.endswith("_cleaned_trace.png")
-
-    def test_proportion_diff_heatmap_png_cleaned_trace_path(
-        self, monkeypatch, tmp_path,
-    ):
-        """Q-lock 12 (Phase 9.1 phenotype-pooled proportion_diff)
-        consumes this path; locking it here pins the contract."""
-        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
-        resolver = PathResolver(output_root=tmp_path)
-        path = resolver.proportion_diff_heatmap_png_cleaned_trace(
-            family_entry="tongue_spout_midpoint",
-            scope="tone_aligned",
-            bin_size_days=10,
-            animal="PS54",
-            rel_day_bin_label="d+10_to_d+19",
-        )
-        expected = (
-            tmp_path / "dlc_kinematics"
-            / "proportion_diff_cleaned_trace"
-            / "tongue_spout_midpoint_tone_aligned_10d" / "PS54"
-            / "diff_d+10_to_d+19_cleaned_trace.png"
-        )
-        assert path == expected
-        assert "proportion_diff_cleaned_trace" in str(path)
-        assert path.name.endswith("_cleaned_trace.png")
 
     def test_phase_9_stats_spatial_cleaned_trace_path(
         self, monkeypatch, tmp_path,

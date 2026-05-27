@@ -220,6 +220,7 @@ def _aggregate_family_hist(
     *,
     trial_group: str | None,
     window_ms: tuple[float, float] | None,
+    use_v7_cleaned: bool = True,
 ) -> _AggregatedHistogram | None:
     """Aggregate the per-bp histograms into ONE family-level histogram.
 
@@ -246,6 +247,7 @@ def _aggregate_family_hist(
             trial_group=trial_group, window_ms=window_ms,
             defaults=defaults, animal_info=animal_info,
             nbins_override=_DEFAULT_NBINS,
+            use_v7_cleaned=use_v7_cleaned,
         )
         if H_bp is None:
             continue
@@ -433,6 +435,7 @@ def _emit_one_combo_for_animal(
     trial_group: str | None,
     resolver: PathResolver,
     defaults: dict[str, Any],
+    use_v7_cleaned: bool = True,
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
     """Emit per_session + per_bin rows for ONE (animal, family,
     scope+trial_group) combo across all 3 metrics.
@@ -463,6 +466,7 @@ def _emit_one_combo_for_animal(
         agg = _aggregate_family_hist(
             animal, [d], bodyparts, center_mode, resolver, defaults, animal_info,
             trial_group=cah_trial_group, window_ms=cah_window_ms,
+            use_v7_cleaned=use_v7_cleaned,
         )
         if agg is None:
             continue
@@ -504,6 +508,7 @@ def _emit_one_combo_for_animal(
         agg = _aggregate_family_hist(
             animal, [d], bodyparts, center_mode, resolver, defaults, animal_info,
             trial_group=cah_trial_group, window_ms=cah_window_ms,
+            use_v7_cleaned=use_v7_cleaned,
         )
         if agg is None or agg.H.shape != H_pre.shape:
             continue
@@ -625,6 +630,7 @@ def _emit_one_family_for_animal(
     resolver: PathResolver,
     defaults: dict[str, Any],
     combos: tuple[tuple[str, str | None], ...] = SCOPE_TRIAL_GROUP_COMBOS,
+    use_v7_cleaned: bool = True,
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
     """Emit rows for one (animal, family) tuple across ALL configured
     scope+trial_group combos × all 3 metrics.
@@ -658,6 +664,7 @@ def _emit_one_family_for_animal(
             trial_group=trial_group,
             resolver=resolver,
             defaults=defaults,
+            use_v7_cleaned=use_v7_cleaned,
         )
         rows_by_slug.update(combo_rows)
         per_combo_telemetry.append(combo_tel)
@@ -682,7 +689,21 @@ def _emit_one_family_for_animal(
 # ===========================================================================
 
 
-def _output_path(resolver: PathResolver, slug: str, animal: str) -> Path:
+def _output_path(
+    resolver: PathResolver, slug: str, animal: str,
+    *, use_v7_cleaned: bool = True,
+) -> Path:
+    """Phase 7e.4: when ``use_v7_cleaned=True`` (default), write to a
+    parallel ``inputs_cleaned_trace/`` tree with ``_cleaned_trace``
+    filename token per Q-lock 15. Legacy ``inputs/`` tree is preserved
+    untouched as the historical audit trail."""
+    if use_v7_cleaned:
+        out_root = (
+            resolver.pipeline_outputs(subdir="stats")
+            / "inputs_cleaned_trace" / slug
+        )
+        out_root.mkdir(parents=True, exist_ok=True)
+        return out_root / f"{animal}_cleaned_trace.parquet"
     out_root = resolver.pipeline_outputs(subdir="stats") / "inputs" / slug
     out_root.mkdir(parents=True, exist_ok=True)
     return out_root / f"{animal}.parquet"
@@ -742,6 +763,23 @@ def _parse_args() -> argparse.Namespace:
         default=REPO_ROOT / ".scratch_phase_9" / "materialize_spatial_manifest.csv",
     )
     p.add_argument("--inventory", type=Path, default=DEFAULT_INVENTORY_PATH)
+    # Phase 7e.4 — cleaned_trace routing flag. Default ON per Q2 PUSHBACK.
+    cleaned_group = p.add_mutually_exclusive_group()
+    cleaned_group.add_argument(
+        "--use-v7-cleaned",
+        dest="use_v7_cleaned", action="store_true", default=True,
+        help="(default) Compute spatial stats via v7 cleaned_traces "
+        "filter AND write to stats/inputs_cleaned_trace/ parallel tree "
+        "with _cleaned_trace filename token. Q-lock 12 (Phase 9.1 "
+        "phenotype-pooled proportion_diff figures) consumes these "
+        "outputs.",
+    )
+    cleaned_group.add_argument(
+        "--no-use-v7-cleaned",
+        dest="use_v7_cleaned", action="store_false",
+        help="Legacy spatial stats; legacy stats/inputs/ path. Use only "
+        "for explicit audit-trail re-emission.",
+    )
     return p.parse_args()
 
 
@@ -784,6 +822,10 @@ def _worker(work_item: dict[str, Any]) -> list[dict[str, Any]]:
     family_entry: str = work_item["family_entry"]
     combos: tuple[tuple[str, str | None], ...] = work_item["combos"]
     skip_existing: bool = work_item["skip_existing"]
+    # Phase 7e.4: cleaned_trace routing flag (default True at the main
+    # parse layer; threaded through work_item so each worker process
+    # honors the same flag).
+    use_v7_cleaned: bool = bool(work_item.get("use_v7_cleaned", True))
 
     resolver = PathResolver()
     defaults = load_defaults()
@@ -796,6 +838,7 @@ def _worker(work_item: dict[str, Any]) -> list[dict[str, Any]]:
         return all(
             _output_path(
                 resolver, f"{prefix}_{family_entry}_{suffix}", animal,
+                use_v7_cleaned=use_v7_cleaned,
             ).exists()
             for _, prefix in _METRICS
         )
@@ -811,7 +854,10 @@ def _worker(work_item: dict[str, Any]) -> list[dict[str, Any]]:
                     "endpoint_slug": slug, "animal": animal,
                     "status": "skipped_existing",
                     "n_rows": 0, "n_sentinel": 0,
-                    "output_path": str(_output_path(resolver, slug, animal)),
+                    "output_path": str(_output_path(
+                        resolver, slug, animal,
+                        use_v7_cleaned=use_v7_cleaned,
+                    )),
                     "wall_time_s": 0.0,
                 })
             continue
@@ -828,6 +874,7 @@ def _worker(work_item: dict[str, Any]) -> list[dict[str, Any]]:
             resolver=resolver,
             defaults=defaults,
             combos=tuple(combos_to_run),
+            use_v7_cleaned=use_v7_cleaned,
         )
     except Exception as exc:
         # One worker's failure shouldn't take the cohort down; record
@@ -849,7 +896,9 @@ def _worker(work_item: dict[str, Any]) -> list[dict[str, Any]]:
     n_slugs = max(1, len(rows_by_slug))
     success_rows: list[dict[str, Any]] = []
     for slug, rows in rows_by_slug.items():
-        out_path = _output_path(resolver, slug, animal)
+        out_path = _output_path(
+            resolver, slug, animal, use_v7_cleaned=use_v7_cleaned,
+        )
         n_rows = _write_spatial_parquet(rows, out_path)
         n_sentinel = sum(1 for r in rows if r["is_sentinel"])
         success_rows.append({
@@ -885,6 +934,7 @@ def main() -> int:
             "family_entry": f,
             "combos": combos,
             "skip_existing": args.skip_existing,
+            "use_v7_cleaned": bool(args.use_v7_cleaned),
         }
         for a in target_animals
         for f in families

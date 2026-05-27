@@ -149,9 +149,18 @@ def _bin_dates_by_rel_day(
 def _individual_session_out_path(
     resolver: PathResolver, scope: str, animal: str,
     family_entry: str, date: dt.date,
+    *, use_v7_cleaned: bool = True,
 ) -> Path:
     if scope == "tone_aligned":
+        if use_v7_cleaned:
+            return resolver.tone_aligned_heatmap_individual_session_path_cleaned_trace(
+                animal, family_entry, date,
+            )
         return resolver.tone_aligned_heatmap_individual_session_path(
+            animal, family_entry, date,
+        )
+    if use_v7_cleaned:
+        return resolver.whole_session_heatmap_individual_session_path_cleaned_trace(
             animal, family_entry, date,
         )
     return resolver.whole_session_heatmap_individual_session_path(
@@ -162,12 +171,21 @@ def _individual_session_out_path(
 def _binned_sessions_grid_out_path(
     resolver: PathResolver, scope: str, animal: str,
     family_entry: str, bin_size_days: int, trial_group: str,
+    *, use_v7_cleaned: bool = True,
 ) -> Path:
     """Q36 Addendum #34: binned_sessions grid SVG path. Tone-aligned has
     per-trial-group fanout; whole_session has only 'all'."""
     if scope == "tone_aligned":
+        if use_v7_cleaned:
+            return resolver.tone_aligned_heatmap_binned_sessions_path_cleaned_trace(
+                animal, family_entry, bin_size_days, trial_group,
+            )
         return resolver.tone_aligned_heatmap_binned_sessions_path(
             animal, family_entry, bin_size_days, trial_group,
+        )
+    if use_v7_cleaned:
+        return resolver.whole_session_heatmap_binned_sessions_path_cleaned_trace(
+            animal, family_entry, bin_size_days,
         )
     return resolver.whole_session_heatmap_binned_sessions_path(
         animal, family_entry, bin_size_days,
@@ -177,10 +195,19 @@ def _binned_sessions_grid_out_path(
 def _proportion_diff_out_path(
     resolver: PathResolver, scope: str, animal: str, family_entry: str,
     bin_size_days: int, trial_group: str,
+    *, use_v7_cleaned: bool = True,
 ) -> Path:
     if scope == "tone_aligned":
+        if use_v7_cleaned:
+            return resolver.tone_aligned_heatmap_proportion_differences_path_cleaned_trace(
+                animal, family_entry, bin_size_days, trial_group,
+            )
         return resolver.tone_aligned_heatmap_proportion_differences_path(
             animal, family_entry, bin_size_days, trial_group,
+        )
+    if use_v7_cleaned:
+        return resolver.whole_session_heatmap_proportion_differences_path_cleaned_trace(
+            animal, family_entry, bin_size_days,
         )
     return resolver.whole_session_heatmap_proportion_differences_path(
         animal, family_entry, bin_size_days,
@@ -190,13 +217,43 @@ def _proportion_diff_out_path(
 def _unbalanced_ot_out_path(
     resolver: PathResolver, scope: str, animal: str, family_entry: str,
     bin_size_days: int, trial_group: str,
+    *, use_v7_cleaned: bool = True,
 ) -> Path:
     if scope == "tone_aligned":
+        if use_v7_cleaned:
+            return resolver.tone_aligned_heatmap_unbalanced_ot_path_cleaned_trace(
+                animal, family_entry, bin_size_days, trial_group,
+            )
         return resolver.tone_aligned_heatmap_unbalanced_ot_path(
             animal, family_entry, bin_size_days, trial_group,
         )
+    if use_v7_cleaned:
+        return resolver.whole_session_heatmap_unbalanced_ot_path_cleaned_trace(
+            animal, family_entry, bin_size_days,
+        )
     return resolver.whole_session_heatmap_unbalanced_ot_path(
         animal, family_entry, bin_size_days,
+    )
+
+
+# Phase 7e.4 Q-lock 15.3 — figure subtitle/footer marker.
+# Applied to every figure emitted under the cleaned_trace routing so
+# downstream paper/PDF exports retain provenance.
+_Q_LOCK_15_3_FIGURE_FOOTER = (
+    "Source: v7-cleaned-trace cohort re-emit (Phase 7e + Phase 7e.4)"
+)
+
+
+def _stamp_cleaned_trace_footer(fig, *, use_v7_cleaned: bool) -> None:
+    """Add the Q-lock 15.3 marker text as a right-bottom-corner figure
+    annotation when cleaned_trace routing is active. No-op when the
+    driver is in legacy mode."""
+    if not use_v7_cleaned:
+        return
+    fig.text(
+        0.99, 0.005, _Q_LOCK_15_3_FIGURE_FOOTER,
+        ha="right", va="bottom",
+        fontsize=7, color="dimgray", alpha=0.85,
     )
 
 
@@ -232,6 +289,7 @@ def _process_animal(
     *, only_pd_ot: bool = False, only_pd: bool = False,
     families_filter: tuple[str, ...] | None = None,
     plot_types_filter: tuple[str, ...] | None = None,
+    use_v7_cleaned: bool = True,
 ) -> dict:
     """Render all 4 plot types × 2 scopes × 7 families for one animal.
 
@@ -349,10 +407,14 @@ def _process_animal(
                         )
                         out = _individual_session_out_path(
                             resolver, scope, animal, family_entry, date,
+                            use_v7_cleaned=use_v7_cleaned,
                         )
                         # Q31 Addendum #28: bbox_inches="tight" prevents
                         # cut-off legends/colorbars from extending past
                         # the figure bbox at SVG export.
+                        _stamp_cleaned_trace_footer(
+                            fig, use_v7_cleaned=use_v7_cleaned,
+                        )
                         fig.savefig(out, format="svg", bbox_inches="tight")
                         plt.close(fig)
                         n_is += 1
@@ -397,10 +459,14 @@ def _process_animal(
                             out = _binned_sessions_grid_out_path(
                                 resolver, scope, animal, family_entry,
                                 bin_size_days, tg,
+                                use_v7_cleaned=use_v7_cleaned,
                             )
                             # Q31 Addendum #28: bbox_inches="tight" prevents
                             # cut-off legends/colorbars from extending past
                             # the figure bbox at SVG export.
+                            _stamp_cleaned_trace_footer(
+                                fig, use_v7_cleaned=use_v7_cleaned,
+                            )
                             fig.savefig(out, format="svg", bbox_inches="tight")
                             plt.close(fig)
                             n_bs += 1
@@ -478,10 +544,14 @@ def _process_animal(
                         out = _proportion_diff_out_path(
                             resolver, scope, animal, family_entry,
                             bin_size_days, tg,
+                            use_v7_cleaned=use_v7_cleaned,
                         )
                         # Q31 Addendum #28: bbox_inches="tight" prevents
                         # cut-off legends/colorbars from extending past
                         # the figure bbox at SVG export.
+                        _stamp_cleaned_trace_footer(
+                            fig, use_v7_cleaned=use_v7_cleaned,
+                        )
                         fig.savefig(out, format="svg", bbox_inches="tight")
                         plt.close(fig)
                         n_pd += 1
@@ -571,10 +641,14 @@ def _process_animal(
                         out = _unbalanced_ot_out_path(
                             resolver, scope, animal, family_entry,
                             bin_size_days, tg,
+                            use_v7_cleaned=use_v7_cleaned,
                         )
                         # Q31 Addendum #28: bbox_inches="tight" prevents
                         # cut-off legends/colorbars from extending past
                         # the figure bbox at SVG export.
+                        _stamp_cleaned_trace_footer(
+                            fig, use_v7_cleaned=use_v7_cleaned,
+                        )
                         fig.savefig(out, format="svg", bbox_inches="tight")
                         plt.close(fig)
                         n_ot += 1
@@ -656,6 +730,29 @@ def main(argv: list[str] | None = None) -> int:
         "the flag for multiple). When set, overrides --only-pd-ot / --only-pd. "
         "Default: all 4 plot types.",
     )
+    # Phase 7e.4 — cleaned_trace routing flag. Default ON per
+    # Priya 2026-05-27 Q2 PUSHBACK: downstream consumers must auto-pick-up
+    # v7 unless explicitly opted out, otherwise we recreate the
+    # 7e.1/7e.2/7e.3/F-P-1 cascade-routing bug pattern. To re-emit the
+    # legacy spatial outputs (no cleaned_traces filter, original
+    # dlc_kinematics/{tone_aligned,whole_session}_heatmaps/ paths), pass
+    # --no-use-v7-cleaned.
+    cleaned_group = parser.add_mutually_exclusive_group()
+    cleaned_group.add_argument(
+        "--use-v7-cleaned",
+        dest="use_v7_cleaned", action="store_true", default=True,
+        help="(default) Route compute through v7 cleaned_traces filter "
+        "(use_v7_cleaned=True) AND write outputs to *_cleaned_trace/ "
+        "parallel paths with _cleaned_trace filename token + Q-lock 15.3 "
+        "subtitle footer.",
+    )
+    cleaned_group.add_argument(
+        "--no-use-v7-cleaned",
+        dest="use_v7_cleaned", action="store_false",
+        help="Re-emit the legacy spatial outputs (no cleaned_traces "
+        "filter; legacy paths). Use only for explicit audit-trail "
+        "re-emission.",
+    )
     args = parser.parse_args(argv)
 
     resolver = PathResolver()
@@ -674,7 +771,8 @@ def main(argv: list[str] | None = None) -> int:
     log.info(
         f"only_pd_ot={args.only_pd_ot}  only_pd={args.only_pd}  "
         f"no_skip={args.no_skip}  family_entry_filter={families_filter}  "
-        f"plot_type_filter={plot_types_filter}"
+        f"plot_type_filter={plot_types_filter}  "
+        f"use_v7_cleaned={args.use_v7_cleaned}"
     )
 
     animals = [args.animal] if args.animal else list(COHORT_ORDER)
@@ -690,6 +788,7 @@ def main(argv: list[str] | None = None) -> int:
             only_pd_ot=args.only_pd_ot, only_pd=args.only_pd,
             families_filter=families_filter,
             plot_types_filter=plot_types_filter,
+            use_v7_cleaned=args.use_v7_cleaned,
         )
         # Q59 + Q60 Addenda #49 + #50: targeted re-emit (--family-entry
         # or --plot-type) skips the manifest write so a
