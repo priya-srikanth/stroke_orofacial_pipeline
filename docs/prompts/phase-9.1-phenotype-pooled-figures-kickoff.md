@@ -805,8 +805,36 @@ git branch --show-current   # must NOT be main or master
                             # DO NOT bypass with --no-verify per ground rule 8
 conda run -n stroke_orofacial pytest --collect-only
 conda run -n stroke_orofacial pytest tests/test_figures_*.py  # if any figure module touched
-conda run -n stroke_orofacial ruff check .                     # pre-existing clean baseline
+conda run -n stroke_orofacial ruff check src/stroke_orofacial/figures/ tests/figures/  # new code MUST be clean
 ```
+
+> **ADDENDUM 2026-05-25 (Task 0 finding — ruff baseline correction):** Task 0 audit revealed `ruff check .` is NOT clean on `main` — 67 pre-existing errors across the repo (16 E402, 15 F541, 10 F821, 8 E702, 6 F401, 6 F841, 4 invalid-syntax, 1 E731, 1 E741). The original "pre-existing clean baseline" wording above was wrong. Phase 9.1 rule (Priya 2026-05-25): **NEW code in `src/stroke_orofacial/figures/` and `tests/figures/` MUST be ruff-clean**; the 67 pre-existing errors are out of Phase 9.1 scope and handled in a separate future chore PR (or left permanent if the broken files turn out to be intentionally untouched legacy artifacts). Validate via the scoped `ruff check src/stroke_orofacial/figures/ tests/figures/` shown above — NOT `ruff check .` until the existing debt is cleaned up separately.
+
+> **ADDENDUM 2026-05-25 (Task 1a v1 finding — V4/V5 side split + Task 1/2 bundling — Q-lock 10):** Task 1a v1 preview surfaced two scope adjustments that supersede the original kickoff spec.
+>
+> **Q-lock 10 (a) — V4 + V5 are SIDE-SPLIT (ipsi vs contra), not cohort-side-pooled.** Original kickoff §6.1 reading "L/R sides as overlaid colors within phenotype lines per Addendum #8 (H)" and Q-lock 4 "ipsi/contra direct relabel where applicable" are clarified: ALL V4 + V5 figures use the same side-by-side panel layout as Q-lock 8 Family 8.1 — one ipsi panel + one contra panel per endpoint, each showing 4-tier phenotype traces (V4) or boxplots (V5). Per Q-lock 4: panels labeled "ipsi" / "contra" directly with caption caveat for cohort uniformity (all 8 cohort animals L-stroke; ipsi = mouse-L, contra = mouse-R). Endpoints WITHOUT a meaningful side dimension (e.g., session-aggregate counts with no side column in their materialized parquet) fall back to single-panel cohort-pooled rendering; CC enumerates these at preview emit time.
+>
+> **Q-lock 10 (b) — V5 bundled into Task 1.** Task 1 previously covered V4 only; Task 2 covered V5. Per Priya 2026-05-25 Task 1a v1 review: review BOTH V4 + V5 together against the SAME preview endpoint set so palette/layout/caption-style decisions lock once for both figure types. Tasks 1a/1b/1c now cover BOTH V4 + V5 preview/review/full emit per Q-lock 9 pattern. Original Task 2 (separate V5 emit) is SUBSUMED into Task 1; the §9 task table's Task 2 entries are effectively merged with Task 1c.
+>
+> **Q-lock 10 (c) — Data source switch for V4/V5 side-split.** Side-stratified per-bin + per-epoch aggregations may not exist in `pipeline_outputs/stats/results/recovery/{per_bin,per_epoch}/<endpoint>.csv` (recovery axis is cohort-side-pooled by Phase 9 stats convention). To render side-split V4/V5, CC loads raw per-session-per-side rows from `pipeline_outputs/stats/inputs/<endpoint>/<animal>.parquet` (which DOES have a `side` column) and aggregates to (phenotype, side, bin) or (phenotype, side, epoch) cohort means + SEM at figure-runner time. Fallback: if a particular endpoint's stats/inputs parquet lacks a `side` column or has all-NaN side values, CC degrades to single-panel cohort-pooled for that endpoint and notes the degradation in notes_running.
+>
+> **Updated figure count:** V4 + V5 figure count is unchanged at ~70 (35 endpoints × 2 = V4+V5 per endpoint); the side-split changes panel count per figure (2 side-by-side panels per figure) but not figure count. Total Phase 9.1 ≈ 124-127 figures unchanged.
+
+> **ADDENDUM 2026-05-25 (Task 1a v2 finding — V5 style revision — Q-lock 11):** V5 was originally specified as per_epoch phenotype-pooled boxplots (kickoff §6.2). Per Priya 2026-05-25 Task 1a v2 review: replace with a delta-from-baseline line plot with faded per-session scatter underlay. Conceptually parallel to Q-lock 8 Family 8.1's two-layer rendering but with epoch as a categorical x-axis instead of tone-aligned trial time.
+>
+> **Q-lock 11 — V5 rendering style:**
+> - **Y-axis:** delta from per-animal pre-stroke baseline mean (additive per Phase 9 Addendum #6). Each per-session value at each epoch gets its per-animal pre-mean subtracted at figure-runner time.
+> - **X-axis:** epoch labels at 4 categorical positions: pre / acute / sub_acute / chronic.
+> - **Foreground (bold):** line connectors across epochs within each phenotype. Connect the phenotype-mean delta at each of the 4 epoch positions with a solid colored line; one line per phenotype tier (4 lines per panel). SEM error bars at each epoch position on the line.
+> - **Background (faded):** per-(animal, session) scatter dots at each (phenotype, epoch) position. Same color as the phenotype's connecting line; α≈0.2-0.3; small marker; horizontally jittered within each epoch x-position to reduce overplotting (jitter range ~0.1-0.2 epoch widths). One dot per (animal, session) row in the underlying parquet.
+> - **Reference line:** y=0 drawn in light gray (rgb 0.85) for the no-change baseline.
+> - **Side-split:** 2 side-by-side panels (ipsi + contra) per endpoint per Q-lock 10 (a). Endpoints without populated `side` column degrade to single-panel cohort-pooled per Q-lock 10 (c).
+> - **Pre-epoch role:** the pre-epoch x-position shows the baseline-subtracted noise distribution (mean line near zero + scatter spread around zero). Per Q-lock 8 convention: pre-epoch is the noise-floor visual reference for evaluating whether post-stroke deltas exceed natural session-to-session variability.
+> - **Caption:** y-axis labeled "delta <endpoint> (<unit>, baseline-subtracted)"; y=0 reference noted in figure caption. Ipsi/contra cohort-uniformity caveat retained.
+>
+> **Baseline normalization (LOCKED — applies to V5 only at this Q-lock):** Per-animal pre-stroke mean computed from each animal's pre-epoch (rel_day ≤ 0) sessions, side-matched per Q-lock 10 (a). For ipsi-trial baselines: mean across that animal's pre-stroke mouse-L trials. For contra-trial baselines: mean across pre-stroke mouse-R trials. Per-session delta at each (animal, session, epoch, side) = session mean for that cell − per-animal-side baseline. (This matches Q-lock 8 baseline-trajectory subtraction convention but at the per-session-scalar level instead of per-bin-trajectory level.)
+>
+> **Total figure count unchanged:** ~70 V4 + V5 figures (35 endpoints × 2 figure types). V5 style change does not affect count, just rendering.
 
 If pre-commit hook fixes blocks a commit, investigate root cause; do not bypass.
 
