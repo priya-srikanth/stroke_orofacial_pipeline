@@ -8,10 +8,10 @@ granularities.
 - **Family 8.1** — delta tongue angle, 3 endpoint sub-families
   (``tongue_lick1_angle_at_ypeak``, ``tongue_lick2_angle_at_ypeak``,
   ``tongue_median_angle_at_peak_velocity``); ipsi/contra side-split; ~3 figures
-  at ``pipeline_outputs/phase_9_1_figures/phenotype_pooled_ipsi_shift/angle/``.
+  at ``pipeline_outputs/stats/figures/phenotype_pooled_ipsi_shift/angle/``.
 - **Family 8.2** — continuous tone-aligned tongue x trajectory (per-frame DLC,
   NOT x-at-ypeak); ipsi/contra side-split; 1-4 figures (layout locked at
-  Task 0.5) at ``pipeline_outputs/phase_9_1_figures/phenotype_pooled_ipsi_shift/x_trajectory/``.
+  Task 0.5) at ``pipeline_outputs/stats/figures/phenotype_pooled_ipsi_shift/x_trajectory/``.
   Likely paper-narrative figure.
 
 Existing-code reuse (mandatory per Q-lock 8 — Phase 9.1 does NOT re-author

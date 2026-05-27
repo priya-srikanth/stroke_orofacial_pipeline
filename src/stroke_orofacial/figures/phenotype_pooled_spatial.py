@@ -11,7 +11,7 @@ Q-locks:
   4 confirmatory ``wasserstein × tone_aligned_all`` endpoints feature in Task 7
   composites.
 - Q-lock 5 — outputs under
-  ``pipeline_outputs/phase_9_1_figures/phenotype_pooled_spatial/<family>/<metric>/<combo>.{svg,png}``.
+  ``pipeline_outputs/stats/figures/phenotype_pooled_spatial/<family>/<metric>/<combo>.{svg,png}``.
 - Q-lock 6 — parameterized ``--endpoint-list`` runner; Q-C dedup retained
   (distance metrics route HERE, not through V4/V5).
 - Q-lock 9 — Tasks 3a/3b/3c preview-then-full triplet.

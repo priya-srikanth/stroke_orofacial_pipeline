@@ -8,7 +8,7 @@ stays a thin orchestrator.
 
 Read-only contract — Phase 9.1 consumes Phase 9 outputs (per kickoff §"Out
 of scope"); writes go exclusively to
-``pipeline_outputs/phase_9_1_figures/...`` via ``PathResolver``.
+``pipeline_outputs/stats/figures/...`` via ``PathResolver``.
 
 Q-locks:
 - Q-lock 1 — cohort phenotype map via
