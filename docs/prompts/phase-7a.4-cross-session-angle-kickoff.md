@@ -185,7 +185,7 @@ new resolver `tongue_angle_cohort_dir(animal)` to
 
 ## Notebook integration
 
-Notebook 13 (`13_dlc_kinematics_tongue.ipynb`) currently has 12
+Notebook 13 (`12_dlc_kinematics_tongue.ipynb`) currently has 12
 cells; cell 8 is the 7a.5 cross-session mismatch loop that landed
 in 7a.4-orientation-and-paths-cleanup. Add a new per-mouse loop
 cell (after cell 8 or wherever fits the flow) for tongue-angle

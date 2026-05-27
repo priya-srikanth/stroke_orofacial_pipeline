@@ -12,7 +12,7 @@ to invoke:
 Port the alignment pipeline from legacy `batch_process_alignment_20251216PS.ipynb`
 and its helper `make_alignment_templates_20251216.py` (which lives only in the
 upstream legacy repo) into `src/stroke_orofacial/alignment/` plus
-`notebooks/01_alignment.ipynb`. Outputs go to
+`notebooks/02_alignment.ipynb`. Outputs go to
 `pipeline_outputs_v2/alignment/` on MICROSCOPE.
 
 A detailed five-sub-phase plan (3a-3e) was drafted and approved during Phase 3
@@ -99,7 +99,7 @@ Sub-phases (from the previously approved plan):
 - **3b:** Core alignment functions. `frame_sync.py` (edge detection, sequence
   matching, affine fit). `timebase.py` (converters + `AlignmentResult`
   dataclass).
-- **3c:** Session orchestrator + `notebooks/01_alignment.ipynb` (cam2 only).
+- **3c:** Session orchestrator + `notebooks/02_alignment.ipynb` (cam2 only).
   Include the overwrite modes (`"skip"`/`"prompt"`/`"force"`) from Phase 2,
   default `"skip"`. Default strategy: load existing template if present,
   recompute only if missing.

@@ -136,7 +136,7 @@ Likely shape:
 - `src/stroke_orofacial/dlc_inference_o2/README.md` — **required.** The O2
   workflow is operationally distinct from the rest of the repo, and future
   users (or future you) need explicit instructions.
-- `notebooks/20_dlc_inference.ipynb` — optional thin orchestrator if invoking
+- `notebooks/10_dlc_inference.ipynb` — optional thin orchestrator if invoking
   interactively from Priya's workstation is useful.
 
 O2 env setup (captured in the module's README):

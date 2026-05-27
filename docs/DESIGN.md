@@ -186,13 +186,13 @@ stroke_orofacial_pipeline/
 │       └── batch_video_analysis.py
 ├── notebooks/
 │   ├── 00_session_processing.ipynb
-│   ├── 01_alignment.ipynb
-│   ├── 02_behavior_report.ipynb
-│   ├── 10_dlc_build_parquets.ipynb
+│   ├── 02_alignment.ipynb
+│   ├── _deprecated/behavior_report.ipynb
+│   ├── 11_dlc_build_parquets.ipynb
 │   ├── 11_dlc_spatial_whole_session.ipynb
 │   ├── 12_dlc_spatial_reward_aligned.ipynb
-│   ├── 13_dlc_kinematics_tongue.ipynb
-│   ├── 14_dlc_kinematics_jaw.ipynb
+│   ├── 12_dlc_kinematics_tongue.ipynb
+│   ├── 13_dlc_kinematics_jaw.ipynb
 │   └── 20_stats_cross_animal.ipynb
 ├── scripts/
 │   └── (thin CLI entry points that mirror each notebook for batch runs)
@@ -294,11 +294,11 @@ All analyses operate in `session_time` internally. Every dataframe has a `sessio
 | Legacy notebook | New module(s) | Notes |
 |---|---|---|
 | `batch_process_20260410PS.ipynb` | `spout_behavior/session_processing.py` + `notebooks/00_session_processing.ipynb` | Preserve trial segmentation and bout definitions exactly; factor out lick-detection thresholds to `configs/defaults.yaml`. |
-| `batch_process_behavior_report_20260116PS.ipynb` | `reports/behavior_report.py` + `notebooks/02_behavior_report.ipynb` | Keep every current figure; refactor repeated plotting into `figures/behavior_plots.py`. |
-| `batch_process_alignment_20251216PS.ipynb` | `alignment/*` + `notebooks/01_alignment.ipynb` | Single place for ws↔video↔DLC alignment. Consumes `alignment_templates/` read-only. |
+| `batch_process_behavior_report_20260116PS.ipynb` | `reports/behavior_report.py` + `notebooks/_deprecated/behavior_report.ipynb` | Keep every current figure; refactor repeated plotting into `figures/behavior_plots.py`. |
+| `batch_process_alignment_20251216PS.ipynb` | `alignment/*` + `notebooks/02_alignment.ipynb` | Single place for ws↔video↔DLC alignment. Consumes `alignment_templates/` read-only. |
 | `playground_analyze_behavior_report_PS20250610.ipynb` (10-day-bin cell) | `stats/*` + `notebooks/20_stats_cross_animal.ipynb` | The 10-day-bin MixedLM/OLS cell is the seed; full redesign per §6. |
 | `20251112_DLC_batch_video_analysis_O2.ipynb` | `dlc_inference_o2/batch_video_analysis.py` | Runs on O2 only; clearly documented in its README as a standalone tool. |
-| `20260323_DLC_build-parquet_reward-aligned_tongue_jaw.ipynb` | `dlc_io/*` + `notebooks/10_dlc_build_parquets.ipynb` | Centering options (nose / spout midpoint / eyes midpoint) expressed as enums; reward-alignment uses shared `window_selector`. |
+| `20260323_DLC_build-parquet_reward-aligned_tongue_jaw.ipynb` | `dlc_io/*` + `notebooks/11_dlc_build_parquets.ipynb` | Centering options (nose / spout midpoint / eyes midpoint) expressed as enums; reward-alignment uses shared `window_selector`. |
 | `20260111_DLC_analysis_build-parquet_tongue.ipynb` | Merged into `dlc_io/parquet.py` | Same family as above; redundant branches merged. |
 | `20251117_DLC_analysis_nose.ipynb`, `…_jaw.ipynb` | `dlc_spatial/*` + `notebooks/11_dlc_spatial_whole_session.ipynb` | One notebook runs all bodyparts via a loop; no per-bodypart notebook needed. |
 | `20251202_DLC_analysis_all_bodyparts_stats_pixelbin.ipynb` | `dlc_spatial/pixel_bins.py` + shared stats | Stats moved into `stats/`. |
@@ -402,7 +402,7 @@ Each phase ends with a commit on a branch + a short section added to `MIGRATION_
 - Verify byte-level or value-level parity with a few sessions' `session_processing3/` outputs before moving on.
 
 **Phase 3 — Alignment.**
-- Port `batch_process_alignment_20251216PS.ipynb` into `alignment/*` + notebook `01_alignment.ipynb`.
+- Port `batch_process_alignment_20251216PS.ipynb` into `alignment/*` + notebook `02_alignment.ipynb`.
 
 **Phase 4 — DLC I/O + centering.**
 - Port the parquet-build notebooks.

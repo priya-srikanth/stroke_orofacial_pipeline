@@ -523,7 +523,7 @@ regeneration is in flight via Event B
 Wasserstein endpoint `spatial_wasserstein_jaw_eye_midpoint_tone_aligned_all`
 carries the strongest confirmatory signal in the Phase 9 cohort
 (`q ≈ 9e-15`). The recovery_trajectories endpoint list in
-[`notebooks/15_spout_behavior_visual_gate.ipynb`](../../notebooks/15_spout_behavior_visual_gate.ipynb)
+[`notebooks/01_spout_behavior_figures.ipynb`](../../notebooks/01_spout_behavior_figures.ipynb)
 treats it as a paper-figure-grade scalar. If the jaw v5p3 trace or its
 downstream peak-deflection scalars have artifactual patterns analogous
 to tongue's PCHIP-anchored-spike-against-Stage-5-baseline-fill, the

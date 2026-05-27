@@ -79,8 +79,8 @@ The audit also resolves three structural questions:
 
 ### Notebook authoring bundles into this phase (Priya 2026-05-01)
 
-The orchestration notebooks `notebooks/13_dlc_kinematics_tongue.ipynb`
-and `notebooks/14_dlc_kinematics_jaw.ipynb` are 2-cell skeletons
+The orchestration notebooks `notebooks/12_dlc_kinematics_tongue.ipynb`
+and `notebooks/13_dlc_kinematics_jaw.ipynb` are 2-cell skeletons
 (title + `ANIMALS = [...]` only) — the entire 7a.x consolidation arc
 shipped modules + parity tests but never wired any of it through the
 analyst-facing notebook entry points. Phase 7a.6 closes this debt as
@@ -90,7 +90,7 @@ through the full chain (7a.2 interpolation → 7a.3/7a.5 per-trial →
 7a.4 angle/phase visual gate → 7a.5 mismatch → 7a.6 mean/SEM →
 optional 7a.3-jaw / Cell 43 PSD per outcome).
 
-Pattern is set by `notebooks/10_dlc_build_parquets.ipynb`,
+Pattern is set by `notebooks/11_dlc_build_parquets.ipynb`,
 `11_dlc_spatial_whole_session.ipynb`, `12_dlc_spatial_reward_aligned.ipynb`
 — populated end-to-end with USER INPUTS → resolver/manifests →
 processing loop, no analytical code (per repo rule "notebooks
@@ -336,10 +336,10 @@ Read both target notebooks + the three pattern notebooks:
 ```bash
 ls -la C:\Users\sabatini\GitHub\stroke_orofacial_pipeline\notebooks\
 # Targets (currently 2-cell skeletons):
-#   13_dlc_kinematics_tongue.ipynb
-#   14_dlc_kinematics_jaw.ipynb
+#   12_dlc_kinematics_tongue.ipynb
+#   13_dlc_kinematics_jaw.ipynb
 # Patterns (fully populated, follow this shape):
-#   10_dlc_build_parquets.ipynb
+#   11_dlc_build_parquets.ipynb
 #   11_dlc_spatial_whole_session.ipynb
 #   12_dlc_spatial_reward_aligned.ipynb
 ```
@@ -779,11 +779,11 @@ discipline from 7a.5).
 
 ### Task 8 — Populate notebooks 13 + 14
 
-Pattern from `notebooks/10_dlc_build_parquets.ipynb`,
+Pattern from `notebooks/11_dlc_build_parquets.ipynb`,
 `notebooks/11_dlc_spatial_whole_session.ipynb`,
 `notebooks/12_dlc_spatial_reward_aligned.ipynb`.
 
-`notebooks/13_dlc_kinematics_tongue.ipynb` — full pipeline:
+`notebooks/12_dlc_kinematics_tongue.ipynb` — full pipeline:
 
 ```
 Cell 0  (markdown)  Title
@@ -799,7 +799,7 @@ Cell 9  (code)      Cohort — mean/SEM cross-session families (7a.6)
 Cell 10 (code)      Summary print
 ```
 
-`notebooks/14_dlc_kinematics_jaw.ipynb` — full jaw pipeline:
+`notebooks/13_dlc_kinematics_jaw.ipynb` — full jaw pipeline:
 
 ```
 Cell 0  (markdown)  Title
@@ -833,14 +833,14 @@ Document each additive helper in DECISIONS.
 ```bash
 # Smoke-test:
 jupyter nbconvert --to notebook --execute \
-    notebooks/13_dlc_kinematics_tongue.ipynb \
+    notebooks/12_dlc_kinematics_tongue.ipynb \
     --output /tmp/13_smoke.ipynb 2>&1 | tail -20
 jupyter nbconvert --to notebook --execute \
-    notebooks/14_dlc_kinematics_jaw.ipynb \
+    notebooks/13_dlc_kinematics_jaw.ipynb \
     --output /tmp/14_smoke.ipynb 2>&1 | tail -20
 
-git add notebooks/13_dlc_kinematics_tongue.ipynb
-git add notebooks/14_dlc_kinematics_jaw.ipynb
+git add notebooks/12_dlc_kinematics_tongue.ipynb
+git add notebooks/13_dlc_kinematics_jaw.ipynb
 # Plus any additive helpers + their tests if needed:
 git add src/stroke_orofacial/dlc_kinematics/<module>.py tests/<corresponding test>
 git commit -m "Phase 7a.6 Task 8: populate notebooks 13 + 14 end-to-end
@@ -865,8 +865,8 @@ Append to `docs/MIGRATION_LOG.md` a Phase 7a.6 entry summarizing:
 
 - Net-new modules: `src/stroke_orofacial/dlc_kinematics/mean_sem_visual.py`.
 - Net-new path resolver: `mean_sem_visual_dir(...)`.
-- Notebooks populated: `notebooks/13_dlc_kinematics_tongue.ipynb`,
-  `notebooks/14_dlc_kinematics_jaw.ipynb`.
+- Notebooks populated: `notebooks/12_dlc_kinematics_tongue.ipynb`,
+  `notebooks/13_dlc_kinematics_jaw.ipynb`.
 - Behavior diffs vs. legacy: tongue path lowercased (Q6), per-window
   subdirs uniform (Q7), tongue mean video consolidated (Q5), tongue
   mean_trace gained multi-bin (audit finding).
@@ -990,7 +990,7 @@ place per CLAUDE.md ground rule 8.
     (7a.5 — classifier + 4 plot families for mismatch).
 - **Notebook pattern** (orchestration shape this phase's notebooks
   must match):
-  - `notebooks/10_dlc_build_parquets.ipynb` — manifest-driven
+  - `notebooks/11_dlc_build_parquets.ipynb` — manifest-driven
     per-(animal, date, mode) loop calling `build_centered_parquet`.
   - `notebooks/11_dlc_spatial_whole_session.ipynb` — manifest-driven
     per-(animal, date, bodypart, mode) loop with per-bodypart output
@@ -1002,9 +1002,9 @@ place per CLAUDE.md ground rule 8.
     analytical code; everything imports from `stroke_orofacial`.
 - **Notebook targets** (currently 2-cell skeletons; Phase 7a.6
   populates):
-  - `notebooks/13_dlc_kinematics_tongue.ipynb` — full 7a.2 → 7a.3 →
+  - `notebooks/12_dlc_kinematics_tongue.ipynb` — full 7a.2 → 7a.3 →
     7a.4 → 7a.5 → 7a.6 chain for tongue.
-  - `notebooks/14_dlc_kinematics_jaw.ipynb` — full 7a.2 → 7a.5 jaw_pertrial
+  - `notebooks/13_dlc_kinematics_jaw.ipynb` — full 7a.2 → 7a.5 jaw_pertrial
     → 7a.6 (+ Cell 43 PSD if folded) chain for jaw.
 - **DECISIONS Phase 7a.3-jaw entry** — context for the 6
   production-viz cells in jaw notebook + Cell 43 PSD deferral.

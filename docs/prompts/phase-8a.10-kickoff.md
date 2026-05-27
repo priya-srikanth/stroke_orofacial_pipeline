@@ -525,7 +525,7 @@ In `bare_vs_b.py`:
 
 Update `tests/test_bare_vs_b.py` to reflect the renames + deletions + new cohort renderer pin set.
 
-### Notebook orchestration (`notebooks/15_spout_behavior_visual_gate.ipynb`)
+### Notebook orchestration (`notebooks/01_spout_behavior_figures.ipynb`)
 
 USER INPUTS additions:
 ```python
@@ -575,7 +575,7 @@ src/stroke_orofacial/spout_behavior/bare_vs_b.py      (renames + new cohort rend
 src/stroke_orofacial/paths.py                          (only if bare_vs_b_dir(animal=None) doesn't already resolve to cohort/)
 configs/defaults.yaml                                  (optional: bare_vs_b cohort knobs if introduced)
 tests/test_bare_vs_b.py                                (sync with bare_vs_b.py changes)
-notebooks/15_spout_behavior_visual_gate.ipynb          (drop per-session loop + cleanup flag + new renderer call)
+notebooks/01_spout_behavior_figures.ipynb          (drop per-session loop + cleanup flag + new renderer call)
 ```
 
 NO touches outside this list. Specifically:
@@ -701,7 +701,7 @@ User-facing nomenclature is "spout close vs standard"; internal code follows sui
 
 **Output dir:** `pipeline_outputs/spout_behavior/spout_behavior_figures/bare_vs_b/` → `.../spout_close_vs_std/`. The existing `bare_vs_b/cohort/` directory (containing CG-B3 R2's PS55 outputs) becomes orphaned — delete it as part of Round 3 cleanup, alongside the existing CG-B2 per-session orphan deletion logic.
 
-**Notebook + config + DECISIONS-sketch references** — sweep for "bare_vs_b" string occurrences in `notebooks/15_spout_behavior_visual_gate.ipynb`, `configs/defaults.yaml`, the in-flight DECISIONS Decision 8 sketch, and update to `spout_close_vs_std`.
+**Notebook + config + DECISIONS-sketch references** — sweep for "bare_vs_b" string occurrences in `notebooks/01_spout_behavior_figures.ipynb`, `configs/defaults.yaml`, the in-flight DECISIONS Decision 8 sketch, and update to `spout_close_vs_std`.
 
 **Half_suffix identifiers stay unchanged** — `"bare"` and `"b"` continue to identify the two halves in NPZ paths, registry keys, and the `load_session_plot_data(half_suffix=...)` signature. Renaming those is a Phase 8a.10.2+ concern (cross-codebase).
 
@@ -811,7 +811,7 @@ src/stroke_orofacial/paths.py                                              (rena
 configs/defaults.yaml                                                       (rename config block + new typography knobs)
 tests/test_bare_vs_b.py → test_spout_close_vs_std.py                       (git mv + edits)
 tests/test_paths.py                                                         (resolver fn rename sync)
-notebooks/15_spout_behavior_visual_gate.ipynb                               (rename references + Row 4 expectations + cleanup of legacy bare_vs_b dir)
+notebooks/01_spout_behavior_figures.ipynb                               (rename references + Row 4 expectations + cleanup of legacy bare_vs_b dir)
 ```
 
 NO new files. Module split if rename grows the file beyond comfortable limits is left to CC's judgment (likely not needed; file is already focused).
@@ -1010,7 +1010,7 @@ Same allowlist as Addendum #3. Expected churn:
 - `src/stroke_orofacial/spout_behavior/spout_close_vs_std.py` — xticks, day-label centering, y-axis label/ticks/orientation, half-label relocation.
 - `configs/defaults.yaml` — 4 new knobs under `spout_close_vs_std:` (raster_xticks, raster_ytick_fontsize, raster_ylabel_fontsize, raster_half_label_fontsize).
 - `tests/test_spout_close_vs_std.py` — sync test pins.
-- `notebooks/15_spout_behavior_visual_gate.ipynb` — set ANIMALS to all 3.
+- `notebooks/01_spout_behavior_figures.ipynb` — set ANIMALS to all 3.
 
 ### Execute order
 
@@ -1162,7 +1162,7 @@ Adds a per-trial counts-distribution view that complements the cohort summary's 
 Already landed in commit `02be4b0`:
 - `src/stroke_orofacial/spout_behavior/spout_close_vs_std.py` — new renderer function.
 - `tests/test_spout_close_vs_std.py` — pins added.
-- `notebooks/15_spout_behavior_visual_gate.ipynb` — orchestration call.
+- `notebooks/01_spout_behavior_figures.ipynb` — orchestration call.
 
 ### Scope deviation note
 

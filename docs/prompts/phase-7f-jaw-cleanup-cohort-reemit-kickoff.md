@@ -175,7 +175,7 @@ traces"), this is the comprehensive figure regeneration.
 5. **Phase 9 recovery_trajectories** (post-Step 5):
    - Per-mouse panels overlaying cohort recovery-LMM fit + CI ribbon
      on each animal's per-session trajectory, for jaw endpoints listed
-     in [`notebooks/15_spout_behavior_visual_gate.ipynb`](../../notebooks/15_spout_behavior_visual_gate.ipynb)
+     in [`notebooks/01_spout_behavior_figures.ipynb`](../../notebooks/01_spout_behavior_figures.ipynb)
      `RECOVERY_TRAJECTORY_ENDPOINTS` (currently includes `tongue_lick1_*`,
      `tongue_first_peak_*`, plus the spatial Wasserstein endpoints — jaw
      scalar endpoints will need to be added to that list if not already

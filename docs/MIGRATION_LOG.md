@@ -310,7 +310,7 @@ unambiguous.
   None/empty if data isn't mounted.
 
 ### Sub-phase 3c: Alignment orchestrator notebook
-- Created `notebooks/01_alignment.ipynb` (thin orchestrator, cam2 only).
+- Created `notebooks/02_alignment.ipynb` (thin orchestrator, cam2 only).
 - Default behavior: load existing templates from `alignment_templates/cam2/`,
   recompute only if missing.
 - Overwrite modes: skip/prompt/force (matching Phase 2 convention).
@@ -416,7 +416,7 @@ duplicates, DECISIONS.md "2026-04-18 — Disambiguation rule refined"):
   `write_centered_parquet()` (atomic tmp→rename), `read_centered_parquet()`,
   `build_centered_parquet()` (pure function, no module-level state — per
   DECISIONS.md "iterate over animals without notebook restart").
-- Created `notebooks/10_dlc_build_parquets.ipynb` with USER INPUTS cell.
+- Created `notebooks/11_dlc_build_parquets.ipynb` with USER INPUTS cell.
   Builds all three center modes by default.
 
 ### Sub-phase 4d: Parity check
@@ -985,7 +985,7 @@ manual verification, debugging, batch-size scout monitoring).
 ### Sub-phase 5.5c: README + notebook
 - `README.md`: complete O2 workflow documentation (prerequisites, step-by-step,
   resources, DLC params, batch-size tuning, troubleshooting, security).
-- `notebooks/20_dlc_inference.ipynb`: click-through orchestrator with USER
+- `notebooks/10_dlc_inference.ipynb`: click-through orchestrator with USER
   INPUTS. Local actions (YAML writing, script generation) execute directly.
   SSH/rsync/sbatch commands are printed with user-specific inputs substituted
   — user pastes into terminal. No SSH from within notebook context.
@@ -1972,7 +1972,7 @@ updated accordingly: `test_missing_dlc_dir_raises` /
   input-dependency decision): alignment relates wavesurfer samples to
   camera frames, and camera frames exist whether or not DLC inference
   has run. No DLC guard here — the first DLC guard fires in 6.7c.
-- Notebook `01_alignment.ipynb` grew from 4 → 5 cells: new cell 3
+- Notebook `02_alignment.ipynb` grew from 4 → 5 cells: new cell 3
   builds manifests (surfaces alignment_template / wavesurfer / video
   discovery); cell 4 iterates and calls
   `load_or_compute_alignment(manifest, ...)`.
@@ -1993,7 +1993,7 @@ updated accordingly: `test_missing_dlc_dir_raises` /
   inference first.").
 - `build_centered_parquet_by_animal_date(...)` wrapper added.
 - New `load_centered_fresh()` helper (described above).
-- Notebook `10_dlc_build_parquets.ipynb` grew from 4 → 5 cells:
+- Notebook `11_dlc_build_parquets.ipynb` grew from 4 → 5 cells:
   manifest-build cell with up-front DLC-availability count.
 - Tests: `TestBuildCenteredParquetWithManifest` (Mac-gated integration
   — also closes the existing test-coverage gap that there was no test
@@ -4706,14 +4706,14 @@ port outstanding on the Q2 2026 roadmap.
    window) family file counts + ffmpeg fallback counts + deterministic-
    re-run results + per-(animal, date, bodypart) legacy NPZ comparison.
 
-7. [`notebooks/13_dlc_kinematics_tongue.ipynb`](../notebooks/13_dlc_kinematics_tongue.ipynb)
+7. [`notebooks/12_dlc_kinematics_tongue.ipynb`](../notebooks/12_dlc_kinematics_tongue.ipynb)
    — 11 cells, full tongue pipeline (Phase 7a.2 → 7a.3 V3 → 7a.4 →
    7a.5 → 7a.6 per-session → 7a.6 cohort → summary). USER INPUTS
    surfaces 5 Phase 7a.6 knobs: `WINDOWS_MS`, `MEAN_VIDEO_WINDOWS_SUBSET`,
    `ALLOW_GIF_FALLBACK`, `INCLUDE_MEAN_VIDEO`, `BIN_SIZES_DAYS`.
    Smoke-tested on PS46 + 2025-03-07: PASS in 17.4 s.
 
-8. [`notebooks/14_dlc_kinematics_jaw.ipynb`](../notebooks/14_dlc_kinematics_jaw.ipynb)
+8. [`notebooks/13_dlc_kinematics_jaw.ipynb`](../notebooks/13_dlc_kinematics_jaw.ipynb)
    — 9 cells, full jaw pipeline (7a.2 → 7a.5 jaw_pertrial → 7a.6
    per-session → 7a.6 cohort → summary). Same USER INPUTS knob set
    as nb13. No 7a.3 V3 / 7a.4 / mismatch cells (tongue-only).
@@ -4867,11 +4867,11 @@ across all 6 plot families.
 - No numerical change. All data arrays (`x_geom`, `y_geom`, `phase`),
   colorbar, axis limits, and styling knobs are identical to 7a.4.
   Only the subplot indexing differs.
-- Notebook 14 (`14_dlc_kinematics_jaw.ipynb`) is unaffected — the
+- Notebook 14 (`13_dlc_kinematics_jaw.ipynb`) is unaffected — the
   jaw notebook has no `_plot_xy_by_phase` analog (per the
   7a.3-jaw audit, jaw kinematics enters the visual pipeline only at
   the 7a.6 bodypart-parametric mean/SEM module). The flip applies
-  to notebook 13 (`13_dlc_kinematics_tongue.ipynb`) only.
+  to notebook 13 (`12_dlc_kinematics_tongue.ipynb`) only.
 
 **Exit criteria met:**
 
@@ -4940,7 +4940,7 @@ during Phase 7a.6 close-out).
    the CC terminal during the close-out sequence (sandbox-git
    boundary blocks me from running `git mv` directly).
 6. **Tongue-jaw mismatch cross-session wired into notebook 13.**
-   Updated `notebooks/13_dlc_kinematics_tongue.ipynb`:
+   Updated `notebooks/12_dlc_kinematics_tongue.ipynb`:
    - Cell 1 USER INPUTS: added `INCLUDE_CROSS_SESSION_MISMATCH = True`
      gate + `OVERWRITE_CROSS_SESSION = None` per-cell overwrite
      override (None = inherit global `OVERWRITE`; "force" =
@@ -5082,7 +5082,7 @@ unify the tree.
    the CC terminal during the close-out sequence (sandbox-git
    boundary blocks me from running `git mv` directly).
 6. **Tongue-jaw mismatch cross-session wired into notebook 13.**
-   Updated `notebooks/13_dlc_kinematics_tongue.ipynb`:
+   Updated `notebooks/12_dlc_kinematics_tongue.ipynb`:
    - Cell 1 USER INPUTS: added `INCLUDE_CROSS_SESSION_MISMATCH = True`
      gate + `OVERWRITE_CROSS_SESSION = None` per-cell overwrite
      override (None = inherit global `OVERWRITE`; "force" =
@@ -5226,7 +5226,7 @@ unify the tree.
    the CC terminal during the close-out sequence (sandbox-git
    boundary blocks me from running `git mv` directly).
 6. **Tongue-jaw mismatch cross-session wired into notebook 13.**
-   Updated `notebooks/13_dlc_kinematics_tongue.ipynb`:
+   Updated `notebooks/12_dlc_kinematics_tongue.ipynb`:
    - Cell 1 USER INPUTS: added `INCLUDE_CROSS_SESSION_MISMATCH = True`
      gate + `OVERWRITE_CROSS_SESSION = None` per-cell overwrite
      override (None = inherit global `OVERWRITE`; "force" =
@@ -5772,7 +5772,7 @@ Sub-deliverable B reshaped mid-phase from 5-endpoint per-session-and-cohort to 3
 
 10. [`tests/test_animals.py`](../tests/test_animals.py) — `TestStrokeLaterality` class (6 tests covering default `"L"`, explicit `"R"`, invalid-value `ValueError`, helper method behavior, real YAML load).
 
-11. [`notebooks/15_spout_behavior_visual_gate.ipynb`](../notebooks/15_spout_behavior_visual_gate.ipynb) — orchestrator. USER INPUTS: `ANIMALS` (Sub-A cohort), `OVERWRITE`, `INCLUDE_PER_MOUSE_RENDERS`, `INCLUDE_COHORT_SUMMARY`, `PLOT_FAMILIES` (None = all 11), `ALIGN_TO_STROKE`, plus Sub-B INPUTS (`ANIMALS_SPOUT_CLOSE_VS_STD`, `CLEAN_ORPHANED_PER_SESSION_OUTPUTS`, `INCLUDE_SPOUT_CLOSE_VS_STD`). Renders Sub-A per-mouse (11 families × N animals) + Sub-A cohort tile-grids + Sub-B summary + Sub-B per_trial in a single execution.
+11. [`notebooks/01_spout_behavior_figures.ipynb`](../notebooks/01_spout_behavior_figures.ipynb) — orchestrator. USER INPUTS: `ANIMALS` (Sub-A cohort), `OVERWRITE`, `INCLUDE_PER_MOUSE_RENDERS`, `INCLUDE_COHORT_SUMMARY`, `PLOT_FAMILIES` (None = all 11), `ALIGN_TO_STROKE`, plus Sub-B INPUTS (`ANIMALS_SPOUT_CLOSE_VS_STD`, `CLEAN_ORPHANED_PER_SESSION_OUTPUTS`, `INCLUDE_SPOUT_CLOSE_VS_STD`). Renders Sub-A per-mouse (11 families × N animals) + Sub-A cohort tile-grids + Sub-B summary + Sub-B per_trial in a single execution.
 
 12. [`docs/DECISIONS.md`](DECISIONS.md) — 2026-05-13 entry (this commit's sibling): 9 decisions covering module structure (Decision 1), Outcome A verdict + cohort scope (Decision 2), 8 intentional deviations (Decision 3), Phase 9 stats forward-pointer (Decision 4), bare-vs-b scope-replacement context (Decision 5 — pointer to Decision 8), Task 0.5 cohort gaps (Decision 6), per-family verdict table (Decision 7), Sub-B scope replacement (Decision 8 — Addendum #1), per-trial renderer (Decision 9 — Addendum #8).
 
@@ -6448,7 +6448,7 @@ Per-(axis × comparison) confirmatory significance at v2:
 
 **Recovery-axis dominance:** 13/14 Bonferroni-pass — the headline result of Phase 9. Pattern is "transient deficit recovers" — pre_post collapsed-post weak, per-epoch strong.
 
-**recovery_trajectories plot family (Task 6, commit `682cefd`).** `src/stroke_orofacial/spout_behavior/recovery_trajectories.py::plot_recovery_trajectories_with_fit` + `visual_gate.py::render_recovery_trajectories` + `notebooks/15_spout_behavior_visual_gate.ipynb` `INCLUDE_RECOVERY_TRAJECTORIES` toggle. Per-mouse scatter + cohort LMM fit + bootstrap CI ribbon (clipped to per-animal x-range). Discharges Phase 8a.10 forward-pointer.
+**recovery_trajectories plot family (Task 6, commit `682cefd`).** `src/stroke_orofacial/spout_behavior/recovery_trajectories.py::plot_recovery_trajectories_with_fit` + `visual_gate.py::render_recovery_trajectories` + `notebooks/01_spout_behavior_figures.ipynb` `INCLUDE_RECOVERY_TRAJECTORIES` toggle. Per-mouse scatter + cohort LMM fit + bootstrap CI ribbon (clipped to per-animal x-range). Discharges Phase 8a.10 forward-pointer.
 
 **Task 7 figure family (commit `19c507b`).** `src/stroke_orofacial/stats/figures.py` + `scripts/phase_9_stats/build_task_7_figures.py`. **76 figures × 2 formats = 152 files** at `pipeline_outputs/stats/figures/`:
 - `headlines/<endpoint>/` — V1 per_session scatter + LMM, V2 per_bin mean/SEM, V3 per_epoch boxplot with Bonferroni-Holm asterisk annotations (21 figures for 7 headline kinematics)
@@ -6591,7 +6591,7 @@ Per-(axis × comparison) confirmatory significance at v2:
 - **(c) Per-endpoint row counts:** byte-equal pre vs post Event B (24,023 rows/endpoint × 23 tongue endpoints cohort-wide). Expected — schema row count = trials emitted; trials unchanged.
 - **(d) PS54 acute lick1_y_peak distribution:** MATERIAL DOWNSHIFT confirmed post-Phase-7e.1. n=245→26, mean 188.70→110.87 px, median 201.71→112.85 (Δ−88.86). 89% of severe-acute "licks" were artifact peaks rejected by v7 gate stack.
 - **(d)-extended (velocity endpoints):** DRAMATIC 8-37× downshift post-Phase-7e.2. Pre-7e.2 PS54 acute mean velocities 15-17 thousand px/s (biologically impossible, ~5 m/s movement, artifactual gradients across baseline-fill boundaries); post-7e.2 200-2,700 px/s (physiologically plausible).
-- **(e) Stale-output audit comprehensiveness:** PASS. `.scratch_chore_phase_7e_reemit/stale_output_audit.md` covers every tongue-relevant subtree under `pipeline_outputs/`; 0 unclassified subtrees; 0 uncovered write sites; 1 notebook flagged for Cowork re-execution (`15_spout_behavior_visual_gate.ipynb`).
+- **(e) Stale-output audit comprehensiveness:** PASS. `.scratch_chore_phase_7e_reemit/stale_output_audit.md` covers every tongue-relevant subtree under `pipeline_outputs/`; 0 unclassified subtrees; 0 uncovered write sites; 1 notebook flagged for Cowork re-execution (`01_spout_behavior_figures.ipynb`).
 - **(f) Adjudication closure:** PASS. Stage 6.4 destructive cleanup executed per per-invocation Priya approval. interpolated_traces classified (b) NOT-A-CONSUMER. phase_9_1_figures reclassified (d) IN-FLIGHT pending phase/9.1-figures branch merge.
 
 **Behavior differences vs. legacy:**
