@@ -431,6 +431,94 @@ none of which are part of the bp-level filter chain.**
 
 ## 10. Addenda
 
+### Addendum #4 — corrected mechanism (post-Stage-5, 2026-05-27)
+
+User flagged during Stage 5 cohort burn that the PS46 tone-aligned-all
+proportion_diff "cleaned" heatmap looked NOISIER than the legacy. Initial
+hypothesis ("y=0 baseline-fill mass distorts legacy") was investigated
+via a per-mode census at production parameters
+(`lik >= 0.5`, `x_range = [-150, 150]` for tongue_spout_midpoint).
+
+**Original framing in §1 + F-P-1 audit verdict — INCOMPLETE:**
+
+> "Production filters by per-bp lik >= 0.80; the v7 cleaned_traces
+> cleanup added is_baseline_fill which marks frames where the bodypart
+> was not detected with placeholder y_final=0.0."
+
+The §1 framing called out lik=0.80, but production tongue + jaw actually
+use lik=0.50 (per `dlc_spatial_tone_aligned.families`). At lik=0.50,
+the contamination story is more nuanced.
+
+**Census at correct production parameters:**
+
+| session | label | legacy admits | cleaned admits | bf-with-lik≥0.5 | interp_fill-with-lik<0.5 |
+|---|---|---:|---:|---:|---:|
+| PS46 2025-03-07 | moderate, pre | 98,739 | 111,404 | 518 | 13,183 |
+| PS46 2025-03-25 | moderate, post | 109,357 | 127,566 | 597 | 18,806 |
+| PS54 2025-04-21 | severe, pre | 56,663 | 81,797 | 2,127 | 27,261 |
+| **PS54 2025-05-06** | **severe, F-P-1 acute** | **9,362** | **7,470** | **3,184** | **1,292** |
+| PS54 2025-06-13 | severe, chronic | 50,699 | 62,874 | 324 | 12,499 |
+
+**Two regimes, two different effects:**
+
+1. **Typical sessions (most of cohort, including all PS46 + non-acute
+   PS54):** baseline-fill contamination is small (<1% of legacy frames).
+   The cleaned-vs-legacy R3 vs R1 difference is dominated by the
+   `is_interp_fill=True` frames where DLC lik<0.5 but the cleanup
+   pipeline imputed x/y via short-gap interpolation from confident
+   neighbors. Cleaned admits ~1.1-1.4× more frames than legacy,
+   adding the interpolated trajectory between high-confidence
+   detections. The "noisier" cleaned PD on PS46 = the interp_fill tail
+   adding mass to bins that legacy left empty. **Feature, not bug.**
+
+2. **Extreme-deficit sessions (e.g. PS54 2025-05-06 acute, 99.17%
+   baseline_fill):** baseline-fill contamination IS material. Legacy
+   includes 3,184 bf frames at lik>=0.5 out of 9,362 admitted = 34%
+   bf contamination. Cleaned excludes them, leaving 7,470 real-only
+   frames. **F-P-1's "baseline-fill mass distorts legacy" framing
+   applies HERE specifically** — these are the cases where the audit
+   measured W2=111.79 (PS54 tongue tone_R).
+
+**Why R3 (drop lik gate) is still correct:**
+
+The cleaned_traces pipeline ALREADY applies `lik >= 0.5` as part of its
+is-real classification. **Every** original-DLC-detection row
+(`is_interp_fill=False, is_baseline_fill=False`) has `likelihood_raw >=
+0.50` — verified across 5 test sessions on both tongue + jaw, zero
+exceptions.
+
+Frames classified by cleaned_traces as `is_interp_fill=True` have
+`likelihood_raw < 0.50` BUT carry valid imputed x/y values from short-
+gap interpolation. Re-applying the lik gate in spatial (the R2 hybrid)
+would WRONGLY exclude those legitimate interpolated positions.
+
+R3 (drop lik gate + apply `~is_baseline_fill`) is correct because:
+- The cleaned_traces pipeline already validated `lik >= 0.5` upstream
+  for is-real classification
+- Cleaned admits both DLC-confident detections AND short-gap
+  interpolated imputations
+- Excluding interp_fill frames would discard the dense trajectory
+  between confident detections
+
+**Implication for downstream paper figures:**
+
+The cleaned_trace cohort outputs at
+`dlc_kinematics/<tree>_cleaned_trace/` contain:
+- The DLC-confident detections (lik>=0.5, also in legacy)
+- The interpolated imputations (interp_fill=True, NOT in legacy)
+- NOT the placeholder mass (is_baseline_fill=True, excluded)
+
+This is a slightly different population from "legacy with bf removed"
+(R2 hybrid). Downstream consumers (Q-lock 12 phenotype-pooled
+proportion_diff figures) should understand they're seeing the
+interpolated-trajectory-augmented distribution, not just the lik-gate-
+filtered detection distribution.
+
+**No code or path changes — the routing is correct.** This addendum
+records the corrected mechanism understanding so future readers
+(including the Q-lock 12 implementer) don't inherit the §1 / F-P-1
+"y=0 baseline-fill mass" framing as the only mechanism.
+
 ### Addendum #3 — proportion_diff family confirmed in scope + path convention locked to `dlc_kinematics/` (Priya 2026-05-27)
 
 **Scope confirmation (Priya 2026-05-27 question):** The Phase 7c.2
