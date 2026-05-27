@@ -113,6 +113,87 @@ _AXIS_LABEL = {"tongue": "Tongue", "jaw": "Jaw"}
 
 _KNOWN_BODYPARTS = ("tongue", "jaw")
 
+# Display label for cleaned-trace data sources (Phase 7f v3.4 jaw cleanup).
+# Stamped into ``SessionAggregates.interp_version`` (used in plot titles +
+# cohort source provenance) when the per-bodypart ``use_cleaned_traces``
+# flag routes the loader through ``resolver.cleaned_trace(...)`` instead
+# of ``resolver.interpolated_trace(...)``. Mirrors the
+# ``INTERPOLATION_VERSION_CLEANED`` constant in jaw_pertrial.py.
+_CLEANED_TRACE_SOURCE_LABEL = "v3.4-cleaned"
+
+
+def _use_cleaned_traces(bodypart: str, params: dict[str, Any] | None) -> bool:
+    """Return True if the bodypart-scoped ``use_cleaned_traces`` flag is set.
+
+    Per-bodypart defaults: True for jaw (Phase 7f v3.4 cleanup is the
+    canonical jaw trace source post-2026-05-26 lock), False for tongue
+    (cleaned_traces semantics differ — Phase 7e tongue cleanup writes a
+    different schema). When ``params`` is None, returns the default. Set
+    ``dlc_kinematics.<bodypart>.use_cleaned_traces: false`` in params to
+    force the legacy ``interpolated_traces/`` loader (A/B audit hook).
+    """
+    default = bodypart == "jaw"
+    if params is None:
+        return default
+    return bool(
+        params.get("dlc_kinematics", {})
+        .get(bodypart, {})
+        .get("use_cleaned_traces", default),
+    )
+
+
+def _resolve_trace_path(
+    bodypart: str, animal: str, date: datetime.date,
+    resolver: PathResolver, params: dict[str, Any] | None,
+) -> Path:
+    """Return the active per-(bodypart, animal, date) trace parquet path.
+
+    Routes to ``resolver.cleaned_trace(...)`` when the bodypart-scoped
+    ``use_cleaned_traces`` flag is on, ``resolver.interpolated_trace(...)``
+    otherwise. The cleaned_traces parquet schema is a v5p3-compatible
+    drop-in (same ``frame_idx`` / ``x_final`` / ``y_final`` columns + same
+    ``fps`` / ``n_frames`` metadata keys), so callers don't change.
+    """
+    if _use_cleaned_traces(bodypart, params):
+        return resolver.cleaned_trace(
+            bodypart=bodypart, animal=animal, date=date,
+        )
+    return resolver.interpolated_trace(
+        bodypart=bodypart, animal=animal, date=date,
+    )
+
+
+def _resolve_trace_dir(
+    bodypart: str, animal: str,
+    resolver: PathResolver, params: dict[str, Any] | None,
+) -> Path:
+    """Return the per-(bodypart, animal) trace directory for enumeration.
+
+    Routes to ``cleaned_traces/<bodypart>/<animal>/`` when the flag is on
+    (matches ``resolver.cleaned_trace`` layout under
+    ``pipeline_outputs/dlc_kinematics/``), ``resolver.interpolated_trace_dir``
+    otherwise. Used by :func:`_eligible_dates` to enumerate the inventory.
+    """
+    if _use_cleaned_traces(bodypart, params):
+        return (
+            resolver.pipeline_outputs(subdir="dlc_kinematics")
+            / "cleaned_traces" / bodypart / animal
+        )
+    return resolver.interpolated_trace_dir(bodypart, animal)
+
+
+def _trace_source_label(
+    bodypart: str, params: dict[str, Any] | None, parquet_interp_v: str,
+) -> str:
+    """Display label for the active trace source. Used by SessionAggregates
+    + cohort plot titles. When the cleaned-traces flag is on, overrides
+    the raw parquet's ``interpolation_version`` (which Step 1 preserves
+    as ``v5p3`` for schema compatibility) with the Phase 7f v3.4 cleaned
+    label."""
+    if _use_cleaned_traces(bodypart, params):
+        return _CLEANED_TRACE_SOURCE_LABEL
+    return parquet_interp_v
+
 
 # ===========================================================================
 # Public dataclasses
@@ -508,6 +589,7 @@ def _derive_reward_events_for_bodypart(
     date: datetime.date,
     resolver: PathResolver,
     manifest: SessionManifest,
+    params: dict[str, Any] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """Return ``(centers_L, centers_R, n_frames)`` for one session.
 
@@ -522,11 +604,17 @@ def _derive_reward_events_for_bodypart(
     Parameters
     ----------
     bodypart : {"tongue", "jaw"}
-        Which 7a.2 parquet to read for n_frames metadata. Functionally
-        the rewards are session-level (not bodypart-specific), but we
-        pin to the same bodypart's parquet for invariant validation.
+        Which parquet to read for n_frames metadata. Functionally the
+        rewards are session-level (not bodypart-specific), but we pin to
+        the same bodypart's parquet for invariant validation.
     animal, date, resolver, manifest
         Standard 7a.x signature.
+    params
+        When provided, the bodypart-scoped ``use_cleaned_traces`` flag
+        selects between ``cleaned_traces/`` (Phase 7f v3.4) and
+        ``interpolated_traces/`` (v5p3 raw) as the parquet source for
+        n_frames lookup. Defaults to the per-bodypart fallback when None
+        (see :func:`_use_cleaned_traces`).
 
     Returns
     -------
@@ -537,14 +625,14 @@ def _derive_reward_events_for_bodypart(
     n_frames : int
         Cam-frame count for the session (parquet metadata).
     """
-    parquet_path = resolver.interpolated_trace(
-        bodypart=bodypart, animal=animal, date=date,
-    )
+    parquet_path = _resolve_trace_path(bodypart, animal, date, resolver, params)
     if not parquet_path.exists():
         raise FileNotFoundError(
-            f"7a.2 {bodypart} interpolated_traces parquet missing for "
+            f"{bodypart} trace parquet missing for "
             f"{animal}/{date.isoformat()}: expected at {parquet_path}. "
-            f"Run build_interpolated_trace first.",
+            f"Run build_interpolated_trace first (or, for jaw, the Phase "
+            f"7f Step 1 cleanup driver) or set "
+            f"dlc_kinematics.{bodypart}.use_cleaned_traces=false.",
         )
     schema = pq.read_schema(parquet_path)
     raw_meta = schema.metadata or {}
@@ -627,6 +715,7 @@ def _load_session_aggregates(
     pre_ms: float,
     post_ms: float,
     animal_info: AnimalInfo | None = None,
+    params: dict[str, Any] | None = None,
 ) -> SessionAggregates:
     """Build per-session aggregates from 7a.2 parquet + spout_behavior rewards.
 
@@ -658,24 +747,25 @@ def _load_session_aggregates(
         analysis_context=f"dlc.kinematics.{bodypart}",
     )
 
-    parquet_path = resolver.interpolated_trace(
-        bodypart=bodypart, animal=animal, date=date,
+    parquet_path = _resolve_trace_path(
+        bodypart, animal, date, resolver, params,
     )
     table = pq.read_table(parquet_path)
     raw_meta = table.schema.metadata or {}
 
     fps = float(raw_meta[b"fps"].decode())
     n_frames = int(raw_meta[b"n_frames"].decode())
-    interp_version = raw_meta.get(
-        b"interpolation_version", b"unknown",
-    ).decode()
+    interp_version = _trace_source_label(
+        bodypart, params,
+        raw_meta.get(b"interpolation_version", b"unknown").decode(),
+    )
 
     df = table.to_pandas()
     x_final = df["x_final"].to_numpy(dtype=float)
     y_final = df["y_final"].to_numpy(dtype=float)
 
     centers_L, centers_R, _ = _derive_reward_events_for_bodypart(
-        bodypart, animal, date, resolver, manifest,
+        bodypart, animal, date, resolver, manifest, params=params,
     )
 
     pre_f = int(round((pre_ms / 1000.0) * fps))
@@ -734,14 +824,17 @@ def _eligible_dates(
     animal_info: AnimalInfo | None = None,
     prepost_mode: str = "both",
     rel_day_range: tuple[int, int] | None = None,
+    params: dict[str, Any] | None = None,
 ) -> list[datetime.date]:
-    """Filtered chronological list of dates with a 7a.2 parquet + included.
+    """Filtered chronological list of dates with an on-disk trace parquet.
 
     Mirrors the legacy date-filtering logic (lines 574-618 of vendored
-    cell 31): keeps dates with an interpolated_trace parquet on disk,
-    drops excluded sessions per ``animal_info.is_excluded``, applies
-    ``PREPOST_MODE`` / ``REL_DAY_RANGE`` filtering, and sorts
-    chronologically (or by rel_day if a stroke_date is set).
+    cell 31): keeps dates with a trace parquet on disk (cleaned_traces
+    or interpolated_traces, per the bodypart-scoped
+    ``use_cleaned_traces`` flag), drops excluded sessions per
+    ``animal_info.is_excluded``, applies ``PREPOST_MODE`` /
+    ``REL_DAY_RANGE`` filtering, and sorts chronologically (or by
+    rel_day if a stroke_date is set).
     """
     if animal_info is None:
         try:
@@ -753,11 +846,11 @@ def _eligible_dates(
         d0 = animal_info.session_start
         d1 = animal_info.session_end
     else:
-        # Fall back to the 7a.2 parquet inventory if no animals.yaml entry.
+        # Fall back to the trace inventory if no animals.yaml entry.
         d0 = datetime.date(2025, 1, 1)
         d1 = datetime.date(2026, 12, 31)
 
-    parquet_dir = resolver.interpolated_trace_dir(bodypart, animal)
+    parquet_dir = _resolve_trace_dir(bodypart, animal, resolver, params)
     if not parquet_dir.exists():
         return []
 
@@ -857,6 +950,7 @@ def build_cohort_aggregates(
         animal_info=animal_info,
         prepost_mode=prepost_mode,
         rel_day_range=rel_day_range,
+        params=params,
     )
     if not dates:
         return None
@@ -868,6 +962,7 @@ def build_cohort_aggregates(
                 bodypart, animal, d, resolver,
                 pre_ms=tone_pre_ms, post_ms=tone_post_ms,
                 animal_info=animal_info,
+                params=params,
             )
         except FileNotFoundError:
             # Date had a parquet but missing reward inputs (alignment
@@ -2232,20 +2327,24 @@ def _load_session_xy_filtered(
     *,
     do_x_range_filter: bool,
     xlim_pm_px: float,
+    params: dict[str, Any] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, float, int, str]:
-    """Read the 7a.2 parquet's ``x_final`` / ``y_final`` arrays + metadata,
-    optionally clipping the x-range (legacy mean_trace ``DO_X_RANGE_FILTER``).
+    """Read the active trace parquet's ``x_final`` / ``y_final`` arrays +
+    metadata, optionally clipping the x-range (legacy mean_trace
+    ``DO_X_RANGE_FILTER``). Honors the bodypart-scoped
+    ``use_cleaned_traces`` flag for the parquet source.
     """
-    parquet_path = resolver.interpolated_trace(
-        bodypart=bodypart, animal=animal, date=date,
+    parquet_path = _resolve_trace_path(
+        bodypart, animal, date, resolver, params,
     )
     table = pq.read_table(parquet_path)
     raw_meta = table.schema.metadata or {}
     fps = float(raw_meta[b"fps"].decode())
     n_frames = int(raw_meta[b"n_frames"].decode())
-    interp_version = raw_meta.get(
-        b"interpolation_version", b"unknown",
-    ).decode()
+    interp_version = _trace_source_label(
+        bodypart, params,
+        raw_meta.get(b"interpolation_version", b"unknown").decode(),
+    )
     df = table.to_pandas()
     x = df["x_final"].to_numpy(dtype=float)
     y = df["y_final"].to_numpy(dtype=float)
@@ -2373,6 +2472,7 @@ def build_mean_trace_cohort(
         animal_info=animal_info,
         prepost_mode=prepost_mode,
         rel_day_range=rel_day_range,
+        params=params,
     )
     if not dates:
         return None
@@ -2386,6 +2486,7 @@ def build_mean_trace_cohort(
                 bodypart, animal, d, resolver,
                 do_x_range_filter=do_x_range_filter,
                 xlim_pm_px=xlim_pm_px,
+                params=params,
             )
         except FileNotFoundError:
             continue
@@ -2405,7 +2506,7 @@ def build_mean_trace_cohort(
         )
         try:
             centers_L, centers_R, _ = _derive_reward_events_for_bodypart(
-                bodypart, animal, d, resolver, manifest,
+                bodypart, animal, d, resolver, manifest, params=params,
             )
         except FileNotFoundError:
             continue
