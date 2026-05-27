@@ -141,7 +141,12 @@ For each `(session, scope, bodypart)` cell (= 24 cells) we compute on the
 
 1. **Wasserstein-1** (`scipy.stats.wasserstein_distance_nd`) between R1 and
    R3 distributions. Pixel-coordinate ground space; units are centered px.
-2. **KL divergence** `KL(R3 ‖ R1)` with `epsilon = 1e-12` added to R1 to
+2. **Wasserstein-2** — `sqrt(sum_i p_i * d_i^2)` over the optimal transport
+   plan; matches the W-2 metric the Phase 9 stats analysis used (carried
+   over from there so audit verdicts speak the same metric language as
+   the downstream stats outputs). Units: centered px (RMS-style sensitivity
+   to longer-range mass transport, vs. W-1's L1 sensitivity).
+3. **KL divergence** `KL(R3 ‖ R1)` with `epsilon = 1e-12` added to R1 to
    avoid log-of-zero where R1 has zero mass but R3 does not. (`R3 ‖ R1`
    direction: R3 is the cleaner reference; KL tells us how much "extra
    information" R1's distribution carries that R3 doesn't agree with.)
@@ -159,18 +164,21 @@ We also record per-cell:
 
 ### Verdict logic
 
-Threshold `W_max` and `KL_max` TBD by Priya (Step 9). Default proposal:
-W_max = 5 px, KL_max = 0.1 nats. Per-cell verdict:
+Thresholds locked in Addendum #1 (Priya 2026-05-27):
+`W1_max = 5.0 px`, `W2_max = 5.0 px`, `KL_max = 0.1 nats`. Per-cell verdict:
 
-- `max(W_cell) < W_max` AND `max(KL_cell) < KL_max` → **PASS**: production
-  R1 spatial outputs are not meaningfully different from R3; no action.
-- Either exceeded → **FAIL**: open a Phase 7e.x ticket to wire
-  `~is_baseline_fill` into `pixel_bins.get_masked_xy` + drop the
-  `likelihood_threshold` gate from `render_on_demand` callers.
+- `W1_cell < W1_max` AND `W2_cell < W2_max` AND `KL_cell < KL_max` →
+  **PASS**: production R1 spatial outputs are not meaningfully different
+  from R3 for this cell.
+- ANY threshold exceeded → **FAIL** for this cell.
 
-The verdict is a single OR over all 24 cells, but we surface every cell's
-(W, KL) value in the audit report so a partial result (e.g. tongue FAILs,
-jaw PASSes) supports a bodypart-scoped fix rather than a wholesale change.
+Audit-wide verdict is a single OR over all 24 cells (any FAIL → audit
+FAILs), but we surface every cell's (W1, W2, KL) value in the audit report
+so a partial result (e.g. tongue FAILs, jaw PASSes) supports a
+bodypart-scoped fix rather than a wholesale change. On audit FAIL we open
+a Phase 7e.x ticket to wire `~is_baseline_fill` into
+`pixel_bins.get_masked_xy` + drop the `likelihood_threshold` gate from
+`render_on_demand` callers.
 
 ---
 
@@ -287,4 +295,17 @@ Implementation outline:
 
 ## 11. Addenda
 
-(none yet — Addendum #1 will record Priya's Step-9 inputs once provided)
+### Addendum #1 — Step-9 inputs locked (Priya, 2026-05-27)
+
+| input | locked value | note |
+|---|---|---|
+| `W1_max` | **5.0 px** | accepted default; ≈ one nbins=80 bin width on ~250-px field |
+| `W2_max` | **5.0 px** | added per Priya: Phase 9 stats analysis used W-2 |
+| `KL_max` | **0.1 nats** | accepted default; standard "small-but-non-negligible" threshold |
+| PS54 acute date | **2025-05-06** | +6d post-stroke (stroke 2025-04-30); severe phenotype |
+| PS51 acute date | **2025-05-06** | +7d post-stroke (stroke 2025-04-29); mod-severe phenotype |
+| PS47 acute date | **2025-03-19** | +6d post-stroke (stroke 2025-03-13); mild phenotype |
+| tongue × center_mode | **`spout_midpoint`** | matches Phase 7e kinematic-side default |
+| jaw × center_mode | **`eye_midpoint`** | matches Phase 7e kinematic-side default |
+
+Audit compute proceeds; §7 (STOP for inputs) is now closed.
