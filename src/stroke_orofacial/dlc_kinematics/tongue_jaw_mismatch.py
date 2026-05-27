@@ -664,10 +664,25 @@ def _load_bodypart_y_final(
                 f"Run build_tongue_pertrial or jaw equivalent first.",
             )
         df = pd.read_parquet(path, columns=["y_final", "is_baseline_fill"])
-        schema = pq.read_schema(path)
-        raw_meta = schema.metadata or {}
-        fps = float(raw_meta[b"fps"].decode("utf-8"))
-        n_frames = int(raw_meta[b"n_frames"].decode("utf-8"))
+        # cleaned_traces parquets from different writers carry different
+        # metadata schemas (jaw cleaned_traces from Phase 7f Step 1 has
+        # fps + n_frames; tongue cleaned_traces from Phase 7e Stage 1 has
+        # only algorithm_version + feature_extraction_version). Try
+        # cleaned_traces metadata first; fall back to interpolated_traces
+        # metadata (sibling source, always carries fps + n_frames).
+        cleaned_schema = pq.read_schema(path)
+        cleaned_meta = cleaned_schema.metadata or {}
+        if b"fps" in cleaned_meta and b"n_frames" in cleaned_meta:
+            fps = float(cleaned_meta[b"fps"].decode("utf-8"))
+            n_frames = int(cleaned_meta[b"n_frames"].decode("utf-8"))
+        else:
+            interp_path = resolver.interpolated_trace(
+                bodypart=bodypart, animal=animal, date=date,
+            )
+            schema = pq.read_schema(interp_path)
+            raw_meta = schema.metadata or {}
+            fps = float(raw_meta[b"fps"].decode("utf-8"))
+            n_frames = int(raw_meta[b"n_frames"].decode("utf-8"))
         y_final = df["y_final"].to_numpy(dtype=np.float64, copy=True)
         is_baseline_fill = df["is_baseline_fill"].to_numpy(dtype=bool, copy=False)
         y_final[is_baseline_fill] = np.nan
