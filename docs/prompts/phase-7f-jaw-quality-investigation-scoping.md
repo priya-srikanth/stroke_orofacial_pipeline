@@ -57,6 +57,69 @@
 > is where the cluster + frame artifacts hide — cohort means understate
 > the contamination.
 
+> **AMENDMENT 2026-05-26 #12 (v3.4 re-emit Step 1 complete — cleaned_traces
+> written for 8-animal cohort).** Per Priya 2026-05-26 ("proceed with full
+> re-emit"), Step 1 of Phase 7f Option B has been executed on the
+> investigation branch:
+>
+> - **231 sessions × 8 animals re-emitted in 8.3 min** (0 failures, 144
+>   skipped — secondary-spout sessions + missing v5p3 source parquets).
+> - **Output path:** `dlc_kinematics/cleaned_traces/jaw/<animal>/<YYYYMMDD>.parquet`
+>   on MICROSCOPE — uses tongue's `resolver.cleaned_trace("jaw", ...)`
+>   path resolver method.
+> - **Schema:** v5p3-compatible drop-in (`frame_idx`, `x_final`,
+>   `y_final`, `likelihood_raw`, `is_interp_fill`, `is_baseline_fill`,
+>   `fill_method`) — downstream consumers swap parquet path; no schema
+>   migration needed.
+> - **Cleanup behavior:** re-PCHIP (NOT tongue's wipe-to-y=0 — jaw is
+>   anatomically present between licks; re-PCHIP is semantically correct).
+>   Both x and y re-PCHIP'd from the SAME surviving anchor index set
+>   (co-temporally consistent (x, y) pairs).
+> - **Metadata:** preserved all v5p3 keys + added `cleanup_version="v3.4"`
+>   and `cleanup_constants_json` (the full constant block as JSON).
+>
+> **Parity validation** (re-emit cleaned parquet vs audit's
+> `per_trial_cleanup_v3p4.parquet`):
+>
+> - 22,363 total trials checked
+> - 713 mismatches (3.19% of trials with |diff| > 0.01 px)
+> - Cohort-wide median |diff| = 1.16 px, p90 = 7.3 px, max = 51 px
+> - **Severe-acute (paper narrative)**: 20/2316 mismatches (0.86%);
+>   median 2.25 px, max 22.6 px — load-bearing cell preserved
+> - 54 qc flips cohort-wide (0.24% of trials)
+>
+> **Root cause** (not a re-emit bug): the audit computed `baseline_mean`
+> from the ORIGINAL v5p3 trace; the cleaned parquet's `baseline_mean`
+> is what `jaw_pertrial` will compute from the cleaned trace — slightly
+> shifted toward 0 if R1/R2/R3 wiped any frames in the [-500, 0]ms
+> baseline window. **The re-emit's numbers are production-correct**
+> (what jaw_pertrial will see). Audit numbers were a forward-projection
+> approximation. Mismatches concentrated in mild/moderate cells where
+> the cleanup wipes more frames; severe-acute barely affected.
+>
+> **Step 1 artifacts** (in scratch, gitignored):
+> - `.scratch_phase_7f_scoping/reemit_jaw_clean_traces.py` (production re-emit script)
+> - `.scratch_phase_7f_scoping/validate_reemit_parity.py` (parity validator)
+> - `.scratch_phase_7f_scoping/reemit_full_cohort.log`
+> - `.scratch_phase_7f_scoping/reemit_parity_mismatches.csv`
+>
+> **Step 1 production artifacts** (on MICROSCOPE):
+> `pipeline_outputs/dlc_kinematics/cleaned_traces/jaw/{PS46-50,PS51,PS54,PS55}/<YYYYMMDD>.parquet`
+> — 231 files.
+>
+> **Next: Steps 2-6 (separate Phase 7f phase branch + kickoff doc):**
+> 1. Step 2 — re-emit jaw_pertrial scalars reading from cleaned_traces
+> 2. Step 3 — re-emit `tongue_jaw_mismatch` (consumes new `jaw_pass_qc`)
+> 3. Step 4 — re-emit mean/SEM jaw cross-session traces + videos
+> 4. Step 5 — re-materialize Phase 9 stats inputs + results for jaw
+>    endpoints (axis 1 jaw_peak_* family; recovery LMM)
+> 5. Step 6 — re-render figures (V4/V5, recovery_trajectories,
+>    mismatch candidate-rate plots)
+>
+> Each step touches production code and stats. Steps 2-6 should land
+> on `phase/7f-jaw-cleanup-cohort-reemit` (off main) with a proper
+> kickoff doc, not piled onto the investigation branch.
+
 > **AMENDMENT 2026-05-26 #11 (v3.4: add R1-x bidirectional ceiling at
 > ±40 px from baseline_mean_x).** Per Priya 2026-05-26 ("can we add a
 > filter for x values > 40 px above/below baseline?"), v3.4 = v3.3 +
