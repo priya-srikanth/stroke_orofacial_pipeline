@@ -1254,6 +1254,126 @@ class PathResolver:
             / f"heatmap_{date_str}.npz"
         )
 
+    # -----------------------------------------------------------------
+    # Phase 7e.4 (Addendum #3) — cleaned_trace parallel paths.
+    # Six paired-with-legacy resolvers that land outputs under
+    # ``dlc_kinematics/<artifact>_cleaned_trace/`` (NOT the
+    # ``dlc_analysis/`` family that legacy Phase 7c.2 / Phase 9 spatial
+    # outputs live in). The legacy path family is preserved untouched
+    # as the historical audit trail; cleaned_trace consumers (default
+    # post-7e.4) write to these new paths.
+    #
+    # Q-lock 15 marker convention (Priya 2026-05-26): each path carries
+    # the ``_cleaned_trace`` token at BOTH the directory level AND the
+    # filename level so a misplaced file still self-identifies.
+    # -----------------------------------------------------------------
+    def tone_aligned_heatmap_npz_cleaned_trace(
+        self,
+        bodypart: str,
+        center_mode: str,
+        trial_group: str,
+        window_ms: tuple[int, int],
+        animal: str,
+        date: datetime.date,
+    ) -> Path:
+        """Phase 7e.4 parallel of :meth:`spatial_tone_aligned_npz` under
+        ``dlc_kinematics/tone_aligned_heatmaps_cleaned_trace/``. Filename
+        suffix ``_cleaned_trace`` per Q-lock 15.2."""
+        win_tag = f"{int(window_ms[0])}to{int(window_ms[1])}ms"
+        date_str = date.strftime("%Y%m%d")
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "tone_aligned_heatmaps_cleaned_trace"
+            / f"{bodypart}_{center_mode}"
+            / f"trials-{trial_group}_{win_tag}"
+            / animal
+            / f"heatmap_{date_str}_cleaned_trace.npz"
+        )
+
+    def whole_session_heatmap_npz_cleaned_trace(
+        self,
+        bodypart: str,
+        center_mode: str,
+        animal: str,
+        date: datetime.date,
+    ) -> Path:
+        """Phase 7e.4 whole-session heatmap NPZ cleaned_trace path."""
+        date_str = date.strftime("%Y%m%d")
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "whole_session_heatmaps_cleaned_trace"
+            / f"{bodypart}_{center_mode}"
+            / animal
+            / f"heatmap_{date_str}_cleaned_trace.npz"
+        )
+
+    def individual_session_heatmap_png_cleaned_trace(
+        self,
+        family_entry: str,
+        scope: str,
+        animal: str,
+        date: datetime.date,
+    ) -> Path:
+        """Phase 7c.2 individual-session heatmap PNG, cleaned_trace
+        variant. ``family_entry`` is a key from
+        ``dlc_spatial_tone_aligned.families``; ``scope`` is
+        ``"tone_aligned"`` or ``"whole_session"``."""
+        date_str = date.strftime("%Y%m%d")
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "individual_session_heatmaps_cleaned_trace"
+            / f"{family_entry}_{scope}"
+            / animal
+            / f"heatmap_{date_str}_cleaned_trace.png"
+        )
+
+    def binned_sessions_heatmap_png_cleaned_trace(
+        self,
+        family_entry: str,
+        scope: str,
+        bin_size_days: int,
+        animal: str,
+        rel_day_bin_label: str,
+    ) -> Path:
+        """Phase 7c.2 binned-sessions heatmap PNG, cleaned_trace variant.
+        ``rel_day_bin_label`` is the
+        :func:`_compute_rel_day_bin_label` output (e.g. ``"d+10_to_d+19"``)."""
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "binned_sessions_heatmaps_cleaned_trace"
+            / f"{family_entry}_{scope}_{int(bin_size_days)}d"
+            / animal
+            / f"heatmap_{rel_day_bin_label}_cleaned_trace.png"
+        )
+
+    def proportion_diff_heatmap_png_cleaned_trace(
+        self,
+        family_entry: str,
+        scope: str,
+        bin_size_days: int,
+        animal: str,
+        rel_day_bin_label: str,
+    ) -> Path:
+        """Phase 7c.2 proportion_diff PNG, cleaned_trace variant.
+        Consumed by Phase 9.1 Q-lock 12 phenotype-pooled
+        proportion_diff figure family."""
+        return (
+            self.pipeline_outputs(subdir="dlc_kinematics")
+            / "proportion_diff_cleaned_trace"
+            / f"{family_entry}_{scope}_{int(bin_size_days)}d"
+            / animal
+            / f"diff_{rel_day_bin_label}_cleaned_trace.png"
+        )
+
+    def phase_9_stats_spatial_cleaned_trace(self) -> Path:
+        """Phase 9 stats output root for cleaned_trace-derived spatial
+        statistics. Materialize-spatial driver writes here when
+        ``use_v7_cleaned=True`` (default)."""
+        return (
+            self.pipeline_outputs(subdir="phase_9_stats")
+            / "spatial_cleaned_trace"
+        )
+
     def dlc_centered_parquet_dir(
         self, center_mode: str, animal: str,
     ) -> Path:
