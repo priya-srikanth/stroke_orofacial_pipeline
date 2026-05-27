@@ -146,12 +146,49 @@ def _bin_dates_by_rel_day(
     return bins
 
 
+def _filter_dates_with_cleaned_traces(
+    animal: str, dates: list[dt.date], bodyparts: list[str],
+    resolver: PathResolver,
+) -> list[dt.date]:
+    """Phase 7e.4 — drop YAML-range dates that have no cleaned_traces
+    parquet for the family's bodyparts.
+
+    Under ``use_v7_cleaned=True``, the legacy emit-one-SVG-per-YAML-date
+    behavior (which produced "no data" placeholder SVGs for days without
+    DLC sessions) becomes misleading: those placeholders pretend the
+    cleaned_trace re-emit has output for dates that never had a
+    recording. This filter restricts the date list to dates with an
+    on-disk cleaned_traces parquet for **all** family bodyparts (so
+    composites + single-bp families behave the same).
+    """
+    kept: list[dt.date] = []
+    for d in dates:
+        all_present = True
+        for bp in bodyparts:
+            p = resolver.cleaned_trace(bodypart=bp, animal=animal, date=d)
+            if not p.exists():
+                all_present = False
+                break
+        if all_present:
+            kept.append(d)
+    return kept
+
+
 def _individual_session_out_path(
     resolver: PathResolver, scope: str, animal: str,
     family_entry: str, date: dt.date,
+    *, use_v7_cleaned: bool = True,
 ) -> Path:
     if scope == "tone_aligned":
+        if use_v7_cleaned:
+            return resolver.tone_aligned_heatmap_individual_session_path_cleaned_trace(
+                animal, family_entry, date,
+            )
         return resolver.tone_aligned_heatmap_individual_session_path(
+            animal, family_entry, date,
+        )
+    if use_v7_cleaned:
+        return resolver.whole_session_heatmap_individual_session_path_cleaned_trace(
             animal, family_entry, date,
         )
     return resolver.whole_session_heatmap_individual_session_path(
@@ -162,12 +199,21 @@ def _individual_session_out_path(
 def _binned_sessions_grid_out_path(
     resolver: PathResolver, scope: str, animal: str,
     family_entry: str, bin_size_days: int, trial_group: str,
+    *, use_v7_cleaned: bool = True,
 ) -> Path:
     """Q36 Addendum #34: binned_sessions grid SVG path. Tone-aligned has
     per-trial-group fanout; whole_session has only 'all'."""
     if scope == "tone_aligned":
+        if use_v7_cleaned:
+            return resolver.tone_aligned_heatmap_binned_sessions_path_cleaned_trace(
+                animal, family_entry, bin_size_days, trial_group,
+            )
         return resolver.tone_aligned_heatmap_binned_sessions_path(
             animal, family_entry, bin_size_days, trial_group,
+        )
+    if use_v7_cleaned:
+        return resolver.whole_session_heatmap_binned_sessions_path_cleaned_trace(
+            animal, family_entry, bin_size_days,
         )
     return resolver.whole_session_heatmap_binned_sessions_path(
         animal, family_entry, bin_size_days,
@@ -177,10 +223,19 @@ def _binned_sessions_grid_out_path(
 def _proportion_diff_out_path(
     resolver: PathResolver, scope: str, animal: str, family_entry: str,
     bin_size_days: int, trial_group: str,
+    *, use_v7_cleaned: bool = True,
 ) -> Path:
     if scope == "tone_aligned":
+        if use_v7_cleaned:
+            return resolver.tone_aligned_heatmap_proportion_differences_path_cleaned_trace(
+                animal, family_entry, bin_size_days, trial_group,
+            )
         return resolver.tone_aligned_heatmap_proportion_differences_path(
             animal, family_entry, bin_size_days, trial_group,
+        )
+    if use_v7_cleaned:
+        return resolver.whole_session_heatmap_proportion_differences_path_cleaned_trace(
+            animal, family_entry, bin_size_days,
         )
     return resolver.whole_session_heatmap_proportion_differences_path(
         animal, family_entry, bin_size_days,
@@ -190,13 +245,43 @@ def _proportion_diff_out_path(
 def _unbalanced_ot_out_path(
     resolver: PathResolver, scope: str, animal: str, family_entry: str,
     bin_size_days: int, trial_group: str,
+    *, use_v7_cleaned: bool = True,
 ) -> Path:
     if scope == "tone_aligned":
+        if use_v7_cleaned:
+            return resolver.tone_aligned_heatmap_unbalanced_ot_path_cleaned_trace(
+                animal, family_entry, bin_size_days, trial_group,
+            )
         return resolver.tone_aligned_heatmap_unbalanced_ot_path(
             animal, family_entry, bin_size_days, trial_group,
         )
+    if use_v7_cleaned:
+        return resolver.whole_session_heatmap_unbalanced_ot_path_cleaned_trace(
+            animal, family_entry, bin_size_days,
+        )
     return resolver.whole_session_heatmap_unbalanced_ot_path(
         animal, family_entry, bin_size_days,
+    )
+
+
+# Phase 7e.4 Q-lock 15.3 — figure subtitle/footer marker.
+# Applied to every figure emitted under the cleaned_trace routing so
+# downstream paper/PDF exports retain provenance.
+_Q_LOCK_15_3_FIGURE_FOOTER = (
+    "Source: v7-cleaned-trace cohort re-emit (Phase 7e + Phase 7e.4)"
+)
+
+
+def _stamp_cleaned_trace_footer(fig, *, use_v7_cleaned: bool) -> None:
+    """Add the Q-lock 15.3 marker text as a right-bottom-corner figure
+    annotation when cleaned_trace routing is active. No-op when the
+    driver is in legacy mode."""
+    if not use_v7_cleaned:
+        return
+    fig.text(
+        0.99, 0.005, _Q_LOCK_15_3_FIGURE_FOOTER,
+        ha="right", va="bottom",
+        fontsize=7, color="dimgray", alpha=0.85,
     )
 
 
@@ -232,6 +317,7 @@ def _process_animal(
     *, only_pd_ot: bool = False, only_pd: bool = False,
     families_filter: tuple[str, ...] | None = None,
     plot_types_filter: tuple[str, ...] | None = None,
+    use_v7_cleaned: bool = True,
 ) -> dict:
     """Render all 4 plot types × 2 scopes × 7 families for one animal.
 
@@ -296,6 +382,28 @@ def _process_animal(
     bin_sizes_days = (int(animal_info.bin_days),)
     log.info(f"  Q23 bin_sizes_days = {bin_sizes_days} (animal_info.bin_days={animal_info.bin_days})")
     for family_entry in families_iter:
+        # Phase 7e.4: under use_v7_cleaned, drop YAML-range dates that
+        # have no cleaned_traces parquet for this family's bodyparts.
+        # The legacy emit-one-SVG-per-YAML-date behavior produced
+        # misleading "no data" placeholders for non-recording days; the
+        # cleaned_trace re-emit only emits for dates that actually have
+        # a v7 cleanup on disk. Legacy mode keeps the full date list
+        # so any --no-use-v7-cleaned re-run is byte-identical to the
+        # historical legacy outputs.
+        family_meta = EXPECTED_TONE_ALIGNED_FAMILIES[family_entry]
+        is_pattern_b = len(family_meta["bodyparts"]) > 1
+        if use_v7_cleaned:
+            family_bps = list(family_meta["bodyparts"])
+            dates_family = _filter_dates_with_cleaned_traces(
+                animal, dates, family_bps, resolver,
+            )
+            log.info(
+                f"  family={family_entry}: "
+                f"{len(dates_family)}/{len(dates)} dates have cleaned_traces "
+                f"for {family_bps}"
+            )
+        else:
+            dates_family = dates
         for scope in SCOPES:
             # ----- Q18 Pass 1 (per (family, scope)) — bucket-shared
             # LogNorm range for IS + BS. Q18 path uses scalar
@@ -304,8 +412,6 @@ def _process_animal(
             # norms for Pattern B composite families (whiskers +
             # fiducial pairs). One of the two precomputes runs per
             # (family, scope) depending on family arity. -----
-            family_meta = EXPECTED_TONE_ALIGNED_FAMILIES[family_entry]
-            is_pattern_b = len(family_meta["bodyparts"]) > 1
             # Q60 Addendum #50: IS rendered only when emit_is. The
             # IS Pass 1 precompute is now scoped to the IS render so
             # we don't pay its cost when only BS / PD / UOT is
@@ -318,7 +424,8 @@ def _process_animal(
                     try:
                         is_bucket_per_bp_norms = (
                             precompute_pattern_b_bucket_per_bp_norms_is(
-                                animal, family_entry, scope, dates, resolver,
+                                animal, family_entry, scope, dates_family,
+                                resolver,
                                 defaults=defaults, animal_info=animal_info,
                             )
                         )
@@ -330,7 +437,8 @@ def _process_animal(
                 else:
                     try:
                         is_arrays = precompute_individual_session_h_proportions(
-                            animal, family_entry, scope, dates, resolver,
+                            animal, family_entry, scope, dates_family,
+                            resolver,
                             defaults=defaults, animal_info=animal_info,
                         )
                         is_vmin, is_vmax = derive_log_norm_range(is_arrays)
@@ -338,7 +446,7 @@ def _process_animal(
                         log.error(f"    pre1/IS/{family_entry}/{scope}: {ex!r}")
                 # ----- Pass 2 — render IS for each (date) with the shared
                 # IS bucket range. -----
-                for date in dates:
+                for date in dates_family:
                     try:
                         fig = render_individual_session_heatmap(
                             animal=animal, family_entry=family_entry,
@@ -349,10 +457,14 @@ def _process_animal(
                         )
                         out = _individual_session_out_path(
                             resolver, scope, animal, family_entry, date,
+                            use_v7_cleaned=use_v7_cleaned,
                         )
                         # Q31 Addendum #28: bbox_inches="tight" prevents
                         # cut-off legends/colorbars from extending past
                         # the figure bbox at SVG export.
+                        _stamp_cleaned_trace_footer(
+                            fig, use_v7_cleaned=use_v7_cleaned,
+                        )
                         fig.savefig(out, format="svg", bbox_inches="tight")
                         plt.close(fig)
                         n_is += 1
@@ -372,7 +484,8 @@ def _process_animal(
                 for bin_size_days in bin_sizes_days:
                     try:
                         bs_arrays = precompute_binned_sessions_h_proportions(
-                            animal, family_entry, scope, bin_size_days, dates,
+                            animal, family_entry, scope, bin_size_days,
+                            dates_family,
                             resolver,
                             defaults=defaults, animal_info=animal_info,
                         )
@@ -389,7 +502,7 @@ def _process_animal(
                                 scope=scope,
                                 bin_size_days=bin_size_days,
                                 trial_group=tg,
-                                dates=dates,
+                                dates=dates_family,
                                 resolver=resolver,
                                 defaults=defaults, animal_info=animal_info,
                                 shared_vmin=bs_vmin, shared_vmax=bs_vmax,
@@ -397,10 +510,14 @@ def _process_animal(
                             out = _binned_sessions_grid_out_path(
                                 resolver, scope, animal, family_entry,
                                 bin_size_days, tg,
+                                use_v7_cleaned=use_v7_cleaned,
                             )
                             # Q31 Addendum #28: bbox_inches="tight" prevents
                             # cut-off legends/colorbars from extending past
                             # the figure bbox at SVG export.
+                            _stamp_cleaned_trace_footer(
+                                fig, use_v7_cleaned=use_v7_cleaned,
+                            )
                             fig.savefig(out, format="svg", bbox_inches="tight")
                             plt.close(fig)
                             n_bs += 1
@@ -434,7 +551,8 @@ def _process_animal(
                     pattern_b_pd_per_tg = {}
                     try:
                         pd_arrays = precompute_proportion_diffs(
-                            animal, family_entry, scope, bin_size_days, dates, resolver,
+                            animal, family_entry, scope, bin_size_days,
+                            dates_family, resolver,
                             defaults=defaults, animal_info=animal_info,
                         )
                         pd_vmax = derive_symmetric_diff_vmax(
@@ -451,7 +569,7 @@ def _process_animal(
                             pattern_b_pd_per_tg[tg] = (
                                 precompute_pattern_b_pd_bucket_per_layer_vmax(
                                     animal, family_entry, scope,
-                                    bin_size_days, dates, resolver,
+                                    bin_size_days, dates_family, resolver,
                                     trial_group=tg,
                                     defaults=defaults, animal_info=animal_info,
                                 )
@@ -468,7 +586,7 @@ def _process_animal(
                             scope=scope, resolver=resolver,
                             bin_size_days=bin_size_days,
                             trial_group=tg,
-                            dates=dates,
+                            dates=dates_family,
                             defaults=defaults, animal_info=animal_info,
                             shared_vmax=pd_vmax,
                             bucket_per_layer_vmax=(
@@ -478,10 +596,14 @@ def _process_animal(
                         out = _proportion_diff_out_path(
                             resolver, scope, animal, family_entry,
                             bin_size_days, tg,
+                            use_v7_cleaned=use_v7_cleaned,
                         )
                         # Q31 Addendum #28: bbox_inches="tight" prevents
                         # cut-off legends/colorbars from extending past
                         # the figure bbox at SVG export.
+                        _stamp_cleaned_trace_footer(
+                            fig, use_v7_cleaned=use_v7_cleaned,
+                        )
                         fig.savefig(out, format="svg", bbox_inches="tight")
                         plt.close(fig)
                         n_pd += 1
@@ -519,7 +641,8 @@ def _process_animal(
                     pattern_b_uot_per_tg = {}
                     try:
                         uot_plans = precompute_unbalanced_ot_plans(
-                            animal, family_entry, scope, bin_size_days, dates,
+                            animal, family_entry, scope, bin_size_days,
+                            dates_family,
                             resolver,
                             defaults=defaults, animal_info=animal_info,
                         )
@@ -542,7 +665,7 @@ def _process_animal(
                             pattern_b_uot_per_tg[tg] = (
                                 precompute_pattern_b_uot_bucket_per_layer_vmax(
                                     animal, family_entry, scope,
-                                    bin_size_days, dates, resolver,
+                                    bin_size_days, dates_family, resolver,
                                     trial_group=tg,
                                     defaults=defaults, animal_info=animal_info,
                                 )
@@ -559,7 +682,7 @@ def _process_animal(
                             scope=scope, resolver=resolver,
                             bin_size_days=bin_size_days,
                             trial_group=tg,
-                            dates=dates,
+                            dates=dates_family,
                             defaults=defaults, animal_info=animal_info,
                             shared_mass_change_vmax_abs=mass_change_vmax_abs,
                             shared_arrow_logmag_lo=logmag_lo,
@@ -571,10 +694,14 @@ def _process_animal(
                         out = _unbalanced_ot_out_path(
                             resolver, scope, animal, family_entry,
                             bin_size_days, tg,
+                            use_v7_cleaned=use_v7_cleaned,
                         )
                         # Q31 Addendum #28: bbox_inches="tight" prevents
                         # cut-off legends/colorbars from extending past
                         # the figure bbox at SVG export.
+                        _stamp_cleaned_trace_footer(
+                            fig, use_v7_cleaned=use_v7_cleaned,
+                        )
                         fig.savefig(out, format="svg", bbox_inches="tight")
                         plt.close(fig)
                         n_ot += 1
@@ -656,6 +783,29 @@ def main(argv: list[str] | None = None) -> int:
         "the flag for multiple). When set, overrides --only-pd-ot / --only-pd. "
         "Default: all 4 plot types.",
     )
+    # Phase 7e.4 — cleaned_trace routing flag. Default ON per
+    # Priya 2026-05-27 Q2 PUSHBACK: downstream consumers must auto-pick-up
+    # v7 unless explicitly opted out, otherwise we recreate the
+    # 7e.1/7e.2/7e.3/F-P-1 cascade-routing bug pattern. To re-emit the
+    # legacy spatial outputs (no cleaned_traces filter, original
+    # dlc_kinematics/{tone_aligned,whole_session}_heatmaps/ paths), pass
+    # --no-use-v7-cleaned.
+    cleaned_group = parser.add_mutually_exclusive_group()
+    cleaned_group.add_argument(
+        "--use-v7-cleaned",
+        dest="use_v7_cleaned", action="store_true", default=True,
+        help="(default) Route compute through v7 cleaned_traces filter "
+        "(use_v7_cleaned=True) AND write outputs to *_cleaned_trace/ "
+        "parallel paths with _cleaned_trace filename token + Q-lock 15.3 "
+        "subtitle footer.",
+    )
+    cleaned_group.add_argument(
+        "--no-use-v7-cleaned",
+        dest="use_v7_cleaned", action="store_false",
+        help="Re-emit the legacy spatial outputs (no cleaned_traces "
+        "filter; legacy paths). Use only for explicit audit-trail "
+        "re-emission.",
+    )
     args = parser.parse_args(argv)
 
     resolver = PathResolver()
@@ -674,7 +824,8 @@ def main(argv: list[str] | None = None) -> int:
     log.info(
         f"only_pd_ot={args.only_pd_ot}  only_pd={args.only_pd}  "
         f"no_skip={args.no_skip}  family_entry_filter={families_filter}  "
-        f"plot_type_filter={plot_types_filter}"
+        f"plot_type_filter={plot_types_filter}  "
+        f"use_v7_cleaned={args.use_v7_cleaned}"
     )
 
     animals = [args.animal] if args.animal else list(COHORT_ORDER)
@@ -690,6 +841,7 @@ def main(argv: list[str] | None = None) -> int:
             only_pd_ot=args.only_pd_ot, only_pd=args.only_pd,
             families_filter=families_filter,
             plot_types_filter=plot_types_filter,
+            use_v7_cleaned=args.use_v7_cleaned,
         )
         # Q59 + Q60 Addenda #49 + #50: targeted re-emit (--family-entry
         # or --plot-type) skips the manifest write so a

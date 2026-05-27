@@ -172,6 +172,13 @@ def _run_session(
                         win_tag = f"{int(w[0])}to{int(w[1])}ms"
                         out_dir = spatial_root_under / f"{bp}_{cm}" / f"trials-{tg}_{win_tag}" / animal
                         npz_path = out_dir / f"heatmap_{date_str}.npz"
+                        # Phase 7e.4: pilot is a one-off baseline-snapshot
+                        # script (executed once for the Phase 7c.1
+                        # 3-session pilot). Explicit use_v7_cleaned=False
+                        # so re-running this pilot regenerates the
+                        # historical legacy outputs byte-identically;
+                        # cleaned_trace re-emissions go through the
+                        # Phase 7c.2 cohort driver instead.
                         result = build_tone_aligned_analysis_by_animal_date(
                             animal=animal, date_str=date_str,
                             bodypart=bp, center_mode=cm,
@@ -179,6 +186,7 @@ def _run_session(
                             resolver=resolver,
                             spatial_config=spatial_config,
                             tone_config=tone_config,
+                            use_v7_cleaned=False,
                         )
                         if result is None or result["histogram"] is None:
                             n_a_skip += 1

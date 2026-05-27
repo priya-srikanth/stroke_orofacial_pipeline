@@ -60,6 +60,9 @@ def get_masked_xy(
     likelihood_threshold: float,
     x_range: tuple[float, float] | None = None,
     frame_mask: np.ndarray | None = None,
+    *,
+    baseline_fill_mask: np.ndarray | None = None,
+    drop_likelihood_gate: bool = False,
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
     """Extract likelihood-gated (x, y) arrays for a bodypart.
 
@@ -70,13 +73,29 @@ def get_masked_xy(
     bodypart : str
         Bodypart name (e.g. ``"nose"``).
     likelihood_threshold : float
-        Minimum likelihood for inclusion.
+        Minimum likelihood for inclusion. Ignored when
+        ``drop_likelihood_gate=True``.
     x_range : tuple or None
         If provided, additionally filter to ``x_range[0] <= x <= x_range[1]``.
     frame_mask : np.ndarray or None
         If provided, boolean mask (same length as df) to AND with the
         likelihood mask. Used by window selectors to restrict to
         event-aligned frames.
+    baseline_fill_mask : np.ndarray or None
+        Phase 7e.4: per-frame is-baseline-fill flag from the bodypart's
+        v7 cleaned_traces parquet (column ``is_baseline_fill``). When
+        provided, frames where this mask is True are EXCLUDED — these
+        are placeholder rows where the bodypart was not detected and
+        ``y_final = 0.0`` was substituted. Length must equal ``len(df)``
+        (cleaned_traces is dense per-frame, 1:1 with the centered
+        parquet's row index). Default None preserves pre-7e.4 behavior.
+    drop_likelihood_gate : bool
+        Phase 7e.4: when True, skip the ``lik >= likelihood_threshold``
+        check. Under the v7 cleaned_traces routing, ``~baseline_fill_mask``
+        is the membership classifier; the legacy per-bp lik gate is
+        redundant and rejects real low-likelihood detections that
+        cleaned_traces already validated. Default False preserves
+        pre-7e.4 behavior.
 
     Returns
     -------
@@ -95,9 +114,18 @@ def get_masked_xy(
     y = df[ycol].values.astype(np.float64)
 
     m = np.isfinite(x) & np.isfinite(y)
-    if likcol in df.columns:
+    if not drop_likelihood_gate and likcol in df.columns:
         lik = df[likcol].values.astype(np.float64)
         m &= lik >= likelihood_threshold
+
+    if baseline_fill_mask is not None:
+        if len(baseline_fill_mask) != len(df):
+            raise ValueError(
+                f"baseline_fill_mask length {len(baseline_fill_mask)} != "
+                f"df length {len(df)} (cleaned_traces and centered parquet "
+                f"must be 1:1 dense; verify frame_idx alignment)"
+            )
+        m &= ~np.asarray(baseline_fill_mask, dtype=bool)
 
     if frame_mask is not None:
         m &= frame_mask
@@ -122,6 +150,8 @@ def build_histogram(
     nbins: int | None = None,
     window: Any | None = None,
     n_total_frames: int | None = None,
+    baseline_fill_mask: np.ndarray | None = None,
+    drop_likelihood_gate: bool = False,
 ) -> dict[str, Any] | None:
     """Build a fine-resolution 2D histogram for visualization.
 
@@ -194,7 +224,12 @@ def build_histogram(
     if window is not None:
         frame_mask = window.select_frames(df)
 
-    x, y = get_masked_xy(df, bodypart, lik_thr, x_range=x_range, frame_mask=frame_mask)
+    x, y = get_masked_xy(
+        df, bodypart, lik_thr,
+        x_range=x_range, frame_mask=frame_mask,
+        baseline_fill_mask=baseline_fill_mask,
+        drop_likelihood_gate=drop_likelihood_gate,
+    )
     if x is None:
         return None
 
@@ -228,6 +263,8 @@ def build_stats_grid(
     center_mode: str | None = None,
     x_range: tuple[float, float] | None = None,
     window: Any | None = None,
+    baseline_fill_mask: np.ndarray | None = None,
+    drop_likelihood_gate: bool = False,
 ) -> dict[str, Any] | None:
     """Build a coarser histogram grid for occupancy statistics.
 
@@ -273,7 +310,12 @@ def build_stats_grid(
     if window is not None:
         frame_mask = window.select_frames(df)
 
-    x, y = get_masked_xy(df, bodypart, lik_thr, x_range=x_range, frame_mask=frame_mask)
+    x, y = get_masked_xy(
+        df, bodypart, lik_thr,
+        x_range=x_range, frame_mask=frame_mask,
+        baseline_fill_mask=baseline_fill_mask,
+        drop_likelihood_gate=drop_likelihood_gate,
+    )
     if x is None:
         return None
 

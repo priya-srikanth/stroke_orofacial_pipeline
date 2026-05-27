@@ -186,3 +186,70 @@ class TestSaveHeatmapNpz:
         assert n200["H_counts"].shape == (200, 200)
         assert int(n50["nbins"]) == 50
         assert int(n200["nbins"]) == 200
+
+
+# ---------------------------------------------------------------------------
+# Phase 7e.4 — cleaned-traces routing on plot_heatmap + save_heatmap_npz.
+# Default kwargs (mask=None, drop=False) preserve pre-7e.4 behavior; new
+# kwargs apply the baseline-fill mask + lik-gate skip; NPZ schema gains
+# two boolean stamps (applied_cleaned_traces_mask, dropped_likelihood_gate).
+# ---------------------------------------------------------------------------
+
+
+class TestSaveHeatmapNpzCleanedTracesStamps:
+    """NPZ schema gains the two routing-stamp keys regardless of which
+    path the caller took. Default-False stamps preserve pre-7e.4 NPZ
+    semantics; default-True stamps appear when caller opts in."""
+
+    def _df_and_config(self):
+        from tests.test_heatmaps import _make_dlc_df  # use module-local fixture
+        df = _make_dlc_df()
+        config = {"bodyparts": {"nose": {"likelihood_threshold": 0.80}}}
+        return df, config
+
+    def test_default_stamps_are_false_false(self, tmp_path):
+        df, config = self._df_and_config()
+        out = tmp_path / "default.npz"
+        ok = save_heatmap_npz(
+            df, "nose", config, out,
+            x_limits=(-50, 50), y_limits=(-50, 50), nbins=40,
+        )
+        assert ok
+        npz = np.load(out)
+        assert bool(npz["applied_cleaned_traces_mask"]) is False
+        assert bool(npz["dropped_likelihood_gate"]) is False
+
+    def test_baseline_mask_stamp_records_true(self, tmp_path):
+        df, config = self._df_and_config()
+        mask = np.zeros(len(df), dtype=bool)
+        mask[:200] = True
+        out = tmp_path / "with_mask.npz"
+        ok = save_heatmap_npz(
+            df, "nose", config, out,
+            x_limits=(-50, 50), y_limits=(-50, 50), nbins=40,
+            baseline_fill_mask=mask,
+        )
+        assert ok
+        npz = np.load(out)
+        assert bool(npz["applied_cleaned_traces_mask"]) is True
+        assert bool(npz["dropped_likelihood_gate"]) is False
+        # Spatial-impact sanity: ≤ pre-mask count.
+        legacy_out = tmp_path / "legacy.npz"
+        save_heatmap_npz(df, "nose", config, legacy_out,
+                          x_limits=(-50, 50), y_limits=(-50, 50), nbins=40)
+        legacy_npz = np.load(legacy_out)
+        assert int(npz["H_counts"].sum()) <= int(legacy_npz["H_counts"].sum())
+
+    def test_drop_lik_gate_stamp_records_true(self, tmp_path):
+        df, config = self._df_and_config()
+        df.loc[:299, "nose_likelihood"] = 0.4  # below threshold
+        out = tmp_path / "drop_gate.npz"
+        ok = save_heatmap_npz(
+            df, "nose", config, out,
+            x_limits=(-50, 50), y_limits=(-50, 50), nbins=40,
+            drop_likelihood_gate=True,
+        )
+        assert ok
+        npz = np.load(out)
+        assert bool(npz["applied_cleaned_traces_mask"]) is False
+        assert bool(npz["dropped_likelihood_gate"]) is True

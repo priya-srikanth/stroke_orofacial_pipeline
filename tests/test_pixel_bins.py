@@ -280,3 +280,142 @@ class TestBuildStatsGridCenterMode:
         assert g is not None
         # Filtered out-of-range → the remaining 900 points fall within x∈[-50, 50]
         assert g["H_counts"].sum() == len(df) - 100
+
+
+# ---------------------------------------------------------------------------
+# Phase 7e.4 — cleaned-traces routing kwargs on get_masked_xy /
+# build_histogram / build_stats_grid. Default behavior (mask=None,
+# drop=False) must remain byte-identical to pre-7e.4; new kwargs must
+# AND `~baseline_fill_mask` into the row selector and skip the lik gate
+# when drop_likelihood_gate=True.
+# ---------------------------------------------------------------------------
+
+
+def _make_dlc_df_with_lowlik(n: int = 1000, low_lik_frac: float = 0.3) -> pd.DataFrame:
+    """Synthetic DLC DataFrame where `low_lik_frac` of frames have
+    likelihood 0.4 (below the default 0.80 gate). Used to exercise
+    drop_likelihood_gate."""
+    df = _make_dlc_df(n=n)
+    n_low = int(n * low_lik_frac)
+    df.loc[:n_low - 1, "nose_likelihood"] = 0.4
+    return df
+
+
+class TestGetMaskedXYCleanedTracesRouting:
+    """Phase 7e.4 — baseline_fill_mask + drop_likelihood_gate kwargs."""
+
+    def test_default_behavior_byte_identical_legacy(self):
+        """mask=None + drop=False must produce the same (x, y) as pre-7e.4."""
+        df = _make_dlc_df()
+        x_legacy, y_legacy = get_masked_xy(df, "nose", 0.80)
+        x_new, y_new = get_masked_xy(
+            df, "nose", 0.80,
+            baseline_fill_mask=None, drop_likelihood_gate=False,
+        )
+        np.testing.assert_array_equal(x_legacy, x_new)
+        np.testing.assert_array_equal(y_legacy, y_new)
+
+    def test_baseline_fill_mask_excludes_marked_rows(self):
+        """Frames where baseline_fill_mask=True are excluded from the output."""
+        df = _make_dlc_df()
+        mask = np.zeros(len(df), dtype=bool)
+        mask[:300] = True  # mark first 300 as baseline-fill placeholders
+        x, y = get_masked_xy(df, "nose", 0.80, baseline_fill_mask=mask)
+        assert x is not None
+        assert len(x) == len(df) - 300
+
+    def test_drop_likelihood_gate_admits_below_threshold(self):
+        """drop_likelihood_gate=True keeps frames where lik < threshold."""
+        df = _make_dlc_df_with_lowlik(n=1000, low_lik_frac=0.3)
+        x_gated, _ = get_masked_xy(df, "nose", 0.80)
+        x_open, _ = get_masked_xy(df, "nose", 0.80, drop_likelihood_gate=True)
+        assert len(x_gated) == 700  # 30% dropped by lik gate
+        assert len(x_open) == 1000  # all frames admitted
+
+    def test_combined_R3_variant_baseline_AND_drop_gate(self):
+        """F-P-1 R3: drop lik gate AND exclude baseline-fill."""
+        df = _make_dlc_df_with_lowlik(n=1000, low_lik_frac=0.3)
+        mask = np.zeros(len(df), dtype=bool)
+        mask[:300] = True  # overlap fully with the low-lik 30%
+        x, _ = get_masked_xy(
+            df, "nose", 0.80,
+            baseline_fill_mask=mask, drop_likelihood_gate=True,
+        )
+        assert x is not None
+        # baseline-fill exclusion overrides the lik admission for those rows;
+        # 300 baseline-marked dropped → 700 remain
+        assert len(x) == 700
+
+    def test_baseline_mask_length_mismatch_raises(self):
+        df = _make_dlc_df()
+        mask = np.zeros(len(df) - 5, dtype=bool)  # off by 5
+        with pytest.raises(ValueError, match="baseline_fill_mask length"):
+            get_masked_xy(df, "nose", 0.80, baseline_fill_mask=mask)
+
+
+class TestBuildHistogramCleanedTracesRouting:
+    """Phase 7e.4 — passthrough on build_histogram."""
+
+    def _config(self):
+        return {
+            "heatmap_nbins": 40,
+            "bodyparts": {"nose": {"likelihood_threshold": 0.80}},
+        }
+
+    def test_default_byte_identical_legacy(self):
+        df = _make_dlc_df()
+        cfg = self._config()
+        h_legacy = build_histogram(df, "nose", cfg,
+                                    x_limits=(-50, 50), y_limits=(-50, 50), nbins=40)
+        h_new = build_histogram(df, "nose", cfg,
+                                 x_limits=(-50, 50), y_limits=(-50, 50), nbins=40,
+                                 baseline_fill_mask=None, drop_likelihood_gate=False)
+        np.testing.assert_array_equal(h_legacy["H_counts"], h_new["H_counts"])
+
+    def test_baseline_mask_shrinks_count(self):
+        df = _make_dlc_df()
+        cfg = self._config()
+        mask = np.zeros(len(df), dtype=bool)
+        mask[:300] = True
+        h = build_histogram(df, "nose", cfg,
+                             x_limits=(-50, 50), y_limits=(-50, 50), nbins=40,
+                             baseline_fill_mask=mask)
+        assert h is not None
+        assert int(h["H_counts"].sum()) == len(df) - 300
+
+    def test_drop_lik_gate_expands_count(self):
+        df = _make_dlc_df_with_lowlik(n=1000, low_lik_frac=0.3)
+        cfg = self._config()
+        h_gated = build_histogram(df, "nose", cfg,
+                                   x_limits=(-50, 50), y_limits=(-50, 50), nbins=40)
+        h_open = build_histogram(df, "nose", cfg,
+                                  x_limits=(-50, 50), y_limits=(-50, 50), nbins=40,
+                                  drop_likelihood_gate=True)
+        assert int(h_open["H_counts"].sum()) > int(h_gated["H_counts"].sum())
+        assert int(h_open["H_counts"].sum()) == len(df)
+
+
+class TestBuildStatsGridCleanedTracesRouting:
+    """Phase 7e.4 — passthrough on build_stats_grid."""
+
+    def test_baseline_mask_passthrough(self):
+        df = _make_dlc_df()
+        config = {
+            "target_bin_size_x": 5.0, "target_bin_size_y": 5.0,
+            "bodyparts": {"nose": {"likelihood_threshold": 0.80}},
+        }
+        mask = np.zeros(len(df), dtype=bool)
+        mask[:300] = True
+        g = build_stats_grid(df, "nose", config, baseline_fill_mask=mask)
+        assert g is not None
+        assert int(g["H_counts"].sum()) == len(df) - 300
+
+    def test_drop_lik_gate_passthrough(self):
+        df = _make_dlc_df_with_lowlik(n=1000, low_lik_frac=0.3)
+        config = {
+            "target_bin_size_x": 5.0, "target_bin_size_y": 5.0,
+            "bodyparts": {"nose": {"likelihood_threshold": 0.80}},
+        }
+        g_gated = build_stats_grid(df, "nose", config)
+        g_open = build_stats_grid(df, "nose", config, drop_likelihood_gate=True)
+        assert int(g_open["H_counts"].sum()) > int(g_gated["H_counts"].sum())

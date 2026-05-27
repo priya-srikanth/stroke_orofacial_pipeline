@@ -323,11 +323,17 @@ class TestBuildToneAlignedAnalysisFlagPlumbing:
                 _FakeNpz(fake_align),      # 2nd: alignment template
             ]
 
+            # Phase 7e.4: opt-out of cleaned-traces routing so the test
+            # stays scoped to side-convention plumbing (test pre-dates
+            # 7e.4; cleaned_traces parquet would need to be mocked too
+            # for use_v7_cleaned=True path, which a different test
+            # covers).
             result = build_tone_aligned_analysis(
                 manifest, "tongue", "nose", "all",
                 (-500.0, 5000.0), resolver,
                 spatial_config={}, tone_config={},
                 wavesurfer_sides_match_mouse_sides=matches,
+                use_v7_cleaned=False,
             )
 
         assert result is not None

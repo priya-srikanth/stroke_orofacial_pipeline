@@ -429,3 +429,101 @@ class TestBuildToneAlignedAnalysisRaisesOnMissingPrerequisites:
                 manifest, "tongue", "nose", "all", (-500, 5000),
                 resolver, spatial_config={}, tone_config={},
             )
+
+
+# ---------------------------------------------------------------------------
+# Phase 7e.4 — use_v7_cleaned kwarg plumbing on build_tone_aligned_analysis +
+# build_tone_aligned_analysis_by_animal_date. Default is True; explicit
+# False preserves pre-7e.4 behavior (test_dlc_spatial_side_convention
+# already covers the False path's stamp semantics).
+# ---------------------------------------------------------------------------
+
+
+class TestBuildToneAlignedAnalysisUseV7Cleaned:
+    """Phase 7e.4: use_v7_cleaned kwarg defaults to True; opt-out is
+    explicit. Primary signature + wrapper forwarding verified."""
+
+    def test_primary_signature_has_use_v7_cleaned_default_true(self):
+        import inspect
+        from stroke_orofacial.dlc_spatial.tone_aligned import (
+            build_tone_aligned_analysis,
+        )
+        sig = inspect.signature(build_tone_aligned_analysis)
+        assert "use_v7_cleaned" in sig.parameters
+        assert sig.parameters["use_v7_cleaned"].default is True
+
+    def test_wrapper_signature_has_use_v7_cleaned_default_true(self):
+        import inspect
+        from stroke_orofacial.dlc_spatial.tone_aligned import (
+            build_tone_aligned_analysis_by_animal_date,
+        )
+        sig = inspect.signature(build_tone_aligned_analysis_by_animal_date)
+        assert "use_v7_cleaned" in sig.parameters
+        assert sig.parameters["use_v7_cleaned"].default is True
+
+    @pytest.mark.parametrize("use_v7_cleaned_value", [False, True])
+    def test_wrapper_forwards_use_v7_cleaned(self, use_v7_cleaned_value):
+        """build_tone_aligned_analysis_by_animal_date(use_v7_cleaned=...)
+        forwards the kwarg verbatim to the primary entry point."""
+        import datetime
+        from unittest.mock import MagicMock, patch
+
+        captured: dict = {}
+
+        def _capture(*args, **kwargs):
+            captured.update(kwargs)
+            return None
+
+        info = MagicMock()
+        info.wavesurfer_sides_match_mouse_sides = False
+        info.session_start = datetime.date(2026, 1, 1)
+        info.session_end = datetime.date(2026, 1, 31)
+        info.stroke_date = datetime.date(2026, 1, 15)
+        info.exclusions = []
+
+        from stroke_orofacial.dlc_spatial.tone_aligned import (
+            build_tone_aligned_analysis_by_animal_date,
+        )
+        with patch(
+            "stroke_orofacial.dlc_spatial.tone_aligned.get_animal",
+            return_value=info,
+        ), patch(
+            "stroke_orofacial.dlc_spatial.tone_aligned.build_manifest",
+            return_value=MagicMock(),
+        ), patch(
+            "stroke_orofacial.dlc_spatial.tone_aligned.build_tone_aligned_analysis",
+            side_effect=_capture,
+        ):
+            build_tone_aligned_analysis_by_animal_date(
+                "PS99", "20260115", "tongue", "spout_midpoint", "all",
+                (-500.0, 5000.0), MagicMock(),
+                spatial_config={}, tone_config={},
+                use_v7_cleaned=use_v7_cleaned_value,
+            )
+        assert captured["use_v7_cleaned"] is use_v7_cleaned_value
+
+
+class TestRenderOnDemandUseV7CleanedDefaults:
+    """Phase 7e.4: the 4 public render_on_demand entry points exposed at
+    the driver layer all default use_v7_cleaned=True so that the cohort
+    re-emit (Stage 5) flips on the v7 filter without driver-side
+    threading. Pure signature-introspection tests."""
+
+    @pytest.mark.parametrize("func_name", [
+        "compute_animal_aggregated_histogram",
+        "render_tone_aligned_heatmap_session",
+        "render_whole_session_heatmap",
+        "render_animal_aggregated_heatmap",
+    ])
+    def test_default_use_v7_cleaned_is_true(self, func_name):
+        import inspect
+        from stroke_orofacial.dlc_spatial import render_on_demand
+        func = getattr(render_on_demand, func_name)
+        sig = inspect.signature(func)
+        assert "use_v7_cleaned" in sig.parameters, (
+            f"{func_name} signature is missing use_v7_cleaned kwarg"
+        )
+        assert sig.parameters["use_v7_cleaned"].default is True, (
+            f"{func_name}.use_v7_cleaned default should be True (per "
+            f"Addendum #1 Q2 PUSHBACK)"
+        )
