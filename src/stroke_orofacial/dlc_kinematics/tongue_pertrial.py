@@ -1196,6 +1196,7 @@ def build_tongue_pertrial(
     *,
     overwrite: Literal["skip", "force"] = "skip",
     animal_info: AnimalInfo | None = None,
+    pre_stroke_median_ili_ms: float | None = None,
 ) -> dict[str, Path] | None:
     """Build tongue per-trial features for one session.
 
@@ -1290,12 +1291,27 @@ def build_tongue_pertrial(
     if overwrite == "skip" and all(p.exists() for p in out_paths.values()):
         return out_paths
 
+    # Phase 9.1 Q-lock 13b (2026-05-27): inject the per-animal pre-stroke
+    # median ILI into the core so the visual bundle's metadata carries it.
+    # Without this, the new tongue.phase_aligned_endpoints JSON block emits
+    # all-NaN values (the synthetic_only first-lick-centered builder requires
+    # a finite synthetic_ili_ms). Pre-Q-lock-13b callers didn't need this
+    # in the driver path because the only consumers of the bundle's
+    # synthetic_ili were via build_tongue_visual_bundle_by_animal_date,
+    # which injects it itself.
+    if pre_stroke_median_ili_ms is None:
+        pre_stroke_median_ili_ms = get_pre_stroke_median_ili_ms(
+            manifest.animal, resolver=resolver, animal_info=animal_info,
+            params=params,
+        )
+
     core = _build_tongue_pertrial_core(
         manifest=manifest,
         resolver=resolver,
         trial_events=trial_events,
         params=params,
         animal_info=animal_info,
+        pre_stroke_median_ili_ms=pre_stroke_median_ili_ms,
     )
     tp_result = core.tongue_pertrial
 
