@@ -15,6 +15,111 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-26 — Chore close — Phase 7e cohort re-emit (Event B) + Phase 7e.1 + Phase 7e.2 + Stage 6 stale-output audit
+
+PR #135 (this chore) merges after PR #137 (Phase 7e.1 — legacy lick1/lick2 endpoint routed through v7 kept-licks, tagged `v7e.1-legacy-endpoint-v7-routing`) and PR #140 (Phase 7e.2 — `_extract_peak_velocity_first5` routed through v7 kept-licks + cleaned trace with `is_baseline_fill` masking, tagged `v7e.2-velocity-v7-routing`). Untagged per CLAUDE.md tag rule (chore PR, not phase close). Kickoff: [`docs/prompts/chore-phase-7e-cohort-reemit-kickoff.md`](prompts/chore-phase-7e-cohort-reemit-kickoff.md) with Addenda #1/#2/#3.
+
+### Decision 1 — Event B = formal-close execution of Phase 7e Decision 7 deferred re-emit; bundled with two architectural fixes
+
+*Context:* Phase 7e merged at the source-code stage only. Per-session per_trial/tongue/*.json + Phase 9 stats inputs + downstream figures still carried legacy detector values. Gate (d) verification post-Stage-1 surfaced a same-class architectural insulation: `_extract_lick1_lick2` and `_extract_peak_velocity_first5` consumed the original (pre-v7-preclean) y_final / x_final + did NOT mask `is_baseline_fill`. Cohort re-emit alone wouldn't have moved any numbers.
+
+*Decision:* Phase 7e.1 routed lick1/lick2 endpoints through `v7_trial_result.kept_licks`; Phase 7e.2 routed `_extract_peak_velocity_first5` through `v7_trial_result.kept_licks` + cleaned trace + `is_baseline_fill_clean` masking inside each lick's `[rise_start_frame, fall_end_frame]` window. Event B chore Stages 1-3 ran THREE TIMES (against pre-7e.1, against post-7e.1 + pre-7e.2, against post-7e.2) to verify each fix's distribution-shift signal before chore close.
+
+*Rationale:* Without Phase 7e.1 + 7e.2, the cohort re-emit would have produced byte-equal stats inputs (gate-c sanity confirmed this on re-run #1). The two same-class fixes route the legacy endpoint emit through v7's kept-licks set + cleaned-trace input, making the v7 cleanup visible at the Phase 9 stats layer.
+
+*Enforced at:* [`src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py`](../src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py) (Phase 7e.1 + 7e.2 code changes); [`tests/test_tongue_pertrial.py`](../tests/test_tongue_pertrial.py) (8 new unit tests, 4 per phase).
+
+### Decision 2 — Gate (d) verdict — finding #4 cohort numbers MATERIAL DOWNSHIFT confirmed
+
+*Context:* Finding #4 in `memory/project_phase_9_state_and_findings.md` (revised 2026-05-26) retracted the uniform-acute-overshoot story and identified severe overshoot as DLC artifact correctly handled by v7 pre-clean. Final cohort numbers were pending Event B re-emit.
+
+*Decision:* Gate (d) verification post-Stage-2/3 (PS54 acute window rel_day [1, 17], non-sentinel rows):
+
+**`tongue_lick1_y_peak`** — n=245 → 26, mean 188.70 → 110.87 px (Δ=−77.83), median 201.71 → 112.85 (Δ=−88.86), max 233.24 → 165.56 (Δ=−67.68). **89% of severe-acute trials were artifact peaks rejected by v7 gate stack**; the remaining 26 real kept-licks distribute around 110 px mean, aligned with mild + moderate-phenotype acute baselines.
+
+**Velocity endpoints (post-7e.2 gate (d)-extended):** dramatic 8–37× downshifts.
+
+| Endpoint | Pre n / mean | Post n / mean | Ratio |
+|---|---|---|---|
+| `tongue_lick1_vy_peak` | 245 / 15,488 | 17 / 416 | **37×** |
+| `tongue_lick1_vxy_peak` | 245 / 16,247 | 17 / 1,873 | 8.7× |
+| `tongue_max_vy_peak_first5` | 245 / 16,121 | 18 / 1,207 | 13× |
+| `tongue_max_vxy_peak_first5` | 245 / 16,949 | 18 / 2,748 | 6.2× |
+| `tongue_mean_vxy_peak_first5` | 245 / 16,191 | 18 / 2,149 | 7.5× |
+| `tongue_median_vy_peak_per_trial` | 245 / 15,394 | 18 / 666 | **23×** |
+| `tongue_median_vxy_peak_per_trial` | 245 / 16,177 | 18 / 2,010 | 8× |
+| `tongue_median_angle_at_peak_velocity` | 245 / −1.38° | 26 / −1.50° | small (angle, not magnitude) |
+
+*Rationale:* Pre-7e.2 velocity values (15-17 thousand px/s) corresponded to ~5 m/s tongue movement — biologically impossible. They were artifactual gradients computed across baseline-fill → real-frame transitions in the interpolated trace. Post-7e.2 values (200-2,700 px/s) are physiologically plausible. Severe-acute paper-final velocity numbers were artifact-dominated pre-Event-B; post-Event-B reveals true biological signal.
+
+*Enforced at:* [`.scratch_chore_phase_7e_reemit/post_reemit_gate_d.json`](../../.scratch_chore_phase_7e_reemit/post_reemit_gate_d.json) + `.scratch_chore_phase_7e_reemit/post_7e2_gate_d_velocity.json` (gitignored audit artifacts; numbers preserved in this DECISIONS entry).
+
+### Decision 3 — Cohort scope locked at 352 / 231 OK / 121 SKIP per Addendum #1 (b)+(c) mechanism
+
+*Context:* Raw YAML enumeration yields 375 cohort sessions. Addendum #1 secondary-spout pre-filter ((b)+(c) mechanism) excludes Pattern B sessions lacking upstream DLC inference.
+
+*Decision:* (b) Defensive pre-filter against `configs/session_overrides.yaml` `secondary_spout_sessions:` (24 dates) gives 352 planned sessions. (c) Runtime `interpolated_trace.exists()` pre-check during Stage 1 emit yields 231 OK + 121 SKIP. The 1 OK-class anomaly `zero_kept_licks_session` (post-7e.1: 12 sessions, all PS51/PS54/PS55 May 2025 acute) carries explicit `anomaly_notes` and is biologically valid.
+
+*Rationale:* (b)+(c) mechanism correctly classifies missing-DLC sessions as SKIP rather than tripping the per-session FAIL anomaly counter. The post-7e.1 jump from 1 → 12 zero_kept_licks_session occurrences (concentrated in severe-acute window) is the v7 gate-stack correctly rejecting artifactual peaks the legacy detector had accepted.
+
+*Enforced at:* [`scripts/phase_7e/reemit_tongue_pertrial_cohort.py`](../scripts/phase_7e/reemit_tongue_pertrial_cohort.py).
+
+### Decision 4 — Stage 4 / 4b / 5b / 5c re-emit scope locked
+
+*Context:* Addendum #2 expanded scope to include Phase 7a.6 mean+SEM aggregator (E3) + Phase 7a.4 tongue-angle PNG bundle (within + cross-session) + Phase 9 Task 7 stats figures. Stage 4b (individual_sessions + trial_overlays sibling families) added mid-chore for mtime consistency across the mean_sem/tongue/ tree.
+
+*Decision:* Six stages run sequentially:
+
+- **Stage 4** — `build_mean_sem_cohort(bodypart="tongue", ...)` via new driver `scripts/phase_7e/reemit_tongue_mean_sem_cohort.py`. 8/8 OK, 6h 24m wall, 176 paths (22/animal). `include_mean_video=True` per Priya's paper-critical mean-video framing.
+- **Stage 4b** — `build_individual_sessions_animal` + `build_trial_overlays_animal` per animal × 2 windows via `scripts/phase_7e/reemit_tongue_mean_sem_extras_cohort.py`. 32 OK / 0 FAIL, ~25 min, tongue-only.
+- **Stage 5b** — `render_tongue_qc_figures` (within-session) + `build_tongue_angle_cohort` (cross-session) via `scripts/phase_7e/reemit_tongue_followons_cohort.py`. 231 OK + 144 SKIP within / 8 OK cross, ~45 min. ~2,100 within-session PNGs + 96 cross-session PNGs.
+- **Stage 5c** — `scripts/phase_9_stats/build_task_7_figures.py --mode all`. 76 figures (152 files = 76 SVG + 76 PNG); 21 headlines + 48 per-animal + 7 forest plots.
+
+*Rationale:* Tongue-only filter on Stage 4's `build_mean_sem_cohort` (vs jaw + tongue together) keeps Event B scope clean for the eventual Phase 7f jaw work. Stage 5 (tongue-jaw mismatch) was on EXECUTION HOLD per Addendum #2 (parallel jaw audit in flight on `investigation/jaw-quality-audit`); deferred to a follow-on chore PR post-Phase-7f.
+
+*Enforced at:* `scripts/phase_7e/*.py`.
+
+### Decision 5 — Stage 6 stale-output audit verdict + (b) NOT-A-CONSUMER classification of interpolated_traces
+
+*Context:* Addendum #3 added Stage 6 stale-output audit to catch land-mines (figures, CSVs, notebooks consuming pre-7e endpoint values).
+
+*Decision:* Stage 6.1 static audit + Stage 6.3 notebook audit verdict ([`.scratch_chore_phase_7e_reemit/stale_output_audit.md`](../../.scratch_chore_phase_7e_reemit/stale_output_audit.md), gitignored):
+- **8 (a) REFRESHED subtrees** confirmed covered by Stages 1-5c.
+- **2 (b) NOT-A-CONSUMER subtrees**: `dlc_analysis/interpolated_traces/tongue/` (Phase 7a.2 v5p3 SOURCE for v7, **NOT** stale — v7 reads from here; bytes unchanged), `spout_behavior/` (orthogonal pipeline).
+- **0 (c1) STATIC FIGURES** remaining: all tongue-relevant stats figures re-rendered in Stage 5c; phase_9_1_figures/phenotype_pooled/tongue_* (6 PNGs) reclassified to **(d) IN-FLIGHT** (writer at `src/stroke_orofacial/figures/phenotype_pooled.py` on `phase/9.1-figures` branch, not yet merged; phase/9.1-figures Task 1c will re-emit against v7-routed stats inputs after PR merge).
+- **0 (c3) ORPHAN PATHS**, **0 uncovered write sites**.
+- **1 notebook** (`15_spout_behavior_visual_gate.ipynb`) needs re-execution against fresh Stage 2 stats inputs — handed off to Cowork.
+
+*Rationale:* `interpolated_traces` is the SOURCE-OF-TRUTH input to v7 pre-clean, not a v7 derivative. Re-emitting it would require re-running upstream Phase 7a.2 DLC interpolation (out of Event B scope). Deleting it would break every future Event B re-run + future Phase 7f jaw work (which also consumes it). The naming-confusion concern raised mid-chore is addressed via this DECISIONS entry pinning the source-vs-derivative relationship.
+
+*Enforced at:* DECISIONS entry (this one) + Stage 6.4 sidecar READMEs at `dlc_kinematics/per_trial/tongue/<animal>/_SKIPPED_NO_DLC_INPUT.md` (PS51/PS54/PS55 only).
+
+### Decision 6 — Stage 6.4 destructive cleanup: 26 stale per_trial JSONs deleted + 3 per-animal sidecars
+
+*Context:* Stage 6.1 audit reconciliation found 26 stale per_trial JSONs on disk that did NOT get re-emitted by Stages 1-5: 17 secondary-spout sessions (Pattern B Pattern B / no-DLC) + 9 out-of-cohort sessions (PS51/PS54/PS55 × 2025-04-16/17/18, Q1.C-excluded per Phase 7c.2 cohort-archeology). They were leftover from prior phase emits when those dates were in-cohort, and would otherwise persist as land-mines for future readers consuming pre-v7 endpoint values.
+
+*Decision:* Per per-invocation Priya approval (2026-05-26 destructive-op message + AskUserQuestion + direct text confirmation), executed surgical delete via [`scripts/phase_7e/stage6_4_delete_stale_per_trial_jsons.py --execute`](../scripts/phase_7e/stage6_4_delete_stale_per_trial_jsons.py): 26 files deleted by exact path (NO `rm -rf`), 3 per-animal sidecars written at `dlc_kinematics/per_trial/tongue/{PS51,PS54,PS55}/_SKIPPED_NO_DLC_INPUT.md` with differentiated reason text (secondary-spout vs out-of-cohort). Post-delete verification: 231 on-disk = 231 OK manifest, 0 stale remaining. Companion-state row appended to `.scratch_chore_phase_7e_reemit/cohort_manifest.csv` with `status=DELETED` audit trail (33 rows for the 26 deletions + 7 over-recorded secondary-spout-with-bare-override entries that audit-trail as "in scope" without actually existing on disk — minor audit-trail imprecision, no semantic impact).
+
+*Rationale:* CLAUDE.md Ground Rule 7 land-mine-prevention principle. Sidecars give future readers immediate context if they wonder why specific dates lack per_trial JSONs. Surgical delete by exact path (NOT `rm -rf` directory wipe) honors the per-cycle-destructive-op-anti-pattern caution from Phase 7c.2 incident.
+
+*Enforced at:* [`scripts/phase_7e/stage6_4_delete_stale_per_trial_jsons.py`](../scripts/phase_7e/stage6_4_delete_stale_per_trial_jsons.py) (one-time-only execution; idempotent re-runs no-op).
+
+### Decision 7 — Event B discharges Phase 9.1 ↔ Phase 7e merge dependency Event B + paper-final finding #4 numbers
+
+*Context:* `memory/project_phase_9_1_phase_7e_merge_dependency.md` Event A (Phase 7e source-code merge) discharged 2026-05-26 by PR #133. Event B (per-invocation cohort re-emit) was the pending blocker for Phase 9.1 Task 1c.
+
+*Decision:* Event B DISCHARGED by this chore PR. Phase 9.1 Task 1c unblocked. Paper-final finding #4 cohort numbers locked at the Decision 2 values above. Cowork-side memory edits queued post-merge: `project_phase_9_state_and_findings.md` finding #4 update + `project_phase_9_1_phase_7e_merge_dependency.md` Event B → DISCHARGED.
+
+*Enforced at:* This DECISIONS entry + `docs/MIGRATION_LOG.md` Chore — Phase 7e cohort re-emit entry below + Cowork-side memory file edits (handed off, not in chore PR scope).
+
+### Forward-pointers from this chore
+
+- **F-P-1 — v7-spatial-impact-audit follow-on chore PR** (Priya 2026-05-26). Spatial heatmaps consume Phase 4 centered parquets via independent code path from v7 cleaned_traces. Severe-acute heatmaps may carry artifactual density. 3-session focused audit (PS54/PS51/PS47 acute) × 4 scope dimensions × 2 render versions = 24 heatmaps + 12 side-by-side comparisons + Wasserstein/KL metric → `v7-spatial-impact-NULL` vs `MATERIAL` verdict. Out-of-scope of this chore; lands as separate chore PR sequenced after this merge.
+- **Phase 5 (tongue-jaw mismatch re-emit)** — EXECUTION HOLD per Addendum #2; parallel jaw audit work on `investigation/jaw-quality-audit` branch in flight. Re-emit pending Phase 7f jaw work completion.
+- **Phase 9.1 figures phenotype_pooled re-emit** — writer at `src/stroke_orofacial/figures/phenotype_pooled.py` on `phase/9.1-figures` branch (NOT yet merged). Will consume v7-routed stats inputs once Task 1c full-cohort emit runs + that PR lands.
+
+---
+
 ## 2026-05-26 — Phase 7e close — DLC tongue pre-clean + v7 detector pipeline migrated to production
 
 Tag on merge: `v7e-dlc-tongue-preclean-v7`. Branch: `phase/7e-dlc-tongue-preclean-v7`. Kickoff: [`docs/prompts/phase-7e-dlc-tongue-preclean-v7-kickoff.md`](prompts/phase-7e-dlc-tongue-preclean-v7-kickoff.md) + [Addendum #1](prompts/phase-7e-addendum-1-task0-x-audit-verdict.md). Test suite 1702 baseline → 1782 passing (+80 / 40 skipped / 0 fail).

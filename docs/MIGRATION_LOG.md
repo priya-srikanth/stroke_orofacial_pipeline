@@ -6550,3 +6550,95 @@ Per-(axis × comparison) confirmatory significance at v2:
 
 ---
 
+## Chore — Phase 7e cohort re-emit (Event B) + Phase 7e.1 + Phase 7e.2
+
+**Date:** 2026-05-26
+
+**Tags applied during the chore sequence:** `v7e.1-legacy-endpoint-v7-routing` (PR #137 merge commit), `v7e.2-velocity-v7-routing` (PR #140 merge commit). This chore PR itself is untagged per CLAUDE.md tag rule (docs/data refresh, not a phase close).
+
+**Branch:** `chore/phase-7e-cohort-reemit`.
+
+**Kickoff:** [`docs/prompts/chore-phase-7e-cohort-reemit-kickoff.md`](prompts/chore-phase-7e-cohort-reemit-kickoff.md) + Addenda #1 (secondary-spout exclusion + output path doc fix), #2 (Stages 4/5/5b scope expansion + 9-PNG bundle override), #3 (Stage 6 stale-output audit + adjudication).
+
+**DECISIONS entry:** 2026-05-26 Chore close — Phase 7e cohort re-emit (Decisions 1-7).
+
+**What shipped (cohort-wide data refresh across ~6 dependent on-disk trees):**
+
+- **Phase 7e.1 source code fix** (separate PR #137, merged + tagged before chore close): `_extract_lick1_lick2` accepts optional `v7_trial_result` kwarg; when present, lick1/lick2 emit consumes `kept_licks` (post v7 gate stack F/D/E/M) instead of raw legacy slope-detector output on pre-v7-preclean trace. Legacy path (`v7_trial_result=None`) preserved for backwards compat. +4 unit tests in `tests/test_tongue_pertrial.py`.
+
+- **Phase 7e.2 source code fix** (separate PR #140, merged + tagged before chore close): `_extract_peak_velocity_first5` analogous routing — accepts `v7_trial_result` kwarg, when present derives per-lick vy/vxy peak from `y_clean`/`x_clean` with `is_baseline_fill_clean` NaN-masking inside `[rise_start_frame, fall_end_frame]` window. Mirrors v7's `max_velocity_y_px_per_s` per-kept-lick computation that already lived in the lick_events parquet writer. Required adding `rise_start_frame` + `fall_end_frame` to in-memory `kept_licks` dict (NOT in lick_events parquet schema — writer enumerates columns explicitly). +4 unit tests.
+
+- **Stage 1 — Cohort tongue per-trial re-emit:** `scripts/phase_7e/reemit_tongue_pertrial_cohort.py`. 352 planned sessions (375 raw YAML - 24 secondary-spout via (b) pre-filter + 1 reconciliation rounding); 231 OK + 121 SKIP + 0 FAIL via (b) defensive YAML pre-filter + (c) runtime `interpolated_trace.exists()` check. Per-session mean 5.97 s post-7e.2; total wall ~23 min. Three Stage-1 re-runs total: pre-7e.1 baseline, post-7e.1 (revealed 12 zero_kept_licks_session sessions in PS51/PS54/PS55 May 2025 acute), post-7e.2 (confirms stable). Five per-session outputs per OK session: per_frame angle parquet, licking_dynamics traces parquet, per_trial endpoints JSON, cleaned_traces parquet (v7), lick_events parquet (v7).
+
+- **Stage 2 — Phase 9 stats inputs re-materialize:** `scripts/phase_9_stats/materialize_inputs.py --endpoints tongue_*`. 23 tongue endpoints × 8 animals = 184 parquets re-emitted, 0 errors.
+
+- **Stage 3 — Phase 9 stats runner re-emit:** `scripts/phase_9_stats/run_stats_axis.py --axis all --granularity all --endpoints tongue_*`. 23 endpoints × 3 in-scope axes (pre_post + recovery + ipsi_contra; trial_group correctly out-of-scope per inventory) × 3 granularities = 213 CSVs / 204 fits.
+
+- **Stage 4 — Tongue mean+SEM cohort:** `scripts/phase_7e/reemit_tongue_mean_sem_cohort.py` (NEW, tongue-only wrapper around `build_mean_sem_cohort`). 8/8 animals OK, 6h 24m wall (ffmpeg MP4 encoding is the bottleneck; ~3-4 min/MP4 × multiple per (animal, window, mode)). 22 paths/animal = 176 total. `include_mean_video=True`.
+
+- **Stage 4b — individual_sessions + trial_overlays:** `scripts/phase_7e/reemit_tongue_mean_sem_extras_cohort.py` (NEW). 8 animals × 2 stages × 2 windows = 32 OK / 0 FAIL, ~25 min. Re-emits the sibling mean_sem families that Stage 4's `build_mean_sem_cohort` doesn't cover.
+
+- **Stage 5b — tongue_angle PNG bundle:** `scripts/phase_7e/reemit_tongue_followons_cohort.py` (NEW). Within-session (`render_tongue_qc_figures`): 231 OK + 144 SKIP, ~2,100 PNGs (~9/OK session). Cross-session (`build_tongue_angle_cohort`): 8 OK / 96 PNGs (12/animal). ~45 min total.
+
+- **Stage 5c — Phase 9 stats figures:** `scripts/phase_9_stats/build_task_7_figures.py --mode all`. 76 figures × 2 formats = 152 files (21 headlines + 48 per-animal + 7 forest plots). Output at `pipeline_outputs/stats/figures/`.
+
+- **Stage 6.4 destructive cleanup:** `scripts/phase_7e/stage6_4_delete_stale_per_trial_jsons.py --execute`. 26 stale per_trial JSONs surgically deleted (17 secondary-spout Pattern B + 9 out-of-cohort PS51/PS54/PS55 × 2025-04-16/17/18 Q1.C-excluded). 3 per-animal sidecars written at `dlc_kinematics/per_trial/tongue/{PS51,PS54,PS55}/_SKIPPED_NO_DLC_INPUT.md`. Post-delete verification: 0 stale remain. Companion-state row appended to `.scratch_chore_phase_7e_reemit/cohort_manifest.csv` (audit-trail-only; resume-on-relaunch ignores `status=DELETED`).
+
+**Verification gates verdict:**
+
+- **(a) Per-session smoke:** PASS for all 231 OK rows across all 3 Stage-1 re-runs. Gate (a) was relaxed mid-chore to treat `zero_kept_licks_session` (schema-intact but all-null lick1_y_peak) as OK-with-anomaly-note, after PS55/2025-05-07 case revealed the original gate conflated schema-broken with biology-empty.
+- **(b) Cohort-level smoke:** PASS. 352 planned = 231 OK + 121 SKIP cohort-wide; deduped manifest matches.
+- **(c) Per-endpoint row counts:** byte-equal pre vs post Event B (24,023 rows/endpoint × 23 tongue endpoints cohort-wide). Expected — schema row count = trials emitted; trials unchanged.
+- **(d) PS54 acute lick1_y_peak distribution:** MATERIAL DOWNSHIFT confirmed post-Phase-7e.1. n=245→26, mean 188.70→110.87 px, median 201.71→112.85 (Δ−88.86). 89% of severe-acute "licks" were artifact peaks rejected by v7 gate stack.
+- **(d)-extended (velocity endpoints):** DRAMATIC 8-37× downshift post-Phase-7e.2. Pre-7e.2 PS54 acute mean velocities 15-17 thousand px/s (biologically impossible, ~5 m/s movement, artifactual gradients across baseline-fill boundaries); post-7e.2 200-2,700 px/s (physiologically plausible).
+- **(e) Stale-output audit comprehensiveness:** PASS. `.scratch_chore_phase_7e_reemit/stale_output_audit.md` covers every tongue-relevant subtree under `pipeline_outputs/`; 0 unclassified subtrees; 0 uncovered write sites; 1 notebook flagged for Cowork re-execution (`15_spout_behavior_visual_gate.ipynb`).
+- **(f) Adjudication closure:** PASS. Stage 6.4 destructive cleanup executed per per-invocation Priya approval. interpolated_traces classified (b) NOT-A-CONSUMER. phase_9_1_figures reclassified (d) IN-FLIGHT pending phase/9.1-figures branch merge.
+
+**Behavior differences vs. legacy:**
+
+- Severe-acute lick1_y_peak distribution shifts from artifactual ~188 px overshoot to ~111 px (aligned with mild + moderate-phenotype baselines). Paper-final cohort numbers from this chore supersede pre-Event-B values.
+- Severe-acute velocity endpoint magnitudes shift 6-37× downward to biologically plausible ranges. Pre-7e.2 paper velocity numbers were artifact-dominated.
+- Per-trial endpoints + downstream figures for the 121 SKIP sessions (no upstream DLC inference) remain absent on disk. 3 per-animal `_SKIPPED_NO_DLC_INPUT.md` sidecars document the exclusion classes.
+
+**Forward-pointers carried out of chore:**
+
+- **F-P-1 — v7-spatial-impact-audit follow-on chore PR** (per DECISIONS 2026-05-26 Decision 7): 3-session × 4-scope × 2-render audit of spatial heatmaps for v7 artifact-impact. Out-of-scope here; separate chore PR.
+- **Stage 5 (tongue-jaw mismatch re-emit) — EXECUTION HOLD** lifted only after Phase 7f jaw audit/work completes. Mismatch detector consumes jaw interpolated traces which are being revised on `investigation/jaw-quality-audit` branch.
+- **Phase 9.1 figures phenotype_pooled re-emit** — happens automatically when `phase/9.1-figures` branch Task 1c full-cohort emit runs against the v7-routed stats inputs this chore just refreshed.
+
+**Files modified this chore PR:**
+
+- `scripts/phase_7e/reemit_tongue_pertrial_cohort.py` (NEW; Stage 1 driver, 354 lines after Addendum #1 + smoke-gate-relax patch)
+- `scripts/phase_7e/reemit_tongue_mean_sem_cohort.py` (NEW; Stage 4 driver)
+- `scripts/phase_7e/reemit_tongue_mean_sem_extras_cohort.py` (NEW; Stage 4b driver)
+- `scripts/phase_7e/reemit_tongue_followons_cohort.py` (NEW; Stage 5b driver)
+- `scripts/phase_7e/stage6_4_delete_stale_per_trial_jsons.py` (NEW; Stage 6.4 surgical-delete script)
+- `docs/prompts/chore-phase-7e-cohort-reemit-kickoff.md` (NEW; kickoff doc + Addenda #1/#2/#3)
+- `docs/DECISIONS.md` (this chore's close entry)
+- `docs/MIGRATION_LOG.md` (this entry)
+- `.scratch_phase_9/materialize_manifest.csv` (Stage 2 manifest update, gitignored otherwise but pre-existing tracked file)
+
+**On-disk outputs touched (data refresh, not in PR diff per gitignored pipeline_outputs/):**
+
+- `pipeline_outputs/dlc_kinematics/per_trial/tongue/<animal>/*.json` — 231 re-emitted, 26 deleted, 3 sidecar READMEs added
+- `pipeline_outputs/dlc_kinematics/per_frame/tongue/<animal>/*.parquet` — 231 re-emitted (byte-equal post-7e.2)
+- `pipeline_outputs/dlc_kinematics/licking_dynamics/traces/<animal>/*.parquet` — 231 re-emitted (byte-equal)
+- `pipeline_outputs/dlc_kinematics/cleaned_traces/tongue/<animal>/*.parquet` — 231 re-emitted (byte-equal post-7e.2)
+- `pipeline_outputs/dlc_kinematics/lick_events/tongue/<animal>/*.parquet` — 231 re-emitted (byte-equal post-7e.2)
+- `pipeline_outputs/dlc_kinematics/mean_sem/tongue/...` — 176 paths (Stage 4) + 32 stage-runs × ~21-49 PNGs (Stage 4b) re-emitted
+- `pipeline_outputs/dlc_kinematics/tongue_angle/{within_session,cross_session}/...` — ~2,200 PNGs re-emitted
+- `pipeline_outputs/stats/{inputs,results,figures}/tongue_*/...` — 184 input parquets + 213 result CSVs + 152 figure files
+
+**Acceptance criteria:**
+
+1. Gate (d) PS54 acute lick1_y_peak distribution shifts toward mild + moderate-phenotype baselines ✓ (Δmean=−77.83 px)
+2. Gate (d)-extended velocity endpoints shift to biologically plausible ranges ✓ (8-37× downshift)
+3. Phase 9 stats inputs + results re-emitted from v7-routed per_trial JSONs ✓ (231 OK animal-date pairs)
+4. Mean+SEM + tongue_angle + stats figures re-rendered consistently across the cohort ✓
+5. Stage 6 audit covers every tongue-relevant subtree + adjudicates 0 uncovered write sites ✓
+6. Phase 9.1 ↔ Phase 7e Event B dependency DISCHARGED ✓ (Task 1c unblocks)
+7. Per CLAUDE.md Ground Rule 7: no per-cycle `rm -rf`; destructive cleanup executed surgically with companion-state reset ✓
+8. Per CLAUDE.md Ground Rule 8: branch verification before every commit; force-push only against explicit per-invocation Priya approval with lease guard ✓
+
+**No tag** (chore PR, not a phase close).
+
