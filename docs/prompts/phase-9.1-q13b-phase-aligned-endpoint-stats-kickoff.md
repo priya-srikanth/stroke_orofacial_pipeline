@@ -234,3 +234,78 @@ Cowork's Stage 0 pre-implementation check now includes:
 ### Unblock signal
 
 Q-lock 13b is ready for CC kickoff-prompt drafting (Stages 1–6) the moment Phase 7e.4 lands on `main`. Cowork drafts the CC prompt after PR #148 merges + `v7e.4-…` tag is pushed.
+
+---
+
+## Addendum #1 — Q1–Q7 locked (2026-05-27)
+
+**Status flip:** DRAFT → LOCKED. All seven Q-lock answers below. **ALL OTHER LOCKS UNCHANGED.**
+
+### Q1 — ILI source for phase normalization
+
+**LOCKED:** `synthetic_only` (option a, the default proposal).
+
+Verified by inspection of `tongue_pertrial.build_first_lick_centered_phase_rows()` (signature at `src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py:404`): the phase-extraction substrate already defaults to `synthetic_only` per Phase 7a.4 Addendum #15 — Mode 3 won the 3-way PS46/PS50/PS55 visual gate. Q-lock 13b inherits this without change.
+
+Concrete meaning for endpoints A/B/C: per-trial phase axis uses `synthetic_ili_ms = bundle.metadata["pre_stroke_median_ili_ms"]` (the animal's own pre-stroke baseline median ILI). Same cycle width for every trial of a given animal across every session, so the phase axis is mechanically comparable across trials and the remaining variance in binned angle/x traces is biological shape variation, not a cadence-mixing confound.
+
+### Q2 — Endpoint B + C storage
+
+**LOCKED:** (a) Extend the existing per-trial tongue features parquet schema with new columns. Matches the style of other Phase 9 per-trial endpoints — keeps row-per-trial unit, no 1:1 join in downstream consumers.
+
+### Q3 — Stats test
+
+**LOCKED:** (b) Wilcoxon signed-rank, paired.
+
+Q3 (test) and Q5 (multiple-comparisons correction) are orthogonal. The project already pairs Wilcoxon with BH-FDR in production: `fit_paired_pre_post_wilcoxon` in `src/stroke_orofacial/stats/models.py` is exactly the analogous Phase 9 pre/post per-animal test, and it bundles with BH-FDR via `multiple_comparisons.py`. Q-lock 13b uses the same combo for consistency.
+
+Upgrade path documented but not adopted here: mixed-effects (option c) is the long-term right answer for proper cross-animal pooling that accounts for per-animal trial-count imbalance. The existing `fit_recovery_mixedlm` is the precedent for that pattern. Q-lock 13b defers it — Wilcoxon is the minimum-complexity test that matches existing Phase 9 conventions for the pre-vs-post comparison.
+
+### Q4 — Side handling
+
+**LOCKED:** (a) split L/R as separate figures. Matches Q-lock 10 V4/V5 convention.
+
+### Q5 — Multiple-comparisons correction
+
+**LOCKED:** (b) Benjamini-Hochberg FDR. Matches project default (`bh_fdr` in `src/stroke_orofacial/stats/multiple_comparisons.py`).
+
+FDR family for Q-lock 13b: 3 endpoints × 2 sides × 4 phenotype-pairs = 24 tests. Applied as one BH-FDR family per the standard project convention. If downstream review wants a different family slicing (e.g. per-side FDR-family), surface as a future addendum.
+
+### Q6 — Endpoint C `x` convention (REFINED from kickoff proposal)
+
+**LOCKED:** Single endpoint, **signed value at the argmax of the absolute value.**
+
+Endpoint C definition (replaces the kickoff's `max_abs_x_phase_0_075_px`):
+signed_x_at_max_abs_phase_0_075_px =
+x_centered[ argmax_t( | x_centered(t) | )  for t ∈ phase[0, 0.75] ]
+
+Per-trial semantic: scan the phase window `[0, 0.75]`, find the time-point with the largest absolute `x_centered`, then report the **signed** `x_centered` value at that time-point. Selection criterion uses magnitude (catches the most-extreme excursion regardless of direction); reported/plotted value is signed (preserves laterality direction in figures and downstream stats).
+
+Updated endpoint table (supersedes the kickoff doc's Endpoints section):
+
+| ID | Endpoint | Definition |
+|---|---|---|
+| A | `peak_angle_deg` | Tongue angle at `phase = 0.5` (lick-1 peak time) |
+| B | `max_abs_angle_phase_0_075_deg` | `max(abs(angle_deg))` over `phase ∈ [0, 0.75]` |
+| C | `signed_x_at_max_abs_phase_0_075_px` | `x_centered[argmax(|x_centered|)]` over `phase ∈ [0, 0.75]` |
+
+Figure count unchanged: 3 endpoints × 2 sides = **6 figures**.
+
+### Q7 — Cohort scope
+
+**LOCKED:** (b) Tongue-only. Jaw has no phase-aligned trajectory convention yet; queued as the forward-pointer already stated in the kickoff.
+
+---
+
+### Stage 0 prereq verification — updated
+
+Cowork's Stage 0 pre-implementation check now includes:
+
+1. `build_first_lick_centered_phase_rows()` still defaults to `ili_source="synthetic_only"` (regression check).
+2. `fit_paired_pre_post_wilcoxon` is reachable from `stroke_orofacial.stats.models`.
+3. `benjamini_hochberg_fdr` (or `correct_pvalues(..., method="bh_fdr")`) is reachable from `stroke_orofacial.stats.multiple_comparisons`.
+4. Q-lock 8 phenotype-pooled aggregator pattern is reachable and documented (status confirmed independently before Stage 3 implementation).
+
+### Unblock signal
+
+Q-lock 13b is ready for CC kickoff-prompt drafting (Stages 1–6) the moment Phase 7e.4 lands on `main`. Cowork drafts the CC prompt after PR #148 merges + `v7e.4-…` tag is pushed.
