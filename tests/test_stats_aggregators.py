@@ -27,6 +27,7 @@ from stroke_orofacial.stats.aggregators import (
     TRAJECTORY_SIGNALS,
     aggregate_per_session_median_iqr,
     aggregate_phenotype_pooled_median_iqr,
+    aggregate_phenotype_pooled_phase_bin_mean_sem,
     apply_phase_bin_baseline_delta,
     attach_phenotype_and_epoch,
     compute_per_animal_phase_bin_baseline,
@@ -785,3 +786,377 @@ class TestApplyPhaseBinBaselineDelta:
         orig_cols = list(df.columns)
         _ = apply_phase_bin_baseline_delta(df, baseline)
         assert list(df.columns) == orig_cols  # no _delta columns mutated in
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13 Stage 2 — phenotype-pooled phase-bin mean+SEM aggregator
+# ---------------------------------------------------------------------------
+
+
+_STAGE2_AGG_COLS_BY_SIDE = [
+    "recovery_phenotype", "epoch_label", "side", "phase_bin",
+    "signal", "variant", "mean", "sem", "n_trials",
+    "n_sessions", "n_animals",
+]
+
+
+_STAGE2_ROW_COLS = (
+    "animal", "date", "trial_index", "side", "phase_bin",
+    "recovery_phenotype", "epoch_label",
+    "angle_deg", "x_centered", "angle_deg_delta", "x_centered_delta",
+)
+
+
+def _stage2_rows(rows: list[dict]) -> pd.DataFrame:
+    """Build phase rows with the full set of columns Stage 2 expects.
+
+    Required columns: animal, date, trial_index, side, phase_bin,
+    recovery_phenotype, epoch_label, angle_deg, x_centered, plus
+    angle_deg_delta and x_centered_delta (output of Stage 1 apply).
+    Defaults fill in reasonable stand-ins.
+
+    Empty ``rows`` returns a DataFrame with the canonical column schema
+    so downstream empty-input regression tests have the contract surface
+    they need.
+    """
+    if not rows:
+        return pd.DataFrame({
+            c: pd.Series(dtype=(
+                object if c in {"animal", "side", "epoch_label",
+                                "recovery_phenotype"}
+                else "datetime64[ns]" if c == "date"
+                else "int64" if c in {"trial_index", "phase_bin"}
+                else "float64"
+            ))
+            for c in _STAGE2_ROW_COLS
+        })
+    canonical = []
+    for r in rows:
+        rec = {
+            "animal": r["animal"],
+            "date": r.get("date", datetime.date(2025, 3, 7)),
+            "trial_index": int(r.get("trial_index", 0)),
+            "side": r.get("side", "L"),
+            "phase_bin": int(r["phase_bin"]),
+            "recovery_phenotype": r.get("recovery_phenotype", "mild"),
+            "epoch_label": r["epoch_label"],
+            "angle_deg": float(r.get("angle_deg", 0.0)),
+            "x_centered": float(r.get("x_centered", 0.0)),
+            "angle_deg_delta": float(r.get("angle_deg_delta", 0.0)),
+            "x_centered_delta": float(r.get("x_centered_delta", 0.0)),
+        }
+        canonical.append(rec)
+    return pd.DataFrame(canonical)
+
+
+class TestAggregatePhenotypePooledPhaseBinMeanSem:
+    def test_returns_canonical_columns_on_empty(self):
+        empty = _stage2_rows([]).iloc[0:0]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(empty)
+        assert list(out.columns) == _STAGE2_AGG_COLS_BY_SIDE
+
+    def test_mean_sem_n_trials_correct(self):
+        # Single phenotype × epoch × side × phase_bin cell.
+        # 3 distinct trials, each with one row at phase_bin=0.
+        # values: angle_deg = [1, 3, 5] → mean=3, std(ddof=1)=2,
+        #         sem = 2 / sqrt(3) ≈ 1.1547
+        rows = [
+            {"animal": "PS47", "date": datetime.date(2025, 3, 1),
+             "trial_index": 0, "side": "L", "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+            {"animal": "PS47", "date": datetime.date(2025, 3, 1),
+             "trial_index": 1, "side": "L", "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 3.0},
+            {"animal": "PS47", "date": datetime.date(2025, 3, 1),
+             "trial_index": 2, "side": "L", "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 5.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",),
+        )
+        # 2 signals × 1 cell = 2 rows (angle_deg + x_centered, both raw)
+        assert len(out) == 2
+        ang = out[out["signal"] == "angle_deg"].iloc[0]
+        assert ang["mean"] == pytest.approx(3.0)
+        assert ang["sem"] == pytest.approx(2.0 / np.sqrt(3))
+        assert int(ang["n_trials"]) == 3
+        assert int(ang["n_sessions"]) == 1
+        assert int(ang["n_animals"]) == 1
+
+    def test_n_eq_1_yields_nan_sem(self):
+        # Single trial in the pool → SEM undefined.
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 7.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",),
+        )
+        ang = out[out["signal"] == "angle_deg"].iloc[0]
+        assert int(ang["n_trials"]) == 1
+        assert ang["mean"] == pytest.approx(7.0)
+        assert not np.isfinite(ang["sem"])
+
+    def test_per_trial_collapse_treats_multiframe_as_single_trial(self):
+        # Same trial contributes TWO rows at the same phase_bin
+        # (multi-frame). The aggregator must collapse them to a per-trial
+        # frame-mean BEFORE the cross-trial pool. Trial 0 frames at
+        # angle = [2, 6] → trial-mean = 4. Pool with trial 1 at angle = 8
+        # → cross-trial values [4, 8] → mean = 6, std(ddof=1) = sqrt(8),
+        # sem = sqrt(8)/sqrt(2) = 2.
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 2.0},
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 6.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 8.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",),
+        )
+        ang = out[out["signal"] == "angle_deg"].iloc[0]
+        assert ang["mean"] == pytest.approx(6.0)
+        assert int(ang["n_trials"]) == 2
+        assert ang["sem"] == pytest.approx(2.0)
+
+    def test_phenotype_partitioning(self):
+        # mild + severe trials at same phase_bin → 2 cells in pool.
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 3.0},
+            {"animal": "PS55", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "severe", "epoch_label": "pre",
+             "angle_deg": 100.0},
+            {"animal": "PS55", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "severe", "epoch_label": "pre",
+             "angle_deg": 102.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",), signals=("angle_deg",),
+        )
+        assert set(out["recovery_phenotype"]) == {"mild", "severe"}
+        mild = out[out["recovery_phenotype"] == "mild"].iloc[0]
+        severe = out[out["recovery_phenotype"] == "severe"].iloc[0]
+        assert mild["mean"] == pytest.approx(2.0)
+        assert severe["mean"] == pytest.approx(101.0)
+
+    def test_epoch_partitioning(self):
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 3.0},
+            {"animal": "PS47", "trial_index": 2, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "acute",
+             "angle_deg": 50.0},
+            {"animal": "PS47", "trial_index": 3, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "acute",
+             "angle_deg": 60.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",), signals=("angle_deg",),
+        )
+        assert set(out["epoch_label"]) == {"pre", "acute"}
+        pre = out[out["epoch_label"] == "pre"].iloc[0]
+        acute = out[out["epoch_label"] == "acute"].iloc[0]
+        assert pre["mean"] == pytest.approx(2.0)
+        assert acute["mean"] == pytest.approx(55.0)
+
+    def test_side_partitioning_with_by_side_true(self):
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "recovery_phenotype": "mild",
+             "epoch_label": "pre", "angle_deg": 1.0},
+            {"animal": "PS47", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "recovery_phenotype": "mild",
+             "epoch_label": "pre", "angle_deg": 3.0},
+            {"animal": "PS47", "trial_index": 2, "side": "R",
+             "phase_bin": 0, "recovery_phenotype": "mild",
+             "epoch_label": "pre", "angle_deg": -1.0},
+            {"animal": "PS47", "trial_index": 3, "side": "R",
+             "phase_bin": 0, "recovery_phenotype": "mild",
+             "epoch_label": "pre", "angle_deg": -3.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",), signals=("angle_deg",),
+            by_side=True,
+        )
+        assert set(out["side"]) == {"L", "R"}
+        L = out[out["side"] == "L"].iloc[0]
+        R = out[out["side"] == "R"].iloc[0]
+        assert L["mean"] == pytest.approx(2.0)
+        assert R["mean"] == pytest.approx(-2.0)
+
+    def test_by_side_false_pools_across_sides(self):
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "recovery_phenotype": "mild",
+             "epoch_label": "pre", "angle_deg": 1.0},
+            {"animal": "PS47", "trial_index": 1, "side": "R",
+             "phase_bin": 0, "recovery_phenotype": "mild",
+             "epoch_label": "pre", "angle_deg": 3.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",), signals=("angle_deg",),
+            by_side=False,
+        )
+        # 1 cell, pooled L+R: mean = (1+3)/2 = 2.
+        assert "side" not in out.columns
+        assert len(out) == 1
+        assert out.iloc[0]["mean"] == pytest.approx(2.0)
+        assert int(out.iloc[0]["n_trials"]) == 2
+
+    def test_phase_bin_partitioning(self):
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 1,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 5.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 3.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 1,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 7.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",), signals=("angle_deg",),
+        )
+        # 2 phase_bins, each with 2 trials.
+        assert set(out["phase_bin"]) == {0, 1}
+        b0 = out[out["phase_bin"] == 0].iloc[0]
+        b1 = out[out["phase_bin"] == 1].iloc[0]
+        assert b0["mean"] == pytest.approx(2.0)
+        assert b1["mean"] == pytest.approx(6.0)
+
+    def test_raw_and_delta_variants_both_emitted(self):
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 5.0, "angle_deg_delta": -1.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 7.0, "angle_deg_delta": 1.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), signals=("angle_deg",),
+            variants=("raw", "delta"),
+        )
+        assert set(out["variant"]) == {"raw", "delta"}
+        raw = out[out["variant"] == "raw"].iloc[0]
+        delta = out[out["variant"] == "delta"].iloc[0]
+        assert raw["mean"] == pytest.approx(6.0)
+        assert delta["mean"] == pytest.approx(0.0)
+
+    def test_drops_transitional_gap_rows(self):
+        # epoch_label=None rows must be dropped per kickoff convention.
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 3.0},
+        ]
+        df = _stage2_rows(rows)
+        # Add a transitional gap row.
+        gap = _stage2_rows([
+            {"animal": "PS47", "trial_index": 99, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 999.0}
+        ])
+        gap["epoch_label"] = None
+        df = pd.concat([df, gap], ignore_index=True)
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            df, variants=("raw",), signals=("angle_deg",),
+        )
+        cell = out.iloc[0]
+        assert cell["mean"] == pytest.approx(2.0)
+        assert int(cell["n_trials"]) == 2
+
+    def test_n_sessions_n_animals_distinct(self):
+        # 2 animals, each contributing 1 session × 2 trials → n_trials=4,
+        # n_sessions=2, n_animals=2.
+        rows = [
+            {"animal": "PS47", "date": datetime.date(2025, 3, 1),
+             "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+            {"animal": "PS47", "date": datetime.date(2025, 3, 1),
+             "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 3.0},
+            {"animal": "PS48", "date": datetime.date(2025, 3, 2),
+             "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 5.0},
+            {"animal": "PS48", "date": datetime.date(2025, 3, 2),
+             "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 7.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",), signals=("angle_deg",),
+        )
+        cell = out.iloc[0]
+        assert int(cell["n_trials"]) == 4
+        assert int(cell["n_sessions"]) == 2
+        assert int(cell["n_animals"]) == 2
+
+    def test_missing_required_column_raises(self):
+        bad = pd.DataFrame({
+            "animal": ["PS46"], "trial_index": [0], "phase_bin": [0],
+            "recovery_phenotype": ["mild"], "epoch_label": ["pre"],
+            "angle_deg": [1.0], "x_centered": [1.0],
+            # date missing
+        })
+        with pytest.raises(ValueError, match="missing column"):
+            aggregate_phenotype_pooled_phase_bin_mean_sem(
+                bad, variants=("raw",),
+            )
+
+    def test_invalid_variant_raises(self):
+        df = _stage2_rows([
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+        ])
+        with pytest.raises(ValueError, match="variants"):
+            aggregate_phenotype_pooled_phase_bin_mean_sem(
+                df, variants=("raw", "bogus"),
+            )
+
+    def test_phase_bin_center_carried_through_when_present(self):
+        # Stage 5 cohort walker will join phase_bin_center alongside
+        # phase_bin; the aggregator must propagate it to the output for
+        # downstream x-axis plotting.
+        df = _stage2_rows([
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 3.0},
+        ])
+        df["phase_bin_center"] = 0.00694  # ~ 1/144 (n_bins=72 → first center)
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            df, variants=("raw",), signals=("angle_deg",),
+        )
+        assert "phase_bin_center" in out.columns
+        assert out.iloc[0]["phase_bin_center"] == pytest.approx(0.00694)

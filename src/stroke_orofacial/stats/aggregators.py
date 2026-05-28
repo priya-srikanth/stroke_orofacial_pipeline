@@ -638,6 +638,192 @@ def apply_phase_bin_baseline_delta(
 
 
 # ---------------------------------------------------------------------------
+# Q-lock 13 — phenotype × epoch × side × phase_bin mean+SEM aggregator (Stage 2)
+# ---------------------------------------------------------------------------
+
+
+def aggregate_phenotype_pooled_phase_bin_mean_sem(
+    phase_rows_long: pd.DataFrame,
+    *,
+    signals: Iterable[str] = TRAJECTORY_SIGNALS,
+    variants: Iterable[str] = ("raw", "delta"),
+    by_side: bool = True,
+) -> pd.DataFrame:
+    """Per (phenotype × epoch × [side] × phase_bin × signal × variant) mean+SEM.
+
+    Q-lock 13 kickoff Stage 2 (2026-05-27). Trajectory analog of
+    :func:`aggregate_phenotype_pooled_median_iqr` (Q13b scalar), with
+    two material differences:
+
+    - **Mean + SEM**, not median + IQR. Per Q13-B lock: per-bin averages
+      across many trials within phenotype × epoch are already smoothed;
+      mean+SEM is more readable + standard for trajectory figures.
+    - **Per-trial unit, not per-session-median.** Each trial contributes
+      one value per phase_bin (frame-mean within that trial × phase_bin
+      cell — see two-pass aggregation below). The reported sample size
+      ``n_trials`` is the number of distinct trials in the pool, per
+      kickoff Q13-F (panel annotation = ``n=N trials``).
+
+    Two-pass aggregation:
+
+    1. Per-trial frame-mean within (animal, date, trial_index, side,
+       phase_bin) for each signal × variant. Collapses any multi-frame
+       contribution from the same trial in the same phase_bin to one
+       value.
+    2. Cross-trial pool within (recovery_phenotype, epoch_label,
+       [side], phase_bin, signal, variant) → mean, SEM
+       (``std(ddof=1) / sqrt(n)``), n_trials, n_sessions, n_animals.
+       n=1 cells get ``sem = NaN``. NaN-aware throughout.
+
+    Parameters
+    ----------
+    phase_rows_long : pd.DataFrame
+        Long-form rows with required columns: ``animal``, ``date``,
+        ``trial_index``, ``side`` (when ``by_side``), ``phase_bin``,
+        ``phase_bin_center`` (carried through; optional),
+        ``recovery_phenotype``, ``epoch_label``, and one column per
+        signal × variant cell — for variant=``raw`` the signal column
+        itself; for variant=``delta`` the ``<signal>_delta`` column
+        (output of :func:`apply_phase_bin_baseline_delta`).
+        Rows with ``epoch_label is None`` (transitional gap) are
+        dropped.
+    signals : Iterable[str], default ``TRAJECTORY_SIGNALS``
+    variants : Iterable[str], default ``("raw", "delta")``
+        Subset of ``{"raw", "delta"}``.
+    by_side : bool, default True
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: ``recovery_phenotype``, ``epoch_label``, [``side``],
+        ``phase_bin``, ``phase_bin_center`` (if present in input),
+        ``signal``, ``variant``, ``mean``, ``sem``, ``n_trials``,
+        ``n_sessions``, ``n_animals``. Empty with canonical columns
+        when input is empty.
+    """
+    signals = tuple(signals)
+    variants = tuple(variants)
+    bad_variants = set(variants) - {"raw", "delta"}
+    if bad_variants:
+        raise ValueError(
+            f"variants must be subset of (raw, delta); got unexpected "
+            f"{sorted(bad_variants)}.",
+        )
+
+    has_center = "phase_bin_center" in phase_rows_long.columns
+    out_cols = ["recovery_phenotype", "epoch_label"]
+    if by_side:
+        out_cols.append("side")
+    out_cols.append("phase_bin")
+    if has_center:
+        out_cols.append("phase_bin_center")
+    out_cols.extend(
+        ["signal", "variant", "mean", "sem", "n_trials",
+         "n_sessions", "n_animals"],
+    )
+
+    required = {
+        "animal", "date", "trial_index", "phase_bin",
+        "recovery_phenotype", "epoch_label",
+    }
+    if by_side:
+        required.add("side")
+    for s in signals:
+        if "raw" in variants:
+            required.add(s)
+        if "delta" in variants:
+            required.add(f"{s}_delta")
+    missing = required - set(phase_rows_long.columns)
+    if missing:
+        raise ValueError(
+            f"phase_rows_long missing column(s) {sorted(missing)}; "
+            f"got columns {list(phase_rows_long.columns)}.",
+        )
+
+    if phase_rows_long.empty:
+        return pd.DataFrame(columns=out_cols)
+
+    # Drop transitional-gap rows.
+    df = phase_rows_long.dropna(subset=["epoch_label"]).copy()
+    if df.empty:
+        return pd.DataFrame(columns=out_cols)
+
+    # Trial-key for per-trial collapse + n_trials counting.
+    trial_keys = ["animal", "date", "trial_index"]
+    if by_side:
+        trial_keys.append("side")
+
+    # Bin-key carries phase_bin (+ optional center) into the output.
+    bin_keys = ["phase_bin"]
+    if has_center:
+        bin_keys.append("phase_bin_center")
+
+    # Pool-key partitions cells.
+    pool_keys = ["recovery_phenotype", "epoch_label"]
+    if by_side:
+        pool_keys.append("side")
+
+    # Deduplicate column selection (trial_keys + pool_keys both contain
+    # "side" when by_side=True; pandas refuses groupby on duplicate
+    # columns).
+    select_cols = list(dict.fromkeys(trial_keys + bin_keys + pool_keys))
+
+    rows: list[dict[str, object]] = []
+    for signal in signals:
+        for variant in variants:
+            value_col = signal if variant == "raw" else f"{signal}_delta"
+            sub = df[select_cols + [value_col]].copy()
+            sub["_val"] = pd.to_numeric(sub[value_col], errors="coerce")
+            sub = sub.loc[np.isfinite(sub["_val"])]
+            if sub.empty:
+                continue
+            # Pass 1: per-trial frame-mean within (trial × phase_bin).
+            per_trial_keys = list(dict.fromkeys(
+                trial_keys + bin_keys + pool_keys,
+            ))
+            per_trial = (
+                sub.groupby(
+                    per_trial_keys,
+                    dropna=False, sort=False, as_index=False,
+                )["_val"]
+                .mean()
+            )
+            # Pass 2: cross-trial pool within (pool × phase_bin).
+            for cell_key, cell_df in per_trial.groupby(
+                pool_keys + bin_keys, dropna=False, sort=True,
+            ):
+                vals = cell_df["_val"].to_numpy(dtype=np.float64)
+                n_trials = int(vals.size)
+                if n_trials == 0:
+                    continue
+                mean_v = float(np.mean(vals))
+                if n_trials >= 2:
+                    sem_v = float(np.std(vals, ddof=1) / np.sqrt(n_trials))
+                else:
+                    sem_v = float("nan")
+                # Distinct sessions / animals contributing to this cell.
+                session_keys = ["animal", "date"]
+                n_sessions = int(cell_df[session_keys].drop_duplicates().shape[0])
+                n_animals = int(cell_df["animal"].nunique())
+
+                if not isinstance(cell_key, tuple):
+                    cell_key = (cell_key,)
+                rec = dict(zip(pool_keys + bin_keys, cell_key))
+                rec["signal"] = signal
+                rec["variant"] = variant
+                rec["mean"] = mean_v
+                rec["sem"] = sem_v
+                rec["n_trials"] = n_trials
+                rec["n_sessions"] = n_sessions
+                rec["n_animals"] = n_animals
+                rows.append(rec)
+
+    if not rows:
+        return pd.DataFrame(columns=out_cols)
+    return pd.DataFrame(rows, columns=out_cols)
+
+
+# ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
 
