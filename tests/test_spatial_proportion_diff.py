@@ -316,8 +316,8 @@ def test_sides_order() -> None:
 
 
 def test_bodypart_center_modes_q12_b() -> None:
-    """Q12-B lock: tongue + jaw, both center_mode=eye_midpoint."""
+    """Q12-B Addendum #3 lock: tongue=spout_midpoint, jaw=eye_midpoint."""
     assert BODYPART_CENTER_MODES == {
-        "tongue": "eye_midpoint",
+        "tongue": "spout_midpoint",
         "jaw": "eye_midpoint",
     }

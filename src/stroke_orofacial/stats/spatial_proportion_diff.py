@@ -45,11 +45,13 @@ logger = logging.getLogger(__name__)
 POST_EPOCHS: tuple[str, str, str] = ("acute", "sub_acute", "chronic")
 SIDES: tuple[str, str] = ("L", "R")
 
-# Q12-B bodypart → center_mode mapping. Both bodyparts use the
-# ``eye_midpoint`` centering convention (Phase 7c.2
-# ``EXPECTED_TONE_ALIGNED_FAMILIES``).
+# Q12-B bodypart → center_mode mapping. Tongue uses ``spout_midpoint``
+# centering per Addendum #3 (2026-05-28) — biologically meaningful for
+# reach-to-spout licking analysis; matches the ``tongue_spout_midpoint``
+# family in Phase 7c.2 ``EXPECTED_TONE_ALIGNED_FAMILIES``. Jaw stays
+# ``eye_midpoint`` (its only canonical centering).
 BODYPART_CENTER_MODES: dict[str, str] = {
-    "tongue": "eye_midpoint",
+    "tongue": "spout_midpoint",
     "jaw": "eye_midpoint",
 }
 

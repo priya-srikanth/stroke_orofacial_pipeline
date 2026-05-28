@@ -1,6 +1,6 @@
 # Phase 9.1 Q-lock 12 — Phenotype-Pooled Proportion-Diff Heatmaps Kickoff
 
-**Status:** LOCKED v1 + Addendum #1 + Addendum #2 (2026-05-27 → 2026-05-28).
+**Status:** LOCKED v1 + Addendum #1 + Addendum #2 + Addendum #3 (2026-05-27 → 2026-05-28).
 **Branch:** `phase/9.1-q12-proportion-diff-heatmaps`
 **Merge tag (on close):** `v9.1-q12-proportion-diff-heatmaps`
 **Depends on:**
@@ -197,4 +197,31 @@ The `phase_9_1_figures/phenotype_pooled_cleaned_trace/` tree was deprecated 2026
 - Count: 4 figures (unchanged)
 
 The Q-lock 15 three-layer marker convention is preserved: the `cleaned_trace` marker remains in the filename + footer subtitle. The directory drops its redundant `phenotype_pooled_cleaned_trace/` marker (the `cleaned_trace` marker is supplied by the filename per the q13b precedent).
+
+
+---
+
+## Addendum #3 — Q12-B tongue centering specified as spout_midpoint (2026-05-28)
+
+**ALL OTHER LOCKS UNCHANGED.** One lock refined: Q12-B tongue centering.
+
+### Q12-B — REFINED: tongue uses spout_midpoint, jaw stays eye_midpoint
+
+Original Q12-B (kickoff v1) said: "tongue + jaw both. Tongue from v7-cleaned-trace path (Phase 7e + 7e.4); jaw from v3.4-cleaned path (Phase 7f)." It did not specify which tongue centering convention to use.
+
+Two tongue centerings exist in production (`config_loader.py:179-211` `EXPECTED_TONE_ALIGNED_FAMILIES`):
+- `tongue_spout_midpoint` — tongue position relative to the spout target.
+- `tongue_eye_midpoint` — tongue position in head-frame, sharing the eye-centered frame with jaw.
+
+Per Priya 2026-05-28 Stage 5 pilot review, the biologically meaningful centering for tongue under licking analysis is `spout_midpoint` — it directly answers "does the tongue reach the spout?" and surfaces reach-to-spout shifts post-stroke that head-frame coordinates would average out.
+
+**Refined lock:**
+- Tongue: `center_mode="spout_midpoint"`
+- Jaw: `center_mode="eye_midpoint"` (jaw's only canonical centering)
+
+Both pull from the same v7-cleaned-trace (tongue) / v3.4-cleaned-trace (jaw) substrates; only the spatial centering differs.
+
+### Pilot regenerated
+
+The PS46-only pilot run on 2026-05-28 04:04 used the pre-Addendum-#3 eye-centered tongue. Those 2 tongue SVGs (`tongue_L_*`, `tongue_R_*`) are stale on disk; the full 8-animal cohort re-emit launched immediately after this addendum will overwrite them with the spout-centered tongue figures (and produce phenotype-pooled jaw figures across all 4 phenotypes for the first time).
 
