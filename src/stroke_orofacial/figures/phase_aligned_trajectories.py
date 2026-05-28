@@ -143,15 +143,24 @@ def figure_path_for(
     side: str,
     resolver: PathResolver,
     output_dir: Path | None = None,
+    error_band_type: ErrorBandType = DEFAULT_ERROR_BAND_TYPE,
 ) -> Path:
-    """Resolve the canonical SVG output path for one (signal, variant, side)."""
+    """Resolve the canonical SVG output path for one (signal, variant, side, band).
+
+    Filename embeds the error-band type so the SEM and SD variants are
+    self-describing even when files are copied out of the canonical
+    directory structure (Priya 2026-05-28).
+    """
     base = (
         output_dir
         if output_dir is not None
         else resolver.pipeline_outputs(subdir=FIGURE_SUBDIR)
     )
     base.mkdir(parents=True, exist_ok=True)
-    return base / f"{signal}_{variant}_{side}_mean_sem_cleaned_trace.svg"
+    band_slug = "mean_sem" if error_band_type == "sem" else "mean_sd"
+    return base / (
+        f"{signal}_{variant}_{side}_{band_slug}_cleaned_trace.svg"
+    )
 
 
 def _panel_x_axis(panel: pd.DataFrame) -> np.ndarray:
@@ -352,12 +361,13 @@ def build_phase_aligned_trajectory_figure(
             ax.set_xlim(lo, hi)
             ax.tick_params(axis="both", labelsize=8)
 
-    # Outer title (signal + variant + side); two subtitles below it:
-    # 1) source-data description (variant-aware), 2) Q-lock 15
-    # cleaned_trace provenance footer.
+    # Outer title (signal + variant + side); subtitles below:
+    # 1) source-data description (variant-aware) + band-type tag,
+    # 2) Q-lock 15 cleaned_trace provenance footer.
     signal_label = SIGNAL_DISPLAY_NAMES.get(signal, signal)
     variant_label = VARIANT_DISPLAY_NAMES.get(variant, variant)
-    title = f"{signal_label} — {variant_label} — side={side}"
+    band_tag = "mean ± SEM" if error_band_type == "sem" else "mean ± SD"
+    title = f"{signal_label} — {variant_label} — side={side} ({band_tag})"
     fig.suptitle(title, fontsize=14, y=0.995)
     fig.text(
         0.5, 0.970, _source_data_subtitle(variant),
@@ -691,6 +701,7 @@ def emit_phase_aligned_trajectory_figures(
                 output_path = figure_path_for(
                     signal=signal, variant=variant, side=side,
                     resolver=resolver, output_dir=output_dir,
+                    error_band_type=error_band_type,
                 )
                 if output_path.exists():
                     if effective_overwrite == "skip":

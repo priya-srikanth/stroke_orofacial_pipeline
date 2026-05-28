@@ -72,21 +72,30 @@ def main(argv: list[str] | None = None) -> int:
     pooled = pd.read_csv(pooled_csv)
     logger.info("  loaded %d rows", len(pooled))
 
-    logger.info("Re-rendering 8 figures...")
+    logger.info(
+        "Re-rendering — SEM (canonical) + SD (sd_band/ subdir) ...",
+    )
     kwargs: dict = {
         "resolver": resolver,
-        "output_dir": out_dir,
         "overwrite": "force",
     }
     if phenotype_order is not None:
         kwargs["phenotype_order"] = phenotype_order
-    result = emit_phase_aligned_trajectory_figures(pooled, **kwargs)
-    logger.info(
-        "  emitted=%d skipped=%d",
-        len(result["emitted"]), len(result["skipped"]),
+    sem_result = emit_phase_aligned_trajectory_figures(
+        pooled, output_dir=out_dir, error_band_type="sem", **kwargs,
     )
-    for p in result["emitted"]:
-        logger.info("  → %s", p)
+    logger.info(
+        "  SEM emitted=%d skipped=%d → %s",
+        len(sem_result["emitted"]), len(sem_result["skipped"]), out_dir,
+    )
+    sd_dir = out_dir / "sd_band"
+    sd_result = emit_phase_aligned_trajectory_figures(
+        pooled, output_dir=sd_dir, error_band_type="sd", **kwargs,
+    )
+    logger.info(
+        "  SD  emitted=%d skipped=%d → %s",
+        len(sd_result["emitted"]), len(sd_result["skipped"]), sd_dir,
+    )
     return 0
 
 

@@ -393,11 +393,18 @@ class TestBuildPhaseAlignedTrajectoryFigure:
 class TestFigurePathFor:
     def test_filename_pattern(self, tmp_path):
         resolver = PathResolver(output_root=tmp_path)
+        # Default error_band_type = "sem" → 'mean_sem' slug.
         p = figure_path_for(
             signal="angle_deg", variant="raw", side="L",
             resolver=resolver,
         )
         assert p.name == "angle_deg_raw_L_mean_sem_cleaned_trace.svg"
+        # SD variant → 'mean_sd' slug.
+        p_sd = figure_path_for(
+            signal="angle_deg", variant="raw", side="L",
+            resolver=resolver, error_band_type="sd",
+        )
+        assert p_sd.name == "angle_deg_raw_L_mean_sd_cleaned_trace.svg"
         # FIGURE_SUBDIR uses POSIX separators; compare via Path parts.
         for part in Path(FIGURE_SUBDIR).parts:
             assert part in p.parts
