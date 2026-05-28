@@ -514,32 +514,48 @@ def compute_per_animal_phase_bin_baseline(
     *,
     signals: Iterable[str] = TRAJECTORY_SIGNALS,
 ) -> pd.DataFrame:
-    """Per-(animal, phase_bin, signal) pre-stroke baseline mean.
+    """Per-(animal, side, phase_bin, signal) pre-stroke baseline mean.
 
-    Q-lock 13 kickoff Stage 1 (2026-05-27). Trajectory analog of
-    :func:`compute_per_animal_baseline` (Q13b scalar). The unit of
-    aggregation is the trial-frame row of the centered phase-row
-    substrate, NOT a per-session median, so this returns one row per
-    (animal, phase_bin, signal) — no ``side`` key (kickoff lock: baseline
-    pooled across L and R pre-stroke trials per animal).
+    Q-lock 13 kickoff Stage 1 (2026-05-27); per-side keying + per-trial
+    grain LOCKED 2026-05-28 (Priya pilot review): the original
+    kickoff lock (animal × phase_bin pooled across sides) does NOT
+    produce flat pre columns in the delta panels because (a) angle and
+    x_centered have side-dependent sign conventions in mouse-frame /
+    spout-midpoint-frame respectively, and (b) the per-frame baseline
+    grain doesn't match Stage 2's per-trial-frame-mean aggregation
+    unit. The fix mirrors Q13b's scalar
+    :func:`compute_per_animal_baseline` which is per-(animal, side,
+    endpoint).
 
-    Baseline = mean of ``signal`` value across all rows whose
-    ``epoch_label == "pre"``. NaN-aware (non-finite values dropped before
-    averaging). (animal, phase_bin, signal) triples with no finite
-    pre-stroke values are absent from the output; downstream
-    :func:`apply_phase_bin_baseline_delta` produces NaN deltas for rows
-    whose triple has no baseline entry.
+    Trajectory analog of :func:`compute_per_animal_baseline` (Q13b
+    scalar). The unit of aggregation is the per-(trial, side, phase_bin)
+    frame-mean — same grain Stage 2 collapses to before cross-trial
+    pooling. This guarantees the cross-trial pool of pre deltas sums to
+    exactly 0 within each (phenotype, "pre", side, phase_bin) cell, so
+    the pre column of every delta-variant panel is flat at 0 by
+    construction.
+
+    Two-pass:
+
+    1. Within (animal, date, trial_index, side, phase_bin), take the
+       frame-mean of each signal. One row per pre trial × side × bin.
+    2. Across pre trials within (animal, side, phase_bin), average the
+       per-trial-frame-means → ``baseline_mean``.
+
+    NaN-aware throughout. (animal, side, phase_bin, signal) quadruples
+    with no finite pre-stroke values are absent from the output;
+    downstream :func:`apply_phase_bin_baseline_delta` produces NaN
+    deltas for rows whose quadruple has no baseline entry.
 
     Parameters
     ----------
     phase_rows_long : pd.DataFrame
         Long-form centered phase rows. Required columns: ``animal``,
-        ``phase_bin``, ``epoch_label``, and one column per ``signals``
-        entry (default ``angle_deg`` and ``x_centered``). One row per
-        (trial, frame-in-phase-cycle); see
-        :func:`stroke_orofacial.dlc_kinematics.tongue_pertrial.build_first_lick_centered_phase_rows`
-        for the substrate that produces these rows (cohort emit walks
-        the substrate × sessions and concatenates).
+        ``date``, ``trial_index``, ``side``, ``phase_bin``,
+        ``epoch_label``, and one column per ``signals`` entry (default
+        ``angle_deg`` and ``x_centered``). One row per (trial,
+        frame-in-phase-cycle); see
+        :func:`stroke_orofacial.dlc_kinematics.tongue_pertrial.build_first_lick_centered_phase_rows`.
     signals : Iterable[str], default ``TRAJECTORY_SIGNALS``
         Signal column names to compute baselines for. Each must be a
         column in ``phase_rows_long``.
@@ -547,14 +563,17 @@ def compute_per_animal_phase_bin_baseline(
     Returns
     -------
     pd.DataFrame
-        Columns: ``animal``, ``phase_bin`` (int), ``signal`` (str),
-        ``baseline_mean`` (float). One row per (animal, phase_bin,
-        signal) triple with at least one finite pre-stroke value.
-        Canonical column set returned even when input is empty.
+        Columns: ``animal``, ``side`` (str), ``phase_bin`` (int),
+        ``signal`` (str), ``baseline_mean`` (float). One row per
+        quadruple with at least one finite per-trial frame-mean from a
+        pre-stroke trial. Canonical column set returned even when input
+        is empty.
     """
     signals = tuple(signals)
-    out_cols = ["animal", "phase_bin", "signal", "baseline_mean"]
-    required = {"animal", "phase_bin", "epoch_label"} | set(signals)
+    out_cols = ["animal", "side", "phase_bin", "signal", "baseline_mean"]
+    required = {
+        "animal", "date", "trial_index", "side", "phase_bin", "epoch_label",
+    } | set(signals)
     missing = required - set(phase_rows_long.columns)
     if missing:
         raise ValueError(
@@ -566,8 +585,24 @@ def compute_per_animal_phase_bin_baseline(
     pre = phase_rows_long[phase_rows_long["epoch_label"] == "pre"]
     if pre.empty:
         return pd.DataFrame(columns=out_cols)
-    melted = pre.melt(
-        id_vars=["animal", "phase_bin"],
+
+    trial_keys = ["animal", "date", "trial_index", "side", "phase_bin"]
+    # Pass 1: per-trial × side × bin frame-mean for each signal.
+    sub = pre[trial_keys + list(signals)].copy()
+    for s in signals:
+        sub[s] = pd.to_numeric(sub[s], errors="coerce")
+    per_trial = (
+        sub.groupby(trial_keys, dropna=False, sort=False, as_index=False)[
+            list(signals)
+        ]
+        .mean()
+    )
+
+    # Pass 2: cross-trial average within (animal, side, phase_bin) →
+    # baseline_mean per signal. Melt to long form for the final
+    # (animal, side, phase_bin, signal, baseline_mean) shape.
+    melted = per_trial.melt(
+        id_vars=["animal", "side", "phase_bin"],
         value_vars=list(signals),
         var_name="signal",
         value_name="value",
@@ -577,7 +612,10 @@ def compute_per_animal_phase_bin_baseline(
     if melted.empty:
         return pd.DataFrame(columns=out_cols)
     agg = (
-        melted.groupby(["animal", "phase_bin", "signal"], as_index=False)["value"]
+        melted.groupby(
+            ["animal", "side", "phase_bin", "signal"],
+            as_index=False,
+        )["value"]
         .mean()
         .rename(columns={"value": "baseline_mean"})
     )
@@ -592,12 +630,18 @@ def apply_phase_bin_baseline_delta(
 ) -> pd.DataFrame:
     """Attach ``<signal>_delta`` columns to every row of ``phase_rows_long``.
 
-    Q-lock 13 kickoff Stage 1 (2026-05-27). For each signal,
-    ``<signal>_delta = <signal> − baseline_mean`` where ``baseline_mean``
-    is looked up at (animal, phase_bin, signal) in ``baseline``. Rows
-    whose triple has no baseline entry get ``NaN`` for that signal's
-    delta column. The delta is computed for EVERY row (pre and post) —
-    pre rows will mean to ~0 by construction; post rows carry the
+    Q-lock 13 kickoff Stage 1 (2026-05-27); per-side keying LOCKED
+    2026-05-28 (see :func:`compute_per_animal_phase_bin_baseline` for
+    rationale). For each signal,
+    ``<signal>_delta = <signal> − baseline_mean`` where
+    ``baseline_mean`` is looked up at (animal, side, phase_bin, signal)
+    in ``baseline``. Rows whose quadruple has no baseline entry get
+    ``NaN`` for that signal's delta column.
+
+    Delta is computed for EVERY row (pre and post) — pre rows' Stage 2
+    cross-trial pool will be exactly 0 within each (phenotype, "pre",
+    side, phase_bin) cell by construction (per-trial grain match
+    between baseline and Stage 2 aggregator). Post rows carry the
     deviation that the delta-variant figures visualize.
 
     Returns a copy; input is not mutated.
@@ -605,8 +649,7 @@ def apply_phase_bin_baseline_delta(
     Parameters
     ----------
     phase_rows_long : pd.DataFrame
-        Output of the cohort substrate walk (see
-        :func:`compute_per_animal_phase_bin_baseline`).
+        Output of the cohort substrate walk.
     baseline : pd.DataFrame
         Output of :func:`compute_per_animal_phase_bin_baseline`.
     signals : Iterable[str], default ``TRAJECTORY_SIGNALS``
@@ -625,10 +668,11 @@ def apply_phase_bin_baseline_delta(
         return out
     for s in signals:
         b = baseline[baseline["signal"] == s][
-            ["animal", "phase_bin", "baseline_mean"]
+            ["animal", "side", "phase_bin", "baseline_mean"]
         ]
         merged = out.merge(
-            b, on=["animal", "phase_bin"], how="left", validate="many_to_one",
+            b, on=["animal", "side", "phase_bin"],
+            how="left", validate="many_to_one",
         )
         out[f"{s}_delta"] = (
             merged[s].to_numpy(dtype=np.float64)
