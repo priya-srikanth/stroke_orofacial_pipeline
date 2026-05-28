@@ -747,10 +747,13 @@ def main() -> int:
 
     # Q-lock 12a: per-session W-2 long-form CSV (one row per
     # (animal, date, side, bp, epoch_label) with the scalar W-2 used in
-    # the boxplot).
-    per_session_csv = out_dir / "q12a_per_session_w2.csv"
-    per_session_w2_df.to_csv(per_session_csv, index=False)
-    logger.info("Wrote per-session W-2 CSV: %s", per_session_csv)
+    # the boxplot). When --skip-w2-boxplots is set, the DataFrame is
+    # empty — DO NOT overwrite an existing CSV with empty content (would
+    # clobber prior Q12a artifacts on disk).
+    if not args.skip_w2_boxplots:
+        per_session_csv = out_dir / "q12a_per_session_w2.csv"
+        per_session_w2_df.to_csv(per_session_csv, index=False)
+        logger.info("Wrote per-session W-2 CSV: %s", per_session_csv)
 
     total_elapsed = time.perf_counter() - overall_t0
     logger.info("=" * 72)
