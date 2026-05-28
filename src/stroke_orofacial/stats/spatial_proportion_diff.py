@@ -278,11 +278,14 @@ def compute_per_animal_per_epoch_diff(
     Returns
     -------
     dict or None
-        ``{"D", "extent", "n_post_sessions", "n_post_trials",
-        "n_total_post_frames", "n_pre_sessions", "n_pre_trials",
-        "n_total_pre_frames"}``.
+        ``{"D", "extent", "H_post_counts", "n_post_sessions",
+        "n_post_trials", "n_total_post_frames", "n_pre_sessions",
+        "n_pre_trials", "n_total_pre_frames"}``.
         The pre-side counts are echoed from ``pre_pool`` so a downstream
         per-panel annotation can read them off this dict alone.
+        ``H_post_counts`` is also returned so downstream stats (e.g.,
+        Addendum #5 W-2) can re-use the post-epoch histogram without
+        re-calling :func:`compute_animal_aggregated_histogram`.
     """
     if post_epoch not in POST_EPOCHS:
         raise ValueError(f"post_epoch {post_epoch!r} not in {POST_EPOCHS}.")
@@ -324,6 +327,7 @@ def compute_per_animal_per_epoch_diff(
     return {
         "D": D,
         "extent": extent,
+        "H_post_counts": H_post,
         "n_post_sessions": int(n_post_sessions),
         "n_post_trials": int(n_post_trials),
         "n_total_post_frames": int(n_total_post_frames),

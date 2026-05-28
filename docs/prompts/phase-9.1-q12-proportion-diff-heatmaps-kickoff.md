@@ -1,6 +1,6 @@
 # Phase 9.1 Q-lock 12 — Phenotype-Pooled Proportion-Diff Heatmaps Kickoff
 
-**Status:** LOCKED v1 + Addendum #1-4 (2026-05-27 → 2026-05-28).
+**Status:** LOCKED v1 + Addendum #1-5 (2026-05-27 → 2026-05-28).
 **Branch:** `phase/9.1-q12-proportion-diff-heatmaps`
 **Merge tag (on close):** `v9.1-q12-proportion-diff-heatmaps`
 **Depends on:**
@@ -263,4 +263,56 @@ Both views are scientifically meaningful; this addendum produces both alongside,
 ### Stage 5b — 3-tier cohort re-emit
 
 Same 8-animal cohort, full re-emit with `--remap-phenotypes 3tier --overwrite force`. 4-tier figures are NOT regenerated (they live in the parent directory and Stage 5 already emitted them at 04:37).
+
+
+---
+
+## Addendum #5 — W-2 recovery curves (pre-stroke normalized) (2026-05-28)
+
+**ALL OTHER LOCKS UNCHANGED.** New deliverable: pre-stroke-normalized Wasserstein-2 recovery line plots alongside the heatmaps. Same per-animal pre-pool + per-(animal, post_epoch) histograms from Stage 1; an additional scalar statistic per (animal × side × bp × post_epoch).
+
+### Q12-M (NEW): Wasserstein-2 recovery curves
+
+For each (animal, side, bodypart, post_epoch), compute the W-2 distance between ``P(bin | animal, post_epoch)`` and ``P(bin | animal, pre)``:
+
+- Renormalize each histogram to sum to 1 (isolating the spatial-shape comparison from the Q17 tracking-rate composite).
+- Cost matrix ``C[i, j] = ||c_i - c_j||²`` (squared Euclidean) on bin centers in pixel units.
+- Solve the **exact** balanced LP via :func:`ot.emd2` (POT library) per Priya 2026-05-28 direction for statistical credibility. Reduced to the union-support nonzero-bin subset to keep the LP tractable for 80×80 grids.
+- W-2 = ``sqrt(emd2(P_pre, P_post, C))`` — units of pixels.
+
+Phenotype-pooled aggregator: **mean ± SEM** across animals within phenotype. ``n=1`` phenotype tiers report ``sem=nan``; the line plot draws the marker with no error bar.
+
+### Figure spec
+
+One plot per (bodypart, side) = **4 SVGs** per variant, sibling to the heatmaps:
+- 4-tier: ``stats/figures/phenotype_pooled/wasserstein_recovery/<bp>_<side>_wasserstein_recovery_cleaned_trace.svg``
+- 3-tier: ``stats/figures/phenotype_pooled/wasserstein_recovery/3_phenotype/...``
+
+Layout:
+- X axis: 3 post-epochs (acute / sub_acute / chronic).
+- Y axis: W-2 distance (pixel units).
+- One line per phenotype tier, colored per :data:`stroke_orofacial.figures.palette.PHENOTYPE_ORDER`; markers with capsize=4 ±SEM error bars.
+- **Per-animal scatter underlay**: one semi-transparent dot per (animal × epoch) value at the phenotype's jitter offset, colored per phenotype (α=0.4). Per Priya 2026-05-28 direction.
+- Legend with per-phenotype display names. Footer carries the bodypart-specific source-marker subtitle.
+
+### Implementation
+
+New modules:
+- ``src/stroke_orofacial/stats/spatial_wasserstein.py`` — pure-math W-2 + per-animal wrapper.
+- ``src/stroke_orofacial/figures/phenotype_wasserstein_recovery.py`` — figure renderer + emit driver.
+
+Existing modules extended:
+- ``stats/aggregators.py`` — ``aggregate_phenotype_pooled_wasserstein`` (mean ± SEM aggregator).
+- ``stats/spatial_proportion_diff.py`` — ``compute_per_animal_per_epoch_diff`` now also returns ``H_post_counts`` (so the W-2 step reuses the histogram without re-calling ``compute_animal_aggregated_histogram``).
+- ``scripts/phase_9_1_q12/emit_cohort.py`` — computes W-2 alongside D in the per-animal loop; aggregates + emits 4 W-2 SVGs after the heatmap emit. ``q12_per_animal_manifest.csv`` gains a ``w2`` column.
+
+Tests (78 passing across Q12):
+- W-2 pure math: identical → 0, two deltas → distance, diagonal separation → sqrt(d_x² + d_y²), renormalization independence, shape-mismatch + empty-histogram error paths.
+- Phenotype-pool aggregator: mean + SEM math, n=1 → NaN SEM, NaN-w2 records dropped, separate-phenotype pools, error paths.
+- Figure renderer: 4-tier vs 3-tier legend, xtick labels, suptitle, per-animal scatter floor count, error paths.
+- Emit driver: 4 SVG emit, manifest CSV columns, prompt-overwrite raises.
+
+### Stage 5d (W-2 emit)
+
+Same launch pattern as Stage 5: ``--remap-phenotypes`` flag controls 4-tier vs 3-tier; both variants are emitted in a single driver invocation per run.
 

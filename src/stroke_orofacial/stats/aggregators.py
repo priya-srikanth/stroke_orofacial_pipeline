@@ -666,6 +666,106 @@ def aggregate_phenotype_pooled_spatial_diff(
 
 
 # ---------------------------------------------------------------------------
+# Q-lock 12 Addendum #5 — phenotype-pooled W-2 recovery aggregator
+# ---------------------------------------------------------------------------
+
+
+def aggregate_phenotype_pooled_wasserstein(
+    per_animal_w2_records: Iterable[Mapping[str, object]],
+    animals: Mapping[str, AnimalInfo],
+) -> dict[tuple[str, str, str, str], dict[str, object]]:
+    """Phenotype-pool W-2 scalars across animals: mean ± SEM.
+
+    Per Phase 9.1 Q-lock 12 Addendum #5 Stage 5d: each animal's
+    per-(side, bodypart, post_epoch) scalar W-2 (Wasserstein-2 distance
+    between its pre-pool and post-epoch histograms) is averaged across
+    animals sharing the same ``recovery_phenotype``. Mean ± SEM per
+    Priya 2026-05-28 direction (n=1 phenotype tiers report ``sem=nan``;
+    the line plot draws a marker with no error bar in that case).
+
+    Parameters
+    ----------
+    per_animal_w2_records : Iterable[Mapping]
+        Each record contains keys: ``animal`` (str), ``side``,
+        ``bodypart``, ``post_epoch``, ``w2`` (float or NaN — NaN means
+        no contribution for that combination). Typically produced by
+        the Stage 1 wrapper +
+        :func:`stroke_orofacial.stats.spatial_wasserstein.compute_per_animal_wasserstein2`.
+    animals : Mapping[str, AnimalInfo]
+        Animal-ID → AnimalInfo. Records whose animal lacks
+        ``recovery_phenotype`` are dropped.
+
+    Returns
+    -------
+    dict[tuple[str, str, str, str], dict[str, object]]
+        Keyed by ``(recovery_phenotype, side, bodypart, post_epoch)``.
+        Each value:
+
+        - ``w2_mean`` (float): mean across contributing animals with
+          finite W-2.
+        - ``w2_sem`` (float): standard error of the mean
+          (``std / sqrt(n)``, ``ddof=1``). NaN when n ≤ 1.
+        - ``w2_per_animal`` (dict[str, float]): per-animal W-2 values
+          (NaN dropped).
+        - ``n_animals`` (int): number of contributing animals.
+        - ``contributing_animals`` (list[str]): sorted IDs.
+
+    Raises
+    ------
+    ValueError
+        On missing keys in a record.
+    """
+    required = {"animal", "side", "bodypart", "post_epoch", "w2"}
+    buckets: dict[tuple[str, str, str, str], dict[str, float]] = {}
+    pheno_by_animal: dict[str, str] = {}
+    for rec in per_animal_w2_records:
+        if not isinstance(rec, Mapping):
+            raise TypeError(
+                f"per_animal_w2_records entries must be Mapping; got "
+                f"{type(rec).__name__}.",
+            )
+        missing = required - set(rec.keys())
+        if missing:
+            raise ValueError(
+                f"per-animal W-2 record missing keys {sorted(missing)}; "
+                f"got {sorted(rec.keys())}.",
+            )
+        animal_id = str(rec["animal"])
+        info = animals.get(animal_id)
+        if info is None or info.recovery_phenotype is None:
+            continue
+        w2 = rec["w2"]
+        if w2 is None or (isinstance(w2, float) and not np.isfinite(w2)):
+            continue
+        pheno_by_animal[animal_id] = info.recovery_phenotype
+        key = (
+            info.recovery_phenotype,
+            str(rec["side"]),
+            str(rec["bodypart"]),
+            str(rec["post_epoch"]),
+        )
+        buckets.setdefault(key, {})[animal_id] = float(w2)
+
+    out: dict[tuple[str, str, str, str], dict[str, object]] = {}
+    for key, per_animal in buckets.items():
+        vals = np.fromiter(per_animal.values(), dtype=np.float64)
+        n = int(vals.size)
+        w2_mean = float(vals.mean())
+        if n <= 1:
+            w2_sem = float("nan")
+        else:
+            w2_sem = float(vals.std(ddof=1) / np.sqrt(n))
+        out[key] = {
+            "w2_mean": w2_mean,
+            "w2_sem": w2_sem,
+            "w2_per_animal": dict(per_animal),
+            "n_animals": n,
+            "contributing_animals": sorted(per_animal.keys()),
+        }
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
 

@@ -62,9 +62,14 @@ from stroke_orofacial.figures.phenotype_pooled_proportion_diff import (  # noqa:
     compute_cohort_shared_vmax,
     emit_phenotype_pooled_proportion_diff_figures,
 )
+from stroke_orofacial.figures.phenotype_wasserstein_recovery import (  # noqa: E402
+    FIGURE_SUBDIR as W2_FIGURE_SUBDIR,
+    emit_phenotype_wasserstein_recovery_figures,
+)
 from stroke_orofacial.paths import PathResolver  # noqa: E402
 from stroke_orofacial.stats.aggregators import (  # noqa: E402
     aggregate_phenotype_pooled_spatial_diff,
+    aggregate_phenotype_pooled_wasserstein,
 )
 from stroke_orofacial.stats.spatial_proportion_diff import (  # noqa: E402
     BODYPART_CENTER_MODES,
@@ -73,6 +78,9 @@ from stroke_orofacial.stats.spatial_proportion_diff import (  # noqa: E402
     compute_per_animal_per_epoch_diff,
     compute_per_animal_pre_pool,
     split_post_dates_by_epoch,
+)
+from stroke_orofacial.stats.spatial_wasserstein import (  # noqa: E402
+    compute_per_animal_wasserstein2,
 )
 
 
@@ -103,17 +111,21 @@ def compute_per_animal_records(
 ) -> tuple[list[dict], list[dict[str, object]]]:
     """Run Stage 1 over (bp × side × epoch) for one animal.
 
-    Returns ``(records, audit_rows)``:
+    Returns ``(records, w2_records, audit_rows)``:
 
     - ``records`` is a list of per-(animal, side, bp, post_epoch) dicts
       directly consumable by
       :func:`stroke_orofacial.stats.aggregators.aggregate_phenotype_pooled_spatial_diff`.
       One record per produced D array (None-D records are skipped).
+    - ``w2_records`` is the parallel list of W-2 scalar dicts
+      (one per produced D record), consumable by
+      :func:`stroke_orofacial.stats.aggregators.aggregate_phenotype_pooled_wasserstein`.
+      Same animal/side/bp/post_epoch keys + ``w2`` scalar.
     - ``audit_rows`` is a list of one-row-per-(side, bp, post_epoch)
       bookkeeping dicts (also including pre-pool computation for the
       sample-size table) recording status, wall-time, sample counts,
-      and a |D|.p99 sanity stat. Sent into the Stage 4 per-animal
-      manifest CSV.
+      a |D|.p99 sanity stat, and the W-2 distance. Sent into the
+      Stage 4 per-animal manifest CSV.
     """
     animal_info = animals_map[animal]
     all_dates = yaml_driven_session_dates(
@@ -129,6 +141,7 @@ def compute_per_animal_records(
     )
 
     records: list[dict] = []
+    w2_records: list[dict] = []
     audit_rows: list[dict[str, object]] = []
     for bodypart in BODYPART_CENTER_MODES:
         for side in SIDES:
@@ -223,14 +236,30 @@ def compute_per_animal_records(
                 D = rec["D"]
                 finite_abs = np.abs(D[np.isfinite(D)])
                 p99 = float(np.percentile(finite_abs, 99.0)) if finite_abs.size else np.nan
+                # Addendum #5: exact W-2 from the same H_pre / H_post.
+                t_w2 = time.perf_counter()
+                try:
+                    w2 = compute_per_animal_wasserstein2(
+                        pre_pool=pre_pool,
+                        H_post_counts=rec["H_post_counts"],
+                        extent=rec["extent"],
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "[%s/%s/%s/%s] W-2 compute FAILED: %s",
+                        animal, bodypart, side, post_epoch, exc,
+                    )
+                    w2 = float("nan")
+                w2_elapsed = time.perf_counter() - t_w2
                 audit_rows.append({
                     "animal": animal, "bodypart": bodypart,
                     "side": side, "epoch": post_epoch,
-                    "status": "OK", "wall_time_s": ep_elapsed,
+                    "status": "OK",
+                    "wall_time_s": ep_elapsed + w2_elapsed,
                     "n_sessions": rec["n_post_sessions"],
                     "n_trials": rec["n_post_trials"],
                     "n_total_frames": rec["n_total_post_frames"],
-                    "abs_d_p99": p99, "error": "",
+                    "abs_d_p99": p99, "w2": w2, "error": "",
                 })
                 records.append({
                     "animal": animal,
@@ -242,14 +271,22 @@ def compute_per_animal_records(
                     "n_pre_trials": rec["n_pre_trials"],
                     "n_post_trials": rec["n_post_trials"],
                 })
+                w2_records.append({
+                    "animal": animal,
+                    "side": side,
+                    "bodypart": bodypart,
+                    "post_epoch": post_epoch,
+                    "w2": w2,
+                })
                 logger.info(
-                    "[%s/%s/%s/%s] OK in %.2fs (n_post_sess=%d, "
-                    "n_post_trials=%d, |D|.p99=%.4f)",
+                    "[%s/%s/%s/%s] OK in %.2fs+W2 %.2fs (n_post_sess=%d, "
+                    "n_post_trials=%d, |D|.p99=%.4f, W-2=%.2f)",
                     animal, bodypart, side, post_epoch, ep_elapsed,
-                    rec["n_post_sessions"], rec["n_post_trials"], p99,
+                    w2_elapsed, rec["n_post_sessions"], rec["n_post_trials"],
+                    p99, w2,
                 )
 
-    return records, audit_rows
+    return records, w2_records, audit_rows
 
 
 # ---------------------------------------------------------------------------
@@ -395,15 +432,17 @@ def main() -> int:
         phenotype_order = PHENOTYPE_ORDER
 
     all_records: list[dict] = []
+    all_w2_records: list[dict] = []
     all_audit_rows: list[dict[str, object]] = []
     for animal in animals:
         animal_t0 = time.perf_counter()
-        records, audit_rows = compute_per_animal_records(
+        records, w2_records, audit_rows = compute_per_animal_records(
             animal=animal, resolver=resolver,
             defaults=defaults, animals_map=animals_map, logger=logger,
         )
         animal_elapsed = time.perf_counter() - animal_t0
         all_records.extend(records)
+        all_w2_records.extend(w2_records)
         all_audit_rows.extend(audit_rows)
         n_ok = sum(1 for r in audit_rows if r["status"] == "OK"
                    and r["epoch"] in POST_EPOCHS)
@@ -439,8 +478,8 @@ def main() -> int:
     else:
         out_dir_emit = None  # let emit_* resolve to FIGURE_SUBDIR
 
-    # Stage 5d: figure emit
-    logger.info("Emitting 4 SVG figures (2 bodyparts x 2 sides)...")
+    # Stage 5d: figure emit (heatmaps)
+    logger.info("Emitting 4 SVG heatmap figures (2 bodyparts x 2 sides)...")
     figs_result = emit_phenotype_pooled_proportion_diff_figures(
         pooled,
         resolver=resolver,
@@ -451,9 +490,44 @@ def main() -> int:
         defaults=defaults,
     )
     logger.info(
-        "  figures OK=%d SKIP=%d FAIL=%d",
+        "  heatmap figures OK=%d SKIP=%d FAIL=%d",
         len(figs_result["OK"]), len(figs_result["SKIP"]),
         len(figs_result["FAIL"]),
+    )
+
+    # Stage 5d2 (Addendum #5): phenotype-pool W-2 + emit 4 recovery plots.
+    logger.info(
+        "Phenotype-pooling %d per-animal W-2 records (mean +/- SEM)...",
+        len(all_w2_records),
+    )
+    pooled_w2 = aggregate_phenotype_pooled_wasserstein(
+        all_w2_records, animals_map,
+    )
+    logger.info("  pooled W-2 records: %d", len(pooled_w2))
+
+    if args.output_dir is not None:
+        w2_out_dir = args.output_dir
+    elif args.remap_phenotypes == "3tier":
+        w2_out_dir = resolver.pipeline_outputs(
+            subdir=f"{W2_FIGURE_SUBDIR}/{FIGURE_SUBDIR_3TIER_SUFFIX}",
+        )
+    else:
+        w2_out_dir = None  # let renderer default to W2_FIGURE_SUBDIR
+
+    logger.info(
+        "Emitting 4 SVG W-2 recovery figures (2 bodyparts x 2 sides)...",
+    )
+    w2_figs_result = emit_phenotype_wasserstein_recovery_figures(
+        pooled_w2,
+        resolver=resolver,
+        output_dir=w2_out_dir,
+        overwrite=args.overwrite,
+        phenotype_order=phenotype_order,
+    )
+    logger.info(
+        "  W-2 figures OK=%d SKIP=%d FAIL=%d",
+        len(w2_figs_result["OK"]), len(w2_figs_result["SKIP"]),
+        len(w2_figs_result["FAIL"]),
     )
 
     # Stage 5e: per-animal audit manifest CSV (lands next to the figures
@@ -472,7 +546,8 @@ def main() -> int:
         all_audit_rows,
         columns=[
             "animal", "bodypart", "side", "epoch", "status", "wall_time_s",
-            "n_sessions", "n_trials", "n_total_frames", "abs_d_p99", "error",
+            "n_sessions", "n_trials", "n_total_frames", "abs_d_p99", "w2",
+            "error",
         ],
     ).to_csv(audit_csv, index=False)
     logger.info("Wrote per-animal audit manifest: %s", audit_csv)
@@ -486,12 +561,14 @@ def main() -> int:
     )
     logger.info("=" * 72)
 
-    # Exit nonzero on any FAIL — either compute or render.
+    # Exit nonzero on any FAIL — either compute or render (heatmap or W-2).
     fails = [r for r in all_audit_rows if r["status"] == "FAIL"]
-    if fails or figs_result["FAIL"]:
+    if fails or figs_result["FAIL"] or w2_figs_result["FAIL"]:
         logger.error(
-            "%d compute FAIL(s), %d render FAIL(s) — see manifests.",
+            "%d compute FAIL(s), %d heatmap render FAIL(s), "
+            "%d W-2 render FAIL(s) — see manifests.",
             len(fails), len(figs_result["FAIL"]),
+            len(w2_figs_result["FAIL"]),
         )
         for r in fails[:5]:
             logger.error(
@@ -499,7 +576,9 @@ def main() -> int:
                 r["animal"], r["bodypart"], r["side"], r["epoch"], r["error"],
             )
         for key, err in figs_result["FAIL"][:5]:
-            logger.error("  render %s — %s", key, err)
+            logger.error("  heatmap render %s — %s", key, err)
+        for key, err in w2_figs_result["FAIL"][:5]:
+            logger.error("  W-2 render %s — %s", key, err)
         return 1
 
     # Final JSON summary on stdout for downstream parsing.
@@ -507,11 +586,15 @@ def main() -> int:
         "n_animals": len(animals),
         "n_records": len(all_records),
         "n_pooled": len(pooled),
+        "n_pooled_w2": len(pooled_w2),
         "shared_vmax": float(shared_vmax),
         "wall_time_s": float(total_elapsed),
-        "figures_ok": [list(k) for k in figs_result["OK"]],
-        "figures_skip": [list(k) for k in figs_result["SKIP"]],
-        "manifest_csv": str(figs_result["manifest_csv"]),
+        "heatmap_figures_ok": [list(k) for k in figs_result["OK"]],
+        "heatmap_figures_skip": [list(k) for k in figs_result["SKIP"]],
+        "w2_figures_ok": [list(k) for k in w2_figs_result["OK"]],
+        "w2_figures_skip": [list(k) for k in w2_figs_result["SKIP"]],
+        "heatmap_manifest_csv": str(figs_result["manifest_csv"]),
+        "w2_manifest_csv": str(w2_figs_result["manifest_csv"]),
         "audit_csv": str(audit_csv),
     }, indent=2))
     return 0
