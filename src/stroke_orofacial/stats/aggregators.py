@@ -35,7 +35,6 @@ import datetime
 import json
 import re
 from collections.abc import Iterable, Mapping
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -490,6 +489,280 @@ def apply_baseline_delta(
     joined = joined.dropna(subset=["baseline_mean"]).copy()
     joined["delta_median"] = joined["median"] - joined["baseline_mean"]
     return joined
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 12 — phenotype-pooled spatial proportion-diff aggregator
+# ---------------------------------------------------------------------------
+
+
+def aggregate_phenotype_pooled_spatial_diff(
+    per_animal_records: Iterable[Mapping[str, object]],
+    animals: Mapping[str, AnimalInfo],
+) -> dict[tuple[str, str, str, str], dict[str, object]]:
+    """Phenotype-pooled mean-of-D-arrays across animals within phenotype.
+
+    Phase 9.1 Q-lock 12 Stage 2. Each animal's per-``(side, bodypart,
+    post_epoch)`` proportion_diff array — produced by
+    :func:`stroke_orofacial.stats.spatial_proportion_diff.compute_per_animal_per_epoch_diff`
+    — is mean-pooled across animals sharing the same
+    ``recovery_phenotype``. NaN-aware (per-cell ``np.nanmean``): cells
+    where one animal has no-data (Q12-E source-data mask) drop that
+    animal's contribution from that cell's phenotype mean. Cells where
+    EVERY contributing animal has NaN remain NaN in the pooled array.
+
+    Within-phenotype mean (NOT median) per Q-lock 12 Stage 2 kickoff
+    spec — contrast with :func:`aggregate_phenotype_pooled_median_iqr`
+    for scalar endpoints which uses median-of-medians.
+
+    Parameters
+    ----------
+    per_animal_records : Iterable[Mapping]
+        Each record contains the keys:
+        ``animal`` (str), ``side`` (``"L"`` or ``"R"``),
+        ``bodypart`` (``"tongue"`` or ``"jaw"``), ``post_epoch``
+        (``"acute"`` / ``"sub_acute"`` / ``"chronic"``),
+        ``D`` (``np.ndarray`` shape ``(nx, ny)`` with NaN for no-data
+        cells), ``extent`` (``list[float]`` or None — must agree across
+        records within the same (side, bodypart, post_epoch) bucket),
+        ``n_pre_trials`` (int), ``n_post_trials`` (int). Records with
+        ``D is None`` are dropped.
+    animals : Mapping[str, AnimalInfo]
+        Animal-ID → AnimalInfo lookup. Records whose animal is missing
+        from this map, or whose AnimalInfo has
+        ``recovery_phenotype is None``, are silently dropped.
+
+    Returns
+    -------
+    dict[tuple[str, str, str, str], dict[str, object]]
+        Keyed by ``(recovery_phenotype, side, bodypart, post_epoch)``.
+        Each value contains:
+
+        - ``D_mean`` (``np.ndarray`` shape ``(nx, ny)``): nanmean across
+          contributing animals; NaN cells where every contributing
+          animal had NaN at that cell.
+        - ``n_contributing_animals_per_cell`` (``np.ndarray`` shape
+          ``(nx, ny)`` of ``int``): per-cell count of contributing
+          animals.
+        - ``contributing_animals`` (``list[str]``): sorted animal IDs
+          with a non-None record for this combination.
+        - ``n_pre_trials_per_animal`` (``dict[str, int]``)
+        - ``n_post_trials_per_animal`` (``dict[str, int]``)
+        - ``extent`` (``list[float]`` or None)
+        - ``n_animals`` (``int``): ``len(contributing_animals)``.
+
+    Raises
+    ------
+    ValueError
+        If two records in the same (side, bp, epoch) bucket disagree on
+        ``D.shape`` or on a non-None ``extent`` — that indicates a bin-
+        grid divergence that would silently corrupt the pooled mean.
+    """
+    required = {
+        "animal", "side", "bodypart", "post_epoch", "D", "extent",
+        "n_pre_trials", "n_post_trials",
+    }
+    # Bucket records by (side, bp, epoch), filtering on D-not-None +
+    # phenotype-known.
+    buckets: dict[tuple[str, str, str], list[Mapping[str, object]]] = {}
+    pheno_by_animal: dict[str, str] = {}
+    for rec in per_animal_records:
+        if not isinstance(rec, Mapping):
+            raise TypeError(
+                f"per_animal_records entries must be Mapping; got "
+                f"{type(rec).__name__}.",
+            )
+        missing = required - set(rec.keys())
+        if missing:
+            raise ValueError(
+                f"per-animal record missing keys {sorted(missing)}; "
+                f"got {sorted(rec.keys())}.",
+            )
+        if rec["D"] is None:
+            continue
+        animal_id = str(rec["animal"])
+        info = animals.get(animal_id)
+        if info is None or info.recovery_phenotype is None:
+            continue
+        pheno_by_animal[animal_id] = info.recovery_phenotype
+        bucket = (
+            str(rec["side"]),
+            str(rec["bodypart"]),
+            str(rec["post_epoch"]),
+        )
+        buckets.setdefault(bucket, []).append(rec)
+
+    out: dict[tuple[str, str, str, str], dict[str, object]] = {}
+    for (side, bp, ep), recs in buckets.items():
+        # Group records within this bucket by recovery_phenotype.
+        by_pheno: dict[str, list[Mapping[str, object]]] = {}
+        for rec in recs:
+            pheno = pheno_by_animal[str(rec["animal"])]
+            by_pheno.setdefault(pheno, []).append(rec)
+
+        for pheno, pheno_recs in by_pheno.items():
+            # Verify shape + extent consistency within (pheno, side, bp, ep).
+            shapes = {tuple(np.asarray(r["D"]).shape) for r in pheno_recs}
+            if len(shapes) != 1:
+                raise ValueError(
+                    f"shape mismatch across animals in pool "
+                    f"({pheno}, {side}, {bp}, {ep}): {sorted(shapes)} — "
+                    "bin-grid divergence would corrupt the pooled mean.",
+                )
+            extents = [r["extent"] for r in pheno_recs if r["extent"] is not None]
+            if extents:
+                ref = tuple(extents[0])
+                for ext in extents[1:]:
+                    if tuple(ext) != ref:
+                        raise ValueError(
+                            f"extent mismatch across animals in pool "
+                            f"({pheno}, {side}, {bp}, {ep}): {ref} vs "
+                            f"{tuple(ext)}.",
+                        )
+                extent = list(ref)
+            else:
+                extent = None
+
+            # nanmean across animals' D arrays for this bucket.
+            stack = np.stack(
+                [np.asarray(r["D"], dtype=np.float64) for r in pheno_recs],
+                axis=0,
+            )
+            # n_contributing per cell = count of finite values across the
+            # animal-axis.
+            n_contrib = np.isfinite(stack).sum(axis=0)
+            # nanmean of all-NaN slice yields NaN; that IS the desired
+            # behavior for phenotype-pooled no-data cells (Q12-E). The
+            # warning numpy emits is noise here; silence it explicitly.
+            import warnings as _warnings
+            with _warnings.catch_warnings():
+                _warnings.filterwarnings(
+                    "ignore",
+                    message="Mean of empty slice",
+                    category=RuntimeWarning,
+                )
+                D_mean = np.nanmean(stack, axis=0)
+
+            contributing_animals = sorted(
+                str(r["animal"]) for r in pheno_recs
+            )
+            n_pre_trials_per_animal = {
+                str(r["animal"]): int(r["n_pre_trials"]) for r in pheno_recs
+            }
+            n_post_trials_per_animal = {
+                str(r["animal"]): int(r["n_post_trials"]) for r in pheno_recs
+            }
+
+            out[(pheno, side, bp, ep)] = {
+                "D_mean": D_mean,
+                "n_contributing_animals_per_cell": n_contrib.astype(np.int64),
+                "contributing_animals": contributing_animals,
+                "n_pre_trials_per_animal": n_pre_trials_per_animal,
+                "n_post_trials_per_animal": n_post_trials_per_animal,
+                "extent": extent,
+                "n_animals": len(contributing_animals),
+            }
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 12 Addendum #5 — phenotype-pooled W-2 recovery aggregator
+# ---------------------------------------------------------------------------
+
+
+def aggregate_phenotype_pooled_wasserstein(
+    per_animal_w2_records: Iterable[Mapping[str, object]],
+    animals: Mapping[str, AnimalInfo],
+) -> dict[tuple[str, str, str, str], dict[str, object]]:
+    """Phenotype-pool W-2 scalars across animals: mean ± SEM.
+
+    Per Phase 9.1 Q-lock 12 Addendum #5 Stage 5d: each animal's
+    per-(side, bodypart, post_epoch) scalar W-2 (Wasserstein-2 distance
+    between its pre-pool and post-epoch histograms) is averaged across
+    animals sharing the same ``recovery_phenotype``. Mean ± SEM per
+    Priya 2026-05-28 direction (n=1 phenotype tiers report ``sem=nan``;
+    the line plot draws a marker with no error bar in that case).
+
+    Parameters
+    ----------
+    per_animal_w2_records : Iterable[Mapping]
+        Each record contains keys: ``animal`` (str), ``side``,
+        ``bodypart``, ``post_epoch``, ``w2`` (float or NaN — NaN means
+        no contribution for that combination). Typically produced by
+        the Stage 1 wrapper +
+        :func:`stroke_orofacial.stats.spatial_wasserstein.compute_per_animal_wasserstein2`.
+    animals : Mapping[str, AnimalInfo]
+        Animal-ID → AnimalInfo. Records whose animal lacks
+        ``recovery_phenotype`` are dropped.
+
+    Returns
+    -------
+    dict[tuple[str, str, str, str], dict[str, object]]
+        Keyed by ``(recovery_phenotype, side, bodypart, post_epoch)``.
+        Each value:
+
+        - ``w2_mean`` (float): mean across contributing animals with
+          finite W-2.
+        - ``w2_sem`` (float): standard error of the mean
+          (``std / sqrt(n)``, ``ddof=1``). NaN when n ≤ 1.
+        - ``w2_per_animal`` (dict[str, float]): per-animal W-2 values
+          (NaN dropped).
+        - ``n_animals`` (int): number of contributing animals.
+        - ``contributing_animals`` (list[str]): sorted IDs.
+
+    Raises
+    ------
+    ValueError
+        On missing keys in a record.
+    """
+    required = {"animal", "side", "bodypart", "post_epoch", "w2"}
+    buckets: dict[tuple[str, str, str, str], dict[str, float]] = {}
+    pheno_by_animal: dict[str, str] = {}
+    for rec in per_animal_w2_records:
+        if not isinstance(rec, Mapping):
+            raise TypeError(
+                f"per_animal_w2_records entries must be Mapping; got "
+                f"{type(rec).__name__}.",
+            )
+        missing = required - set(rec.keys())
+        if missing:
+            raise ValueError(
+                f"per-animal W-2 record missing keys {sorted(missing)}; "
+                f"got {sorted(rec.keys())}.",
+            )
+        animal_id = str(rec["animal"])
+        info = animals.get(animal_id)
+        if info is None or info.recovery_phenotype is None:
+            continue
+        w2 = rec["w2"]
+        if w2 is None or (isinstance(w2, float) and not np.isfinite(w2)):
+            continue
+        pheno_by_animal[animal_id] = info.recovery_phenotype
+        key = (
+            info.recovery_phenotype,
+            str(rec["side"]),
+            str(rec["bodypart"]),
+            str(rec["post_epoch"]),
+        )
+        buckets.setdefault(key, {})[animal_id] = float(w2)
+
+    out: dict[tuple[str, str, str, str], dict[str, object]] = {}
+    for key, per_animal in buckets.items():
+        vals = np.fromiter(per_animal.values(), dtype=np.float64)
+        n = int(vals.size)
+        w2_mean = float(vals.mean())
+        if n <= 1:
+            w2_sem = float("nan")
+        else:
+            w2_sem = float(vals.std(ddof=1) / np.sqrt(n))
+        out[key] = {
+            "w2_mean": w2_mean,
+            "w2_sem": w2_sem,
+            "w2_per_animal": dict(per_animal),
+            "n_animals": n,
+            "contributing_animals": sorted(per_animal.keys()),
+        }
+    return out
 
 
 # ---------------------------------------------------------------------------
