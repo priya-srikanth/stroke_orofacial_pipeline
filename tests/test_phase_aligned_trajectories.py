@@ -29,6 +29,8 @@ from stroke_orofacial.figures.phase_aligned_trajectories import (
     EPOCH_ORDER,
     FIGURE_SUBDIR,
     FIGURE_SUBTITLE,
+    SOURCE_DATA_SUBTITLE_DELTA,
+    SOURCE_DATA_SUBTITLE_RAW,
     build_phase_aligned_trajectory_figure,
     emit_phase_aligned_trajectory_figures,
     figure_path_for,
@@ -244,6 +246,26 @@ class TestBuildPhaseAlignedTrajectoryFigure:
             t.get_text() for t in fig.texts
         ]
         assert FIGURE_SUBTITLE in fig_texts
+        plt.close(fig)
+
+    def test_raw_variant_carries_raw_source_subtitle(self):
+        df = _pooled_df()
+        fig, _ = build_phase_aligned_trajectory_figure(
+            df, signal="angle_deg", variant="raw", side="L",
+        )
+        fig_texts = [t.get_text() for t in fig.texts]
+        assert SOURCE_DATA_SUBTITLE_RAW in fig_texts
+        assert SOURCE_DATA_SUBTITLE_DELTA not in fig_texts
+        plt.close(fig)
+
+    def test_delta_variant_carries_delta_source_subtitle(self):
+        df = _pooled_df()
+        fig, _ = build_phase_aligned_trajectory_figure(
+            df, signal="x_centered", variant="delta", side="R",
+        )
+        fig_texts = [t.get_text() for t in fig.texts]
+        assert SOURCE_DATA_SUBTITLE_DELTA in fig_texts
+        assert SOURCE_DATA_SUBTITLE_RAW not in fig_texts
         plt.close(fig)
 
 

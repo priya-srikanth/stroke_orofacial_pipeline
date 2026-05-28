@@ -84,6 +84,27 @@ VARIANT_DISPLAY_NAMES: dict[str, str] = {
 }
 
 
+# Source-data subtitle — one line under the figure suptitle, describing
+# the substrate phase definition + (for delta) the normalization rule.
+# Distinct from FIGURE_SUBTITLE which is the Q-lock 15 cleaned_trace
+# provenance footer (stays at the bottom).
+SOURCE_DATA_SUBTITLE_RAW: str = (
+    "Source data: first-lick centered phase ∈ [0, 1] "
+    "(one inter-lick-interval window centered on first detected lick peak)"
+)
+SOURCE_DATA_SUBTITLE_DELTA: str = (
+    "Source data: first-lick centered phase ∈ [0, 1]; "
+    "Δ = trial signal − per-(animal, side, phase bin) pre-stroke baseline"
+)
+
+
+def _source_data_subtitle(variant: str) -> str:
+    """Return the variant-appropriate source-data subtitle line."""
+    if variant == "delta":
+        return SOURCE_DATA_SUBTITLE_DELTA
+    return SOURCE_DATA_SUBTITLE_RAW
+
+
 def figure_path_for(
     *,
     signal: str,
@@ -261,14 +282,20 @@ def build_phase_aligned_trajectory_figure(
 
             ax.tick_params(axis="both", labelsize=8)
 
-    # Outer title (signal + variant + side); subtitle = Q-lock 15 footer.
+    # Outer title (signal + variant + side); two subtitles below it:
+    # 1) source-data description (variant-aware), 2) Q-lock 15
+    # cleaned_trace provenance footer.
     signal_label = SIGNAL_DISPLAY_NAMES.get(signal, signal)
     variant_label = VARIANT_DISPLAY_NAMES.get(variant, variant)
     title = f"{signal_label} — {variant_label} — side={side}"
     fig.suptitle(title, fontsize=14, y=0.995)
     fig.text(
-        0.5, 0.965, FIGURE_SUBTITLE,
-        ha="center", va="top", fontsize=9, style="italic",
+        0.5, 0.970, _source_data_subtitle(variant),
+        ha="center", va="top", fontsize=9,
+    )
+    fig.text(
+        0.5, 0.948, FIGURE_SUBTITLE,
+        ha="center", va="top", fontsize=8, style="italic",
     )
 
     # Outer y-label = signal display name (helps when stripchart-style
@@ -278,7 +305,7 @@ def build_phase_aligned_trajectory_figure(
         ha="left", va="center", rotation=90, fontsize=12,
     )
 
-    fig.tight_layout(rect=[0.02, 0.0, 1.0, 0.94])
+    fig.tight_layout(rect=[0.02, 0.0, 1.0, 0.925])
     return fig, axes
 
 
