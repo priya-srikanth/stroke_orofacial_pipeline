@@ -55,6 +55,18 @@ PHASE_ALIGNED_ENDPOINT_SLUGS: tuple[str, ...] = (
 )
 
 
+# Q-lock 13 — per-phase-bin trajectory signals carried on the centered
+# phase-row substrate (``build_first_lick_centered_phase_rows`` output).
+# Distinct from the scalar ``PHASE_ALIGNED_ENDPOINT_SLUGS`` consumed by
+# Q-lock 13b: those are session × side × endpoint scalars from the
+# per-trial endpoints JSON; these are trial × phase_bin signal values
+# from the in-memory bundle.
+TRAJECTORY_SIGNALS: tuple[str, ...] = (
+    "angle_deg",
+    "x_centered",
+)
+
+
 # ---------------------------------------------------------------------------
 # JSON readers
 # ---------------------------------------------------------------------------
@@ -490,6 +502,139 @@ def apply_baseline_delta(
     joined = joined.dropna(subset=["baseline_mean"]).copy()
     joined["delta_median"] = joined["median"] - joined["baseline_mean"]
     return joined
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13 — per-phase-bin trajectory baseline (Stage 1)
+# ---------------------------------------------------------------------------
+
+
+def compute_per_animal_phase_bin_baseline(
+    phase_rows_long: pd.DataFrame,
+    *,
+    signals: Iterable[str] = TRAJECTORY_SIGNALS,
+) -> pd.DataFrame:
+    """Per-(animal, phase_bin, signal) pre-stroke baseline mean.
+
+    Q-lock 13 kickoff Stage 1 (2026-05-27). Trajectory analog of
+    :func:`compute_per_animal_baseline` (Q13b scalar). The unit of
+    aggregation is the trial-frame row of the centered phase-row
+    substrate, NOT a per-session median, so this returns one row per
+    (animal, phase_bin, signal) — no ``side`` key (kickoff lock: baseline
+    pooled across L and R pre-stroke trials per animal).
+
+    Baseline = mean of ``signal`` value across all rows whose
+    ``epoch_label == "pre"``. NaN-aware (non-finite values dropped before
+    averaging). (animal, phase_bin, signal) triples with no finite
+    pre-stroke values are absent from the output; downstream
+    :func:`apply_phase_bin_baseline_delta` produces NaN deltas for rows
+    whose triple has no baseline entry.
+
+    Parameters
+    ----------
+    phase_rows_long : pd.DataFrame
+        Long-form centered phase rows. Required columns: ``animal``,
+        ``phase_bin``, ``epoch_label``, and one column per ``signals``
+        entry (default ``angle_deg`` and ``x_centered``). One row per
+        (trial, frame-in-phase-cycle); see
+        :func:`stroke_orofacial.dlc_kinematics.tongue_pertrial.build_first_lick_centered_phase_rows`
+        for the substrate that produces these rows (cohort emit walks
+        the substrate × sessions and concatenates).
+    signals : Iterable[str], default ``TRAJECTORY_SIGNALS``
+        Signal column names to compute baselines for. Each must be a
+        column in ``phase_rows_long``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: ``animal``, ``phase_bin`` (int), ``signal`` (str),
+        ``baseline_mean`` (float). One row per (animal, phase_bin,
+        signal) triple with at least one finite pre-stroke value.
+        Canonical column set returned even when input is empty.
+    """
+    signals = tuple(signals)
+    out_cols = ["animal", "phase_bin", "signal", "baseline_mean"]
+    required = {"animal", "phase_bin", "epoch_label"} | set(signals)
+    missing = required - set(phase_rows_long.columns)
+    if missing:
+        raise ValueError(
+            f"phase_rows_long missing column(s) {sorted(missing)}; "
+            f"got columns {list(phase_rows_long.columns)}.",
+        )
+    if phase_rows_long.empty:
+        return pd.DataFrame(columns=out_cols)
+    pre = phase_rows_long[phase_rows_long["epoch_label"] == "pre"]
+    if pre.empty:
+        return pd.DataFrame(columns=out_cols)
+    melted = pre.melt(
+        id_vars=["animal", "phase_bin"],
+        value_vars=list(signals),
+        var_name="signal",
+        value_name="value",
+    )
+    finite_mask = np.isfinite(melted["value"].to_numpy(dtype=np.float64))
+    melted = melted.loc[finite_mask]
+    if melted.empty:
+        return pd.DataFrame(columns=out_cols)
+    agg = (
+        melted.groupby(["animal", "phase_bin", "signal"], as_index=False)["value"]
+        .mean()
+        .rename(columns={"value": "baseline_mean"})
+    )
+    return agg[out_cols].reset_index(drop=True)
+
+
+def apply_phase_bin_baseline_delta(
+    phase_rows_long: pd.DataFrame,
+    baseline: pd.DataFrame,
+    *,
+    signals: Iterable[str] = TRAJECTORY_SIGNALS,
+) -> pd.DataFrame:
+    """Attach ``<signal>_delta`` columns to every row of ``phase_rows_long``.
+
+    Q-lock 13 kickoff Stage 1 (2026-05-27). For each signal,
+    ``<signal>_delta = <signal> − baseline_mean`` where ``baseline_mean``
+    is looked up at (animal, phase_bin, signal) in ``baseline``. Rows
+    whose triple has no baseline entry get ``NaN`` for that signal's
+    delta column. The delta is computed for EVERY row (pre and post) —
+    pre rows will mean to ~0 by construction; post rows carry the
+    deviation that the delta-variant figures visualize.
+
+    Returns a copy; input is not mutated.
+
+    Parameters
+    ----------
+    phase_rows_long : pd.DataFrame
+        Output of the cohort substrate walk (see
+        :func:`compute_per_animal_phase_bin_baseline`).
+    baseline : pd.DataFrame
+        Output of :func:`compute_per_animal_phase_bin_baseline`.
+    signals : Iterable[str], default ``TRAJECTORY_SIGNALS``
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of ``phase_rows_long`` plus one ``<signal>_delta`` column
+        per entry in ``signals``.
+    """
+    signals = tuple(signals)
+    out = phase_rows_long.copy()
+    if out.empty:
+        for s in signals:
+            out[f"{s}_delta"] = pd.Series(dtype=float)
+        return out
+    for s in signals:
+        b = baseline[baseline["signal"] == s][
+            ["animal", "phase_bin", "baseline_mean"]
+        ]
+        merged = out.merge(
+            b, on=["animal", "phase_bin"], how="left", validate="many_to_one",
+        )
+        out[f"{s}_delta"] = (
+            merged[s].to_numpy(dtype=np.float64)
+            - merged["baseline_mean"].to_numpy(dtype=np.float64)
+        )
+    return out
 
 
 # ---------------------------------------------------------------------------

@@ -24,9 +24,12 @@ from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
 from stroke_orofacial.paths import PathResolver
 from stroke_orofacial.stats.aggregators import (
     PHASE_ALIGNED_ENDPOINT_SLUGS,
+    TRAJECTORY_SIGNALS,
     aggregate_per_session_median_iqr,
     aggregate_phenotype_pooled_median_iqr,
+    apply_phase_bin_baseline_delta,
     attach_phenotype_and_epoch,
+    compute_per_animal_phase_bin_baseline,
     enumerate_session_dates,
     load_cohort_phase_aligned_endpoints_long,
     load_session_phase_aligned_endpoints_long,
@@ -527,3 +530,258 @@ class TestStage2ToStage3Integration:
         assert int(acute["n_animals"]) == 2
         assert int(pre["n_sessions"]) == 2
         assert int(acute["n_sessions"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13 Stage 1 — per-animal phase-bin baseline + delta
+# ---------------------------------------------------------------------------
+
+
+_PHASE_ROW_TEST_COLUMNS: tuple[str, ...] = (
+    "animal", "side", "phase_bin", "epoch_label", "angle_deg", "x_centered",
+)
+
+
+def _phase_rows(
+    rows: list[dict],
+) -> pd.DataFrame:
+    """Build a long-form centered-phase row DataFrame from spec dicts.
+
+    Convenience for tests: each ``rows`` dict carries the minimum
+    columns ``compute_per_animal_phase_bin_baseline`` /
+    ``apply_phase_bin_baseline_delta`` consume — ``animal``, ``side``,
+    ``phase_bin``, ``epoch_label``, ``angle_deg``, ``x_centered``.
+    Defaults fill in finite stand-ins for ``angle_deg`` / ``x_centered``
+    when the caller doesn't supply them.
+
+    An empty ``rows`` list still emits the canonical column schema so
+    downstream empty-input regression tests have the contract surface
+    they need.
+    """
+    if not rows:
+        return pd.DataFrame({c: pd.Series(dtype=object if c in {"animal", "side", "epoch_label"} else float)
+                             for c in _PHASE_ROW_TEST_COLUMNS})
+    canonical = []
+    for r in rows:
+        rec = {
+            "animal": r["animal"],
+            "side": r.get("side", "L"),
+            "phase_bin": int(r["phase_bin"]),
+            "epoch_label": r["epoch_label"],
+            "angle_deg": float(r.get("angle_deg", 0.0)),
+            "x_centered": float(r.get("x_centered", 0.0)),
+        }
+        canonical.append(rec)
+    return pd.DataFrame(canonical)
+
+
+class TestComputePerAnimalPhaseBinBaseline:
+    def test_returns_canonical_columns_on_empty(self):
+        empty = _phase_rows([]).iloc[0:0]
+        # _phase_rows on [] is already empty but columns are right.
+        out = compute_per_animal_phase_bin_baseline(empty)
+        assert list(out.columns) == [
+            "animal", "phase_bin", "signal", "baseline_mean",
+        ]
+        assert out.empty
+
+    def test_mean_over_pre_rows_per_animal_phase_bin_signal(self):
+        # PS46: phase_bin 0, pre L (angle=2, x=-1) + pre R (angle=4, x=+1)
+        #       phase_bin 1, pre L (angle=8, x=+3)
+        # PS47: phase_bin 0, pre L (angle=10, x=-5)
+        rows = [
+            {"animal": "PS46", "side": "L", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 2.0, "x_centered": -1.0},
+            {"animal": "PS46", "side": "R", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 4.0, "x_centered": 1.0},
+            {"animal": "PS46", "side": "L", "phase_bin": 1, "epoch_label": "pre",
+             "angle_deg": 8.0, "x_centered": 3.0},
+            {"animal": "PS47", "side": "L", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 10.0, "x_centered": -5.0},
+            # Post-epoch row — must NOT contribute.
+            {"animal": "PS46", "side": "L", "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 999.0, "x_centered": 999.0},
+        ]
+        out = compute_per_animal_phase_bin_baseline(_phase_rows(rows))
+        # 3 (animal × phase_bin) groups × 2 signals = 6 rows.
+        assert len(out) == 6
+        # PS46 phase_bin=0 angle pool = (2+4)/2 = 3.0; x pool = (-1+1)/2 = 0.0
+        ps46_pb0 = out[(out["animal"] == "PS46") & (out["phase_bin"] == 0)]
+        assert ps46_pb0[ps46_pb0["signal"] == "angle_deg"][
+            "baseline_mean"
+        ].iloc[0] == pytest.approx(3.0)
+        assert ps46_pb0[ps46_pb0["signal"] == "x_centered"][
+            "baseline_mean"
+        ].iloc[0] == pytest.approx(0.0)
+        # PS46 phase_bin=1 angle = 8 (single sample)
+        ps46_pb1 = out[(out["animal"] == "PS46") & (out["phase_bin"] == 1)]
+        assert ps46_pb1[ps46_pb1["signal"] == "angle_deg"][
+            "baseline_mean"
+        ].iloc[0] == pytest.approx(8.0)
+        # PS47 phase_bin=0 x = -5
+        ps47_pb0 = out[(out["animal"] == "PS47") & (out["phase_bin"] == 0)]
+        assert ps47_pb0[ps47_pb0["signal"] == "x_centered"][
+            "baseline_mean"
+        ].iloc[0] == pytest.approx(-5.0)
+
+    def test_empty_when_no_pre_rows(self):
+        rows = [
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 5.0, "x_centered": 1.0},
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "chronic",
+             "angle_deg": 7.0, "x_centered": 2.0},
+        ]
+        out = compute_per_animal_phase_bin_baseline(_phase_rows(rows))
+        assert out.empty
+        assert list(out.columns) == [
+            "animal", "phase_bin", "signal", "baseline_mean",
+        ]
+
+    def test_animal_with_no_pre_rows_absent(self):
+        # PS46 has pre rows; PS47 has only post rows. PS47 must NOT appear.
+        rows = [
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 5.0, "x_centered": -1.0},
+            {"animal": "PS47", "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 10.0, "x_centered": 2.0},
+        ]
+        out = compute_per_animal_phase_bin_baseline(_phase_rows(rows))
+        animals_with_baseline = set(out["animal"].unique())
+        assert animals_with_baseline == {"PS46"}
+
+    def test_nan_values_dropped_before_mean(self):
+        # Pre rows mixing finite and NaN — NaN must not contribute.
+        rows = [
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 2.0, "x_centered": -1.0},
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": float("nan"), "x_centered": 1.0},
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 4.0, "x_centered": float("nan")},
+        ]
+        out = compute_per_animal_phase_bin_baseline(_phase_rows(rows))
+        ang = out[out["signal"] == "angle_deg"]["baseline_mean"].iloc[0]
+        x = out[out["signal"] == "x_centered"]["baseline_mean"].iloc[0]
+        # angle: finite values [2.0, 4.0] → mean = 3.0
+        assert ang == pytest.approx(3.0)
+        # x: finite values [-1.0, 1.0] → mean = 0.0
+        assert x == pytest.approx(0.0)
+
+    def test_triple_with_all_nan_pre_rows_absent(self):
+        # PS46 phase_bin=0 angle = all NaN; phase_bin=0 x = finite.
+        # Expected: (PS46, 0, angle_deg) absent; (PS46, 0, x_centered) present.
+        rows = [
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": float("nan"), "x_centered": 2.0},
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": float("nan"), "x_centered": 4.0},
+        ]
+        out = compute_per_animal_phase_bin_baseline(_phase_rows(rows))
+        signals_present = set(out["signal"].unique())
+        assert signals_present == {"x_centered"}
+
+    def test_missing_required_column_raises(self):
+        bad = pd.DataFrame({
+            "animal": ["PS46"], "phase_bin": [0], "epoch_label": ["pre"],
+            # angle_deg + x_centered missing
+        })
+        with pytest.raises(ValueError, match="missing column"):
+            compute_per_animal_phase_bin_baseline(bad)
+
+    def test_custom_signals_argument(self):
+        rows = [
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 2.0, "x_centered": 1.0},
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 4.0, "x_centered": 3.0},
+        ]
+        # Pass only "angle_deg" — output should not contain x_centered.
+        out = compute_per_animal_phase_bin_baseline(
+            _phase_rows(rows), signals=("angle_deg",),
+        )
+        assert set(out["signal"].unique()) == {"angle_deg"}
+
+
+class TestApplyPhaseBinBaselineDelta:
+    def test_attaches_delta_columns_with_subtraction(self):
+        # Baseline at PS46 phase_bin=0: angle=10, x=5
+        # Trial row at PS46 phase_bin=0 with angle=15, x=8 → delta = 5, 3
+        rows = [
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 10.0, "x_centered": 5.0},
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 15.0, "x_centered": 8.0},
+        ]
+        df = _phase_rows(rows)
+        baseline = compute_per_animal_phase_bin_baseline(df)
+        out = apply_phase_bin_baseline_delta(df, baseline)
+        assert "angle_deg_delta" in out.columns
+        assert "x_centered_delta" in out.columns
+        # Original columns preserved.
+        assert "angle_deg" in out.columns
+        assert "x_centered" in out.columns
+        # Pre row delta = 0 (baseline = its own value here, n=1)
+        pre = out[out["epoch_label"] == "pre"].iloc[0]
+        assert pre["angle_deg_delta"] == pytest.approx(0.0)
+        assert pre["x_centered_delta"] == pytest.approx(0.0)
+        # Acute row delta = 15-10 = 5; 8-5 = 3
+        acute = out[out["epoch_label"] == "acute"].iloc[0]
+        assert acute["angle_deg_delta"] == pytest.approx(5.0)
+        assert acute["x_centered_delta"] == pytest.approx(3.0)
+
+    def test_rows_with_no_baseline_get_nan_delta(self):
+        # PS47 has no baseline entry → its rows get NaN delta but
+        # are NOT dropped (kept in output with NaN). Only PS46 has pre.
+        rows = [
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 10.0, "x_centered": 5.0},
+            {"animal": "PS47", "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 20.0, "x_centered": 7.0},
+        ]
+        df = _phase_rows(rows)
+        baseline = compute_per_animal_phase_bin_baseline(df)
+        out = apply_phase_bin_baseline_delta(df, baseline)
+        # Both rows retained.
+        assert len(out) == 2
+        ps47 = out[out["animal"] == "PS47"].iloc[0]
+        assert not np.isfinite(ps47["angle_deg_delta"])
+        assert not np.isfinite(ps47["x_centered_delta"])
+
+    def test_pre_row_deltas_sum_to_zero_per_animal_phase_bin(self):
+        # By construction: pre rows minus their per-animal-phase_bin
+        # mean must average to 0 in each (animal, phase_bin) group.
+        rows = [
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 4.0, "x_centered": 1.0},
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 6.0, "x_centered": 3.0},
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 8.0, "x_centered": 5.0},
+        ]
+        df = _phase_rows(rows)
+        baseline = compute_per_animal_phase_bin_baseline(df)
+        out = apply_phase_bin_baseline_delta(df, baseline)
+        # Mean of pre deltas in this group = 0 for both signals.
+        assert out["angle_deg_delta"].mean() == pytest.approx(0.0)
+        assert out["x_centered_delta"].mean() == pytest.approx(0.0)
+
+    def test_empty_input_yields_empty_with_delta_columns(self):
+        empty = _phase_rows([]).iloc[0:0]
+        baseline = compute_per_animal_phase_bin_baseline(empty)
+        out = apply_phase_bin_baseline_delta(empty, baseline)
+        assert out.empty
+        for s in TRAJECTORY_SIGNALS:
+            assert f"{s}_delta" in out.columns
+
+    def test_does_not_mutate_input(self):
+        rows = [
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 10.0, "x_centered": 5.0},
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 15.0, "x_centered": 8.0},
+        ]
+        df = _phase_rows(rows)
+        baseline = compute_per_animal_phase_bin_baseline(df)
+        orig_cols = list(df.columns)
+        _ = apply_phase_bin_baseline_delta(df, baseline)
+        assert list(df.columns) == orig_cols  # no _delta columns mutated in
