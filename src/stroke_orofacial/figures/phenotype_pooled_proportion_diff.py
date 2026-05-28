@@ -14,9 +14,12 @@ and renders 4 SVG figures (Q12-G):
   - Q12-E (revised per Addendum #1): no-data cells (``np.nan`` in
     pooled D̄) render as ``set_bad("white")`` against white panel
     facecolor.
-  - Q12-J: output directory
-    ``pipeline_outputs/phase_9_1_figures/phenotype_pooled_cleaned_trace/proportion_diff_heatmaps/``;
-    filename ``<bodypart>_<side>_proportion_diff_cleaned_trace.svg``.
+  - Q12-J (revised per Addendum #2): output directory
+    ``pipeline_outputs/stats/figures/phenotype_pooled/proportion_diff_heatmaps/``;
+    filename ``<bodypart>_<side>_proportion_diff_cleaned_trace.svg``. The
+    Q-lock 15 ``cleaned_trace`` marker stays in the filename + footer;
+    directory aligned with the q13b ``stats/figures/phenotype_pooled/``
+    tree convention.
 
 Renders re-use :func:`stroke_orofacial.dlc_spatial.render_on_demand._render_proportion_diff_panel`
 for the per-panel image draw (Q12-C revised lock).
@@ -50,10 +53,10 @@ from stroke_orofacial.stats.spatial_proportion_diff import (
 logger = logging.getLogger(__name__)
 
 
-# Q-lock 15 three-layer marker convention (Q12-J).
-FIGURE_SUBDIR: str = (
-    "phase_9_1_figures/phenotype_pooled_cleaned_trace/proportion_diff_heatmaps"
-)
+# Q-lock 15 three-layer marker convention. Output directory revised per
+# Addendum #2 (2026-05-28) to align with the q13b stats/figures/phenotype_pooled/
+# tree; the cleaned_trace marker stays in the filename + footer subtitle.
+FIGURE_SUBDIR: str = "stats/figures/phenotype_pooled/proportion_diff_heatmaps"
 FIGURE_SUBTITLE_BY_BODYPART: dict[str, str] = {
     "tongue": "Source: v7-cleaned-trace cohort re-emit (Phase 7e + Phase 7e.4)",
     "jaw": "Source: v7-cleaned-trace cohort re-emit (Phase 7e + Phase 7e.4 + Phase 7f)",

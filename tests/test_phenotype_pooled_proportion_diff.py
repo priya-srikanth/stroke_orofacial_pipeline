@@ -329,8 +329,9 @@ class TestEmitPhenotypePooledProportionDiffFigures:
 
 
 def test_figure_subdir_q12_j_lock() -> None:
+    """Q12-J revised per Addendum #2 — aligned with q13b stats/figures/phenotype_pooled/."""
     assert FIGURE_SUBDIR == (
-        "phase_9_1_figures/phenotype_pooled_cleaned_trace/proportion_diff_heatmaps"
+        "stats/figures/phenotype_pooled/proportion_diff_heatmaps"
     )
 
 

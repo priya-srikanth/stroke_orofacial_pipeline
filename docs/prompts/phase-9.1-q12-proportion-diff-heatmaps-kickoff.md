@@ -1,6 +1,6 @@
 # Phase 9.1 Q-lock 12 — Phenotype-Pooled Proportion-Diff Heatmaps Kickoff
 
-**Status:** LOCKED v1 + Addendum #1 (2026-05-27).
+**Status:** LOCKED v1 + Addendum #1 + Addendum #2 (2026-05-27 → 2026-05-28).
 **Branch:** `phase/9.1-q12-proportion-diff-heatmaps`
 **Merge tag (on close):** `v9.1-q12-proportion-diff-heatmaps`
 **Depends on:**
@@ -175,3 +175,26 @@ The Q12-D color-range conditional verification asked in Stage 0 is discharged vi
 ---
 
 **Q-lock 12 LOCKED at v1 + Addendum #1.** Stage 1 unblocked.
+
+---
+
+## Addendum #2 — Q12-J output path aligned with Q-lock 13b convention (2026-05-28)
+
+**ALL OTHER LOCKS UNCHANGED.** One lock revised: Q12-J output directory.
+
+### Q12-J — REVISED: align with q13b's `stats/figures/phenotype_pooled/` tree
+
+Original Q12-J (kickoff v1) said:
+- Directory: `pipeline_outputs/phase_9_1_figures/phenotype_pooled_cleaned_trace/proportion_diff_heatmaps/`
+- Filename: `<bodypart>_<side>_proportion_diff_cleaned_trace.svg`
+
+The `phase_9_1_figures/phenotype_pooled_cleaned_trace/` tree was deprecated 2026-05-27 when Q-lock 13b moved its phase-aligned endpoint figures to `pipeline_outputs/stats/figures/phenotype_pooled/phase_aligned_endpoints/` (see `figures/phase_aligned_endpoint_stats.py:53-58`: "Output directory corrected per Priya 2026-05-27: figures land under stats/figures/phenotype_pooled/ matching the existing V4/V5 phenotype-pooled figure tree"). The Q-lock 12 kickoff was authored on the same day but referenced the older path before the q13b relocation propagated.
+
+**Revised lock:**
+- Directory: `pipeline_outputs/stats/figures/phenotype_pooled/proportion_diff_heatmaps/`
+- Filename: `<bodypart>_<side>_proportion_diff_cleaned_trace.svg` (unchanged)
+- Footer (figure subtitle): unchanged
+- Count: 4 figures (unchanged)
+
+The Q-lock 15 three-layer marker convention is preserved: the `cleaned_trace` marker remains in the filename + footer subtitle. The directory drops its redundant `phenotype_pooled_cleaned_trace/` marker (the `cleaned_trace` marker is supplied by the filename per the q13b precedent).
+
