@@ -99,6 +99,96 @@ Each figure = 4×4 grid (phenotype rows × pre/acute/sub_acute/chronic epoch col
 
 ---
 
+## Phase 9.1 Q-lock 12 — Phenotype-pooled proportion-diff heatmaps + W-2 recovery curves
+
+**Date:** 2026-05-28
+**Tag on merge:** `v9.1-q12-proportion-diff-heatmaps`
+**Branch:** `phase/9.1-q12-proportion-diff-heatmaps`
+**Kickoff:** [`docs/prompts/phase-9.1-q12-proportion-diff-heatmaps-kickoff.md`](prompts/phase-9.1-q12-proportion-diff-heatmaps-kickoff.md) (Addenda #1-5)
+
+**What shipped:**
+
+Phenotype-pooled spatial heatmaps of P(post_epoch) − P(pre) tongue + jaw position by (x, y) bin, computed per-animal-baseline-normalized then phenotype-averaged. Plus a companion W-2 (Wasserstein-2) pre-stroke-normalized recovery curve per (bodypart, side), pooled across animals within phenotype.
+
+Two phenotype-pooling variants, both emitted in parallel for every (bodypart, side):
+- **4-tier** (canonical YAML labels): `mild`, `moderate`, `moderate-severe`, `severe`. Mod-severe is a singleton (PS51).
+- **3-tier** (merged): `moderate-severe` merged into `moderate` (n=2 moderate pool: PS46 + PS51). Output to `3_phenotype/` subdir.
+
+Total emitted: **16 SVGs** (4 heatmap + 4 W-2 per variant × 2 variants) + 4 audit/manifest CSVs.
+
+**Pipeline stages delivered:**
+
+- **Stage 1** — Per-animal within-baseline proportion-diff math. New module `src/stroke_orofacial/stats/spatial_proportion_diff.py`:
+  - `compute_proportion_diff_within(H_pre, n_total_pre, H_post, n_total_post) → D` — pure-math layer with Q17 (Phase 7c.2 Addendum #16) total-in-window-frame denominator and Q12-E `(H_pre==0)&(H_post==0)` no-data NaN mask (no Q12-K magnitude floor).
+  - `split_post_dates_by_epoch(animal_info, post_dates)` — bins dates into acute / sub_acute / chronic per `EpochBoundaries`; transitional-gap dates silently dropped.
+  - `compute_per_animal_pre_pool` + `compute_per_animal_per_epoch_diff` — orchestrators that call the existing `dlc_spatial.render_on_demand.compute_animal_aggregated_histogram` with the right `trial_group` (Q12-F L/R split) and post-date subset (per epoch).
+  - Q12-A within-animal baseline lock: each animal's per-epoch H_post is differenced against ITS OWN pre-pool, NOT a cohort-aggregate baseline.
+  - Q12-B bodypart × center_mode lock (per Addendum #3): tongue uses `spout_midpoint`, jaw uses `eye_midpoint`.
+- **Stage 2** — Phenotype-pooled spatial aggregator. Extended `stats/aggregators.py` with `aggregate_phenotype_pooled_spatial_diff(per_animal_records, animals)` — NaN-aware mean (`np.nanmean` along the animal axis) producing one record per (phenotype, side, bodypart, post_epoch) with `D_mean`, `n_contributing_animals_per_cell`, `contributing_animals`, per-animal trial counts, and `extent`. Shape/extent mismatches across animals raise.
+- **Stage 3** — Heatmap figure renderer. New module `src/stroke_orofacial/figures/phenotype_pooled_proportion_diff.py`:
+  - `compute_cohort_shared_vmax(pooled_records) → float` per Addendum #1 Q12-D: 99th percentile of `|D̄|` across ALL panels in all 4 figures. Replaces the original kickoff's `±0.1` fixed range (empirical probe showed `|D|` p99 in 0.001–0.006 range; fixed `±0.1` would have rendered everything uniformly light-grey).
+  - `render_phenotype_pooled_proportion_diff_figure(bodypart, side, pooled_records, shared_vmax, phenotype_order)` — `phenotype_order` kwarg added per Addendum #4 to support 3-tier variant. Re-uses legacy `dlc_spatial.render_on_demand._render_proportion_diff_panel` for the per-panel draw, which inherits the Phase 7c.2 Addendum #19/#21/#24 custom cmap (blue→`#d0d0d0`→red) and `set_bad("white")` no-data mask (Addendum #1 Q12-D/E rejected the kickoff's RdBu + grey mask).
+  - `emit_phenotype_pooled_proportion_diff_figures` orchestrator with confirm-once-then-force overwrite semantics matching Q-lock 13b's `emit_phase_aligned_endpoint_figures`.
+- **Stage 4/5** — Cohort emit driver `scripts/phase_9_1_q12/emit_cohort.py`:
+  - Per-animal compute loop (per Stage 1) → 96 records (8 animals × 4 bp/side × 3 epochs) for the 8-animal Q-lock 13b cohort.
+  - `--remap-phenotypes={none, 3tier}` flag (Addendum #4) applies `dataclasses.replace` on the animals map to merge moderate-severe into moderate.
+  - Per-animal audit manifest CSV with `wall_time_s`, `n_sessions`, `n_trials`, `n_total_frames`, `abs_d_p99`, `w2`.
+- **Addendum #5 — W-2 recovery curves** (extends the same pipeline):
+  - New module `src/stroke_orofacial/stats/spatial_wasserstein.py`: `compute_wasserstein2_2d(H_pre, H_post, extent) → float`. Each histogram renormalized to sum=1 (isolating spatial-shape comparison from the Q17 tracking-rate composite); squared-Euclidean cost matrix on bin centers in pixel units; exact balanced LP via `ot.emd2` on the union-support nonzero-bin subset; W-2 = `sqrt(emd2)`.
+  - Aggregator `aggregate_phenotype_pooled_wasserstein` (in `stats/aggregators.py`): mean ± SEM across phenotype animals (n=1 tiers report `sem=nan`).
+  - Figure module `src/stroke_orofacial/figures/phenotype_wasserstein_recovery.py`: one SVG per (bodypart, side) showing W-2 vs post_epoch, lines colored per phenotype, ±SEM error bars, per-animal scatter underlay (α=0.4) at phenotype-jitter offsets.
+  - Emit driver extended to compute W-2 alongside D in the per-animal loop and emit 4 W-2 SVGs per variant alongside the 4 heatmap SVGs.
+
+**Output paths** (Q12-J Addendum #2 alignment with q13b's `stats/figures/phenotype_pooled/` tree):
+
+```
+pipeline_outputs/stats/figures/phenotype_pooled/
+├── proportion_diff_heatmaps/                     # 4-tier (8 SVGs: heatmaps + audit)
+│   ├── <bp>_<side>_proportion_diff_cleaned_trace.svg     × 4
+│   ├── emit_manifest.csv
+│   ├── q12_per_animal_manifest.csv
+│   └── 3_phenotype/                              # 3-tier (Addendum #4)
+│       ├── <bp>_<side>_proportion_diff_cleaned_trace.svg × 4
+│       ├── emit_manifest.csv
+│       └── q12_per_animal_manifest.csv
+└── wasserstein_recovery/                         # 4-tier (Addendum #5)
+    ├── <bp>_<side>_wasserstein_recovery_cleaned_trace.svg × 4
+    ├── w2_emit_manifest.csv
+    └── 3_phenotype/                              # 3-tier
+        ├── <bp>_<side>_wasserstein_recovery_cleaned_trace.svg × 4
+        └── w2_emit_manifest.csv
+```
+
+**Stage 5 cohort emit results:**
+
+| Variant | n_records | n_pooled | shared_vmax | wall_time | figures |
+|---|---|---|---|---|---|
+| 4-tier (no W-2 first pass, Stage 5) | 96 | 48 | 0.00373 | 1502 s | 4 heatmaps |
+| 3-tier heatmap-only (Stage 5b) | 96 | 36 | 0.00340 | 1970 s | 4 heatmaps |
+| 4-tier with W-2 (Stage 5c) | 96 | 48 | 0.00373 | 1917 s | 4 heatmaps + 4 W-2 |
+| 3-tier with W-2 (Stage 5c) | 96 | 36 | 0.00340 | 1916 s | 4 heatmaps + 4 W-2 |
+
+8/8 animals × 12 (bp × side × epoch) cells = 96 records per variant, 0 FAIL, 0 SKIP, 0 EMPTY_POOL/EMPTY_EPOCH on every run. Sparse-session WARNINGs surfaced for PS55 acute tongue (severe phenotype, motor deficit → sparse spout_midpoint tracking) but all sparse sessions still contributed valid bins.
+
+**Tests:** 78 new unit tests across Q-lock 12 modules:
+- 19 in `tests/test_spatial_proportion_diff.py` (pure-math D + epoch-split + 2-animal within-baseline independence fixture)
+- 13 in `tests/test_aggregators_spatial.py` (NaN-aware mean, phenotype bucketing, shape/extent error paths)
+- 19 in `tests/test_phenotype_pooled_proportion_diff.py` (vmax computation, figure structure, overwrite semantics, 3-tier `phenotype_order` kwarg)
+- 17 in `tests/test_spatial_wasserstein.py` (W-2 pure math: identical→0, deltas→distance, diagonal→`sqrt(dx²+dy²)`, renormalization independence; phenotype-pool aggregator)
+- 10 in `tests/test_phenotype_wasserstein_recovery.py` (4-tier vs 3-tier legend, suptitle, per-animal scatter floor count, emit driver)
+
+Full suite passes 1990+ tests after merge (was 1991 before Q12; net +78).
+
+**Intentional behavior differences vs. legacy:**
+
+- Within-animal baseline (Q12-A) — NOT cohort-aggregate baseline. The legacy `_compute_proportion_diff` in `dlc_spatial/render_on_demand.py` already operates per-animal; Q-lock 12 keeps this semantic at the phenotype-pooling layer (each animal's D is fully isolated before phenotype averaging).
+- Tongue centering = `spout_midpoint` (Addendum #3) — biologically meaningful for reach-to-spout licking analysis; legacy 7c.2 cohort emits both `tongue_spout_midpoint` and `tongue_eye_midpoint` separately as production families.
+- Cmap inherited from legacy (Phase 7c.2 Addendum #19/#21/#24): custom blue→`#d0d0d0`→red diverging cmap with `set_bad("white")` for NaN/no-data cells. Addendum #1 rejected the kickoff's literal `RdBu + grey mask` in favor of this convention.
+- Data-driven cohort-wide `shared_vmax` (Addendum #1 Q12-D): NOT the kickoff's `±0.1` fixed range. Empirical probe showed actual phenotype-pooled `|D|` p99 is in the 0.001–0.006 range; `±0.1` would have saturated nothing and rendered everything uniform light-grey.
+- W-2 method (Addendum #5): exact POT `ot.emd2` on squared-Euclidean cost; renormalize to sum=1 first (decouples from Q17 tracking-rate ratio); reduced to nonzero-support union to keep LP tractable on 80×80 grids.
+
+---
+
 ## Phase 9.1 Q-lock 13b — Phase-aligned tongue endpoint stats
 
 **Date:** 2026-05-27

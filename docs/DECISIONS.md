@@ -56,6 +56,32 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-28 — Phase 9.1 Q-lock 12: phenotype-pooled proportion-diff heatmaps + W-2 recovery curves
+
+- *Context:* Q-lock 12 needed a phenotype-pooled spatial-shift visualization for tongue + jaw across the 8-animal cohort, and a complementary scalar summary statistic for the same shifts. The kickoff drafted on 2026-05-27 specified `±0.1` fixed cmap range, `RdBu` cmap, grey no-data mask, and reused the existing `phenotype_pooled_spatial.py` stub. Five issues surfaced in Stage 0 prereq verification + later requests.
+- *Decision (5 Addenda):*
+  - **#1 Q12-C/D/E** — Reject the kickoff stub (wired for Q-lock 3 Wasserstein/UOT/JS recovery curves); create new module `figures/phenotype_pooled_proportion_diff.py` that reuses `dlc_spatial/pixel_bins.py` + `dlc_spatial/render_on_demand.py` primitives. Inherit the legacy Phase 7c.2 Addendum #19/#21/#24 cmap (custom blue→`#d0d0d0`→red) + `set_bad("white")` no-data mask. Replace `±0.1` fixed range with cohort-wide data-driven `shared_vmax = p99(|D̄_pooled|)`.
+  - **#2 Q12-J** — Move output from the deprecated `phase_9_1_figures/phenotype_pooled_cleaned_trace/` tree to `stats/figures/phenotype_pooled/` matching the q13b 2026-05-27 relocation.
+  - **#3 Q12-B refinement** — Specify tongue centering as `spout_midpoint` (biologically meaningful for reach-to-spout licking analysis); jaw stays `eye_midpoint` (its only canonical centering).
+  - **#4 3-phenotype variant** — Add a parallel rendering with `moderate-severe` merged into `moderate` (singleton mod-severe = PS51 only; merging produces n=2 moderate pool with PS46). Emit alongside the 4-tier figures under `3_phenotype/` subdir.
+  - **#5 W-2 recovery curves** — Pre-stroke-normalized Wasserstein-2 distance per (animal × side × bp × post_epoch) via exact POT `ot.emd2` on squared-Euclidean cost matrix in bin-center pixel coordinates. Each histogram renormalized to sum=1 first (decouples spatial-shape comparison from Q17 tracking-rate composite). Phenotype-pool via mean ± SEM (n=1 tiers → marker without error bar). One SVG per (bodypart, side) with phenotype-colored lines + per-animal scatter underlay.
+- *Rationale:*
+  - **#1**: Legacy-audit-first policy (per `feedback_audit_legacy_before_speculating_on_render_params.md`). The kickoff's `±0.1` was a guess; the empirical probe on PS46+PS47 showed actual `|D|` p99 in 0.001–0.006 range (30-100× smaller). The legacy cmap design separates no-data (white) from no-change (light-grey midpoint) which is exactly the diverging-cmap distinction the kickoff text was trying to articulate. Data-driven shared_vmax preserves cross-figure comparability (all 4 SVGs use the same colorbar) while auto-calibrating to actual magnitudes.
+  - **#2**: Single-source-of-truth for the phenotype-pooled figure tree. q13b set the convention; q12 follows.
+  - **#3**: The spout is the licking target; tongue position relative to the spout is the biologically meaningful coordinate. Eye-centered would be common-frame for tongue + jaw but averages out the reach-to-spout shifts that are the post-stroke signal of interest.
+  - **#4**: Both views are scientifically meaningful. 4-tier preserves the fine-grained YAML severity tiers; 3-tier improves moderate-pool robustness (n=1 → n=2) at the cost of losing the mod-severe distinction. Both alongside, neither replaces.
+  - **#5**: W-2 is the principled spatial-distance-aware statistic for "how much did the distribution shift?" Exact OT (vs entropic / sinkhorn / sliced) for statistical credibility. Pre-stroke normalization = same Q12-A within-animal baseline used by the proportion-diff heatmaps.
+- *Enforced at:*
+  - `src/stroke_orofacial/stats/spatial_proportion_diff.py` (Q12-A, B, F, K math)
+  - `src/stroke_orofacial/stats/aggregators.py` (`aggregate_phenotype_pooled_spatial_diff` + `aggregate_phenotype_pooled_wasserstein`)
+  - `src/stroke_orofacial/figures/phenotype_pooled_proportion_diff.py` (Q12-C, D, E, G + Addendum #4 `phenotype_order` kwarg)
+  - `src/stroke_orofacial/stats/spatial_wasserstein.py` (Addendum #5 W-2 pure math)
+  - `src/stroke_orofacial/figures/phenotype_wasserstein_recovery.py` (Addendum #5 line plot)
+  - `scripts/phase_9_1_q12/emit_cohort.py` (`--remap-phenotypes` flag + audit CSV `abs_d_p99` + `w2` columns)
+  - `docs/prompts/phase-9.1-q12-proportion-diff-heatmaps-kickoff.md` Addenda #1-5
+
+---
+
 ## 2026-05-27 — Phase 9.1 Q-lock 13b: signed-at-argmax-of-abs endpoint convention
 
 - *Context:* Q-lock 13b introduced three phase-aligned tongue endpoints. Endpoints B and C needed to capture the most-extreme excursion within a phase window. The original kickoff spec for B was `max(abs(angle_deg))` (unsigned) and for C was `max(abs(x_centered))` (unsigned). During implementation, Priya directed that positive vs negative tongue angle is meaningful (laterality direction); the unsigned convention discards that information.
