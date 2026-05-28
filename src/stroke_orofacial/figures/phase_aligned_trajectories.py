@@ -55,6 +55,9 @@ from stroke_orofacial.stats.multiple_comparisons import (
     apply_correction_to_results_df,
 )
 
+# scipy's MWU import is local to compute_trajectory_mwu_stats to keep
+# module-level imports cheap.
+
 
 # Stats family constants (mirrors Q13b's phase_aligned_endpoint_stats).
 POST_EPOCHS: tuple[str, ...] = ("acute", "sub_acute", "chronic")
@@ -69,14 +72,13 @@ SIDE_ORDER: tuple[str, ...] = ("L", "R")
 DEFAULT_PHASE_DISPLAY_WINDOW: tuple[float, float] = (0.05, 0.95)
 
 
-# Q-lock 13.4 — error band type for the panel ±band overlay. Mean+SD
-# shows the cohort spread (per-trial value distribution); mean+SEM
-# shows the precision of the mean (collapses to invisibility with
-# n_trials in the thousands). Default switched to SD per Priya
-# 2026-05-28 review — SEM was visually disappearing in the rendered
-# figures.
+# Q-lock 13.4 — error band type for the panel ±band overlay. Mean+SEM
+# is the canonical default (precision of the mean); mean+SD is an
+# alternative emitted into the sd_band/ subdir (shows the per-trial
+# value distribution). Priya 2026-05-28 reverted default to SEM after
+# eyeballing both; SD plots stay alongside in sd_band/.
 ErrorBandType = Literal["sd", "sem"]
-DEFAULT_ERROR_BAND_TYPE: ErrorBandType = "sd"
+DEFAULT_ERROR_BAND_TYPE: ErrorBandType = "sem"
 
 # Output layout (Q-lock 15 marker convention; subdir mirrors Q13b
 # correction 2026-05-27 — figures land under stats/figures/phenotype_pooled/
@@ -507,6 +509,130 @@ def compute_trajectory_wilcoxon_stats(
     out = pd.DataFrame(rows)
     # Single 48-test family across (phenotype × side × signal × post_epoch);
     # no inner family partition — pass group_cols=() to disable it.
+    out = apply_correction_to_results_df(
+        out, p_value_col="p_value", method="bh_fdr", group_cols=(),
+    )
+    return out
+
+
+def compute_trajectory_mwu_stats(
+    per_x_scalar_df: pd.DataFrame,
+    animals_map: dict[str, AnimalInfo],
+    *,
+    signals: Iterable[str] = TRAJECTORY_SIGNALS,
+    grain: Literal["trial", "session"] = "trial",
+) -> pd.DataFrame:
+    """Unpaired Mann-Whitney U family on per-trial OR per-session scalars.
+
+    Q-lock 13.5 (2026-05-28). Complementary to the per-animal paired
+    Wilcoxon (:func:`compute_trajectory_wilcoxon_stats`). Trades the
+    pairing structure (which gives more power per animal) for raw n
+    inflation (treats each trial / session as an independent
+    observation).
+
+    **Pseudo-replication caveat.** Trials within an animal-session and
+    sessions within an animal share latent variables (the same animal's
+    motor cortex, mouth geometry, daily state); treating them as iid
+    inflates power and Type I error vs a properly-modeled mixed-effects
+    test. The MWU p-values here should be interpreted as visualization
+    aids, not as the primary inferential test. The per-animal paired
+    Wilcoxon remains the canonical statistical claim.
+
+    Family size: 4 phenotypes × 2 sides × 2 signals × 3 post epochs =
+    48 tests. Single BH-FDR family-wide correction.
+
+    Parameters
+    ----------
+    per_x_scalar_df : pd.DataFrame
+        Output of
+        :func:`stroke_orofacial.stats.aggregators.compute_per_trial_trajectory_scalar`
+        (when ``grain="trial"``) or
+        :func:`stroke_orofacial.stats.aggregators.compute_per_session_trajectory_scalar`
+        (when ``grain="session"``). Required columns: ``animal``,
+        ``side``, ``signal``, ``epoch_label``, ``scalar``.
+    animals_map : Mapping[str, AnimalInfo]
+        Animal-ID → AnimalInfo for the cohort. Used to attach
+        ``recovery_phenotype``.
+    signals : Iterable[str], default ``TRAJECTORY_SIGNALS``
+    grain : {"trial", "session"}, default "trial"
+        Annotated into ``grain`` column of output for downstream
+        readers.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: ``recovery_phenotype``, ``side``, ``signal``,
+        ``post_epoch``, ``grain``, ``statistic``, ``p_value``,
+        ``n_pre``, ``n_post``, ``status``, ``p_adj``, ``reject``.
+    """
+    from scipy.stats import mannwhitneyu
+
+    signals = tuple(signals)
+    if grain not in ("trial", "session"):
+        raise ValueError(f"grain must be 'trial' or 'session'; got {grain!r}.")
+    required = {"animal", "side", "signal", "epoch_label", "scalar"}
+    missing = required - set(per_x_scalar_df.columns)
+    if missing:
+        raise ValueError(
+            f"per_x_scalar_df missing required column(s) {sorted(missing)}; "
+            f"got {list(per_x_scalar_df.columns)}.",
+        )
+
+    df = per_x_scalar_df.copy()
+    df["recovery_phenotype"] = df["animal"].map(
+        lambda a: (
+            animals_map[a].recovery_phenotype
+            if a in animals_map and animals_map[a].recovery_phenotype is not None
+            else None
+        )
+    )
+    df = df.dropna(subset=["recovery_phenotype"])
+
+    rows: list[dict[str, object]] = []
+    for phenotype in PHENOTYPE_ORDER:
+        for side in SIDE_ORDER:
+            for signal in signals:
+                sub = df[
+                    (df["recovery_phenotype"] == phenotype)
+                    & (df["side"] == side)
+                    & (df["signal"] == signal)
+                ]
+                pre_vals = sub.loc[
+                    sub["epoch_label"] == "pre", "scalar",
+                ].to_numpy(dtype=np.float64)
+                pre_vals = pre_vals[np.isfinite(pre_vals)]
+                for post_epoch in POST_EPOCHS:
+                    post_vals = sub.loc[
+                        sub["epoch_label"] == post_epoch, "scalar",
+                    ].to_numpy(dtype=np.float64)
+                    post_vals = post_vals[np.isfinite(post_vals)]
+                    n_pre = int(pre_vals.size)
+                    n_post = int(post_vals.size)
+                    row = {
+                        "recovery_phenotype": phenotype,
+                        "side": side,
+                        "signal": signal,
+                        "post_epoch": post_epoch,
+                        "grain": grain,
+                        "n_pre": n_pre,
+                        "n_post": n_post,
+                    }
+                    if n_pre < 1 or n_post < 1:
+                        row["statistic"] = float("nan")
+                        row["p_value"] = float("nan")
+                        row["status"] = "insufficient_data"
+                        rows.append(row)
+                        continue
+                    res = mannwhitneyu(
+                        post_vals, pre_vals,
+                        alternative="two-sided",
+                    )
+                    row["statistic"] = float(res.statistic)
+                    row["p_value"] = float(res.pvalue)
+                    row["status"] = "ok"
+                    rows.append(row)
+
+    out = pd.DataFrame(rows)
     out = apply_correction_to_results_df(
         out, p_value_col="p_value", method="bh_fdr", group_cols=(),
     )

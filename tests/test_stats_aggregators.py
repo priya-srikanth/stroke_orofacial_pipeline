@@ -32,6 +32,8 @@ from stroke_orofacial.stats.aggregators import (
     attach_phenotype_and_epoch,
     compute_per_animal_phase_bin_baseline,
     compute_per_animal_trajectory_scalar,
+    compute_per_session_trajectory_scalar,
+    compute_per_trial_trajectory_scalar,
     densify_phase_rows_via_interp,
     enumerate_session_dates,
     load_cohort_phase_aligned_endpoints_long,
@@ -1554,3 +1556,73 @@ class TestDensifyPhaseRowsViaInterp:
         })
         with pytest.raises(ValueError, match="missing column"):
             densify_phase_rows_via_interp(bad)
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13.5 — per-trial / per-session trajectory scalars (for MWU)
+# ---------------------------------------------------------------------------
+
+
+class TestComputePerTrialTrajectoryScalar:
+    def test_returns_canonical_columns_on_empty(self):
+        empty = _phase_rows([]).iloc[0:0]
+        out = compute_per_trial_trajectory_scalar(empty)
+        assert list(out.columns) == [
+            "animal", "date", "trial_index", "side",
+            "signal", "epoch_label", "scalar",
+        ]
+
+    def test_one_row_per_trial_side_signal_epoch(self):
+        # Single trial with frames at 2 bins → one row per (signal).
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 2.0, "x_centered": -1.0},
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 1, "epoch_label": "pre",
+             "angle_deg": 4.0, "x_centered": 1.0},
+        ]
+        out = compute_per_trial_trajectory_scalar(_phase_rows(rows))
+        # 1 trial × 1 side × 2 signals × 1 epoch = 2 rows.
+        assert len(out) == 2
+        ang_row = out[out["signal"] == "angle_deg"].iloc[0]
+        assert ang_row["scalar"] == pytest.approx(3.0)
+
+    def test_separates_pre_vs_post(self):
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 2.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "acute", "angle_deg": 10.0},
+        ]
+        out = compute_per_trial_trajectory_scalar(
+            _phase_rows(rows), signals=("angle_deg",),
+        )
+        pre = out[out["epoch_label"] == "pre"]
+        acute = out[out["epoch_label"] == "acute"]
+        assert pre.iloc[0]["scalar"] == pytest.approx(2.0)
+        assert acute.iloc[0]["scalar"] == pytest.approx(10.0)
+
+
+class TestComputePerSessionTrajectoryScalar:
+    def test_returns_canonical_columns_on_empty(self):
+        empty = _phase_rows([]).iloc[0:0]
+        out = compute_per_session_trajectory_scalar(empty)
+        assert list(out.columns) == [
+            "animal", "date", "side", "signal", "epoch_label", "scalar",
+        ]
+
+    def test_one_row_per_session_side_signal_epoch(self):
+        # Two trials in one session pre L bin 0 → mean of 2 trial-means.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 2.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 6.0},
+        ]
+        out = compute_per_session_trajectory_scalar(
+            _phase_rows(rows), signals=("angle_deg",),
+        )
+        # 1 session × 1 side × 1 signal × 1 epoch = 1 row.
+        assert len(out) == 1
+        assert out.iloc[0]["scalar"] == pytest.approx(4.0)

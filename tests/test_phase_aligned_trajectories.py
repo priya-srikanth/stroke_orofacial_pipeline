@@ -34,6 +34,7 @@ from stroke_orofacial.figures.phase_aligned_trajectories import (
     SOURCE_DATA_SUBTITLE_DELTA,
     SOURCE_DATA_SUBTITLE_RAW,
     build_phase_aligned_trajectory_figure,
+    compute_trajectory_mwu_stats,
     compute_trajectory_wilcoxon_stats,
     emit_phase_aligned_trajectory_figures,
     figure_path_for,
@@ -304,14 +305,27 @@ class TestBuildPhaseAlignedTrajectoryFigure:
         y_on_left = verts[on_left, 1]
         return float(np.max(y_on_left) - np.min(y_on_left))
 
-    def test_error_band_default_uses_sd(self):
+    def test_error_band_default_uses_sem(self):
         df = _pooled_df()
         df["sem"] = 0.05
         df["sd"] = 0.4
         fig, axes = build_phase_aligned_trajectory_figure(
             df, signal="angle_deg", variant="raw", side="L",
         )
-        # Default error_band_type = "sd" → ±0.4 band thickness = 0.8.
+        # Default error_band_type = "sem" → ±0.05 band thickness = 0.1.
+        thickness = self._band_thickness_at_first_x(axes[0, 1])
+        assert thickness == pytest.approx(0.1, abs=0.02)
+        plt.close(fig)
+
+    def test_error_band_sd_kwarg_uses_sd(self):
+        df = _pooled_df()
+        df["sem"] = 0.05
+        df["sd"] = 0.4
+        fig, axes = build_phase_aligned_trajectory_figure(
+            df, signal="angle_deg", variant="raw", side="L",
+            error_band_type="sd",
+        )
+        # ±0.4 band thickness = 0.8.
         thickness = self._band_thickness_at_first_x(axes[0, 1])
         assert thickness == pytest.approx(0.8, abs=0.05)
         plt.close(fig)
@@ -613,3 +627,81 @@ class TestComputeTrajectoryWilcoxonStats:
             & (out["signal"] == "angle_deg")
         ].iloc[0]
         assert mild_acute["status"] in {"insufficient_data", "all_zero_diffs"}
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13.5 — unpaired MWU family on per-trial / per-session scalars
+# ---------------------------------------------------------------------------
+
+
+class TestComputeTrajectoryMwuStats:
+    def test_returns_48_cells_with_correction_columns(self):
+        # 6 mild trials × {pre, acute, sub_acute, chronic} × {L, R}.
+        rows = []
+        for ai, animal in enumerate(("PS47", "PS48", "PS49")):
+            for trial_idx in range(4):
+                for epoch in ("pre", "acute", "sub_acute", "chronic"):
+                    for side in ("L", "R"):
+                        rows.append({
+                            "animal": animal, "side": side,
+                            "signal": "angle_deg", "epoch_label": epoch,
+                            "scalar": 1.0 + ai * 0.1 + trial_idx * 0.01,
+                        })
+        scalars = _scalar_rows(rows)
+        animals = {
+            a: _animal_info(a, phenotype="mild")
+            for a in ("PS47", "PS48", "PS49")
+        }
+        out = compute_trajectory_mwu_stats(
+            scalars, animals, signals=("angle_deg", "x_centered"),
+            grain="trial",
+        )
+        assert len(out) == 48
+        for col in (
+            "recovery_phenotype", "side", "signal", "post_epoch", "grain",
+            "statistic", "p_value", "n_pre", "n_post", "status",
+            "p_adj", "reject",
+        ):
+            assert col in out.columns
+        # mild × L × angle_deg × acute should be 'ok' (n_pre=12, n_post=12).
+        mild_L_angle_acute = out[
+            (out["recovery_phenotype"] == "mild")
+            & (out["side"] == "L")
+            & (out["signal"] == "angle_deg")
+            & (out["post_epoch"] == "acute")
+        ].iloc[0]
+        assert mild_L_angle_acute["status"] == "ok"
+        # Grain column annotation.
+        assert (out["grain"] == "trial").all()
+
+    def test_grain_session_annotation(self):
+        rows = [
+            {"animal": "PS47", "side": "L", "signal": "angle_deg",
+             "epoch_label": "pre", "scalar": 1.0},
+            {"animal": "PS47", "side": "L", "signal": "angle_deg",
+             "epoch_label": "acute", "scalar": 2.0},
+        ]
+        out = compute_trajectory_mwu_stats(
+            _scalar_rows(rows),
+            {"PS47": _animal_info("PS47", phenotype="mild")},
+            signals=("angle_deg",), grain="session",
+        )
+        assert (out["grain"] == "session").all()
+
+    def test_invalid_grain_raises(self):
+        with pytest.raises(ValueError, match="grain"):
+            compute_trajectory_mwu_stats(
+                pd.DataFrame(
+                    columns=[
+                        "animal", "side", "signal", "epoch_label", "scalar",
+                    ]
+                ),
+                {}, grain="bogus",
+            )
+
+    def test_missing_required_column_raises(self):
+        bad = pd.DataFrame({
+            "animal": ["PS46"], "side": ["L"], "epoch_label": ["pre"],
+        })
+        with pytest.raises(ValueError, match="missing required column"):
+            compute_trajectory_mwu_stats(bad, {}, grain="trial")

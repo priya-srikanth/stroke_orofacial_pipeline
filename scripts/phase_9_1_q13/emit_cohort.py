@@ -59,6 +59,7 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (  # noqa: E402
 )
 from stroke_orofacial.figures.phase_aligned_trajectories import (  # noqa: E402
     FIGURE_SUBDIR,
+    compute_trajectory_mwu_stats,
     compute_trajectory_wilcoxon_stats,
     emit_phase_aligned_trajectory_figures,
 )
@@ -68,6 +69,8 @@ from stroke_orofacial.stats.aggregators import (  # noqa: E402
     apply_phase_bin_baseline_delta,
     compute_per_animal_phase_bin_baseline,
     compute_per_animal_trajectory_scalar,
+    compute_per_session_trajectory_scalar,
+    compute_per_trial_trajectory_scalar,
     densify_phase_rows_via_interp,
     enumerate_session_dates,
 )
@@ -325,7 +328,9 @@ def run_stats_and_figures(
     )
     logger.info("  pooled rows: %d", len(pooled))
 
-    logger.info("Stage 3: emit 8 trajectory figures...")
+    logger.info(
+        "Stage 3: emit trajectory figures — SEM (canonical) + SD (sd_band/)...",
+    )
     figure_kwargs: dict = {
         "resolver": resolver,
         "output_dir": output_dir,
@@ -333,13 +338,29 @@ def run_stats_and_figures(
     }
     if phenotype_order is not None:
         figure_kwargs["phenotype_order"] = phenotype_order
+    # Canonical SEM-banded figures.
     figure_result = emit_phase_aligned_trajectory_figures(
-        pooled, **figure_kwargs,
+        pooled, error_band_type="sem", **figure_kwargs,
     )
     logger.info(
-        "  figures emitted=%d skipped=%d",
+        "  SEM figures emitted=%d skipped=%d",
         len(figure_result["emitted"]),
         len(figure_result["skipped"]),
+    )
+    # SD-banded variant under sd_band/ subdir.
+    sd_kwargs = dict(figure_kwargs)
+    sd_dir = (
+        (output_dir if output_dir is not None
+         else resolver.pipeline_outputs(subdir=FIGURE_SUBDIR))
+        / "sd_band"
+    )
+    sd_kwargs["output_dir"] = sd_dir
+    sd_result = emit_phase_aligned_trajectory_figures(
+        pooled, error_band_type="sd", **sd_kwargs,
+    )
+    logger.info(
+        "  SD figures emitted=%d skipped=%d → %s",
+        len(sd_result["emitted"]), len(sd_result["skipped"]), sd_dir,
     )
 
     out_dir = (
@@ -367,21 +388,62 @@ def run_stats_and_figures(
     logger.info("Wrote per-animal trajectory scalar CSV: %s", scalar_csv)
 
     logger.info(
-        "Stage 6.1: paired Wilcoxon × BH-FDR — "
-        "48-test family (4 phen × 2 sides × 2 signals × 3 post epochs)...",
+        "Stage 6.1: paired Wilcoxon × BH-FDR (per-animal n)...",
     )
     if animals_map is None:
         animals_map = load_animals()
     wilcoxon_df = compute_trajectory_wilcoxon_stats(scalar_df, animals_map)
-    logger.info("  Wilcoxon rows: %d", len(wilcoxon_df))
     wilcoxon_csv = out_dir / "trajectory_paired_wilcoxon_bh_fdr.csv"
     wilcoxon_df.to_csv(wilcoxon_csv, index=False)
-    logger.info("Wrote trajectory Wilcoxon stats CSV: %s", wilcoxon_csv)
     n_reject = int(wilcoxon_df["reject"].fillna(False).sum())
     n_finite = int(wilcoxon_df["p_value"].notna().sum())
     logger.info(
-        "  Wilcoxon family summary: %d/%d significant at α=0.05 BH-FDR",
-        n_reject, n_finite,
+        "  Wilcoxon (animal n): %d/%d significant at α=0.05 BH-FDR → %s",
+        n_reject, n_finite, wilcoxon_csv,
+    )
+
+    # Q-lock 13.5 — unpaired MWU at trial + session grain.
+    logger.info(
+        "Stage 6.1: per-session trajectory scalar + unpaired MWU "
+        "(session n)...",
+    )
+    session_scalar_df = compute_per_session_trajectory_scalar(cohort_df)
+    session_scalar_csv = out_dir / "per_session_trajectory_scalar.csv"
+    session_scalar_df.to_csv(session_scalar_csv, index=False)
+    mwu_session_df = compute_trajectory_mwu_stats(
+        session_scalar_df, animals_map, grain="session",
+    )
+    mwu_session_csv = out_dir / "trajectory_mwu_per_session_bh_fdr.csv"
+    mwu_session_df.to_csv(mwu_session_csv, index=False)
+    n_reject_s = int(mwu_session_df["reject"].fillna(False).sum())
+    n_finite_s = int(mwu_session_df["p_value"].notna().sum())
+    logger.info(
+        "  MWU (session n): %d/%d significant at α=0.05 BH-FDR → %s",
+        n_reject_s, n_finite_s, mwu_session_csv,
+    )
+
+    logger.info(
+        "Stage 6.1: per-trial trajectory scalar + unpaired MWU "
+        "(trial n)...",
+    )
+    trial_scalar_df = compute_per_trial_trajectory_scalar(cohort_df)
+    trial_scalar_csv = out_dir / "per_trial_trajectory_scalar.csv"
+    trial_scalar_df.to_csv(trial_scalar_csv, index=False)
+    mwu_trial_df = compute_trajectory_mwu_stats(
+        trial_scalar_df, animals_map, grain="trial",
+    )
+    mwu_trial_csv = out_dir / "trajectory_mwu_per_trial_bh_fdr.csv"
+    mwu_trial_df.to_csv(mwu_trial_csv, index=False)
+    n_reject_t = int(mwu_trial_df["reject"].fillna(False).sum())
+    n_finite_t = int(mwu_trial_df["p_value"].notna().sum())
+    logger.info(
+        "  MWU (trial n): %d/%d significant at α=0.05 BH-FDR → %s",
+        n_reject_t, n_finite_t, mwu_trial_csv,
+    )
+    logger.warning(
+        "  NB: MWU at trial/session grain treats observations as iid; "
+        "within-animal correlation makes p-values approximate. "
+        "Paired Wilcoxon (animal n) is the canonical inferential test.",
     )
 
     return {

@@ -851,6 +851,108 @@ def apply_phase_bin_baseline_delta(
 # ---------------------------------------------------------------------------
 
 
+def compute_per_trial_trajectory_scalar(
+    phase_rows_long: pd.DataFrame,
+    *,
+    signals: Iterable[str] = TRAJECTORY_SIGNALS,
+) -> pd.DataFrame:
+    """Per-(animal, date, trial, side, signal, epoch) trajectory scalar.
+
+    Q-lock 13.5 (2026-05-28). Per-trial unit for unpaired pre-vs-post
+    Mann-Whitney U tests. Scalar = mean across phase bins of the
+    per-(trial × bin) frame-mean within (animal, date, trial, side,
+    signal, epoch). One row per trial × side × signal × epoch.
+
+    Same NaN-aware grain Pass 1 of Stage 2 uses; suitable for the
+    densified or frame-grained substrate input.
+
+    Returns columns: ``animal, date, trial_index, side, signal,
+    epoch_label, scalar``. Empty with canonical columns when input is
+    empty.
+    """
+    signals = tuple(signals)
+    out_cols = [
+        "animal", "date", "trial_index", "side",
+        "signal", "epoch_label", "scalar",
+    ]
+    required = {
+        "animal", "date", "trial_index", "side", "phase_bin", "epoch_label",
+    } | set(signals)
+    missing = required - set(phase_rows_long.columns)
+    if missing:
+        raise ValueError(
+            f"phase_rows_long missing column(s) {sorted(missing)}; "
+            f"got columns {list(phase_rows_long.columns)}.",
+        )
+    if phase_rows_long.empty:
+        return pd.DataFrame(columns=out_cols)
+
+    trial_keys = ["animal", "date", "trial_index", "side", "phase_bin"]
+    sub = phase_rows_long[
+        trial_keys + ["epoch_label"] + list(signals)
+    ].copy()
+    for s in signals:
+        sub[s] = pd.to_numeric(sub[s], errors="coerce")
+    per_trial_bin = (
+        sub.groupby(
+            trial_keys + ["epoch_label"],
+            dropna=False, sort=False, as_index=False,
+        )[list(signals)]
+        .mean()
+    )
+    melted = per_trial_bin.melt(
+        id_vars=[
+            "animal", "date", "trial_index", "side", "epoch_label",
+        ],
+        value_vars=list(signals),
+        var_name="signal",
+        value_name="value",
+    )
+    finite_mask = np.isfinite(melted["value"].to_numpy(dtype=np.float64))
+    melted = melted.loc[finite_mask]
+    if melted.empty:
+        return pd.DataFrame(columns=out_cols)
+    agg = (
+        melted.groupby(
+            ["animal", "date", "trial_index", "side", "signal", "epoch_label"],
+            as_index=False,
+        )["value"]
+        .mean()
+        .rename(columns={"value": "scalar"})
+    )
+    return agg[out_cols].reset_index(drop=True)
+
+
+def compute_per_session_trajectory_scalar(
+    phase_rows_long: pd.DataFrame,
+    *,
+    signals: Iterable[str] = TRAJECTORY_SIGNALS,
+) -> pd.DataFrame:
+    """Per-(animal, date, side, signal, epoch) trajectory scalar.
+
+    Q-lock 13.5 (2026-05-28). Per-session unit for unpaired
+    pre-vs-post MWU tests. Scalar = mean across (trial × bin) of the
+    per-trial frame-means within each session × side × signal × epoch.
+
+    Returns columns: ``animal, date, side, signal, epoch_label,
+    scalar``. Empty with canonical columns when input is empty.
+    """
+    per_trial = compute_per_trial_trajectory_scalar(
+        phase_rows_long, signals=signals,
+    )
+    out_cols = ["animal", "date", "side", "signal", "epoch_label", "scalar"]
+    if per_trial.empty:
+        return pd.DataFrame(columns=out_cols)
+    agg = (
+        per_trial.groupby(
+            ["animal", "date", "side", "signal", "epoch_label"],
+            as_index=False,
+        )["scalar"]
+        .mean()
+    )
+    return agg[out_cols].reset_index(drop=True)
+
+
 def compute_per_animal_trajectory_scalar(
     phase_rows_long: pd.DataFrame,
     *,
