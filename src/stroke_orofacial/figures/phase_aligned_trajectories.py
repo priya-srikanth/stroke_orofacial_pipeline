@@ -42,12 +42,23 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from stroke_orofacial.animals import AnimalInfo
 from stroke_orofacial.figures.palette import (
     PHENOTYPE_ORDER,
     phenotype_display_name,
     phenotype_palette,
 )
 from stroke_orofacial.paths import PathResolver
+from stroke_orofacial.stats.aggregators import TRAJECTORY_SIGNALS
+from stroke_orofacial.stats.models import fit_paired_pre_post_wilcoxon
+from stroke_orofacial.stats.multiple_comparisons import (
+    apply_correction_to_results_df,
+)
+
+
+# Stats family constants (mirrors Q13b's phase_aligned_endpoint_stats).
+POST_EPOCHS: tuple[str, ...] = ("acute", "sub_acute", "chronic")
+SIDE_ORDER: tuple[str, ...] = ("L", "R")
 
 # Output layout (Q-lock 15 marker convention; subdir mirrors Q13b
 # correction 2026-05-27 — figures land under stats/figures/phenotype_pooled/
@@ -330,6 +341,113 @@ def render_phase_aligned_trajectory_figure(
     fig.savefig(output_path, format="svg", bbox_inches="tight")
     plt.close(fig)
     return output_path
+
+
+def compute_trajectory_wilcoxon_stats(
+    per_animal_scalar_df: pd.DataFrame,
+    animals_map: dict[str, AnimalInfo],
+    *,
+    signals: Iterable[str] = TRAJECTORY_SIGNALS,
+) -> pd.DataFrame:
+    """Paired pre-vs-post Wilcoxon family on per-animal trajectory scalars.
+
+    Q-lock 13.1 follow-on stats (2026-05-28). Trajectory analog of
+    Q13b's :func:`compute_phase_aligned_endpoint_stats`. For each
+    (phenotype, side, signal, post_epoch) cell — 48 total at the
+    8-animal cohort scale (4 phen × 2 sides × 2 signals × 3 post
+    epochs) — filters the per-animal scalars to that cell, calls
+    :func:`stroke_orofacial.stats.models.fit_paired_pre_post_wilcoxon`
+    with ``aggregator="mean"`` + ``value_col="scalar"`` and post_epoch
+    = the column-cell epoch, then applies a single BH-FDR family-wide
+    adjustment across all 48 tests.
+
+    The per-animal scalar (output of
+    :func:`stroke_orofacial.stats.aggregators.compute_per_animal_trajectory_scalar`)
+    is the cross-trial × cross-bin mean of per-trial frame-means within
+    each (animal, side, signal, epoch_label). Conceptually: the
+    time-averaged signal value over one ILI cycle for that animal in
+    that epoch + side.
+
+    NaN-aware: n=1 phenotypes (currently moderate / mod-severe per F-P-1)
+    return ``status="insufficient_data"`` + NaN p-value, and BH-FDR
+    propagates NaN through (those rows excluded from rank-based
+    adjustment).
+
+    Parameters
+    ----------
+    per_animal_scalar_df : pd.DataFrame
+        Output of :func:`compute_per_animal_trajectory_scalar`. Required
+        columns: ``animal``, ``side``, ``signal``, ``epoch_label``,
+        ``scalar``.
+    animals_map : Mapping[str, AnimalInfo]
+        Animal-ID → AnimalInfo for the cohort. Used to attach
+        ``recovery_phenotype``.
+    signals : Iterable[str], default ``TRAJECTORY_SIGNALS``
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: ``recovery_phenotype``, ``side``, ``signal``,
+        ``post_epoch``, ``statistic``, ``p_value``, ``n_observations``,
+        ``status``, ``median_diff``, ``p_adj``, ``reject``.
+    """
+    signals = tuple(signals)
+    required = {"animal", "side", "signal", "epoch_label", "scalar"}
+    missing = required - set(per_animal_scalar_df.columns)
+    if missing:
+        raise ValueError(
+            f"per_animal_scalar_df missing required column(s) "
+            f"{sorted(missing)}; got {list(per_animal_scalar_df.columns)}.",
+        )
+
+    # Attach recovery_phenotype.
+    df = per_animal_scalar_df.copy()
+    df["recovery_phenotype"] = df["animal"].map(
+        lambda a: (
+            animals_map[a].recovery_phenotype
+            if a in animals_map and animals_map[a].recovery_phenotype is not None
+            else None
+        )
+    )
+    df = df.dropna(subset=["recovery_phenotype"])
+
+    rows: list[dict[str, object]] = []
+    for phenotype in PHENOTYPE_ORDER:
+        for side in SIDE_ORDER:
+            for signal in signals:
+                sub = df[
+                    (df["recovery_phenotype"] == phenotype)
+                    & (df["side"] == side)
+                    & (df["signal"] == signal)
+                ]
+                for post_epoch in POST_EPOCHS:
+                    result = fit_paired_pre_post_wilcoxon(
+                        sub,
+                        post_epoch=post_epoch,
+                        value_col="scalar",
+                        aggregator="mean",
+                    )
+                    rows.append({
+                        "recovery_phenotype": phenotype,
+                        "side": side,
+                        "signal": signal,
+                        "post_epoch": post_epoch,
+                        "statistic": result.statistic,
+                        "p_value": result.p_value,
+                        "n_observations": result.n_observations,
+                        "status": result.details.get("status", "unknown"),
+                        "median_diff": result.details.get(
+                            "median_diff", float("nan"),
+                        ),
+                    })
+
+    out = pd.DataFrame(rows)
+    # Single 48-test family across (phenotype × side × signal × post_epoch);
+    # no inner family partition — pass group_cols=() to disable it.
+    out = apply_correction_to_results_df(
+        out, p_value_col="p_value", method="bh_fdr", group_cols=(),
+    )
+    return out
 
 
 def emit_phase_aligned_trajectory_figures(

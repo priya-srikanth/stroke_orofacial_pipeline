@@ -58,6 +58,7 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (  # noqa: E402
 )
 from stroke_orofacial.figures.phase_aligned_trajectories import (  # noqa: E402
     FIGURE_SUBDIR,
+    compute_trajectory_wilcoxon_stats,
     emit_phase_aligned_trajectory_figures,
 )
 from stroke_orofacial.paths import PathResolver  # noqa: E402
@@ -65,6 +66,7 @@ from stroke_orofacial.stats.aggregators import (  # noqa: E402
     aggregate_phenotype_pooled_phase_bin_mean_sem,
     apply_phase_bin_baseline_delta,
     compute_per_animal_phase_bin_baseline,
+    compute_per_animal_trajectory_scalar,
     enumerate_session_dates,
 )
 from stroke_orofacial.stats.recovery_epochs import assign_epoch_label  # noqa: E402
@@ -301,13 +303,45 @@ def run_stats_and_figures(
     baseline.to_csv(baseline_csv, index=False)
     logger.info("Wrote per-animal baseline CSV: %s", baseline_csv)
 
+    # Stage 6.1 — per-animal trajectory scalar + paired Wilcoxon family.
+    logger.info(
+        "Stage 6.1: per-animal trajectory scalar (raw signal, by epoch)...",
+    )
+    scalar_df = compute_per_animal_trajectory_scalar(cohort_df)
+    logger.info("  per-animal scalar rows: %d", len(scalar_df))
+    scalar_csv = out_dir / "per_animal_trajectory_scalar.csv"
+    scalar_df.to_csv(scalar_csv, index=False)
+    logger.info("Wrote per-animal trajectory scalar CSV: %s", scalar_csv)
+
+    logger.info(
+        "Stage 6.1: paired Wilcoxon × BH-FDR — "
+        "48-test family (4 phen × 2 sides × 2 signals × 3 post epochs)...",
+    )
+    animals_map = load_animals()
+    wilcoxon_df = compute_trajectory_wilcoxon_stats(scalar_df, animals_map)
+    logger.info("  Wilcoxon rows: %d", len(wilcoxon_df))
+    wilcoxon_csv = out_dir / "trajectory_paired_wilcoxon_bh_fdr.csv"
+    wilcoxon_df.to_csv(wilcoxon_csv, index=False)
+    logger.info("Wrote trajectory Wilcoxon stats CSV: %s", wilcoxon_csv)
+    n_reject = int(wilcoxon_df["reject"].fillna(False).sum())
+    n_finite = int(wilcoxon_df["p_value"].notna().sum())
+    logger.info(
+        "  Wilcoxon family summary: %d/%d significant at α=0.05 BH-FDR",
+        n_reject, n_finite,
+    )
+
     return {
         "status": "ok",
         "cohort_rows": len(cohort_df),
         "baseline_rows": len(baseline),
         "pooled_rows": len(pooled),
+        "scalar_rows": len(scalar_df),
+        "wilcoxon_rows": len(wilcoxon_df),
+        "wilcoxon_n_reject": n_reject,
         "pooled_csv": pooled_csv,
         "baseline_csv": baseline_csv,
+        "scalar_csv": scalar_csv,
+        "wilcoxon_csv": wilcoxon_csv,
         "figures_emitted": [str(p) for p in figure_result["emitted"]],
         "figures_skipped": [str(p) for p in figure_result["skipped"]],
     }

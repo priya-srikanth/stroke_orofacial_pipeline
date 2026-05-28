@@ -31,6 +31,7 @@ from stroke_orofacial.stats.aggregators import (
     apply_phase_bin_baseline_delta,
     attach_phenotype_and_epoch,
     compute_per_animal_phase_bin_baseline,
+    compute_per_animal_trajectory_scalar,
     enumerate_session_dates,
     load_cohort_phase_aligned_endpoints_long,
     load_session_phase_aligned_endpoints_long,
@@ -1264,3 +1265,92 @@ class TestAggregatePhenotypePooledPhaseBinMeanSem:
         )
         assert "phase_bin_center" in out.columns
         assert out.iloc[0]["phase_bin_center"] == pytest.approx(0.00694)
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13.1 — per-animal trajectory scalar (for paired Wilcoxon)
+# ---------------------------------------------------------------------------
+
+
+class TestComputePerAnimalTrajectoryScalar:
+    def test_returns_canonical_columns_on_empty(self):
+        empty = _phase_rows([]).iloc[0:0]
+        out = compute_per_animal_trajectory_scalar(empty)
+        assert list(out.columns) == [
+            "animal", "side", "signal", "epoch_label", "scalar",
+        ]
+
+    def test_scalar_equals_per_trial_grain_cross_trial_bin_mean(self):
+        # PS46 L pre:
+        #   trial 0 bin 0: angle frames [2, 6] → trial-bin mean = 4
+        #   trial 0 bin 1: angle frame [8]    → trial-bin mean = 8
+        #   trial 1 bin 0: angle frame [10]    → trial-bin mean = 10
+        # Cross-(trial, bin) mean: (4 + 8 + 10) / 3 = 22/3 ≈ 7.333
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 2.0},
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 6.0},
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 1, "epoch_label": "pre", "angle_deg": 8.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 10.0},
+        ]
+        out = compute_per_animal_trajectory_scalar(
+            _phase_rows(rows), signals=("angle_deg",),
+        )
+        assert len(out) == 1
+        assert out.iloc[0]["scalar"] == pytest.approx(22.0 / 3.0)
+
+    def test_partitions_by_side_signal_epoch(self):
+        rows = [
+            # L pre + L acute + R pre — 3 cells.
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 1.0, "x_centered": -1.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 5.0, "x_centered": -3.0},
+            {"animal": "PS46", "trial_index": 2, "side": "R",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 7.0, "x_centered": 4.0},
+        ]
+        out = compute_per_animal_trajectory_scalar(_phase_rows(rows))
+        # 3 (animal × side × epoch) cells × 2 signals = 6 rows.
+        assert len(out) == 6
+        L_pre_ang = out[
+            (out["side"] == "L") & (out["epoch_label"] == "pre")
+            & (out["signal"] == "angle_deg")
+        ].iloc[0]
+        assert L_pre_ang["scalar"] == pytest.approx(1.0)
+        R_pre_x = out[
+            (out["side"] == "R") & (out["epoch_label"] == "pre")
+            & (out["signal"] == "x_centered")
+        ].iloc[0]
+        assert R_pre_x["scalar"] == pytest.approx(4.0)
+
+    def test_nan_dropped(self):
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 2.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": float("nan")},
+            {"animal": "PS46", "trial_index": 2, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 4.0},
+        ]
+        out = compute_per_animal_trajectory_scalar(
+            _phase_rows(rows), signals=("angle_deg",),
+        )
+        # Per-trial means [2.0, NaN, 4.0]; cross-trial mean of finite = 3.0
+        assert out.iloc[0]["scalar"] == pytest.approx(3.0)
+
+    def test_missing_required_column_raises(self):
+        bad = pd.DataFrame({
+            "animal": ["PS46"], "side": ["L"],
+            "phase_bin": [0], "epoch_label": ["pre"],
+            "angle_deg": [1.0], "x_centered": [1.0],
+            # date + trial_index missing
+        })
+        with pytest.raises(ValueError, match="missing column"):
+            compute_per_animal_trajectory_scalar(bad)

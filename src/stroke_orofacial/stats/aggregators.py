@@ -682,6 +682,106 @@ def apply_phase_bin_baseline_delta(
 
 
 # ---------------------------------------------------------------------------
+# Q-lock 13.1 — per-animal trajectory scalar (for paired Wilcoxon stats)
+# ---------------------------------------------------------------------------
+
+
+def compute_per_animal_trajectory_scalar(
+    phase_rows_long: pd.DataFrame,
+    *,
+    signals: Iterable[str] = TRAJECTORY_SIGNALS,
+) -> pd.DataFrame:
+    """Per-(animal, side, signal, epoch_label) trajectory scalar.
+
+    Q-lock 13.1 follow-on stats prep (2026-05-28). Collapses each
+    animal's epoch-restricted trajectory to one scalar by taking the
+    cross-trial × cross-bin mean of per-trial frame-means. This is
+    the value column the trajectory paired Wilcoxon family consumes —
+    one row per animal × side × signal × epoch, then per-(phenotype,
+    side, signal, post_epoch) the existing
+    :func:`stroke_orofacial.stats.models.fit_paired_pre_post_wilcoxon`
+    pairs pre vs post within phenotype and tests the per-animal
+    paired differences.
+
+    Two-pass to match Stage 1 + Stage 2 grain:
+
+    1. Per (animal, date, trial_index, side, phase_bin) frame-mean
+       for each signal.
+    2. Cross-trial × cross-bin mean within (animal, side, signal,
+       epoch_label).
+
+    NaN-aware throughout. (animal, side, signal, epoch_label) tuples
+    with no finite per-trial frame-means are absent from the output.
+
+    Parameters
+    ----------
+    phase_rows_long : pd.DataFrame
+        Long-form centered phase rows. Required columns: ``animal``,
+        ``date``, ``trial_index``, ``side``, ``phase_bin``,
+        ``epoch_label``, and one column per ``signals`` entry.
+    signals : Iterable[str], default ``TRAJECTORY_SIGNALS``
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: ``animal``, ``side``, ``signal``, ``epoch_label``,
+        ``scalar`` (float). Canonical column set returned even when
+        input is empty.
+    """
+    signals = tuple(signals)
+    out_cols = ["animal", "side", "signal", "epoch_label", "scalar"]
+    required = {
+        "animal", "date", "trial_index", "side", "phase_bin", "epoch_label",
+    } | set(signals)
+    missing = required - set(phase_rows_long.columns)
+    if missing:
+        raise ValueError(
+            f"phase_rows_long missing column(s) {sorted(missing)}; "
+            f"got columns {list(phase_rows_long.columns)}.",
+        )
+    if phase_rows_long.empty:
+        return pd.DataFrame(columns=out_cols)
+
+    trial_keys = ["animal", "date", "trial_index", "side", "phase_bin"]
+    sub = phase_rows_long[
+        trial_keys + ["epoch_label"] + list(signals)
+    ].copy()
+    for s in signals:
+        sub[s] = pd.to_numeric(sub[s], errors="coerce")
+
+    # Pass 1: per-trial × side × bin frame-mean for each signal.
+    per_trial = (
+        sub.groupby(
+            trial_keys + ["epoch_label"],
+            dropna=False, sort=False, as_index=False,
+        )[list(signals)]
+        .mean()
+    )
+
+    # Pass 2: cross-trial × cross-bin mean within (animal, side, signal,
+    # epoch_label).
+    melted = per_trial.melt(
+        id_vars=["animal", "side", "epoch_label"],
+        value_vars=list(signals),
+        var_name="signal",
+        value_name="value",
+    )
+    finite_mask = np.isfinite(melted["value"].to_numpy(dtype=np.float64))
+    melted = melted.loc[finite_mask]
+    if melted.empty:
+        return pd.DataFrame(columns=out_cols)
+    agg = (
+        melted.groupby(
+            ["animal", "side", "signal", "epoch_label"],
+            as_index=False,
+        )["value"]
+        .mean()
+        .rename(columns={"value": "scalar"})
+    )
+    return agg[out_cols].reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
 # Q-lock 13 — phenotype × epoch × side × phase_bin mean+SEM aggregator (Stage 2)
 # ---------------------------------------------------------------------------
 

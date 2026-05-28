@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
 from stroke_orofacial.figures.palette import (
     PHENOTYPE_ORDER,
     phenotype_display_name,
@@ -32,6 +33,7 @@ from stroke_orofacial.figures.phase_aligned_trajectories import (
     SOURCE_DATA_SUBTITLE_DELTA,
     SOURCE_DATA_SUBTITLE_RAW,
     build_phase_aligned_trajectory_figure,
+    compute_trajectory_wilcoxon_stats,
     emit_phase_aligned_trajectory_figures,
     figure_path_for,
     render_phase_aligned_trajectory_figure,
@@ -364,3 +366,145 @@ class TestEmitPhaseAlignedTrajectoryFigures:
             "angle_deg_raw_L_mean_sem_cleaned_trace.svg",
             "angle_deg_raw_R_mean_sem_cleaned_trace.svg",
         }
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13.1 — paired Wilcoxon family on per-animal trajectory scalars
+# ---------------------------------------------------------------------------
+
+
+def _animal_info(
+    animal_id: str, *,
+    phenotype: str | None = "mild",
+) -> AnimalInfo:
+    import datetime
+    return AnimalInfo(
+        animal_id=animal_id,
+        stroke_date=datetime.date(2025, 3, 7),
+        session_start=datetime.date(2025, 2, 5),
+        session_end=datetime.date(2025, 5, 6),
+        epoch_boundaries=EpochBoundaries(
+            acute_max_rel_day=7,
+            subacute_max_rel_day=14,
+            chronic_min_rel_day=15,
+        ),
+        recovery_phenotype=phenotype,
+        kinematics_baselines={
+            "tongue": {"x0": 0.0, "y0": 0.0},
+            "jaw": {"x0": 0.0, "y0": 0.0},
+        },
+        bin_days=2,
+    )
+
+
+def _scalar_rows(rows: list[dict]) -> pd.DataFrame:
+    canonical = []
+    for r in rows:
+        canonical.append({
+            "animal": r["animal"],
+            "side": r.get("side", "L"),
+            "signal": r.get("signal", "angle_deg"),
+            "epoch_label": r["epoch_label"],
+            "scalar": float(r["scalar"]),
+        })
+    return pd.DataFrame(canonical)
+
+
+class TestComputeTrajectoryWilcoxonStats:
+    def test_returns_48_cells_with_correction_columns(self):
+        # Build per-animal scalars for 3 mild animals × 4 epochs × 2
+        # sides × 1 signal — 24 rows. compute_trajectory_wilcoxon_stats
+        # should still emit one row per (4 phen × 2 sides × 2 signals
+        # × 3 epochs) = 48 cells; cells without n≥2 animals get NaN p.
+        rows: list[dict] = []
+        for ai, animal in enumerate(("PS47", "PS48", "PS49")):
+            for ei, epoch in enumerate(("pre", "acute", "sub_acute", "chronic")):
+                for side in ("L", "R"):
+                    rows.append({
+                        "animal": animal, "side": side,
+                        "signal": "angle_deg", "epoch_label": epoch,
+                        "scalar": 10.0 + ei + ai * 0.1,
+                    })
+        scalars = _scalar_rows(rows)
+        animals = {
+            "PS47": _animal_info("PS47", phenotype="mild"),
+            "PS48": _animal_info("PS48", phenotype="mild"),
+            "PS49": _animal_info("PS49", phenotype="mild"),
+        }
+        out = compute_trajectory_wilcoxon_stats(
+            scalars, animals, signals=("angle_deg", "x_centered"),
+        )
+        # 4 phen × 2 sides × 2 signals × 3 post epochs = 48 rows.
+        assert len(out) == 48
+        for col in (
+            "recovery_phenotype", "side", "signal", "post_epoch",
+            "statistic", "p_value", "n_observations", "status",
+            "median_diff", "p_adj", "reject",
+        ):
+            assert col in out.columns
+        # mild × L × angle_deg × acute should be 'ok' (n=3).
+        mild_L_angle_acute = out[
+            (out["recovery_phenotype"] == "mild")
+            & (out["side"] == "L")
+            & (out["signal"] == "angle_deg")
+            & (out["post_epoch"] == "acute")
+        ].iloc[0]
+        assert mild_L_angle_acute["status"] == "ok"
+        assert int(mild_L_angle_acute["n_observations"]) == 3
+
+    def test_n_eq_1_phenotype_marks_insufficient_data(self):
+        # Single moderate animal → all moderate cells should be
+        # status=insufficient_data with NaN p_value.
+        rows = []
+        for ei, epoch in enumerate(("pre", "acute", "sub_acute", "chronic")):
+            for side in ("L", "R"):
+                rows.append({
+                    "animal": "PS46", "side": side,
+                    "signal": "angle_deg", "epoch_label": epoch,
+                    "scalar": 1.0 + ei,
+                })
+        scalars = _scalar_rows(rows)
+        animals = {
+            "PS46": _animal_info("PS46", phenotype="moderate"),
+        }
+        out = compute_trajectory_wilcoxon_stats(
+            scalars, animals, signals=("angle_deg",),
+        )
+        mod_rows = out[out["recovery_phenotype"] == "moderate"]
+        assert len(mod_rows) == 6  # 1 signal × 2 sides × 3 post epochs
+        for _, r in mod_rows.iterrows():
+            assert r["status"] == "insufficient_data"
+            assert not np.isfinite(r["p_value"])
+
+    def test_missing_required_column_raises(self):
+        bad = pd.DataFrame({
+            "animal": ["PS46"], "side": ["L"], "epoch_label": ["pre"],
+            # signal + scalar missing
+        })
+        with pytest.raises(ValueError, match="missing required column"):
+            compute_trajectory_wilcoxon_stats(bad, {})
+
+    def test_unknown_phenotype_animal_dropped(self):
+        rows = [
+            {"animal": "PS47", "side": "L", "signal": "angle_deg",
+             "epoch_label": "pre", "scalar": 1.0},
+            {"animal": "PS_unknown", "side": "L", "signal": "angle_deg",
+             "epoch_label": "pre", "scalar": 99.0},
+        ]
+        scalars = _scalar_rows(rows)
+        animals = {
+            "PS47": _animal_info("PS47", phenotype="mild"),
+        }
+        # No exception; unknown animal dropped before stats compute.
+        out = compute_trajectory_wilcoxon_stats(
+            scalars, animals, signals=("angle_deg",),
+        )
+        assert len(out) > 0
+        # mild PS47 alone is n=1 → insufficient_data.
+        mild_acute = out[
+            (out["recovery_phenotype"] == "mild")
+            & (out["post_epoch"] == "acute")
+            & (out["side"] == "L")
+            & (out["signal"] == "angle_deg")
+        ].iloc[0]
+        assert mild_acute["status"] in {"insufficient_data", "all_zero_diffs"}
