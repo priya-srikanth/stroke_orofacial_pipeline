@@ -1,6 +1,6 @@
 # Phase 9.1 Q-lock 12 — Phenotype-Pooled Proportion-Diff Heatmaps Kickoff
 
-**Status:** LOCKED v1 + Addendum #1-5 (2026-05-27 → 2026-05-28).
+**Status:** LOCKED v1 + Addendum #1-6 (2026-05-27 → 2026-05-28).
 **Branch:** `phase/9.1-q12-proportion-diff-heatmaps`
 **Merge tag (on close):** `v9.1-q12-proportion-diff-heatmaps`
 **Depends on:**
@@ -315,4 +315,52 @@ Tests (78 passing across Q12):
 ### Stage 5d (W-2 emit)
 
 Same launch pattern as Stage 5: ``--remap-phenotypes`` flag controls 4-tier vs 3-tier; both variants are emitted in a single driver invocation per run.
+
+
+---
+
+## Addendum #6 — Per-session W-2 boxplots + session filter architecture (2026-05-28)
+
+**ALL OTHER LOCKS UNCHANGED.** Q-lock 12 main phase merged at PR #153. This follow-up branch `phase/9.1-q12a-w2-recovery-boxplots` refines the Addendum #5 W-2 line plots into per-session boxplots, and adds a reusable session-filter architecture.
+
+### Q12-M revised: per-session W-2 as the unit of pooling
+
+Original Addendum #5 pooled at the per-(animal, epoch) granularity (one W-2 scalar per animal × epoch; 24 dots per plot for 8 animals × 3 epochs). Per Priya 2026-05-28 direction following the q13b convention, switch to per-session granularity:
+
+- One W-2 scalar per (animal, date, side, bodypart) — each session's H_post differenced against the animal's pre-pool.
+- Per-session values plot as the unit; phenotype-pool implicitly via box per (phenotype, epoch).
+- Pre-epoch sessions: each pre session's W-2 against the FULL pre-pool that includes the session ("naive" lock; small bias toward 0 acceptable as a noise-floor reference; leave-one-out alternative deferred).
+
+### Q12-G revised: boxplot layout (q13b shape)
+
+Original Addendum #5 used a line plot with per-phenotype lateral marker offsets (which Priya correctly flagged as visually implying different epoch times for different phenotypes). Switch to side-by-side boxplots within epoch groups — the standard convention for "different groups at the same x".
+
+- X axis: 4 epoch groups (Pre, Acute, Subacute, Chronic).
+- Per epoch group: 4 boxplots side-by-side (3 in 3-tier variant), one per phenotype, colored per palette.
+- Per-session jittered scatter overlaid on each box.
+- Legend top-left (q13b convention).
+
+### Q12-N (NEW): reusable session filter architecture
+
+New module `src/stroke_orofacial/cohort_filters.py` provides a declarative session-filter spec for cohort drivers. Used initially by Q-lock 12a W-2 boxplots; reusable as-is by every future Q-lock 12+ figure or stats analysis.
+
+API:
+- `SessionLickStats` dataclass: per-session lick counts derived from the Phase 2 NPZ.
+- `SessionFilter` dataclass: declarative threshold spec (`min_licks_total`, `min_licks_per_side`, `min_trials_with_licks_per_side`). All fields optional; AND semantic. Pass-through filter when all fields are None.
+- `compute_session_lick_stats(animal, date, resolver)` → `SessionLickStats | None`.
+- `apply_session_filter(animal, dates, resolver, spec)` → `SessionFilterResult` with `kept_dates`, `dropped=[(date, reason), ...]`, `stats_by_date`.
+- `load_filter_spec_from_defaults()` reads `configs/defaults.yaml` `cohort_filters.default` block.
+
+"Trials with licks" definition (locked Q12-N): a tone counts when at least one same-side lick falls in the post-tone `(0, 8000)` ms window (Q-lock 12 tone-aligned convention).
+
+Default thresholds in `configs/defaults.yaml` ship as pass-through (all `null`) so no existing consumer is affected unless it opts in. Per-emit overrides via `scripts/phase_9_1_q12/emit_cohort.py --session-filter-config <yaml>`.
+
+### Outputs
+
+- Boxplot SVGs overwrite the Addendum #5 line-plot SVGs at the same Q12-J path (`stats/figures/phenotype_pooled/wasserstein_recovery/...`). The line-plot renderer module is retained for callers that prefer it but the emit driver switches to boxplot.
+- New per-session W-2 long-form CSV `q12a_per_session_w2.csv` alongside the existing per-animal audit manifest, so downstream stats can re-aggregate per-session values without re-running the W-2 compute.
+
+### Stage 5d (Q-lock 12a) — re-emit
+
+Same 8-animal cohort, full re-emit of W-2 figures for both phenotype variants. Heatmaps unchanged from the Q-lock 12 main-phase emit at 2026-05-28 04:37 / 08:56.
 

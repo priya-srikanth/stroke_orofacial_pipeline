@@ -52,6 +52,11 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 from stroke_orofacial.animals import load_animals  # noqa: E402
 from stroke_orofacial.cohort_enumeration import yaml_driven_session_dates  # noqa: E402
+from stroke_orofacial.cohort_filters import (  # noqa: E402
+    SessionFilter,
+    apply_session_filter,
+    load_filter_spec_from_defaults,
+)
 from stroke_orofacial.config_loader import load_defaults  # noqa: E402
 from stroke_orofacial.dlc_spatial.render_on_demand import (  # noqa: E402
     _split_pre_post_dates,
@@ -62,14 +67,13 @@ from stroke_orofacial.figures.phenotype_pooled_proportion_diff import (  # noqa:
     compute_cohort_shared_vmax,
     emit_phenotype_pooled_proportion_diff_figures,
 )
-from stroke_orofacial.figures.phenotype_wasserstein_recovery import (  # noqa: E402
+from stroke_orofacial.figures.phenotype_wasserstein_recovery_boxplot import (  # noqa: E402
     FIGURE_SUBDIR as W2_FIGURE_SUBDIR,
-    emit_phenotype_wasserstein_recovery_figures,
+    emit_phenotype_wasserstein_recovery_boxplot_figures,
 )
 from stroke_orofacial.paths import PathResolver  # noqa: E402
 from stroke_orofacial.stats.aggregators import (  # noqa: E402
     aggregate_phenotype_pooled_spatial_diff,
-    aggregate_phenotype_pooled_wasserstein,
 )
 from stroke_orofacial.stats.spatial_proportion_diff import (  # noqa: E402
     BODYPART_CENTER_MODES,
@@ -80,6 +84,7 @@ from stroke_orofacial.stats.spatial_proportion_diff import (  # noqa: E402
     split_post_dates_by_epoch,
 )
 from stroke_orofacial.stats.spatial_wasserstein import (  # noqa: E402
+    compute_per_animal_per_session_w2_long,
     compute_per_animal_wasserstein2,
 )
 
@@ -108,7 +113,10 @@ def compute_per_animal_records(
     defaults: dict,
     animals_map: dict,
     logger: logging.Logger,
-) -> tuple[list[dict], list[dict[str, object]]]:
+    filter_spec: SessionFilter | None = None,
+) -> tuple[
+    list[dict], list[dict], list[dict], list[dict[str, object]],
+]:
     """Run Stage 1 over (bp × side × epoch) for one animal.
 
     Returns ``(records, w2_records, audit_rows)``:
@@ -131,6 +139,17 @@ def compute_per_animal_records(
     all_dates = yaml_driven_session_dates(
         animal, animal_info=animal_info, analysis_context="dlc.spatial",
     )
+    # Q-lock 12a: apply session-level lick filter before pre/post split.
+    if filter_spec is not None and not filter_spec.is_pass_through():
+        flt = apply_session_filter(animal, all_dates, resolver, filter_spec)
+        if flt.dropped:
+            logger.info(
+                "[%s] session filter dropped %d session(s); kept %d",
+                animal, len(flt.dropped), len(flt.kept_dates),
+            )
+            for d, reason in flt.dropped[:10]:
+                logger.info("  drop %s: %s", d.isoformat(), reason)
+        all_dates = flt.kept_dates
     pre_dates, post_dates = _split_pre_post_dates(all_dates, animal_info)
     by_epoch = split_post_dates_by_epoch(animal_info, post_dates)
     logger.info(
@@ -142,6 +161,7 @@ def compute_per_animal_records(
 
     records: list[dict] = []
     w2_records: list[dict] = []
+    per_session_w2_rows: list[dict] = []
     audit_rows: list[dict[str, object]] = []
     for bodypart in BODYPART_CENTER_MODES:
         for side in SIDES:
@@ -190,8 +210,22 @@ def compute_per_animal_records(
                 "n_sessions": pre_pool["n_pre_sessions"],
                 "n_trials": pre_pool["n_pre_trials"],
                 "n_total_frames": pre_pool["n_total_pre_frames"],
-                "abs_d_p99": np.nan, "error": "",
+                "abs_d_p99": np.nan, "w2": np.nan, "error": "",
             })
+
+            # Q-lock 12a: per-session W-2 for pre sessions against the
+            # full pre-pool (naive lock — small bias toward 0 acceptable
+            # as noise-floor reference). Per-pre-session rows for the
+            # boxplot ``Pre`` group.
+            pre_session_rows = compute_per_animal_per_session_w2_long(
+                animal=animal, pre_pool=pre_pool, post_dates=pre_dates,
+                side=side, bodypart=bodypart, resolver=resolver,
+                defaults=defaults, animal_info=animal_info,
+                epoch_label="pre",
+            )
+            for row in pre_session_rows:
+                row["recovery_phenotype"] = animal_info.recovery_phenotype
+            per_session_w2_rows.extend(pre_session_rows)
 
             for post_epoch in POST_EPOCHS:
                 t_ep = time.perf_counter()
@@ -278,6 +312,19 @@ def compute_per_animal_records(
                     "post_epoch": post_epoch,
                     "w2": w2,
                 })
+
+                # Q-lock 12a: per-session W-2 against per-animal pre-pool
+                # for the per-epoch dates. Each session gets its own LP.
+                post_session_rows = compute_per_animal_per_session_w2_long(
+                    animal=animal, pre_pool=pre_pool,
+                    post_dates=by_epoch[post_epoch],
+                    side=side, bodypart=bodypart, resolver=resolver,
+                    defaults=defaults, animal_info=animal_info,
+                    epoch_label=post_epoch,
+                )
+                for row in post_session_rows:
+                    row["recovery_phenotype"] = animal_info.recovery_phenotype
+                per_session_w2_rows.extend(post_session_rows)
                 logger.info(
                     "[%s/%s/%s/%s] OK in %.2fs+W2 %.2fs (n_post_sess=%d, "
                     "n_post_trials=%d, |D|.p99=%.4f, W-2=%.2f)",
@@ -286,7 +333,7 @@ def compute_per_animal_records(
                     p99, w2,
                 )
 
-    return records, w2_records, audit_rows
+    return records, w2_records, per_session_w2_rows, audit_rows
 
 
 # ---------------------------------------------------------------------------
@@ -364,6 +411,17 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--session-filter-config",
+        type=Path,
+        default=None,
+        help=(
+            "Optional YAML file overriding configs/defaults.yaml "
+            "cohort_filters.default with per-emit thresholds. Fields: "
+            "min_licks_total, min_licks_per_side, "
+            "min_trials_with_licks_per_side."
+        ),
+    )
+    parser.add_argument(
         "--remap-phenotypes",
         choices=("none", "3tier"),
         default="none",
@@ -431,18 +489,45 @@ def main() -> int:
     else:
         phenotype_order = PHENOTYPE_ORDER
 
+    # Q-lock 12a: load session filter (configs/defaults.yaml or CLI override).
+    filter_spec = load_filter_spec_from_defaults(defaults)
+    if args.session_filter_config is not None:
+        import yaml as _yaml
+        with open(args.session_filter_config) as f:
+            user_block = _yaml.safe_load(f) or {}
+        filter_spec = SessionFilter(
+            min_licks_total=user_block.get("min_licks_total"),
+            min_licks_per_side=user_block.get("min_licks_per_side"),
+            min_trials_with_licks_per_side=user_block.get(
+                "min_trials_with_licks_per_side",
+            ),
+        )
+    if filter_spec.is_pass_through():
+        logger.info("Session filter: pass-through (no thresholds active).")
+    else:
+        logger.info(
+            "Session filter active: min_licks_total=%s, "
+            "min_licks_per_side=%s, min_trials_with_licks_per_side=%s.",
+            filter_spec.min_licks_total,
+            filter_spec.min_licks_per_side,
+            filter_spec.min_trials_with_licks_per_side,
+        )
+
     all_records: list[dict] = []
     all_w2_records: list[dict] = []
+    all_per_session_w2: list[dict] = []
     all_audit_rows: list[dict[str, object]] = []
     for animal in animals:
         animal_t0 = time.perf_counter()
-        records, w2_records, audit_rows = compute_per_animal_records(
+        records, w2_records, per_session_w2, audit_rows = compute_per_animal_records(
             animal=animal, resolver=resolver,
             defaults=defaults, animals_map=animals_map, logger=logger,
+            filter_spec=filter_spec,
         )
         animal_elapsed = time.perf_counter() - animal_t0
         all_records.extend(records)
         all_w2_records.extend(w2_records)
+        all_per_session_w2.extend(per_session_w2)
         all_audit_rows.extend(audit_rows)
         n_ok = sum(1 for r in audit_rows if r["status"] == "OK"
                    and r["epoch"] in POST_EPOCHS)
@@ -495,15 +580,18 @@ def main() -> int:
         len(figs_result["FAIL"]),
     )
 
-    # Stage 5d2 (Addendum #5): phenotype-pool W-2 + emit 4 recovery plots.
+    # Stage 5d2 (Q-lock 12a Addendum #6): per-session W-2 boxplots.
+    import pandas as _pd
+    per_session_w2_df = _pd.DataFrame(
+        all_per_session_w2,
+        columns=[
+            "animal", "date", "side", "bodypart", "epoch_label",
+            "recovery_phenotype", "w2",
+        ],
+    )
     logger.info(
-        "Phenotype-pooling %d per-animal W-2 records (mean +/- SEM)...",
-        len(all_w2_records),
+        "Per-session W-2 records: %d", len(per_session_w2_df),
     )
-    pooled_w2 = aggregate_phenotype_pooled_wasserstein(
-        all_w2_records, animals_map,
-    )
-    logger.info("  pooled W-2 records: %d", len(pooled_w2))
 
     if args.output_dir is not None:
         w2_out_dir = args.output_dir
@@ -515,17 +603,22 @@ def main() -> int:
         w2_out_dir = None  # let renderer default to W2_FIGURE_SUBDIR
 
     logger.info(
-        "Emitting 4 SVG W-2 recovery figures (2 bodyparts x 2 sides)...",
+        "Emitting 4 SVG W-2 boxplot figures (2 bodyparts x 2 sides)...",
     )
-    w2_figs_result = emit_phenotype_wasserstein_recovery_figures(
-        pooled_w2,
+    # Q-lock 12a: pass remapped phenotype labels into the boxplot DataFrame
+    # so 3-tier emit pools (mod-severe → moderate). The animals_map was
+    # already remapped earlier; per_session_w2_df["recovery_phenotype"]
+    # was set from animal_info.recovery_phenotype at emit time, which
+    # for 3-tier reflects the remap.
+    w2_figs_result = emit_phenotype_wasserstein_recovery_boxplot_figures(
+        per_session_w2_df,
         resolver=resolver,
         output_dir=w2_out_dir,
         overwrite=args.overwrite,
         phenotype_order=phenotype_order,
     )
     logger.info(
-        "  W-2 figures OK=%d SKIP=%d FAIL=%d",
+        "  W-2 boxplot figures OK=%d SKIP=%d FAIL=%d",
         len(w2_figs_result["OK"]), len(w2_figs_result["SKIP"]),
         len(w2_figs_result["FAIL"]),
     )
@@ -551,6 +644,13 @@ def main() -> int:
         ],
     ).to_csv(audit_csv, index=False)
     logger.info("Wrote per-animal audit manifest: %s", audit_csv)
+
+    # Q-lock 12a: per-session W-2 long-form CSV (one row per
+    # (animal, date, side, bp, epoch_label) with the scalar W-2 used in
+    # the boxplot).
+    per_session_csv = out_dir / "q12a_per_session_w2.csv"
+    per_session_w2_df.to_csv(per_session_csv, index=False)
+    logger.info("Wrote per-session W-2 CSV: %s", per_session_csv)
 
     total_elapsed = time.perf_counter() - overall_t0
     logger.info("=" * 72)
@@ -586,7 +686,7 @@ def main() -> int:
         "n_animals": len(animals),
         "n_records": len(all_records),
         "n_pooled": len(pooled),
-        "n_pooled_w2": len(pooled_w2),
+        "n_per_session_w2": len(per_session_w2_df),
         "shared_vmax": float(shared_vmax),
         "wall_time_s": float(total_elapsed),
         "heatmap_figures_ok": [list(k) for k in figs_result["OK"]],

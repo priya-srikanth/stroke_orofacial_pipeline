@@ -149,7 +149,78 @@ def compute_per_animal_wasserstein2(
     )
 
 
+def compute_per_animal_per_session_w2_long(
+    *,
+    animal: str,
+    pre_pool: dict[str, Any],
+    post_dates: list,
+    side: str,
+    bodypart: str,
+    resolver,
+    defaults: dict[str, Any] | None = None,
+    animal_info=None,
+    epoch_label: str | None = None,
+) -> list[dict[str, Any]]:
+    """Compute per-session W-2 against the animal's pre-pool.
+
+    One W-2 scalar per ``(animal, date)`` for the given (side, bodypart),
+    differenced against the per-animal pre-pool. The pre-pool itself
+    is computed once by the caller (via Stage 1
+    :func:`stroke_orofacial.stats.spatial_proportion_diff.compute_per_animal_pre_pool`)
+    and passed in here.
+
+    Pre-epoch sessions (``epoch_label="pre"``) compare each pre session's
+    histogram against the FULL pre-pool that INCLUDES that session
+    (Q-lock 12a Addendum #6 v1 "naive" lock per Priya 2026-05-28). The
+    small bias toward 0 is acceptable as a noise-floor reference; the
+    rigorous leave-one-out alternative is deferred.
+
+    Returns a list of dicts (long-form rows). Sessions whose H_post is
+    None or zero-mass (no contributing tones / parquets) are skipped
+    silently — the caller treats them as missing.
+    """
+    from stroke_orofacial.dlc_spatial.render_on_demand import (
+        TASK5_TONE_WINDOW_MS,
+        compute_animal_aggregated_histogram,
+    )
+    from stroke_orofacial.stats.spatial_proportion_diff import BODYPART_CENTER_MODES
+
+    if defaults is None:
+        from stroke_orofacial.config_loader import load_defaults
+        defaults = load_defaults()
+    if animal_info is None:
+        from stroke_orofacial.animals import get_animal
+        animal_info = get_animal(animal)
+    center_mode = BODYPART_CENTER_MODES[bodypart]
+
+    rows: list[dict[str, Any]] = []
+    for d in post_dates:
+        H_post, ext, _n_sess, _n_tones, n_total_post = (
+            compute_animal_aggregated_histogram(
+                animal, [d], bodypart, center_mode, resolver,
+                trial_group=side, window_ms=TASK5_TONE_WINDOW_MS,
+                defaults=defaults, animal_info=animal_info,
+            )
+        )
+        if H_post is None or n_total_post == 0:
+            continue
+        w2 = compute_wasserstein2_2d(
+            pre_pool["H_pre_counts"], H_post,
+            pre_pool["extent"] if pre_pool["extent"] is not None else ext,
+        )
+        rows.append({
+            "animal": animal,
+            "date": d,
+            "side": side,
+            "bodypart": bodypart,
+            "epoch_label": epoch_label,
+            "w2": float(w2),
+        })
+    return rows
+
+
 __all__ = [
+    "compute_per_animal_per_session_w2_long",
     "compute_per_animal_wasserstein2",
     "compute_wasserstein2_2d",
 ]

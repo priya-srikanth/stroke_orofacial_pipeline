@@ -1798,3 +1798,27 @@ spout_close_vs_std:
   # axes. See visual_gate.lick_count_integer_yticks for the shared
   # config flag — same semantic + default.
   lick_count_integer_yticks: true
+
+
+# ---------------------------------------------------------------------------
+# Reusable per-session lick filter (Phase 9.1 Q-lock 12a)
+# ---------------------------------------------------------------------------
+#
+# Threshold spec for per-session inclusion based on lick counts /
+# trials-with-licks counts derived from the Phase 2 NPZ. Consumed by
+# stroke_orofacial.cohort_filters.load_filter_spec_from_defaults();
+# downstream cohort drivers (Q-lock 12a W-2 boxplots, future plots/
+# stats) read from here as the "stable default" and may override per-
+# emit via CLI flag.
+#
+# Every field omitted / set to null = no filter on that dimension.
+# All non-null thresholds must be satisfied (AND semantic).
+#
+# Q12-N — "trials with licks" uses the (0, 8000) ms post-tone window
+# (Q-lock 12 tone-aligned convention). A trial counts when at least one
+# same-side lick falls in [tone, tone + 8000ms).
+cohort_filters:
+  default:
+    min_licks_total: null
+    min_licks_per_side: null
+    min_trials_with_licks_per_side: null
