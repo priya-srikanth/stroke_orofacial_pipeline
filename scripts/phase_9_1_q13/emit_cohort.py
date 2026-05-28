@@ -59,6 +59,9 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (  # noqa: E402
 )
 from stroke_orofacial.figures.phase_aligned_trajectories import (  # noqa: E402
     FIGURE_SUBDIR,
+    compute_trajectory_bootstrap_pre_ci,
+    compute_trajectory_cluster_permutation_stats,
+    compute_trajectory_lmm_stats,
     compute_trajectory_mwu_stats,
     compute_trajectory_wilcoxon_stats,
     emit_phase_aligned_trajectory_figures,
@@ -73,6 +76,7 @@ from stroke_orofacial.stats.aggregators import (  # noqa: E402
     compute_per_trial_trajectory_scalar,
     densify_phase_rows_via_interp,
     enumerate_session_dates,
+    relabel_pre_for_null_calibration,
 )
 from stroke_orofacial.stats.recovery_epochs import assign_epoch_label  # noqa: E402
 
@@ -446,6 +450,47 @@ def run_stats_and_figures(
         "Paired Wilcoxon (animal n) is the canonical inferential test.",
     )
 
+    # Q-lock 13.6 — LMM (proper inferential at session grain).
+    logger.info("Stage 6.6: per-session LMM (scalar ~ epoch + (1|animal))...")
+    lmm_df = compute_trajectory_lmm_stats(session_scalar_df, animals_map)
+    lmm_csv = out_dir / "trajectory_lmm_per_session_bh_fdr.csv"
+    lmm_df.to_csv(lmm_csv, index=False)
+    n_reject_lmm = int(lmm_df["reject"].fillna(False).sum())
+    n_finite_lmm = int(lmm_df["p_value"].notna().sum())
+    logger.info(
+        "  LMM (session, animal-RE): %d/%d significant at α=0.05 BH-FDR → %s",
+        n_reject_lmm, n_finite_lmm, lmm_csv,
+    )
+
+    # Q-lock 13.6 — Maris-Oostenveld cluster permutation.
+    logger.info(
+        "Stage 6.6: cluster permutation (5000 perms, t-threshold=2)...",
+    )
+    cluster_df = compute_trajectory_cluster_permutation_stats(
+        cohort_df, animals_map, n_permutations=5000, t_threshold=2.0,
+    )
+    cluster_csv = out_dir / "trajectory_cluster_permutation_bh_fdr.csv"
+    cluster_df.to_csv(cluster_csv, index=False)
+    n_reject_cl = int(cluster_df["reject"].fillna(False).sum())
+    n_finite_cl = int(cluster_df["p_value"].notna().sum())
+    logger.info(
+        "  cluster permutation: %d/%d clusters significant at α=0.05 → %s",
+        n_reject_cl, n_finite_cl, cluster_csv,
+    )
+
+    # Q-lock 13.6 — animal-level bootstrap CI on pre trajectory.
+    logger.info(
+        "Stage 6.6: bootstrap CI on pre trajectory (5000 resamples)...",
+    )
+    boot_df = compute_trajectory_bootstrap_pre_ci(
+        cohort_df, animals_map, n_bootstrap=5000, ci=0.95,
+    )
+    boot_csv = out_dir / "trajectory_pre_bootstrap_ci.csv"
+    boot_df.to_csv(boot_csv, index=False)
+    logger.info(
+        "  bootstrap CI rows: %d → %s", len(boot_df), boot_csv,
+    )
+
     return {
         "status": "ok",
         "cohort_rows": len(cohort_df),
@@ -547,6 +592,20 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "Optional override for the figure / CSV output dir "
             "(default: pipeline_outputs/<Q-lock 15 subdir>)."
+        ),
+    )
+    parser.add_argument(
+        "--null-calibration",
+        action="store_true",
+        help=(
+            "Q-lock 13.6 null-calibration mode. Drops all post-stroke "
+            "rows; randomly partitions pre-stroke sessions into "
+            "fake_pre + fake_(acute/sub_acute/chronic) labels per "
+            "animal. Runs the entire stats family on the relabeled "
+            "data. Under H0 (no real stroke effect), the test family "
+            "should yield ~5%% significant cells; higher rates indicate "
+            "pseudo-replication / mis-calibration. Output dir auto-"
+            "routed to 'null_calibration/' subdir."
         ),
     )
     parser.add_argument(
@@ -659,6 +718,21 @@ def main(argv: list[str] | None = None) -> int:
             "  cohort rows after phenotype/epoch attach: %d",
             len(cohort_df),
         )
+
+        if args.null_calibration:
+            logger.info(
+                "Null-calibration mode: dropping post rows + "
+                "randomly relabeling pre into fake_pre/fake_post buckets...",
+            )
+            cohort_df = relabel_pre_for_null_calibration(cohort_df)
+            logger.info(
+                "  null-calibration rows: %d", len(cohort_df),
+            )
+            base_dir = (
+                output_dir if output_dir is not None
+                else resolver.pipeline_outputs(subdir=FIGURE_SUBDIR)
+            )
+            output_dir = base_dir / "null_calibration"
     else:
         animals_map = None
         phenotype_order = None

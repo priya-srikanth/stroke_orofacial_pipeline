@@ -50,7 +50,10 @@ from stroke_orofacial.figures.palette import (
 )
 from stroke_orofacial.paths import PathResolver
 from stroke_orofacial.stats.aggregators import TRAJECTORY_SIGNALS
-from stroke_orofacial.stats.models import fit_paired_pre_post_wilcoxon
+from stroke_orofacial.stats.models import (
+    fit_paired_pre_post_wilcoxon,
+    fit_per_epoch_lmm,
+)
 from stroke_orofacial.stats.multiple_comparisons import (
     apply_correction_to_results_df,
 )
@@ -647,6 +650,528 @@ def compute_trajectory_mwu_stats(
         out, p_value_col="p_value", method="bh_fdr", group_cols=(),
     )
     return out
+
+
+def compute_trajectory_lmm_stats(
+    per_session_scalar_df: pd.DataFrame,
+    animals_map: dict[str, AnimalInfo],
+    *,
+    signals: Iterable[str] = TRAJECTORY_SIGNALS,
+) -> pd.DataFrame:
+    """Per-(phenotype × side × signal) LMM: ``scalar ~ epoch + (1|animal)``.
+
+    Q-lock 13.6 (2026-05-28). Proper inferential test that respects
+    within-animal correlation — addresses the pseudo-replication that
+    inflates the MWU at trial/session grain. Random intercept per
+    animal absorbs between-animal baseline offsets; fixed-effect
+    coefficient for each post-epoch tests "this epoch differs from
+    pre by X units" controlling for animal identity.
+
+    Wraps :func:`stroke_orofacial.stats.models.fit_per_epoch_lmm` with
+    one fit per (phenotype × side × signal) cell. Each fit yields per
+    (post_epoch) coefficient + p-value (from the categorical
+    parameterization with pre as the reference level). After all fits,
+    BH-FDR correction across the family.
+
+    Parameters
+    ----------
+    per_session_scalar_df : pd.DataFrame
+        Output of
+        :func:`stroke_orofacial.stats.aggregators.compute_per_session_trajectory_scalar`.
+        Required columns: ``animal``, ``side``, ``signal``,
+        ``epoch_label``, ``scalar``.
+    animals_map : Mapping[str, AnimalInfo]
+        Animal-ID → AnimalInfo for cohort.
+    signals : Iterable[str], default ``TRAJECTORY_SIGNALS``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: ``recovery_phenotype``, ``side``, ``signal``,
+        ``post_epoch``, ``coef``, ``se``, ``p_value``,
+        ``n_observations``, ``n_animals``, ``status``, ``p_adj``,
+        ``reject``.
+    """
+    signals = tuple(signals)
+    required = {"animal", "side", "signal", "epoch_label", "scalar"}
+    missing = required - set(per_session_scalar_df.columns)
+    if missing:
+        raise ValueError(
+            f"per_session_scalar_df missing column(s) {sorted(missing)}.",
+        )
+
+    df = per_session_scalar_df.copy()
+    df["recovery_phenotype"] = df["animal"].map(
+        lambda a: (
+            animals_map[a].recovery_phenotype
+            if a in animals_map and animals_map[a].recovery_phenotype is not None
+            else None
+        )
+    )
+    df = df.dropna(subset=["recovery_phenotype"])
+
+    rows: list[dict[str, object]] = []
+    for phenotype in PHENOTYPE_ORDER:
+        for side in SIDE_ORDER:
+            for signal in signals:
+                sub = df[
+                    (df["recovery_phenotype"] == phenotype)
+                    & (df["side"] == side)
+                    & (df["signal"] == signal)
+                ]
+                n_animals = int(sub["animal"].nunique())
+                if n_animals < 2 or len(sub) < 5:
+                    for post_epoch in POST_EPOCHS:
+                        rows.append({
+                            "recovery_phenotype": phenotype,
+                            "side": side, "signal": signal,
+                            "post_epoch": post_epoch,
+                            "coef": float("nan"), "se": float("nan"),
+                            "p_value": float("nan"),
+                            "n_observations": int(len(sub)),
+                            "n_animals": n_animals,
+                            "status": "insufficient_data",
+                        })
+                    continue
+                result = fit_per_epoch_lmm(
+                    sub, value_col="scalar",
+                    epoch_col="epoch_label", animal_col="animal",
+                )
+                per_epoch = result.details.get("per_epoch", {})
+                status_root = result.details.get("status", "unknown")
+                for post_epoch in POST_EPOCHS:
+                    if post_epoch in per_epoch:
+                        rec = per_epoch[post_epoch]
+                        rows.append({
+                            "recovery_phenotype": phenotype,
+                            "side": side, "signal": signal,
+                            "post_epoch": post_epoch,
+                            "coef": rec["coef"],
+                            "se": rec["se"],
+                            "p_value": rec["p_value"],
+                            "n_observations": result.n_observations,
+                            "n_animals": n_animals,
+                            "status": status_root,
+                        })
+                    else:
+                        rows.append({
+                            "recovery_phenotype": phenotype,
+                            "side": side, "signal": signal,
+                            "post_epoch": post_epoch,
+                            "coef": float("nan"), "se": float("nan"),
+                            "p_value": float("nan"),
+                            "n_observations": result.n_observations,
+                            "n_animals": n_animals,
+                            "status": status_root,
+                        })
+
+    out = pd.DataFrame(rows)
+    out = apply_correction_to_results_df(
+        out, p_value_col="p_value", method="bh_fdr", group_cols=(),
+    )
+    return out
+
+
+def _per_bin_t_stat(
+    pre_arr: np.ndarray, post_arr: np.ndarray,
+) -> np.ndarray:
+    """Welch's per-bin t-statistic between two (n_obs, n_bins) arrays."""
+    n_pre = pre_arr.shape[0]
+    n_post = post_arr.shape[0]
+    if n_pre < 2 or n_post < 2:
+        return np.full(pre_arr.shape[1], np.nan)
+    m_pre = np.nanmean(pre_arr, axis=0)
+    m_post = np.nanmean(post_arr, axis=0)
+    v_pre = np.nanvar(pre_arr, axis=0, ddof=1)
+    v_post = np.nanvar(post_arr, axis=0, ddof=1)
+    se = np.sqrt(v_pre / n_pre + v_post / n_post)
+    se = np.where(se > 0, se, np.nan)
+    return (m_post - m_pre) / se
+
+
+def _find_clusters_above_threshold(
+    t_arr: np.ndarray, threshold: float,
+) -> list[dict[str, float]]:
+    """Find runs of consecutive bins where |t| > threshold.
+
+    Returns a list of dicts ``{start_bin, end_bin, mass, sign}`` —
+    one per contiguous cluster. ``mass`` is the sum of |t| within the
+    cluster; ``sign`` is +1 if mean(t) > 0, -1 otherwise.
+    """
+    finite = np.isfinite(t_arr)
+    sig = (np.abs(t_arr) > threshold) & finite
+    clusters: list[dict[str, float]] = []
+    i = 0
+    n = len(t_arr)
+    while i < n:
+        if not sig[i]:
+            i += 1
+            continue
+        j = i
+        while j < n and sig[j]:
+            j += 1
+        # cluster spans [i, j)
+        chunk = t_arr[i:j]
+        mass = float(np.nansum(np.abs(chunk)))
+        sign = float(np.sign(np.nanmean(chunk)))
+        clusters.append({
+            "start_bin": int(i), "end_bin": int(j - 1),
+            "mass": mass, "sign": sign,
+        })
+        i = j
+    return clusters
+
+
+def compute_trajectory_cluster_permutation_stats(
+    densified_cohort_df: pd.DataFrame,
+    animals_map: dict[str, AnimalInfo],
+    *,
+    signals: Iterable[str] = TRAJECTORY_SIGNALS,
+    variants: Iterable[str] = ("raw", "delta"),
+    n_permutations: int = 5000,
+    t_threshold: float = 2.0,
+    rng_seed: int = 42,
+) -> pd.DataFrame:
+    """Maris-Oostenveld cluster-based permutation test on session trajectories.
+
+    Q-lock 13.6 (2026-05-28). Gold-standard trajectory comparison:
+    properly accounts for adjacent-bin correlation that per-bin
+    BH-FDR ignores. Per (phenotype × side × signal × variant ×
+    post_epoch), pools session-grain trajectories pre vs post_epoch,
+    computes per-bin Welch's t-statistic, identifies clusters of
+    adjacent bins where |t| > ``t_threshold``, computes
+    cluster-mass = sum |t|. Permutes the pre↔post_epoch session
+    labels ``n_permutations`` times, recomputes max cluster-mass
+    under the null. P-value per observed cluster = fraction of null
+    max cluster-mass ≥ observed.
+
+    Permutation is INDEPENDENT per post_epoch comparison (pre vs
+    acute is its own permutation; pre vs sub_acute is its own; etc.).
+    No shared null across the family. BH-FDR across all observed
+    clusters in the family for the ``p_adj`` column.
+
+    Parameters
+    ----------
+    densified_cohort_df : pd.DataFrame
+        Output of
+        :func:`stroke_orofacial.stats.aggregators.densify_phase_rows_via_interp`
+        + ``attach_metadata``. Required columns: ``animal``, ``date``,
+        ``side``, ``phase_bin``, ``epoch_label``,
+        ``recovery_phenotype``, plus one column per ``signals`` entry
+        (raw) and one ``<signal>_delta`` column per signal (delta).
+    animals_map : Mapping[str, AnimalInfo]
+        Used to attach recovery_phenotype if not already in input.
+        Kept in signature for API parity; phenotype must already be
+        attached.
+    signals : Iterable[str], default ``TRAJECTORY_SIGNALS``.
+    variants : Iterable[str], default ``("raw", "delta")``.
+    n_permutations : int, default 5000.
+    t_threshold : float, default 2.0
+        Bin-level threshold for cluster detection. Roughly 2-sided
+        alpha=0.05 at small dof; standard convention is t=2.
+    rng_seed : int, default 42.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per observed cluster, or one row with status="no_cluster"
+        per cell with no observed cluster. Columns:
+        ``recovery_phenotype``, ``side``, ``signal``, ``variant``,
+        ``post_epoch``, ``cluster_idx``, ``start_bin``, ``end_bin``,
+        ``cluster_mass``, ``sign`` (direction of bins), ``p_value``,
+        ``n_pre``, ``n_post``, ``status``, ``p_adj``, ``reject``.
+    """
+    signals = tuple(signals)
+    variants = tuple(variants)
+    if not 1 <= n_permutations <= 100000:
+        raise ValueError(
+            f"n_permutations must be in [1, 100000]; got {n_permutations}.",
+        )
+
+    rng = np.random.default_rng(rng_seed)
+    required = {
+        "animal", "date", "side", "phase_bin", "epoch_label",
+        "recovery_phenotype",
+    }
+    for s in signals:
+        if "raw" in variants:
+            required.add(s)
+        if "delta" in variants:
+            required.add(f"{s}_delta")
+    missing = required - set(densified_cohort_df.columns)
+    if missing:
+        raise ValueError(
+            f"densified_cohort_df missing column(s) {sorted(missing)}.",
+        )
+
+    rows: list[dict[str, object]] = []
+    for phenotype in PHENOTYPE_ORDER:
+        for side in SIDE_ORDER:
+            for signal in signals:
+                for variant in variants:
+                    value_col = signal if variant == "raw" else f"{signal}_delta"
+                    sub = densified_cohort_df[
+                        (densified_cohort_df["recovery_phenotype"] == phenotype)
+                        & (densified_cohort_df["side"] == side)
+                    ][[
+                        "animal", "date", "phase_bin", "epoch_label",
+                        value_col,
+                    ]].copy()
+                    sub["_val"] = pd.to_numeric(
+                        sub[value_col], errors="coerce",
+                    )
+                    sub = sub.dropna(subset=["_val"])
+                    if sub.empty:
+                        for post_epoch in POST_EPOCHS:
+                            rows.append({
+                                "recovery_phenotype": phenotype,
+                                "side": side, "signal": signal,
+                                "variant": variant, "post_epoch": post_epoch,
+                                "cluster_idx": 0,
+                                "start_bin": -1, "end_bin": -1,
+                                "cluster_mass": float("nan"),
+                                "sign": float("nan"),
+                                "p_value": float("nan"),
+                                "n_pre": 0, "n_post": 0,
+                                "status": "insufficient_data",
+                            })
+                        continue
+                    # Per-session trajectory: mean over trials within
+                    # (animal, date, bin).
+                    session_traj = (
+                        sub.groupby(
+                            ["animal", "date", "phase_bin", "epoch_label"],
+                            as_index=False,
+                        )["_val"].mean()
+                    )
+                    # Pivot to (session, bin) wide.
+                    wide = session_traj.pivot_table(
+                        index=["animal", "date", "epoch_label"],
+                        columns="phase_bin",
+                        values="_val",
+                    ).sort_index(axis=1)
+                    wide.columns.name = None
+                    bins = wide.columns.to_numpy()
+                    n_bins = len(bins)
+                    wide = wide.reset_index()
+
+                    for post_epoch in POST_EPOCHS:
+                        pre_rows = wide[wide["epoch_label"] == "pre"]
+                        post_rows = wide[wide["epoch_label"] == post_epoch]
+                        n_pre = len(pre_rows)
+                        n_post = len(post_rows)
+                        if n_pre < 2 or n_post < 2:
+                            rows.append({
+                                "recovery_phenotype": phenotype,
+                                "side": side, "signal": signal,
+                                "variant": variant, "post_epoch": post_epoch,
+                                "cluster_idx": 0,
+                                "start_bin": -1, "end_bin": -1,
+                                "cluster_mass": float("nan"),
+                                "sign": float("nan"),
+                                "p_value": float("nan"),
+                                "n_pre": int(n_pre), "n_post": int(n_post),
+                                "status": "insufficient_data",
+                            })
+                            continue
+                        pre_arr = pre_rows[bins].to_numpy(dtype=np.float64)
+                        post_arr = post_rows[bins].to_numpy(dtype=np.float64)
+                        obs_t = _per_bin_t_stat(pre_arr, post_arr)
+                        obs_clusters = _find_clusters_above_threshold(
+                            obs_t, t_threshold,
+                        )
+
+                        # Build joint matrix for permutations.
+                        joint = np.vstack([pre_arr, post_arr])
+                        n_total = joint.shape[0]
+                        # Null max cluster mass distribution.
+                        null_masses = np.zeros(n_permutations)
+                        for ip in range(n_permutations):
+                            perm = rng.permutation(n_total)
+                            perm_pre = joint[perm[:n_pre]]
+                            perm_post = joint[perm[n_pre:]]
+                            t_perm = _per_bin_t_stat(perm_pre, perm_post)
+                            perm_clusters = _find_clusters_above_threshold(
+                                t_perm, t_threshold,
+                            )
+                            if perm_clusters:
+                                null_masses[ip] = max(
+                                    c["mass"] for c in perm_clusters
+                                )
+                            else:
+                                null_masses[ip] = 0.0
+
+                        if not obs_clusters:
+                            rows.append({
+                                "recovery_phenotype": phenotype,
+                                "side": side, "signal": signal,
+                                "variant": variant, "post_epoch": post_epoch,
+                                "cluster_idx": 0,
+                                "start_bin": -1, "end_bin": -1,
+                                "cluster_mass": 0.0,
+                                "sign": 0.0,
+                                "p_value": 1.0,
+                                "n_pre": int(n_pre), "n_post": int(n_post),
+                                "status": "no_cluster",
+                            })
+                            continue
+                        # Emit one row per observed cluster.
+                        for ci, cluster in enumerate(obs_clusters):
+                            p = float(
+                                np.mean(null_masses >= cluster["mass"])
+                            )
+                            rows.append({
+                                "recovery_phenotype": phenotype,
+                                "side": side, "signal": signal,
+                                "variant": variant, "post_epoch": post_epoch,
+                                "cluster_idx": ci,
+                                "start_bin": cluster["start_bin"],
+                                "end_bin": cluster["end_bin"],
+                                "cluster_mass": cluster["mass"],
+                                "sign": cluster["sign"],
+                                "p_value": p,
+                                "n_pre": int(n_pre), "n_post": int(n_post),
+                                "status": "ok",
+                            })
+
+    out = pd.DataFrame(rows)
+    out = apply_correction_to_results_df(
+        out, p_value_col="p_value", method="bh_fdr", group_cols=(),
+    )
+    return out
+
+
+def compute_trajectory_bootstrap_pre_ci(
+    densified_cohort_df: pd.DataFrame,
+    animals_map: dict[str, AnimalInfo],
+    *,
+    signals: Iterable[str] = TRAJECTORY_SIGNALS,
+    variants: Iterable[str] = ("raw", "delta"),
+    n_bootstrap: int = 5000,
+    ci: float = 0.95,
+    rng_seed: int = 42,
+) -> pd.DataFrame:
+    """Animal-level bootstrap CI on per-phenotype pre-stroke trajectory.
+
+    Q-lock 13.6 (2026-05-28). Per (phenotype × side × signal × variant
+    × phase_bin), N bootstrap resamples of animals (with replacement)
+    from the pre-stroke pool. For each resample: compute pooled
+    per-bin mean across animals. Quantiles across resamples give the
+    pre-stroke 'noise envelope' to compare post-epoch trajectories
+    against.
+
+    Per-animal pre trajectory is the cross-session mean across pre
+    sessions × bins of that animal. Bootstrap resamples animals
+    (not sessions or trials) — proper unit of independence per
+    Phase 9 stats convention.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per (phenotype × side × signal × variant ×
+        phase_bin). Columns: ``recovery_phenotype``, ``side``,
+        ``signal``, ``variant``, ``phase_bin``, ``phase_bin_center``,
+        ``mean_ci_lo``, ``mean_median``, ``mean_ci_hi``, ``n_animals``.
+    """
+    signals = tuple(signals)
+    variants = tuple(variants)
+    if not 0.0 < ci < 1.0:
+        raise ValueError(f"ci must be in (0, 1); got {ci}.")
+    if not 1 <= n_bootstrap <= 100000:
+        raise ValueError(
+            f"n_bootstrap must be in [1, 100000]; got {n_bootstrap}.",
+        )
+
+    rng = np.random.default_rng(rng_seed)
+    lo_q = (1.0 - ci) / 2.0
+    hi_q = 1.0 - lo_q
+
+    out_rows: list[dict[str, object]] = []
+    pre_df = densified_cohort_df[
+        densified_cohort_df["epoch_label"] == "pre"
+    ]
+    has_center = "phase_bin_center" in pre_df.columns
+
+    for phenotype in PHENOTYPE_ORDER:
+        for side in SIDE_ORDER:
+            for signal in signals:
+                for variant in variants:
+                    value_col = signal if variant == "raw" else f"{signal}_delta"
+                    if value_col not in pre_df.columns:
+                        continue
+                    sub = pre_df[
+                        (pre_df["recovery_phenotype"] == phenotype)
+                        & (pre_df["side"] == side)
+                    ][[
+                        "animal", "phase_bin",
+                        *([("phase_bin_center")] if has_center else []),
+                        value_col,
+                    ]].copy()
+                    sub["_val"] = pd.to_numeric(
+                        sub[value_col], errors="coerce",
+                    )
+                    sub = sub.dropna(subset=["_val"])
+                    if sub.empty:
+                        continue
+                    # Per-animal trajectory: mean over (date, trial) × bin.
+                    per_animal = (
+                        sub.groupby(
+                            ["animal", "phase_bin"], as_index=False,
+                        )["_val"].mean()
+                    )
+                    if has_center:
+                        centers = (
+                            sub.groupby(
+                                "phase_bin", as_index=False,
+                            )["phase_bin_center"].first()
+                        )
+                    # Pivot to (animal, bin).
+                    wide = per_animal.pivot_table(
+                        index="animal", columns="phase_bin",
+                        values="_val",
+                    ).sort_index(axis=1)
+                    animals_arr = wide.index.to_numpy()
+                    n_animals = len(animals_arr)
+                    bins = wide.columns.to_numpy()
+                    arr = wide.to_numpy(dtype=np.float64)
+                    if n_animals < 1:
+                        continue
+                    # Bootstrap: resample animals with replacement.
+                    boot_means = np.zeros((n_bootstrap, len(bins)))
+                    for ib in range(n_bootstrap):
+                        idx = rng.integers(0, n_animals, size=n_animals)
+                        boot_means[ib] = np.nanmean(arr[idx], axis=0)
+                    lo_band = np.nanquantile(boot_means, lo_q, axis=0)
+                    med_band = np.nanquantile(boot_means, 0.5, axis=0)
+                    hi_band = np.nanquantile(boot_means, hi_q, axis=0)
+                    for bi, phase_bin in enumerate(bins):
+                        row = {
+                            "recovery_phenotype": phenotype,
+                            "side": side, "signal": signal,
+                            "variant": variant,
+                            "phase_bin": int(phase_bin),
+                            "mean_ci_lo": float(lo_band[bi]),
+                            "mean_median": float(med_band[bi]),
+                            "mean_ci_hi": float(hi_band[bi]),
+                            "n_animals": int(n_animals),
+                            "n_bootstrap": int(n_bootstrap),
+                            "ci": ci,
+                        }
+                        if has_center:
+                            ctr = centers[
+                                centers["phase_bin"] == phase_bin
+                            ]["phase_bin_center"].iloc[0]
+                            row["phase_bin_center"] = float(ctr)
+                        out_rows.append(row)
+
+    if not out_rows:
+        cols = [
+            "recovery_phenotype", "side", "signal", "variant",
+            "phase_bin", "phase_bin_center", "mean_ci_lo", "mean_median",
+            "mean_ci_hi", "n_animals", "n_bootstrap", "ci",
+        ]
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(out_rows)
 
 
 def emit_phase_aligned_trajectory_figures(

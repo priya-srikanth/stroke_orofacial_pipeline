@@ -34,6 +34,9 @@ from stroke_orofacial.figures.phase_aligned_trajectories import (
     SOURCE_DATA_SUBTITLE_DELTA,
     SOURCE_DATA_SUBTITLE_RAW,
     build_phase_aligned_trajectory_figure,
+    compute_trajectory_bootstrap_pre_ci,
+    compute_trajectory_cluster_permutation_stats,
+    compute_trajectory_lmm_stats,
     compute_trajectory_mwu_stats,
     compute_trajectory_wilcoxon_stats,
     emit_phase_aligned_trajectory_figures,
@@ -712,3 +715,182 @@ class TestComputeTrajectoryMwuStats:
         })
         with pytest.raises(ValueError, match="missing required column"):
             compute_trajectory_mwu_stats(bad, {}, grain="trial")
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13.6 — LMM + cluster permutation + bootstrap CI
+# ---------------------------------------------------------------------------
+
+
+def _make_session_scalars(
+    n_animals: int = 3,
+    n_sessions_per_animal: int = 5,
+    phenotype: str = "mild",
+) -> tuple[pd.DataFrame, dict]:
+    """Build a per-session scalar DataFrame for LMM smoke tests."""
+    import datetime
+    rows = []
+    animals = {}
+    for ai in range(n_animals):
+        aid = f"PS{40 + ai:02d}"
+        animals[aid] = _animal_info(aid, phenotype=phenotype)
+        for ei, epoch in enumerate(("pre", "acute", "sub_acute", "chronic")):
+            for si in range(n_sessions_per_animal):
+                for side in ("L", "R"):
+                    rows.append({
+                        "animal": aid,
+                        "date": datetime.date(2025, 3, 1) + datetime.timedelta(
+                            days=ei * 10 + si,
+                        ),
+                        "side": side,
+                        "signal": "angle_deg",
+                        "epoch_label": epoch,
+                        "scalar": 1.0 + ei * 0.5 + ai * 0.1 + si * 0.05,
+                    })
+    return pd.DataFrame(rows), animals
+
+
+class TestComputeTrajectoryLmmStats:
+    def test_smoke_emits_48_cells_with_p_adj(self):
+        scalars, animals = _make_session_scalars()
+        out = compute_trajectory_lmm_stats(
+            scalars, animals, signals=("angle_deg", "x_centered"),
+        )
+        # 4 phen × 2 sides × 2 signals × 3 post epochs = 48 rows.
+        assert len(out) == 48
+        for col in (
+            "recovery_phenotype", "side", "signal", "post_epoch",
+            "coef", "se", "p_value", "n_observations", "n_animals",
+            "status", "p_adj", "reject",
+        ):
+            assert col in out.columns
+
+    def test_n_eq_1_yields_insufficient_data(self):
+        scalars, animals = _make_session_scalars(n_animals=1)
+        out = compute_trajectory_lmm_stats(
+            scalars, animals, signals=("angle_deg",),
+        )
+        mild_rows = out[out["recovery_phenotype"] == "mild"]
+        # All mild rows should be insufficient_data (n=1 < 2 animals).
+        assert (mild_rows["status"] == "insufficient_data").all()
+
+    def test_missing_required_column_raises(self):
+        bad = pd.DataFrame({"animal": ["PS46"]})
+        with pytest.raises(ValueError, match="missing column"):
+            compute_trajectory_lmm_stats(bad, {})
+
+
+class TestComputeTrajectoryClusterPermutationStats:
+    def test_smoke_runs_emits_rows(self):
+        # Build a tiny densified-shaped cohort with 2 mild animals × 4
+        # sessions × 2 sides × 8 bins × 4 epochs × 2 signals.
+        import datetime
+        rows = []
+        n_bins = 8
+        for animal in ("PS47", "PS48"):
+            for di in range(4):
+                date = datetime.date(2025, 3, 1) + datetime.timedelta(
+                    days=di * 5,
+                )
+                for ei, epoch in enumerate(
+                    ("pre", "acute", "sub_acute", "chronic"),
+                ):
+                    for side in ("L", "R"):
+                        for bin_idx in range(n_bins):
+                            rows.append({
+                                "animal": animal,
+                                "date": date + datetime.timedelta(days=ei * 30),
+                                "side": side,
+                                "phase_bin": bin_idx,
+                                "phase_bin_center": (bin_idx + 0.5) / n_bins,
+                                "epoch_label": epoch,
+                                "recovery_phenotype": "mild",
+                                "angle_deg": ei + bin_idx * 0.1,
+                                "x_centered": -ei + bin_idx * 0.1,
+                                "angle_deg_delta": ei * 0.5,
+                                "x_centered_delta": -ei * 0.5,
+                            })
+        cohort = pd.DataFrame(rows)
+        animals = {
+            "PS47": _animal_info("PS47", phenotype="mild"),
+            "PS48": _animal_info("PS48", phenotype="mild"),
+        }
+        out = compute_trajectory_cluster_permutation_stats(
+            cohort, animals,
+            signals=("angle_deg",), variants=("raw",),
+            n_permutations=50,  # small for test speed
+            rng_seed=0,
+        )
+        assert len(out) >= 1
+        for col in (
+            "recovery_phenotype", "side", "signal", "variant",
+            "post_epoch", "cluster_idx",
+            "start_bin", "end_bin", "cluster_mass", "sign", "p_value",
+            "n_pre", "n_post", "status", "p_adj", "reject",
+        ):
+            assert col in out.columns
+
+    def test_invalid_n_permutations_raises(self):
+        with pytest.raises(ValueError, match="n_permutations"):
+            compute_trajectory_cluster_permutation_stats(
+                pd.DataFrame(
+                    columns=[
+                        "animal", "date", "side", "phase_bin",
+                        "epoch_label", "recovery_phenotype",
+                        "angle_deg", "x_centered",
+                        "angle_deg_delta", "x_centered_delta",
+                    ]
+                ),
+                {}, n_permutations=0,
+            )
+
+
+class TestComputeTrajectoryBootstrapPreCi:
+    def test_smoke_emits_per_bin_rows(self):
+        import datetime
+        rows = []
+        for animal in ("PS47", "PS48"):
+            for date in (
+                datetime.date(2025, 3, 1), datetime.date(2025, 3, 2),
+            ):
+                for side in ("L", "R"):
+                    for bin_idx in range(8):
+                        rows.append({
+                            "animal": animal, "date": date,
+                            "side": side,
+                            "phase_bin": bin_idx,
+                            "phase_bin_center": (bin_idx + 0.5) / 8,
+                            "epoch_label": "pre",
+                            "recovery_phenotype": "mild",
+                            "angle_deg": bin_idx + 0.1,
+                            "x_centered": -bin_idx,
+                            "angle_deg_delta": 0.0,
+                            "x_centered_delta": 0.0,
+                        })
+        cohort = pd.DataFrame(rows)
+        animals = {
+            "PS47": _animal_info("PS47", phenotype="mild"),
+            "PS48": _animal_info("PS48", phenotype="mild"),
+        }
+        out = compute_trajectory_bootstrap_pre_ci(
+            cohort, animals, signals=("angle_deg",), variants=("raw",),
+            n_bootstrap=100, ci=0.95,
+        )
+        # 1 phen × 2 sides × 1 signal × 1 variant × 8 bins = 16 rows.
+        assert len(out) == 16
+        for col in (
+            "recovery_phenotype", "side", "signal", "variant",
+            "phase_bin", "phase_bin_center",
+            "mean_ci_lo", "mean_median", "mean_ci_hi",
+            "n_animals",
+        ):
+            assert col in out.columns
+        # CI ordering: lo ≤ median ≤ hi.
+        assert (out["mean_ci_lo"] <= out["mean_median"]).all()
+        assert (out["mean_median"] <= out["mean_ci_hi"]).all()
+
+    def test_invalid_ci_raises(self):
+        with pytest.raises(ValueError, match="ci"):
+            compute_trajectory_bootstrap_pre_ci(
+                pd.DataFrame(), {}, ci=1.5,
+            )

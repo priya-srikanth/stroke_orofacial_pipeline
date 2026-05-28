@@ -509,6 +509,70 @@ def apply_baseline_delta(
 # ---------------------------------------------------------------------------
 
 
+def relabel_pre_for_null_calibration(
+    cohort_df: pd.DataFrame,
+    *,
+    rng_seed: int = 42,
+    post_epochs: tuple[str, ...] = ("acute", "sub_acute", "chronic"),
+) -> pd.DataFrame:
+    """Relabel pre-stroke sessions into fake_pre + fake_post_X for null test.
+
+    Q-lock 13.6 (2026-05-28). Per-animal × per-side: randomly partition
+    pre-stroke sessions into 4 buckets (one stays "pre", three become
+    "acute" / "sub_acute" / "chronic"). Drops non-pre rows. The
+    resulting cohort_df has the same column schema as the input + the
+    same trajectory data; only ``epoch_label`` is permuted within the
+    pre-stroke pool.
+
+    Used by the cohort emit script's ``--null-calibration`` flag to
+    run the full stats family with no true pre-vs-post effect. P-values
+    under H0 should be uniform; significant-rate cells indicate test
+    mis-calibration (commonly due to pseudo-replication).
+
+    Parameters
+    ----------
+    cohort_df : pd.DataFrame
+        Output of ``densify_phase_rows_via_interp`` + ``attach_metadata``.
+        Must contain ``animal``, ``date``, ``epoch_label`` columns.
+    rng_seed : int, default 42.
+    post_epochs : tuple[str, ...], default ``("acute", "sub_acute", "chronic")``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Same column schema; ``epoch_label`` re-assigned within the pre
+        pool; non-pre rows dropped.
+    """
+    if cohort_df.empty:
+        return cohort_df.copy()
+    required = {"animal", "date", "epoch_label"}
+    missing = required - set(cohort_df.columns)
+    if missing:
+        raise ValueError(
+            f"cohort_df missing column(s) {sorted(missing)}.",
+        )
+    pre_df = cohort_df[cohort_df["epoch_label"] == "pre"].copy()
+    if pre_df.empty:
+        return pre_df
+    rng = np.random.default_rng(rng_seed)
+    labels = ("pre",) + tuple(post_epochs)
+    sessions = pre_df[["animal", "date"]].drop_duplicates()
+    fake_label = []
+    for animal, sub_df in sessions.groupby("animal", sort=False):
+        n_sessions = len(sub_df)
+        # Assign each session uniformly at random into the 4 buckets.
+        labels_for_animal = rng.choice(labels, size=n_sessions, replace=True)
+        for _, lbl in zip(sub_df.iterrows(), labels_for_animal):
+            fake_label.append((animal, _[1]["date"], lbl))
+    label_df = pd.DataFrame(
+        fake_label, columns=["animal", "date", "_fake_epoch"],
+    )
+    out = pre_df.merge(label_df, on=["animal", "date"], how="left")
+    out["epoch_label"] = out["_fake_epoch"]
+    out = out.drop(columns=["_fake_epoch"])
+    return out
+
+
 def densify_phase_rows_via_interp(
     phase_rows_long: pd.DataFrame,
     *,

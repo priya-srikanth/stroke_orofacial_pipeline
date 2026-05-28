@@ -38,6 +38,7 @@ from stroke_orofacial.stats.aggregators import (
     enumerate_session_dates,
     load_cohort_phase_aligned_endpoints_long,
     load_session_phase_aligned_endpoints_long,
+    relabel_pre_for_null_calibration,
 )
 
 
@@ -1626,3 +1627,42 @@ class TestComputePerSessionTrajectoryScalar:
         # 1 session × 1 side × 1 signal × 1 epoch = 1 row.
         assert len(out) == 1
         assert out.iloc[0]["scalar"] == pytest.approx(4.0)
+
+
+class TestRelabelPreForNullCalibration:
+    def test_returns_pre_only_with_relabeled_epochs(self):
+        import datetime
+        rows = []
+        # 6 pre sessions for PS46 + 3 post-acute sessions.
+        for di in range(6):
+            rows.append({
+                "animal": "PS46",
+                "date": datetime.date(2025, 3, 1) + datetime.timedelta(days=di),
+                "epoch_label": "pre",
+                "angle_deg": 1.0,
+            })
+        for di in range(3):
+            rows.append({
+                "animal": "PS46",
+                "date": datetime.date(2025, 4, 1) + datetime.timedelta(days=di),
+                "epoch_label": "acute",
+                "angle_deg": 5.0,
+            })
+        df = pd.DataFrame(rows)
+        out = relabel_pre_for_null_calibration(df, rng_seed=42)
+        # All post-acute rows dropped (we only relabel pre).
+        assert len(out) == 6
+        # Epoch labels assigned from {pre, acute, sub_acute, chronic}.
+        assert set(out["epoch_label"]) - {
+            "pre", "acute", "sub_acute", "chronic",
+        } == set()
+
+    def test_empty_input_returns_empty(self):
+        empty = pd.DataFrame()
+        out = relabel_pre_for_null_calibration(empty)
+        assert out.empty
+
+    def test_missing_column_raises(self):
+        bad = pd.DataFrame({"animal": ["PS46"]})
+        with pytest.raises(ValueError, match="missing column"):
+            relabel_pre_for_null_calibration(bad)
