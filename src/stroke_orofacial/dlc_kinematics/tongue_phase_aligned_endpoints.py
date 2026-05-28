@@ -4,8 +4,9 @@ Phase 9.1 Q-lock 13b (Addenda #1 + #2 locks, 2026-05-27). Three scalar
 endpoints derived from the first-lick-centered phase trajectory:
 
 - A ``peak_angle_deg`` — tongue angle at ``phase = 0.5`` (lick-1 peak time).
-- B ``max_abs_angle_phase_0_075_deg`` — ``max(abs(angle_deg))`` over
-  ``phase in [0, 0.75]`` (ascent + peak + ~half descent).
+- B ``signed_angle_at_max_abs_phase_0_075_deg`` — signed ``angle_deg``
+  at ``argmax(|angle_deg|)`` over ``phase in [0, 0.75]`` (selection by
+  magnitude; reported value signed — positive vs negative is meaningful).
 - C ``signed_x_at_max_abs_phase_0_075_px`` — ``x_centered`` at the time-point
   of largest ``|x_centered|`` over ``phase in [0, 0.75]`` (selection by
   magnitude; reported value signed). Q-lock 13b Addendum #2 Q6 refinement.
@@ -60,7 +61,7 @@ PHASE_ALIGNED_ENDPOINT_COLUMNS: tuple[str, ...] = (
     "trial_index",
     "side",
     "peak_angle_deg",
-    "max_abs_angle_phase_0_075_deg",
+    "signed_angle_at_max_abs_phase_0_075_deg",
     "signed_x_at_max_abs_phase_0_075_px",
 )
 
@@ -71,7 +72,7 @@ def _empty_phase_aligned_endpoints_df() -> pd.DataFrame:
         "trial_index": pd.Series(dtype=int),
         "side": pd.Series(dtype=object),
         "peak_angle_deg": pd.Series(dtype=float),
-        "max_abs_angle_phase_0_075_deg": pd.Series(dtype=float),
+        "signed_angle_at_max_abs_phase_0_075_deg": pd.Series(dtype=float),
         "signed_x_at_max_abs_phase_0_075_px": pd.Series(dtype=float),
     })
 
@@ -120,7 +121,7 @@ def compute_phase_aligned_endpoints_per_trial(
             "trial_index": int(trial_idx),
             "side": str(side),
             "peak_angle_deg": peak_angle,
-            "max_abs_angle_phase_0_075_deg": max_abs_angle,
+            "signed_angle_at_max_abs_phase_0_075_deg": max_abs_angle,
             "signed_x_at_max_abs_phase_0_075_px": signed_x,
         })
 
@@ -147,15 +148,20 @@ def _endpoint_a_peak_angle(grp: pd.DataFrame) -> float:
 
 
 def _endpoint_b_max_abs_angle(grp: pd.DataFrame) -> float:
-    """Endpoint B: max(abs(angle_deg)) over phase in [0, 0.75]."""
+    """Endpoint B: signed angle_deg at argmax(|angle_deg|) over phase in
+    [0, 0.75]. Selection criterion uses magnitude; reported value is
+    signed (preserves laterality direction — per Priya 2026-05-27:
+    positive vs negative tongue angle is meaningful)."""
     window = _phase_window(grp)
     if window.empty:
         return float("nan")
     angle_arr = window["angle_deg"].to_numpy(dtype=np.float64)
-    angle_arr = angle_arr[np.isfinite(angle_arr)]
-    if angle_arr.size == 0:
+    finite = np.isfinite(angle_arr)
+    if not finite.any():
         return float("nan")
-    return float(np.max(np.abs(angle_arr)))
+    abs_angle = np.where(finite, np.abs(angle_arr), -np.inf)
+    j = int(np.argmax(abs_angle))
+    return float(angle_arr[j])
 
 
 def _endpoint_c_signed_x_at_max_abs(grp: pd.DataFrame) -> float:
@@ -208,7 +214,7 @@ def align_endpoints_to_trial_order(
     Returns
     -------
     dict[str, list[float]]
-        Keys: ``peak_angle_deg``, ``max_abs_angle_phase_0_075_deg``,
+        Keys: ``peak_angle_deg``, ``signed_angle_at_max_abs_phase_0_075_deg``,
         ``signed_x_at_max_abs_phase_0_075_px``. Each value is a
         ``len(trial_indices)``-long list of floats; trial_events with
         no matching endpoints row (no detected first lick on that side
@@ -222,7 +228,7 @@ def align_endpoints_to_trial_order(
     n = len(trial_indices)
     out: dict[str, list[float]] = {
         "peak_angle_deg": [float("nan")] * n,
-        "max_abs_angle_phase_0_075_deg": [float("nan")] * n,
+        "signed_angle_at_max_abs_phase_0_075_deg": [float("nan")] * n,
         "signed_x_at_max_abs_phase_0_075_px": [float("nan")] * n,
     }
     if endpoints_df.empty:
@@ -233,8 +239,8 @@ def align_endpoints_to_trial_order(
         key = (int(row["trial_index"]), str(row["side"]))
         by_key[key] = {
             "peak_angle_deg": float(row["peak_angle_deg"]),
-            "max_abs_angle_phase_0_075_deg":
-                float(row["max_abs_angle_phase_0_075_deg"]),
+            "signed_angle_at_max_abs_phase_0_075_deg":
+                float(row["signed_angle_at_max_abs_phase_0_075_deg"]),
             "signed_x_at_max_abs_phase_0_075_px":
                 float(row["signed_x_at_max_abs_phase_0_075_px"]),
         }

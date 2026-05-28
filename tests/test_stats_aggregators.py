@@ -62,7 +62,7 @@ def _write_session_endpoints_json(
         "tongue": {
             "phase_aligned_endpoints": {
                 "peak_angle_deg": peak_angle_deg,
-                "max_abs_angle_phase_0_075_deg": max_abs_angle,
+                "signed_angle_at_max_abs_phase_0_075_deg": max_abs_angle,
                 "signed_x_at_max_abs_phase_0_075_px": signed_x,
             },
         },
@@ -217,7 +217,7 @@ class TestAggregatePerSessionMedianIqr:
         # 2 sides × 2 endpoints × 3 trials each = 12 input rows
         for side in ("L", "R"):
             for endpoint in (
-                "peak_angle_deg", "max_abs_angle_phase_0_075_deg",
+                "peak_angle_deg", "signed_angle_at_max_abs_phase_0_075_deg",
             ):
                 for ti, v in enumerate([10.0, 20.0, 30.0]):
                     rows.append({

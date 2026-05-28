@@ -50,7 +50,7 @@ from stroke_orofacial.stats.recovery_epochs import assign_epoch_label
 # Addendum #1 Q6 refinement). Downstream figures consume these slugs.
 PHASE_ALIGNED_ENDPOINT_SLUGS: tuple[str, ...] = (
     "peak_angle_deg",
-    "max_abs_angle_phase_0_075_deg",
+    "signed_angle_at_max_abs_phase_0_075_deg",
     "signed_x_at_max_abs_phase_0_075_px",
 )
 

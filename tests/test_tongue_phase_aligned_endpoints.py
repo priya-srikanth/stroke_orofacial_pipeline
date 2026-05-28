@@ -102,7 +102,7 @@ class TestEndpointAPeakAngle:
 
 
 # ---------------------------------------------------------------------------
-# Endpoint B — max(abs(angle_deg)) over phase in [0, 0.75]
+# Endpoint B — signed angle at argmax(|angle|) over phase in [0, 0.75]
 # ---------------------------------------------------------------------------
 
 class TestEndpointBMaxAbsAngle:
@@ -116,16 +116,16 @@ class TestEndpointBMaxAbsAngle:
         # phase=1.0 row has |angle|=20 but is outside [0, 0.75].
         assert _endpoint_b_max_abs_angle(grp) == pytest.approx(15.0)
 
-    def test_signed_negative_peak_is_unsigned_at_endpoint_b(self):
-        # Endpoint B selects on magnitude; reports magnitude (not signed).
+    def test_signed_negative_peak_preserves_sign(self):
+        # Endpoint B selects on magnitude; reports SIGNED value.
         grp = _phase_rows(
             phases=[0.0, 0.3, 0.5, 0.7, 0.8],
             angles=[0.0, -7.0, -18.0, -12.0, -25.0],
             xs=[0.0, 0.0, 0.0, 0.0, 0.0],
         )
         # phase=0.8 row has |angle|=25 but is outside [0, 0.75].
-        # In-window largest |angle| = 18 (at phase=0.5).
-        assert _endpoint_b_max_abs_angle(grp) == pytest.approx(18.0)
+        # In-window largest |angle| = 18 (at phase=0.5) → return -18.0.
+        assert _endpoint_b_max_abs_angle(grp) == pytest.approx(-18.0)
 
     def test_all_zero(self):
         grp = _phase_rows(
@@ -233,13 +233,13 @@ class TestAlignEndpointsToTrialOrder:
             {
                 "trial_index": 0, "side": "L",
                 "peak_angle_deg": -10.0,
-                "max_abs_angle_phase_0_075_deg": 15.0,
+                "signed_angle_at_max_abs_phase_0_075_deg": 15.0,
                 "signed_x_at_max_abs_phase_0_075_px": -20.0,
             },
             {
                 "trial_index": 2, "side": "L",
                 "peak_angle_deg": 5.0,
-                "max_abs_angle_phase_0_075_deg": 7.0,
+                "signed_angle_at_max_abs_phase_0_075_deg": 7.0,
                 "signed_x_at_max_abs_phase_0_075_px": 11.0,
             },
         ])
@@ -248,15 +248,15 @@ class TestAlignEndpointsToTrialOrder:
         )
         # Trial 0 L: filled
         assert out["peak_angle_deg"][0] == pytest.approx(-10.0)
-        assert out["max_abs_angle_phase_0_075_deg"][0] == pytest.approx(15.0)
+        assert out["signed_angle_at_max_abs_phase_0_075_deg"][0] == pytest.approx(15.0)
         assert out["signed_x_at_max_abs_phase_0_075_px"][0] == pytest.approx(-20.0)
         # Trial 1 R: no row → NaN
         assert np.isnan(out["peak_angle_deg"][1])
-        assert np.isnan(out["max_abs_angle_phase_0_075_deg"][1])
+        assert np.isnan(out["signed_angle_at_max_abs_phase_0_075_deg"][1])
         assert np.isnan(out["signed_x_at_max_abs_phase_0_075_px"][1])
         # Trial 2 L: filled
         assert out["peak_angle_deg"][2] == pytest.approx(5.0)
-        assert out["max_abs_angle_phase_0_075_deg"][2] == pytest.approx(7.0)
+        assert out["signed_angle_at_max_abs_phase_0_075_deg"][2] == pytest.approx(7.0)
         assert out["signed_x_at_max_abs_phase_0_075_px"][2] == pytest.approx(11.0)
 
     def test_empty_df_returns_all_nan_lists(self):
@@ -266,7 +266,7 @@ class TestAlignEndpointsToTrialOrder:
             sides=["L", "R"],
         )
         assert all(np.isnan(v) for v in out["peak_angle_deg"])
-        assert all(np.isnan(v) for v in out["max_abs_angle_phase_0_075_deg"])
+        assert all(np.isnan(v) for v in out["signed_angle_at_max_abs_phase_0_075_deg"])
         assert all(
             np.isnan(v) for v in out["signed_x_at_max_abs_phase_0_075_px"]
         )
@@ -277,13 +277,13 @@ class TestAlignEndpointsToTrialOrder:
             {
                 "trial_index": 0, "side": "L",
                 "peak_angle_deg": -1.0,
-                "max_abs_angle_phase_0_075_deg": 2.0,
+                "signed_angle_at_max_abs_phase_0_075_deg": 2.0,
                 "signed_x_at_max_abs_phase_0_075_px": 3.0,
             },
             {
                 "trial_index": 0, "side": "R",
                 "peak_angle_deg": -4.0,
-                "max_abs_angle_phase_0_075_deg": 5.0,
+                "signed_angle_at_max_abs_phase_0_075_deg": 5.0,
                 "signed_x_at_max_abs_phase_0_075_px": 6.0,
             },
         ])
@@ -291,7 +291,7 @@ class TestAlignEndpointsToTrialOrder:
             df, trial_indices=[0, 0], sides=["L", "R"],
         )
         assert out["peak_angle_deg"] == pytest.approx([-1.0, -4.0])
-        assert out["max_abs_angle_phase_0_075_deg"] == pytest.approx([2.0, 5.0])
+        assert out["signed_angle_at_max_abs_phase_0_075_deg"] == pytest.approx([2.0, 5.0])
         assert out["signed_x_at_max_abs_phase_0_075_px"] == pytest.approx(
             [3.0, 6.0],
         )
@@ -450,8 +450,9 @@ class TestComputePhaseAlignedEndpointsPerTrial:
         assert str(row["side"]) == "L"
         # Endpoint A: angle at phase=0.5 (frame closest to t=200)
         assert row["peak_angle_deg"] == pytest.approx(-12.5)
-        # Endpoint B: max |angle| in [0, 0.75]; only finite plant is -12.5
-        assert row["max_abs_angle_phase_0_075_deg"] == pytest.approx(12.5)
+        # Endpoint B: signed angle at argmax(|angle|) in [0, 0.75];
+        # only finite plant is -12.5 → signed value is -12.5.
+        assert row["signed_angle_at_max_abs_phase_0_075_deg"] == pytest.approx(-12.5)
         # Endpoint C: argmax(|x|) is x=33 at t=228 (phase ≈ 0.78 — outside
         # window if exact, but the closest frame may still land inside;
         # confirm magnitude matches what we planted, signed positive).
@@ -517,7 +518,7 @@ class TestComputePhaseAlignedEndpointsPerTrial:
         row = out.iloc[0]
         # A + B still computed
         assert row["peak_angle_deg"] == pytest.approx(-8.0)
-        assert row["max_abs_angle_phase_0_075_deg"] == pytest.approx(8.0)
+        assert row["signed_angle_at_max_abs_phase_0_075_deg"] == pytest.approx(-8.0)
         # C is NaN because x_centered column is NaN-filled
         assert np.isnan(row["signed_x_at_max_abs_phase_0_075_px"])
 

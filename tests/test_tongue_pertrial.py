@@ -1566,11 +1566,11 @@ class TestDriverAndSchema:
         pae = payload["tongue"]["phase_aligned_endpoints"]
         assert set(pae.keys()) == {
             "peak_angle_deg",
-            "max_abs_angle_phase_0_075_deg",
+            "signed_angle_at_max_abs_phase_0_075_deg",
             "signed_x_at_max_abs_phase_0_075_px",
         }
         assert len(pae["peak_angle_deg"]) == payload["n_trials"]
-        assert len(pae["max_abs_angle_phase_0_075_deg"]) == payload["n_trials"]
+        assert len(pae["signed_angle_at_max_abs_phase_0_075_deg"]) == payload["n_trials"]
         assert len(pae["signed_x_at_max_abs_phase_0_075_px"]) == payload["n_trials"]
 
         # Q8 lock: licking_dynamics_reductions has 3 fields (Q9 metric moved

@@ -77,8 +77,8 @@ EPOCH_DISPLAY_NAMES: dict[str, str] = {
 ENDPOINT_DISPLAY_NAMES: dict[str, str] = {
     "peak_angle_deg":
         "Peak tongue angle (deg) at phase=0.5",
-    "max_abs_angle_phase_0_075_deg":
-        "Max |tongue angle| (deg) over phase ∈ [0, 0.75]",
+    "signed_angle_at_max_abs_phase_0_075_deg":
+        "Signed tongue angle at max |angle| (deg) over phase ∈ [0, 0.75]",
     "signed_x_at_max_abs_phase_0_075_px":
         "Signed x at argmax(|x|) (px) over phase ∈ [0, 0.75]",
 }

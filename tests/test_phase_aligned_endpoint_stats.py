@@ -183,11 +183,11 @@ class TestFigurePathFor:
         resolver = PathResolver(output_root=tmp_path)
         override = tmp_path / "custom"
         path = figure_path_for(
-            endpoint="max_abs_angle_phase_0_075_deg", side="R",
+            endpoint="signed_angle_at_max_abs_phase_0_075_deg", side="R",
             resolver=resolver, output_dir=override,
         )
         assert path.parent == override
-        assert path.name == "max_abs_angle_phase_0_075_deg_R_cleaned_trace.svg"
+        assert path.name == "signed_angle_at_max_abs_phase_0_075_deg_R_cleaned_trace.svg"
 
 
 class TestRenderPhaseAlignedEndpointFigure:
