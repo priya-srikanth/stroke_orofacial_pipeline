@@ -24,12 +24,21 @@ from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
 from stroke_orofacial.paths import PathResolver
 from stroke_orofacial.stats.aggregators import (
     PHASE_ALIGNED_ENDPOINT_SLUGS,
+    TRAJECTORY_SIGNALS,
     aggregate_per_session_median_iqr,
     aggregate_phenotype_pooled_median_iqr,
+    aggregate_phenotype_pooled_phase_bin_mean_sem,
+    apply_phase_bin_baseline_delta,
     attach_phenotype_and_epoch,
+    compute_per_animal_phase_bin_baseline,
+    compute_per_animal_trajectory_scalar,
+    compute_per_session_trajectory_scalar,
+    compute_per_trial_trajectory_scalar,
+    densify_phase_rows_via_interp,
     enumerate_session_dates,
     load_cohort_phase_aligned_endpoints_long,
     load_session_phase_aligned_endpoints_long,
+    relabel_pre_for_null_calibration,
 )
 
 
@@ -527,3 +536,1133 @@ class TestStage2ToStage3Integration:
         assert int(acute["n_animals"]) == 2
         assert int(pre["n_sessions"]) == 2
         assert int(acute["n_sessions"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13 Stage 1 — per-animal phase-bin baseline + delta
+# ---------------------------------------------------------------------------
+
+
+_PHASE_ROW_TEST_COLUMNS: tuple[str, ...] = (
+    "animal", "date", "trial_index", "side", "phase_bin", "epoch_label",
+    "angle_deg", "x_centered",
+)
+
+
+def _phase_rows(
+    rows: list[dict],
+) -> pd.DataFrame:
+    """Build a long-form centered-phase row DataFrame from spec dicts.
+
+    Convenience for tests: each ``rows`` dict carries the minimum
+    columns ``compute_per_animal_phase_bin_baseline`` /
+    ``apply_phase_bin_baseline_delta`` consume — ``animal``, ``date``,
+    ``trial_index``, ``side``, ``phase_bin``, ``epoch_label``,
+    ``angle_deg``, ``x_centered``. Defaults fill in finite stand-ins
+    when the caller doesn't supply them.
+
+    An empty ``rows`` list still emits the canonical column schema so
+    downstream empty-input regression tests have the contract surface
+    they need.
+    """
+    if not rows:
+        return pd.DataFrame({
+            c: pd.Series(dtype=(
+                object if c in {"animal", "side", "epoch_label"}
+                else "datetime64[ns]" if c == "date"
+                else "int64" if c in {"trial_index", "phase_bin"}
+                else "float64"
+            ))
+            for c in _PHASE_ROW_TEST_COLUMNS
+        })
+    canonical = []
+    for r in rows:
+        rec = {
+            "animal": r["animal"],
+            "date": r.get("date", datetime.date(2025, 3, 7)),
+            "trial_index": int(r.get("trial_index", 0)),
+            "side": r.get("side", "L"),
+            "phase_bin": int(r["phase_bin"]),
+            "epoch_label": r["epoch_label"],
+            "angle_deg": float(r.get("angle_deg", 0.0)),
+            "x_centered": float(r.get("x_centered", 0.0)),
+        }
+        canonical.append(rec)
+    return pd.DataFrame(canonical)
+
+
+class TestComputePerAnimalPhaseBinBaseline:
+    def test_returns_canonical_columns_on_empty(self):
+        empty = _phase_rows([]).iloc[0:0]
+        out = compute_per_animal_phase_bin_baseline(empty)
+        assert list(out.columns) == [
+            "animal", "side", "phase_bin", "signal", "baseline_mean",
+        ]
+        assert out.empty
+
+    def test_baseline_per_animal_side_phase_bin_signal(self):
+        # PS46 L pre trial 0 bin 0: angle=2, x=-1
+        # PS46 L pre trial 1 bin 0: angle=4, x=-3  → per-trial means
+        #   then averaged: angle=(2+4)/2=3, x=(-1+-3)/2=-2
+        # PS46 R pre trial 2 bin 0: angle=10, x=+5 → only one trial,
+        #   baseline = its per-trial-mean = angle=10, x=+5
+        # PS46 L pre trial 0 bin 1: angle=8, x=+1
+        # Post-epoch row at PS46 L bin 0 must NOT contribute.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 2.0, "x_centered": -1.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 4.0, "x_centered": -3.0},
+            {"animal": "PS46", "trial_index": 2, "side": "R",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 10.0, "x_centered": 5.0},
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 1, "epoch_label": "pre",
+             "angle_deg": 8.0, "x_centered": 1.0},
+            {"animal": "PS46", "trial_index": 99, "side": "L",
+             "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 999.0, "x_centered": 999.0},
+        ]
+        out = compute_per_animal_phase_bin_baseline(_phase_rows(rows))
+        # 3 (animal × side × phase_bin) cells × 2 signals = 6 rows.
+        assert len(out) == 6
+        ps46_L_0 = out[
+            (out["animal"] == "PS46") & (out["side"] == "L")
+            & (out["phase_bin"] == 0)
+        ]
+        assert ps46_L_0[ps46_L_0["signal"] == "angle_deg"][
+            "baseline_mean"
+        ].iloc[0] == pytest.approx(3.0)
+        assert ps46_L_0[ps46_L_0["signal"] == "x_centered"][
+            "baseline_mean"
+        ].iloc[0] == pytest.approx(-2.0)
+        # R cell at bin 0: single pre trial value.
+        ps46_R_0 = out[
+            (out["animal"] == "PS46") & (out["side"] == "R")
+            & (out["phase_bin"] == 0)
+        ]
+        assert ps46_R_0[ps46_R_0["signal"] == "angle_deg"][
+            "baseline_mean"
+        ].iloc[0] == pytest.approx(10.0)
+        assert ps46_R_0[ps46_R_0["signal"] == "x_centered"][
+            "baseline_mean"
+        ].iloc[0] == pytest.approx(5.0)
+
+    def test_per_trial_grain_multiple_frames_same_trial(self):
+        # PS46 L pre trial 0 bin 0: TWO frames at angle = [2, 6].
+        #   Per-trial-bin frame-mean = (2+6)/2 = 4.
+        # PS46 L pre trial 1 bin 0: ONE frame at angle = 8.
+        #   Per-trial-bin frame-mean = 8.
+        # Cross-trial mean of per-trial-frame-means = (4+8)/2 = 6.
+        # Note: a per-frame baseline would have been (2+6+8)/3 = 5.33.
+        # The per-trial-grain answer (6.0) is what we want for Stage 2
+        # to zero-out pre cross-trial pool.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 2.0},
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 6.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 8.0},
+        ]
+        out = compute_per_animal_phase_bin_baseline(
+            _phase_rows(rows), signals=("angle_deg",),
+        )
+        assert len(out) == 1
+        assert out["baseline_mean"].iloc[0] == pytest.approx(6.0)
+
+    def test_empty_when_no_pre_rows(self):
+        rows = [
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 5.0, "x_centered": 1.0},
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "chronic",
+             "angle_deg": 7.0, "x_centered": 2.0},
+        ]
+        out = compute_per_animal_phase_bin_baseline(_phase_rows(rows))
+        assert out.empty
+        assert list(out.columns) == [
+            "animal", "side", "phase_bin", "signal", "baseline_mean",
+        ]
+
+    def test_animal_with_no_pre_rows_absent(self):
+        rows = [
+            {"animal": "PS46", "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 5.0, "x_centered": -1.0},
+            {"animal": "PS47", "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 10.0, "x_centered": 2.0},
+        ]
+        out = compute_per_animal_phase_bin_baseline(_phase_rows(rows))
+        animals_with_baseline = set(out["animal"].unique())
+        assert animals_with_baseline == {"PS46"}
+
+    def test_nan_values_dropped_before_mean(self):
+        # Per-trial-grain: NaN within a trial × bin propagates the
+        # trial-bin frame-mean to NaN (mean of single NaN = NaN). The
+        # post-melt finite_mask drops it. So a trial with ONE NaN-only
+        # frame contributes nothing; a trial with both finite and NaN
+        # frames takes the nanmean within its frame-mean groupby (pandas
+        # mean() skips NaN by default) and contributes a finite value.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 2.0, "x_centered": -1.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": float("nan"), "x_centered": 1.0},
+            {"animal": "PS46", "trial_index": 2, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 4.0, "x_centered": float("nan")},
+        ]
+        out = compute_per_animal_phase_bin_baseline(_phase_rows(rows))
+        ang = out[out["signal"] == "angle_deg"]["baseline_mean"].iloc[0]
+        x = out[out["signal"] == "x_centered"]["baseline_mean"].iloc[0]
+        # angle: finite per-trial-means [2.0, 4.0] → cross-trial mean 3.0.
+        assert ang == pytest.approx(3.0)
+        # x: finite per-trial-means [-1.0, 1.0] → cross-trial mean 0.0.
+        assert x == pytest.approx(0.0)
+
+    def test_quadruple_with_all_nan_pre_rows_absent(self):
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": float("nan"), "x_centered": 2.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": float("nan"), "x_centered": 4.0},
+        ]
+        out = compute_per_animal_phase_bin_baseline(_phase_rows(rows))
+        signals_present = set(out["signal"].unique())
+        assert signals_present == {"x_centered"}
+
+    def test_missing_required_column_raises(self):
+        bad = pd.DataFrame({
+            "animal": ["PS46"], "phase_bin": [0], "epoch_label": ["pre"],
+            # date, trial_index, side, angle_deg, x_centered missing
+        })
+        with pytest.raises(ValueError, match="missing column"):
+            compute_per_animal_phase_bin_baseline(bad)
+
+    def test_custom_signals_argument(self):
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 2.0, "x_centered": 1.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 4.0, "x_centered": 3.0},
+        ]
+        out = compute_per_animal_phase_bin_baseline(
+            _phase_rows(rows), signals=("angle_deg",),
+        )
+        assert set(out["signal"].unique()) == {"angle_deg"}
+
+
+class TestApplyPhaseBinBaselineDelta:
+    def test_attaches_delta_columns_with_subtraction(self):
+        # Baseline at PS46 L bin 0: angle=10, x=5 (one pre trial)
+        # Acute L bin 0 trial: angle=15, x=8 → delta = 5, 3
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 10.0, "x_centered": 5.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 15.0, "x_centered": 8.0},
+        ]
+        df = _phase_rows(rows)
+        baseline = compute_per_animal_phase_bin_baseline(df)
+        out = apply_phase_bin_baseline_delta(df, baseline)
+        assert "angle_deg_delta" in out.columns
+        assert "x_centered_delta" in out.columns
+        # Original columns preserved.
+        assert "angle_deg" in out.columns
+        assert "x_centered" in out.columns
+        # Pre row delta = 0 (baseline = its own per-trial-mean, n=1)
+        pre = out[out["epoch_label"] == "pre"].iloc[0]
+        assert pre["angle_deg_delta"] == pytest.approx(0.0)
+        assert pre["x_centered_delta"] == pytest.approx(0.0)
+        # Acute row delta = 15-10 = 5; 8-5 = 3
+        acute = out[out["epoch_label"] == "acute"].iloc[0]
+        assert acute["angle_deg_delta"] == pytest.approx(5.0)
+        assert acute["x_centered_delta"] == pytest.approx(3.0)
+
+    def test_per_side_baseline_keying_isolates_L_from_R(self):
+        # Different baselines per side, same phase_bin: critical for
+        # x_centered where L (x<0) and R (x>0) have opposite sign.
+        rows = [
+            # PS46 L pre: x_centered = -5
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 1.0, "x_centered": -5.0},
+            # PS46 R pre: x_centered = +5
+            {"animal": "PS46", "trial_index": 1, "side": "R",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 1.0, "x_centered": 5.0},
+            # PS46 L acute: x_centered = -3 → delta = -3 - (-5) = +2
+            {"animal": "PS46", "trial_index": 2, "side": "L",
+             "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 1.0, "x_centered": -3.0},
+            # PS46 R acute: x_centered = +7 → delta = 7 - 5 = +2
+            {"animal": "PS46", "trial_index": 3, "side": "R",
+             "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 1.0, "x_centered": 7.0},
+        ]
+        df = _phase_rows(rows)
+        baseline = compute_per_animal_phase_bin_baseline(df)
+        out = apply_phase_bin_baseline_delta(df, baseline)
+        L_acute = out[(out["side"] == "L") & (out["epoch_label"] == "acute")].iloc[0]
+        R_acute = out[(out["side"] == "R") & (out["epoch_label"] == "acute")].iloc[0]
+        assert L_acute["x_centered_delta"] == pytest.approx(2.0)
+        assert R_acute["x_centered_delta"] == pytest.approx(2.0)
+
+    def test_rows_with_no_baseline_get_nan_delta(self):
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 10.0, "x_centered": 5.0},
+            {"animal": "PS47", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 20.0, "x_centered": 7.0},
+        ]
+        df = _phase_rows(rows)
+        baseline = compute_per_animal_phase_bin_baseline(df)
+        out = apply_phase_bin_baseline_delta(df, baseline)
+        assert len(out) == 2
+        ps47 = out[out["animal"] == "PS47"].iloc[0]
+        assert not np.isfinite(ps47["angle_deg_delta"])
+        assert not np.isfinite(ps47["x_centered_delta"])
+
+    def test_pre_row_deltas_sum_to_zero_per_trial_grain(self):
+        # Per-trial grain match: cross-trial pool of (per-trial-frame-mean -
+        # baseline) MUST sum to 0 within each (animal, side, phase_bin)
+        # cell. This is what makes the delta-variant pre column flat.
+        rows = [
+            # 3 pre trials at PS46 L bin 0. Trial 0 has 2 frames
+            # (avg=4), trial 1 has 1 frame (=6), trial 2 has 3 frames
+            # (avg=8). Per-trial-frame-means: [4, 6, 8]. Baseline = 6.
+            # Pre deltas at per-trial-grain: [-2, 0, +2] → mean = 0.
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 3.0},
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 5.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 6.0},
+            {"animal": "PS46", "trial_index": 2, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 7.0},
+            {"animal": "PS46", "trial_index": 2, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 8.0},
+            {"animal": "PS46", "trial_index": 2, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 9.0},
+        ]
+        df = _phase_rows(rows)
+        baseline = compute_per_animal_phase_bin_baseline(
+            df, signals=("angle_deg",),
+        )
+        # Baseline should be 6 (mean of per-trial-means [4, 6, 8]).
+        assert baseline.iloc[0]["baseline_mean"] == pytest.approx(6.0)
+        # Apply delta then collapse to per-trial means and average:
+        # the cross-trial mean of per-trial-mean deltas = 0 EXACTLY.
+        out = apply_phase_bin_baseline_delta(
+            df, baseline, signals=("angle_deg",),
+        )
+        per_trial_delta = (
+            out.groupby(["trial_index"])["angle_deg_delta"]
+            .mean()
+        )
+        assert per_trial_delta.mean() == pytest.approx(0.0)
+
+    def test_empty_input_yields_empty_with_delta_columns(self):
+        empty = _phase_rows([]).iloc[0:0]
+        baseline = compute_per_animal_phase_bin_baseline(empty)
+        out = apply_phase_bin_baseline_delta(empty, baseline)
+        assert out.empty
+        for s in TRAJECTORY_SIGNALS:
+            assert f"{s}_delta" in out.columns
+
+    def test_does_not_mutate_input(self):
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 10.0, "x_centered": 5.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 15.0, "x_centered": 8.0},
+        ]
+        df = _phase_rows(rows)
+        baseline = compute_per_animal_phase_bin_baseline(df)
+        orig_cols = list(df.columns)
+        _ = apply_phase_bin_baseline_delta(df, baseline)
+        assert list(df.columns) == orig_cols
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13 Stage 2 — phenotype-pooled phase-bin mean+SEM aggregator
+# ---------------------------------------------------------------------------
+
+
+_STAGE2_AGG_COLS_BY_SIDE = [
+    "recovery_phenotype", "epoch_label", "side", "phase_bin",
+    "signal", "variant", "mean", "sem", "sd", "n_trials",
+    "n_sessions", "n_animals",
+]
+
+
+_STAGE2_ROW_COLS = (
+    "animal", "date", "trial_index", "side", "phase_bin",
+    "recovery_phenotype", "epoch_label",
+    "angle_deg", "x_centered", "angle_deg_delta", "x_centered_delta",
+)
+
+
+def _stage2_rows(rows: list[dict]) -> pd.DataFrame:
+    """Build phase rows with the full set of columns Stage 2 expects.
+
+    Required columns: animal, date, trial_index, side, phase_bin,
+    recovery_phenotype, epoch_label, angle_deg, x_centered, plus
+    angle_deg_delta and x_centered_delta (output of Stage 1 apply).
+    Defaults fill in reasonable stand-ins.
+
+    Empty ``rows`` returns a DataFrame with the canonical column schema
+    so downstream empty-input regression tests have the contract surface
+    they need.
+    """
+    if not rows:
+        return pd.DataFrame({
+            c: pd.Series(dtype=(
+                object if c in {"animal", "side", "epoch_label",
+                                "recovery_phenotype"}
+                else "datetime64[ns]" if c == "date"
+                else "int64" if c in {"trial_index", "phase_bin"}
+                else "float64"
+            ))
+            for c in _STAGE2_ROW_COLS
+        })
+    canonical = []
+    for r in rows:
+        rec = {
+            "animal": r["animal"],
+            "date": r.get("date", datetime.date(2025, 3, 7)),
+            "trial_index": int(r.get("trial_index", 0)),
+            "side": r.get("side", "L"),
+            "phase_bin": int(r["phase_bin"]),
+            "recovery_phenotype": r.get("recovery_phenotype", "mild"),
+            "epoch_label": r["epoch_label"],
+            "angle_deg": float(r.get("angle_deg", 0.0)),
+            "x_centered": float(r.get("x_centered", 0.0)),
+            "angle_deg_delta": float(r.get("angle_deg_delta", 0.0)),
+            "x_centered_delta": float(r.get("x_centered_delta", 0.0)),
+        }
+        canonical.append(rec)
+    return pd.DataFrame(canonical)
+
+
+class TestAggregatePhenotypePooledPhaseBinMeanSem:
+    def test_returns_canonical_columns_on_empty(self):
+        empty = _stage2_rows([]).iloc[0:0]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(empty)
+        assert list(out.columns) == _STAGE2_AGG_COLS_BY_SIDE
+
+    def test_mean_sem_n_trials_correct(self):
+        # Single phenotype × epoch × side × phase_bin cell.
+        # 3 distinct trials, each with one row at phase_bin=0.
+        # values: angle_deg = [1, 3, 5] → mean=3, std(ddof=1)=2,
+        #         sem = 2 / sqrt(3) ≈ 1.1547
+        rows = [
+            {"animal": "PS47", "date": datetime.date(2025, 3, 1),
+             "trial_index": 0, "side": "L", "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+            {"animal": "PS47", "date": datetime.date(2025, 3, 1),
+             "trial_index": 1, "side": "L", "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 3.0},
+            {"animal": "PS47", "date": datetime.date(2025, 3, 1),
+             "trial_index": 2, "side": "L", "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 5.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",),
+        )
+        # 2 signals × 1 cell = 2 rows (angle_deg + x_centered, both raw)
+        assert len(out) == 2
+        ang = out[out["signal"] == "angle_deg"].iloc[0]
+        assert ang["mean"] == pytest.approx(3.0)
+        assert ang["sem"] == pytest.approx(2.0 / np.sqrt(3))
+        assert int(ang["n_trials"]) == 3
+        assert int(ang["n_sessions"]) == 1
+        assert int(ang["n_animals"]) == 1
+
+    def test_n_eq_1_yields_nan_sem(self):
+        # Single trial in the pool → SEM undefined.
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 7.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",),
+        )
+        ang = out[out["signal"] == "angle_deg"].iloc[0]
+        assert int(ang["n_trials"]) == 1
+        assert ang["mean"] == pytest.approx(7.0)
+        assert not np.isfinite(ang["sem"])
+
+    def test_per_trial_collapse_treats_multiframe_as_single_trial(self):
+        # Same trial contributes TWO rows at the same phase_bin
+        # (multi-frame). The aggregator must collapse them to a per-trial
+        # frame-mean BEFORE the cross-trial pool. Trial 0 frames at
+        # angle = [2, 6] → trial-mean = 4. Pool with trial 1 at angle = 8
+        # → cross-trial values [4, 8] → mean = 6, std(ddof=1) = sqrt(8),
+        # sem = sqrt(8)/sqrt(2) = 2.
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 2.0},
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 6.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 8.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",),
+        )
+        ang = out[out["signal"] == "angle_deg"].iloc[0]
+        assert ang["mean"] == pytest.approx(6.0)
+        assert int(ang["n_trials"]) == 2
+        assert ang["sem"] == pytest.approx(2.0)
+
+    def test_phenotype_partitioning(self):
+        # mild + severe trials at same phase_bin → 2 cells in pool.
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 3.0},
+            {"animal": "PS55", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "severe", "epoch_label": "pre",
+             "angle_deg": 100.0},
+            {"animal": "PS55", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "severe", "epoch_label": "pre",
+             "angle_deg": 102.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",), signals=("angle_deg",),
+        )
+        assert set(out["recovery_phenotype"]) == {"mild", "severe"}
+        mild = out[out["recovery_phenotype"] == "mild"].iloc[0]
+        severe = out[out["recovery_phenotype"] == "severe"].iloc[0]
+        assert mild["mean"] == pytest.approx(2.0)
+        assert severe["mean"] == pytest.approx(101.0)
+
+    def test_epoch_partitioning(self):
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 3.0},
+            {"animal": "PS47", "trial_index": 2, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "acute",
+             "angle_deg": 50.0},
+            {"animal": "PS47", "trial_index": 3, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "acute",
+             "angle_deg": 60.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",), signals=("angle_deg",),
+        )
+        assert set(out["epoch_label"]) == {"pre", "acute"}
+        pre = out[out["epoch_label"] == "pre"].iloc[0]
+        acute = out[out["epoch_label"] == "acute"].iloc[0]
+        assert pre["mean"] == pytest.approx(2.0)
+        assert acute["mean"] == pytest.approx(55.0)
+
+    def test_side_partitioning_with_by_side_true(self):
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "recovery_phenotype": "mild",
+             "epoch_label": "pre", "angle_deg": 1.0},
+            {"animal": "PS47", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "recovery_phenotype": "mild",
+             "epoch_label": "pre", "angle_deg": 3.0},
+            {"animal": "PS47", "trial_index": 2, "side": "R",
+             "phase_bin": 0, "recovery_phenotype": "mild",
+             "epoch_label": "pre", "angle_deg": -1.0},
+            {"animal": "PS47", "trial_index": 3, "side": "R",
+             "phase_bin": 0, "recovery_phenotype": "mild",
+             "epoch_label": "pre", "angle_deg": -3.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",), signals=("angle_deg",),
+            by_side=True,
+        )
+        assert set(out["side"]) == {"L", "R"}
+        L = out[out["side"] == "L"].iloc[0]
+        R = out[out["side"] == "R"].iloc[0]
+        assert L["mean"] == pytest.approx(2.0)
+        assert R["mean"] == pytest.approx(-2.0)
+
+    def test_by_side_false_pools_across_sides(self):
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "recovery_phenotype": "mild",
+             "epoch_label": "pre", "angle_deg": 1.0},
+            {"animal": "PS47", "trial_index": 1, "side": "R",
+             "phase_bin": 0, "recovery_phenotype": "mild",
+             "epoch_label": "pre", "angle_deg": 3.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",), signals=("angle_deg",),
+            by_side=False,
+        )
+        # 1 cell, pooled L+R: mean = (1+3)/2 = 2.
+        assert "side" not in out.columns
+        assert len(out) == 1
+        assert out.iloc[0]["mean"] == pytest.approx(2.0)
+        assert int(out.iloc[0]["n_trials"]) == 2
+
+    def test_phase_bin_partitioning(self):
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 1,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 5.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 3.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 1,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 7.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",), signals=("angle_deg",),
+        )
+        # 2 phase_bins, each with 2 trials.
+        assert set(out["phase_bin"]) == {0, 1}
+        b0 = out[out["phase_bin"] == 0].iloc[0]
+        b1 = out[out["phase_bin"] == 1].iloc[0]
+        assert b0["mean"] == pytest.approx(2.0)
+        assert b1["mean"] == pytest.approx(6.0)
+
+    def test_raw_and_delta_variants_both_emitted(self):
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 5.0, "angle_deg_delta": -1.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 7.0, "angle_deg_delta": 1.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), signals=("angle_deg",),
+            variants=("raw", "delta"),
+        )
+        assert set(out["variant"]) == {"raw", "delta"}
+        raw = out[out["variant"] == "raw"].iloc[0]
+        delta = out[out["variant"] == "delta"].iloc[0]
+        assert raw["mean"] == pytest.approx(6.0)
+        assert delta["mean"] == pytest.approx(0.0)
+
+    def test_drops_transitional_gap_rows(self):
+        # epoch_label=None rows must be dropped per kickoff convention.
+        rows = [
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 3.0},
+        ]
+        df = _stage2_rows(rows)
+        # Add a transitional gap row.
+        gap = _stage2_rows([
+            {"animal": "PS47", "trial_index": 99, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 999.0}
+        ])
+        gap["epoch_label"] = None
+        df = pd.concat([df, gap], ignore_index=True)
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            df, variants=("raw",), signals=("angle_deg",),
+        )
+        cell = out.iloc[0]
+        assert cell["mean"] == pytest.approx(2.0)
+        assert int(cell["n_trials"]) == 2
+
+    def test_n_sessions_n_animals_distinct(self):
+        # 2 animals, each contributing 1 session × 2 trials → n_trials=4,
+        # n_sessions=2, n_animals=2.
+        rows = [
+            {"animal": "PS47", "date": datetime.date(2025, 3, 1),
+             "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+            {"animal": "PS47", "date": datetime.date(2025, 3, 1),
+             "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 3.0},
+            {"animal": "PS48", "date": datetime.date(2025, 3, 2),
+             "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 5.0},
+            {"animal": "PS48", "date": datetime.date(2025, 3, 2),
+             "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 7.0},
+        ]
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",), signals=("angle_deg",),
+        )
+        cell = out.iloc[0]
+        assert int(cell["n_trials"]) == 4
+        assert int(cell["n_sessions"]) == 2
+        assert int(cell["n_animals"]) == 2
+
+    def test_missing_required_column_raises(self):
+        bad = pd.DataFrame({
+            "animal": ["PS46"], "trial_index": [0], "phase_bin": [0],
+            "recovery_phenotype": ["mild"], "epoch_label": ["pre"],
+            "angle_deg": [1.0], "x_centered": [1.0],
+            # date missing
+        })
+        with pytest.raises(ValueError, match="missing column"):
+            aggregate_phenotype_pooled_phase_bin_mean_sem(
+                bad, variants=("raw",),
+            )
+
+    def test_invalid_variant_raises(self):
+        df = _stage2_rows([
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+        ])
+        with pytest.raises(ValueError, match="variants"):
+            aggregate_phenotype_pooled_phase_bin_mean_sem(
+                df, variants=("raw", "bogus"),
+            )
+
+    def test_phase_bin_center_carried_through_when_present(self):
+        # Stage 5 cohort walker will join phase_bin_center alongside
+        # phase_bin; the aggregator must propagate it to the output for
+        # downstream x-axis plotting.
+        df = _stage2_rows([
+            {"animal": "PS47", "trial_index": 0, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 1.0},
+            {"animal": "PS47", "trial_index": 1, "phase_bin": 0,
+             "recovery_phenotype": "mild", "epoch_label": "pre",
+             "angle_deg": 3.0},
+        ])
+        df["phase_bin_center"] = 0.00694  # ~ 1/144 (n_bins=72 → first center)
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            df, variants=("raw",), signals=("angle_deg",),
+        )
+        assert "phase_bin_center" in out.columns
+        assert out.iloc[0]["phase_bin_center"] == pytest.approx(0.00694)
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13.1 — per-animal trajectory scalar (for paired Wilcoxon)
+# ---------------------------------------------------------------------------
+
+
+class TestComputePerAnimalTrajectoryScalar:
+    def test_returns_canonical_columns_on_empty(self):
+        empty = _phase_rows([]).iloc[0:0]
+        out = compute_per_animal_trajectory_scalar(empty)
+        assert list(out.columns) == [
+            "animal", "side", "signal", "epoch_label", "scalar",
+        ]
+
+    def test_scalar_equals_per_trial_grain_cross_trial_bin_mean(self):
+        # PS46 L pre:
+        #   trial 0 bin 0: angle frames [2, 6] → trial-bin mean = 4
+        #   trial 0 bin 1: angle frame [8]    → trial-bin mean = 8
+        #   trial 1 bin 0: angle frame [10]    → trial-bin mean = 10
+        # Cross-(trial, bin) mean: (4 + 8 + 10) / 3 = 22/3 ≈ 7.333
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 2.0},
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 6.0},
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 1, "epoch_label": "pre", "angle_deg": 8.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 10.0},
+        ]
+        out = compute_per_animal_trajectory_scalar(
+            _phase_rows(rows), signals=("angle_deg",),
+        )
+        assert len(out) == 1
+        assert out.iloc[0]["scalar"] == pytest.approx(22.0 / 3.0)
+
+    def test_partitions_by_side_signal_epoch(self):
+        rows = [
+            # L pre + L acute + R pre — 3 cells.
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 1.0, "x_centered": -1.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "acute",
+             "angle_deg": 5.0, "x_centered": -3.0},
+            {"animal": "PS46", "trial_index": 2, "side": "R",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 7.0, "x_centered": 4.0},
+        ]
+        out = compute_per_animal_trajectory_scalar(_phase_rows(rows))
+        # 3 (animal × side × epoch) cells × 2 signals = 6 rows.
+        assert len(out) == 6
+        L_pre_ang = out[
+            (out["side"] == "L") & (out["epoch_label"] == "pre")
+            & (out["signal"] == "angle_deg")
+        ].iloc[0]
+        assert L_pre_ang["scalar"] == pytest.approx(1.0)
+        R_pre_x = out[
+            (out["side"] == "R") & (out["epoch_label"] == "pre")
+            & (out["signal"] == "x_centered")
+        ].iloc[0]
+        assert R_pre_x["scalar"] == pytest.approx(4.0)
+
+    def test_nan_dropped(self):
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 2.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": float("nan")},
+            {"animal": "PS46", "trial_index": 2, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 4.0},
+        ]
+        out = compute_per_animal_trajectory_scalar(
+            _phase_rows(rows), signals=("angle_deg",),
+        )
+        # Per-trial means [2.0, NaN, 4.0]; cross-trial mean of finite = 3.0
+        assert out.iloc[0]["scalar"] == pytest.approx(3.0)
+
+    def test_missing_required_column_raises(self):
+        bad = pd.DataFrame({
+            "animal": ["PS46"], "side": ["L"],
+            "phase_bin": [0], "epoch_label": ["pre"],
+            "angle_deg": [1.0], "x_centered": [1.0],
+            # date + trial_index missing
+        })
+        with pytest.raises(ValueError, match="missing column"):
+            compute_per_animal_trajectory_scalar(bad)
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13.2 — per-trial linear-interp densification
+# ---------------------------------------------------------------------------
+
+
+def _densify_input(rows: list[dict]) -> pd.DataFrame:
+    """Build a substrate-shaped DataFrame for densify tests.
+
+    Rows are frame-grained: each dict carries ``animal, date,
+    trial_index, side, phase, epoch_label, angle_deg, x_centered``.
+    """
+    canonical = []
+    for r in rows:
+        canonical.append({
+            "animal": r["animal"],
+            "date": r.get("date", datetime.date(2025, 3, 7)),
+            "trial_index": int(r.get("trial_index", 0)),
+            "side": r.get("side", "L"),
+            "phase": float(r["phase"]),
+            "epoch_label": r.get("epoch_label", "pre"),
+            "angle_deg": float(r.get("angle_deg", 0.0)),
+            "x_centered": float(r.get("x_centered", 0.0)),
+        })
+    return pd.DataFrame(canonical)
+
+
+class TestDensifyPhaseRowsViaInterp:
+    def test_returns_n_bins_rows_per_trial(self):
+        # Two frames per trial → after densify, 8 bins per trial.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "phase": 0.1,
+             "angle_deg": 1.0, "x_centered": 0.5},
+            {"animal": "PS46", "trial_index": 0, "phase": 0.9,
+             "angle_deg": 9.0, "x_centered": 4.5},
+        ]
+        out = densify_phase_rows_via_interp(
+            _densify_input(rows), n_phase_bins=8,
+        )
+        # Expect 8 rows (one per bin) for the one trial.
+        assert len(out) == 8
+        assert set(out.columns) >= {
+            "animal", "date", "trial_index", "side",
+            "phase_bin", "phase_bin_center", "angle_deg", "x_centered",
+            "epoch_label",
+        }
+        # phase_bin is 0..7.
+        assert sorted(out["phase_bin"].tolist()) == list(range(8))
+
+    def test_linear_interp_correctness(self):
+        # 3 frames at phases [0.2, 0.5, 0.8] with angle [10, 25, 40].
+        # Linear interp at bin centers should give predictable values.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "phase": 0.2,
+             "angle_deg": 10.0},
+            {"animal": "PS46", "trial_index": 0, "phase": 0.5,
+             "angle_deg": 25.0},
+            {"animal": "PS46", "trial_index": 0, "phase": 0.8,
+             "angle_deg": 40.0},
+        ]
+        out = densify_phase_rows_via_interp(
+            _densify_input(rows), signals=("angle_deg",), n_phase_bins=10,
+        )
+        # bin centers at 0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75,
+        # 0.85, 0.95.
+        # interp:
+        #   0.05 → NaN (below trial range 0.2-0.8)
+        #   0.15 → NaN (below 0.2)
+        #   0.25 → at phase 0.25, slope=(25-10)/(0.5-0.2)=50 → 10+50*0.05=12.5
+        #   0.35 → 10 + 50*0.15 = 17.5
+        #   0.45 → 10 + 50*0.25 = 22.5
+        #   0.55 → slope=(40-25)/(0.8-0.5)=50 → 25 + 50*0.05 = 27.5
+        #   0.65 → 25 + 50*0.15 = 32.5
+        #   0.75 → 25 + 50*0.25 = 37.5
+        #   0.85 → NaN (above 0.8)
+        #   0.95 → NaN
+        out_sorted = out.sort_values("phase_bin").reset_index(drop=True)
+        expected_angle = [
+            np.nan, np.nan, 12.5, 17.5, 22.5,
+            27.5, 32.5, 37.5, np.nan, np.nan,
+        ]
+        for i, exp in enumerate(expected_angle):
+            actual = out_sorted.iloc[i]["angle_deg"]
+            if np.isnan(exp):
+                assert np.isnan(actual), f"bin {i}: expected NaN got {actual}"
+            else:
+                assert actual == pytest.approx(exp), (
+                    f"bin {i}: expected {exp} got {actual}"
+                )
+
+    def test_out_of_range_bins_nan(self):
+        # Trial covers phases [0.3, 0.7]. Bins outside this should NaN.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "phase": 0.3,
+             "angle_deg": 1.0},
+            {"animal": "PS46", "trial_index": 0, "phase": 0.7,
+             "angle_deg": 5.0},
+        ]
+        out = densify_phase_rows_via_interp(
+            _densify_input(rows), signals=("angle_deg",), n_phase_bins=10,
+        )
+        # bin 0 center = 0.05 < 0.3 → NaN.
+        # bin 9 center = 0.95 > 0.7 → NaN.
+        # bin in middle (e.g. bin 4 center = 0.45) → finite.
+        out_sorted = out.sort_values("phase_bin").reset_index(drop=True)
+        assert np.isnan(out_sorted.iloc[0]["angle_deg"])
+        assert np.isnan(out_sorted.iloc[9]["angle_deg"])
+        assert np.isfinite(out_sorted.iloc[4]["angle_deg"])
+
+    def test_multiple_trials_independent_interp(self):
+        # Two trials → 2 × n_bins rows. Different value ranges.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "phase": 0.2,
+             "angle_deg": 1.0},
+            {"animal": "PS46", "trial_index": 0, "phase": 0.8,
+             "angle_deg": 3.0},
+            {"animal": "PS46", "trial_index": 1, "phase": 0.2,
+             "angle_deg": 10.0},
+            {"animal": "PS46", "trial_index": 1, "phase": 0.8,
+             "angle_deg": 30.0},
+        ]
+        out = densify_phase_rows_via_interp(
+            _densify_input(rows), signals=("angle_deg",), n_phase_bins=8,
+        )
+        # 2 trials × 8 bins = 16 rows.
+        assert len(out) == 16
+        # Each trial independently interpolated.
+        trial_0 = out[out["trial_index"] == 0].sort_values("phase_bin")
+        trial_1 = out[out["trial_index"] == 1].sort_values("phase_bin")
+        # trial 0 at phase 0.5 ≈ midway → angle ≈ 2.0.
+        # bin center closest to 0.5: bin 3 center = (3+0.5)/8 = 0.4375
+        # interp at 0.4375 with slope=(3-1)/(0.8-0.2)=3.33 → 1 + 3.33*(0.4375-0.2) = 1.79
+        # trial 1 at 0.4375 with slope=(30-10)/(0.8-0.2)=33.3 → 10 + 33.3*0.2375 = 17.9
+        t0_b3 = trial_0.iloc[3]["angle_deg"]
+        t1_b3 = trial_1.iloc[3]["angle_deg"]
+        assert t0_b3 < t1_b3  # different per-trial scales preserved
+        assert t0_b3 == pytest.approx(1.0 + (3.0 - 1.0) * (0.4375 - 0.2) / (0.8 - 0.2))
+        assert t1_b3 == pytest.approx(10.0 + (30.0 - 10.0) * (0.4375 - 0.2) / (0.8 - 0.2))
+
+    def test_metadata_carried_through(self):
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "phase": 0.3,
+             "epoch_label": "acute", "angle_deg": 5.0},
+            {"animal": "PS46", "trial_index": 0, "phase": 0.7,
+             "epoch_label": "acute", "angle_deg": 8.0},
+        ]
+        df = _densify_input(rows)
+        df["recovery_phenotype"] = "moderate"
+        df["rel_day"] = 4
+        out = densify_phase_rows_via_interp(
+            df, signals=("angle_deg",), n_phase_bins=8,
+        )
+        # All output rows carry epoch_label, phenotype, rel_day from
+        # the trial's metadata.
+        assert (out["epoch_label"] == "acute").all()
+        assert (out["recovery_phenotype"] == "moderate").all()
+        assert (out["rel_day"] == 4).all()
+
+    def test_trial_with_lt2_finite_frames_yields_nan(self):
+        # Trial with only one finite frame can't interp → all NaN.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "phase": 0.5,
+             "angle_deg": 1.0, "x_centered": float("nan")},
+        ]
+        out = densify_phase_rows_via_interp(
+            _densify_input(rows), n_phase_bins=8,
+        )
+        # angle_deg has only one finite value → can't interp → all NaN.
+        assert out["angle_deg"].isna().all()
+        # x_centered has zero finite → all NaN.
+        assert out["x_centered"].isna().all()
+
+    def test_empty_input_returns_empty_with_canonical_columns(self):
+        empty = pd.DataFrame({
+            c: pd.Series(dtype=(
+                "datetime64[ns]" if c == "date"
+                else "int64" if c in {"trial_index"}
+                else "float64" if c in {"phase", "angle_deg", "x_centered"}
+                else "object"
+            ))
+            for c in ("animal", "date", "trial_index", "side", "phase",
+                      "epoch_label", "angle_deg", "x_centered")
+        })
+        out = densify_phase_rows_via_interp(empty, n_phase_bins=8)
+        assert out.empty
+        for c in ("animal", "date", "trial_index", "side", "phase_bin",
+                  "phase_bin_center", "angle_deg", "x_centered",
+                  "epoch_label"):
+            assert c in out.columns
+
+    def test_missing_required_column_raises(self):
+        bad = pd.DataFrame({
+            "animal": ["PS46"], "trial_index": [0],
+            "phase": [0.5], "angle_deg": [1.0], "x_centered": [1.0],
+            # date, side, epoch_label missing
+        })
+        with pytest.raises(ValueError, match="missing column"):
+            densify_phase_rows_via_interp(bad)
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13.5 — per-trial / per-session trajectory scalars (for MWU)
+# ---------------------------------------------------------------------------
+
+
+class TestComputePerTrialTrajectoryScalar:
+    def test_returns_canonical_columns_on_empty(self):
+        empty = _phase_rows([]).iloc[0:0]
+        out = compute_per_trial_trajectory_scalar(empty)
+        assert list(out.columns) == [
+            "animal", "date", "trial_index", "side",
+            "signal", "epoch_label", "scalar",
+        ]
+
+    def test_one_row_per_trial_side_signal_epoch(self):
+        # Single trial with frames at 2 bins → one row per (signal).
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre",
+             "angle_deg": 2.0, "x_centered": -1.0},
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 1, "epoch_label": "pre",
+             "angle_deg": 4.0, "x_centered": 1.0},
+        ]
+        out = compute_per_trial_trajectory_scalar(_phase_rows(rows))
+        # 1 trial × 1 side × 2 signals × 1 epoch = 2 rows.
+        assert len(out) == 2
+        ang_row = out[out["signal"] == "angle_deg"].iloc[0]
+        assert ang_row["scalar"] == pytest.approx(3.0)
+
+    def test_separates_pre_vs_post(self):
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 2.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "acute", "angle_deg": 10.0},
+        ]
+        out = compute_per_trial_trajectory_scalar(
+            _phase_rows(rows), signals=("angle_deg",),
+        )
+        pre = out[out["epoch_label"] == "pre"]
+        acute = out[out["epoch_label"] == "acute"]
+        assert pre.iloc[0]["scalar"] == pytest.approx(2.0)
+        assert acute.iloc[0]["scalar"] == pytest.approx(10.0)
+
+
+class TestComputePerSessionTrajectoryScalar:
+    def test_returns_canonical_columns_on_empty(self):
+        empty = _phase_rows([]).iloc[0:0]
+        out = compute_per_session_trajectory_scalar(empty)
+        assert list(out.columns) == [
+            "animal", "date", "side", "signal", "epoch_label", "scalar",
+        ]
+
+    def test_one_row_per_session_side_signal_epoch(self):
+        # Two trials in one session pre L bin 0 → mean of 2 trial-means.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 2.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "angle_deg": 6.0},
+        ]
+        out = compute_per_session_trajectory_scalar(
+            _phase_rows(rows), signals=("angle_deg",),
+        )
+        # 1 session × 1 side × 1 signal × 1 epoch = 1 row.
+        assert len(out) == 1
+        assert out.iloc[0]["scalar"] == pytest.approx(4.0)
+
+
+class TestRelabelPreForNullCalibration:
+    def test_returns_pre_only_with_relabeled_epochs(self):
+        import datetime
+        rows = []
+        # 6 pre sessions for PS46 + 3 post-acute sessions.
+        for di in range(6):
+            rows.append({
+                "animal": "PS46",
+                "date": datetime.date(2025, 3, 1) + datetime.timedelta(days=di),
+                "epoch_label": "pre",
+                "angle_deg": 1.0,
+            })
+        for di in range(3):
+            rows.append({
+                "animal": "PS46",
+                "date": datetime.date(2025, 4, 1) + datetime.timedelta(days=di),
+                "epoch_label": "acute",
+                "angle_deg": 5.0,
+            })
+        df = pd.DataFrame(rows)
+        out = relabel_pre_for_null_calibration(df, rng_seed=42)
+        # All post-acute rows dropped (we only relabel pre).
+        assert len(out) == 6
+        # Epoch labels assigned from {pre, acute, sub_acute, chronic}.
+        assert set(out["epoch_label"]) - {
+            "pre", "acute", "sub_acute", "chronic",
+        } == set()
+
+    def test_empty_input_returns_empty(self):
+        empty = pd.DataFrame()
+        out = relabel_pre_for_null_calibration(empty)
+        assert out.empty
+
+    def test_missing_column_raises(self):
+        bad = pd.DataFrame({"animal": ["PS46"]})
+        with pytest.raises(ValueError, match="missing column"):
+            relabel_pre_for_null_calibration(bad)

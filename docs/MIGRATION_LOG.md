@@ -5,6 +5,100 @@ differences vs. the legacy notebooks.
 
 ---
 
+## Phase 9.1 Q-lock 13 — Phase-aligned mean+SEM tongue trajectory figures + stats
+
+**Date:** 2026-05-28
+**Tag on merge:** `v9.1-q13-mean-sem-trajectory`
+**Branch:** `phase/9.1-q13-mean-sem-trajectory`
+**Kickoff:** [`docs/prompts/phase-9.1-q13-mean-sem-trajectory-kickoff.md`](prompts/phase-9.1-q13-mean-sem-trajectory-kickoff.md)
+
+**What shipped:**
+
+Eight phase-aligned trajectory figures per scope (2 signals × 2 variants × 2 sides), backed by a full stats package operating on the densified centered-phase substrate. Sibling phase to Q-lock 13b — shares the `build_first_lick_centered_phase_rows` substrate but answers a different question: trajectory-shape (this phase) vs. scalar endpoints (13b).
+
+| Signal | Variant | Output filename slug |
+|---|---|---|
+| `angle_deg` | raw | `angle_deg_raw_<side>_mean_<sem\|sd>_cleaned_trace.svg` |
+| `angle_deg` | Δ from per-animal pre baseline | `angle_deg_delta_<side>_mean_<sem\|sd>_cleaned_trace.svg` |
+| `x_centered` | raw | `x_centered_raw_<side>_mean_<sem\|sd>_cleaned_trace.svg` |
+| `x_centered` | Δ from per-animal pre baseline | `x_centered_delta_<side>_mean_<sem\|sd>_cleaned_trace.svg` |
+
+Each figure = 4×4 grid (phenotype rows × pre/acute/sub_acute/chronic epoch columns). Per-panel trace color = phenotype YlOrRd shade. SEM canonical; SD variant in `sd_band/` subdir. Shared Y-axis across L+R figures within each (signal × variant) pair. Display window phase ∈ [0.05, 0.95] (edge-bin coverage clip; pooled CSV retains full [0, 1]).
+
+**Pipeline stages delivered:**
+
+- **Stage 1** — Per-animal phase-bin baseline (Q13 lock + 13.1 per-side correction): `compute_per_animal_phase_bin_baseline(phase_rows_long, signals)` returns per-(animal, side, phase_bin, signal) baseline mean from `epoch_label == "pre"` rows. Per-trial-frame-mean grain matches Stage 2's aggregation unit, guaranteeing delta-variant pre column flat at 0 by construction.
+- **Stage 2** — Phenotype-pooled mean+SEM+SD aggregator: `aggregate_phenotype_pooled_phase_bin_mean_sem` per (phenotype × epoch × side × phase_bin × signal × variant). Two-pass: per-trial frame-mean (Pass 1) → cross-trial pool with `mean`, `sem = sd/√n`, `sd = std(ddof=1)`, `n_trials`, `n_sessions`, `n_animals` (Pass 2). NaN-aware. SD column added 13.4.
+- **Stage 3** — Figure renderer (`figures/phase_aligned_trajectories.py`): 4×4 panel grid; per-panel mean line + ±1 (SEM or SD) band; pre-stroke baseline overlay on post panels; "n=N trials" annotation top-right; SEM/SD tag in suptitle; source-data subtitle (variant-aware); Q-lock 15 cleaned_trace footer; phase display window clip; shared Y across L/R.
+- **Stage 4** — Cohort emit script (`scripts/phase_9_1_q13/emit_cohort.py`): walk_cohort → attach_metadata → densify (13.2) → Stage 1 → Stage 2 → emit SEM canonical + SD sd_band/ → all stats. CLI flags: `--remap-phenotypes={none,3tier}`, `--null-calibration`.
+- **Stage 5** — Cohort emit on 8-animal cohort (PS46–PS50, PS51, PS54, PS55). 230 OK + 1 SKIP_EMPTY of 231 sessions across 4 scopes (4-tier real, 3-tier real, 4-tier null-calib, 3-tier null-calib). ~25–30 min wall-time per scope.
+- **Stage 6.x sub-phases (in-PR follow-ons per Priya iterative review):**
+  - **13.1** — Stage 1 per-side baseline keying + per-trial grain correction (delta pre column flat at machine epsilon).
+  - **13.2** — Per-trial linear interp at bin centers (`densify_phase_rows_via_interp`) — removes cross-animal-pool jaggedness from ILI-lattice mismatch.
+  - **13.3** — Phase display window clip + shared Y across phenotype rows.
+  - **13.4** — SD error band alongside SEM (`sd_band/` subdir); 3-phenotype variant (`--remap-phenotypes 3tier`).
+  - **13.5** — Default error band SEM (canonical) + SD sd_band/. Per-trial + per-session trajectory scalars + unpaired Mann-Whitney U tests at both grains. Self-describing SEM/SD label in title + filename.
+  - **13.6** — LMM (per-session, `scalar ~ epoch + (1|animal)`), Maris-Oostenveld cluster permutation, animal-level bootstrap CI on pre trajectory, null-calibration mode (random pre-split).
+  - **13.7** — Animal-level bootstrap CI on the (post − pre) effect trajectory.
+  - **13.8** — Shared Y-axis across L+R figures within each (signal × variant) pair.
+
+**Cohort numbers:**
+
+- 231 sessions × 4 emit scopes = 924 session-runs
+- Densified substrate: ~1,351,800 rows / scope (vs ~799,347 frame-grained pre-13.2)
+- Pooled CSV: 6,752–9,088 rows depending on scope
+- Stats CSVs: 6 per scope (Wilcoxon paired, MWU session, MWU trial, LMM, cluster permutation, bootstrap pre + bootstrap effect) × 4 scopes = 24 CSVs total
+- 8 SEM SVGs + 8 SD SVGs per scope × 4 scopes = 64 SVGs total
+
+**Stats — null-calibration verified:**
+
+| Test | Real 4-tier | Real 3-tier | Null 4-tier | Null 3-tier | Verdict |
+|---|---|---|---|---|---|
+| Wilcoxon (animal n) | 0/24 | 0/18 | 0/12 | 0/9 | Calibrated, floor-limited at n=2/4 |
+| MWU (session n) | 39/48 | 27/36 | 0/48 | 0/36 | Conservative, usable |
+| MWU (trial n) | 42/48 | 30/36 | **22/48 (46%)** | **14/36 (39%)** | **BROKEN** — pseudo-replication |
+| **LMM (animal-RE)** | 20/24 | 30/36 | 0/24 | **2/36 (5.5%)** | Calibrated — primary inferential ✅ |
+| **Cluster permutation** | 82/145 | 55/112 | 0/66 | 0/72 | Calibrated, bin-localized ✅ |
+| **Bootstrap effect CI** (excludes 0) | 5596/6816 (82%, inflated by n=1) | **3032/5136 (59%)** | — | — | 3-tier trustworthy ✅ |
+
+**Recommended paper reporting hierarchy:**
+1. Primary inferential: **LMM (3-tier)** — 30/36 cells reject after accounting for per-animal baseline.
+2. Phase-axis localization: **cluster permutation (3-tier)** — 55/112 clusters with concentrated effect.
+3. Magnitude visualization: **bootstrap effect CI (3-tier)** — per-bin (post − pre) median + 95% band, 59% of bins exclude 0.
+4. Supplementary: MWU at session grain (conservative confirmation).
+5. **Do not report MWU at trial grain** — broken under H0 (39–46% false-positive rate).
+
+**Divergences from kickoff:**
+
+- Stage 1 — kickoff said baseline keyed by (animal, phase_bin, signal); 13.1 correction added side: (animal, **side**, phase_bin, signal). Required to make delta pre column flat (per-side angle/x sign conventions differ).
+- Stage 1 — kickoff said baseline computed per-frame; 13.1 correction switched to per-trial-frame-mean grain (matches Stage 2 pooling unit).
+- Stage 2 — kickoff said SEM only; 13.4 added SD column for the alternative band variant. SD eventually became the alternative; SEM remained canonical default.
+- Stage 3 — kickoff filename `<signal>_<variant>_<side>_mean_sem_cleaned_trace.svg`. 13.5b added the band slug so SD figures don't claim "mean_sem". New filenames: `<signal>_<variant>_<side>_<mean_sem|mean_sd>_cleaned_trace.svg`.
+- Output dir — kickoff said `pipeline_outputs/phase_9_1_figures/...`. Q-lock 13b had already corrected this to `stats/figures/phenotype_pooled/phase_aligned_endpoints/`; Q-lock 13 mirrors at `stats/figures/phenotype_pooled/phase_aligned_trajectories/`.
+- 3-phenotype variant + null calibration + LMM + cluster permutation + bootstrap CI — all in-PR follow-on additions beyond the original kickoff scope per Priya iterative direction.
+
+**Files added/modified:**
+
+- `src/stroke_orofacial/stats/aggregators.py` (extended — Stage 1 baseline + delta, Stage 2 mean+SEM+SD, per-trial/per-session/per-animal scalar helpers, densify_phase_rows_via_interp, relabel_pre_for_null_calibration)
+- `src/stroke_orofacial/figures/phase_aligned_trajectories.py` (NEW — renderer, compute_trajectory_wilcoxon_stats, compute_trajectory_mwu_stats, compute_trajectory_lmm_stats, compute_trajectory_cluster_permutation_stats, compute_trajectory_bootstrap_pre_ci, compute_trajectory_bootstrap_effect_ci)
+- `scripts/phase_9_1_q13/emit_cohort.py` (NEW — driver with --remap-phenotypes + --null-calibration)
+- `scripts/phase_9_1_q13/rerender_from_pooled_csv.py` (NEW — fast figure-only iteration from pooled CSV)
+- `tests/test_stats_aggregators.py` (extended +50 tests across 13.1/13.2/13.5/13.6)
+- `tests/test_phase_aligned_trajectories.py` (NEW +47 tests across 13.3/13.4/13.5/13.5b/13.6/13.7/13.8)
+
+**Test suite:** 121+ passing across the Q-13 surface (aggregators 74/74, trajectories 47/47).
+
+**Forward-pointers:**
+
+- **Additional trajectory-summary scalars** (peak-cycle phase position, AUC of |signal|, per-phase-range mean for early/mid/late phase). Not implemented — peak amplitude is already covered by Q-13b's three scalar endpoints; adding more derived scalars would be redundant with the cluster permutation + bootstrap effect CI which already provide bin-level shape info.
+- **Median+IQR trajectory variant** — Q13-B locked mean+SEM/SD; non-parametric variant deferred.
+- **Per-bin significance overlay** on figures — cluster permutation + bootstrap effect CI both produce per-bin significance; rendering these onto the trajectory figures as stippled bands or asterisks is a render-time enhancement.
+- **Successful-trials-filter variant** — kickoff scope-out.
+- **Multi-lick variants** (`first_2_licks`, `all_licks`).
+- **Jaw analog** — gated on jaw phase-trajectory substrate.
+
+---
+
 ## Phase 9.1 Q-lock 12 — Phenotype-pooled proportion-diff heatmaps + W-2 recovery curves
 
 **Date:** 2026-05-28
