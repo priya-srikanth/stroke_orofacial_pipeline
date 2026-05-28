@@ -190,6 +190,7 @@ def build_phase_aligned_trajectory_figure(
     phase_display_window: tuple[float, float] = DEFAULT_PHASE_DISPLAY_WINDOW,
     error_band_type: ErrorBandType = DEFAULT_ERROR_BAND_TYPE,
     phenotype_order: tuple[str, ...] = PHENOTYPE_ORDER,
+    y_range: tuple[float, float] | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """Build the matplotlib Figure for one (signal, variant, side) figure.
 
@@ -388,8 +389,57 @@ def build_phase_aligned_trajectory_figure(
         ha="left", va="center", rotation=90, fontsize=12,
     )
 
+    if y_range is not None:
+        ylo, yhi = float(y_range[0]), float(y_range[1])
+        if ylo > yhi:
+            raise ValueError(
+                f"y_range lo must be <= hi; got ({ylo}, {yhi}).",
+            )
+        for ax in axes.ravel():
+            ax.set_ylim(ylo, yhi)
+
     fig.tight_layout(rect=[0.02, 0.0, 1.0, 0.925])
     return fig, axes
+
+
+def _compute_shared_y_range(
+    pooled_df: pd.DataFrame,
+    *,
+    signal: str,
+    variant: str,
+    sides: Iterable[str],
+    phase_display_window: tuple[float, float],
+    error_band_type: ErrorBandType,
+    phenotype_order: Iterable[str],
+    pad_frac: float = 0.05,
+) -> tuple[float, float]:
+    """Compute Y-range spanning both sides for a (signal, variant) pair.
+
+    Used by the emit + rerender entry points to share the Y-axis
+    between the L and R figures (Q-lock 13.8 2026-05-28). Includes the
+    error-band extent so panels aren't clipped.
+    """
+    lo_disp, hi_disp = float(phase_display_window[0]), float(phase_display_window[1])
+    band_col = error_band_type if error_band_type in {"sd", "sem"} else "sem"
+    pool = pooled_df[
+        (pooled_df["signal"] == signal)
+        & (pooled_df["variant"] == variant)
+        & (pooled_df["side"].isin(list(sides)))
+        & (pooled_df["recovery_phenotype"].isin(list(phenotype_order)))
+    ]
+    if "phase_bin_center" in pool.columns:
+        ctr = pd.to_numeric(pool["phase_bin_center"], errors="coerce")
+        pool = pool.loc[(ctr >= lo_disp) & (ctr <= hi_disp)]
+    if pool.empty:
+        return (-1.0, 1.0)
+    mean_v = pool["mean"].to_numpy(dtype=np.float64)
+    err_col = band_col if band_col in pool.columns else "sem"
+    err_v = pool[err_col].to_numpy(dtype=np.float64)
+    err_v = np.where(np.isfinite(err_v), err_v, 0.0)
+    lo = float(np.nanmin(mean_v - err_v))
+    hi = float(np.nanmax(mean_v + err_v))
+    span = max(hi - lo, 1e-6)
+    return (lo - pad_frac * span, hi + pad_frac * span)
 
 
 def render_phase_aligned_trajectory_figure(
@@ -403,6 +453,7 @@ def render_phase_aligned_trajectory_figure(
     phase_display_window: tuple[float, float] = DEFAULT_PHASE_DISPLAY_WINDOW,
     error_band_type: ErrorBandType = DEFAULT_ERROR_BAND_TYPE,
     phenotype_order: tuple[str, ...] = PHENOTYPE_ORDER,
+    y_range: tuple[float, float] | None = None,
 ) -> Path:
     """Build the figure and save it as SVG.
 
@@ -414,6 +465,7 @@ def render_phase_aligned_trajectory_figure(
         phase_display_window=phase_display_window,
         error_band_type=error_band_type,
         phenotype_order=phenotype_order,
+        y_range=y_range,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, format="svg", bbox_inches="tight")
@@ -1381,6 +1433,7 @@ def emit_phase_aligned_trajectory_figures(
     phase_display_window: tuple[float, float] = DEFAULT_PHASE_DISPLAY_WINDOW,
     error_band_type: ErrorBandType = DEFAULT_ERROR_BAND_TYPE,
     phenotype_order: tuple[str, ...] = PHENOTYPE_ORDER,
+    share_y_across_sides: bool = True,
 ) -> dict[str, Any]:
     """Emit all 8 trajectory figures + a manifest dict.
 
@@ -1415,9 +1468,25 @@ def emit_phase_aligned_trajectory_figures(
     skipped: list[Path] = []
     effective_overwrite: str = overwrite
 
+    # Pre-compute per-(signal, variant) shared y-range across the
+    # sides being emitted, so L and R figures end up on the same scale.
+    sides_tuple = tuple(sides)
+    shared_y: dict[tuple[str, str], tuple[float, float] | None] = {}
+    if share_y_across_sides and len(sides_tuple) > 1:
+        for signal in signals:
+            for variant in variants:
+                shared_y[(signal, variant)] = _compute_shared_y_range(
+                    pooled_df,
+                    signal=signal, variant=variant,
+                    sides=sides_tuple,
+                    phase_display_window=phase_display_window,
+                    error_band_type=error_band_type,
+                    phenotype_order=phenotype_order,
+                )
+
     for signal in signals:
         for variant in variants:
-            for side in sides:
+            for side in sides_tuple:
                 output_path = figure_path_for(
                     signal=signal, variant=variant, side=side,
                     resolver=resolver, output_dir=output_dir,
@@ -1445,6 +1514,7 @@ def emit_phase_aligned_trajectory_figures(
                     phase_display_window=phase_display_window,
                     error_band_type=error_band_type,
                     phenotype_order=phenotype_order,
+                    y_range=shared_y.get((signal, variant)),
                 )
                 emitted.append(output_path)
     return {"emitted": emitted, "skipped": skipped}

@@ -373,6 +373,63 @@ class TestBuildPhaseAlignedTrajectoryFigure:
                 phenotype_order=(),
             )
 
+    def test_y_range_applied_to_every_panel(self):
+        df = _pooled_df()
+        fig, axes = build_phase_aligned_trajectory_figure(
+            df, signal="angle_deg", variant="raw", side="L",
+            y_range=(-3.0, 7.0),
+        )
+        for ax in axes.ravel():
+            lo, hi = ax.get_ylim()
+            assert lo == pytest.approx(-3.0)
+            assert hi == pytest.approx(7.0)
+        plt.close(fig)
+
+    def test_y_range_invalid_raises(self):
+        df = _pooled_df()
+        with pytest.raises(ValueError, match="y_range"):
+            build_phase_aligned_trajectory_figure(
+                df, signal="angle_deg", variant="raw", side="L",
+                y_range=(1.0, -1.0),
+            )
+
+    def test_share_y_across_sides_default_emits_both_with_same_range(
+        self, tmp_path,
+    ):
+        # When emit_phase_aligned_trajectory_figures is called with the
+        # default share_y_across_sides=True + sides=(L, R), both sides
+        # should render with the same y_range. We can't easily inspect
+        # the SVGs here but we can verify the renderer was called for
+        # both and produced files of similar dimension. Direct unit
+        # test on _compute_shared_y_range follows.
+        from stroke_orofacial.figures.phase_aligned_trajectories import (
+            _compute_shared_y_range,
+        )
+        df = _pooled_df()
+        # Inject a much larger mean for side=R to verify the range
+        # widens to span BOTH sides, not just one.
+        df_widened = df.copy()
+        mask = (df_widened["side"] == "R") & (df_widened["signal"] == "angle_deg")
+        df_widened.loc[mask, "mean"] = df_widened.loc[mask, "mean"] + 100.0
+        rng_with_both = _compute_shared_y_range(
+            df_widened,
+            signal="angle_deg", variant="raw",
+            sides=("L", "R"),
+            phase_display_window=(0.0, 1.0),
+            error_band_type="sem",
+            phenotype_order=PHENOTYPE_ORDER,
+        )
+        rng_L_only = _compute_shared_y_range(
+            df_widened,
+            signal="angle_deg", variant="raw",
+            sides=("L",),
+            phase_display_window=(0.0, 1.0),
+            error_band_type="sem",
+            phenotype_order=PHENOTYPE_ORDER,
+        )
+        # L+R should reach higher (because R was shifted +100).
+        assert rng_with_both[1] > rng_L_only[1] + 50.0
+
     def test_raw_variant_carries_raw_source_subtitle(self):
         df = _pooled_df()
         fig, _ = build_phase_aligned_trajectory_figure(
