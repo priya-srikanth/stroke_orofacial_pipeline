@@ -15,6 +15,47 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-28 — Phase 9.1 Q-lock 13: per-trial linear interp densification + per-side per-trial-grain baseline
+
+- *Context:* Q-lock 13 kickoff's Stage 1 baseline lock keyed by `(animal, phase_bin, signal)` (no side) at per-frame grain. Stage 5 cohort pilot exposed two pathologies: (1) delta-variant pre column was NOT flat at 0 — pre/post sign convention differs by side for both angle (mouse-frame) and x (spout-midpoint frame); (2) cross-animal-pool trajectories showed dramatic bin-by-bin jaggedness in multi-animal phenotypes (mild n=4 worst, severe n=2 medium) while single-animal phenotypes (moderate, mod-severe) were smooth.
+- *Decision:*
+  - **Stage 1 baseline keyed by `(animal, side, phase_bin, signal)`** at **per-trial-frame-mean grain**. Mirrors Q-13b's scalar `compute_per_animal_baseline` (per-animal-side-endpoint). Per-trial grain match between Stage 1 baseline and Stage 2's collapse unit guarantees cross-trial pool of pre deltas = 0 exactly within each (phenotype, "pre", side, phase_bin) cell — delta pre column flat at machine epsilon.
+  - **Per-trial linear interpolation at bin centers** via `densify_phase_rows_via_interp`. Each trial's frame-grained values (~25–50 sparse bins covered) get `np.interp`-extended onto all 72 bin centers within the trial's phase range, with `left=NaN`, `right=NaN` for bins outside coverage. Removes the per-trial ILI-lattice mismatch that caused cross-animal-pool jaggedness (different animals' fixed ILIs landed frames on different bin lattices; cross-trial mean alternated between animal-A-dominated and animal-B-dominated bins).
+- *Rationale:* Frame-grained per-trial-frame-mean alone leaves the trajectory bin-coverage sparse and bin-by-bin variable per animal. Smoothing (rolling-mean / Savgol) doesn't fix it because the underlying data is sparse, not noisy — would need to densify first anyway. Linear interp directly addresses the root cause + has no window parameter to tune.
+- *Enforced at:* `stroke_orofacial.stats.aggregators.compute_per_animal_phase_bin_baseline` + `apply_phase_bin_baseline_delta` + `densify_phase_rows_via_interp`. Cohort emit calls densify after `attach_metadata` and before Stage 1.
+
+---
+
+## 2026-05-28 — Phase 9.1 Q-lock 13: stats reporting hierarchy validated by null-calibration
+
+- *Context:* Q-lock 13's stats package emits multiple cell-level tests at different grains: per-animal paired Wilcoxon (n=animals), per-session and per-trial MWU (n=sessions/trials, unpaired), per-session LMM with animal random effect, Maris-Oostenveld cluster permutation, and animal-level bootstrap CI on both the pre trajectory and the (post − pre) effect. Real-data rejection counts varied dramatically (Wilcoxon 0%, MWU trial 88%, LMM 83%, cluster perm 49–57%). Need to identify which to trust for inferential claims.
+- *Decision:* Run all tests under a **null-calibration mode** (`--null-calibration` flag) that drops post-stroke rows + randomly relabels pre-stroke sessions into fake_pre / fake_acute / fake_sub_acute / fake_chronic buckets per animal. Re-run the entire stats family on the constructed-H0 data. Well-calibrated tests should reject ~5% of cells; tests rejecting much more under H0 are pseudo-replicated / mis-calibrated. Results (3-tier):
+  - Wilcoxon (animal n) — 0% real-null gap, calibrated but floor-limited (n=4 mild gives min p=0.125).
+  - MWU (session n) — 75% real / 0% null — conservative, usable.
+  - **MWU (trial n) — 83% real / 39% null — BROKEN; do not report as inferential.**
+  - **LMM (animal-RE) — 83% real / 5.5% null — properly calibrated (5.5% ≈ expected α=0.05).**
+  - **Cluster permutation — 49% real / 0% null — properly calibrated.**
+  - Bootstrap effect CI (3-tier) — 59% bins exclude 0.
+- *Reporting hierarchy* (canonical for downstream paper writeup):
+  1. Primary inferential: **LMM (3-tier)** for cell-level claims with proper per-animal correlation handling.
+  2. Phase-axis localization: **cluster permutation (3-tier)** for "where on the phase axis" the effect concentrates.
+  3. Magnitude visualization: **bootstrap effect CI (3-tier)** — per-bin (post − pre) median + 95% band overlaid on trajectory figures.
+  4. Supplementary confirmation: MWU at session grain (conservative).
+  5. **MWU at trial grain — DO NOT REPORT as inferential.** Pseudo-replicated false positives at 39–46% under H0.
+- *Rationale:* The null calibration provides empirical evidence (not just theoretical concern) of which tests respect within-animal correlation. LMM with animal random effect is the textbook proper handling; null-calib at 5.5% confirms it. Cluster permutation respects label exchangeability and is the standard trajectory test (Maris & Oostenveld 2007). Bootstrap effect CI complements cluster perm with per-bin magnitude. MWU at trial grain treats trials as iid; null-calib reveals this as broken.
+- *Enforced at:* `scripts/phase_9_1_q13/emit_cohort.py` `--null-calibration` flag + `stroke_orofacial.stats.aggregators.relabel_pre_for_null_calibration`. All five tests in `stroke_orofacial.figures.phase_aligned_trajectories`: `compute_trajectory_wilcoxon_stats`, `compute_trajectory_mwu_stats`, `compute_trajectory_lmm_stats`, `compute_trajectory_cluster_permutation_stats`, `compute_trajectory_bootstrap_effect_ci`.
+
+---
+
+## 2026-05-28 — Phase 9.1 Q-lock 13: 3-phenotype variant routed via dataclasses.replace remap
+
+- *Context:* The 4-tier phenotype classification (mild / moderate / moderate-severe / severe per F-P-1) leaves the moderate and moderate-severe tiers as single-animal (PS46 and PS51 respectively). LMM cannot fit with n=1 animal (no between-animal variance to estimate); cluster permutation cannot bootstrap labels with n=1; bootstrap CI on (post − pre) gives degenerate width=0 CIs at n=1. The 4-tier figures + stats remain useful for the descriptive view, but the inferential statistical story needs n≥2 animals in every tier.
+- *Decision:* Implement a parallel **3-phenotype** rendering of the same data alongside the canonical 4-tier figures (mirrors Q-lock 12 Addendum #4 precedent). 3-tier collapses `moderate-severe → moderate`, pooling PS51 with PS46 into a single 2-animal moderate tier. CLI flag: `--remap-phenotypes={none, 3tier}` (default `none` = 4-tier canonical). 3tier mode auto-routes output to `<FIGURE_SUBDIR>/3_phenotype/`. Stats family runs on both — 4-tier remains the descriptive view; 3-tier carries the LMM + cluster perm + bootstrap effect CI for inferential claims about the intermediate-severity tier.
+- *Rationale:* Both views are scientifically meaningful and shouldn't replace each other. 4-tier preserves Phase 9.1 F-P-1's fine-grained severity classification. 3-tier gives a usable n≥2 across all tiers for the proper inferential tests. Q-lock 12 (sibling phase) had the same need and established this exact pattern; following the precedent keeps the cohort emit script architecture consistent across phases.
+- *Enforced at:* `scripts/phase_9_1_q13/emit_cohort.py` `--remap-phenotypes` flag + `remap_animals_to_3tier()` helper using `dataclasses.replace` to preserve AnimalInfo immutability. `stroke_orofacial.figures.phase_aligned_trajectories` `phenotype_order` kwarg propagates through `build_phase_aligned_trajectory_figure` / `render_*` / `emit_*` so the grid auto-sizes for the passed phenotype count.
+
+---
+
 ## 2026-05-27 — Phase 9.1 Q-lock 13b: signed-at-argmax-of-abs endpoint convention
 
 - *Context:* Q-lock 13b introduced three phase-aligned tongue endpoints. Endpoints B and C needed to capture the most-extreme excursion within a phase window. The original kickoff spec for B was `max(abs(angle_deg))` (unsigned) and for C was `max(abs(x_centered))` (unsigned). During implementation, Priya directed that positive vs negative tongue angle is meaningful (laterality direction); the unsigned convention discards that information.
