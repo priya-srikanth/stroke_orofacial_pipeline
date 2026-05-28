@@ -15,6 +15,15 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-27 — Phase 9.1 Q-lock 13b: signed-at-argmax-of-abs endpoint convention
+
+- *Context:* Q-lock 13b introduced three phase-aligned tongue endpoints. Endpoints B and C needed to capture the most-extreme excursion within a phase window. The original kickoff spec for B was `max(abs(angle_deg))` (unsigned) and for C was `max(abs(x_centered))` (unsigned). During implementation, Priya directed that positive vs negative tongue angle is meaningful (laterality direction); the unsigned convention discards that information.
+- *Decision:* Both B and C use the **signed-at-argmax-of-abs** convention: scan the phase window for the time-point with the largest absolute value, then report the **signed** value at that time-point. Selection criterion uses magnitude (catches the most-extreme excursion regardless of direction); reported/plotted value preserves sign (preserves laterality direction for both angle and x). Column names: `signed_angle_at_max_abs_phase_0_075_deg` (B), `signed_x_at_max_abs_phase_0_075_px` (C).
+- *Rationale:* Tongue angle sign distinguishes ipsilateral vs contralateral deviation. Collapsing to unsigned would mask a key stroke-recovery signal — whether the tongue deviates toward the stroke-affected or unaffected side. The argmax-of-abs selection ensures the most-extreme excursion is always captured, while the signed report keeps the direction readable in figures and downstream stats.
+- *Enforced at:* `src/stroke_orofacial/dlc_kinematics/tongue_phase_aligned_endpoints.py` `_endpoint_b_max_abs_angle()` + `_endpoint_c_signed_x_at_max_abs()`. Convention is reusable for future phase-aligned endpoints on any bodypart/coordinate.
+
+---
+
 ## 2026-05-26 — Chore close — Phase 7e cohort re-emit (Event B) + Phase 7e.1 + Phase 7e.2 + Stage 6 stale-output audit
 
 PR #135 (this chore) merges after PR #137 (Phase 7e.1 — legacy lick1/lick2 endpoint routed through v7 kept-licks, tagged `v7e.1-legacy-endpoint-v7-routing`) and PR #140 (Phase 7e.2 — `_extract_peak_velocity_first5` routed through v7 kept-licks + cleaned trace with `is_baseline_fill` masking, tagged `v7e.2-velocity-v7-routing`). Untagged per CLAUDE.md tag rule (chore PR, not phase close). Kickoff: [`docs/prompts/chore-phase-7e-cohort-reemit-kickoff.md`](prompts/chore-phase-7e-cohort-reemit-kickoff.md) with Addenda #1/#2/#3.
