@@ -81,6 +81,7 @@ from stroke_orofacial.stats.spatial_proportion_diff import (  # noqa: E402
     SIDES,
     compute_per_animal_per_epoch_diff,
     compute_per_animal_pre_pool,
+    compute_per_animal_pre_self_diff,
     split_post_dates_by_epoch,
 )
 from stroke_orofacial.stats.spatial_wasserstein import (  # noqa: E402
@@ -226,6 +227,63 @@ def compute_per_animal_records(
             for row in pre_session_rows:
                 row["recovery_phenotype"] = animal_info.recovery_phenotype
             per_session_w2_rows.extend(pre_session_rows)
+
+            # Q-lock 12b Addendum #7: per-animal Pre-self proportion-diff
+            # for the heatmap Pre column (mean of per-pre-session D arrays
+            # against the pre-pool, naive lock — same bias semantics as
+            # the W-2 Pre boxplots).
+            t_pre_self = time.perf_counter()
+            try:
+                pre_self_rec = compute_per_animal_pre_self_diff(
+                    animal=animal, bodypart=bodypart, side=side,
+                    pre_pool=pre_pool, resolver=resolver,
+                    pre_dates=pre_dates,
+                    defaults=defaults, animal_info=animal_info,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "[%s/%s/%s/pre_self_diff] FAILED: %s",
+                    animal, bodypart, side, exc,
+                )
+                pre_self_rec = None
+            pre_self_elapsed = time.perf_counter() - t_pre_self
+            if pre_self_rec is not None:
+                finite_abs = np.abs(
+                    pre_self_rec["D"][np.isfinite(pre_self_rec["D"])],
+                )
+                p99_pre = (
+                    float(np.percentile(finite_abs, 99.0))
+                    if finite_abs.size else np.nan
+                )
+                audit_rows.append({
+                    "animal": animal, "bodypart": bodypart, "side": side,
+                    "epoch": "pre_self_diff",
+                    "status": "OK", "wall_time_s": pre_self_elapsed,
+                    "n_sessions": pre_self_rec[
+                        "n_pre_sessions_contributing"
+                    ],
+                    "n_trials": pre_self_rec["n_pre_trials"],
+                    "n_total_frames": pre_self_rec["n_total_pre_frames"],
+                    "abs_d_p99": p99_pre, "w2": np.nan, "error": "",
+                })
+                records.append({
+                    "animal": animal,
+                    "side": side,
+                    "bodypart": bodypart,
+                    "post_epoch": "pre",
+                    "D": pre_self_rec["D"],
+                    "extent": pre_self_rec["extent"],
+                    # For per-panel sample-size annotation: use the
+                    # pre counts (the "pre" column shows pre vs pre).
+                    "n_pre_trials": pre_self_rec["n_pre_trials"],
+                    "n_post_trials": pre_self_rec["n_pre_trials"],
+                })
+                logger.info(
+                    "[%s/%s/%s/pre_self] OK in %.2fs "
+                    "(n_pre_sess=%d, |D|.p99=%.4f)",
+                    animal, bodypart, side, pre_self_elapsed,
+                    pre_self_rec["n_pre_sessions_contributing"], p99_pre,
+                )
 
             for post_epoch in POST_EPOCHS:
                 t_ep = time.perf_counter()

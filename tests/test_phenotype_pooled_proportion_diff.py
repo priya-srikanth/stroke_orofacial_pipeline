@@ -205,22 +205,21 @@ class TestRenderPhenotypePooledProportionDiffFigure:
 
     def test_custom_phenotype_order_changes_grid_height(self) -> None:
         """Passing phenotype_order=('mild','moderate','severe') (3-tier
-        Addendum #4 variant) yields a 3-row grid instead of 4."""
+        Addendum #4 variant) yields a 3-row grid instead of 4. Pre column
+        added Addendum #7 → ncols = 4 (Pre + 3 post)."""
         recs = _full_pooled_records()
         fig = render_phenotype_pooled_proportion_diff_figure(
             bodypart="tongue", side="L", pooled_records=recs,
             shared_vmax=0.01,
             phenotype_order=("mild", "moderate", "severe"),
         )
-        # 3 phenotypes x 3 epochs = 9 panel axes, plus 1 colorbar axis.
-        # PHENOTYPE_ORDER (4-tier) would give 12 panel axes.
-        # Drop the colorbar axis (always last on this layout).
+        # 3 phenotypes x 4 epochs (Pre + 3 post) = 12 panel axes, plus
+        # 1 colorbar axis. 4-tier layout would give 16 panel axes.
         panel_axes = [
             ax for ax in fig.axes if ax.get_position().width > 0.1
         ]
-        # 9 panel axes for 3-tier; > 9 means we kept the 4-tier layout.
-        assert len(panel_axes) <= 10, (
-            f"expected <=10 panel axes (9 + maybe 1 colorbar tail), "
+        assert len(panel_axes) <= 14, (
+            f"expected <=14 panel axes (12 + maybe colorbar tail), "
             f"got {len(panel_axes)}"
         )
         # The titles should NOT include "mod-severe" anywhere (per
@@ -363,7 +362,9 @@ def test_figure_subdir_q12_j_lock() -> None:
 
 
 def test_epoch_display_names_capitalization() -> None:
+    """Addendum #7 added 'pre' to the display names dict."""
     assert EPOCH_DISPLAY_NAMES == {
+        "pre": "Pre",
         "acute": "Acute",
         "sub_acute": "Subacute",
         "chronic": "Chronic",

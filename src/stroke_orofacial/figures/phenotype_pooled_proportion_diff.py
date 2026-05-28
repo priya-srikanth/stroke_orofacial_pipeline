@@ -50,6 +50,12 @@ from stroke_orofacial.stats.spatial_proportion_diff import (
     SIDES,
 )
 
+# Q-lock 12b Addendum #7: include ``"pre"`` as the first column (baseline
+# noise floor reference). Each Pre cell shows the per-animal mean of
+# per-pre-session D arrays against the animal's pre-pool, phenotype-
+# averaged the same way the post panels are.
+EPOCH_ORDER: tuple[str, ...] = ("pre",) + POST_EPOCHS
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,9 +68,11 @@ FIGURE_SUBTITLE_BY_BODYPART: dict[str, str] = {
     "jaw": "Source: v7-cleaned-trace cohort re-emit (Phase 7e + Phase 7e.4 + Phase 7f)",
 }
 
-# Display names for the post-epoch column headers (capitalized; "Subacute"
-# as one word per the q13b 2026-05-27 figure-review convention).
+# Display names for the epoch column headers (capitalized; "Subacute" as
+# one word per the q13b 2026-05-27 figure-review convention). "Pre"
+# added per Addendum #7.
 EPOCH_DISPLAY_NAMES: dict[str, str] = {
+    "pre": "Pre",
     "acute": "Acute",
     "sub_acute": "Subacute",
     "chronic": "Chronic",
@@ -205,7 +213,7 @@ def render_phenotype_pooled_proportion_diff_figure(
     center_mode = BODYPART_CENTER_MODES[bodypart]
 
     nrows = len(phenotype_order)
-    ncols = len(POST_EPOCHS)
+    ncols = len(EPOCH_ORDER)
     fig, axes_obj = plt.subplots(
         nrows=nrows, ncols=ncols,
         figsize=(ncols * 4.0, nrows * 3.6),
@@ -218,7 +226,7 @@ def render_phenotype_pooled_proportion_diff_figure(
 
     axes = np.asarray(axes_obj).reshape(nrows, ncols)
     for i, phenotype in enumerate(phenotype_order):
-        for j, post_epoch in enumerate(POST_EPOCHS):
+        for j, post_epoch in enumerate(EPOCH_ORDER):
             ax = axes[i, j]
             rec = pooled_records.get((phenotype, side, bodypart, post_epoch))
             if rec is None:
