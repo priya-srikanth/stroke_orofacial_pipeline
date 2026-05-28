@@ -462,12 +462,14 @@ def run_stats_and_figures(
         n_reject_lmm, n_finite_lmm, lmm_csv,
     )
 
-    # Q-lock 13.6 — Maris-Oostenveld cluster permutation.
+    # Q-lock 13.6 — Maris-Oostenveld cluster permutation. Uses
+    # cohort_with_delta so both raw and delta variants are tested.
     logger.info(
         "Stage 6.6: cluster permutation (5000 perms, t-threshold=2)...",
     )
     cluster_df = compute_trajectory_cluster_permutation_stats(
-        cohort_df, animals_map, n_permutations=5000, t_threshold=2.0,
+        cohort_with_delta, animals_map,
+        n_permutations=5000, t_threshold=2.0,
     )
     cluster_csv = out_dir / "trajectory_cluster_permutation_bh_fdr.csv"
     cluster_df.to_csv(cluster_csv, index=False)
@@ -479,11 +481,12 @@ def run_stats_and_figures(
     )
 
     # Q-lock 13.6 — animal-level bootstrap CI on pre trajectory.
+    # Also uses cohort_with_delta for both variant bands.
     logger.info(
         "Stage 6.6: bootstrap CI on pre trajectory (5000 resamples)...",
     )
     boot_df = compute_trajectory_bootstrap_pre_ci(
-        cohort_df, animals_map, n_bootstrap=5000, ci=0.95,
+        cohort_with_delta, animals_map, n_bootstrap=5000, ci=0.95,
     )
     boot_csv = out_dir / "trajectory_pre_bootstrap_ci.csv"
     boot_df.to_csv(boot_csv, index=False)
