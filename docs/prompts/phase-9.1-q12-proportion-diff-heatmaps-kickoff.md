@@ -1,6 +1,6 @@
 # Phase 9.1 Q-lock 12 — Phenotype-Pooled Proportion-Diff Heatmaps Kickoff
 
-**Status:** LOCKED v1 + Addendum #1-6 (2026-05-27 → 2026-05-28).
+**Status:** LOCKED v1 + Addendum #1-7 (2026-05-27 → 2026-05-28).
 **Branch:** `phase/9.1-q12-proportion-diff-heatmaps`
 **Merge tag (on close):** `v9.1-q12-proportion-diff-heatmaps`
 **Depends on:**
@@ -363,4 +363,42 @@ Default thresholds in `configs/defaults.yaml` ship as pass-through (all `null`) 
 ### Stage 5d (Q-lock 12a) — re-emit
 
 Same 8-animal cohort, full re-emit of W-2 figures for both phenotype variants. Heatmaps unchanged from the Q-lock 12 main-phase emit at 2026-05-28 04:37 / 08:56.
+
+
+---
+
+## Addendum #7 — Heatmap Pre column (baseline noise floor) (2026-05-28)
+
+**ALL OTHER LOCKS UNCHANGED.** Heatmap layout extended to include a Pre column alongside the 3 post-epoch columns; Pre cell shows the per-animal Pre-self proportion-diff phenotype-pooled the same way the post cells are. Implemented on follow-up branch `phase/9.1-q12b-heatmap-pre-panel`.
+
+### Q12-G revised — layout 4×4 (or 3×4 for 3-tier)
+
+- Rows: phenotypes (mild / moderate / mod-severe / severe in 4-tier; mild / moderate / severe in 3-tier).
+- Columns: epochs in `EPOCH_ORDER = ("pre",) + POST_EPOCHS` = Pre / Acute / Subacute / Chronic.
+- Pre column displays the per-animal Pre-self proportion-diff (Q12-O) phenotype-averaged, giving readers a direct visual baseline-noise reference at the same per-animal granularity as the post panels.
+
+### Q12-O (NEW): Pre-self proportion-diff
+
+`compute_per_animal_pre_self_diff(animal, bp, side, pre_pool, resolver, pre_dates)`:
+
+- For each pre session: compute `D_i = P(session_i) − P(pre_pool)` (the existing `compute_proportion_diff_within` math).
+- Average D arrays across the animal's pre sessions: `D̄_pre_self = nanmean_i(D_i)`.
+- Per Q-lock 12a Addendum #6 "naive" lock (inherited): each pre session is INCLUDED in its own reference pool. Bias toward 0 is proportional to `1/n_pre_sessions` and consistent across animals, making the resulting D̄ a calibrated "no-shift" reference at the same per-animal averaging depth as the post-epoch panels. Leave-one-out alternative deferred.
+- Phenotype-pooled via the existing Stage 2 `aggregate_phenotype_pooled_spatial_diff` (no special-case; emits a record with `post_epoch="pre"`).
+
+### Cohort-wide `shared_vmax` calibration
+
+Empirical PS46 pilot: per-animal Pre-self `|D|.p99` ranges from ~1e-5 (tongue/jaw L) to ~1e-19 (sparse-coverage R) — three to fifteen orders of magnitude smaller than post-epoch `|D|.p99` (~1e-3). The Pre column will visually render as essentially uniform mid-gray (the "no change" cmap midpoint per Q12-D Addendum #1) — exactly the intended noise-floor signal. `shared_vmax = p99(|D̄|)` across ALL panels (including Pre) stays dominated by the post values; no recalibration needed.
+
+### Implementation
+
+New function: `stroke_orofacial.stats.spatial_proportion_diff.compute_per_animal_pre_self_diff`.
+
+Renderer: `EPOCH_ORDER` constant in `figures/phenotype_pooled_proportion_diff.py`; the renderer iterates `EPOCH_ORDER` (4 cols) instead of `POST_EPOCHS` (3 cols). `EPOCH_DISPLAY_NAMES["pre"] = "Pre"` added.
+
+Emit driver: after the per-(animal, side, bp) pre-pool computation, compute pre-self-diff and add it to the per-animal records list with `post_epoch="pre"`. The audit CSV gains a row per (animal, side, bp) with `epoch="pre_self_diff"`.
+
+### Stage 5e — cohort re-emit
+
+Same 8-animal cohort, full re-emit of heatmaps (now with Pre column) for both phenotype variants. W-2 boxplots from Q12a unchanged.
 

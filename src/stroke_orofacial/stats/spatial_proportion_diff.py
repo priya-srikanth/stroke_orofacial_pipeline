@@ -337,12 +337,98 @@ def compute_per_animal_per_epoch_diff(
     }
 
 
+def compute_per_animal_pre_self_diff(
+    animal: str,
+    bodypart: str,
+    side: str,
+    pre_pool: dict[str, Any],
+    resolver: PathResolver,
+    *,
+    pre_dates: list[dt.date],
+    defaults: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    use_v7_cleaned: bool = True,
+) -> dict[str, Any] | None:
+    """Compute per-animal Pre-self proportion-diff (Q12-O Addendum #7).
+
+    For each pre-stroke session, compute the single-session D against the
+    animal's pre-pool: ``D_i = P(session_i) − P(pre_pool)``. Average D
+    arrays across the animal's pre sessions (NaN-aware ``np.nanmean``
+    along the session axis).
+
+    Per Q-lock 12a Addendum #6 v1 "naive" lock (inherited): each pre
+    session is INCLUDED in its own reference pool. The bias toward 0 is
+    proportional to ``1/n_pre_sessions`` and is consistent across animals,
+    making the resulting D̄ a calibrated "no-shift" reference at the
+    same per-animal averaging depth as the post-epoch panels.
+
+    Returns ``None`` when no pre session contributes a histogram
+    (missing parquets etc.).
+
+    Returns
+    -------
+    dict or None
+        ``{"D", "extent", "n_pre_sessions_contributing",
+        "n_pre_trials", "n_total_pre_frames"}``.
+    """
+    if defaults is None:
+        defaults = load_defaults()
+    if animal_info is None:
+        animal_info = get_animal(animal)
+    if not pre_dates:
+        return None
+
+    center_mode = BODYPART_CENTER_MODES[bodypart]
+    H_pre_pool = pre_pool["H_pre_counts"]
+    n_total_pre = int(pre_pool["n_total_pre_frames"])
+
+    D_stack: list[np.ndarray] = []
+    n_sess_contributed = 0
+    for d in pre_dates:
+        H_sess, ext_sess, _n_sess, _n_tones, n_total_sess = (
+            compute_animal_aggregated_histogram(
+                animal, [d], bodypart, center_mode, resolver,
+                trial_group=side, window_ms=TASK5_TONE_WINDOW_MS,
+                defaults=defaults, animal_info=animal_info,
+                use_v7_cleaned=use_v7_cleaned,
+            )
+        )
+        if H_sess is None or n_total_sess == 0:
+            continue
+        D_i = compute_proportion_diff_within(
+            H_pre_pool, n_total_pre, H_sess, int(n_total_sess),
+        )
+        D_stack.append(D_i)
+        n_sess_contributed += 1
+
+    if not D_stack:
+        return None
+
+    stack = np.stack(D_stack, axis=0)
+    import warnings as _warnings
+    with _warnings.catch_warnings():
+        _warnings.filterwarnings(
+            "ignore", message="Mean of empty slice", category=RuntimeWarning,
+        )
+        D_mean = np.nanmean(stack, axis=0)
+
+    extent = pre_pool["extent"]
+    return {
+        "D": D_mean,
+        "extent": extent,
+        "n_pre_sessions_contributing": int(n_sess_contributed),
+        "n_pre_trials": int(pre_pool["n_pre_trials"]),
+        "n_total_pre_frames": int(n_total_pre),
+    }
+
+
 __all__ = [
     "BODYPART_CENTER_MODES",
     "POST_EPOCHS",
     "SIDES",
     "compute_per_animal_per_epoch_diff",
     "compute_per_animal_pre_pool",
+    "compute_per_animal_pre_self_diff",
     "compute_proportion_diff_within",
     "split_post_dates_by_epoch",
 ]
