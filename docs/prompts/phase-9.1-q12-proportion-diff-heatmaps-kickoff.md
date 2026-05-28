@@ -1,6 +1,6 @@
 # Phase 9.1 Q-lock 12 — Phenotype-Pooled Proportion-Diff Heatmaps Kickoff
 
-**Status:** LOCKED v1 (2026-05-27).
+**Status:** LOCKED v1 + Addendum #1 (2026-05-27).
 **Branch:** `phase/9.1-q12-proportion-diff-heatmaps`
 **Merge tag (on close):** `v9.1-q12-proportion-diff-heatmaps`
 **Depends on:**
@@ -129,3 +129,49 @@ proportion_diff(phenotype, side, bodypart, post_epoch, bin) =
 - **Phase 7f** — v3.4-cleaned jaw substrate.
 - **F-P-1** — phenotype map (mild/moderate/mod-severe/severe).
 - **Memory: `[[feedback-diverging-cmap-no-data-vs-no-change-distinction]]`** — Q12-E + Q12-K rationale.
+
+---
+
+## Addendum #1 — Stage 0 findings + locks revised (2026-05-27)
+
+**ALL OTHER LOCKS UNCHANGED.** Three locks revised per CC's Stage 0 prereq verification report.
+
+### Q12-C — REVISED: new module, NOT existing stub
+
+Original Q12-C said "reuse the existing spatial-pipeline bins from `figures/phenotype_pooled_spatial.py` stub." That stub is actually wired for Phase 9.1 Task 3 (Wasserstein/UOT/JS recovery curves), NOT for proportion-diff heatmaps. Leave that stub reserved for Task 3.
+
+**Revised lock:**
+- New module: `src/stroke_orofacial/figures/phenotype_pooled_proportion_diff.py`.
+- Reuse primitives from `src/stroke_orofacial/dlc_spatial/pixel_bins.py` (`build_histogram`, `build_stats_grid`, `build_baseline_histogram`) and `src/stroke_orofacial/dlc_spatial/render_on_demand.py` (`_compute_proportion_diff`, `_compute_proportion_diff_for_bin`, `_render_proportion_diff_panel`).
+- Reuse the existing canonical spatial bin grid (100-bin fine grid + 25 px coarse grid) from `pixel_bins.py`. No new bin convention.
+
+### Q12-D — REVISED: legacy cmap convention + data-driven shared_vmax
+
+Original Q12-D said "RdBu diverging cmap, fixed range ±0.1." Two problems surfaced in Stage 0:
+
+1. Legacy Phase 7c.2 proportion_diff render code uses a custom cmap (`_PROPORTION_DIFF_CMAP` in `render_on_demand.py`) — blue → `#d0d0d0` light-grey midpoint → red. Per Phase 7c.2 Addenda #20/#22/#25 rationale: the light-grey midpoint visually distinguishes no-change real signal from white no-data cells.
+2. Empirical probe on PS46 + PS47 cohort data: `|proportion_diff|` p99 ranges 0.00053–0.00595 across all (animal × bodypart × epoch) samples; max = 0.01457 (PS46 jaw acute outlier). Phenotype-pooling will dampen further. ±0.1 fixed range would render figures uniformly light-grey.
+
+**Revised lock:**
+- Cmap: custom `_PROPORTION_DIFF_CMAP` from `render_on_demand.py` (legacy convention). NOT `RdBu`.
+- Range: **data-driven cohort-wide `shared_vmax`** = `np.percentile(|all_rendered_phenotype_diff_values|, 99)`, computed ONCE across all 4 figures × 4×3 panels. Applied as `TwoSlopeNorm(vcenter=0, vmin=-shared_vmax, vmax=+shared_vmax)` to every panel.
+- Print the resulting `shared_vmax` value in each figure's footer for audit clarity: `Source: v7-cleaned-trace cohort re-emit (Phase 7e + Phase 7e.4); shared_vmax = ±{value}`.
+
+### Q12-E — REVISED: white no-data mask (legacy)
+
+Original Q12-E said "mask only `(H_pre==0)&(H_post==0)` cells, mask color grey." Legacy uses `set_bad("white")` with white panel facecolor — the SAME goal (no-data vs. no-change distinction) achieved more elegantly via the legacy custom-cmap light-grey midpoint.
+
+**Revised lock:**
+- No-data condition: still `(H_pre==0) & (H_post==0)` (source-data mask, NO magnitude floor).
+- Mask color: `set_bad("white")` + white panel facecolor (legacy convention).
+- The blue→light-grey→red cmap's midpoint handles near-zero real signal; white reserved for true no-data.
+
+### Q12-K — UNCHANGED (no magnitude floor; Q12-E source-data mask only)
+
+### Stage 0 verification — DISCHARGED for color-range concern
+
+The Q12-D color-range conditional verification asked in Stage 0 is discharged via this Addendum: ±0.1 is rejected; data-driven shared_vmax is the new lock.
+
+---
+
+**Q-lock 12 LOCKED at v1 + Addendum #1.** Stage 1 unblocked.
