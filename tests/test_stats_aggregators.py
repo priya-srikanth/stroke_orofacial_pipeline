@@ -32,6 +32,7 @@ from stroke_orofacial.stats.aggregators import (
     attach_phenotype_and_epoch,
     compute_per_animal_phase_bin_baseline,
     compute_per_animal_trajectory_scalar,
+    densify_phase_rows_via_interp,
     enumerate_session_dates,
     load_cohort_phase_aligned_endpoints_long,
     load_session_phase_aligned_endpoints_long,
@@ -1354,3 +1355,202 @@ class TestComputePerAnimalTrajectoryScalar:
         })
         with pytest.raises(ValueError, match="missing column"):
             compute_per_animal_trajectory_scalar(bad)
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13.2 — per-trial linear-interp densification
+# ---------------------------------------------------------------------------
+
+
+def _densify_input(rows: list[dict]) -> pd.DataFrame:
+    """Build a substrate-shaped DataFrame for densify tests.
+
+    Rows are frame-grained: each dict carries ``animal, date,
+    trial_index, side, phase, epoch_label, angle_deg, x_centered``.
+    """
+    canonical = []
+    for r in rows:
+        canonical.append({
+            "animal": r["animal"],
+            "date": r.get("date", datetime.date(2025, 3, 7)),
+            "trial_index": int(r.get("trial_index", 0)),
+            "side": r.get("side", "L"),
+            "phase": float(r["phase"]),
+            "epoch_label": r.get("epoch_label", "pre"),
+            "angle_deg": float(r.get("angle_deg", 0.0)),
+            "x_centered": float(r.get("x_centered", 0.0)),
+        })
+    return pd.DataFrame(canonical)
+
+
+class TestDensifyPhaseRowsViaInterp:
+    def test_returns_n_bins_rows_per_trial(self):
+        # Two frames per trial → after densify, 8 bins per trial.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "phase": 0.1,
+             "angle_deg": 1.0, "x_centered": 0.5},
+            {"animal": "PS46", "trial_index": 0, "phase": 0.9,
+             "angle_deg": 9.0, "x_centered": 4.5},
+        ]
+        out = densify_phase_rows_via_interp(
+            _densify_input(rows), n_phase_bins=8,
+        )
+        # Expect 8 rows (one per bin) for the one trial.
+        assert len(out) == 8
+        assert set(out.columns) >= {
+            "animal", "date", "trial_index", "side",
+            "phase_bin", "phase_bin_center", "angle_deg", "x_centered",
+            "epoch_label",
+        }
+        # phase_bin is 0..7.
+        assert sorted(out["phase_bin"].tolist()) == list(range(8))
+
+    def test_linear_interp_correctness(self):
+        # 3 frames at phases [0.2, 0.5, 0.8] with angle [10, 25, 40].
+        # Linear interp at bin centers should give predictable values.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "phase": 0.2,
+             "angle_deg": 10.0},
+            {"animal": "PS46", "trial_index": 0, "phase": 0.5,
+             "angle_deg": 25.0},
+            {"animal": "PS46", "trial_index": 0, "phase": 0.8,
+             "angle_deg": 40.0},
+        ]
+        out = densify_phase_rows_via_interp(
+            _densify_input(rows), signals=("angle_deg",), n_phase_bins=10,
+        )
+        # bin centers at 0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75,
+        # 0.85, 0.95.
+        # interp:
+        #   0.05 → NaN (below trial range 0.2-0.8)
+        #   0.15 → NaN (below 0.2)
+        #   0.25 → at phase 0.25, slope=(25-10)/(0.5-0.2)=50 → 10+50*0.05=12.5
+        #   0.35 → 10 + 50*0.15 = 17.5
+        #   0.45 → 10 + 50*0.25 = 22.5
+        #   0.55 → slope=(40-25)/(0.8-0.5)=50 → 25 + 50*0.05 = 27.5
+        #   0.65 → 25 + 50*0.15 = 32.5
+        #   0.75 → 25 + 50*0.25 = 37.5
+        #   0.85 → NaN (above 0.8)
+        #   0.95 → NaN
+        out_sorted = out.sort_values("phase_bin").reset_index(drop=True)
+        expected_angle = [
+            np.nan, np.nan, 12.5, 17.5, 22.5,
+            27.5, 32.5, 37.5, np.nan, np.nan,
+        ]
+        for i, exp in enumerate(expected_angle):
+            actual = out_sorted.iloc[i]["angle_deg"]
+            if np.isnan(exp):
+                assert np.isnan(actual), f"bin {i}: expected NaN got {actual}"
+            else:
+                assert actual == pytest.approx(exp), (
+                    f"bin {i}: expected {exp} got {actual}"
+                )
+
+    def test_out_of_range_bins_nan(self):
+        # Trial covers phases [0.3, 0.7]. Bins outside this should NaN.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "phase": 0.3,
+             "angle_deg": 1.0},
+            {"animal": "PS46", "trial_index": 0, "phase": 0.7,
+             "angle_deg": 5.0},
+        ]
+        out = densify_phase_rows_via_interp(
+            _densify_input(rows), signals=("angle_deg",), n_phase_bins=10,
+        )
+        # bin 0 center = 0.05 < 0.3 → NaN.
+        # bin 9 center = 0.95 > 0.7 → NaN.
+        # bin in middle (e.g. bin 4 center = 0.45) → finite.
+        out_sorted = out.sort_values("phase_bin").reset_index(drop=True)
+        assert np.isnan(out_sorted.iloc[0]["angle_deg"])
+        assert np.isnan(out_sorted.iloc[9]["angle_deg"])
+        assert np.isfinite(out_sorted.iloc[4]["angle_deg"])
+
+    def test_multiple_trials_independent_interp(self):
+        # Two trials → 2 × n_bins rows. Different value ranges.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "phase": 0.2,
+             "angle_deg": 1.0},
+            {"animal": "PS46", "trial_index": 0, "phase": 0.8,
+             "angle_deg": 3.0},
+            {"animal": "PS46", "trial_index": 1, "phase": 0.2,
+             "angle_deg": 10.0},
+            {"animal": "PS46", "trial_index": 1, "phase": 0.8,
+             "angle_deg": 30.0},
+        ]
+        out = densify_phase_rows_via_interp(
+            _densify_input(rows), signals=("angle_deg",), n_phase_bins=8,
+        )
+        # 2 trials × 8 bins = 16 rows.
+        assert len(out) == 16
+        # Each trial independently interpolated.
+        trial_0 = out[out["trial_index"] == 0].sort_values("phase_bin")
+        trial_1 = out[out["trial_index"] == 1].sort_values("phase_bin")
+        # trial 0 at phase 0.5 ≈ midway → angle ≈ 2.0.
+        # bin center closest to 0.5: bin 3 center = (3+0.5)/8 = 0.4375
+        # interp at 0.4375 with slope=(3-1)/(0.8-0.2)=3.33 → 1 + 3.33*(0.4375-0.2) = 1.79
+        # trial 1 at 0.4375 with slope=(30-10)/(0.8-0.2)=33.3 → 10 + 33.3*0.2375 = 17.9
+        t0_b3 = trial_0.iloc[3]["angle_deg"]
+        t1_b3 = trial_1.iloc[3]["angle_deg"]
+        assert t0_b3 < t1_b3  # different per-trial scales preserved
+        assert t0_b3 == pytest.approx(1.0 + (3.0 - 1.0) * (0.4375 - 0.2) / (0.8 - 0.2))
+        assert t1_b3 == pytest.approx(10.0 + (30.0 - 10.0) * (0.4375 - 0.2) / (0.8 - 0.2))
+
+    def test_metadata_carried_through(self):
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "phase": 0.3,
+             "epoch_label": "acute", "angle_deg": 5.0},
+            {"animal": "PS46", "trial_index": 0, "phase": 0.7,
+             "epoch_label": "acute", "angle_deg": 8.0},
+        ]
+        df = _densify_input(rows)
+        df["recovery_phenotype"] = "moderate"
+        df["rel_day"] = 4
+        out = densify_phase_rows_via_interp(
+            df, signals=("angle_deg",), n_phase_bins=8,
+        )
+        # All output rows carry epoch_label, phenotype, rel_day from
+        # the trial's metadata.
+        assert (out["epoch_label"] == "acute").all()
+        assert (out["recovery_phenotype"] == "moderate").all()
+        assert (out["rel_day"] == 4).all()
+
+    def test_trial_with_lt2_finite_frames_yields_nan(self):
+        # Trial with only one finite frame can't interp → all NaN.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "phase": 0.5,
+             "angle_deg": 1.0, "x_centered": float("nan")},
+        ]
+        out = densify_phase_rows_via_interp(
+            _densify_input(rows), n_phase_bins=8,
+        )
+        # angle_deg has only one finite value → can't interp → all NaN.
+        assert out["angle_deg"].isna().all()
+        # x_centered has zero finite → all NaN.
+        assert out["x_centered"].isna().all()
+
+    def test_empty_input_returns_empty_with_canonical_columns(self):
+        empty = pd.DataFrame({
+            c: pd.Series(dtype=(
+                "datetime64[ns]" if c == "date"
+                else "int64" if c in {"trial_index"}
+                else "float64" if c in {"phase", "angle_deg", "x_centered"}
+                else "object"
+            ))
+            for c in ("animal", "date", "trial_index", "side", "phase",
+                      "epoch_label", "angle_deg", "x_centered")
+        })
+        out = densify_phase_rows_via_interp(empty, n_phase_bins=8)
+        assert out.empty
+        for c in ("animal", "date", "trial_index", "side", "phase_bin",
+                  "phase_bin_center", "angle_deg", "x_centered",
+                  "epoch_label"):
+            assert c in out.columns
+
+    def test_missing_required_column_raises(self):
+        bad = pd.DataFrame({
+            "animal": ["PS46"], "trial_index": [0],
+            "phase": [0.5], "angle_deg": [1.0], "x_centered": [1.0],
+            # date, side, epoch_label missing
+        })
+        with pytest.raises(ValueError, match="missing column"):
+            densify_phase_rows_via_interp(bad)

@@ -505,6 +505,171 @@ def apply_baseline_delta(
 
 
 # ---------------------------------------------------------------------------
+# Q-lock 13.2 — per-trial linear-interp densification (jaggedness fix)
+# ---------------------------------------------------------------------------
+
+
+def densify_phase_rows_via_interp(
+    phase_rows_long: pd.DataFrame,
+    *,
+    signals: Iterable[str] = TRAJECTORY_SIGNALS,
+    n_phase_bins: int = 72,
+) -> pd.DataFrame:
+    """Per-trial linear interpolation onto bin centers.
+
+    Q-lock 13.2 (2026-05-28). Converts the substrate's frame-grained
+    rows (one row per (trial, frame); ~25-50 sparse bins covered per
+    trial under synthetic_only ILI mode) into trial × bin-grained rows
+    (one row per (trial, bin) with linearly-interpolated signal value).
+
+    Removes the cross-animal-pool bin-by-bin jaggedness caused by
+    per-animal ILI mismatch under the frame-grained substrate: each
+    animal's fixed-ILI trial hits a deterministic phase-bin lattice,
+    so different animals' trials interleave bin coverage, and the
+    cross-trial pool's per-bin trial count alternates animal-by-animal.
+    Densification gives every trial a value at every bin within its
+    phase range, removing the lattice mismatch.
+
+    Per-trial interp recipe (using :func:`numpy.interp`):
+
+    - Sort the trial's substrate rows by ``phase``.
+    - Linear-interp the trial's ``(phase, signal_value)`` curve at
+      each bin center.
+    - Bins outside the trial's phase range get ``NaN`` (no
+      extrapolation: ``left=NaN`` + ``right=NaN``).
+
+    Carries per-trial metadata (``epoch_label``, ``recovery_phenotype``,
+    ``rel_day``) through. Stage 1 baseline + Stage 2 aggregator + Stage
+    6.1 scalar all consume the densified output unchanged — same
+    column schema as the substrate, just trial × bin-grained instead
+    of trial × frame-grained.
+
+    Parameters
+    ----------
+    phase_rows_long : pd.DataFrame
+        Output of the cohort substrate walk + ``attach_metadata``.
+        Required columns: ``animal``, ``date``, ``trial_index``,
+        ``side``, ``phase``, ``epoch_label``, plus one column per
+        ``signals`` entry (default ``angle_deg`` + ``x_centered``).
+        ``recovery_phenotype`` and ``rel_day`` carried through if
+        present.
+    signals : Iterable[str], default ``TRAJECTORY_SIGNALS``
+        Signal columns to interpolate.
+    n_phase_bins : int, default 72
+        Number of evenly-spaced bin centers across ``phase ∈ [0, 1]``.
+        Matches the substrate's
+        ``bundle.metadata["n_phase_bins"]`` default.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: ``animal``, ``date``, ``trial_index``, ``side``,
+        ``phase_bin`` (int), ``phase_bin_center`` (float), one column
+        per signal (interpolated value), plus the carried metadata.
+        Empty DataFrame with canonical columns when input is empty.
+    """
+    signals = tuple(signals)
+    n_bins = int(n_phase_bins)
+    if n_bins < 2:
+        raise ValueError(f"n_phase_bins must be >= 2; got {n_bins!r}.")
+
+    trial_keys = ["animal", "date", "trial_index", "side"]
+    required = set(trial_keys) | {"phase", "epoch_label"} | set(signals)
+    missing = required - set(phase_rows_long.columns)
+    if missing:
+        raise ValueError(
+            f"phase_rows_long missing column(s) {sorted(missing)}; "
+            f"got columns {list(phase_rows_long.columns)}.",
+        )
+
+    carry_cols = [
+        c for c in ("epoch_label", "recovery_phenotype", "rel_day", "date")
+        if c in phase_rows_long.columns
+    ]
+    # Don't double-carry trial_keys (date is in trial_keys; remove it
+    # from carry_cols).
+    carry_cols = [c for c in carry_cols if c not in trial_keys]
+
+    out_cols = (
+        trial_keys
+        + ["phase_bin", "phase_bin_center"]
+        + list(signals)
+        + carry_cols
+    )
+
+    if phase_rows_long.empty:
+        return pd.DataFrame(
+            {c: pd.Series(dtype=(
+                "float64" if c in {"phase_bin_center"} | set(signals)
+                else "int64" if c in {"trial_index", "phase_bin"}
+                else "object"
+            )) for c in out_cols}
+        )
+
+    bin_centers = np.linspace(
+        0.5 / n_bins, 1.0 - 0.5 / n_bins, n_bins,
+    )
+
+    grouped = phase_rows_long.groupby(trial_keys, sort=False)
+    chunks: list[pd.DataFrame] = []
+    for trial_key, trial_df in grouped:
+        if len(trial_df) == 0:
+            continue
+        phases = trial_df["phase"].to_numpy(dtype=np.float64)
+        sort_idx = np.argsort(phases)
+        phases_sorted = phases[sort_idx]
+
+        # Per-trial metadata (same value across trial rows; take first).
+        carry_vals = {col: trial_df[col].iloc[0] for col in carry_cols}
+
+        chunk: dict[str, np.ndarray | list] = {}
+        # trial_keys broadcast across n_bins rows.
+        for ki, kname in enumerate(trial_keys):
+            chunk[kname] = [trial_key[ki]] * n_bins
+        chunk["phase_bin"] = np.arange(n_bins, dtype=np.int64)
+        chunk["phase_bin_center"] = bin_centers.copy()
+
+        for s in signals:
+            vals_sorted = trial_df[s].to_numpy(
+                dtype=np.float64,
+            )[sort_idx]
+            finite_mask = np.isfinite(vals_sorted)
+            if finite_mask.sum() < 2:
+                chunk[s] = np.full(n_bins, np.nan)
+                continue
+            ph_f = phases_sorted[finite_mask]
+            v_f = vals_sorted[finite_mask]
+            ph_min = float(ph_f[0])
+            ph_max = float(ph_f[-1])
+            interp_vals = np.interp(
+                bin_centers, ph_f, v_f,
+                left=np.nan, right=np.nan,
+            )
+            # np.interp's left/right kwargs apply when bin_center is
+            # strictly outside [ph_f[0], ph_f[-1]]; tighten the mask
+            # so equality edges still NaN-out cleanly.
+            out_of_range = (bin_centers < ph_min) | (bin_centers > ph_max)
+            interp_vals[out_of_range] = np.nan
+            chunk[s] = interp_vals
+
+        for col, val in carry_vals.items():
+            chunk[col] = [val] * n_bins
+
+        chunks.append(pd.DataFrame(chunk))
+
+    if not chunks:
+        return pd.DataFrame(
+            {c: pd.Series(dtype=(
+                "float64" if c in {"phase_bin_center"} | set(signals)
+                else "int64" if c in {"trial_index", "phase_bin"}
+                else "object"
+            )) for c in out_cols}
+        )
+    out = pd.concat(chunks, ignore_index=True)
+    return out[out_cols]
+
+
+# ---------------------------------------------------------------------------
 # Q-lock 13 — per-phase-bin trajectory baseline (Stage 1)
 # ---------------------------------------------------------------------------
 

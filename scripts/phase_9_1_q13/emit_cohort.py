@@ -67,6 +67,7 @@ from stroke_orofacial.stats.aggregators import (  # noqa: E402
     apply_phase_bin_baseline_delta,
     compute_per_animal_phase_bin_baseline,
     compute_per_animal_trajectory_scalar,
+    densify_phase_rows_via_interp,
     enumerate_session_dates,
 )
 from stroke_orofacial.stats.recovery_epochs import assign_epoch_label  # noqa: E402
@@ -259,6 +260,20 @@ def run_stats_and_figures(
     if cohort_df.empty:
         logger.error("walk_cohort returned 0 rows; skipping stats + figures")
         return {"status": "no_rows"}
+
+    # Q-lock 13.2: per-trial linear interp at bin centers. Removes
+    # cross-animal-pool jaggedness caused by per-animal ILI mismatch
+    # under the frame-grained substrate.
+    logger.info(
+        "Stage 0.5: densify phase rows via per-trial linear interp "
+        "(removes ILI-lattice jaggedness)...",
+    )
+    n_rows_before = len(cohort_df)
+    cohort_df = densify_phase_rows_via_interp(cohort_df)
+    logger.info(
+        "  densified rows: %d (was %d frame-grained)",
+        len(cohort_df), n_rows_before,
+    )
 
     logger.info("Stage 1: per-animal phase-bin baseline (epoch_label=pre)...")
     baseline = compute_per_animal_phase_bin_baseline(cohort_df)
