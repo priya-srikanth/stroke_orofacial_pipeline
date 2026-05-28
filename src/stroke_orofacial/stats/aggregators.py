@@ -980,9 +980,10 @@ def aggregate_phenotype_pooled_phase_bin_mean_sem(
        contribution from the same trial in the same phase_bin to one
        value.
     2. Cross-trial pool within (recovery_phenotype, epoch_label,
-       [side], phase_bin, signal, variant) → mean, SEM
-       (``std(ddof=1) / sqrt(n)``), n_trials, n_sessions, n_animals.
-       n=1 cells get ``sem = NaN``. NaN-aware throughout.
+       [side], phase_bin, signal, variant) → mean, SD
+       (``std(ddof=1)``), SEM (``SD / sqrt(n)``), n_trials,
+       n_sessions, n_animals. n=1 cells get ``sd = sem = NaN``.
+       NaN-aware throughout.
 
     Parameters
     ----------
@@ -1006,9 +1007,9 @@ def aggregate_phenotype_pooled_phase_bin_mean_sem(
     pd.DataFrame
         Columns: ``recovery_phenotype``, ``epoch_label``, [``side``],
         ``phase_bin``, ``phase_bin_center`` (if present in input),
-        ``signal``, ``variant``, ``mean``, ``sem``, ``n_trials``,
-        ``n_sessions``, ``n_animals``. Empty with canonical columns
-        when input is empty.
+        ``signal``, ``variant``, ``mean``, ``sem``, ``sd``,
+        ``n_trials``, ``n_sessions``, ``n_animals``. Empty with
+        canonical columns when input is empty.
     """
     signals = tuple(signals)
     variants = tuple(variants)
@@ -1027,7 +1028,7 @@ def aggregate_phenotype_pooled_phase_bin_mean_sem(
     if has_center:
         out_cols.append("phase_bin_center")
     out_cols.extend(
-        ["signal", "variant", "mean", "sem", "n_trials",
+        ["signal", "variant", "mean", "sem", "sd", "n_trials",
          "n_sessions", "n_animals"],
     )
 
@@ -1107,8 +1108,10 @@ def aggregate_phenotype_pooled_phase_bin_mean_sem(
                     continue
                 mean_v = float(np.mean(vals))
                 if n_trials >= 2:
-                    sem_v = float(np.std(vals, ddof=1) / np.sqrt(n_trials))
+                    sd_v = float(np.std(vals, ddof=1))
+                    sem_v = float(sd_v / np.sqrt(n_trials))
                 else:
+                    sd_v = float("nan")
                     sem_v = float("nan")
                 # Distinct sessions / animals contributing to this cell.
                 session_keys = ["animal", "date"]
@@ -1122,6 +1125,7 @@ def aggregate_phenotype_pooled_phase_bin_mean_sem(
                 rec["variant"] = variant
                 rec["mean"] = mean_v
                 rec["sem"] = sem_v
+                rec["sd"] = sd_v
                 rec["n_trials"] = n_trials
                 rec["n_sessions"] = n_sessions
                 rec["n_animals"] = n_animals

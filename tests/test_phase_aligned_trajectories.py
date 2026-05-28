@@ -80,6 +80,7 @@ def _pooled_df(
                                 "side": side,
                                 "phase_bin": bin_idx,
                                 "phase_bin_center": center,
+                                "sd": 0.3,  # Q-lock 13.4 SD column
                                 "signal": signal,
                                 "variant": variant,
                                 "mean": float(mean),
@@ -282,6 +283,76 @@ class TestBuildPhaseAlignedTrajectoryFigure:
             build_phase_aligned_trajectory_figure(
                 df, signal="angle_deg", variant="raw", side="L",
                 phase_display_window=(0.8, 0.2),
+            )
+
+    def _band_thickness_at_first_x(self, ax) -> float:
+        """Measure the SD/SEM band thickness at the leftmost x of a panel.
+
+        Reads the fill_between's PolyCollection and returns the y extent
+        between upper and lower band edges at the smallest-x vertex.
+        Robust to the sin-shaped mean trajectory in the fixture.
+        """
+        from matplotlib.collections import PolyCollection
+        polys = [c for c in ax.collections if isinstance(c, PolyCollection)]
+        assert polys, "no fill_between band on populated panel"
+        verts = polys[0].get_paths()[0].vertices
+        x_vals = verts[:, 0]
+        # leftmost x — there should be two vertices at this x (upper +
+        # lower band edge).
+        leftmost = float(np.min(x_vals))
+        on_left = np.isclose(x_vals, leftmost)
+        y_on_left = verts[on_left, 1]
+        return float(np.max(y_on_left) - np.min(y_on_left))
+
+    def test_error_band_default_uses_sd(self):
+        df = _pooled_df()
+        df["sem"] = 0.05
+        df["sd"] = 0.4
+        fig, axes = build_phase_aligned_trajectory_figure(
+            df, signal="angle_deg", variant="raw", side="L",
+        )
+        # Default error_band_type = "sd" → ±0.4 band thickness = 0.8.
+        thickness = self._band_thickness_at_first_x(axes[0, 1])
+        assert thickness == pytest.approx(0.8, abs=0.05)
+        plt.close(fig)
+
+    def test_error_band_sem_kwarg_uses_sem(self):
+        df = _pooled_df()
+        df["sem"] = 0.05
+        df["sd"] = 0.4
+        fig, axes = build_phase_aligned_trajectory_figure(
+            df, signal="angle_deg", variant="raw", side="L",
+            error_band_type="sem",
+        )
+        # error_band_type="sem" → ±0.05 band thickness = 0.1.
+        thickness = self._band_thickness_at_first_x(axes[0, 1])
+        assert thickness == pytest.approx(0.1, abs=0.02)
+        plt.close(fig)
+
+    def test_error_band_invalid_raises(self):
+        df = _pooled_df()
+        with pytest.raises(ValueError, match="error_band_type"):
+            build_phase_aligned_trajectory_figure(
+                df, signal="angle_deg", variant="raw", side="L",
+                error_band_type="ci95",
+            )
+
+    def test_3tier_phenotype_order_yields_3_row_grid(self):
+        # Synthesize a pooled_df that has the 3-tier phenotype set.
+        df = _pooled_df(phenotypes=("mild", "moderate", "severe"))
+        fig, axes = build_phase_aligned_trajectory_figure(
+            df, signal="angle_deg", variant="raw", side="L",
+            phenotype_order=("mild", "moderate", "severe"),
+        )
+        assert axes.shape == (3, 4)
+        plt.close(fig)
+
+    def test_phenotype_order_empty_raises(self):
+        df = _pooled_df()
+        with pytest.raises(ValueError, match="phenotype_order"):
+            build_phase_aligned_trajectory_figure(
+                df, signal="angle_deg", variant="raw", side="L",
+                phenotype_order=(),
             )
 
     def test_raw_variant_carries_raw_source_subtitle(self):

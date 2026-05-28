@@ -32,6 +32,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import datetime
 import json
 import logging
@@ -74,6 +75,37 @@ from stroke_orofacial.stats.recovery_epochs import assign_epoch_label  # noqa: E
 
 
 COHORT_8 = ("PS46", "PS47", "PS48", "PS49", "PS50", "PS51", "PS54", "PS55")
+
+
+# Q-lock 13.4 — phenotype remap modes (mirrors Q-lock 12 Addendum #4).
+# "none": canonical 4-tier per F-P-1.
+# "3tier": merge moderate-severe into moderate → 3-tier
+#          (mild, moderate, severe). PS51 (sole moderate-severe) pools
+#          with PS46 (moderate) for n=2 in the merged tier.
+PHENOTYPE_REMAP_3TIER: dict[str, str] = {
+    "moderate-severe": "moderate",
+}
+PHENOTYPE_ORDER_3TIER: tuple[str, ...] = ("mild", "moderate", "severe")
+
+
+def remap_animals_to_3tier(
+    animals_map: dict[str, "AnimalInfo"],
+) -> dict[str, "AnimalInfo"]:
+    """Return a copy of ``animals_map`` with phenotypes remapped per
+    :data:`PHENOTYPE_REMAP_3TIER`.
+
+    Uses :func:`dataclasses.replace` so ``AnimalInfo``'s immutability
+    is preserved; the original map is not mutated.
+    """
+    out: dict[str, AnimalInfo] = {}
+    for k, info in animals_map.items():
+        phen = info.recovery_phenotype
+        new_phen = PHENOTYPE_REMAP_3TIER.get(phen, phen) if phen else phen
+        if new_phen != phen:
+            out[k] = dataclasses.replace(info, recovery_phenotype=new_phen)
+        else:
+            out[k] = info
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +284,8 @@ def run_stats_and_figures(
     overwrite: str,
     output_dir: Path | None,
     logger: logging.Logger,
+    animals_map: dict[str, AnimalInfo] | None = None,
+    phenotype_order: tuple[str, ...] | None = None,
 ) -> dict[str, object]:
     """Run Stages 1→2→3 on the cohort phase-row DataFrame.
 
@@ -292,11 +326,15 @@ def run_stats_and_figures(
     logger.info("  pooled rows: %d", len(pooled))
 
     logger.info("Stage 3: emit 8 trajectory figures...")
+    figure_kwargs: dict = {
+        "resolver": resolver,
+        "output_dir": output_dir,
+        "overwrite": "force" if overwrite == "force" else "prompt",
+    }
+    if phenotype_order is not None:
+        figure_kwargs["phenotype_order"] = phenotype_order
     figure_result = emit_phase_aligned_trajectory_figures(
-        pooled,
-        resolver=resolver,
-        output_dir=output_dir,
-        overwrite="force" if overwrite == "force" else "prompt",
+        pooled, **figure_kwargs,
     )
     logger.info(
         "  figures emitted=%d skipped=%d",
@@ -332,7 +370,8 @@ def run_stats_and_figures(
         "Stage 6.1: paired Wilcoxon × BH-FDR — "
         "48-test family (4 phen × 2 sides × 2 signals × 3 post epochs)...",
     )
-    animals_map = load_animals()
+    if animals_map is None:
+        animals_map = load_animals()
     wilcoxon_df = compute_trajectory_wilcoxon_stats(scalar_df, animals_map)
     logger.info("  Wilcoxon rows: %d", len(wilcoxon_df))
     wilcoxon_csv = out_dir / "trajectory_paired_wilcoxon_bh_fdr.csv"
@@ -449,6 +488,18 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--remap-phenotypes",
+        choices=("none", "3tier"),
+        default="none",
+        help=(
+            "Phenotype-tier mapping mode. 'none' (default): canonical "
+            "4-tier per F-P-1. '3tier': merge moderate-severe → "
+            "moderate (Q-lock 12 Addendum #4 precedent). Output dir "
+            "auto-routed to '<FIGURE_SUBDIR>/3_phenotype/' in 3tier "
+            "mode."
+        ),
+    )
+    parser.add_argument(
         "--log-level",
         choices=("DEBUG", "INFO", "WARNING", "ERROR"),
         default="INFO",
@@ -498,17 +549,21 @@ def main(argv: list[str] | None = None) -> int:
         "Status counts: %s", json.dumps(status_counts),
     )
 
-    out_dir = (
+    # Walk manifest lands in the canonical 4-tier dir (sessions walked
+    # are identical across remap modes — no point duplicating).
+    walk_manifest_dir = (
         args.output_dir if args.output_dir is not None
         else resolver.pipeline_outputs(subdir=FIGURE_SUBDIR)
     )
-    out_dir.mkdir(parents=True, exist_ok=True)
+    walk_manifest_dir.mkdir(parents=True, exist_ok=True)
     if manifest_rows:
-        walk_manifest_csv = out_dir / "stage4_walk_manifest.csv"
+        walk_manifest_csv = walk_manifest_dir / "stage4_walk_manifest.csv"
         pd.DataFrame(manifest_rows).to_csv(walk_manifest_csv, index=False)
         logger.info("Wrote walk manifest CSV: %s", walk_manifest_csv)
 
-    # Attach phenotype + epoch.
+    # Attach phenotype + epoch — applies phenotype remap when requested
+    # so downstream Stage 1 baseline + Stage 2 aggregator + Stage 6.1
+    # Wilcoxon all see the remapped tier (mod-severe → moderate).
     if not cohort_df.empty:
         logger.info(
             "Attaching phenotype + epoch on %d cohort rows...",
@@ -519,19 +574,43 @@ def main(argv: list[str] | None = None) -> int:
             for a, info in load_animals().items()
             if a in animals
         }
+        if args.remap_phenotypes == "3tier":
+            logger.info(
+                "Phenotype remap = 3tier (mod-severe → moderate). "
+                "Output subdir: %s/3_phenotype/", FIGURE_SUBDIR,
+            )
+            animals_map = remap_animals_to_3tier(animals_map)
+            phenotype_order = PHENOTYPE_ORDER_3TIER
+            # Auto-route output to a 3_phenotype subdir (only when
+            # user didn't pass an explicit --output-dir).
+            output_dir = args.output_dir
+            if output_dir is None:
+                output_dir = (
+                    resolver.pipeline_outputs(subdir=FIGURE_SUBDIR)
+                    / "3_phenotype"
+                )
+        else:
+            phenotype_order = None
+            output_dir = args.output_dir
         cohort_df = attach_metadata(cohort_df, animals_map)
         logger.info(
             "  cohort rows after phenotype/epoch attach: %d",
             len(cohort_df),
         )
+    else:
+        animals_map = None
+        phenotype_order = None
+        output_dir = args.output_dir
 
     # Stages 1 → 2 → 3.
     result = run_stats_and_figures(
         cohort_df,
         resolver=resolver,
         overwrite=args.overwrite,
-        output_dir=args.output_dir,
+        output_dir=output_dir,
         logger=logger,
+        animals_map=animals_map,
+        phenotype_order=phenotype_order,
     )
     logger.info(
         "Stats + figures result: %s",

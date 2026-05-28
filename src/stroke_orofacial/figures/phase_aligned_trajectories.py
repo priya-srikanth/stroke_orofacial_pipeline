@@ -68,6 +68,16 @@ SIDE_ORDER: tuple[str, ...] = ("L", "R")
 # only the rendered SVG view is clipped.
 DEFAULT_PHASE_DISPLAY_WINDOW: tuple[float, float] = (0.05, 0.95)
 
+
+# Q-lock 13.4 — error band type for the panel ±band overlay. Mean+SD
+# shows the cohort spread (per-trial value distribution); mean+SEM
+# shows the precision of the mean (collapses to invisibility with
+# n_trials in the thousands). Default switched to SD per Priya
+# 2026-05-28 review — SEM was visually disappearing in the rendered
+# figures.
+ErrorBandType = Literal["sd", "sem"]
+DEFAULT_ERROR_BAND_TYPE: ErrorBandType = "sd"
+
 # Output layout (Q-lock 15 marker convention; subdir mirrors Q13b
 # correction 2026-05-27 — figures land under stats/figures/phenotype_pooled/
 # alongside V4/V5 and Q13b endpoint-stats figures, NOT under a separate
@@ -164,6 +174,8 @@ def build_phase_aligned_trajectory_figure(
     side: str,
     dpi: int = 150,
     phase_display_window: tuple[float, float] = DEFAULT_PHASE_DISPLAY_WINDOW,
+    error_band_type: ErrorBandType = DEFAULT_ERROR_BAND_TYPE,
+    phenotype_order: tuple[str, ...] = PHENOTYPE_ORDER,
 ) -> tuple[plt.Figure, np.ndarray]:
     """Build the matplotlib Figure for one (signal, variant, side) figure.
 
@@ -212,19 +224,32 @@ def build_phase_aligned_trajectory_figure(
         center = pd.to_numeric(sub["phase_bin_center"], errors="coerce")
         sub = sub.loc[(center >= lo) & (center <= hi)]
 
+    if error_band_type not in ("sd", "sem"):
+        raise ValueError(
+            f"error_band_type must be 'sd' or 'sem'; got {error_band_type!r}.",
+        )
+
+    phenotype_order = tuple(phenotype_order)
+    if not phenotype_order:
+        raise ValueError("phenotype_order must contain at least one phenotype.")
+
     fig, axes = plt.subplots(
-        nrows=len(PHENOTYPE_ORDER),
+        nrows=len(phenotype_order),
         ncols=len(EPOCH_ORDER),
-        figsize=(16.0, 12.0),
+        figsize=(16.0, 3.0 * len(phenotype_order)),
         dpi=dpi,
         sharex=True,
         sharey="all",
     )
+    # Guarantee 2-D ndarray indexing even when nrows == 1.
+    if axes.ndim == 1:
+        axes = axes[None, :]
 
-    for row_idx, phenotype in enumerate(PHENOTYPE_ORDER):
+    for row_idx, phenotype in enumerate(phenotype_order):
         color = phenotype_palette(phenotype)
-        # Pre-stroke baseline trace within this phenotype × side, for
-        # the dashed grey overlay on post-epoch panels.
+        # Empty cell row when this phenotype has no rows in the input
+        # (e.g., 3-tier remap dropped 'moderate-severe' but pooled_df
+        # still has 4-tier rows from a stale cache). Continue gracefully.
         pre_panel = sub[
             (sub["recovery_phenotype"] == phenotype)
             & (sub["epoch_label"] == "pre")
@@ -274,16 +299,21 @@ def build_phase_aligned_trajectory_figure(
 
             x = _panel_x_axis(panel)
             y_mean = panel["mean"].to_numpy(dtype=np.float64)
-            y_sem = panel["sem"].to_numpy(dtype=np.float64)
+            band_col = error_band_type
+            if band_col not in panel.columns:
+                # Older pooled CSV without sd column → fall back to sem.
+                band_col = "sem"
+            y_err = panel[band_col].to_numpy(dtype=np.float64)
 
-            # ±1 SEM band where SEM is finite (n=1 bins skipped from
-            # the band but still drawn on the mean line).
-            sem_finite = np.isfinite(y_sem) & np.isfinite(y_mean)
-            if sem_finite.any():
+            # ±1 (sd|sem) band where the band statistic is finite (n=1
+            # bins skipped from the band but still drawn on the mean
+            # line).
+            err_finite = np.isfinite(y_err) & np.isfinite(y_mean)
+            if err_finite.any():
                 ax.fill_between(
-                    x[sem_finite],
-                    (y_mean - y_sem)[sem_finite],
-                    (y_mean + y_sem)[sem_finite],
+                    x[err_finite],
+                    (y_mean - y_err)[err_finite],
+                    (y_mean + y_err)[err_finite],
                     color=color, alpha=0.25, linewidth=0,
                 )
             ax.plot(x, y_mean, color=color, linewidth=1.5)
@@ -309,7 +339,7 @@ def build_phase_aligned_trajectory_figure(
                     phenotype_display_name(phenotype),
                     fontsize=11,
                 )
-            if row_idx == len(PHENOTYPE_ORDER) - 1:
+            if row_idx == len(phenotype_order) - 1:
                 ax.set_xlabel(
                     f"Phase ∈ [{lo:g}, {hi:g}]"
                     if (lo, hi) != (0.0, 1.0)
@@ -356,6 +386,8 @@ def render_phase_aligned_trajectory_figure(
     output_path: Path,
     dpi: int = 150,
     phase_display_window: tuple[float, float] = DEFAULT_PHASE_DISPLAY_WINDOW,
+    error_band_type: ErrorBandType = DEFAULT_ERROR_BAND_TYPE,
+    phenotype_order: tuple[str, ...] = PHENOTYPE_ORDER,
 ) -> Path:
     """Build the figure and save it as SVG.
 
@@ -365,6 +397,8 @@ def render_phase_aligned_trajectory_figure(
     fig, _ = build_phase_aligned_trajectory_figure(
         pooled_df, signal=signal, variant=variant, side=side, dpi=dpi,
         phase_display_window=phase_display_window,
+        error_band_type=error_band_type,
+        phenotype_order=phenotype_order,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, format="svg", bbox_inches="tight")
@@ -489,6 +523,8 @@ def emit_phase_aligned_trajectory_figures(
     output_dir: Path | None = None,
     overwrite: Literal["skip", "force", "prompt"] = "prompt",
     phase_display_window: tuple[float, float] = DEFAULT_PHASE_DISPLAY_WINDOW,
+    error_band_type: ErrorBandType = DEFAULT_ERROR_BAND_TYPE,
+    phenotype_order: tuple[str, ...] = PHENOTYPE_ORDER,
 ) -> dict[str, Any]:
     """Emit all 8 trajectory figures + a manifest dict.
 
@@ -550,6 +586,8 @@ def emit_phase_aligned_trajectory_figures(
                     signal=signal, variant=variant, side=side,
                     output_path=output_path,
                     phase_display_window=phase_display_window,
+                    error_band_type=error_band_type,
+                    phenotype_order=phenotype_order,
                 )
                 emitted.append(output_path)
     return {"emitted": emitted, "skipped": skipped}

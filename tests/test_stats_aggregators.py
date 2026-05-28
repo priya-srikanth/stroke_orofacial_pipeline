@@ -901,7 +901,7 @@ class TestApplyPhaseBinBaselineDelta:
 
 _STAGE2_AGG_COLS_BY_SIDE = [
     "recovery_phenotype", "epoch_label", "side", "phase_bin",
-    "signal", "variant", "mean", "sem", "n_trials",
+    "signal", "variant", "mean", "sem", "sd", "n_trials",
     "n_sessions", "n_animals",
 ]
 
