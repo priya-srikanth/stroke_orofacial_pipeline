@@ -437,6 +437,62 @@ def aggregate_phenotype_pooled_median_iqr(
 
 
 # ---------------------------------------------------------------------------
+# Baseline-delta computation (per Priya 2026-05-27)
+# ---------------------------------------------------------------------------
+
+
+def compute_per_animal_baseline(
+    per_session_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Per-(animal, side, endpoint) pre-stroke baseline mean of session medians.
+
+    Baseline = mean of ``median`` for rows where ``epoch_label == "pre"``.
+    Returns one row per (animal, side, endpoint) with a ``baseline_mean``
+    column. Animals × sides × endpoints lacking any pre-epoch rows get
+    ``baseline_mean = NaN`` — downstream ``apply_baseline_delta`` drops
+    those rows (they can't contribute a meaningful delta).
+    """
+    required = {"animal", "side", "endpoint", "epoch_label", "median"}
+    missing = required - set(per_session_df.columns)
+    if missing:
+        raise ValueError(
+            f"per_session_df missing column(s) {sorted(missing)}.",
+        )
+    pre = per_session_df[per_session_df["epoch_label"] == "pre"]
+    if pre.empty:
+        return pd.DataFrame(
+            columns=["animal", "side", "endpoint", "baseline_mean"],
+        )
+    agg = (
+        pre.groupby(["animal", "side", "endpoint"], as_index=False)["median"]
+        .mean()
+        .rename(columns={"median": "baseline_mean"})
+    )
+    return agg
+
+
+def apply_baseline_delta(
+    per_session_df: pd.DataFrame,
+    baseline: pd.DataFrame,
+) -> pd.DataFrame:
+    """Attach ``delta_median = median − baseline_mean`` column.
+
+    Sessions whose (animal, side, endpoint) has no baseline (pre-epoch
+    absent) are dropped. Returns a copy; input is not mutated.
+    """
+    if per_session_df.empty:
+        out = per_session_df.copy()
+        out["delta_median"] = pd.Series(dtype=float)
+        return out
+    joined = per_session_df.merge(
+        baseline, on=["animal", "side", "endpoint"], how="inner",
+    )
+    joined = joined.dropna(subset=["baseline_mean"]).copy()
+    joined["delta_median"] = joined["median"] - joined["baseline_mean"]
+    return joined
+
+
+# ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
 

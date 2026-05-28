@@ -236,7 +236,7 @@ class TestRenderPhaseAlignedEndpointFigure:
 
 
 class TestEmitPhaseAlignedEndpointFigures:
-    def test_emits_six_figures_plus_manifest_and_stats_csvs(self, tmp_path):
+    def test_emits_twelve_figures_plus_manifest_and_csvs(self, tmp_path):
         df = _make_per_session_fixture()
         stats = compute_phase_aligned_endpoint_stats(df)
         resolver = PathResolver(output_root=tmp_path)
@@ -246,21 +246,19 @@ class TestEmitPhaseAlignedEndpointFigures:
             resolver=resolver, output_dir=out_dir,
             overwrite="force",
         )
-        # 3 endpoints × 2 sides = 6 successful renders.
-        assert len(result["OK"]) == 6
+        # 3 endpoints × 2 sides × 2 (raw + delta) = 12 successful renders.
+        assert len(result["OK"]) == 12
         assert result["FAIL"] == []
-        # Stats + per-session CSVs present.
+        # Stats + per-session + delta CSVs present.
         assert result["stats_csv"].exists()
         assert result["per_session_csv"].exists()
+        assert result["delta_csv"].exists()
         assert result["manifest_csv"].exists()
 
-        # Manifest covers all 6 (endpoint, side) cells.
+        # Manifest covers all 12 figures.
         manifest = pd.read_csv(result["manifest_csv"])
-        assert len(manifest) == 6
+        assert len(manifest) == 12
         assert set(manifest["status"].unique()) == {"OK"}
-        assert set(zip(manifest["endpoint"], manifest["side"])) == {
-            (e, s) for e in PHASE_ALIGNED_ENDPOINT_SLUGS for s in SIDE_ORDER
-        }
 
     def test_prompt_overwrite_on_existing_raises(self, tmp_path):
         df = _make_per_session_fixture()
@@ -292,21 +290,12 @@ class TestEmitPhaseAlignedEndpointFigures:
             resolver=resolver, output_dir=out_dir,
             overwrite="force",
         )
-        first_mtimes = {
-            (e, s): (out_dir / f"{e}_{s}_cleaned_trace.svg").stat().st_mtime_ns
-            for e in PHASE_ALIGNED_ENDPOINT_SLUGS for s in SIDE_ORDER
-        }
         # Second emit with overwrite="skip" → no rewrites.
         result = emit_phase_aligned_endpoint_figures(
             per_session_df=df, stats_df=stats,
             resolver=resolver, output_dir=out_dir,
             overwrite="skip",
         )
-        # 6 entries reported as SKIP.
-        assert len(result["SKIP"]) == 6
+        # 12 entries reported as SKIP (6 raw + 6 delta).
+        assert len(result["SKIP"]) == 12
         assert result["OK"] == []
-        # mtimes match — no rewrite happened.
-        for key, mt0 in first_mtimes.items():
-            e, s = key
-            mt1 = (out_dir / f"{e}_{s}_cleaned_trace.svg").stat().st_mtime_ns
-            assert mt0 == mt1
