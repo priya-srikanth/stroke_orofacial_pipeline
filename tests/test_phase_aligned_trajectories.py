@@ -34,6 +34,7 @@ from stroke_orofacial.figures.phase_aligned_trajectories import (
     SOURCE_DATA_SUBTITLE_DELTA,
     SOURCE_DATA_SUBTITLE_RAW,
     build_phase_aligned_trajectory_figure,
+    compute_trajectory_bootstrap_effect_ci,
     compute_trajectory_bootstrap_pre_ci,
     compute_trajectory_cluster_permutation_stats,
     compute_trajectory_lmm_stats,
@@ -892,5 +893,62 @@ class TestComputeTrajectoryBootstrapPreCi:
     def test_invalid_ci_raises(self):
         with pytest.raises(ValueError, match="ci"):
             compute_trajectory_bootstrap_pre_ci(
+                pd.DataFrame(), {}, ci=1.5,
+            )
+
+
+class TestComputeTrajectoryBootstrapEffectCi:
+    def test_smoke_emits_per_bin_rows_with_ci(self):
+        import datetime
+        rows = []
+        # 2 mild animals × pre + acute sessions × 2 sides × 8 bins.
+        for animal in ("PS47", "PS48"):
+            for ei, epoch in enumerate(("pre", "acute")):
+                for di in range(3):
+                    for side in ("L", "R"):
+                        for bin_idx in range(8):
+                            rows.append({
+                                "animal": animal,
+                                "date": datetime.date(2025, 3, 1)
+                                + datetime.timedelta(days=ei * 30 + di),
+                                "side": side,
+                                "phase_bin": bin_idx,
+                                "phase_bin_center": (bin_idx + 0.5) / 8,
+                                "epoch_label": epoch,
+                                "recovery_phenotype": "mild",
+                                "angle_deg": ei * 2.0 + bin_idx * 0.1,
+                                "x_centered": -ei + bin_idx * 0.1,
+                                "angle_deg_delta": ei * 2.0,
+                                "x_centered_delta": -ei * 1.0,
+                            })
+        cohort = pd.DataFrame(rows)
+        animals = {
+            "PS47": _animal_info("PS47", phenotype="mild"),
+            "PS48": _animal_info("PS48", phenotype="mild"),
+        }
+        out = compute_trajectory_bootstrap_effect_ci(
+            cohort, animals, signals=("angle_deg",), variants=("raw",),
+            n_bootstrap=100,
+        )
+        # 1 phen × 2 sides × 1 signal × 1 variant × 1 post_epoch
+        # (acute, since that's the only post present) × 8 bins = 16 rows.
+        assert len(out) == 16
+        for col in (
+            "recovery_phenotype", "side", "signal", "variant",
+            "post_epoch", "phase_bin", "phase_bin_center",
+            "effect_median", "effect_ci_lo", "effect_ci_hi",
+            "excludes_zero", "n_animals_pre", "n_animals_post",
+        ):
+            assert col in out.columns
+        # CI ordering invariant.
+        assert (out["effect_ci_lo"] <= out["effect_median"]).all()
+        assert (out["effect_median"] <= out["effect_ci_hi"]).all()
+        # Synthetic data: acute = pre + 2 → effect ~= +2 → excludes_zero
+        # should be True (lo > 0).
+        assert out["excludes_zero"].any()
+
+    def test_invalid_ci_raises(self):
+        with pytest.raises(ValueError, match="ci"):
+            compute_trajectory_bootstrap_effect_ci(
                 pd.DataFrame(), {}, ci=1.5,
             )

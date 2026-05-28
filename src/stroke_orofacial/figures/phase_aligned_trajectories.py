@@ -1174,6 +1174,201 @@ def compute_trajectory_bootstrap_pre_ci(
     return pd.DataFrame(out_rows)
 
 
+def compute_trajectory_bootstrap_effect_ci(
+    densified_cohort_df: pd.DataFrame,
+    animals_map: dict[str, AnimalInfo],
+    *,
+    signals: Iterable[str] = TRAJECTORY_SIGNALS,
+    variants: Iterable[str] = ("raw", "delta"),
+    n_bootstrap: int = 5000,
+    ci: float = 0.95,
+    rng_seed: int = 42,
+) -> pd.DataFrame:
+    """Animal-level bootstrap CI on the (post − pre) effect trajectory.
+
+    Q-lock 13.7 (2026-05-28). Per (phenotype × side × signal × variant
+    × post_epoch × phase_bin): resample animals from the phenotype
+    pool with replacement N times. For each resample, compute each
+    animal's per-bin pre mean + per-bin post_epoch mean (averaging
+    across that animal's sessions/trials), then take the cross-resampled-
+    animals mean of (post − pre) per bin. Quantiles across resamples
+    give a CI on the observed effect.
+
+    Animal-level bootstrap (resample WHICH animals are in the cohort
+    with replacement) respects per-animal independence — the proper
+    unit of resampling. Trial- and session-level bootstraps would
+    inflate the CI tightness via pseudo-replication.
+
+    Significant cells (per-bin): the 1-CI tail excludes 0. Output
+    column ``excludes_zero`` is the bool flag.
+
+    Parameters
+    ----------
+    densified_cohort_df : pd.DataFrame
+        Output of ``densify_phase_rows_via_interp`` + ``attach_metadata``
+        + ``apply_phase_bin_baseline_delta`` (for delta columns).
+        Required columns: ``animal``, ``date``, ``side``, ``phase_bin``,
+        ``epoch_label``, ``recovery_phenotype``, signal columns, and
+        ``<signal>_delta`` columns if delta variant requested.
+    animals_map : Mapping[str, AnimalInfo]
+        Kept in signature for API parity; phenotype must already be
+        attached to ``densified_cohort_df``.
+    signals, variants : Iterable[str]
+    n_bootstrap : int, default 5000
+    ci : float, default 0.95
+    rng_seed : int, default 42
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per (phenotype × side × signal × variant × post_epoch
+        × phase_bin). Columns: ``recovery_phenotype``, ``side``,
+        ``signal``, ``variant``, ``post_epoch``, ``phase_bin``,
+        ``phase_bin_center``, ``effect_median``, ``effect_ci_lo``,
+        ``effect_ci_hi``, ``excludes_zero`` (bool), ``n_animals_pre``,
+        ``n_animals_post``, ``n_bootstrap``, ``ci``.
+    """
+    signals = tuple(signals)
+    variants = tuple(variants)
+    if not 0.0 < ci < 1.0:
+        raise ValueError(f"ci must be in (0, 1); got {ci}.")
+    if not 1 <= n_bootstrap <= 100000:
+        raise ValueError(
+            f"n_bootstrap must be in [1, 100000]; got {n_bootstrap}.",
+        )
+
+    rng = np.random.default_rng(rng_seed)
+    lo_q = (1.0 - ci) / 2.0
+    hi_q = 1.0 - lo_q
+    has_center = "phase_bin_center" in densified_cohort_df.columns
+
+    out_rows: list[dict[str, object]] = []
+    for phenotype in PHENOTYPE_ORDER:
+        for side in SIDE_ORDER:
+            for signal in signals:
+                for variant in variants:
+                    value_col = signal if variant == "raw" else f"{signal}_delta"
+                    if value_col not in densified_cohort_df.columns:
+                        continue
+                    sub = densified_cohort_df[
+                        (densified_cohort_df["recovery_phenotype"] == phenotype)
+                        & (densified_cohort_df["side"] == side)
+                    ][[
+                        "animal", "phase_bin",
+                        *([("phase_bin_center")] if has_center else []),
+                        "epoch_label", value_col,
+                    ]].copy()
+                    sub["_val"] = pd.to_numeric(
+                        sub[value_col], errors="coerce",
+                    )
+                    sub = sub.dropna(subset=["_val"])
+                    if sub.empty:
+                        continue
+                    # Per-(animal, epoch, bin) mean trajectory.
+                    per_animal_epoch = (
+                        sub.groupby(
+                            ["animal", "epoch_label", "phase_bin"],
+                            as_index=False,
+                        )["_val"].mean()
+                    )
+                    if has_center:
+                        centers = (
+                            sub.groupby(
+                                "phase_bin", as_index=False,
+                            )["phase_bin_center"].first()
+                        )
+
+                    pre_pivot = per_animal_epoch[
+                        per_animal_epoch["epoch_label"] == "pre"
+                    ].pivot_table(
+                        index="animal", columns="phase_bin", values="_val",
+                    ).sort_index(axis=1)
+                    pre_animals = pre_pivot.index.to_numpy()
+                    pre_arr = pre_pivot.to_numpy(dtype=np.float64)
+                    bins = pre_pivot.columns.to_numpy()
+                    n_bins = len(bins)
+                    n_pre_animals = pre_arr.shape[0]
+                    if n_pre_animals < 1:
+                        continue
+
+                    for post_epoch in POST_EPOCHS:
+                        post_pivot = per_animal_epoch[
+                            per_animal_epoch["epoch_label"] == post_epoch
+                        ].pivot_table(
+                            index="animal", columns="phase_bin",
+                            values="_val",
+                        ).reindex(columns=bins).sort_index(axis=1)
+                        post_animals = post_pivot.index.to_numpy()
+                        post_arr = post_pivot.to_numpy(dtype=np.float64)
+                        n_post_animals = post_arr.shape[0]
+                        if n_post_animals < 1:
+                            continue
+                        # Bootstrap: resample animals with replacement
+                        # independently for pre and post (since the
+                        # phenotype pool may have different animals in
+                        # each epoch — e.g. some animals may have no
+                        # post sessions if dates were truncated).
+                        eff_samples = np.zeros((n_bootstrap, n_bins))
+                        for ib in range(n_bootstrap):
+                            pre_idx = rng.integers(
+                                0, n_pre_animals, size=n_pre_animals,
+                            )
+                            post_idx = rng.integers(
+                                0, n_post_animals, size=n_post_animals,
+                            )
+                            pre_mean = np.nanmean(
+                                pre_arr[pre_idx], axis=0,
+                            )
+                            post_mean = np.nanmean(
+                                post_arr[post_idx], axis=0,
+                            )
+                            eff_samples[ib] = post_mean - pre_mean
+                        lo_band = np.nanquantile(
+                            eff_samples, lo_q, axis=0,
+                        )
+                        med_band = np.nanquantile(
+                            eff_samples, 0.5, axis=0,
+                        )
+                        hi_band = np.nanquantile(
+                            eff_samples, hi_q, axis=0,
+                        )
+                        # 1 - CI tail excludes 0?
+                        excludes = (lo_band > 0.0) | (hi_band < 0.0)
+                        for bi, phase_bin in enumerate(bins):
+                            row = {
+                                "recovery_phenotype": phenotype,
+                                "side": side, "signal": signal,
+                                "variant": variant,
+                                "post_epoch": post_epoch,
+                                "phase_bin": int(phase_bin),
+                                "effect_median": float(med_band[bi]),
+                                "effect_ci_lo": float(lo_band[bi]),
+                                "effect_ci_hi": float(hi_band[bi]),
+                                "excludes_zero": bool(excludes[bi]),
+                                "n_animals_pre": int(n_pre_animals),
+                                "n_animals_post": int(n_post_animals),
+                                "n_bootstrap": int(n_bootstrap),
+                                "ci": ci,
+                            }
+                            if has_center:
+                                ctr = centers[
+                                    centers["phase_bin"] == phase_bin
+                                ]["phase_bin_center"].iloc[0]
+                                row["phase_bin_center"] = float(ctr)
+                            out_rows.append(row)
+
+    if not out_rows:
+        cols = [
+            "recovery_phenotype", "side", "signal", "variant",
+            "post_epoch", "phase_bin", "phase_bin_center",
+            "effect_median", "effect_ci_lo", "effect_ci_hi",
+            "excludes_zero", "n_animals_pre", "n_animals_post",
+            "n_bootstrap", "ci",
+        ]
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(out_rows)
+
+
 def emit_phase_aligned_trajectory_figures(
     pooled_df: pd.DataFrame,
     *,

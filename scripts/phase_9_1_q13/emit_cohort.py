@@ -59,6 +59,7 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (  # noqa: E402
 )
 from stroke_orofacial.figures.phase_aligned_trajectories import (  # noqa: E402
     FIGURE_SUBDIR,
+    compute_trajectory_bootstrap_effect_ci,
     compute_trajectory_bootstrap_pre_ci,
     compute_trajectory_cluster_permutation_stats,
     compute_trajectory_lmm_stats,
@@ -492,6 +493,25 @@ def run_stats_and_figures(
     boot_df.to_csv(boot_csv, index=False)
     logger.info(
         "  bootstrap CI rows: %d → %s", len(boot_df), boot_csv,
+    )
+
+    # Q-lock 13.7 — bootstrap CI on (post − pre) effect trajectory.
+    logger.info(
+        "Stage 6.7: bootstrap CI on (post − pre) effect "
+        "(5000 resamples, animal-level)...",
+    )
+    boot_eff_df = compute_trajectory_bootstrap_effect_ci(
+        cohort_with_delta, animals_map, n_bootstrap=5000, ci=0.95,
+    )
+    boot_eff_csv = out_dir / "trajectory_effect_bootstrap_ci.csv"
+    boot_eff_df.to_csv(boot_eff_csv, index=False)
+    n_excludes = int(
+        boot_eff_df["excludes_zero"].fillna(False).sum()
+    ) if not boot_eff_df.empty else 0
+    n_total = int(len(boot_eff_df))
+    logger.info(
+        "  effect bootstrap: %d/%d phase_bins exclude 0 at 95%% CI → %s",
+        n_excludes, n_total, boot_eff_csv,
     )
 
     return {
