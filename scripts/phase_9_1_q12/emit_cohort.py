@@ -115,6 +115,8 @@ def compute_per_animal_records(
     animals_map: dict,
     logger: logging.Logger,
     filter_spec: SessionFilter | None = None,
+    skip_w2_boxplots: bool = False,
+    skip_heatmaps: bool = False,
 ) -> tuple[
     list[dict], list[dict], list[dict], list[dict[str, object]],
 ]:
@@ -218,35 +220,40 @@ def compute_per_animal_records(
             # full pre-pool (naive lock — small bias toward 0 acceptable
             # as noise-floor reference). Per-pre-session rows for the
             # boxplot ``Pre`` group.
-            pre_session_rows = compute_per_animal_per_session_w2_long(
-                animal=animal, pre_pool=pre_pool, post_dates=pre_dates,
-                side=side, bodypart=bodypart, resolver=resolver,
-                defaults=defaults, animal_info=animal_info,
-                epoch_label="pre",
-            )
-            for row in pre_session_rows:
-                row["recovery_phenotype"] = animal_info.recovery_phenotype
-            per_session_w2_rows.extend(pre_session_rows)
+            if not skip_w2_boxplots:
+                pre_session_rows = compute_per_animal_per_session_w2_long(
+                    animal=animal, pre_pool=pre_pool, post_dates=pre_dates,
+                    side=side, bodypart=bodypart, resolver=resolver,
+                    defaults=defaults, animal_info=animal_info,
+                    epoch_label="pre",
+                )
+                for row in pre_session_rows:
+                    row["recovery_phenotype"] = animal_info.recovery_phenotype
+                per_session_w2_rows.extend(pre_session_rows)
 
             # Q-lock 12b Addendum #7: per-animal Pre-self proportion-diff
             # for the heatmap Pre column (mean of per-pre-session D arrays
             # against the pre-pool, naive lock — same bias semantics as
             # the W-2 Pre boxplots).
-            t_pre_self = time.perf_counter()
-            try:
-                pre_self_rec = compute_per_animal_pre_self_diff(
-                    animal=animal, bodypart=bodypart, side=side,
-                    pre_pool=pre_pool, resolver=resolver,
-                    pre_dates=pre_dates,
-                    defaults=defaults, animal_info=animal_info,
-                )
-            except Exception as exc:
-                logger.exception(
-                    "[%s/%s/%s/pre_self_diff] FAILED: %s",
-                    animal, bodypart, side, exc,
-                )
+            if skip_heatmaps:
                 pre_self_rec = None
-            pre_self_elapsed = time.perf_counter() - t_pre_self
+                pre_self_elapsed = 0.0
+            else:
+                t_pre_self = time.perf_counter()
+                try:
+                    pre_self_rec = compute_per_animal_pre_self_diff(
+                        animal=animal, bodypart=bodypart, side=side,
+                        pre_pool=pre_pool, resolver=resolver,
+                        pre_dates=pre_dates,
+                        defaults=defaults, animal_info=animal_info,
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "[%s/%s/%s/pre_self_diff] FAILED: %s",
+                        animal, bodypart, side, exc,
+                    )
+                    pre_self_rec = None
+                pre_self_elapsed = time.perf_counter() - t_pre_self
             if pre_self_rec is not None:
                 finite_abs = np.abs(
                     pre_self_rec["D"][np.isfinite(pre_self_rec["D"])],
@@ -285,7 +292,13 @@ def compute_per_animal_records(
                     pre_self_rec["n_pre_sessions_contributing"], p99_pre,
                 )
 
+            if skip_heatmaps and skip_w2_boxplots:
+                # Nothing per-epoch to compute; skip the loop entirely.
+                continue
+
             for post_epoch in POST_EPOCHS:
+                if skip_heatmaps and skip_w2_boxplots:
+                    continue
                 t_ep = time.perf_counter()
                 try:
                     rec = compute_per_animal_per_epoch_diff(
@@ -373,16 +386,17 @@ def compute_per_animal_records(
 
                 # Q-lock 12a: per-session W-2 against per-animal pre-pool
                 # for the per-epoch dates. Each session gets its own LP.
-                post_session_rows = compute_per_animal_per_session_w2_long(
-                    animal=animal, pre_pool=pre_pool,
-                    post_dates=by_epoch[post_epoch],
-                    side=side, bodypart=bodypart, resolver=resolver,
-                    defaults=defaults, animal_info=animal_info,
-                    epoch_label=post_epoch,
-                )
-                for row in post_session_rows:
-                    row["recovery_phenotype"] = animal_info.recovery_phenotype
-                per_session_w2_rows.extend(post_session_rows)
+                if not skip_w2_boxplots:
+                    post_session_rows = compute_per_animal_per_session_w2_long(
+                        animal=animal, pre_pool=pre_pool,
+                        post_dates=by_epoch[post_epoch],
+                        side=side, bodypart=bodypart, resolver=resolver,
+                        defaults=defaults, animal_info=animal_info,
+                        epoch_label=post_epoch,
+                    )
+                    for row in post_session_rows:
+                        row["recovery_phenotype"] = animal_info.recovery_phenotype
+                    per_session_w2_rows.extend(post_session_rows)
                 logger.info(
                     "[%s/%s/%s/%s] OK in %.2fs+W2 %.2fs (n_post_sess=%d, "
                     "n_post_trials=%d, |D|.p99=%.4f, W-2=%.2f)",
@@ -477,6 +491,24 @@ def main() -> int:
             "cohort_filters.default with per-emit thresholds. Fields: "
             "min_licks_total, min_licks_per_side, "
             "min_trials_with_licks_per_side."
+        ),
+    )
+    parser.add_argument(
+        "--skip-heatmaps",
+        action="store_true",
+        help=(
+            "Skip the proportion-diff heatmap render + per-(animal, epoch) "
+            "D-array compute. Still computes pre-pool + per-session W-2 "
+            "if --skip-w2-boxplots is not set."
+        ),
+    )
+    parser.add_argument(
+        "--skip-w2-boxplots",
+        action="store_true",
+        help=(
+            "Skip the per-session W-2 compute + boxplot render. Useful "
+            "when re-rendering only heatmaps (e.g., Q12b Pre column "
+            "follow-up) since boxplots are unchanged."
         ),
     )
     parser.add_argument(
@@ -581,6 +613,8 @@ def main() -> int:
             animal=animal, resolver=resolver,
             defaults=defaults, animals_map=animals_map, logger=logger,
             filter_spec=filter_spec,
+            skip_w2_boxplots=args.skip_w2_boxplots,
+            skip_heatmaps=args.skip_heatmaps,
         )
         animal_elapsed = time.perf_counter() - animal_t0
         all_records.extend(records)
@@ -622,21 +656,25 @@ def main() -> int:
         out_dir_emit = None  # let emit_* resolve to FIGURE_SUBDIR
 
     # Stage 5d: figure emit (heatmaps)
-    logger.info("Emitting 4 SVG heatmap figures (2 bodyparts x 2 sides)...")
-    figs_result = emit_phenotype_pooled_proportion_diff_figures(
-        pooled,
-        resolver=resolver,
-        output_dir=out_dir_emit,
-        overwrite=args.overwrite,
-        shared_vmax=shared_vmax,
-        phenotype_order=phenotype_order,
-        defaults=defaults,
-    )
-    logger.info(
-        "  heatmap figures OK=%d SKIP=%d FAIL=%d",
-        len(figs_result["OK"]), len(figs_result["SKIP"]),
-        len(figs_result["FAIL"]),
-    )
+    if args.skip_heatmaps:
+        logger.info("--skip-heatmaps: skipping heatmap render.")
+        figs_result = {"OK": [], "SKIP": [], "FAIL": [], "manifest_csv": ""}
+    else:
+        logger.info("Emitting 4 SVG heatmap figures (2 bodyparts x 2 sides)...")
+        figs_result = emit_phenotype_pooled_proportion_diff_figures(
+            pooled,
+            resolver=resolver,
+            output_dir=out_dir_emit,
+            overwrite=args.overwrite,
+            shared_vmax=shared_vmax,
+            phenotype_order=phenotype_order,
+            defaults=defaults,
+        )
+        logger.info(
+            "  heatmap figures OK=%d SKIP=%d FAIL=%d",
+            len(figs_result["OK"]), len(figs_result["SKIP"]),
+            len(figs_result["FAIL"]),
+        )
 
     # Stage 5d2 (Q-lock 12a Addendum #6): per-session W-2 boxplots.
     import pandas as _pd
@@ -660,26 +698,30 @@ def main() -> int:
     else:
         w2_out_dir = None  # let renderer default to W2_FIGURE_SUBDIR
 
-    logger.info(
-        "Emitting 4 SVG W-2 boxplot figures (2 bodyparts x 2 sides)...",
-    )
-    # Q-lock 12a: pass remapped phenotype labels into the boxplot DataFrame
-    # so 3-tier emit pools (mod-severe → moderate). The animals_map was
-    # already remapped earlier; per_session_w2_df["recovery_phenotype"]
-    # was set from animal_info.recovery_phenotype at emit time, which
-    # for 3-tier reflects the remap.
-    w2_figs_result = emit_phenotype_wasserstein_recovery_boxplot_figures(
-        per_session_w2_df,
-        resolver=resolver,
-        output_dir=w2_out_dir,
-        overwrite=args.overwrite,
-        phenotype_order=phenotype_order,
-    )
-    logger.info(
-        "  W-2 boxplot figures OK=%d SKIP=%d FAIL=%d",
-        len(w2_figs_result["OK"]), len(w2_figs_result["SKIP"]),
-        len(w2_figs_result["FAIL"]),
-    )
+    if args.skip_w2_boxplots:
+        logger.info("--skip-w2-boxplots: skipping W-2 boxplot render.")
+        w2_figs_result = {"OK": [], "SKIP": [], "FAIL": [], "manifest_csv": ""}
+    else:
+        logger.info(
+            "Emitting 4 SVG W-2 boxplot figures (2 bodyparts x 2 sides)...",
+        )
+        # Q-lock 12a: pass remapped phenotype labels into the boxplot DataFrame
+        # so 3-tier emit pools (mod-severe → moderate). The animals_map was
+        # already remapped earlier; per_session_w2_df["recovery_phenotype"]
+        # was set from animal_info.recovery_phenotype at emit time, which
+        # for 3-tier reflects the remap.
+        w2_figs_result = emit_phenotype_wasserstein_recovery_boxplot_figures(
+            per_session_w2_df,
+            resolver=resolver,
+            output_dir=w2_out_dir,
+            overwrite=args.overwrite,
+            phenotype_order=phenotype_order,
+        )
+        logger.info(
+            "  W-2 boxplot figures OK=%d SKIP=%d FAIL=%d",
+            len(w2_figs_result["OK"]), len(w2_figs_result["SKIP"]),
+            len(w2_figs_result["FAIL"]),
+        )
 
     # Stage 5e: per-animal audit manifest CSV (lands next to the figures
     # so 4-tier vs 3-tier audits don't overwrite each other).
