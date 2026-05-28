@@ -5,6 +5,71 @@ differences vs. the legacy notebooks.
 
 ---
 
+## Phase 9.1 Q-lock 13b — Phase-aligned tongue endpoint stats
+
+**Date:** 2026-05-27
+**Tag on merge:** `v9.1-q13b-phase-aligned-endpoint-stats`
+**Branch:** `phase/9.1-q13b-phase-aligned-endpoint-stats`
+**Kickoff:** [`docs/prompts/phase-9.1-q13b-phase-aligned-endpoint-stats-kickoff.md`](prompts/phase-9.1-q13b-phase-aligned-endpoint-stats-kickoff.md) (Addenda #1 + #2)
+
+**What shipped:**
+
+Three scalar tongue endpoints per (trial, side) derived from the first-lick-centered phase trajectory (`build_first_lick_centered_phase_rows`, `ili_source="synthetic_only"`), plus phenotype-pooled stats and 12 figures:
+
+| ID | Endpoint | Definition |
+|---|---|---|
+| A | `peak_angle_deg` | Tongue angle at `phase = 0.5` (lick-1 peak time) |
+| B | `signed_angle_at_max_abs_phase_0_075_deg` | Signed `angle_deg` at `argmax(\|angle_deg\|)` over `phase ∈ [0, 0.75]` |
+| C | `signed_x_at_max_abs_phase_0_075_px` | Signed `x_centered` at `argmax(\|x_centered\|)` over `phase ∈ [0, 0.75]` |
+
+Endpoints B + C use the "selection by magnitude, reported value signed" convention (Addendum #1 Q6 refinement for C; extended to B per Priya 2026-05-27 direction — positive vs negative tongue angle is meaningful).
+
+**Pipeline stages delivered:**
+
+- **Stage 1** — Per-trial endpoint emitter: new `tongue.phase_aligned_endpoints` JSON block on the existing per-trial tongue endpoints JSON. Substrate extension: `x_snip` threaded through `_trial_arrays` + `_centered_phase_rows_from_peaks` → new `x_centered` column on centered-phase rows. `pre_stroke_median_ili_ms` threaded through `build_tongue_pertrial` (was latent bug — only the bundle-only wrapper injected it; driver path never did).
+- **Stage 2** — Per-session aggregator: `median ± IQR ± n_trials` per (animal, date, side, endpoint). New module `stats/aggregators.py`.
+- **Stage 3** — Phenotype-pooled aggregator: `median ± IQR ± n_sessions ± n_animals` per (phenotype, epoch, side, endpoint). Baseline-delta computation: per-animal pre-stroke mean subtracted from session medians.
+- **Stage 4** — Stats compute: 72-test Wilcoxon signed-rank (paired pre-vs-each-post-epoch, `aggregator="median"`) × single BH-FDR family. NaN-aware for n=1 phenotype tiers (moderate=PS46, mod-severe=PS51). Figure renderer: epoch-binned boxplots with session-level jitter dots, Q-lock 15 marker convention.
+- **Stage 5** — Cohort emit: 231 sessions re-emitted across 8 animals (PS46–PS50, PS51, PS54, PS55) via `scripts/phase_9_1_q13b/emit_cohort.py --overwrite force`. Parquets byte-identical (sha256 verified on 4 spot-checks); only JSONs gained the new block. 12 figures (6 raw + 6 Δ baseline-normalized) + 4 CSVs at `pipeline_outputs/stats/figures/phenotype_pooled/phase_aligned_endpoints/`.
+
+**Cohort numbers:**
+
+- 231 sessions re-emitted (21+21+21+22+19+46+38+43)
+- 56,325 long-form endpoint rows (finite per-trial values)
+- 1,374 per-session aggregates
+- 72 Wilcoxon tests (4 phenotypes × 3 endpoints × 2 sides × 3 post_epochs)
+- 12 figures (6 raw + 6 delta)
+
+**Addendum #2 divergence locks (Stage 0 findings):**
+
+- D1 — Per-trial storage is JSON (not parquet as kickoff said). `tongue.phase_aligned_endpoints` block added to existing `per_trial/tongue/<animal>/<date>.json`.
+- D2 — `x_centered` = raw `x_snip` from `dlc_centered_spout_midpoint_parquet` (no eye-relative re-centering — would conflate eye offset with laterality).
+- D3 — Epoch axis = `epoch_label` (Pre/Acute/Subacute/Chronic), NOT `rel_day_bin`. Test count corrected from 24 → 72. Cross-phenotype within-epoch dropped (needs unpaired test class — forward-pointer).
+- D4 — Aggregator helpers land in `stats/aggregators.py` (not `figures/_io.py` which is figure-private + mean-based).
+
+**Files added/modified:**
+
+- `src/stroke_orofacial/dlc_kinematics/tongue_phase_aligned_endpoints.py` (NEW)
+- `src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py` (substrate extension + ILI threading fix)
+- `src/stroke_orofacial/dlc_kinematics/__init__.py` (exports)
+- `src/stroke_orofacial/stats/aggregators.py` (NEW)
+- `src/stroke_orofacial/stats/__init__.py` (exports)
+- `src/stroke_orofacial/figures/phase_aligned_endpoint_stats.py` (NEW)
+- `scripts/phase_9_1_q13b/emit_cohort.py` (NEW)
+- `tests/test_tongue_phase_aligned_endpoints.py` (29 tests, NEW)
+- `tests/test_stats_aggregators.py` (22 tests, NEW)
+- `tests/test_phase_aligned_endpoint_stats.py` (12 tests, NEW)
+- `tests/test_tongue_pertrial.py` (schema-lock test extended)
+
+**Test suite:** 1878+ passing (63 new tests across 3 new test files + 1 extended).
+
+**Forward-pointers:**
+
+- Cross-phenotype within-epoch comparison (Mann-Whitney U or mixed-effects with phenotype fixed effect) — out of scope, needs unpaired test.
+- Minimum-trials-per-session filter (`--min-trials` CLI arg or config constant) — architecture supports it at the aggregator layer, not yet wired.
+
+---
+
 ## Phase 0 — Repo skeleton
 
 **Date:** 2026-04-17
