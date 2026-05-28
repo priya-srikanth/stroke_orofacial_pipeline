@@ -60,6 +60,14 @@ from stroke_orofacial.stats.multiple_comparisons import (
 POST_EPOCHS: tuple[str, ...] = ("acute", "sub_acute", "chronic")
 SIDE_ORDER: tuple[str, ...] = ("L", "R")
 
+# Default rendered phase window — clips bin-coverage edge artifacts at
+# phase ≈ 0 and ≈ 1 where the synthetic-ILI assumption breaks down
+# (only trials whose first-lick-centered window reaches the extreme
+# phases contribute, and the actual next-lick timing varies). Q-lock
+# 13.3 (2026-05-28). Pooled CSV always carries the full [0, 1] data;
+# only the rendered SVG view is clipped.
+DEFAULT_PHASE_DISPLAY_WINDOW: tuple[float, float] = (0.05, 0.95)
+
 # Output layout (Q-lock 15 marker convention; subdir mirrors Q13b
 # correction 2026-05-27 — figures land under stats/figures/phenotype_pooled/
 # alongside V4/V5 and Q13b endpoint-stats figures, NOT under a separate
@@ -155,6 +163,7 @@ def build_phase_aligned_trajectory_figure(
     variant: str,
     side: str,
     dpi: int = 150,
+    phase_display_window: tuple[float, float] = DEFAULT_PHASE_DISPLAY_WINDOW,
 ) -> tuple[plt.Figure, np.ndarray]:
     """Build the matplotlib Figure for one (signal, variant, side) figure.
 
@@ -185,11 +194,23 @@ def build_phase_aligned_trajectory_figure(
     (Figure, axes_array)
         Caller is responsible for ``plt.close(fig)`` after consuming.
     """
+    # Apply the display-window clip on phase_bin_center if available.
+    # When phase_bin_center is missing (older callers), fall through
+    # without filtering — clip is render-time-only and graceful.
+    lo, hi = float(phase_display_window[0]), float(phase_display_window[1])
+    if lo > hi:
+        raise ValueError(
+            f"phase_display_window lo must be <= hi; got ({lo}, {hi}).",
+        )
+
     sub = pooled_df[
         (pooled_df["signal"] == signal)
         & (pooled_df["variant"] == variant)
         & (pooled_df["side"] == side)
     ]
+    if "phase_bin_center" in sub.columns:
+        center = pd.to_numeric(sub["phase_bin_center"], errors="coerce")
+        sub = sub.loc[(center >= lo) & (center <= hi)]
 
     fig, axes = plt.subplots(
         nrows=len(PHENOTYPE_ORDER),
@@ -197,7 +218,7 @@ def build_phase_aligned_trajectory_figure(
         figsize=(16.0, 12.0),
         dpi=dpi,
         sharex=True,
-        sharey="row",
+        sharey="all",
     )
 
     for row_idx, phenotype in enumerate(PHENOTYPE_ORDER):
@@ -289,8 +310,14 @@ def build_phase_aligned_trajectory_figure(
                     fontsize=11,
                 )
             if row_idx == len(PHENOTYPE_ORDER) - 1:
-                ax.set_xlabel("Phase ∈ [0, 1]", fontsize=10)
+                ax.set_xlabel(
+                    f"Phase ∈ [{lo:g}, {hi:g}]"
+                    if (lo, hi) != (0.0, 1.0)
+                    else "Phase ∈ [0, 1]",
+                    fontsize=10,
+                )
 
+            ax.set_xlim(lo, hi)
             ax.tick_params(axis="both", labelsize=8)
 
     # Outer title (signal + variant + side); two subtitles below it:
@@ -328,6 +355,7 @@ def render_phase_aligned_trajectory_figure(
     side: str,
     output_path: Path,
     dpi: int = 150,
+    phase_display_window: tuple[float, float] = DEFAULT_PHASE_DISPLAY_WINDOW,
 ) -> Path:
     """Build the figure and save it as SVG.
 
@@ -336,6 +364,7 @@ def render_phase_aligned_trajectory_figure(
     """
     fig, _ = build_phase_aligned_trajectory_figure(
         pooled_df, signal=signal, variant=variant, side=side, dpi=dpi,
+        phase_display_window=phase_display_window,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, format="svg", bbox_inches="tight")
@@ -459,6 +488,7 @@ def emit_phase_aligned_trajectory_figures(
     variants: Iterable[str] = ("raw", "delta"),
     output_dir: Path | None = None,
     overwrite: Literal["skip", "force", "prompt"] = "prompt",
+    phase_display_window: tuple[float, float] = DEFAULT_PHASE_DISPLAY_WINDOW,
 ) -> dict[str, Any]:
     """Emit all 8 trajectory figures + a manifest dict.
 
@@ -519,6 +549,7 @@ def emit_phase_aligned_trajectory_figures(
                     pooled_df,
                     signal=signal, variant=variant, side=side,
                     output_path=output_path,
+                    phase_display_window=phase_display_window,
                 )
                 emitted.append(output_path)
     return {"emitted": emitted, "skipped": skipped}

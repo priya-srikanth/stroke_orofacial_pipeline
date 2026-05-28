@@ -26,6 +26,7 @@ from stroke_orofacial.figures.palette import (
     phenotype_palette,
 )
 from stroke_orofacial.figures.phase_aligned_trajectories import (
+    DEFAULT_PHASE_DISPLAY_WINDOW,
     EPOCH_DISPLAY_NAMES,
     EPOCH_ORDER,
     FIGURE_SUBDIR,
@@ -249,6 +250,39 @@ class TestBuildPhaseAlignedTrajectoryFigure:
         ]
         assert FIGURE_SUBTITLE in fig_texts
         plt.close(fig)
+
+    def test_phase_display_window_clips_xlim(self):
+        df = _pooled_df()
+        # Custom narrow window — verify the xlim reflects it on every panel.
+        fig, axes = build_phase_aligned_trajectory_figure(
+            df, signal="angle_deg", variant="raw", side="L",
+            phase_display_window=(0.2, 0.8),
+        )
+        for ax in axes.ravel():
+            lo, hi = ax.get_xlim()
+            assert lo == pytest.approx(0.2)
+            assert hi == pytest.approx(0.8)
+        plt.close(fig)
+
+    def test_phase_display_window_default_clips_edges(self):
+        df = _pooled_df()
+        # Default window applies edge clip.
+        fig, axes = build_phase_aligned_trajectory_figure(
+            df, signal="angle_deg", variant="raw", side="L",
+        )
+        for ax in axes.ravel():
+            lo, hi = ax.get_xlim()
+            assert lo == pytest.approx(DEFAULT_PHASE_DISPLAY_WINDOW[0])
+            assert hi == pytest.approx(DEFAULT_PHASE_DISPLAY_WINDOW[1])
+        plt.close(fig)
+
+    def test_phase_display_window_invalid_raises(self):
+        df = _pooled_df()
+        with pytest.raises(ValueError, match="phase_display_window"):
+            build_phase_aligned_trajectory_figure(
+                df, signal="angle_deg", variant="raw", side="L",
+                phase_display_window=(0.8, 0.2),
+            )
 
     def test_raw_variant_carries_raw_source_subtitle(self):
         df = _pooled_df()
