@@ -31,6 +31,7 @@ approval required per GR7.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import logging
 import re
@@ -55,6 +56,7 @@ from stroke_orofacial.config_loader import load_defaults  # noqa: E402
 from stroke_orofacial.dlc_spatial.render_on_demand import (  # noqa: E402
     _split_pre_post_dates,
 )
+from stroke_orofacial.figures.palette import PHENOTYPE_ORDER  # noqa: E402
 from stroke_orofacial.figures.phenotype_pooled_proportion_diff import (  # noqa: E402
     FIGURE_SUBDIR,
     compute_cohort_shared_vmax,
@@ -75,6 +77,15 @@ from stroke_orofacial.stats.spatial_proportion_diff import (  # noqa: E402
 
 
 COHORT_8 = ("PS46", "PS47", "PS48", "PS49", "PS50", "PS51", "PS54", "PS55")
+
+# Phenotype remap variants. ``none`` keeps the canonical 4-tier YAML
+# labels (PHENOTYPE_ORDER). ``3tier`` merges ``moderate-severe`` into
+# ``moderate``, producing a 3-tier phenotype-pooled figure with one
+# more animal per moderate-tier panel. Output directory is suffixed
+# with ``3_phenotype/`` so the 4-tier figures are not clobbered.
+PHENOTYPE_REMAP_3TIER: dict[str, str] = {"moderate-severe": "moderate"}
+PHENOTYPE_ORDER_3TIER: tuple[str, ...] = ("mild", "moderate", "severe")
+FIGURE_SUBDIR_3TIER_SUFFIX: str = "3_phenotype"
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +327,19 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--remap-phenotypes",
+        choices=("none", "3tier"),
+        default="none",
+        help=(
+            "Phenotype remap before pooling. 'none' (default): use the "
+            "4-tier YAML labels (mild, moderate, moderate-severe, severe). "
+            "'3tier' merges moderate-severe into moderate, producing a "
+            "3-tier (mild, moderate, severe) phenotype-pooled figure. "
+            "3tier output lands in a '3_phenotype/' subdir so the 4-tier "
+            "figures aren't clobbered."
+        ),
+    )
+    parser.add_argument(
         "--log-level",
         choices=("DEBUG", "INFO", "WARNING", "ERROR"),
         default="INFO",
@@ -347,6 +371,28 @@ def main() -> int:
     if missing:
         logger.error("animals not found in animals.yaml: %s", sorted(missing))
         return 1
+
+    # Apply phenotype remap (if any) BEFORE the per-animal compute loop —
+    # the per-animal D arrays don't depend on phenotype labels, but
+    # logging the remapped phenotype here makes the audit log self-
+    # documenting.
+    if args.remap_phenotypes == "3tier":
+        logger.info(
+            "Remapping phenotypes: %s (merge moderate-severe into moderate).",
+            PHENOTYPE_REMAP_3TIER,
+        )
+        animals_map = {
+            a: dataclasses.replace(
+                info,
+                recovery_phenotype=PHENOTYPE_REMAP_3TIER.get(
+                    info.recovery_phenotype, info.recovery_phenotype,
+                ),
+            )
+            for a, info in animals_map.items()
+        }
+        phenotype_order = PHENOTYPE_ORDER_3TIER
+    else:
+        phenotype_order = PHENOTYPE_ORDER
 
     all_records: list[dict] = []
     all_audit_rows: list[dict[str, object]] = []
@@ -382,14 +428,26 @@ def main() -> int:
         "Cohort-wide shared_vmax (p99 of |D_pooled|): %.5f", shared_vmax,
     )
 
+    # Resolve output directory: --output-dir wins; else 3-tier suffix
+    # when remapped; else canonical Q12-J subdir.
+    if args.output_dir is not None:
+        out_dir_emit = args.output_dir
+    elif args.remap_phenotypes == "3tier":
+        out_dir_emit = resolver.pipeline_outputs(
+            subdir=f"{FIGURE_SUBDIR}/{FIGURE_SUBDIR_3TIER_SUFFIX}",
+        )
+    else:
+        out_dir_emit = None  # let emit_* resolve to FIGURE_SUBDIR
+
     # Stage 5d: figure emit
     logger.info("Emitting 4 SVG figures (2 bodyparts x 2 sides)...")
     figs_result = emit_phenotype_pooled_proportion_diff_figures(
         pooled,
         resolver=resolver,
-        output_dir=args.output_dir,
+        output_dir=out_dir_emit,
         overwrite=args.overwrite,
         shared_vmax=shared_vmax,
+        phenotype_order=phenotype_order,
         defaults=defaults,
     )
     logger.info(
@@ -398,11 +456,16 @@ def main() -> int:
         len(figs_result["FAIL"]),
     )
 
-    # Stage 5e: per-animal audit manifest CSV
-    out_dir = (
-        args.output_dir if args.output_dir is not None
-        else resolver.pipeline_outputs(subdir=FIGURE_SUBDIR)
-    )
+    # Stage 5e: per-animal audit manifest CSV (lands next to the figures
+    # so 4-tier vs 3-tier audits don't overwrite each other).
+    if args.output_dir is not None:
+        out_dir = args.output_dir
+    elif args.remap_phenotypes == "3tier":
+        out_dir = resolver.pipeline_outputs(
+            subdir=f"{FIGURE_SUBDIR}/{FIGURE_SUBDIR_3TIER_SUFFIX}",
+        )
+    else:
+        out_dir = resolver.pipeline_outputs(subdir=FIGURE_SUBDIR)
     out_dir.mkdir(parents=True, exist_ok=True)
     audit_csv = out_dir / "q12_per_animal_manifest.csv"
     pd.DataFrame(

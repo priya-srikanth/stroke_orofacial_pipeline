@@ -27,7 +27,7 @@ for the per-panel image draw (Q12-C revised lock).
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal
 
@@ -169,13 +169,19 @@ def render_phenotype_pooled_proportion_diff_figure(
     pooled_records: Mapping[tuple[str, str, str, str], Mapping[str, Any]],
     *,
     shared_vmax: float,
+    phenotype_order: Sequence[str] = PHENOTYPE_ORDER,
     defaults: dict[str, Any] | None = None,
 ) -> plt.Figure:
-    """Render the single (bodypart × side) 4×3 phenotype × post_epoch figure.
+    """Render the single (bodypart × side) phenotype × post_epoch figure.
 
-    Phenotype rows ordered per
-    :data:`stroke_orofacial.figures.palette.PHENOTYPE_ORDER`
-    (mild → severe top-to-bottom). Epoch columns ordered per
+    Phenotype rows ordered per ``phenotype_order`` (defaults to the
+    4-tier :data:`stroke_orofacial.figures.palette.PHENOTYPE_ORDER`;
+    callers may pass a 3-tier sequence like
+    ``("mild", "moderate", "severe")`` to render the merged-mod-severe
+    variant — the figure grid auto-resizes to
+    ``len(phenotype_order) × len(POST_EPOCHS)``).
+
+    Epoch columns ordered per
     :data:`stroke_orofacial.stats.spatial_proportion_diff.POST_EPOCHS`
     (acute / sub_acute / chronic left-to-right).
 
@@ -198,7 +204,7 @@ def render_phenotype_pooled_proportion_diff_figure(
     spatial_config = defaults["dlc_spatial"]
     center_mode = BODYPART_CENTER_MODES[bodypart]
 
-    nrows = len(PHENOTYPE_ORDER)
+    nrows = len(phenotype_order)
     ncols = len(POST_EPOCHS)
     fig, axes_obj = plt.subplots(
         nrows=nrows, ncols=ncols,
@@ -211,7 +217,7 @@ def render_phenotype_pooled_proportion_diff_figure(
     fig.patch.set_facecolor("white")
 
     axes = np.asarray(axes_obj).reshape(nrows, ncols)
-    for i, phenotype in enumerate(PHENOTYPE_ORDER):
+    for i, phenotype in enumerate(phenotype_order):
         for j, post_epoch in enumerate(POST_EPOCHS):
             ax = axes[i, j]
             rec = pooled_records.get((phenotype, side, bodypart, post_epoch))
@@ -278,6 +284,7 @@ def emit_phenotype_pooled_proportion_diff_figures(
     output_dir: Path | None = None,
     overwrite: Literal["skip", "force", "prompt"] = "prompt",
     shared_vmax: float | None = None,
+    phenotype_order: Sequence[str] = PHENOTYPE_ORDER,
     defaults: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Emit the 4 Q-lock 12 SVG figures (2 bodyparts × 2 sides) + manifest.
@@ -343,6 +350,7 @@ def emit_phenotype_pooled_proportion_diff_figures(
                     bodypart=bodypart, side=side,
                     pooled_records=pooled_records,
                     shared_vmax=shared_vmax,
+                    phenotype_order=phenotype_order,
                     defaults=defaults,
                 )
                 fig.savefig(target, format="svg", bbox_inches="tight")

@@ -1,6 +1,6 @@
 # Phase 9.1 Q-lock 12 — Phenotype-Pooled Proportion-Diff Heatmaps Kickoff
 
-**Status:** LOCKED v1 + Addendum #1 + Addendum #2 + Addendum #3 (2026-05-27 → 2026-05-28).
+**Status:** LOCKED v1 + Addendum #1-4 (2026-05-27 → 2026-05-28).
 **Branch:** `phase/9.1-q12-proportion-diff-heatmaps`
 **Merge tag (on close):** `v9.1-q12-proportion-diff-heatmaps`
 **Depends on:**
@@ -224,4 +224,43 @@ Both pull from the same v7-cleaned-trace (tongue) / v3.4-cleaned-trace (jaw) sub
 ### Pilot regenerated
 
 The PS46-only pilot run on 2026-05-28 04:04 used the pre-Addendum-#3 eye-centered tongue. Those 2 tongue SVGs (`tongue_L_*`, `tongue_R_*`) are stale on disk; the full 8-animal cohort re-emit launched immediately after this addendum will overwrite them with the spout-centered tongue figures (and produce phenotype-pooled jaw figures across all 4 phenotypes for the first time).
+
+
+---
+
+## Addendum #4 — 3-phenotype variant (merge moderate-severe → moderate) (2026-05-28)
+
+**ALL OTHER LOCKS UNCHANGED.** New scope: add a parallel 3-phenotype rendering of the same data, alongside the canonical 4-tier figures.
+
+### Motivation
+
+The 4-tier YAML phenotype labels (`mild`, `moderate`, `moderate-severe`, `severe`) include `moderate-severe` as a single-animal tier (PS51 only). With one animal per phenotype-pool, the moderate-severe row is technically a phenotype-pool of N=1 — informative but high-variance. Pooling PS51 with PS46 (moderate) gives a more robust "intermediate-severity" pool (n=2) at the cost of losing the fine-grained tier distinction.
+
+Both views are scientifically meaningful; this addendum produces both alongside, with NEITHER replacing the other.
+
+### Scope
+
+- **NEW**: 3-phenotype variant rendering. Same data, same Stage 1/2/3 pipeline; ONLY change is the phenotype label remap applied before Stage 2 aggregation.
+- Remap: `moderate-severe` → `moderate`. (Mild and severe unchanged.)
+- 3-tier ``phenotype_order = ("mild", "moderate", "severe")``.
+- Per-figure grid becomes 3×3 (3 phenotype rows × 3 post-epoch columns) instead of 4×3.
+
+### Output path
+
+- 4-tier (unchanged): `pipeline_outputs/stats/figures/phenotype_pooled/proportion_diff_heatmaps/`
+- **3-tier NEW**: `pipeline_outputs/stats/figures/phenotype_pooled/proportion_diff_heatmaps/3_phenotype/`
+- Filenames + footer subtitle: unchanged across both variants (the directory carries the marker).
+
+### Implementation
+
+`scripts/phase_9_1_q12/emit_cohort.py` gains `--remap-phenotypes={none,3tier}` (default `none`). When `3tier`, the driver:
+- Applies the remap to the `animals_map` via `dataclasses.replace` (per-animal `recovery_phenotype` override).
+- Passes `phenotype_order=("mild", "moderate", "severe")` to the Stage 3 renderer.
+- Writes outputs to the `3_phenotype/` subdir.
+
+`figures/phenotype_pooled_proportion_diff.py` gains a `phenotype_order` kwarg on both `render_phenotype_pooled_proportion_diff_figure` and `emit_phenotype_pooled_proportion_diff_figures`, defaulting to the canonical 4-tier `PHENOTYPE_ORDER`. The renderer reads the kwarg to size the grid (`nrows = len(phenotype_order)`) and to iterate phenotype rows.
+
+### Stage 5b — 3-tier cohort re-emit
+
+Same 8-animal cohort, full re-emit with `--remap-phenotypes 3tier --overwrite force`. 4-tier figures are NOT regenerated (they live in the parent directory and Stage 5 already emitted them at 04:37).
 

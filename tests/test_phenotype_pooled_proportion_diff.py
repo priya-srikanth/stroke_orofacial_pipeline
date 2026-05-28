@@ -203,6 +203,33 @@ class TestRenderPhenotypePooledProportionDiffFigure:
         # Bodypart-specific source footer (Phase 7e + 7e.4 + Phase 7f for jaw).
         assert FIGURE_SUBTITLE_BY_BODYPART["jaw"] in sup
 
+    def test_custom_phenotype_order_changes_grid_height(self) -> None:
+        """Passing phenotype_order=('mild','moderate','severe') (3-tier
+        Addendum #4 variant) yields a 3-row grid instead of 4."""
+        recs = _full_pooled_records()
+        fig = render_phenotype_pooled_proportion_diff_figure(
+            bodypart="tongue", side="L", pooled_records=recs,
+            shared_vmax=0.01,
+            phenotype_order=("mild", "moderate", "severe"),
+        )
+        # 3 phenotypes x 3 epochs = 9 panel axes, plus 1 colorbar axis.
+        # PHENOTYPE_ORDER (4-tier) would give 12 panel axes.
+        # Drop the colorbar axis (always last on this layout).
+        panel_axes = [
+            ax for ax in fig.axes if ax.get_position().width > 0.1
+        ]
+        # 9 panel axes for 3-tier; > 9 means we kept the 4-tier layout.
+        assert len(panel_axes) <= 10, (
+            f"expected <=10 panel axes (9 + maybe 1 colorbar tail), "
+            f"got {len(panel_axes)}"
+        )
+        # The titles should NOT include "mod-severe" anywhere (per
+        # phenotype_display_name for "moderate-severe").
+        titles = [ax.get_title() for ax in fig.axes if ax.get_title()]
+        assert not any("mod-severe" in t for t in titles), (
+            f"3-tier render should not show mod-severe row; got {titles!r}"
+        )
+
     def test_invalid_bodypart_raises(self) -> None:
         with pytest.raises(ValueError, match="not in Q12-B scope"):
             render_phenotype_pooled_proportion_diff_figure(
