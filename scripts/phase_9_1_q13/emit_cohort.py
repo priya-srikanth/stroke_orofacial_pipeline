@@ -59,6 +59,7 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (  # noqa: E402
 )
 from stroke_orofacial.figures.phase_aligned_trajectories import (  # noqa: E402
     FIGURE_SUBDIR,
+    RESULTS_SUBDIR,
     compute_trajectory_bootstrap_effect_ci,
     compute_trajectory_bootstrap_pre_ci,
     compute_trajectory_cluster_permutation_stats,
@@ -285,17 +286,55 @@ def attach_metadata(
 # ---------------------------------------------------------------------------
 
 
+def _derive_results_dir(
+    *,
+    output_dir: Path,
+    results_dir: Path | None,
+    resolver: PathResolver,
+) -> Path:
+    """Q-lock 13c Addendum #2: pick the CSV output dir from caller intent.
+
+    Resolution order:
+
+    1. ``results_dir`` if the caller passed one explicitly — used verbatim.
+    2. Swap ``output_dir`` 's ``FIGURE_SUBDIR`` substring for
+       ``RESULTS_SUBDIR``. Preserves any
+       ``3_phenotype/`` / ``null_calibration/`` / ``3_phenotype/null_calibration/``
+       subpath the caller routed into (so the figures and CSVs end up
+       at parallel subpaths under their respective trees).
+    3. Fallback: canonical results-tree root from the resolver. Hit only
+       when ``output_dir`` is some completely-custom path (e.g. tests'
+       ``tmp_path`` overrides without the figures subdir).
+    """
+    if results_dir is not None:
+        return results_dir
+    output_str = str(output_dir).replace("\\", "/")
+    if FIGURE_SUBDIR in output_str:
+        return Path(output_str.replace(FIGURE_SUBDIR, RESULTS_SUBDIR))
+    return resolver.pipeline_outputs(subdir=RESULTS_SUBDIR)
+
+
 def run_stats_and_figures(
     cohort_df: pd.DataFrame,
     *,
     resolver: PathResolver,
     overwrite: str,
     output_dir: Path | None,
+    results_dir: Path | None = None,
     logger: logging.Logger,
     animals_map: dict[str, AnimalInfo] | None = None,
     phenotype_order: tuple[str, ...] | None = None,
 ) -> dict[str, object]:
     """Run Stages 1→2→3 on the cohort phase-row DataFrame.
+
+    Q-lock 13c Addendum #2 (2026-05-29): numerical CSV outputs split
+    from the figures tree. ``output_dir`` continues to receive SVG
+    figures; ``results_dir`` receives every CSV (pooled summary,
+    baseline, per-trial/per-session/per-animal scalars, and the 6
+    hypothesis-test families). When ``results_dir`` is ``None``, it is
+    derived from ``output_dir`` by swapping the ``stats/figures/`` prefix
+    for ``stats/results/`` (preserves any 3_phenotype/null_calibration/
+    subdir suffix the caller already routed into).
 
     Returns a dict with paths to produced artifacts + figure-emit result.
     """
@@ -374,11 +413,22 @@ def run_stats_and_figures(
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    pooled_csv = out_dir / "phenotype_pooled_phase_bin_mean_sem.csv"
+    # Q-lock 13c Addendum #2 (2026-05-29): CSVs land under results tree;
+    # figures (above) stay under figures tree. If caller didn't supply
+    # results_dir, derive it from output_dir by swapping the
+    # ``stats/figures/`` prefix for ``stats/results/`` (preserves any
+    # 3_phenotype/null_calibration/ subdir suffix).
+    csv_dir = _derive_results_dir(
+        output_dir=out_dir, results_dir=results_dir, resolver=resolver,
+    )
+    csv_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("CSV outputs landing under: %s", csv_dir)
+
+    pooled_csv = csv_dir / "phenotype_pooled_phase_bin_mean_sem.csv"
     pooled.to_csv(pooled_csv, index=False)
     logger.info("Wrote phenotype-pooled summary CSV: %s", pooled_csv)
 
-    baseline_csv = out_dir / "per_animal_phase_bin_baseline.csv"
+    baseline_csv = csv_dir / "per_animal_phase_bin_baseline.csv"
     baseline.to_csv(baseline_csv, index=False)
     logger.info("Wrote per-animal baseline CSV: %s", baseline_csv)
 
@@ -388,7 +438,7 @@ def run_stats_and_figures(
     )
     scalar_df = compute_per_animal_trajectory_scalar(cohort_df)
     logger.info("  per-animal scalar rows: %d", len(scalar_df))
-    scalar_csv = out_dir / "per_animal_trajectory_scalar.csv"
+    scalar_csv = csv_dir / "per_animal_trajectory_scalar.csv"
     scalar_df.to_csv(scalar_csv, index=False)
     logger.info("Wrote per-animal trajectory scalar CSV: %s", scalar_csv)
 
@@ -398,7 +448,7 @@ def run_stats_and_figures(
     if animals_map is None:
         animals_map = load_animals()
     wilcoxon_df = compute_trajectory_wilcoxon_stats(scalar_df, animals_map)
-    wilcoxon_csv = out_dir / "trajectory_paired_wilcoxon_bh_fdr.csv"
+    wilcoxon_csv = csv_dir / "trajectory_paired_wilcoxon_bh_fdr.csv"
     wilcoxon_df.to_csv(wilcoxon_csv, index=False)
     n_reject = int(wilcoxon_df["reject"].fillna(False).sum())
     n_finite = int(wilcoxon_df["p_value"].notna().sum())
@@ -413,12 +463,12 @@ def run_stats_and_figures(
         "(session n)...",
     )
     session_scalar_df = compute_per_session_trajectory_scalar(cohort_df)
-    session_scalar_csv = out_dir / "per_session_trajectory_scalar.csv"
+    session_scalar_csv = csv_dir / "per_session_trajectory_scalar.csv"
     session_scalar_df.to_csv(session_scalar_csv, index=False)
     mwu_session_df = compute_trajectory_mwu_stats(
         session_scalar_df, animals_map, grain="session",
     )
-    mwu_session_csv = out_dir / "trajectory_mwu_per_session_bh_fdr.csv"
+    mwu_session_csv = csv_dir / "trajectory_mwu_per_session_bh_fdr.csv"
     mwu_session_df.to_csv(mwu_session_csv, index=False)
     n_reject_s = int(mwu_session_df["reject"].fillna(False).sum())
     n_finite_s = int(mwu_session_df["p_value"].notna().sum())
@@ -432,12 +482,12 @@ def run_stats_and_figures(
         "(trial n)...",
     )
     trial_scalar_df = compute_per_trial_trajectory_scalar(cohort_df)
-    trial_scalar_csv = out_dir / "per_trial_trajectory_scalar.csv"
+    trial_scalar_csv = csv_dir / "per_trial_trajectory_scalar.csv"
     trial_scalar_df.to_csv(trial_scalar_csv, index=False)
     mwu_trial_df = compute_trajectory_mwu_stats(
         trial_scalar_df, animals_map, grain="trial",
     )
-    mwu_trial_csv = out_dir / "trajectory_mwu_per_trial_bh_fdr.csv"
+    mwu_trial_csv = csv_dir / "trajectory_mwu_per_trial_bh_fdr.csv"
     mwu_trial_df.to_csv(mwu_trial_csv, index=False)
     n_reject_t = int(mwu_trial_df["reject"].fillna(False).sum())
     n_finite_t = int(mwu_trial_df["p_value"].notna().sum())
@@ -454,7 +504,7 @@ def run_stats_and_figures(
     # Q-lock 13.6 — LMM (proper inferential at session grain).
     logger.info("Stage 6.6: per-session LMM (scalar ~ epoch + (1|animal))...")
     lmm_df = compute_trajectory_lmm_stats(session_scalar_df, animals_map)
-    lmm_csv = out_dir / "trajectory_lmm_per_session_bh_fdr.csv"
+    lmm_csv = csv_dir / "trajectory_lmm_per_session_bh_fdr.csv"
     lmm_df.to_csv(lmm_csv, index=False)
     n_reject_lmm = int(lmm_df["reject"].fillna(False).sum())
     n_finite_lmm = int(lmm_df["p_value"].notna().sum())
@@ -472,7 +522,7 @@ def run_stats_and_figures(
         cohort_with_delta, animals_map,
         n_permutations=5000, t_threshold=2.0,
     )
-    cluster_csv = out_dir / "trajectory_cluster_permutation_bh_fdr.csv"
+    cluster_csv = csv_dir / "trajectory_cluster_permutation_bh_fdr.csv"
     cluster_df.to_csv(cluster_csv, index=False)
     n_reject_cl = int(cluster_df["reject"].fillna(False).sum())
     n_finite_cl = int(cluster_df["p_value"].notna().sum())
@@ -489,7 +539,7 @@ def run_stats_and_figures(
     boot_df = compute_trajectory_bootstrap_pre_ci(
         cohort_with_delta, animals_map, n_bootstrap=5000, ci=0.95,
     )
-    boot_csv = out_dir / "trajectory_pre_bootstrap_ci.csv"
+    boot_csv = csv_dir / "trajectory_pre_bootstrap_ci.csv"
     boot_df.to_csv(boot_csv, index=False)
     logger.info(
         "  bootstrap CI rows: %d → %s", len(boot_df), boot_csv,
@@ -503,7 +553,7 @@ def run_stats_and_figures(
     boot_eff_df = compute_trajectory_bootstrap_effect_ci(
         cohort_with_delta, animals_map, n_bootstrap=5000, ci=0.95,
     )
-    boot_eff_csv = out_dir / "trajectory_effect_bootstrap_ci.csv"
+    boot_eff_csv = csv_dir / "trajectory_effect_bootstrap_ci.csv"
     boot_eff_df.to_csv(boot_eff_csv, index=False)
     n_excludes = int(
         boot_eff_df["excludes_zero"].fillna(False).sum()
@@ -613,8 +663,20 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=None,
         help=(
-            "Optional override for the figure / CSV output dir "
-            "(default: pipeline_outputs/<Q-lock 15 subdir>)."
+            "Optional override for the FIGURE output dir "
+            "(default: pipeline_outputs/<FIGURE_SUBDIR>)."
+        ),
+    )
+    parser.add_argument(
+        "--results-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Optional override for the numerical CSV output dir "
+            "(default: pipeline_outputs/<RESULTS_SUBDIR>). "
+            "Q-lock 13c Addendum #2 (2026-05-29): numerical CSVs live "
+            "under stats/results/, distinct from the stats/figures/ "
+            "SVG tree."
         ),
     )
     parser.add_argument(
@@ -693,11 +755,13 @@ def main(argv: list[str] | None = None) -> int:
         "Status counts: %s", json.dumps(status_counts),
     )
 
-    # Walk manifest lands in the canonical 4-tier dir (sessions walked
-    # are identical across remap modes — no point duplicating).
+    # Walk manifest lands in the canonical 4-tier RESULTS dir (sessions
+    # walked are identical across remap modes — no point duplicating).
+    # Q-lock 13c Addendum #2: walk manifest is a numerical CSV, belongs
+    # in stats/results/, not stats/figures/.
     walk_manifest_dir = (
-        args.output_dir if args.output_dir is not None
-        else resolver.pipeline_outputs(subdir=FIGURE_SUBDIR)
+        args.results_dir if args.results_dir is not None
+        else resolver.pipeline_outputs(subdir=RESULTS_SUBDIR)
     )
     walk_manifest_dir.mkdir(parents=True, exist_ok=True)
     if manifest_rows:
@@ -721,21 +785,29 @@ def main(argv: list[str] | None = None) -> int:
         if args.remap_phenotypes == "3tier":
             logger.info(
                 "Phenotype remap = 3tier (mod-severe → moderate). "
-                "Output subdir: %s/3_phenotype/", FIGURE_SUBDIR,
+                "Output subdir: %s/3_phenotype/ (figures), "
+                "%s/3_phenotype/ (CSVs)", FIGURE_SUBDIR, RESULTS_SUBDIR,
             )
             animals_map = remap_animals_to_3tier(animals_map)
             phenotype_order = PHENOTYPE_ORDER_3TIER
             # Auto-route output to a 3_phenotype subdir (only when
-            # user didn't pass an explicit --output-dir).
+            # user didn't pass an explicit --output-dir / --results-dir).
             output_dir = args.output_dir
             if output_dir is None:
                 output_dir = (
                     resolver.pipeline_outputs(subdir=FIGURE_SUBDIR)
                     / "3_phenotype"
                 )
+            results_dir = args.results_dir
+            if results_dir is None:
+                results_dir = (
+                    resolver.pipeline_outputs(subdir=RESULTS_SUBDIR)
+                    / "3_phenotype"
+                )
         else:
             phenotype_order = None
             output_dir = args.output_dir
+            results_dir = args.results_dir
         cohort_df = attach_metadata(cohort_df, animals_map)
         logger.info(
             "  cohort rows after phenotype/epoch attach: %d",
@@ -751,15 +823,21 @@ def main(argv: list[str] | None = None) -> int:
             logger.info(
                 "  null-calibration rows: %d", len(cohort_df),
             )
-            base_dir = (
+            base_fig_dir = (
                 output_dir if output_dir is not None
                 else resolver.pipeline_outputs(subdir=FIGURE_SUBDIR)
             )
-            output_dir = base_dir / "null_calibration"
+            output_dir = base_fig_dir / "null_calibration"
+            base_res_dir = (
+                results_dir if results_dir is not None
+                else resolver.pipeline_outputs(subdir=RESULTS_SUBDIR)
+            )
+            results_dir = base_res_dir / "null_calibration"
     else:
         animals_map = None
         phenotype_order = None
         output_dir = args.output_dir
+        results_dir = args.results_dir
 
     # Stages 1 → 2 → 3.
     result = run_stats_and_figures(
@@ -767,6 +845,7 @@ def main(argv: list[str] | None = None) -> int:
         resolver=resolver,
         overwrite=args.overwrite,
         output_dir=output_dir,
+        results_dir=results_dir,
         logger=logger,
         animals_map=animals_map,
         phenotype_order=phenotype_order,

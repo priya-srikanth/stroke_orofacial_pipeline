@@ -31,6 +31,7 @@ from stroke_orofacial.figures.phase_aligned_trajectories import (
     EPOCH_ORDER,
     FIGURE_SUBDIR,
     FIGURE_SUBTITLE,
+    RESULTS_SUBDIR,
     SOURCE_DATA_SUBTITLE_DELTA,
     SOURCE_DATA_SUBTITLE_RAW,
     build_phase_aligned_trajectory_figure,
@@ -558,6 +559,54 @@ class TestEmitPhaseAlignedTrajectoryFigures:
             "angle_deg_raw_L_mean_sem_cleaned_trace.svg",
             "angle_deg_raw_R_mean_sem_cleaned_trace.svg",
         }
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13c Addendum #2 — figures vs results tree split
+# ---------------------------------------------------------------------------
+
+
+class TestFiguresResultsTreeSplit:
+    """Q-lock 13c Addendum #2 (2026-05-29): numerical CSVs split from
+    the figures tree. FIGURE_SUBDIR keeps SVGs; RESULTS_SUBDIR receives
+    CSVs. Both share the same relative-subpath structure (root,
+    3_phenotype/, null_calibration/, 3_phenotype/null_calibration/)."""
+
+    def test_results_subdir_constant_lock(self):
+        # Lock the literal so future renames are intentional.
+        assert RESULTS_SUBDIR == (
+            "stats/results/phenotype_pooled/phase_aligned_trajectories"
+        )
+
+    def test_figure_subdir_constant_unchanged(self):
+        # FIGURE_SUBDIR stays at the same tree it had at Q13 close.
+        assert FIGURE_SUBDIR == (
+            "stats/figures/phenotype_pooled/phase_aligned_trajectories"
+        )
+
+    def test_results_and_figure_subdirs_differ_only_in_figures_vs_results(self):
+        # The two trees mirror each other at the project-wide split
+        # point: ``stats/figures/`` (renders) vs ``stats/results/`` (CSVs).
+        assert FIGURE_SUBDIR.replace("figures", "results") == RESULTS_SUBDIR
+
+    def test_emit_phase_aligned_trajectory_figures_writes_no_csvs(
+        self, tmp_path,
+    ):
+        # The renderer only produces SVGs. CSVs are written by the
+        # cohort emit driver (run_stats_and_figures), which routes them
+        # to results_dir; this test locks the figure-side invariant.
+        df = _pooled_df()
+        resolver = PathResolver(output_root=tmp_path)
+        out = emit_phase_aligned_trajectory_figures(
+            df, resolver=resolver, overwrite="force",
+            output_dir=tmp_path / "figs",
+        )
+        # All emitted paths end in .svg; no .csv siblings appear under
+        # the figures output dir.
+        for p in out["emitted"]:
+            assert p.suffix == ".svg", f"unexpected non-SVG emit: {p}"
+        csvs = list((tmp_path / "figs").glob("*.csv"))
+        assert csvs == [], f"unexpected CSVs under figures dir: {csvs}"
 
 
 # ---------------------------------------------------------------------------

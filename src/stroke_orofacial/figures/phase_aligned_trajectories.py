@@ -92,8 +92,18 @@ DEFAULT_ERROR_BAND_TYPE: ErrorBandType = "sem"
 # correction 2026-05-27 — figures land under stats/figures/phenotype_pooled/
 # alongside V4/V5 and Q13b endpoint-stats figures, NOT under a separate
 # phase_9_1_figures/ tree).
+#
+# Q-lock 13c Addendum #2 (2026-05-29): numerical CSV outputs split from
+# the figures tree to ``stats/results/phenotype_pooled/...`` per project
+# convention (``stats/figures/`` = SVG/PNG; ``stats/results/`` = CSVs).
+# Both subdirs share the same relative subpath structure (root, 3_phenotype/,
+# null_calibration/, 3_phenotype/null_calibration/, sd_band/ — last is
+# figures-only since SD-band is a render-time variant).
 FIGURE_SUBDIR: str = (
     "stats/figures/phenotype_pooled/phase_aligned_trajectories"
+)
+RESULTS_SUBDIR: str = (
+    "stats/results/phenotype_pooled/phase_aligned_trajectories"
 )
 FIGURE_SUBTITLE: str = (
     "Source: v7-cleaned-trace cohort re-emit (Phase 7e + Phase 7e.4)"
