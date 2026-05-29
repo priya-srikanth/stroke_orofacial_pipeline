@@ -1,11 +1,16 @@
-"""Phase 9.1 Q-lock 13 — phase-aligned mean+SEM trajectory figures.
+"""Phase 9.1 Q-lock 13 + 13c — phase-aligned mean+SEM trajectory figures.
 
-Renders the 8 trajectory figures consumed by the Q-lock 13 cohort emit:
-2 signals (``angle_deg``, ``x_centered``) × 2 variants (raw, delta) ×
-2 sides (L, R). Each figure is a 4 × 4 grid of panels — rows = phenotype
-(mild / moderate / mod-severe / severe per Q-lock 1 / F-P-1); columns =
-epoch (pre / acute / sub_acute / chronic per
-:func:`stroke_orofacial.stats.recovery_epochs.assign_epoch_label`).
+Renders the 12 trajectory figures consumed by the Q-lock 13/13c cohort
+emit: 3 signals (``angle_deg``, ``x_centered``, ``y_centered``) × 2
+variants (raw, delta) × 2 sides (L, R). Each figure is a 4 × 4 grid of
+panels — rows = phenotype (mild / moderate / mod-severe / severe per
+Q-lock 1 / F-P-1); columns = epoch (pre / acute / sub_acute / chronic
+per :func:`stroke_orofacial.stats.recovery_epochs.assign_epoch_label`).
+
+Q-lock 13c Stage 3 (2026-05-29): ``y_centered`` joined the signal
+matrix as the protrusion / amplitude axis (raw y from
+``dlc_centered_spout_midpoint_parquet``; spout-midpoint frame).
+8 → 12 figure count (4 new y figures across L/R × raw/delta).
 
 Per-panel content (locked decisions from kickoff):
 - **Q13-B:** mean trajectory line + ±1 SEM band (parametric).
@@ -106,10 +111,12 @@ EPOCH_DISPLAY_NAMES: dict[str, str] = {
     "chronic": "Chronic",
 }
 
-# Human-readable axis labels for the two trajectory signals.
+# Human-readable axis labels for the trajectory signals (Q-lock 13c
+# Stage 3: added y_centered protrusion-axis label).
 SIGNAL_DISPLAY_NAMES: dict[str, str] = {
     "angle_deg": "Tongue angle (deg)",
     "x_centered": "Tongue x (spout-midpoint frame, px)",
+    "y_centered": "Tongue y (spout-midpoint frame, px)",
 }
 
 VARIANT_DISPLAY_NAMES: dict[str, str] = {
@@ -209,7 +216,8 @@ def build_phase_aligned_trajectory_figure(
         panel x-axis but optional (falls back to ``phase_bin / max``).
     signal : str
         One of the substrate signal column names (``"angle_deg"`` /
-        ``"x_centered"``).
+        ``"x_centered"`` / ``"y_centered"`` — last per Q-lock 13c
+        Stage 3).
     variant : str
         ``"raw"`` or ``"delta"``.
     side : str
@@ -1426,7 +1434,7 @@ def emit_phase_aligned_trajectory_figures(
     *,
     resolver: PathResolver,
     sides: Iterable[str] = ("L", "R"),
-    signals: Iterable[str] = ("angle_deg", "x_centered"),
+    signals: Iterable[str] = TRAJECTORY_SIGNALS,
     variants: Iterable[str] = ("raw", "delta"),
     output_dir: Path | None = None,
     overwrite: Literal["skip", "force", "prompt"] = "prompt",
@@ -1435,11 +1443,16 @@ def emit_phase_aligned_trajectory_figures(
     phenotype_order: tuple[str, ...] = PHENOTYPE_ORDER,
     share_y_across_sides: bool = True,
 ) -> dict[str, Any]:
-    """Emit all 8 trajectory figures + a manifest dict.
+    """Emit all 12 trajectory figures + a manifest dict.
 
     For each (signal, variant, side) triple in the Cartesian product,
     renders one figure to the canonical Q-lock 15 path. Same
     confirm-once-then-force pattern as Q13b's emit_phase_aligned_endpoint_figures.
+
+    Q-lock 13c Stage 3 (2026-05-29): default ``signals`` switched from
+    the hardcoded ``("angle_deg", "x_centered")`` to ``TRAJECTORY_SIGNALS``
+    so the emit default tracks the canonical signal tuple — adding
+    y_centered to the tuple now auto-emits the 4 new y figures.
 
     Parameters
     ----------
@@ -1447,8 +1460,8 @@ def emit_phase_aligned_trajectory_figures(
         Output of :func:`stroke_orofacial.stats.aggregators.aggregate_phenotype_pooled_phase_bin_mean_sem`.
     resolver : PathResolver
     sides, signals, variants : Iterable[str]
-        Override defaults to render a subset. Defaults render all 8
-        figures.
+        Override defaults to render a subset. Defaults render all 12
+        figures (3 signals × 2 variants × 2 sides).
     output_dir : Path, optional
         Override the canonical figure subdir (used by tests with
         ``tmp_path``).
