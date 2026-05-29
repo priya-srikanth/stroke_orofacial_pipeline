@@ -221,6 +221,7 @@ def per_animal_bin_means(
     df: pd.DataFrame,
     *,
     by_side: bool = False,
+    side_col: str = "side",
 ) -> pd.DataFrame:
     """Collapse to one row per (animal[, side], bin_midpoint_rel_day) via mean.
 
@@ -240,7 +241,7 @@ def per_animal_bin_means(
     """
     by = ["animal", "phenotype_tier"]
     if by_side:
-        by.append("side")
+        by.append(side_col)
     by.extend(["bin_idx", "bin_midpoint_rel_day"])
     keep = [c for c in by if c in df.columns]
     return df.groupby(keep, as_index=False)["value"].mean()
@@ -250,6 +251,7 @@ def phenotype_pooled_per_bin(
     per_animal: pd.DataFrame,
     *,
     by_side: bool = False,
+    side_col: str = "side",
 ) -> pd.DataFrame:
     """Pool across animals within each (phenotype_tier[, side], bin) to mean ± SEM.
 
@@ -260,8 +262,8 @@ def phenotype_pooled_per_bin(
     (single-animal traces; rendered as a line without ribbon).
     """
     keys = ["phenotype_tier"]
-    if by_side and "side" in per_animal.columns:
-        keys.append("side")
+    if by_side and side_col in per_animal.columns:
+        keys.append(side_col)
     keys.append("bin_midpoint_rel_day")
     grp = per_animal.groupby(keys, as_index=False)
     agg = grp["value"].agg(["mean", "sem", "count"]).reset_index()
@@ -297,6 +299,7 @@ def per_session_within_epoch(
     df: pd.DataFrame,
     *,
     by_side: bool = False,
+    side_col: str = "side",
 ) -> pd.DataFrame:
     """Collapse to one row per (animal, date[, side], epoch_label) via mean(value).
 
@@ -313,8 +316,8 @@ def per_session_within_epoch(
         return df.iloc[:0]
     df = df.dropna(subset=["epoch_label"])
     by = ["animal", "phenotype_tier", "date", "epoch_label"]
-    if by_side and "side" in df.columns:
-        by.append("side")
+    if by_side and side_col in df.columns:
+        by.append(side_col)
     keep = [c for c in by if c in df.columns]
     return df.groupby(keep, as_index=False)["value"].mean()
 
@@ -327,6 +330,7 @@ def per_animal_side_baseline(
     df: pd.DataFrame,
     *,
     by_side: bool = False,
+    side_col: str = "side",
 ) -> pd.DataFrame:
     """Compute the per-animal[-per-side] pre-stroke baseline mean.
 
@@ -363,12 +367,12 @@ def per_animal_side_baseline(
     if df.empty or "epoch_label" not in df.columns:
         cols = ["animal", "baseline_mean", "n_pre_rows"]
         if by_side:
-            cols.insert(1, "side")
+            cols.insert(1, side_col)
         return pd.DataFrame(columns=cols)
     pre = df[df["epoch_label"] == "pre"]
     keys = ["animal"]
-    if by_side and "side" in pre.columns:
-        keys.append("side")
+    if by_side and side_col in pre.columns:
+        keys.append(side_col)
     agg = (
         pre.groupby(keys, as_index=False)["value"]
         .agg(["mean", "count"])
@@ -382,6 +386,7 @@ def apply_baseline_delta(
     baseline: pd.DataFrame,
     *,
     by_side: bool = False,
+    side_col: str = "side",
 ) -> pd.DataFrame:
     """Attach a ``delta_value = value − baseline_mean`` column.
 
@@ -395,8 +400,8 @@ def apply_baseline_delta(
     if sessions.empty:
         return sessions.assign(delta_value=pd.Series(dtype=float))
     on = ["animal"]
-    if by_side and "side" in sessions.columns and "side" in baseline.columns:
-        on.append("side")
+    if by_side and side_col in sessions.columns and side_col in baseline.columns:
+        on.append(side_col)
     joined = sessions.merge(baseline, on=on, how="inner")
     joined = joined.dropna(subset=["baseline_mean"]).copy()
     joined["delta_value"] = joined["value"] - joined["baseline_mean"]
@@ -407,6 +412,7 @@ def phenotype_pooled_per_epoch_delta(
     sessions_with_delta: pd.DataFrame,
     *,
     by_side: bool = False,
+    side_col: str = "side",
 ) -> pd.DataFrame:
     """Pool delta values across (animal, session) within (phenotype, [side,] epoch).
 
@@ -418,11 +424,11 @@ def phenotype_pooled_per_epoch_delta(
     if sessions_with_delta.empty:
         cols = ["phenotype_tier", "epoch_label", "mean", "sem", "n_sessions"]
         if by_side:
-            cols.insert(1, "side")
+            cols.insert(1, side_col)
         return pd.DataFrame(columns=cols)
     keys = ["phenotype_tier"]
-    if by_side and "side" in sessions_with_delta.columns:
-        keys.append("side")
+    if by_side and side_col in sessions_with_delta.columns:
+        keys.append(side_col)
     keys.append("epoch_label")
     grp = sessions_with_delta.groupby(keys, as_index=False)
     agg = grp["delta_value"].agg(["mean", "sem", "count"]).reset_index()

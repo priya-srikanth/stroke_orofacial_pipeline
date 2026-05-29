@@ -43,6 +43,16 @@ PHASE_9_1_FIGURES_SUBDIR = "stats/figures"
 V4_VARIANT_FILENAME = "v4_per_bin_phenotype_pooled"
 V5_VARIANT_FILENAME = "v5_per_epoch_phenotype_pooled"
 
+# Q-lock 14 split-key hardening (Addendum #1 §5): pool + split the side-
+# stratified panels on the lesion-relative ``ipsi_contra`` column rather than
+# raw rig-frame ``side`` (L/R). For the current all-L cohort this is a provable
+# no-op (L↔ipsi, R↔contra per animal); it becomes the scientifically-correct
+# pooling the moment a right-stroke animal joins (its mouse-L = contra would
+# otherwise pool against left-stroke animals' mouse-L = ipsi). Panels still
+# read "Ipsi (mouse-L)" / "Contra (mouse-R)" for the all-L cohort.
+_SIDE_SPLIT_COL = "ipsi_contra"
+_IPSI_CONTRA_PANELS: tuple[str, ...] = ("ipsi", "contra")
+
 FigureType = Literal["v4", "v5"]
 
 
@@ -101,8 +111,12 @@ def emit_v4_per_endpoint(
             )
             return None
 
-    per_animal = _io.per_animal_bin_means(df, by_side=has_side)
-    pooled = _io.phenotype_pooled_per_bin(per_animal, by_side=has_side)
+    per_animal = _io.per_animal_bin_means(
+        df, by_side=has_side, side_col=_SIDE_SPLIT_COL,
+    )
+    pooled = _io.phenotype_pooled_per_bin(
+        per_animal, by_side=has_side, side_col=_SIDE_SPLIT_COL,
+    )
     n_by_tier = _count_animals_per_tier(per_animal)
 
     if has_side:
@@ -126,8 +140,8 @@ def _build_v4_side_split_figure(
     """Render V4 with ipsi + contra side-by-side panels (Q-lock 10(a))."""
     display_name, short_y_label = _layout.get_endpoint_labels(endpoint_slug)
     fig, ipsi_ax, contra_ax = _layout.phenotype_side_split_panels()
-    for side, ax in (("L", ipsi_ax), ("R", contra_ax)):
-        side_df = pooled[pooled["side"] == side]
+    for ic, ax in zip(_IPSI_CONTRA_PANELS, (ipsi_ax, contra_ax)):
+        side_df = pooled[pooled[_SIDE_SPLIT_COL] == ic]
         _draw_v4_traces(ax, side_df)
         _layout.phenotype_panel(
             ax,
@@ -270,10 +284,14 @@ def emit_v5_per_endpoint(
             return None
 
     # Q-lock 11 pipeline: baseline → per-session → delta → phenotype-pool.
-    baseline = _io.per_animal_side_baseline(df, by_side=has_side)
-    per_session = _io.per_session_within_epoch(df, by_side=has_side)
+    baseline = _io.per_animal_side_baseline(
+        df, by_side=has_side, side_col=_SIDE_SPLIT_COL,
+    )
+    per_session = _io.per_session_within_epoch(
+        df, by_side=has_side, side_col=_SIDE_SPLIT_COL,
+    )
     sessions_with_delta = _io.apply_baseline_delta(
-        per_session, baseline, by_side=has_side,
+        per_session, baseline, by_side=has_side, side_col=_SIDE_SPLIT_COL,
     )
     if sessions_with_delta.empty:
         logger.warning(
@@ -282,7 +300,7 @@ def emit_v5_per_endpoint(
         )
         return None
     pooled = _io.phenotype_pooled_per_epoch_delta(
-        sessions_with_delta, by_side=has_side,
+        sessions_with_delta, by_side=has_side, side_col=_SIDE_SPLIT_COL,
     )
 
     n_by_tier = _count_animals_per_tier(sessions_with_delta)
@@ -312,9 +330,9 @@ def _build_v5_side_split_figure(
 ):
     display_name, short_y_label = _layout.get_endpoint_labels(endpoint_slug)
     fig, ipsi_ax, contra_ax = _layout.phenotype_side_split_panels()
-    for side, ax in (("L", ipsi_ax), ("R", contra_ax)):
-        pooled_side = pooled[pooled["side"] == side]
-        scatter_side = sessions_with_delta[sessions_with_delta["side"] == side]
+    for ic, ax in zip(_IPSI_CONTRA_PANELS, (ipsi_ax, contra_ax)):
+        pooled_side = pooled[pooled[_SIDE_SPLIT_COL] == ic]
+        scatter_side = sessions_with_delta[sessions_with_delta[_SIDE_SPLIT_COL] == ic]
         _draw_v5_delta_line_with_scatter(ax, pooled_side, scatter_side)
         _layout.phenotype_panel(
             ax,
