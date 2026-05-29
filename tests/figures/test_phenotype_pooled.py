@@ -395,3 +395,43 @@ def test_side_col_default_is_backward_compatible() -> None:
     pooled = _io.phenotype_pooled_per_bin(per_animal, by_side=True)
     assert "side" in pooled.columns
     assert set(pooled["side"]) == {"L", "R"}
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 14 — 3-tier phenotype collapse (mod-severe -> moderate).
+# ---------------------------------------------------------------------------
+
+
+def test_maybe_remap_3tier_merges_mod_severe_into_moderate() -> None:
+    df = pd.DataFrame({
+        "phenotype_tier": ["mild", "moderate", "moderate-severe", "severe"],
+        "value": [1.0, 2.0, 3.0, 4.0],
+    })
+    out = phenotype_pooled._maybe_remap_3tier(df, remap_3tier=True)
+    assert "moderate-severe" not in set(out["phenotype_tier"])
+    # the mod-severe row is now labeled moderate
+    assert sorted(out["phenotype_tier"]) == ["mild", "moderate", "moderate", "severe"]
+    # original df untouched (copy semantics)
+    assert "moderate-severe" in set(df["phenotype_tier"])
+
+
+def test_maybe_remap_3tier_noop_when_false() -> None:
+    df = pd.DataFrame({"phenotype_tier": ["moderate-severe"], "value": [1.0]})
+    out = phenotype_pooled._maybe_remap_3tier(df, remap_3tier=False)
+    assert list(out["phenotype_tier"]) == ["moderate-severe"]
+
+
+def test_3tier_remap_then_pool_merges_animals() -> None:
+    """After remap, a moderate-severe animal pools WITH a moderate animal."""
+    per_animal = pd.DataFrame({
+        "animal":               ["A", "B"],
+        "phenotype_tier":       ["moderate", "moderate-severe"],
+        "bin_midpoint_rel_day": [1, 1],
+        "value":                [2.0, 4.0],
+    })
+    remapped = phenotype_pooled._maybe_remap_3tier(per_animal, remap_3tier=True)
+    pooled = _io.phenotype_pooled_per_bin(remapped, by_side=False)
+    moderate = pooled[pooled["phenotype_tier"] == "moderate"]
+    assert len(moderate) == 1
+    assert moderate.iloc[0]["mean"] == pytest.approx(3.0)  # mean(2.0, 4.0)
+    assert moderate.iloc[0]["n_animals"] == 2

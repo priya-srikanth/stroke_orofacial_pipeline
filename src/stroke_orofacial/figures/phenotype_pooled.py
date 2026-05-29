@@ -53,6 +53,21 @@ V5_VARIANT_FILENAME = "v5_per_epoch_phenotype_pooled"
 _SIDE_SPLIT_COL = "ipsi_contra"
 _IPSI_CONTRA_PANELS: tuple[str, ...] = ("ipsi", "contra")
 
+# 3-tier phenotype collapse (Q-lock 14, Addendum #1 §8 / Q14-D). Merges
+# moderate-severe INTO moderate, matching the established convention in the
+# Q12/Q13 emitters (PHENOTYPE_REMAP_3TIER). 3-tier output routes to a
+# "3_phenotype/" subdir so the canonical 4-tier figures are preserved.
+_THREE_TIER_REMAP: dict[str, str] = {"moderate-severe": "moderate"}
+_THREE_TIER_SUBDIR = "3_phenotype"
+
+
+def _maybe_remap_3tier(df: "pd.DataFrame", remap_3tier: bool) -> "pd.DataFrame":
+    """Merge moderate-severe → moderate in the phenotype_tier column (3-tier)."""
+    if remap_3tier and "phenotype_tier" in df.columns:
+        df = df.copy()
+        df["phenotype_tier"] = df["phenotype_tier"].replace(_THREE_TIER_REMAP)
+    return df
+
 FigureType = Literal["v4", "v5"]
 
 
@@ -68,12 +83,16 @@ def emit_v4_per_endpoint(
     output_dir: Path | None = None,
     overwrite: Literal["skip", "force"] = "skip",
     dpi: int = 150,
+    remap_3tier: bool = False,
 ) -> tuple[Path, Path] | None:
     """Emit one V4 phenotype-pooled per_bin recovery curve as SVG + PNG.
 
     Side-split per Q-lock 10(a) when the endpoint's stats input parquets
     have a populated ``side`` column; degrades to single-panel cohort-pooled
     per Q-lock 10(c) otherwise.
+
+    When ``remap_3tier`` is True, moderate-severe is merged into moderate
+    (3-tier collapse) and output is routed to the ``3_phenotype/`` subdir.
     """
     if endpoint_slug.startswith("spatial_"):
         logger.warning(
@@ -87,6 +106,8 @@ def emit_v4_per_endpoint(
             resolver.pipeline_outputs(subdir=PHASE_9_1_FIGURES_SUBDIR)
             / "phenotype_pooled"
         )
+        if remap_3tier:
+            output_dir = output_dir / _THREE_TIER_SUBDIR
     endpoint_dir = output_dir / endpoint_slug
     svg_path = endpoint_dir / f"{V4_VARIANT_FILENAME}.svg"
     png_path = endpoint_dir / f"{V4_VARIANT_FILENAME}.png"
@@ -103,6 +124,7 @@ def emit_v4_per_endpoint(
     animals = _io.load_cohort_animals()
     has_side = _io.endpoint_has_side(df)
     df = _io.attach_per_bin_columns(df, animals)
+    df = _maybe_remap_3tier(df, remap_3tier)
     if phenotype_tiers:
         df = df[df["phenotype_tier"].isin(set(phenotype_tiers))]
         if df.empty:
@@ -229,6 +251,7 @@ def emit_v5_per_endpoint(
     output_dir: Path | None = None,
     overwrite: Literal["skip", "force"] = "skip",
     dpi: int = 150,
+    remap_3tier: bool = False,
 ) -> tuple[Path, Path] | None:
     """Emit one V5 phenotype-pooled per_epoch delta line as SVG + PNG.
 
@@ -259,6 +282,8 @@ def emit_v5_per_endpoint(
             resolver.pipeline_outputs(subdir=PHASE_9_1_FIGURES_SUBDIR)
             / "phenotype_pooled"
         )
+        if remap_3tier:
+            output_dir = output_dir / _THREE_TIER_SUBDIR
     endpoint_dir = output_dir / endpoint_slug
     svg_path = endpoint_dir / f"{V5_VARIANT_FILENAME}.svg"
     png_path = endpoint_dir / f"{V5_VARIANT_FILENAME}.png"
@@ -275,6 +300,7 @@ def emit_v5_per_endpoint(
     animals = _io.load_cohort_animals()
     has_side = _io.endpoint_has_side(df)
     df = _io.attach_phenotype_column(df, animals)
+    df = _maybe_remap_3tier(df, remap_3tier)
     if phenotype_tiers:
         df = df[df["phenotype_tier"].isin(set(phenotype_tiers))]
         if df.empty:
@@ -500,6 +526,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--dpi", type=int, default=150,
         help="PNG export DPI (default 150).",
     )
+    parser.add_argument(
+        "--remap-phenotypes", choices=("none", "3tier"), default="none",
+        help='Phenotype-tier scope. "none" (default) = 4-tier (F-P-1). '
+             '"3tier" merges moderate-severe into moderate; output routes to '
+             'a "3_phenotype/" subdir so the 4-tier figures are preserved.',
+    )
     return parser.parse_args(argv)
 
 
@@ -532,6 +564,7 @@ def main(argv: list[str] | None = None) -> int:
         tiers = [s.strip() for s in args.phenotype_tiers.split(",") if s.strip()]
 
     figure_types = _parse_figure_types(args.figure_types)
+    remap_3tier = args.remap_phenotypes == "3tier"
 
     resolver = PathResolver()
     n_emitted = 0
@@ -545,6 +578,7 @@ def main(argv: list[str] | None = None) -> int:
                 output_dir=args.output_dir,
                 overwrite=args.overwrite,
                 dpi=args.dpi,
+                remap_3tier=remap_3tier,
             )
             if result is not None:
                 svg, png = result
@@ -558,6 +592,7 @@ def main(argv: list[str] | None = None) -> int:
                 output_dir=args.output_dir,
                 overwrite=args.overwrite,
                 dpi=args.dpi,
+                remap_3tier=remap_3tier,
             )
             if result is not None:
                 svg, png = result
