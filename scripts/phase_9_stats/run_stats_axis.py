@@ -93,14 +93,20 @@ def _load_inventory(inventory_path: Path) -> list[dict[str, Any]]:
 
 
 def _load_endpoint_parquets(
-    endpoint_slug: str, resolver: PathResolver,
+    endpoint_slug: str, resolver: PathResolver, *, variant: str | None = None,
 ) -> pd.DataFrame:
     """Concat all per-animal parquets for one endpoint slug.
 
     Returns an empty DataFrame if the endpoint's directory doesn't
-    exist (graceful degradation for missing endpoints).
+    exist (graceful degradation for missing endpoints — e.g. non-tongue
+    endpoints have no ``filtered_v1`` input, so a filtered run naturally
+    restricts to the tongue family).
+
+    ``variant`` (e.g. ``"filtered_v1"``) reads from
+    ``stats/inputs/<variant>/<slug>/`` instead of ``stats/inputs/<slug>/``.
     """
-    in_dir = resolver.pipeline_outputs(subdir="stats") / "inputs" / endpoint_slug
+    base = resolver.pipeline_outputs(subdir="stats") / "inputs"
+    in_dir = (base / variant / endpoint_slug) if variant else (base / endpoint_slug)
     if not in_dir.exists():
         return pd.DataFrame()
     parquets = sorted(in_dir.glob("*.parquet"))
@@ -202,6 +208,15 @@ def _parse_args() -> argparse.Namespace:
         "--endpoints", nargs="*", default=None,
         help="Subset of endpoint slugs to run; default = all in scope.",
     )
+    p.add_argument(
+        "--filter-variant", choices=("none", "filtered_v1"), default="none",
+        help=(
+            "none (default): read stats/inputs/<slug>/ and write "
+            "stats/results/. filtered_v1: read stats/inputs/filtered_v1/<slug>/ "
+            "and write stats/results/filtered_v1/. Non-tongue endpoints have no "
+            "filtered_v1 input, so the filtered BH-FDR family is tongue-only."
+        ),
+    )
     return p.parse_args()
 
 
@@ -211,6 +226,9 @@ def main() -> int:
     grans = list(VALID_GRANULARITIES) if args.granularity == "all" else [args.granularity]
 
     resolver = PathResolver()
+    variant: str | None = (
+        None if args.filter_variant == "none" else args.filter_variant
+    )
     inventory = _load_inventory(args.inventory)
     if args.endpoints:
         inventory = [r for r in inventory if r["endpoint_slug"] in args.endpoints]
@@ -219,6 +237,8 @@ def main() -> int:
     print(f"  inventory:    {args.inventory.name} ({len(inventory)} endpoints in scope)")
     print(f"  axes:         {axes}")
     print(f"  granularities:{grans}")
+    if variant:
+        print(f"  filter variant: {variant} (tongue-only family)")
     print()
 
     results: list[dict[str, Any]] = []
@@ -235,7 +255,9 @@ def main() -> int:
                 continue
             for gran in grans:
                 if slug not in cache:
-                    cache[slug] = _load_endpoint_parquets(slug, resolver)
+                    cache[slug] = _load_endpoint_parquets(
+                        slug, resolver, variant=variant,
+                    )
                 df = cache[slug]
                 if df.empty:
                     continue
@@ -255,7 +277,8 @@ def main() -> int:
         return 0
 
     results_df = pd.DataFrame(results)
-    out_root = resolver.pipeline_outputs(subdir="stats") / "results"
+    results_base = resolver.pipeline_outputs(subdir="stats") / "results"
+    out_root = (results_base / variant) if variant else results_base
     out_root.mkdir(parents=True, exist_ok=True)
 
     total_csvs = 0

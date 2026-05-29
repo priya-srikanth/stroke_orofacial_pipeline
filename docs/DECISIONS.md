@@ -5946,3 +5946,37 @@ The following decisions are **deliberately deferred** — recorded here so they 
 - **Session-merge implementation** — PS48 2025-03-14 combines two wavesurfer files. Logged in `configs/session_overrides.yaml` under `merges:`; `check_merge_required()` raises `NotImplementedError` if encountered. Implementation deferred until a second merge-case arises or Priya needs to re-process PS48.
 - **Wavesurfer QC figure generation** — legacy pipeline produced `wavesurfer_figures/` for visual QC. Deferred to Phase 8 (behavior report) which will build a unified figures layer.
 - **FaceRhythm module** — scoped out of v1 consolidation entirely. Will be added in a later phase as a sibling module to `spout_behavior/`, `alignment/`, etc.
+
+## 2026-05-29: Pipeline-B re-target for DLC filter wire-in
+
+**Context:** Original chore-PR plan called for `tongue_lick1_velocity_peak` as a net-new first-lick scalar (Pipeline-A: add aggregator + Q13b re-emit). CC discovered during Stage 2 that the velocity family already exists in production via `_extract_peak_velocity_first5` (Phase 7e.2) — `vy_peaks_bylick[0]` is the first-lick variant.
+
+**Decision:** Pivot to Pipeline-B re-target. Filter at `materialize_inputs.py` layer; existing Q13b scalar tree consumed unchanged from filtered_v1 inputs.
+
+**Rationale:** Avoids redundant scalar computation, keeps Q13b's per-trial endpoint shape stable, isolates filtering to one well-defined boundary (stats-inputs materialization).
+
+**Enforced at:** `scripts/phase_9_stats/materialize_inputs.py --filter-variant` flag.
+
+---
+
+## 2026-05-29: Tongue-only BH-FDR family for filtered_v1 stats
+
+**Context:** filtered_v1 emits per-trial scalar endpoints for the tongue family only (Phase 7e + 7f cleaned-trace lick counts are tongue-only). BH-FDR family scope: separate families per axis × granularity vs unified tongue family.
+
+**Decision:** Unified tongue-only BH-FDR family containing all 23 filtered per-trial endpoints.
+
+**Rationale:** Within-bodypart family is standard scope for endpoint stratification. Per-axis families would over-correct; per-endpoint families would under-correct.
+
+**Enforced at:** `run_stats_axis.py --filter-variant filtered_v1` — `_all.csv` BH-FDR applied to union of tongue per-trial endpoints.
+
+---
+
+## 2026-05-29: Option-I filtered_v1 inputs at materialization layer
+
+**Context:** Two options for DLC filter placement in Pipeline B — (i) filter at materialize_inputs time + emit filtered_v1 parquets to disk; (ii) filter at runner-orchestration time + no on-disk variant.
+
+**Decision:** Option I — materialize filtered_v1 inputs alongside unfiltered.
+
+**Rationale:** Matches kickoff `filtered_v1/` subdir spec; `runners.py` unchanged; filtered tree independently inspectable + reproducible; multi-consumer flexibility; small disk cost for per-trial parquets.
+
+**Enforced at:** `scripts/phase_9_stats/materialize_inputs.py` Option-I implementation.

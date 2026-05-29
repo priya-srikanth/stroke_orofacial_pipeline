@@ -7008,3 +7008,24 @@ Per-(axis × comparison) confirmatory significance at v2:
 
 **No tag** (chore PR, not a phase close).
 
+
+## 2026-05-29 — chore/dlc-session-and-trial-filtering (PR #158)
+
+Merge tag: `vChore-dlc-session-and-trial-filtering`
+
+DLC session + trial filtering infrastructure shipped as a Pipeline-B materialize-time filter alongside the unfiltered stats inputs tree.
+
+- `cohort_filters.DlcSessionFilter` + `DlcTrialFilter` classes (v1 `SessionFilter` from Q12a left untouched; new classes operate on DLC tongue-kinematics v7-kept lick counts, distinct from v1's NPZ spout-lick definition).
+- Config: `stats.dlc_session_filter.*` + `stats.dlc_trial_filter.*` namespaces in `configs/defaults.yaml`.
+- `materialize_inputs.py --filter-variant filtered_v1` emits filtered per-trial parquets to `pipeline_outputs/stats/inputs/filtered_v1/<slug>/<animal>.parquet` alongside the unfiltered tree (Option-I per Addendum #2).
+- Downstream `--filter-variant` wiring on `run_stats_axis.py`, `build_task_5_headline_summary.py`, `build_task_7_figures.py`.
+- Tongue-only BH-FDR family: 23 filtered per-trial endpoints share one FDR family (per-metric-family TrialFilter overrides: first-lick / X/Y peak / angle scalars = 1 lick; first-5-lick velocity family = 5; ILI summary = 3).
+- Cohort emit (PS46-PS55, 8 animals): 462 sessions probed, 432 kept; per-cell `n_sessions_kept` parity PASS vs PR #157 sensitivity probe across all 32 (phenotype × epoch × side) cells.
+
+**Figures deferred:** filtered_v1 figures emitted to `stats/figures/filtered_v1/headlines/` are pre-unification snapshots; canonical figures land via `chore/dlc-pooled-phenotype-unification` under the `v2/` subtree (filtered_v1 inputs + ipsi/contra coding + new line+jitter+dots plot convention). filtered_v1/headlines/ swept with the legacy L/R box-plot trees after the unification chore closes.
+
+**Latent bug flagged:** `scripts/phase_9_stats/build_task_7_figures.py:114` and likely siblings print non-ASCII characters (→, ±) that crash under cp1252 stdout (piped/redirected runs). Workaround: `PYTHONIOENCODING=utf-8`. Queued as separate unicode-cleanup chore.
+
+**Env-collision incident #4:** parallel CC sessions sharing the single `stroke_orofacial` conda env continued to flip the editable `.pth`; CC #1 ran emits hermetically via `PYTHONPATH`. Reinforces per-worktree-conda-env chore priority (fourth documented incident).
+
+References: PR #157 sensitivity probe (`vChore-filter-sensitivity-probe`); Q-lock 12a Addendum #6 (v1 SessionFilter origin); Q-lock 13b (phase-aligned scalar endpoints the filter applies to).

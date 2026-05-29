@@ -66,6 +66,12 @@ import numpy as np
 import pandas as pd
 
 from stroke_orofacial.animals import AnimalInfo, load_animals
+from stroke_orofacial.cohort_filters import (
+    DlcSessionFilter,
+    DlcSessionLickStats,
+    load_dlc_filter_spec_from_defaults,
+    resolve_dlc_trial_filter,
+)
 from stroke_orofacial.config_loader import load_defaults
 from stroke_orofacial.paths import PathResolver
 from stroke_orofacial.spout_behavior.visual_gate import (
@@ -890,16 +896,24 @@ def _dispatch_materializer(
     return None
 
 
-def _output_path(resolver: PathResolver, slug: str, animal: str) -> Path:
-    """Resolve ``stats/inputs/<slug>/<animal>.parquet`` under the
+def _output_path(
+    resolver: PathResolver, slug: str, animal: str,
+    *, variant: str | None = None,
+) -> Path:
+    """Resolve ``stats/inputs/[<variant>/]<slug>/<animal>.parquet`` under the
     PathResolver's output root. Creates the parent dir.
 
     Uses ``resolver.pipeline_outputs(subdir="stats")`` per the existing
     convention; the writeguard accepts ``stats/`` as a new top-level
     output subtree (parallel to ``spout_behavior/``, ``dlc_kinematics/``,
     ``dlc_analysis/``).
+
+    ``variant`` (e.g. ``"filtered_v1"``) inserts a subdir between
+    ``inputs/`` and ``<slug>/`` so filtered outputs sit ALONGSIDE the
+    unfiltered tree (chore/dlc-session-and-trial-filtering Option I).
     """
-    out_root = resolver.pipeline_outputs(subdir="stats") / "inputs" / slug
+    base = resolver.pipeline_outputs(subdir="stats") / "inputs"
+    out_root = (base / variant / slug) if variant else (base / slug)
     out_root.mkdir(parents=True, exist_ok=True)
     return out_root / f"{animal}.parquet"
 
@@ -928,6 +942,192 @@ def _write_parquet(rows: list[dict[str, Any]], path: Path) -> int:
 
 
 # ===========================================================================
+# DLC session/trial filtering — filtered_v1 variant
+# (chore/dlc-session-and-trial-filtering, Pipeline-B Option I 2026-05-29)
+# ===========================================================================
+#
+# Post-processes each tongue endpoint's per-trial row list into a filtered
+# copy written to stats/inputs/filtered_v1/<slug>/<animal>.parquet, ALONGSIDE
+# the unfiltered tree. Only tongue endpoints are in scope (apply_to_bodyparts
+# = [tongue]); jaw / spout / mismatch / spatial endpoints are never filtered.
+
+FILTER_VARIANT_SUBDIR = "filtered_v1"
+
+# Per-metric-family trial thresholds (configs/defaults.yaml
+# stats.dlc_trial_filter): *_first5 velocity reductions → first_5_lick_velocity
+# (5); within-bout ILI → ili_summary (3); everything else (lick1/lick2 peaks,
+# angles, lick1 vy/vxy velocity, medians, counts, rates) → block default (1).
+_DLC_FIRST5_VELOCITY_SLUGS: frozenset[str] = frozenset({
+    "tongue_max_vy_peak_first5",
+    "tongue_max_vxy_peak_first5",
+    "tongue_mean_vxy_peak_first5",
+})
+_DLC_ILI_SUMMARY_SLUGS: frozenset[str] = frozenset({
+    "tongue_mean_within_bout_ili_ms",
+})
+
+FILTER_SESSION_MANIFEST_COLUMNS: tuple[str, ...] = (
+    "animal", "date", "side", "n_trials_of_side",
+    "n_trials_with_detected_lick", "n_kept_licks",
+    "session_filter_kept", "drop_reason",
+)
+FILTER_TRIAL_MANIFEST_COLUMNS: tuple[str, ...] = (
+    "animal", "endpoint_slug", "metric_family", "min_licks_per_trial",
+    "n_trials_in", "n_trials_kept", "n_sessions_emptied",
+)
+
+
+def _dlc_trial_family(slug: str) -> str:
+    """Map a tongue endpoint slug → its DlcTrialFilter metric-family key.
+
+    Families not present in the ``overrides`` config block resolve to the
+    block default (min_licks_per_trial=1) via
+    :func:`resolve_dlc_trial_filter`.
+    """
+    if slug in _DLC_FIRST5_VELOCITY_SLUGS:
+        return "first_5_lick_velocity"
+    if slug in _DLC_ILI_SUMMARY_SLUGS:
+        return "ili_summary"
+    return "default"
+
+
+def _is_tongue_filter_scope(slug: str) -> bool:
+    """True iff the endpoint is a tongue metric (the only filter scope)."""
+    return slug.startswith("tongue_")
+
+
+def _build_tongue_lick_lookups(
+    animal: str,
+    session_scalars: "_SessionScalars",
+    resolver: PathResolver,
+) -> tuple[dict[tuple, int], dict[tuple, DlcSessionLickStats]]:
+    """Build per-trial lick counts + per-(date, side) session lick stats.
+
+    Reads each session's tongue per-trial JSON once (v7-kept provenance:
+    ``tongue.n_licks_family.n_licks``).
+
+    Returns
+    -------
+    (n_licks_by_trial, session_stats)
+        ``n_licks_by_trial``: ``{(date, trial_idx): n_licks}`` keyed by
+        ``datetime.date`` (matching the emitted row ``date`` column).
+        ``session_stats``: ``{(date, side): DlcSessionLickStats}``.
+    """
+    n_licks_by_trial: dict[tuple, int] = {}
+    by_side: dict[tuple, dict[str, int]] = {}
+    for date_label in session_scalars.dates:
+        payload = _load_tongue_pertrial_json(animal, date_label, resolver)
+        if payload is None:
+            continue
+        session_date = datetime.date(
+            int(date_label[:4]), int(date_label[4:6]), int(date_label[6:8]),
+        )
+        n_licks = payload["tongue"]["n_licks_family"]["n_licks"]
+        trial_indices = payload["trial_indices"]
+        sides = payload["sides"]
+        for n, ti, side in zip(n_licks, trial_indices, sides):
+            ni = int(n)
+            n_licks_by_trial[(session_date, int(ti))] = ni
+            acc = by_side.setdefault((session_date, str(side)),
+                                     {"n_trials": 0, "n_with": 0, "n_kept": 0})
+            acc["n_trials"] += 1
+            acc["n_kept"] += ni
+            if ni >= 1:
+                acc["n_with"] += 1
+    session_stats: dict[tuple, DlcSessionLickStats] = {}
+    for (session_date, side), acc in by_side.items():
+        session_stats[(session_date, side)] = DlcSessionLickStats(
+            animal=animal, date=session_date, side=side,
+            n_trials_of_side=acc["n_trials"],
+            n_trials_with_detected_lick=acc["n_with"],
+            n_kept_licks=acc["n_kept"],
+        )
+    return n_licks_by_trial, session_stats
+
+
+def _filter_tongue_rows(
+    rows: list[dict[str, Any]],
+    *,
+    slug: str,
+    n_licks_by_trial: dict[tuple, int],
+    session_stats: dict[tuple, DlcSessionLickStats],
+    session_filter: DlcSessionFilter,
+    defaults: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any], set[tuple]]:
+    """Apply Stage A (session) + Stage B (trial) filters to one endpoint's rows.
+
+    Returns ``(filtered_rows, trial_manifest_row, emptied_session_keys)``.
+
+    - Stage A: drop rows whose ``(date, side)`` session fails
+      ``session_filter.check`` (e.g. ``n_trials_with_detected_lick < 10``).
+    - Stage B: drop rows whose trial's v7-kept lick count is below the
+      endpoint family's ``min_licks_per_trial``.
+    - Stage C: a ``(date, side)`` that passes Stage A but retains 0 rows
+      after Stage B is recorded in ``emptied_session_keys``
+      (``reason="trial_filter_emptied_session"``); its rows are absent.
+    """
+    family = _dlc_trial_family(slug)
+    trial_filter = resolve_dlc_trial_filter(family, defaults)
+    min_licks = trial_filter.min_licks_per_trial
+
+    # Stage A decision per (date, side).
+    session_kept: dict[tuple, bool] = {}
+    for key, stats in session_stats.items():
+        kept, _reason = session_filter.check(stats)
+        session_kept[key] = kept
+
+    filtered: list[dict[str, Any]] = []
+    present_a: set[tuple] = set()   # (date, side) present pre-trial-filter, Stage-A-kept
+    survived: set[tuple] = set()    # (date, side) with >=1 row post-trial-filter
+    n_in = len(rows)
+    for r in rows:
+        key = (r["date"], r["side"])
+        if not session_kept.get(key, False):
+            continue  # Stage A drop
+        present_a.add(key)
+        if min_licks is not None:
+            n = n_licks_by_trial.get((r["date"], int(r["trial_idx"])), 0)
+            if n < min_licks:
+                continue  # Stage B drop
+        filtered.append(r)
+        survived.add(key)
+    emptied = present_a - survived
+    trial_manifest_row = {
+        "animal": rows[0]["animal"] if rows else "",
+        "endpoint_slug": slug,
+        "metric_family": family,
+        "min_licks_per_trial": min_licks,
+        "n_trials_in": n_in,
+        "n_trials_kept": len(filtered),
+        "n_sessions_emptied": len(emptied),
+    }
+    return filtered, trial_manifest_row, emptied
+
+
+def _session_filter_manifest_rows(
+    session_stats: dict[tuple, DlcSessionLickStats],
+    session_filter: DlcSessionFilter,
+) -> list[dict[str, Any]]:
+    """One row per (animal, date, side) with the Stage-A keep decision."""
+    out: list[dict[str, Any]] = []
+    for (session_date, side), stats in sorted(
+        session_stats.items(), key=lambda kv: (kv[0][0], kv[0][1]),
+    ):
+        kept, reason = session_filter.check(stats)
+        out.append({
+            "animal": stats.animal,
+            "date": session_date.isoformat(),
+            "side": side,
+            "n_trials_of_side": stats.n_trials_of_side,
+            "n_trials_with_detected_lick": stats.n_trials_with_detected_lick,
+            "n_kept_licks": stats.n_kept_licks,
+            "session_filter_kept": bool(kept),
+            "drop_reason": None if kept else reason,
+        })
+    return out
+
+
+# ===========================================================================
 # Main
 # ===========================================================================
 
@@ -949,6 +1149,16 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--inventory", type=Path, default=DEFAULT_INVENTORY_PATH,
+    )
+    p.add_argument(
+        "--filter-variant", choices=("none", "filtered_v1"), default="none",
+        help=(
+            "none (default): emit the unfiltered stats/inputs tree. "
+            "filtered_v1: emit DLC session/trial-filtered TONGUE endpoints to "
+            "stats/inputs/filtered_v1/ alongside unfiltered, plus SessionFilter "
+            "+ TrialFilter manifests. Non-tongue endpoints are skipped in this "
+            "mode (filter is tongue-only by design)."
+        ),
     )
     return p.parse_args()
 
@@ -1018,6 +1228,20 @@ def main() -> int:
     behavior_params = defaults["behavior_report"]
     visual_gate_config = load_visual_gate_config()
 
+    # DLC filtering (chore/dlc-session-and-trial-filtering). filtered_v1 emits
+    # session+trial-filtered TONGUE endpoints alongside the unfiltered tree.
+    variant: str | None = (
+        None if args.filter_variant == "none" else FILTER_VARIANT_SUBDIR
+    )
+    dlc_session_filter = (
+        load_dlc_filter_spec_from_defaults(defaults) if variant else None
+    )
+    if variant:
+        print(f"  filter variant: {variant} (tongue-only; "
+              f"session_filter={dlc_session_filter})")
+    filter_session_manifest: list[dict[str, Any]] = []
+    filter_trial_manifest: list[dict[str, Any]] = []
+
     manifest_rows: list[dict[str, Any]] = []
     for animal in target_animals:
         print(f"=== {animal} ===")
@@ -1032,8 +1256,27 @@ def main() -> int:
             f"{per_animal_compute_s:.1f} s",
         )
 
+        # Build the per-trial lick lookups once per animal for the filter.
+        lick_lookups: tuple[dict[tuple, int], dict[tuple, DlcSessionLickStats]] | None = None
+        if variant:
+            lick_lookups = _build_tongue_lick_lookups(
+                animal, session_scalars, resolver,
+            )
+            filter_session_manifest.extend(
+                _session_filter_manifest_rows(lick_lookups[1], dlc_session_filter)
+            )
+
         for spec in target_specs:
-            out_path = _output_path(resolver, spec.slug, animal)
+            # Filter is tongue-only — skip non-tongue endpoints in variant mode.
+            if variant and not _is_tongue_filter_scope(spec.slug):
+                manifest_rows.append({
+                    "endpoint_slug": spec.slug, "animal": animal,
+                    "status": "skipped_not_tongue_filter_scope",
+                    "n_rows": 0, "n_sentinel": 0, "output_path": "",
+                    "wall_time_s": 0.0,
+                })
+                continue
+            out_path = _output_path(resolver, spec.slug, animal, variant=variant)
             if args.skip_existing and out_path.exists():
                 manifest_rows.append({
                     "endpoint_slug": spec.slug,
@@ -1074,6 +1317,18 @@ def main() -> int:
                     "wall_time_s": 0.0,
                 })
                 continue
+            if variant:
+                # Stage A + B + C filter on the unfiltered rows (tongue-only).
+                n_licks_by_trial, session_stats = lick_lookups
+                rows, trial_mrow, _emptied = _filter_tongue_rows(
+                    rows, slug=spec.slug,
+                    n_licks_by_trial=n_licks_by_trial,
+                    session_stats=session_stats,
+                    session_filter=dlc_session_filter,
+                    defaults=defaults,
+                )
+                trial_mrow["animal"] = animal
+                filter_trial_manifest.append(trial_mrow)
             n_rows = _write_parquet(rows, out_path)
             n_sentinel = sum(1 for r in rows if r["is_sentinel"])
             wall = time.monotonic() - t1
@@ -1093,6 +1348,36 @@ def main() -> int:
         w.writeheader()
         for row in manifest_rows:
             w.writerow(row)
+
+    # Filtered-variant: write the SessionFilter + TrialFilter manifests under
+    # stats/inputs/filtered_v1/_manifests/ alongside the filtered parquet tree.
+    if variant:
+        man_dir = (
+            resolver.pipeline_outputs(subdir="stats") / "inputs" / variant
+            / "_manifests"
+        )
+        man_dir.mkdir(parents=True, exist_ok=True)
+        sess_csv = man_dir / "session_filter_manifest.csv"
+        with open(sess_csv, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=list(FILTER_SESSION_MANIFEST_COLUMNS))
+            w.writeheader()
+            for row in filter_session_manifest:
+                w.writerow(row)
+        trial_csv = man_dir / "trial_filter_manifest.csv"
+        with open(trial_csv, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=list(FILTER_TRIAL_MANIFEST_COLUMNS))
+            w.writeheader()
+            for row in filter_trial_manifest:
+                w.writerow(row)
+        n_sess_kept = sum(
+            1 for r in filter_session_manifest if r["session_filter_kept"]
+        )
+        print(
+            f"Filter manifests: {man_dir}\n"
+            f"  session-sides: {len(filter_session_manifest)} "
+            f"({n_sess_kept} kept by SessionFilter)\n"
+            f"  endpoint×animal trial-filter rows: {len(filter_trial_manifest)}",
+        )
 
     n_success = sum(1 for r in manifest_rows if r["status"] == "success")
     n_skip = sum(1 for r in manifest_rows if r["status"].startswith("skipped"))

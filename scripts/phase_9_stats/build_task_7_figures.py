@@ -192,16 +192,29 @@ def _parse_args() -> argparse.Namespace:
         "--mode", choices=("headlines", "confirmatory", "forest", "all"),
         default="all",
     )
+    p.add_argument(
+        "--filter-variant", choices=("none", "filtered_v1"), default="none",
+        help=(
+            "none (default): read/write the unfiltered stats trees. "
+            "filtered_v1: read stats/inputs/filtered_v1 + stats/results/filtered_v1 "
+            "and write figures to stats/figures/filtered_v1 (alongside unfiltered)."
+        ),
+    )
     return p.parse_args()
 
 
 def main() -> int:
     args = _parse_args()
     resolver = PathResolver()
-    inputs_root = resolver.pipeline_outputs(subdir="stats") / "inputs"
-    results_root = resolver.pipeline_outputs(subdir="stats") / "results"
-    figures_root = resolver.pipeline_outputs(subdir="stats") / "figures"
-    headline_summary = REPO_ROOT / ".scratch_phase_9" / "task_5_headline_summary.csv"
+    variant = None if args.filter_variant == "none" else args.filter_variant
+    stats_root = resolver.pipeline_outputs(subdir="stats")
+    inputs_root = (stats_root / "inputs" / variant) if variant else (stats_root / "inputs")
+    results_root = (stats_root / "results" / variant) if variant else (stats_root / "results")
+    figures_root = (stats_root / "figures" / variant) if variant else (stats_root / "figures")
+    headline_summary = REPO_ROOT / ".scratch_phase_9" / (
+        f"task_5_headline_summary_{variant}.csv" if variant
+        else "task_5_headline_summary.csv"
+    )
     eb_by_animal = _load_animal_epoch_boundaries()
 
     print("Phase 9 Task 7 — figure build")
