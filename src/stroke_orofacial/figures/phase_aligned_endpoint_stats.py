@@ -25,7 +25,7 @@ adjusted) drawn from the Stage 4a stats table.
 """
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Literal
 
@@ -33,7 +33,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from stroke_orofacial.animals import AnimalInfo
 from stroke_orofacial.figures.palette import (
     PHENOTYPE_ORDER,
     phenotype_display_name,
@@ -101,13 +100,16 @@ DELTA_ENDPOINT_DISPLAY_NAMES: dict[str, str] = {
 
 def compute_phase_aligned_endpoint_stats(
     per_session_df: pd.DataFrame,
+    *,
+    phenotype_order: Iterable[str] = PHENOTYPE_ORDER,
+    side_order: Iterable[str] = SIDE_ORDER,
 ) -> pd.DataFrame:
-    """Run the 72-test Wilcoxon × BH-FDR family on per-session medians.
+    """Run the Wilcoxon × BH-FDR family on per-session medians.
 
-    Iterates over the 4-phenotype × 2-side × 3-endpoint × 3-post_epoch
-    grid; for each cell, filters the per-session DataFrame to that
-    slice and calls ``fit_paired_pre_post_wilcoxon(..., aggregator="median",
-    value_col="median", post_epoch=...)``. After all 72 fits, applies a
+    Iterates over the phenotype × side × endpoint × post_epoch grid; for
+    each cell, filters the per-session DataFrame to that slice and calls
+    ``fit_paired_pre_post_wilcoxon(..., aggregator="median",
+    value_col="median", post_epoch=...)``. After all fits, applies a
     single BH-FDR family-wide adjustment.
 
     Parameters
@@ -117,15 +119,22 @@ def compute_phase_aligned_endpoint_stats(
         applied to per-session aggregates. Required columns: ``animal``,
         ``recovery_phenotype``, ``epoch_label``, ``side``, ``endpoint``,
         ``median``.
+    phenotype_order : iterable of str, default :data:`PHENOTYPE_ORDER`
+        Phenotype tiers to iterate. Pass the 3-tier order for the
+        moderate-severe→moderate collapse (chore v2 3_tier scope).
+    side_order : iterable of str, default :data:`SIDE_ORDER` (``("L","R")``)
+        Side labels to iterate. The chore v2 re-emit passes
+        ``("ipsi", "contra")`` since it pools on the lesion-relative
+        recoded side rather than rig-frame L/R.
 
     Returns
     -------
     pd.DataFrame
-        72 rows (one per phenotype × side × endpoint × post_epoch) with
-        columns: ``recovery_phenotype``, ``side``, ``endpoint``,
-        ``post_epoch``, ``statistic``, ``p_value``, ``n_observations``,
-        ``status``, ``median_diff``, ``p_adj``, ``reject``. NaN-aware:
-        n=1 phenotype tiers carry NaN p_value + p_adj.
+        One row per phenotype × side × endpoint × post_epoch with columns:
+        ``recovery_phenotype``, ``side``, ``endpoint``, ``post_epoch``,
+        ``statistic``, ``p_value``, ``n_observations``, ``status``,
+        ``median_diff``, ``p_adj``, ``reject``. NaN-aware: n=1 phenotype
+        tiers carry NaN p_value + p_adj.
     """
     required = {
         "animal", "recovery_phenotype", "epoch_label",
@@ -139,8 +148,8 @@ def compute_phase_aligned_endpoint_stats(
         )
 
     rows: list[dict[str, object]] = []
-    for phenotype in PHENOTYPE_ORDER:
-        for side in SIDE_ORDER:
+    for phenotype in phenotype_order:
+        for side in side_order:
             for endpoint in PHASE_ALIGNED_ENDPOINT_SLUGS:
                 sub = per_session_df[
                     (per_session_df["recovery_phenotype"] == phenotype)
