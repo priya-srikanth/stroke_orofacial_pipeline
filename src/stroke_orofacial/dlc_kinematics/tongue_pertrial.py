@@ -183,6 +183,12 @@ class TongueVisualBundle:
         x = 0 = tongue aligned with spout midline). Consumed by the
         Phase 9.1 Q-lock 13b phase-aligned endpoint emitter
         (Addendum #2 D2 lock).
+
+        ``y_snip`` is the trial-slice tongue y coordinate in the same
+        spout-midpoint frame (y = 0 = tongue tip vertically aligned
+        with spout midpoint; positive y = protrusion). Consumed by the
+        Phase 9.1 Q-lock 13c trajectory + endpoint y emitter
+        (Stage 1 lock, 2026-05-29).
     df_bouts : DataFrame
         Mixed-row schema (legacy Cell 50 convention): one summary row per
         bout (carries bout-level fields, peak-level fields NaN) plus one
@@ -302,6 +308,7 @@ class _V7TrialResult:
 _CENTERED_PHASE_ROW_COLUMNS: tuple[str, ...] = (
     "side", "trial_index", "peak_t_ms", "t_ms", "phase",
     "phase_bin", "phase_bin_center", "angle_deg", "x_centered",
+    "y_centered",
 )
 
 
@@ -317,6 +324,7 @@ def _empty_centered_phase_rows_df() -> pd.DataFrame:
         "phase_bin_center": pd.Series(dtype=float),
         "angle_deg": pd.Series(dtype=float),
         "x_centered": pd.Series(dtype=float),
+        "y_centered": pd.Series(dtype=float),
     }
     return pd.DataFrame(cols)
 
@@ -328,13 +336,15 @@ def _centered_phase_rows_from_peaks(
     t_arr: np.ndarray,
     angle_snip: np.ndarray,
     x_snip: np.ndarray | None,
+    y_snip: np.ndarray | None,
     side: str,
     trial_index: int,
     phase_bin_edges: np.ndarray,
     phase_bin_centers: np.ndarray,
 ) -> list[dict[str, Any]]:
     """Shared building block for the centered-phase helpers
-    (Addenda #9 + #10; Q-lock 13b Addendum #2 added ``x_centered``).
+    (Addenda #9 + #10; Q-lock 13b Addendum #2 added ``x_centered``;
+    Q-lock 13c Stage 1 added ``y_centered`` analogously).
 
     For each ``(p, ili)`` pair in ``zip(peak_times_ms, ilis_ms)`` with
     finite ``ili > 0``, identifies frames in the trial slice whose
@@ -348,12 +358,20 @@ def _centered_phase_rows_from_peaks(
     column. When ``x_snip`` is ``None`` (legacy callers that don't need
     laterality) the row's ``x_centered`` is ``NaN``.
 
+    ``y_snip`` (Q-lock 13c Stage 1 lock; 2026-05-29) is the trial-slice
+    tongue y coordinate in the spout-midpoint frame (same provenance as
+    ``x_snip`` via ``dlc_centered_spout_midpoint_parquet``; y = 0 ↔
+    tongue tip vertically aligned with the spout midpoint; positive y =
+    protrusion). Emitted as ``y_centered`` column. ``None`` → ``NaN``
+    rows, mirroring the x_snip degradation path.
+
     Returns an unwrapped list of dicts — callers concatenate across
     trials and sides into the final DataFrame.
     """
     out: list[dict[str, Any]] = []
     n_phase_bins = len(phase_bin_centers)
     have_x = x_snip is not None
+    have_y = y_snip is not None
     for p, ili in zip(peak_times_ms, ilis_ms):
         p = float(p)
         ili = float(ili)
@@ -377,6 +395,10 @@ def _centered_phase_rows_from_peaks(
                 x_val = float(x_snip[ii])
             else:
                 x_val = float("nan")
+            if have_y and ii < len(y_snip) and np.isfinite(y_snip[ii]):
+                y_val = float(y_snip[ii])
+            else:
+                y_val = float("nan")
             out.append({
                 "side": side,
                 "trial_index": trial_index,
@@ -387,6 +409,7 @@ def _centered_phase_rows_from_peaks(
                 "phase_bin_center": float(phase_bin_centers[bin_idx]),
                 "angle_deg": float(angle_snip[ii]),
                 "x_centered": x_val,
+                "y_centered": y_val,
             })
     return out
 
@@ -404,14 +427,18 @@ def _bundle_phase_bin_arrays(
 
 def _trial_arrays(
     df_trials: pd.DataFrame, trial_index: int, side: str,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray | None] | None:
-    """Pull ``(t_ms, angle_snip, x_snip)`` for one trial; ``None`` if missing.
+) -> tuple[
+    np.ndarray, np.ndarray, np.ndarray | None, np.ndarray | None
+] | None:
+    """Pull ``(t_ms, angle_snip, x_snip, y_snip)`` for one trial; ``None``
+    if missing.
 
     The ``x_snip`` element is the trial-slice tongue x in spout-midpoint
-    frame (Q-lock 13b Addendum #2 D2 lock). Returns ``None`` for the x
-    element when the bundle predates the x_snip column addition (legacy
-    fixtures); otherwise the array is returned alongside ``t_ms`` and
-    ``angle_snip``.
+    frame (Q-lock 13b Addendum #2 D2 lock). The ``y_snip`` element is
+    the trial-slice tongue y in the same frame (Q-lock 13c Stage 1 lock;
+    2026-05-29). Each returns ``None`` independently when the bundle
+    predates the corresponding column addition (legacy fixtures);
+    otherwise the array is returned alongside ``t_ms`` and ``angle_snip``.
     """
     trial_row = df_trials[
         (df_trials["trial_index"] == trial_index)
@@ -426,7 +453,11 @@ def _trial_arrays(
         x_arr = np.asarray(row["x_snip"], dtype=np.float64)
     else:
         x_arr = None
-    return t_arr, angle_arr, x_arr
+    if "y_snip" in trial_row.columns:
+        y_arr = np.asarray(row["y_snip"], dtype=np.float64)
+    else:
+        y_arr = None
+    return t_arr, angle_arr, x_arr, y_arr
 
 
 def build_first_lick_centered_phase_rows(
@@ -471,13 +502,20 @@ def build_first_lick_centered_phase_rows(
       phase  = (t - (peak_t - ILI / 2)) / ILI ∈ [0, 1]
 
     Returns a DataFrame with columns ``side, trial_index, peak_t_ms,
-    t_ms, phase, phase_bin, phase_bin_center, angle_deg, x_centered``.
+    t_ms, phase, phase_bin, phase_bin_center, angle_deg, x_centered,
+    y_centered``.
 
     ``x_centered`` (Q-lock 13b Addendum #2 D2 lock; 2026-05-27): tongue
     x at the frame, in the spout-midpoint reference frame (read from
     ``dlc_centered_spout_midpoint_parquet`` upstream — no further
     centering applied here). ``NaN`` for bundles produced before the
     ``x_snip`` column landed on ``df_trials``.
+
+    ``y_centered`` (Q-lock 13c Stage 1 lock; 2026-05-29): tongue y at
+    the frame, in the same spout-midpoint reference frame. y = 0 ↔
+    tongue tip vertically aligned with the spout midpoint; positive y
+    = protrusion. ``NaN`` for bundles produced before the ``y_snip``
+    column landed on ``df_trials``.
     """
     if ili_source not in ("real_only", "hybrid", "synthetic_only"):
         raise ValueError(
@@ -528,13 +566,14 @@ def build_first_lick_centered_phase_rows(
             arrs = _trial_arrays(df_trials, trial_idx, side)
             if arrs is None:
                 continue
-            t_arr, angle_arr, x_arr = arrs
+            t_arr, angle_arr, x_arr, y_arr = arrs
             p0 = float(summary["peak_t0_ms"])
             p1 = float(summary["peak_t1_ms"])
             rows.extend(_centered_phase_rows_from_peaks(
                 peak_times_ms=np.array([p0]),
                 ilis_ms=np.array([p1 - p0]),
                 t_arr=t_arr, angle_snip=angle_arr, x_snip=x_arr,
+                y_snip=y_arr,
                 side=side, trial_index=trial_idx,
                 phase_bin_edges=phase_bin_edges,
                 phase_bin_centers=phase_bin_centers,
@@ -562,7 +601,7 @@ def build_first_lick_centered_phase_rows(
             arrs = _trial_arrays(df_trials, trial_idx, side)
             if arrs is None:
                 continue
-            t_arr, angle_arr, x_arr = arrs
+            t_arr, angle_arr, x_arr, y_arr = arrs
             p0 = float(peak_times[0])
             if ili_source == "synthetic_only":
                 ili = synth
@@ -580,6 +619,7 @@ def build_first_lick_centered_phase_rows(
                 peak_times_ms=np.array([p0]),
                 ilis_ms=np.array([ili]),
                 t_arr=t_arr, angle_snip=angle_arr, x_snip=x_arr,
+                y_snip=y_arr,
                 side=side, trial_index=trial_idx,
                 phase_bin_edges=phase_bin_edges,
                 phase_bin_centers=phase_bin_centers,
@@ -697,7 +737,7 @@ def build_first_n_licks_centered_phase_rows(
         arrs = _trial_arrays(df_trials, trial_idx, side)
         if arrs is None:
             continue
-        t_arr, angle_arr, x_arr = arrs
+        t_arr, angle_arr, x_arr, y_arr = arrs
         for i in range(int(n_peaks)):
             p_i = float(peak_times[i])
             if ili_source == "synthetic_only":
@@ -723,6 +763,7 @@ def build_first_n_licks_centered_phase_rows(
                 & np.isfinite(angle_arr)
             )
             have_x = x_arr is not None
+            have_y = y_arr is not None
             for ii in np.where(mask)[0]:
                 t = float(t_arr[ii])
                 x_global = float(i) + 0.5 + (t - p_i) / ili
@@ -737,6 +778,10 @@ def build_first_n_licks_centered_phase_rows(
                     x_val = float(x_arr[ii])
                 else:
                     x_val = float("nan")
+                if have_y and ii < len(y_arr) and np.isfinite(y_arr[ii]):
+                    y_val = float(y_arr[ii])
+                else:
+                    y_val = float("nan")
                 rows.append({
                     "side": side,
                     "trial_index": trial_idx,
@@ -747,6 +792,7 @@ def build_first_n_licks_centered_phase_rows(
                     "phase_bin_center": float(phase_bin_centers[bin_idx]),
                     "angle_deg": float(angle_arr[ii]),
                     "x_centered": x_val,
+                    "y_centered": y_val,
                 })
 
     if not rows:
@@ -848,7 +894,7 @@ def build_all_licks_centered_phase_rows(
             arrs = _trial_arrays(df_trials, trial_idx, side)
             if arrs is None:
                 continue
-            t_arr, angle_arr, x_arr = arrs
+            t_arr, angle_arr, x_arr, y_arr = arrs
             peak_times = np.asarray(
                 trial_side_rows["peak_t_ms"].to_numpy(), dtype=np.float64,
             )
@@ -873,6 +919,7 @@ def build_all_licks_centered_phase_rows(
                 peak_times_ms=np.asarray(peaks_to_render),
                 ilis_ms=np.asarray(ilis_to_render),
                 t_arr=t_arr, angle_snip=angle_arr, x_snip=x_arr,
+                y_snip=y_arr,
                 side=side, trial_index=trial_idx,
                 phase_bin_edges=phase_bin_edges,
                 phase_bin_centers=phase_bin_centers,
@@ -886,7 +933,7 @@ def build_all_licks_centered_phase_rows(
             arrs = _trial_arrays(df_trials, trial_idx, side)
             if arrs is None:
                 continue
-            t_arr, angle_arr, x_arr = arrs
+            t_arr, angle_arr, x_arr, y_arr = arrs
             peaks_to_render = []
             ilis_to_render = []
             for _bout_idx, bout_rows in trial_side_rows.groupby(
@@ -909,6 +956,7 @@ def build_all_licks_centered_phase_rows(
                 peak_times_ms=np.asarray(peaks_to_render),
                 ilis_ms=np.asarray(ilis_to_render),
                 t_arr=t_arr, angle_snip=angle_arr, x_snip=x_arr,
+                y_snip=y_arr,
                 side=side, trial_index=trial_idx,
                 phase_bin_edges=phase_bin_edges,
                 phase_bin_centers=phase_bin_centers,

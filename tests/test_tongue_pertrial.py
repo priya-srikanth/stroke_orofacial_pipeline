@@ -1562,16 +1562,23 @@ class TestDriverAndSchema:
         }
 
         # Q-lock 13b Addendum #2 D1 lock: phase_aligned_endpoints carries
-        # three NaN-fillable parallel lists indexed by trial_indices/sides.
+        # NaN-fillable parallel lists indexed by trial_indices/sides.
+        # Q-lock 13c Stage 1 (2026-05-29) added peak_y_px +
+        # signed_y_at_max_abs_phase_0_075_px (y-signal analogs of A + C)
+        # alongside the 13b trio.
         pae = payload["tongue"]["phase_aligned_endpoints"]
         assert set(pae.keys()) == {
             "peak_angle_deg",
             "signed_angle_at_max_abs_phase_0_075_deg",
             "signed_x_at_max_abs_phase_0_075_px",
+            "peak_y_px",
+            "signed_y_at_max_abs_phase_0_075_px",
         }
         assert len(pae["peak_angle_deg"]) == payload["n_trials"]
         assert len(pae["signed_angle_at_max_abs_phase_0_075_deg"]) == payload["n_trials"]
         assert len(pae["signed_x_at_max_abs_phase_0_075_px"]) == payload["n_trials"]
+        assert len(pae["peak_y_px"]) == payload["n_trials"]
+        assert len(pae["signed_y_at_max_abs_phase_0_075_px"]) == payload["n_trials"]
 
         # Q8 lock: licking_dynamics_reductions has 3 fields (Q9 metric moved
         # to cell50_own_bout_scalars).

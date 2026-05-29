@@ -5,6 +5,123 @@ differences vs. the legacy notebooks.
 
 ---
 
+## Phase 9.1 Q-lock 13c — Tongue Y trajectory extension + stats/results split
+
+**Date:** 2026-05-29
+**Tag on merge:** `v9.1-q13c-tongue-y-trajectory`
+**Branch:** `phase/9.1-q13c-tongue-y-trajectory`
+**Kickoff:** [`docs/prompts/phase-9.1-q13c-tongue-y-trajectory-kickoff.md`](prompts/phase-9.1-q13c-tongue-y-trajectory-kickoff.md) (LOCKED v1 + Addendum #2)
+
+**What shipped:**
+
+Extension of Q-lock 13's phase-aligned mean+SEM trajectory pipeline to a third signal: **`y_centered`** (tongue Y position in spout-midpoint frame = protrusion / amplitude axis). Completes the 2D tongue trajectory story alongside angle (direction) + x (lateral excursion). 99% of the framework is inherited from Q-lock 13 — same 6-test stats package, same 4-scope null-calibration scaffolding, same per-panel YlOrRd phenotype palette, same baseline overlay convention, same output tree.
+
+Plus Addendum #2 — numerical stats CSVs split from the figures tree to a parallel `stats/results/` tree, matching the project-wide convention (`stats/figures/` = SVG/PNG, `stats/results/` = CSVs).
+
+**Cohort numbers:**
+
+- **231 sessions** re-emitted with the new 5-slug per-trial endpoints JSON schema (21 PS46 + 210 PS47-55, ~6.2 s/session × 22 min wall-time fanout).
+- **12 figures per canonical 4-tier scope** (4 angle + 4 x + 4 y) at the canonical figures-tree root, plus the SD-band/sd_band/ + null_calibration/ + 3_phenotype/ mirrors.
+- **48 CSVs migrated** figures-tree → results-tree (12 root + 12 null_calibration/ + 12 3_phenotype/ + 12 3_phenotype/null_calibration/) per Addendum #2 Q13c-K. Post-migration cohort emits write CSVs to results-tree directly via the new Addendum #2 code-surface split.
+
+**Pipeline stages delivered (per kickoff):**
+
+- **Stage 0** — Prereq verification. Q-lock 13 + 13b tags confirmed on origin; `dlc_centered_spout_midpoint_parquet` y column confirmed; substrate + aggregator + 6-test stats hierarchy + null-calibration scaffolding reachable; pytest --collect-only clean.
+- **Stage 1** — Substrate y_snip thread (commit `cc77cee`). Mirrors Q-lock 13b Addendum #2 D2's x_snip threading for y at 5 substrate sites: `_CENTERED_PHASE_ROW_COLUMNS` + `_empty_centered_phase_rows_df` + `_centered_phase_rows_from_peaks` signature + `_trial_arrays` 4-tuple return + 4 helper call sites + the `build_first_n_licks_centered_phase_rows` inline render. Plus two new y scalar endpoints injected into the per-trial JSON `tongue.phase_aligned_endpoints` block: `peak_y_px` (analog of A) and `signed_y_at_max_abs_phase_0_075_px` (analog of C). Q13b's 3-slug schema → 5-slug schema. Backward-compat: legacy bundles without `y_snip` degrade to NaN gracefully.
+- **Stage 2** — `y_centered` added to `TRAJECTORY_SIGNALS` (commit `c58f567`). Every downstream consumer takes `signals=TRAJECTORY_SIGNALS` by default — `compute_per_animal_phase_bin_baseline`, `apply_phase_bin_baseline_delta`, `aggregate_phenotype_pooled_phase_bin_mean_sem`, `compute_per_animal_trajectory_scalar`, `compute_per_trial_trajectory_scalar`, `compute_per_session_trajectory_scalar`, `densify_phase_rows_via_interp`, and the 6 `compute_trajectory_*` stats helpers — so the single tuple extension propagates y through the entire pipeline. Per kickoff Stage 2 "probably one parameter; no new module" — confirmed.
+- **Stage 3** — Figure renderer extension (commit `9e54e6e`). `SIGNAL_DISPLAY_NAMES["y_centered"] = "Tongue y (spout-midpoint frame, px)"`; `emit_phase_aligned_trajectory_figures` default `signals` switched from hardcoded `("angle_deg", "x_centered")` to `TRAJECTORY_SIGNALS` (single source of truth). 8 → 12 figure count per scope (4 new y figures).
+- **Stage 4** — Stats compute + null calibration on y. Reused Q-lock 13 cohort emit script (`scripts/phase_9_1_q13/emit_cohort.py --null-calibration`) on the 8-animal cohort with TRAJECTORY_SIGNALS now including y. Verified the 6-test stats hierarchy holds on the y signal under H0:
+
+  | Test | angle_deg | x_centered | **y_centered** | Verdict |
+  |---|---|---|---|---|
+  | Paired Wilcoxon (animal n) | 0.0% (0/6) | 0.0% (0/6) | **0.0% (0/6)** | conservative ✅ |
+  | MWU per-session | 0.0% (0/24) | 0.0% (0/24) | **0.0% (0/24)** | conservative ✅ |
+  | **MWU per-trial** | 45.8% (11/24) | 45.8% (11/24) | **62.5% (15/24)** | **INVALID — y even worse than angle/x** |
+  | LMM per-session | 0.0% (0/6) | 0.0% (0/6) | **0.0% (0/6)** | conservative (target ~5%; BH-FDR floor at small N) |
+  | Cluster permutation | 0.0% (0/12) | 0.0% (0/23) | **0.0% (0/39)** | conservative ✅ |
+
+  Q-lock 13c-I hierarchy lock (LMM > cluster perm > session MWU > trial-MWU-descriptive-only) transfers cleanly to y. Y has more cluster-perm clusters detected pre-BH-FDR than angle/x — possibly a forward-pointer signal if cluster-level false-discovery becomes a concern at higher post-epoch counts. 21.3 min wall-time.
+- **Stage 5** — Cohort emit on 8-animal cohort.
+  - **5a PS46 pilot:** 21 OK + 10 SKIP (secondary-spout) + 0 FAIL via [`scripts/phase_7e/reemit_tongue_pertrial_cohort.py --animal PS46`](../scripts/phase_7e/reemit_tongue_pertrial_cohort.py). ~2.2 min wall-time. **12/12 byte-equality** on 3-session × 4-artifact spot check (per_frame, licking_dynamics, cleaned_traces, lick_events parquets all byte-identical to pre-Stage-1). **3/3 JSON sanity:** all 5 endpoint slugs present, slug list lengths == n_trials, 100% finite y endpoint values.
+  - **5c 7-animal fanout:** 210 new_OK (PS47-PS55) + 121 SKIP + 0 FAIL in ~22 min via the same script without `--animal`. **21/21 sample sessions PASS** JSON sanity across 7 animals (3 samples × 7 = 21). Per-session NaN rate on y endpoints 0-3%, matching angle/x NaN policy (trials whose lick-1 peak frame didn't land in the synthetic-ILI window).
+  - **Canonical 4-tier real-data cohort emit:** 21.9 min, cohort_rows=1,351,800; 12 figures (4 angle + 4 x + 4 y) at the canonical figures-tree root; 14 CSVs at results-tree root per Addendum #2 split.
+  - **Canonical 3-tier real-data cohort emit:** 22.0 min; 12 figures at `3_phenotype/` subdir; 12 CSVs at results-tree `3_phenotype/` subdir.
+- **Stage 6** — Phase close (this entry).
+
+**Addendum #2 — stats/results vs stats/figures tree split (commit `7a9512e`):**
+
+Q-lock 13 emitted both numerical CSVs AND figure SVGs to `stats/figures/phenotype_pooled/phase_aligned_trajectories/`, mixing them. Addendum #2 (2026-05-29) separates them per the project-wide convention.
+
+- **New constant:** `RESULTS_SUBDIR = "stats/results/phenotype_pooled/phase_aligned_trajectories"` in `figures/phase_aligned_trajectories.py`.
+- **Migration:** `scripts/phase_9_1_q13c/migrate_phase_aligned_csvs_to_results.py` moved 48 CSVs (12 root + 12 null_calibration/ + 12 3_phenotype/ + 12 3_phenotype/null_calibration/) from figures-tree → results-tree, preserving relative subpath structure. Migration manifest CSV at `<results-tree-root>/migration_manifest.csv` with (src, dst, size_bytes, sha256) per row. Refuses to run if any destination exists; supports `--dry-run`. Per CLAUDE.md GR7 destructive-ops policy: ran once under Priya per-invocation approval.
+- **Code-surface split:**
+  - `run_stats_and_figures(..., results_dir=None)` parameter added; CSV writes (9 calls — pooled, baseline, 3 scalars, 5 stats families) route to `results_dir`; figures stay at `output_dir`.
+  - New `_derive_results_dir(output_dir, results_dir, resolver)` helper: explicit `results_dir` wins; otherwise swap `"stats/figures/"` → `"stats/results/"` in `output_dir` preserving 3_phenotype/null_calibration/ subdir suffixes; resolver fallback for completely-custom output_dirs.
+  - `main()` `--results-dir` CLI flag; 3-tier + null-calibration subdir routing applied in parallel to output_dir and results_dir.
+  - Walk manifest (`stage4_walk_manifest.csv`) routes to results-tree (was in figures tree pre-Addendum-#2).
+  - `rerender_from_pooled_csv.py`: reads pooled CSV from `results_dir` (csv_dir = res_base_dir / 3_phenotype/ when --3tier); writes figures to figures_dir.
+
+**Output paths (post-Addendum-#2 split):**
+
+```
+pipeline_outputs/stats/
+├── figures/phenotype_pooled/phase_aligned_trajectories/
+│   ├── <signal>_<variant>_<side>_mean_sem_cleaned_trace.svg  × 12
+│   ├── sd_band/                                              × 12 SD-band variants
+│   ├── null_calibration/                                     × 12 null-cal SVGs
+│   └── 3_phenotype/                                          × 12 3-tier SVGs
+│       ├── sd_band/                                          × 12
+│       └── null_calibration/                                 × 12
+└── results/phenotype_pooled/phase_aligned_trajectories/
+    ├── phenotype_pooled_phase_bin_mean_sem.csv
+    ├── per_animal_phase_bin_baseline.csv
+    ├── per_{animal,session,trial}_trajectory_scalar.csv
+    ├── trajectory_paired_wilcoxon_bh_fdr.csv
+    ├── trajectory_mwu_per_{session,trial}_bh_fdr.csv
+    ├── trajectory_lmm_per_session_bh_fdr.csv
+    ├── trajectory_cluster_permutation_bh_fdr.csv
+    ├── trajectory_{pre,effect}_bootstrap_ci.csv
+    ├── stage4_walk_manifest.csv
+    ├── migration_manifest.csv
+    ├── null_calibration/                                     × same 14 CSVs (no walk manifest)
+    └── 3_phenotype/                                          × 14 CSVs
+        └── null_calibration/                                 × 14 CSVs
+```
+
+**Files added/modified:**
+
+- `src/stroke_orofacial/dlc_kinematics/tongue_pertrial.py` (extended — y_snip threaded through `_centered_phase_rows_from_peaks` + `_trial_arrays` + `build_first_lick_centered_phase_rows` + `build_first_n_licks_centered_phase_rows` + `build_all_licks_centered_phase_rows`)
+- `src/stroke_orofacial/dlc_kinematics/tongue_phase_aligned_endpoints.py` (extended — endpoints D `peak_y_px` + E `signed_y_at_max_abs_phase_0_075_px` added; JSON schema lock updated; `align_endpoints_to_trial_order` backward-compat for pre-13c DataFrames)
+- `src/stroke_orofacial/stats/aggregators.py` (`TRAJECTORY_SIGNALS` gained `"y_centered"`)
+- `src/stroke_orofacial/figures/phase_aligned_trajectories.py` (`SIGNAL_DISPLAY_NAMES["y_centered"]` added; emit default switched to `TRAJECTORY_SIGNALS`; `RESULTS_SUBDIR` constant added)
+- `scripts/phase_9_1_q13/emit_cohort.py` (results_dir parameter + `_derive_results_dir` helper + `--results-dir` CLI flag + 3-tier/null-cal results_dir routing)
+- `scripts/phase_9_1_q13/rerender_from_pooled_csv.py` (reads pooled CSV from results_dir)
+- `scripts/phase_9_1_q13c/migrate_phase_aligned_csvs_to_results.py` (NEW — Addendum #2 Q13c-K migration script)
+- `tests/test_tongue_pertrial.py` (schema-locked test updated to 5-slug `phase_aligned_endpoints`)
+- `tests/test_tongue_phase_aligned_endpoints.py` (extended +20 tests: D + E endpoint classes, bundle integration, substrate y_centered column parity, alignment helper legacy compat)
+- `tests/test_stats_aggregators.py` (fixtures extended with y_centered + y_centered_delta columns; existing count assertions updated 2-signal → 3-signal; new `TestYSignalInTrajectorySignals` +5 regression tests including 2-animal × 2-epoch y fixture)
+- `tests/test_phase_aligned_trajectories.py` (fixture extended with y_centered signal; existing 8-figures-emit count → 12-figures; new `TestYCenteredTrajectoryFigure` +4 tests + new `TestFiguresResultsTreeSplit` +4 tests for the Addendum #2 split)
+
+**Test suite:** 2124+ passing across the broader surface (29 new tests added this phase: +13 endpoint, +5 y aggregator, +4 y figure, +4 results-tree split, +3 substrate parity).
+
+**Divergences from kickoff:**
+
+- **Output paths (Q13c-H REVISED by Addendum #2):** original Q13c-H lock said figures + CSVs both land at `stats/figures/phenotype_pooled/phase_aligned_trajectories/`. Addendum #2 split them — CSVs now under `stats/results/phenotype_pooled/phase_aligned_trajectories/`. Figures paths unchanged.
+- **Filename convention:** kickoff Q13c-H specified `y_raw_<side>_mean_sem_cleaned_trace.svg` (no `y_centered_` prefix). Q13's de-facto convention uses the full signal column name (`angle_deg_raw_L_...`, `x_centered_raw_L_...`); Q13c followed that convention for consistency (`y_centered_raw_<side>_mean_sem_cleaned_trace.svg`).
+- **Q13c Stage 2 trajectory emit "held" mid-phase per Priya 2026-05-29 redirect:** Stage 4 ran with `--null-calibration` only; canonical (real-data) trajectory emit deferred to a separate step after Addendum #2 code-surface split landed. Once split landed, both canonical 4-tier + 3-tier emits ran (44 min combined) producing the 24 canonical y figures (12 root + 12 3_phenotype/) at split-correct paths.
+
+**Forward-pointers carried out of Q-lock 13c:**
+
+- **Cluster permutation false-discovery floor on y** — y has more clusters detected pre-BH-FDR than angle/x (39 vs 23 vs 12). BH-FDR knocks all down to 0 under H0 at current cohort N. If post-epoch count grows (e.g., per-week binning instead of pre/acute/sub_acute/chronic), y is the canary for cluster-level false-discovery surfacing.
+- **Median+IQR trajectory variant for y** — inherits Q-lock 13's forward-pointer; non-parametric variant.
+- **Per-bin significance overlay on y figures** — cluster perm + bootstrap CI both produce per-bin info; render-time enhancement.
+- **Successful-trials-filter variant** — kickoff scope-out for Q-lock 13 + 13c.
+- **Multi-lick variants for y trajectory** (`first_2_licks`, `all_licks`).
+- **Jaw analog** — gated on jaw phase-trajectory substrate (not yet built).
+- **Q13c y scalar endpoint stats** — Stage 1 emitted `peak_y_px` + `signed_y_at_max_abs_phase_0_075_px` into the per-trial JSON, but `PHASE_ALIGNED_ENDPOINT_SLUGS` in `stats/aggregators.py` was intentionally NOT extended to include them (Q13c is the trajectory ticket, not a y scalar endpoint stats ticket). A sibling Q13c-scalars ticket could surface y scalar endpoint Wilcoxon/MWU/LMM stats analogous to Q13b's angle/x scalar stats pipeline.
+
+---
+
 ## Phase 9.1 Q-lock 13 — Phase-aligned mean+SEM tongue trajectory figures + stats
 
 **Date:** 2026-05-28

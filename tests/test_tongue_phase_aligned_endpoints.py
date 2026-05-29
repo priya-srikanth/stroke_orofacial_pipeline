@@ -1,10 +1,13 @@
-"""Phase 9.1 Q-lock 13b — phase-aligned tongue endpoint emitter tests.
+"""Phase 9.1 Q-lock 13b + 13c — phase-aligned tongue endpoint emitter tests.
 
 Covers:
 
 - Endpoint A (peak_angle_deg at phase = 0.5)
 - Endpoint B (max abs angle over phase in [0, 0.75])
 - Endpoint C (signed x_centered at argmax(|x_centered|) over phase in [0, 0.75])
+- Endpoint D (peak_y_px at phase = 0.5) — Q-lock 13c Stage 1
+- Endpoint E (signed y_centered at argmax(|y_centered|) over phase in
+  [0, 0.75]) — Q-lock 13c Stage 1
 - Per-trial NaN policy: signed-positive, signed-negative, all-zero,
   NaN-laden inputs.
 - Trial-events alignment helper (NaN-fills missing (trial, side) pairs).
@@ -28,6 +31,8 @@ from stroke_orofacial.dlc_kinematics.tongue_phase_aligned_endpoints import (
     _endpoint_a_peak_angle,
     _endpoint_b_max_abs_angle,
     _endpoint_c_signed_x_at_max_abs,
+    _endpoint_d_peak_y,
+    _endpoint_e_signed_y_at_max_abs,
     align_endpoints_to_trial_order,
     compute_phase_aligned_endpoints_per_trial,
 )
@@ -38,13 +43,23 @@ def _phase_rows(
     phases: list[float],
     angles: list[float],
     xs: list[float],
+    ys: list[float] | None = None,
 ) -> pd.DataFrame:
-    """Build a minimal phase-rows DataFrame for unit tests."""
+    """Build a minimal phase-rows DataFrame for unit tests.
+
+    ``ys`` defaults to a zero-filled column matching ``phases`` length —
+    older Q13b tests don't pass it. Q13c-era tests pass explicit y values
+    to exercise endpoints D + E.
+    """
     assert len(phases) == len(angles) == len(xs)
+    if ys is None:
+        ys = [0.0] * len(phases)
+    assert len(ys) == len(phases)
     return pd.DataFrame({
         "phase": np.asarray(phases, dtype=np.float64),
         "angle_deg": np.asarray(angles, dtype=np.float64),
         "x_centered": np.asarray(xs, dtype=np.float64),
+        "y_centered": np.asarray(ys, dtype=np.float64),
     })
 
 
@@ -224,6 +239,164 @@ class TestEndpointCSignedXAtMaxAbs:
 
 
 # ---------------------------------------------------------------------------
+# Endpoint D — peak_y_px at phase = 0.5 (Q-lock 13c Stage 1)
+# ---------------------------------------------------------------------------
+
+class TestEndpointDPeakY:
+    def test_returns_y_at_exact_phase_0_5(self):
+        grp = _phase_rows(
+            phases=[0.0, 0.25, 0.5, 0.75, 1.0],
+            angles=[0.0, 0.0, 0.0, 0.0, 0.0],
+            xs=[0.0, 0.0, 0.0, 0.0, 0.0],
+            ys=[1.0, 5.0, 47.0, 7.0, 2.0],
+        )
+        assert _endpoint_d_peak_y(grp) == pytest.approx(47.0)
+
+    def test_returns_y_at_closest_to_phase_0_5_within_tolerance(self):
+        grp = _phase_rows(
+            phases=[0.0, 0.4, 0.51, 0.7],
+            angles=[0.0, 0.0, 0.0, 0.0],
+            xs=[0.0, 0.0, 0.0, 0.0],
+            ys=[1.0, 5.0, 22.0, 2.0],
+        )
+        # Closest to 0.5 is 0.51 (delta=0.01 < tolerance=0.05).
+        assert _endpoint_d_peak_y(grp) == pytest.approx(22.0)
+
+    def test_returns_nan_when_closest_frame_outside_tolerance(self):
+        grp = _phase_rows(
+            phases=[0.0, 0.3, 0.9],
+            angles=[0.0, 0.0, 0.0],
+            xs=[0.0, 0.0, 0.0],
+            ys=[1.0, 5.0, 2.0],
+        )
+        # Closest to 0.5 is 0.3 (delta=0.2 > tolerance=0.05).
+        assert np.isnan(_endpoint_d_peak_y(grp))
+
+    def test_returns_nan_when_grp_empty(self):
+        grp = _phase_rows([], [], [], ys=[])
+        assert np.isnan(_endpoint_d_peak_y(grp))
+
+    def test_skips_nan_y_at_peak_falls_to_next_finite_within_tolerance(self):
+        grp = _phase_rows(
+            phases=[0.0, 0.49, 0.5, 0.75],
+            angles=[0.0, 0.0, 0.0, 0.0],
+            xs=[0.0, 0.0, 0.0, 0.0],
+            ys=[1.0, 33.0, float("nan"), 2.0],
+        )
+        # Phase=0.5 NaN; phase=0.49 within tolerance is finite → return 33.
+        assert _endpoint_d_peak_y(grp) == pytest.approx(33.0)
+
+    def test_returns_nan_when_all_y_in_window_are_nan(self):
+        grp = _phase_rows(
+            phases=[0.4, 0.5, 0.55],
+            angles=[0.0, 0.0, 0.0],
+            xs=[0.0, 0.0, 0.0],
+            ys=[float("nan"), float("nan"), float("nan")],
+        )
+        assert np.isnan(_endpoint_d_peak_y(grp))
+
+    def test_returns_nan_when_y_centered_column_missing(self):
+        # Bundles produced before the y_snip column landed won't carry
+        # y_centered. The endpoint helper degrades to NaN gracefully.
+        grp = pd.DataFrame({
+            "phase": [0.1, 0.5, 0.7],
+            "angle_deg": [1.0, 2.0, 3.0],
+            "x_centered": [0.0, 0.0, 0.0],
+        })
+        assert np.isnan(_endpoint_d_peak_y(grp))
+
+    def test_negative_y_preserved(self):
+        # y is signed (negative = retraction below spout midpoint).
+        grp = _phase_rows(
+            phases=[0.0, 0.5, 1.0],
+            angles=[0.0, 0.0, 0.0],
+            xs=[0.0, 0.0, 0.0],
+            ys=[0.0, -18.5, 0.0],
+        )
+        assert _endpoint_d_peak_y(grp) == pytest.approx(-18.5)
+
+
+# ---------------------------------------------------------------------------
+# Endpoint E — signed y_centered at argmax(|y_centered|) over phase in [0, 0.75]
+# ---------------------------------------------------------------------------
+
+class TestEndpointESignedYAtMaxAbs:
+    def test_signed_positive_argmax(self):
+        # Largest |y| in [0, 0.75] is +35 at phase=0.5 → signed value +35.
+        grp = _phase_rows(
+            phases=[0.0, 0.25, 0.5, 0.75, 1.0],
+            angles=[0.0, 0.0, 0.0, 0.0, 0.0],
+            xs=[0.0, 0.0, 0.0, 0.0, 0.0],
+            ys=[0.0, 10.0, 35.0, -8.0, 50.0],
+        )
+        # phase=1.0 has |y|=50 but outside [0, 0.75].
+        assert _endpoint_e_signed_y_at_max_abs(grp) == pytest.approx(35.0)
+
+    def test_signed_negative_argmax_returns_negative_value(self):
+        # Selection by magnitude; signed report. Largest |y| in window
+        # is at phase=0.4 → y = -42 → return -42 (not +42).
+        grp = _phase_rows(
+            phases=[0.1, 0.4, 0.6, 0.7],
+            angles=[0.0, 0.0, 0.0, 0.0],
+            xs=[0.0, 0.0, 0.0, 0.0],
+            ys=[+8.0, -42.0, +15.0, -30.0],
+        )
+        assert _endpoint_e_signed_y_at_max_abs(grp) == pytest.approx(-42.0)
+
+    def test_all_zero(self):
+        grp = _phase_rows(
+            phases=[0.0, 0.25, 0.5, 0.75],
+            angles=[0.0, 0.0, 0.0, 0.0],
+            xs=[0.0, 0.0, 0.0, 0.0],
+            ys=[0.0, 0.0, 0.0, 0.0],
+        )
+        # All zeros → argmax picks index 0, signed value = 0.
+        assert _endpoint_e_signed_y_at_max_abs(grp) == pytest.approx(0.0)
+
+    def test_nan_laden(self):
+        # Two finite values in window: -6 at phase=0.25, +11 at phase=0.6.
+        # Largest |y| = 11 → return +11.
+        grp = _phase_rows(
+            phases=[0.0, 0.25, 0.5, 0.6, 0.7],
+            angles=[0.0, 0.0, 0.0, 0.0, 0.0],
+            xs=[0.0, 0.0, 0.0, 0.0, 0.0],
+            ys=[float("nan"), -6.0, float("nan"), 11.0, float("nan")],
+        )
+        assert _endpoint_e_signed_y_at_max_abs(grp) == pytest.approx(11.0)
+
+    def test_returns_nan_when_all_y_in_window_nan(self):
+        grp = _phase_rows(
+            phases=[0.1, 0.5, 0.7],
+            angles=[1.0, 2.0, 3.0],
+            xs=[0.0, 0.0, 0.0],
+            ys=[float("nan"), float("nan"), float("nan")],
+        )
+        assert np.isnan(_endpoint_e_signed_y_at_max_abs(grp))
+
+    def test_returns_nan_when_y_centered_column_missing(self):
+        # Bundles produced before the y_snip column landed won't carry
+        # y_centered. The endpoint helper degrades to NaN gracefully.
+        grp = pd.DataFrame({
+            "phase": [0.1, 0.5, 0.7],
+            "angle_deg": [1.0, 2.0, 3.0],
+            "x_centered": [0.0, 0.0, 0.0],
+        })
+        assert np.isnan(_endpoint_e_signed_y_at_max_abs(grp))
+
+    def test_window_boundary_excludes_phase_outside(self):
+        # Largest |y| of 80 lives at phase=0.9 (outside [0, 0.75]).
+        # In-window argmax must pick from finite values inside.
+        grp = _phase_rows(
+            phases=[0.1, 0.5, 0.9],
+            angles=[0.0, 0.0, 0.0],
+            xs=[0.0, 0.0, 0.0],
+            ys=[+12.0, -7.0, +80.0],
+        )
+        # In-window argmax(|y|) is 12 at phase=0.1 → return +12.
+        assert _endpoint_e_signed_y_at_max_abs(grp) == pytest.approx(12.0)
+
+
+# ---------------------------------------------------------------------------
 # align_endpoints_to_trial_order — NaN-fill alignment to trial_events order
 # ---------------------------------------------------------------------------
 
@@ -235,12 +408,16 @@ class TestAlignEndpointsToTrialOrder:
                 "peak_angle_deg": -10.0,
                 "signed_angle_at_max_abs_phase_0_075_deg": 15.0,
                 "signed_x_at_max_abs_phase_0_075_px": -20.0,
+                "peak_y_px": 30.0,
+                "signed_y_at_max_abs_phase_0_075_px": -25.0,
             },
             {
                 "trial_index": 2, "side": "L",
                 "peak_angle_deg": 5.0,
                 "signed_angle_at_max_abs_phase_0_075_deg": 7.0,
                 "signed_x_at_max_abs_phase_0_075_px": 11.0,
+                "peak_y_px": 13.0,
+                "signed_y_at_max_abs_phase_0_075_px": 17.0,
             },
         ])
         out = align_endpoints_to_trial_order(
@@ -250,14 +427,20 @@ class TestAlignEndpointsToTrialOrder:
         assert out["peak_angle_deg"][0] == pytest.approx(-10.0)
         assert out["signed_angle_at_max_abs_phase_0_075_deg"][0] == pytest.approx(15.0)
         assert out["signed_x_at_max_abs_phase_0_075_px"][0] == pytest.approx(-20.0)
+        assert out["peak_y_px"][0] == pytest.approx(30.0)
+        assert out["signed_y_at_max_abs_phase_0_075_px"][0] == pytest.approx(-25.0)
         # Trial 1 R: no row → NaN
         assert np.isnan(out["peak_angle_deg"][1])
         assert np.isnan(out["signed_angle_at_max_abs_phase_0_075_deg"][1])
         assert np.isnan(out["signed_x_at_max_abs_phase_0_075_px"][1])
+        assert np.isnan(out["peak_y_px"][1])
+        assert np.isnan(out["signed_y_at_max_abs_phase_0_075_px"][1])
         # Trial 2 L: filled
         assert out["peak_angle_deg"][2] == pytest.approx(5.0)
         assert out["signed_angle_at_max_abs_phase_0_075_deg"][2] == pytest.approx(7.0)
         assert out["signed_x_at_max_abs_phase_0_075_px"][2] == pytest.approx(11.0)
+        assert out["peak_y_px"][2] == pytest.approx(13.0)
+        assert out["signed_y_at_max_abs_phase_0_075_px"][2] == pytest.approx(17.0)
 
     def test_empty_df_returns_all_nan_lists(self):
         out = align_endpoints_to_trial_order(
@@ -270,6 +453,31 @@ class TestAlignEndpointsToTrialOrder:
         assert all(
             np.isnan(v) for v in out["signed_x_at_max_abs_phase_0_075_px"]
         )
+        # Q-lock 13c Stage 1: y keys also present + NaN-filled.
+        assert all(np.isnan(v) for v in out["peak_y_px"])
+        assert all(
+            np.isnan(v) for v in out["signed_y_at_max_abs_phase_0_075_px"]
+        )
+
+    def test_legacy_df_without_y_columns_yields_nan_y(self):
+        # Q-lock 13c Stage 1 backward-compat: legacy callers that build
+        # an endpoints DataFrame WITHOUT the y columns must still align;
+        # y output keys default to NaN.
+        df = pd.DataFrame([
+            {
+                "trial_index": 0, "side": "L",
+                "peak_angle_deg": -10.0,
+                "signed_angle_at_max_abs_phase_0_075_deg": 15.0,
+                "signed_x_at_max_abs_phase_0_075_px": -20.0,
+            },
+        ])
+        out = align_endpoints_to_trial_order(
+            df, trial_indices=[0], sides=["L"],
+        )
+        # Angle + x keys filled; y keys NaN (no source columns).
+        assert out["peak_angle_deg"][0] == pytest.approx(-10.0)
+        assert np.isnan(out["peak_y_px"][0])
+        assert np.isnan(out["signed_y_at_max_abs_phase_0_075_px"][0])
 
     def test_side_specificity_is_respected(self):
         # Same trial_index but different side → distinct keys.
@@ -317,18 +525,24 @@ def _make_minimal_bundle_for_endpoint_test(
     synth_ili_ms: float,
     angle_planters: dict[float, float] | None = None,
     x_planters: dict[float, float] | None = None,
+    y_planters: dict[float, float] | None = None,
     fps: float = 250.0,
     plot_win_ms: tuple[float, float] = (-180.0, 1500.0),
     n_phase_bins: int = 72,
     include_x_snip: bool = True,
+    include_y_snip: bool = True,
 ) -> TongueVisualBundle:
     """Build a minimal TongueVisualBundle with a single trial-side row.
 
-    ``angle_planters`` / ``x_planters`` map a t_ms timestamp to the
-    value to plant at the closest frame. Lets us plant known signal at
-    specific phase positions: phase 0.5 ↔ t_ms = peak_t_ms; phase 0 ↔
-    t_ms = peak_t_ms - synth/2; phase 0.75 ↔ t_ms = peak_t_ms +
-    synth/4; phase 1 ↔ t_ms = peak_t_ms + synth/2.
+    ``angle_planters`` / ``x_planters`` / ``y_planters`` map a t_ms
+    timestamp to the value to plant at the closest frame. Lets us plant
+    known signal at specific phase positions: phase 0.5 ↔ t_ms =
+    peak_t_ms; phase 0 ↔ t_ms = peak_t_ms - synth/2; phase 0.75 ↔
+    t_ms = peak_t_ms + synth/4; phase 1 ↔ t_ms = peak_t_ms + synth/2.
+
+    Q-lock 13c Stage 1 (2026-05-29): added ``y_planters`` +
+    ``include_y_snip`` so endpoint D + E tests can plant known y at
+    specific phase positions or exercise the legacy-bundle path.
     """
     pre_f = max(0, int(np.floor(-plot_win_ms[0] / 1000.0 * fps)))
     post_f = max(0, int(np.ceil(plot_win_ms[1] / 1000.0 * fps)))
@@ -337,12 +551,16 @@ def _make_minimal_bundle_for_endpoint_test(
 
     angle_arr = np.zeros(snip_len, dtype=np.float64)
     x_arr = np.zeros(snip_len, dtype=np.float64)
+    y_arr = np.zeros(snip_len, dtype=np.float64)
     for ts, val in (angle_planters or {}).items():
         fr = int(np.argmin(np.abs(t_ms - ts)))
         angle_arr[fr] = float(val)
     for ts, val in (x_planters or {}).items():
         fr = int(np.argmin(np.abs(t_ms - ts)))
         x_arr[fr] = float(val)
+    for ts, val in (y_planters or {}).items():
+        fr = int(np.argmin(np.abs(t_ms - ts)))
+        y_arr[fr] = float(val)
 
     trial_row = {
         "side": side,
@@ -352,7 +570,6 @@ def _make_minimal_bundle_for_endpoint_test(
         "n_multi_lick_bouts": 0,
         "first_peak_t_ms": float(peak_t_ms),
         "t_ms": t_ms.copy(),
-        "y_snip": np.zeros(snip_len),
         "angle_snip": angle_arr,
         "angle_allbouts_snip": angle_arr.copy(),
         "angle_firstbout_snip": angle_arr.copy(),
@@ -362,6 +579,8 @@ def _make_minimal_bundle_for_endpoint_test(
     }
     if include_x_snip:
         trial_row["x_snip"] = x_arr
+    if include_y_snip:
+        trial_row["y_snip"] = y_arr
 
     # Single-bout per-peak row (synthetic_only mode looks at peak_t_ms
     # entries across all bouts).
@@ -432,15 +651,16 @@ def _make_minimal_bundle_for_endpoint_test(
 
 
 class TestComputePhaseAlignedEndpointsPerTrial:
-    def test_single_trial_produces_all_three_endpoints(self):
+    def test_single_trial_produces_all_five_endpoints(self):
         # peak at t=200, synth=100 → window [150, 250] → phase 0.5 at t=200,
         # phase 0.75 at t=225 (just inside the window). Plant a known
         # negative angle at peak and a known signed-positive x at t=225.
         bundle = _make_minimal_bundle_for_endpoint_test(
             trial_index=0, side="L",
             peak_t_ms=200.0, synth_ili_ms=100.0,
-            angle_planters={200.0: -12.5},  # endpoint A
+            angle_planters={200.0: -12.5},  # endpoint A + B
             x_planters={228.0: 33.0},        # endpoint C target inside window
+            y_planters={200.0: 41.0},        # endpoint D + E (at phase=0.5)
         )
         out = compute_phase_aligned_endpoints_per_trial(bundle)
         assert list(out.columns) == list(PHASE_ALIGNED_ENDPOINT_COLUMNS)
@@ -464,6 +684,11 @@ class TestComputePhaseAlignedEndpointsPerTrial:
         # In-window x values are all zero from the initialization.
         # Result: argmax picks index 0, signed value = 0.0.
         assert c == pytest.approx(0.0)
+        # Endpoint D (Q-lock 13c): y at phase=0.5 — planted +41 at t=200.
+        assert row["peak_y_px"] == pytest.approx(41.0)
+        # Endpoint E (Q-lock 13c): signed y at argmax(|y|) in [0, 0.75];
+        # only finite plant in-window is +41 → signed value is +41.
+        assert row["signed_y_at_max_abs_phase_0_075_px"] == pytest.approx(41.0)
 
     def test_signed_negative_x_inside_window(self):
         # Plant -42 at t=180 → phase=(180-150)/100 = 0.3 (inside [0, 0.75]).
@@ -477,6 +702,20 @@ class TestComputePhaseAlignedEndpointsPerTrial:
         assert len(out) == 1
         row = out.iloc[0]
         assert row["signed_x_at_max_abs_phase_0_075_px"] == pytest.approx(-42.0)
+
+    def test_signed_negative_y_inside_window(self):
+        # Q-lock 13c Stage 1: y E endpoint test analog of C.
+        # Plant -52 at t=180 → phase=0.3 (inside [0, 0.75]).
+        # Plant +12 at t=240 → phase=0.9 (outside).
+        bundle = _make_minimal_bundle_for_endpoint_test(
+            trial_index=11, side="R",
+            peak_t_ms=200.0, synth_ili_ms=100.0,
+            y_planters={180.0: -52.0, 240.0: +12.0},
+        )
+        out = compute_phase_aligned_endpoints_per_trial(bundle)
+        assert len(out) == 1
+        row = out.iloc[0]
+        assert row["signed_y_at_max_abs_phase_0_075_px"] == pytest.approx(-52.0)
 
     def test_no_phase_rows_returns_empty(self):
         # No peak time in df_bouts → build_first_lick_centered_phase_rows
@@ -521,6 +760,30 @@ class TestComputePhaseAlignedEndpointsPerTrial:
         assert row["signed_angle_at_max_abs_phase_0_075_deg"] == pytest.approx(-8.0)
         # C is NaN because x_centered column is NaN-filled
         assert np.isnan(row["signed_x_at_max_abs_phase_0_075_px"])
+        # D + E remain finite (y_snip present, default zeros)
+        assert row["peak_y_px"] == pytest.approx(0.0)
+        assert row["signed_y_at_max_abs_phase_0_075_px"] == pytest.approx(0.0)
+
+    def test_bundle_without_y_snip_returns_nan_endpoints_d_e(self):
+        # Q-lock 13c Stage 1: legacy bundles without y_snip on df_trials
+        # degrade D + E to NaN gracefully (mirror of x_snip path).
+        bundle = _make_minimal_bundle_for_endpoint_test(
+            trial_index=4, side="R",
+            peak_t_ms=200.0, synth_ili_ms=100.0,
+            angle_planters={200.0: 6.0},
+            x_planters={200.0: 9.0},
+            include_y_snip=False,
+        )
+        out = compute_phase_aligned_endpoints_per_trial(bundle)
+        assert len(out) == 1
+        row = out.iloc[0]
+        # A + B + C still computed
+        assert row["peak_angle_deg"] == pytest.approx(6.0)
+        assert row["signed_angle_at_max_abs_phase_0_075_deg"] == pytest.approx(6.0)
+        assert row["signed_x_at_max_abs_phase_0_075_px"] == pytest.approx(9.0)
+        # D + E are NaN because y_centered column is NaN-filled
+        assert np.isnan(row["peak_y_px"])
+        assert np.isnan(row["signed_y_at_max_abs_phase_0_075_px"])
 
     def test_phase_peak_constant_matches_kickoff_lock(self):
         # Kickoff body: endpoint A is at phase = 0.5 (lick-1 peak time).
@@ -531,3 +794,54 @@ class TestComputePhaseAlignedEndpointsPerTrial:
         # Kickoff body: phase ∈ [0, 0.75] for endpoints B + C.
         assert PHASE_WINDOW_LO == 0.0
         assert PHASE_WINDOW_HI == 0.75
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13c Stage 1 — substrate y_centered column parity
+# ---------------------------------------------------------------------------
+
+class TestSubstrateYCenteredColumnParity:
+    """Direct test that build_first_lick_centered_phase_rows emits
+    y_centered = the planted y_snip values at each emitted phase row."""
+
+    def test_y_centered_column_emitted_alongside_x_centered(self):
+        from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_minimal_bundle_for_endpoint_test(
+            trial_index=0, side="L",
+            peak_t_ms=200.0, synth_ili_ms=100.0,
+            x_planters={180.0: -7.0, 220.0: +9.0},
+            y_planters={180.0: -21.0, 220.0: +33.0},
+        )
+        rows = build_first_lick_centered_phase_rows(
+            bundle, synthetic_ili_ms=100.0, ili_source="synthetic_only",
+        )
+        assert not rows.empty
+        # y_centered column present + parametric in the substrate output
+        assert "y_centered" in rows.columns
+        # Locate row at t_ms == 180 (or closest) — planted y = -21
+        idx_180 = (rows["t_ms"] - 180.0).abs().idxmin()
+        assert rows.loc[idx_180, "y_centered"] == pytest.approx(-21.0)
+        assert rows.loc[idx_180, "x_centered"] == pytest.approx(-7.0)
+        # Locate row at t_ms == 220 — planted y = +33
+        idx_220 = (rows["t_ms"] - 220.0).abs().idxmin()
+        assert rows.loc[idx_220, "y_centered"] == pytest.approx(33.0)
+        assert rows.loc[idx_220, "x_centered"] == pytest.approx(9.0)
+
+    def test_y_centered_nan_when_y_snip_absent(self):
+        from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
+            build_first_lick_centered_phase_rows,
+        )
+        bundle = _make_minimal_bundle_for_endpoint_test(
+            trial_index=0, side="L",
+            peak_t_ms=200.0, synth_ili_ms=100.0,
+            include_y_snip=False,
+        )
+        rows = build_first_lick_centered_phase_rows(
+            bundle, synthetic_ili_ms=100.0, ili_source="synthetic_only",
+        )
+        assert not rows.empty
+        assert "y_centered" in rows.columns
+        # All y_centered NaN when y_snip is absent on df_trials.
+        assert rows["y_centered"].isna().all()

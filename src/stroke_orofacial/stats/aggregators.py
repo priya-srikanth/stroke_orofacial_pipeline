@@ -60,9 +60,16 @@ PHASE_ALIGNED_ENDPOINT_SLUGS: tuple[str, ...] = (
 # Q-lock 13b: those are session × side × endpoint scalars from the
 # per-trial endpoints JSON; these are trial × phase_bin signal values
 # from the in-memory bundle.
+#
+# Q-lock 13c Stage 2 (2026-05-29) appended ``y_centered`` — protrusion /
+# amplitude axis. The downstream baseline / aggregator / trajectory-
+# scalar / cluster-perm / LMM / bootstrap helpers are all parametric on
+# this tuple, so the single tuple extension propagates the y signal
+# through every consumer that takes ``signals=TRAJECTORY_SIGNALS``.
 TRAJECTORY_SIGNALS: tuple[str, ...] = (
     "angle_deg",
     "x_centered",
+    "y_centered",
 )
 
 

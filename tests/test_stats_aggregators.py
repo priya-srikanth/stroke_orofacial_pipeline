@@ -545,7 +545,7 @@ class TestStage2ToStage3Integration:
 
 _PHASE_ROW_TEST_COLUMNS: tuple[str, ...] = (
     "animal", "date", "trial_index", "side", "phase_bin", "epoch_label",
-    "angle_deg", "x_centered",
+    "angle_deg", "x_centered", "y_centered",
 )
 
 
@@ -558,8 +558,12 @@ def _phase_rows(
     columns ``compute_per_animal_phase_bin_baseline`` /
     ``apply_phase_bin_baseline_delta`` consume — ``animal``, ``date``,
     ``trial_index``, ``side``, ``phase_bin``, ``epoch_label``,
-    ``angle_deg``, ``x_centered``. Defaults fill in finite stand-ins
-    when the caller doesn't supply them.
+    ``angle_deg``, ``x_centered``, ``y_centered``. Defaults fill in
+    finite stand-ins when the caller doesn't supply them.
+
+    ``y_centered`` defaults to 0.0 (Q-lock 13c Stage 2 added y to
+    ``TRAJECTORY_SIGNALS``; pre-13c tests that don't plant y get a
+    zero-filled column so the new default-signals path validates).
 
     An empty ``rows`` list still emits the canonical column schema so
     downstream empty-input regression tests have the contract surface
@@ -586,6 +590,7 @@ def _phase_rows(
             "epoch_label": r["epoch_label"],
             "angle_deg": float(r.get("angle_deg", 0.0)),
             "x_centered": float(r.get("x_centered", 0.0)),
+            "y_centered": float(r.get("y_centered", 0.0)),
         }
         canonical.append(rec)
     return pd.DataFrame(canonical)
@@ -626,8 +631,9 @@ class TestComputePerAnimalPhaseBinBaseline:
              "angle_deg": 999.0, "x_centered": 999.0},
         ]
         out = compute_per_animal_phase_bin_baseline(_phase_rows(rows))
-        # 3 (animal × side × phase_bin) cells × 2 signals = 6 rows.
-        assert len(out) == 6
+        # 3 (animal × side × phase_bin) cells × 3 signals = 9 rows.
+        # Q-lock 13c Stage 2: y_centered joined TRAJECTORY_SIGNALS.
+        assert len(out) == 9
         ps46_L_0 = out[
             (out["animal"] == "PS46") & (out["side"] == "L")
             & (out["phase_bin"] == 0)
@@ -724,6 +730,9 @@ class TestComputePerAnimalPhaseBinBaseline:
         assert x == pytest.approx(0.0)
 
     def test_quadruple_with_all_nan_pre_rows_absent(self):
+        # Plant NaN angle (drops from output) + finite x + finite y
+        # (default 0.0). Both finite signals remain. Q-lock 13c Stage 2:
+        # y_centered default 0.0 in fixture also passes the finite filter.
         rows = [
             {"animal": "PS46", "trial_index": 0, "side": "L",
              "phase_bin": 0, "epoch_label": "pre",
@@ -734,7 +743,7 @@ class TestComputePerAnimalPhaseBinBaseline:
         ]
         out = compute_per_animal_phase_bin_baseline(_phase_rows(rows))
         signals_present = set(out["signal"].unique())
-        assert signals_present == {"x_centered"}
+        assert signals_present == {"x_centered", "y_centered"}
 
     def test_missing_required_column_raises(self):
         bad = pd.DataFrame({
@@ -912,7 +921,8 @@ _STAGE2_AGG_COLS_BY_SIDE = [
 _STAGE2_ROW_COLS = (
     "animal", "date", "trial_index", "side", "phase_bin",
     "recovery_phenotype", "epoch_label",
-    "angle_deg", "x_centered", "angle_deg_delta", "x_centered_delta",
+    "angle_deg", "x_centered", "y_centered",
+    "angle_deg_delta", "x_centered_delta", "y_centered_delta",
 )
 
 
@@ -920,9 +930,14 @@ def _stage2_rows(rows: list[dict]) -> pd.DataFrame:
     """Build phase rows with the full set of columns Stage 2 expects.
 
     Required columns: animal, date, trial_index, side, phase_bin,
-    recovery_phenotype, epoch_label, angle_deg, x_centered, plus
-    angle_deg_delta and x_centered_delta (output of Stage 1 apply).
-    Defaults fill in reasonable stand-ins.
+    recovery_phenotype, epoch_label, angle_deg, x_centered, y_centered,
+    plus angle_deg_delta, x_centered_delta, y_centered_delta (output of
+    Stage 1 apply). Defaults fill in reasonable stand-ins.
+
+    Q-lock 13c Stage 2 (2026-05-29) added ``y_centered`` +
+    ``y_centered_delta`` (default 0.0) so pre-13c tests that don't
+    plant y values still satisfy the new default-signals
+    ``TRAJECTORY_SIGNALS`` aggregation path.
 
     Empty ``rows`` returns a DataFrame with the canonical column schema
     so downstream empty-input regression tests have the contract surface
@@ -951,8 +966,10 @@ def _stage2_rows(rows: list[dict]) -> pd.DataFrame:
             "epoch_label": r["epoch_label"],
             "angle_deg": float(r.get("angle_deg", 0.0)),
             "x_centered": float(r.get("x_centered", 0.0)),
+            "y_centered": float(r.get("y_centered", 0.0)),
             "angle_deg_delta": float(r.get("angle_deg_delta", 0.0)),
             "x_centered_delta": float(r.get("x_centered_delta", 0.0)),
+            "y_centered_delta": float(r.get("y_centered_delta", 0.0)),
         }
         canonical.append(rec)
     return pd.DataFrame(canonical)
@@ -986,8 +1003,9 @@ class TestAggregatePhenotypePooledPhaseBinMeanSem:
         out = aggregate_phenotype_pooled_phase_bin_mean_sem(
             _stage2_rows(rows), variants=("raw",),
         )
-        # 2 signals × 1 cell = 2 rows (angle_deg + x_centered, both raw)
-        assert len(out) == 2
+        # 3 signals × 1 cell = 3 rows (angle_deg + x_centered + y_centered,
+        # all raw). Q-lock 13c Stage 2: y_centered joined TRAJECTORY_SIGNALS.
+        assert len(out) == 3
         ang = out[out["signal"] == "angle_deg"].iloc[0]
         assert ang["mean"] == pytest.approx(3.0)
         assert ang["sem"] == pytest.approx(2.0 / np.sqrt(3))
@@ -1320,8 +1338,9 @@ class TestComputePerAnimalTrajectoryScalar:
              "angle_deg": 7.0, "x_centered": 4.0},
         ]
         out = compute_per_animal_trajectory_scalar(_phase_rows(rows))
-        # 3 (animal × side × epoch) cells × 2 signals = 6 rows.
-        assert len(out) == 6
+        # 3 (animal × side × epoch) cells × 3 signals = 9 rows.
+        # Q-lock 13c Stage 2: y_centered joined TRAJECTORY_SIGNALS.
+        assert len(out) == 9
         L_pre_ang = out[
             (out["side"] == "L") & (out["epoch_label"] == "pre")
             & (out["signal"] == "angle_deg")
@@ -1369,7 +1388,10 @@ def _densify_input(rows: list[dict]) -> pd.DataFrame:
     """Build a substrate-shaped DataFrame for densify tests.
 
     Rows are frame-grained: each dict carries ``animal, date,
-    trial_index, side, phase, epoch_label, angle_deg, x_centered``.
+    trial_index, side, phase, epoch_label, angle_deg, x_centered,
+    y_centered``. Q-lock 13c Stage 2 added ``y_centered`` (default 0.0)
+    so the new default-signals ``TRAJECTORY_SIGNALS`` densify path
+    validates.
     """
     canonical = []
     for r in rows:
@@ -1382,6 +1404,7 @@ def _densify_input(rows: list[dict]) -> pd.DataFrame:
             "epoch_label": r.get("epoch_label", "pre"),
             "angle_deg": float(r.get("angle_deg", 0.0)),
             "x_centered": float(r.get("x_centered", 0.0)),
+            "y_centered": float(r.get("y_centered", 0.0)),
         })
     return pd.DataFrame(canonical)
 
@@ -1536,11 +1559,14 @@ class TestDensifyPhaseRowsViaInterp:
             c: pd.Series(dtype=(
                 "datetime64[ns]" if c == "date"
                 else "int64" if c in {"trial_index"}
-                else "float64" if c in {"phase", "angle_deg", "x_centered"}
+                else "float64" if c in {
+                    "phase", "angle_deg", "x_centered", "y_centered",
+                }
                 else "object"
             ))
             for c in ("animal", "date", "trial_index", "side", "phase",
-                      "epoch_label", "angle_deg", "x_centered")
+                      "epoch_label", "angle_deg", "x_centered",
+                      "y_centered")
         })
         out = densify_phase_rows_via_interp(empty, n_phase_bins=8)
         assert out.empty
@@ -1584,8 +1610,9 @@ class TestComputePerTrialTrajectoryScalar:
              "angle_deg": 4.0, "x_centered": 1.0},
         ]
         out = compute_per_trial_trajectory_scalar(_phase_rows(rows))
-        # 1 trial × 1 side × 2 signals × 1 epoch = 2 rows.
-        assert len(out) == 2
+        # 1 trial × 1 side × 3 signals × 1 epoch = 3 rows.
+        # Q-lock 13c Stage 2: y_centered joined TRAJECTORY_SIGNALS.
+        assert len(out) == 3
         ang_row = out[out["signal"] == "angle_deg"].iloc[0]
         assert ang_row["scalar"] == pytest.approx(3.0)
 
@@ -1666,3 +1693,187 @@ class TestRelabelPreForNullCalibration:
         bad = pd.DataFrame({"animal": ["PS46"]})
         with pytest.raises(ValueError, match="missing column"):
             relabel_pre_for_null_calibration(bad)
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13c Stage 2 — y_centered baseline + aggregator regression
+# ---------------------------------------------------------------------------
+
+
+class TestYSignalInTrajectorySignals:
+    """Q-lock 13c Stage 2 (2026-05-29) added ``y_centered`` to the default
+    ``TRAJECTORY_SIGNALS`` tuple. The baseline / delta / aggregator helpers
+    are parametric on that tuple, so the single tuple extension propagates
+    to every consumer. This class is the kickoff-mandated synthetic
+    2-animal × 2-epoch y fixture regression."""
+
+    def test_trajectory_signals_includes_y_centered(self):
+        # Single source of truth: y joins the trajectory signal set.
+        assert "y_centered" in TRAJECTORY_SIGNALS
+        assert tuple(TRAJECTORY_SIGNALS) == (
+            "angle_deg", "x_centered", "y_centered",
+        )
+
+    def test_per_animal_y_baseline_known_input_known_output(self):
+        # PS46 L pre: trial 0 y=20, trial 1 y=40 → baseline = 30
+        # PS46 R pre: trial 2 y=10 → baseline = 10 (single trial)
+        # PS47 L pre: trial 0 y=-5, trial 1 y=+5 → baseline = 0
+        # Post-acute row at PS46 L must NOT contribute.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "y_centered": 20.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "y_centered": 40.0},
+            {"animal": "PS46", "trial_index": 2, "side": "R",
+             "phase_bin": 0, "epoch_label": "pre", "y_centered": 10.0},
+            {"animal": "PS47", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "y_centered": -5.0},
+            {"animal": "PS47", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "y_centered": 5.0},
+            {"animal": "PS46", "trial_index": 99, "side": "L",
+             "phase_bin": 0, "epoch_label": "acute", "y_centered": 999.0},
+        ]
+        out = compute_per_animal_phase_bin_baseline(_phase_rows(rows))
+        y_rows = out[out["signal"] == "y_centered"]
+        ps46_L = y_rows[
+            (y_rows["animal"] == "PS46") & (y_rows["side"] == "L")
+        ].iloc[0]
+        ps46_R = y_rows[
+            (y_rows["animal"] == "PS46") & (y_rows["side"] == "R")
+        ].iloc[0]
+        ps47_L = y_rows[y_rows["animal"] == "PS47"].iloc[0]
+        assert ps46_L["baseline_mean"] == pytest.approx(30.0)
+        assert ps46_R["baseline_mean"] == pytest.approx(10.0)
+        assert ps47_L["baseline_mean"] == pytest.approx(0.0)
+
+    def test_y_delta_subtraction_known_input_known_output(self):
+        # 2 animals × 2 epochs × y baseline subtraction.
+        # PS46 pre y=10; PS46 acute y=18 → delta = +8.
+        # PS47 pre y=4; PS47 chronic y=-1 → delta = -5.
+        rows = [
+            {"animal": "PS46", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "y_centered": 10.0},
+            {"animal": "PS46", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "acute", "y_centered": 18.0},
+            {"animal": "PS47", "trial_index": 0, "side": "L",
+             "phase_bin": 0, "epoch_label": "pre", "y_centered": 4.0},
+            {"animal": "PS47", "trial_index": 1, "side": "L",
+             "phase_bin": 0, "epoch_label": "chronic", "y_centered": -1.0},
+        ]
+        df = _phase_rows(rows)
+        baseline = compute_per_animal_phase_bin_baseline(df)
+        out = apply_phase_bin_baseline_delta(df, baseline)
+        assert "y_centered_delta" in out.columns
+        # Pre rows: delta = signal - own-baseline. Single pre trial per
+        # animal → baseline equals the trial value → delta = 0 exactly.
+        ps46_pre = out[
+            (out["animal"] == "PS46") & (out["epoch_label"] == "pre")
+        ].iloc[0]
+        ps47_pre = out[
+            (out["animal"] == "PS47") & (out["epoch_label"] == "pre")
+        ].iloc[0]
+        assert ps46_pre["y_centered_delta"] == pytest.approx(0.0)
+        assert ps47_pre["y_centered_delta"] == pytest.approx(0.0)
+        # Post-epoch rows: subtraction matches expected sign.
+        ps46_acute = out[
+            (out["animal"] == "PS46") & (out["epoch_label"] == "acute")
+        ].iloc[0]
+        ps47_chronic = out[
+            (out["animal"] == "PS47") & (out["epoch_label"] == "chronic")
+        ].iloc[0]
+        assert ps46_acute["y_centered_delta"] == pytest.approx(8.0)
+        assert ps47_chronic["y_centered_delta"] == pytest.approx(-5.0)
+
+    def test_y_phenotype_pooled_mean_sem_2_animal_2_epoch(self):
+        # 2-animal × 2-epoch y fixture (mild phenotype). Trial-grain
+        # cross-trial pool of y values must give correct mean + SEM.
+        # Pre: PS47 trials [4, 6, 8] + PS48 trials [10, 12] = pool of 5
+        # values [4, 6, 8, 10, 12]; mean=8, std(ddof=1)=sqrt(10)=3.1623,
+        # SEM=3.1623/sqrt(5)=1.4142.
+        # Acute: PS47 [20, 22] + PS48 [24] = [20, 22, 24]; mean=22,
+        # std(ddof=1)=2, SEM=2/sqrt(3)=1.1547.
+        rows = []
+        # Pre PS47 (mild, 3 trials)
+        for ti, yv in enumerate([4.0, 6.0, 8.0]):
+            rows.append({
+                "animal": "PS47", "date": datetime.date(2025, 3, 1),
+                "trial_index": ti, "side": "L", "phase_bin": 0,
+                "recovery_phenotype": "mild", "epoch_label": "pre",
+                "y_centered": yv,
+            })
+        # Pre PS48 (mild, 2 trials)
+        for ti, yv in enumerate([10.0, 12.0]):
+            rows.append({
+                "animal": "PS48", "date": datetime.date(2025, 3, 1),
+                "trial_index": ti, "side": "L", "phase_bin": 0,
+                "recovery_phenotype": "mild", "epoch_label": "pre",
+                "y_centered": yv,
+            })
+        # Acute PS47 (mild, 2 trials)
+        for ti, yv in enumerate([20.0, 22.0]):
+            rows.append({
+                "animal": "PS47", "date": datetime.date(2025, 4, 1),
+                "trial_index": 10 + ti, "side": "L", "phase_bin": 0,
+                "recovery_phenotype": "mild", "epoch_label": "acute",
+                "y_centered": yv,
+            })
+        # Acute PS48 (mild, 1 trial)
+        rows.append({
+            "animal": "PS48", "date": datetime.date(2025, 4, 1),
+            "trial_index": 20, "side": "L", "phase_bin": 0,
+            "recovery_phenotype": "mild", "epoch_label": "acute",
+            "y_centered": 24.0,
+        })
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows), variants=("raw",), signals=("y_centered",),
+        )
+        # 1 phenotype × 2 epochs × 1 side × 1 phase_bin × 1 signal × 1 variant
+        # = 2 rows.
+        assert len(out) == 2
+        pre = out[out["epoch_label"] == "pre"].iloc[0]
+        acute = out[out["epoch_label"] == "acute"].iloc[0]
+        assert pre["mean"] == pytest.approx(8.0)
+        assert pre["sem"] == pytest.approx(np.sqrt(10.0) / np.sqrt(5.0))
+        assert int(pre["n_trials"]) == 5
+        assert int(pre["n_animals"]) == 2
+        assert acute["mean"] == pytest.approx(22.0)
+        assert acute["sem"] == pytest.approx(2.0 / np.sqrt(3.0))
+        assert int(acute["n_trials"]) == 3
+        assert int(acute["n_animals"]) == 2
+
+    def test_y_phenotype_pooled_mean_sem_delta_variant_zero_pre(self):
+        # Q-lock 13 invariant: per-animal per-side delta baselines produce
+        # zero-mean pre column. The y signal must respect this invariant.
+        rows = []
+        for ti, yv in enumerate([10.0, 14.0, 18.0]):
+            rows.append({
+                "animal": "PS47", "date": datetime.date(2025, 3, 1),
+                "trial_index": ti, "side": "L", "phase_bin": 0,
+                "recovery_phenotype": "mild", "epoch_label": "pre",
+                "y_centered": yv,
+            })
+        # Phenotype-pooled delta on pre rows must collapse to 0 mean.
+        # Pre baseline = mean(y) = 14. Per-trial deltas: -4, 0, +4.
+        # Cross-trial mean = 0 → pre column flat at 0.
+        df = _phase_rows(rows)
+        baseline = compute_per_animal_phase_bin_baseline(df)
+        with_delta = apply_phase_bin_baseline_delta(df, baseline)
+        # Now we need to attach recovery_phenotype to the delta'd df
+        # for the aggregator. _stage2_rows handles that; rebuild w/ delta.
+        rows_with_delta = []
+        for _, r in with_delta.iterrows():
+            rows_with_delta.append({
+                "animal": r["animal"], "date": r["date"],
+                "trial_index": int(r["trial_index"]), "side": r["side"],
+                "phase_bin": int(r["phase_bin"]),
+                "recovery_phenotype": "mild",
+                "epoch_label": r["epoch_label"],
+                "y_centered": float(r["y_centered"]),
+                "y_centered_delta": float(r["y_centered_delta"]),
+            })
+        out = aggregate_phenotype_pooled_phase_bin_mean_sem(
+            _stage2_rows(rows_with_delta),
+            variants=("delta",), signals=("y_centered",),
+        )
+        pre = out[out["epoch_label"] == "pre"].iloc[0]
+        assert pre["mean"] == pytest.approx(0.0)

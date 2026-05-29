@@ -28,6 +28,7 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 from stroke_orofacial.figures.phase_aligned_trajectories import (  # noqa: E402
     FIGURE_SUBDIR,
+    RESULTS_SUBDIR,
     emit_phase_aligned_trajectory_figures,
 )
 from stroke_orofacial.paths import PathResolver  # noqa: E402
@@ -56,15 +57,21 @@ def main(argv: list[str] | None = None) -> int:
     logger = logging.getLogger("phase_9_1_q13.rerender")
 
     resolver = PathResolver()
-    base_dir = resolver.pipeline_outputs(subdir=FIGURE_SUBDIR)
+    # Q-lock 13c Addendum #2 (2026-05-29): pooled CSV is read from the
+    # results tree; figures land under the figures tree. Both pick up
+    # the 3_phenotype/ suffix when --remap-phenotypes=3tier.
+    fig_base_dir = resolver.pipeline_outputs(subdir=FIGURE_SUBDIR)
+    res_base_dir = resolver.pipeline_outputs(subdir=RESULTS_SUBDIR)
     if args.remap_phenotypes == "3tier":
-        out_dir = base_dir / "3_phenotype"
+        out_dir = fig_base_dir / "3_phenotype"
+        csv_dir = res_base_dir / "3_phenotype"
         phenotype_order = PHENOTYPE_ORDER_3TIER
     else:
-        out_dir = base_dir
+        out_dir = fig_base_dir
+        csv_dir = res_base_dir
         phenotype_order = None
 
-    pooled_csv = out_dir / "phenotype_pooled_phase_bin_mean_sem.csv"
+    pooled_csv = csv_dir / "phenotype_pooled_phase_bin_mean_sem.csv"
     if not pooled_csv.exists():
         logger.error("pooled CSV not found at %s", pooled_csv)
         return 1

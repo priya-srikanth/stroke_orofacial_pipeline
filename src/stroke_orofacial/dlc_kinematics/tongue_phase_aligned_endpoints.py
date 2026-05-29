@@ -1,7 +1,8 @@
-"""Phase 9.1 Q-lock 13b — phase-aligned tongue endpoints per (trial, side).
+"""Phase 9.1 Q-lock 13b + 13c — phase-aligned tongue endpoints per (trial, side).
 
-Phase 9.1 Q-lock 13b (Addenda #1 + #2 locks, 2026-05-27). Three scalar
-endpoints derived from the first-lick-centered phase trajectory:
+Phase 9.1 Q-lock 13b (Addenda #1 + #2 locks, 2026-05-27) defined three
+scalar endpoints derived from the first-lick-centered phase trajectory.
+Q-lock 13c Stage 1 (2026-05-29) adds two y-signal analogs (D + E):
 
 - A ``peak_angle_deg`` — tongue angle at ``phase = 0.5`` (lick-1 peak time).
 - B ``signed_angle_at_max_abs_phase_0_075_deg`` — signed ``angle_deg``
@@ -10,14 +11,21 @@ endpoints derived from the first-lick-centered phase trajectory:
 - C ``signed_x_at_max_abs_phase_0_075_px`` — ``x_centered`` at the time-point
   of largest ``|x_centered|`` over ``phase in [0, 0.75]`` (selection by
   magnitude; reported value signed). Q-lock 13b Addendum #2 Q6 refinement.
+- D ``peak_y_px`` — tongue y at ``phase = 0.5`` (lick-1 peak time). Q-lock
+  13c Stage 1 y-analog of A.
+- E ``signed_y_at_max_abs_phase_0_075_px`` — ``y_centered`` at
+  ``argmax(|y_centered|)`` over ``phase in [0, 0.75]`` (selection by
+  magnitude; reported value signed). Q-lock 13c Stage 1 y-analog of C.
 
-All three endpoints share the same first-lick-centered phase substrate
+All five endpoints share the same first-lick-centered phase substrate
 (``build_first_lick_centered_phase_rows`` with ``ili_source="synthetic_only"``
 per Addendum #1 Q1 lock; cycle width = the animal's pre-stroke median ILI
 on ``bundle.metadata["pre_stroke_median_ili_ms"]``).
 
-``x_centered`` is consumed in the spout-midpoint reference frame (Addendum
-#2 D2 lock: x = 0 = tongue aligned with spout midline; no eye-relative
+``x_centered`` and ``y_centered`` are consumed in the spout-midpoint
+reference frame (Addendum #2 D2 lock + Q-lock 13c Stage 1: x = 0 =
+tongue aligned with spout midline; y = 0 = tongue tip vertically aligned
+with spout midpoint, positive y = protrusion; no eye-relative
 re-centering applied here).
 
 Per-trial NaN policy
@@ -30,6 +38,8 @@ Per-trial NaN policy
   ``angle_deg`` rows.
 - Endpoint C: NaN if the phase ``[0, 0.75]`` window has no finite
   ``x_centered`` rows.
+- Endpoint D: NaN policy identical to A but on ``y_centered``.
+- Endpoint E: NaN policy identical to C but on ``y_centered``.
 """
 from __future__ import annotations
 
@@ -63,6 +73,8 @@ PHASE_ALIGNED_ENDPOINT_COLUMNS: tuple[str, ...] = (
     "peak_angle_deg",
     "signed_angle_at_max_abs_phase_0_075_deg",
     "signed_x_at_max_abs_phase_0_075_px",
+    "peak_y_px",
+    "signed_y_at_max_abs_phase_0_075_px",
 )
 
 
@@ -74,6 +86,8 @@ def _empty_phase_aligned_endpoints_df() -> pd.DataFrame:
         "peak_angle_deg": pd.Series(dtype=float),
         "signed_angle_at_max_abs_phase_0_075_deg": pd.Series(dtype=float),
         "signed_x_at_max_abs_phase_0_075_px": pd.Series(dtype=float),
+        "peak_y_px": pd.Series(dtype=float),
+        "signed_y_at_max_abs_phase_0_075_px": pd.Series(dtype=float),
     })
 
 
@@ -117,12 +131,16 @@ def compute_phase_aligned_endpoints_per_trial(
         peak_angle = _endpoint_a_peak_angle(grp)
         max_abs_angle = _endpoint_b_max_abs_angle(grp)
         signed_x = _endpoint_c_signed_x_at_max_abs(grp)
+        peak_y = _endpoint_d_peak_y(grp)
+        signed_y = _endpoint_e_signed_y_at_max_abs(grp)
         out_rows.append({
             "trial_index": int(trial_idx),
             "side": str(side),
             "peak_angle_deg": peak_angle,
             "signed_angle_at_max_abs_phase_0_075_deg": max_abs_angle,
             "signed_x_at_max_abs_phase_0_075_px": signed_x,
+            "peak_y_px": peak_y,
+            "signed_y_at_max_abs_phase_0_075_px": signed_y,
         })
 
     if not out_rows:
@@ -180,6 +198,45 @@ def _endpoint_c_signed_x_at_max_abs(grp: pd.DataFrame) -> float:
     return float(x_arr[j])
 
 
+def _endpoint_d_peak_y(grp: pd.DataFrame) -> float:
+    """Endpoint D: y_centered at phase ≈ 0.5 (lick-1 peak time).
+
+    Q-lock 13c Stage 1 y-analog of endpoint A. ``y_centered`` is in the
+    spout-midpoint frame (y = 0 = tongue tip aligned with spout midpoint;
+    positive y = protrusion). Tolerance + NaN policy match A."""
+    if grp.empty or "y_centered" not in grp.columns:
+        return float("nan")
+    phase_arr = grp["phase"].to_numpy(dtype=np.float64)
+    y_arr = grp["y_centered"].to_numpy(dtype=np.float64)
+    deltas = np.abs(phase_arr - PHASE_PEAK)
+    finite_y = np.isfinite(y_arr)
+    deltas = np.where(finite_y, deltas, np.inf)
+    if not np.isfinite(deltas).any():
+        return float("nan")
+    j = int(np.argmin(deltas))
+    if deltas[j] > PHASE_PEAK_TOLERANCE:
+        return float("nan")
+    return float(y_arr[j])
+
+
+def _endpoint_e_signed_y_at_max_abs(grp: pd.DataFrame) -> float:
+    """Endpoint E: signed y_centered at argmax(|y_centered|) over phase
+    in [0, 0.75]. Selection criterion uses magnitude; reported value is
+    signed (preserves protrusion-vs-retraction direction).
+
+    Q-lock 13c Stage 1 y-analog of endpoint C."""
+    window = _phase_window(grp)
+    if window.empty or "y_centered" not in window.columns:
+        return float("nan")
+    y_arr = window["y_centered"].to_numpy(dtype=np.float64)
+    finite = np.isfinite(y_arr)
+    if not finite.any():
+        return float("nan")
+    abs_y = np.where(finite, np.abs(y_arr), -np.inf)
+    j = int(np.argmax(abs_y))
+    return float(y_arr[j])
+
+
 def _phase_window(grp: pd.DataFrame) -> pd.DataFrame:
     """Filter to rows with phase in [PHASE_WINDOW_LO, PHASE_WINDOW_HI]."""
     if grp.empty:
@@ -215,7 +272,9 @@ def align_endpoints_to_trial_order(
     -------
     dict[str, list[float]]
         Keys: ``peak_angle_deg``, ``signed_angle_at_max_abs_phase_0_075_deg``,
-        ``signed_x_at_max_abs_phase_0_075_px``. Each value is a
+        ``signed_x_at_max_abs_phase_0_075_px``, ``peak_y_px``,
+        ``signed_y_at_max_abs_phase_0_075_px`` (last two added in Q-lock
+        13c Stage 1; 2026-05-29). Each value is a
         ``len(trial_indices)``-long list of floats; trial_events with
         no matching endpoints row (no detected first lick on that side
         of that trial) get NaN at their position.
@@ -230,9 +289,20 @@ def align_endpoints_to_trial_order(
         "peak_angle_deg": [float("nan")] * n,
         "signed_angle_at_max_abs_phase_0_075_deg": [float("nan")] * n,
         "signed_x_at_max_abs_phase_0_075_px": [float("nan")] * n,
+        "peak_y_px": [float("nan")] * n,
+        "signed_y_at_max_abs_phase_0_075_px": [float("nan")] * n,
     }
     if endpoints_df.empty:
         return out
+
+    # Q-lock 13c Stage 1: y endpoint columns may be absent on
+    # endpoints DataFrames produced by pre-13c callers (e.g. test
+    # fixtures that build DataFrames by hand). NaN-fill the y keys
+    # in that case so the function degrades gracefully.
+    has_y_peak = "peak_y_px" in endpoints_df.columns
+    has_y_signed = (
+        "signed_y_at_max_abs_phase_0_075_px" in endpoints_df.columns
+    )
 
     by_key: dict[tuple[int, str], dict[str, float]] = {}
     for _, row in endpoints_df.iterrows():
@@ -243,6 +313,11 @@ def align_endpoints_to_trial_order(
                 float(row["signed_angle_at_max_abs_phase_0_075_deg"]),
             "signed_x_at_max_abs_phase_0_075_px":
                 float(row["signed_x_at_max_abs_phase_0_075_px"]),
+            "peak_y_px":
+                float(row["peak_y_px"]) if has_y_peak else float("nan"),
+            "signed_y_at_max_abs_phase_0_075_px":
+                float(row["signed_y_at_max_abs_phase_0_075_px"])
+                if has_y_signed else float("nan"),
         }
 
     for i, (ti, side) in enumerate(zip(trial_indices, sides)):

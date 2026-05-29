@@ -31,6 +31,7 @@ from stroke_orofacial.figures.phase_aligned_trajectories import (
     EPOCH_ORDER,
     FIGURE_SUBDIR,
     FIGURE_SUBTITLE,
+    RESULTS_SUBDIR,
     SOURCE_DATA_SUBTITLE_DELTA,
     SOURCE_DATA_SUBTITLE_RAW,
     build_phase_aligned_trajectory_figure,
@@ -52,7 +53,7 @@ N_PHASE_BINS = 8  # small for tests; production uses 72
 
 def _pooled_df(
     *,
-    signals=("angle_deg", "x_centered"),
+    signals=("angle_deg", "x_centered", "y_centered"),
     variants=("raw", "delta"),
     sides=("L", "R"),
     epochs=EPOCH_ORDER,
@@ -65,6 +66,10 @@ def _pooled_df(
     Each cell carries a deterministic mean (sin-shaped over phase) with
     a tiny phenotype offset so panels are distinguishable in snapshot
     inspection. SEM = 0.1 for finite-band coverage.
+
+    Q-lock 13c Stage 3 (2026-05-29): default signals tuple gained
+    ``y_centered`` so the synthetic fixture matches the now-canonical
+    3-signal trajectory matrix.
     """
     rows = []
     for phen_idx, phen in enumerate(phenotypes):
@@ -497,19 +502,20 @@ class TestRenderPhaseAlignedTrajectoryFigure:
 
 
 class TestEmitPhaseAlignedTrajectoryFigures:
-    def test_emits_8_figures_under_force(self, tmp_path):
+    def test_emits_12_figures_under_force(self, tmp_path):
+        # Q-lock 13c Stage 3: 3 signals × 2 variants × 2 sides = 12 figures.
         df = _pooled_df()
         resolver = PathResolver(output_root=tmp_path)
         out = emit_phase_aligned_trajectory_figures(
             df, resolver=resolver, overwrite="force",
         )
-        assert len(out["emitted"]) == 8
+        assert len(out["emitted"]) == 12
         assert len(out["skipped"]) == 0
         # Confirm filename pattern + on-disk presence.
         names = {p.name for p in out["emitted"]}
         expected_names = {
             f"{signal}_{variant}_{side}_mean_sem_cleaned_trace.svg"
-            for signal in ("angle_deg", "x_centered")
+            for signal in ("angle_deg", "x_centered", "y_centered")
             for variant in ("raw", "delta")
             for side in ("L", "R")
         }
@@ -518,7 +524,7 @@ class TestEmitPhaseAlignedTrajectoryFigures:
     def test_skip_mode_does_not_overwrite_existing(self, tmp_path):
         df = _pooled_df()
         resolver = PathResolver(output_root=tmp_path)
-        # First emit: writes all 8.
+        # First emit: writes all 12.
         emit_phase_aligned_trajectory_figures(
             df, resolver=resolver, overwrite="force",
         )
@@ -533,7 +539,7 @@ class TestEmitPhaseAlignedTrajectoryFigures:
             df, resolver=resolver, overwrite="skip",
         )
         assert len(out2["emitted"]) == 0
-        assert len(out2["skipped"]) == 8
+        assert len(out2["skipped"]) == 12
         mtimes_after = {
             p.name: p.stat().st_mtime
             for p in out_dir.glob("*.svg")
@@ -552,6 +558,135 @@ class TestEmitPhaseAlignedTrajectoryFigures:
         assert names == {
             "angle_deg_raw_L_mean_sem_cleaned_trace.svg",
             "angle_deg_raw_R_mean_sem_cleaned_trace.svg",
+        }
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13c Addendum #2 — figures vs results tree split
+# ---------------------------------------------------------------------------
+
+
+class TestFiguresResultsTreeSplit:
+    """Q-lock 13c Addendum #2 (2026-05-29): numerical CSVs split from
+    the figures tree. FIGURE_SUBDIR keeps SVGs; RESULTS_SUBDIR receives
+    CSVs. Both share the same relative-subpath structure (root,
+    3_phenotype/, null_calibration/, 3_phenotype/null_calibration/)."""
+
+    def test_results_subdir_constant_lock(self):
+        # Lock the literal so future renames are intentional.
+        assert RESULTS_SUBDIR == (
+            "stats/results/phenotype_pooled/phase_aligned_trajectories"
+        )
+
+    def test_figure_subdir_constant_unchanged(self):
+        # FIGURE_SUBDIR stays at the same tree it had at Q13 close.
+        assert FIGURE_SUBDIR == (
+            "stats/figures/phenotype_pooled/phase_aligned_trajectories"
+        )
+
+    def test_results_and_figure_subdirs_differ_only_in_figures_vs_results(self):
+        # The two trees mirror each other at the project-wide split
+        # point: ``stats/figures/`` (renders) vs ``stats/results/`` (CSVs).
+        assert FIGURE_SUBDIR.replace("figures", "results") == RESULTS_SUBDIR
+
+    def test_emit_phase_aligned_trajectory_figures_writes_no_csvs(
+        self, tmp_path,
+    ):
+        # The renderer only produces SVGs. CSVs are written by the
+        # cohort emit driver (run_stats_and_figures), which routes them
+        # to results_dir; this test locks the figure-side invariant.
+        df = _pooled_df()
+        resolver = PathResolver(output_root=tmp_path)
+        out = emit_phase_aligned_trajectory_figures(
+            df, resolver=resolver, overwrite="force",
+            output_dir=tmp_path / "figs",
+        )
+        # All emitted paths end in .svg; no .csv siblings appear under
+        # the figures output dir.
+        for p in out["emitted"]:
+            assert p.suffix == ".svg", f"unexpected non-SVG emit: {p}"
+        csvs = list((tmp_path / "figs").glob("*.csv"))
+        assert csvs == [], f"unexpected CSVs under figures dir: {csvs}"
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 13c Stage 3 — y_centered figure renderer regression
+# ---------------------------------------------------------------------------
+
+
+class TestYCenteredTrajectoryFigure:
+    """Q-lock 13c Stage 3 (2026-05-29): y_centered joins the trajectory
+    figure matrix. The renderer is parametric on the signal column, so a
+    minimal regression on a y-only fixture confirms the new figures
+    render through the existing build + emit pipeline."""
+
+    def test_y_centered_panel_grid_is_4_by_4(self):
+        df = _pooled_df(signals=("y_centered",))
+        fig, axes = build_phase_aligned_trajectory_figure(
+            df, signal="y_centered", variant="raw", side="L",
+        )
+        assert axes.shape == (4, 4)
+        plt.close(fig)
+
+    def test_y_centered_filename_matches_kickoff_lock(self, tmp_path):
+        # Q-lock 13c-H lock: y figures land alongside angle/x in
+        # stats/figures/phenotype_pooled/phase_aligned_trajectories/
+        # with the existing <signal>_<variant>_<side>_mean_sem_cleaned_trace
+        # filename convention (Q13 de-facto convention).
+        from stroke_orofacial.figures.phase_aligned_trajectories import (
+            figure_path_for,
+        )
+        resolver = PathResolver(output_root=tmp_path)
+        path_raw = figure_path_for(
+            signal="y_centered", variant="raw", side="L", resolver=resolver,
+        )
+        path_delta = figure_path_for(
+            signal="y_centered", variant="delta", side="R", resolver=resolver,
+        )
+        assert path_raw.name == (
+            "y_centered_raw_L_mean_sem_cleaned_trace.svg"
+        )
+        assert path_delta.name == (
+            "y_centered_delta_R_mean_sem_cleaned_trace.svg"
+        )
+        # Both land under the Q-lock 13c-H locked subdir.
+        assert str(path_raw).endswith(
+            "stats/figures/phenotype_pooled/phase_aligned_trajectories/"
+            "y_centered_raw_L_mean_sem_cleaned_trace.svg"
+        ) or str(path_raw).endswith(
+            "stats\\figures\\phenotype_pooled\\phase_aligned_trajectories\\"
+            "y_centered_raw_L_mean_sem_cleaned_trace.svg"
+        )
+
+    def test_y_centered_signal_display_name_is_protrusion_label(self):
+        from stroke_orofacial.figures.phase_aligned_trajectories import (
+            SIGNAL_DISPLAY_NAMES,
+        )
+        # Y-axis label semantic: spout-midpoint frame; protrusion-aware
+        # phrasing acceptable. Lock the literal Q-lock 13c Stage 3
+        # decision so future renames are intentional.
+        assert SIGNAL_DISPLAY_NAMES["y_centered"] == (
+            "Tongue y (spout-midpoint frame, px)"
+        )
+
+    def test_emit_default_includes_y_centered_in_signal_loop(self, tmp_path):
+        # The emit default tracks TRAJECTORY_SIGNALS (Stage 3 lock).
+        # Confirm y figures appear in the default-arg emit.
+        df = _pooled_df()  # full 3-signal pool
+        resolver = PathResolver(output_root=tmp_path)
+        out = emit_phase_aligned_trajectory_figures(
+            df, resolver=resolver, overwrite="force",
+        )
+        names = {p.name for p in out["emitted"]}
+        # 4 y figures (2 variants × 2 sides) must be present.
+        y_names = {
+            n for n in names if n.startswith("y_centered_")
+        }
+        assert y_names == {
+            "y_centered_raw_L_mean_sem_cleaned_trace.svg",
+            "y_centered_raw_R_mean_sem_cleaned_trace.svg",
+            "y_centered_delta_L_mean_sem_cleaned_trace.svg",
+            "y_centered_delta_R_mean_sem_cleaned_trace.svg",
         }
 
 
