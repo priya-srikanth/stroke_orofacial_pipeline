@@ -1822,3 +1822,37 @@ cohort_filters:
     min_licks_total: null
     min_licks_per_side: null
     min_trials_with_licks_per_side: null
+
+# ---------------------------------------------------------------------------
+# DLC tongue-kinematics filters (chore/dlc-session-and-trial-filtering,
+# Addendum #1). SEPARATE namespace from the v1 `cohort_filters` above (which
+# counts NPZ spout-licks for the Q-lock 12a SessionFilter). These count DLC
+# v7-kept tongue licks (tongue.n_licks_family.n_licks) and gate the Q-lock
+# 13 / 13b / 13c phenotype-pooled trajectory + scalar outputs. Thresholds
+# validated by the sensitivity probe (PR #157): SessionFilter
+# min_trials_with_detected_lick=10 leaves no phenotype-pool cell at zero.
+# Spatial (Q12) + spout-behavior analyses are UNFILTERED by design — no
+# entry here applies to them.
+# ---------------------------------------------------------------------------
+stats:
+  dlc_session_filter:
+    dlc_tongue_trajectory_metrics:
+      min_trials_with_detected_lick: 10   # primary criterion (probe-validated)
+      min_kept_licks: null                # secondary; off by default
+      combine: and                        # only consulted when both non-null
+      lick_window: tone_aligned
+      lick_provenance: v7_kept            # DLC-detected, NOT NPZ spout-lick
+      apply_to_bodyparts: [tongue]        # jaw excluded by design
+  dlc_trial_filter:
+    dlc_tongue_trajectory_metrics:
+      defaults:
+        # first-lick / phase-aligned / X·Y peak scalars / first-lick peak
+        # velocity all use the family default.
+        min_licks_per_trial: 1
+      overrides:
+        first_5_lick_velocity:
+          min_licks_per_trial: 5
+        ili_summary:
+          min_licks_per_trial: 3
+        # lick2_derived: no entry (lick2 code requires >=2 licks intrinsically)
+        # spatial: no entry (TrialFilter does not apply — UNFILTERED)
