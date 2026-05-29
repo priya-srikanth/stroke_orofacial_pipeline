@@ -120,3 +120,72 @@ stats:
 - **Q-lock 12 (NOT extended here)** — proportion-diff heatmaps + W-2 stay UNFILTERED by design.
 - **F-P-1** — phenotype map (mild/moderate/mod-severe/severe; 3-tier collapse via Q-lock 12 Addendum #4).
 - **`[[project_phase_9_1_q12_durable_architecture]]`** — SessionFilter origin + `stats/figures/phenotype_pooled/` canonical home.
+
+---
+
+## Addendum #1 — Filter architecture: separate DlcSessionFilter class (2026-05-29)
+
+CC's Stage 0 verification revealed that the v1 SessionFilter reads NPZ spout-licks
+(via `compute_session_lick_stats`) while the v2 filter must read DLC tongue-kinematics
+licks (`n_licks_family.n_licks` from per-trial tongue JSONs). These are different
+data sources, not different thresholds on the same source.
+
+Original kickoff wording said "extend SessionFilter v2... new behaviors additive."
+Revised per CC's design fork — extending the v1 class to handle two divergent
+data-source readers is the classic Single Responsibility violation. Adopting
+separate classes instead.
+
+**ALL OTHER LOCKS UNCHANGED.**
+
+### Revised filter architecture
+
+- **`cohort_filters.SessionFilter` (v1):** UNCHANGED. Reads NPZ spout-licks. Sole
+  v1 consumer (`scripts/phase_9_1_q12/emit_cohort.py`) continues to call it.
+  Zero touch.
+
+- **`cohort_filters.DlcSessionFilter` (new):** Separate class. Reads per-trial
+  tongue JSONs via the v7-kept lick provenance (`n_licks_family.n_licks`).
+  API mirrors v1 shape: `__init__(thresholds, combine_rule, lick_window,
+  lick_provenance, apply_to_bodyparts)`, `.is_pass_through()`, `.check()`,
+  `.filter(df_sessions) -> filtered_df + filter_result`, `.report() -> dict`.
+  Used by Q-lock 13 / 13b / 13c filtered emit drivers.
+
+- **`cohort_filters.DlcTrialFilter` (new):** Net-new symmetric class. Per-metric-
+  family per-trial filtering on DLC v7-kept lick counts. Same API shape as
+  `DlcSessionFilter` but operates on per-trial rows.
+
+### Revised config namespace
+
+- `stats.session_filter.*` — v1 namespace UNCHANGED (Q12a SessionFilter config).
+- `stats.dlc_session_filter.*` — new namespace for `DlcSessionFilter` config.
+- `stats.dlc_trial_filter.*` — new namespace for `DlcTrialFilter` config.
+
+The originally-drafted `stats.session_filter.dlc_tongue_metrics` key is
+SUPERSEDED — moved to `stats.dlc_session_filter.dlc_tongue_trajectory_metrics`.
+
+### Why separate class, not extension
+
+1. Different data sources (NPZ spout vs DLC tongue JSON) — fundamentally divergent
+   readers, not just thresholds.
+2. v1 SessionFilter untouched = zero regression risk for Q-lock 12 / 12a / 12b
+   consumers (shipped and stable).
+3. Single-responsibility per class.
+4. Future filter types (spout-behavior-specific, jaw-specific, etc.) follow the
+   same pattern cleanly.
+5. Names make intent obvious at call sites: `DlcSessionFilter` says "for DLC
+   metrics; don't use on spout-behavior data."
+
+### Stage 1 scope (refined)
+
+Stage 1 work shape:
+- Add `DlcSessionFilter` class to `cohort_filters.py`.
+- Add `DlcTrialFilter` class to `cohort_filters.py`.
+- Add new v7-kept session/trial stats helpers (reads per-trial tongue JSON).
+- Add `load_dlc_filter_spec_from_defaults()` for the new config namespace.
+- Tests: unit tests for new classes (combine logic, edge cases, nullable
+  criteria, 0-trial-post-filter session-not-kept roll-up).
+- v1 SessionFilter literally untouched; Q12 emit_cohort.py untouched.
+
+This stays within the 5-file refactor threshold for Stage 1 (cohort_filters.py
++ tests). Stages 3–4 add configs + wire into aggregators/runners/drivers, which
+is the cross-file work the chore as a whole entails.
