@@ -57,6 +57,7 @@ Run:
 """
 from __future__ import annotations
 
+import argparse
 import csv
 import re
 import sys
@@ -326,13 +327,31 @@ def _build_row(
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--filter-variant", choices=("none", "filtered_v1"), default="none",
+        help=(
+            "none (default): read stats/results + stats/inputs, write "
+            ".scratch_phase_9/task_5_headline_summary.csv. filtered_v1: read the "
+            "filtered_v1 trees, write task_5_headline_summary_filtered_v1.csv."
+        ),
+    )
+    args = parser.parse_args()
+    variant = None if args.filter_variant == "none" else args.filter_variant
+
     resolver = PathResolver()
     inv = _load_inventory(DEFAULT_INVENTORY)
     headline = _filter_to_headline_priority(inv)
-    print(f"Headline + priority endpoints: {len(headline)}")
+    print(f"Headline + priority endpoints: {len(headline)}"
+          + (f"  [filter variant: {variant}]" if variant else ""))
 
-    results_root = resolver.pipeline_outputs(subdir="stats") / "results"
-    inputs_root = resolver.pipeline_outputs(subdir="stats") / "inputs"
+    stats_root = resolver.pipeline_outputs(subdir="stats")
+    results_root = (stats_root / "results" / variant) if variant else (stats_root / "results")
+    inputs_root = (stats_root / "inputs" / variant) if variant else (stats_root / "inputs")
+    out_path = (
+        REPO_ROOT / ".scratch_phase_9" / f"task_5_headline_summary_{variant}.csv"
+        if variant else OUT_PATH
+    )
 
     all_csv_cache: dict[tuple[str, str], pd.DataFrame] = {}
 
@@ -496,8 +515,8 @@ def main() -> int:
     ).drop(columns=["_abs_effect"])
     # Drop the internal model_name helper column from the final CSV.
     df = df.drop(columns=["model_name"], errors="ignore")
-    df.to_csv(OUT_PATH, index=False)
-    print(f"Wrote {OUT_PATH} ({len(df)} rows)")
+    df.to_csv(out_path, index=False)
+    print(f"Wrote {out_path} ({len(df)} rows)")
 
     # Summary stats.
     n_conf = (df["is_confirmatory"]).sum()
