@@ -1,6 +1,6 @@
 # Chore: DLC Session + Trial Filtering Kickoff
 
-**Status:** LOCKED v1 (2026-05-27).
+**Status:** LOCKED v1 + Addendum #2 (2026-05-29) -- Stages 1-5 + downstream stats wiring complete; filtered_v1 figures deferred to chore/dlc-pooled-phenotype-unification; Stage 6 phase-close pending (Cowork).
 **Branch:** `chore/dlc-session-and-trial-filtering`
 **Merge tag (on close):** `vChore-dlc-session-and-trial-filtering`
 **Depends on:**
@@ -189,3 +189,60 @@ Stage 1 work shape:
 This stays within the 5-file refactor threshold for Stage 1 (cohort_filters.py
 + tests). Stages 3–4 add configs + wire into aggregators/runners/drivers, which
 is the cross-file work the chore as a whole entails.
+
+---
+
+## Addendum #2 — Pipeline-B re-target + Option-I filtered_v1 design (2026-05-29)
+
+**ALL OTHER LOCKS UNCHANGED** except where this Addendum supersedes the
+original "13b figure pipeline" wording.
+
+### Re-target to Pipeline B (the materialize/runners per-trial stats family)
+
+CC's Stage 0/3 work surfaced that the first-lick velocity endpoint the kickoff
+Stage 2 told us to "create" — and its whole sibling family — **already exist**
+in the Phase 9 Task 2/3 per-trial stats pipeline (`materialize_inputs.py` +
+`runners.py`): `tongue_lick1_vy_peak`, `tongue_lick1_vxy_peak`,
+`tongue_max_vy_peak_first5`, `tongue_max_vxy_peak_first5`,
+`tongue_mean_vxy_peak_first5`, `tongue_lick1_y_peak`, `tongue_lick1_x_at_ypeak`,
+etc. (`tongue_lick1_vy_peak` = `vy_peaks_bylick[0]`; parity-verified byte-equal
+to a candidate re-derivation over 1150 trials / 12 sessions, 0 mismatches).
+
+Consequence: **no new scalar emission is needed** — Stage 2 ("create
+`tongue_lick1_velocity_peak`") is moot. The chore re-targets from the Q-lock
+13b phase-aligned figure aggregators (Pipeline A) to **Pipeline B**, applying
+the DLC session/trial filter at materialize time. The interim Pipeline-A
+filtering transform + duplicate lick1 loader were reverted (commit `cb1a29f`).
+
+### Option-I design: filtered_v1 inputs at materialize time
+
+`materialize_inputs.py --filter-variant filtered_v1` emits session/trial-
+filtered TONGUE per-trial endpoints to
+`stats/inputs/filtered_v1/<slug>/<animal>.parquet`, **alongside** the unfiltered
+tree (never overwriting it). `runners.py` / `run_stats_axis.py` /
+`build_task_*` then read `filtered_v1` via the same `--filter-variant` switch
+with no logic change. Filter composition: Stage A SessionFilter
+(`min_trials_with_detected_lick=10`), Stage B per-metric-family TrialFilter
+(default 1; `first_5_lick_velocity` 5; `ili_summary` 3), Stage C 0-trial-post-
+filter session rollup (`trial_filter_emptied_session`). SessionFilter +
+TrialFilter manifests land under `filtered_v1/_manifests/`.
+
+### Tongue-only FDR-family lock
+
+Non-tongue endpoints have no `filtered_v1` input, so each filtered
+`(axis, granularity)` BH-FDR family is **tongue-only by construction** — the
+headline kinematics (vy/vxy peaks + first-5 reductions + peak-y / x-at-peak-y /
+lick1/lick2 angle endpoints) correct together under one BH-FDR family, per the
+2026-05-29 Priya lock ("phenotype-pooled lick1 velocity stats fold into the
+other per-trial stats as regards FDR correction").
+
+### Figures deferred (pre-unification snapshots)
+
+The `stats/figures/filtered_v1/headlines/` figures emitted by this chore are
+**pre-unification snapshots** in the OLD convention (boxplots, raw L/R coding).
+Canonical filtered figures land via the sibling
+`chore/dlc-pooled-phenotype-unification` PR under a `v2/` subtree, which layers
+three changes on these durable stats inputs: filtered_v1 inputs (this PR) +
+ipsi/contra recoding (Q-lock 14 helper) + the new line+jitter+dots plot
+convention (Q-lock 14 canonical). **This chore-PR ships stats inputs + headline
+summary only**; figures are not a durable deliverable here.
