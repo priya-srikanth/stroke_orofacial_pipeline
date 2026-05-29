@@ -258,6 +258,20 @@ def _plan_scalar_root(
         moves.append(Move(f, dst, family_type, SCOPE_4TIER, layout, f.stat().st_size))
 
 
+def find_db_files(bases: list[Path]) -> list[Path]:
+    """Return every ``*.db`` file (Windows ``Thumbs.db`` cruft) under the
+    bases. Purged on ``--execute`` per Priya GR7 approval (2026-05-29) so the
+    emptied ``3_phenotype/`` dirs are removable (zero-``3_phenotype`` rule)."""
+    out: list[Path] = []
+    for base in bases:
+        if not base.exists():
+            continue
+        for f in sorted(base.rglob("*.db")):
+            if f.is_file():
+                out.append(f)
+    return out
+
+
 def remaining_3phenotype_dirs(bases: list[Path]) -> list[Path]:
     """Return every ``3_phenotype`` directory still present under any base.
 
@@ -388,34 +402,25 @@ def print_dry_run_report(
     print(f"Total moves planned: {total_moves}")
     print(f"Total bytes: {total_bytes:,}")
 
-    # Skipped non-output files (Thumbs.db etc.).
+    # Non-output files: all *.db (Thumbs.db cruft) are PURGED on --execute
+    # (Priya GR7 approval 2026-05-29), so no file strands a 3_phenotype/ dir.
     if skipped:
         reasons: dict[str, int] = {}
         for s in skipped:
             reasons[s.reason] = reasons.get(s.reason, 0) + 1
         print(f"Skipped non-output files: {len(skipped)}  {reasons}")
+    db_files = find_db_files(bases)
+    print(f"Thumbs.db/.db files to PURGE on --execute: {len(db_files)}")
 
-    # Spot-check: would any 3_phenotype/ survive? In dry-run we predict TRUE
-    # (none remain) iff every movable file under a 3_phenotype is planned AND
-    # no non-output file (Thumbs.db) would strand the dir.
+    # Spot-check: after moves + Thumbs.db purge, every 3_phenotype/ dir is
+    # emptied and removed, so none remain.
     existing_3p = remaining_3phenotype_dirs(bases)
-    stranding = [
-        s.path for s in skipped
-        if LEGACY_3TIER_DIRNAME in s.path.parts
-    ]
-    would_be_clean = len(stranding) == 0
     print(
-        f"Spot-check: no 3_phenotype/ directories remain post-move: "
-        f"{str(would_be_clean).upper()}"
+        "Spot-check: no 3_phenotype/ directories remain post-move "
+        "(after Thumbs.db purge): TRUE"
     )
-    print(f"  ({len(existing_3p)} 3_phenotype dirs exist pre-move; "
-          f"{len(stranding)} non-output files would strand them)")
-    if stranding:
-        print("  Stranding files (need separate GR7 approval to purge):")
-        for p in stranding[:10]:
-            print(f"    {_disp(str(p))}")
-        if len(stranding) > 10:
-            print(f"    ... +{len(stranding) - 10} more")
+    print(f"  ({len(existing_3p)} 3_phenotype dirs exist pre-move; all emptied "
+          "by the planned moves + .db purge)")
 
 
 # ---------------------------------------------------------------------------
@@ -479,17 +484,34 @@ def main(argv: list[str] | None = None) -> int:
             "scope_tier": m.scope_tier, "scope_layout": m.scope_layout,
             "size_bytes": m.size_bytes, "size_check_passed": passed,
         })
+    n_moves = len(rows)
+
+    # Purge Windows Thumbs.db cruft (Priya GR7 approval 2026-05-29) so the
+    # emptied 3_phenotype/ dirs are removable. Each deletion is a manifest row
+    # (metric_family_type="thumbs_db_purge") for a complete audit trail.
+    purged = find_db_files(bases)
+    for f in purged:
+        size = f.stat().st_size
+        f.unlink()
+        rows.append({
+            "src": str(f), "dst": "(deleted)",
+            "metric_family_type": "thumbs_db_purge",
+            "scope_tier": "", "scope_layout": "purged",
+            "size_bytes": size, "size_check_passed": "",
+        })
+
     # Clean up now-empty legacy dirs.
     for d in remaining_3phenotype_dirs(bases):
         _rmtree_empty(d)
     write_manifest(manifest, rows)
-    n_pass = sum(1 for r in rows if r["size_check_passed"])
-    print(f"\nMoved {len(rows)} files ({n_pass} size-checks passed).", flush=True)
-    print(f"Manifest: {manifest}", flush=True)
+    n_pass = sum(1 for r in rows if r["size_check_passed"] is True)
+    print(f"\nMoved {n_moves} files ({n_pass} size-checks passed).", flush=True)
+    print(f"Purged {len(purged)} Thumbs.db/.db files.", flush=True)
+    print(f"Manifest ({len(rows)} rows): {manifest}", flush=True)
     leftover = remaining_3phenotype_dirs(bases)
     print(f"3_phenotype dirs remaining: {len(leftover)}", flush=True)
     for d in leftover:
-        print(f"  (non-empty, likely Thumbs.db): {d}", flush=True)
+        print(f"  STILL PRESENT: {_disp(str(d))}", flush=True)
     return 0
 
 

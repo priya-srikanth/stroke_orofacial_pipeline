@@ -172,14 +172,28 @@ def test_execute_then_no_3phenotype_dirs_when_no_cruft(tmp_path: Path) -> None:
     assert pn.remaining_3phenotype_dirs([base]) == []
 
 
-def test_stranding_db_keeps_3phenotype(tree: Path) -> None:
-    """A Thumbs.db under 3_phenotype is reported as stranding (dir survives)."""
-    _, skipped = pn.plan_tree(tree, FILTERED)
-    stranding = [
-        s.path for s in skipped
-        if pn.LEGACY_3TIER_DIRNAME in s.path.parts
-    ]
-    assert any(p.name == "Thumbs.db" for p in stranding)
+def test_find_db_files_locates_thumbs_db(tree: Path) -> None:
+    """find_db_files locates every Thumbs.db (purge targets)."""
+    dbs = pn.find_db_files([tree])
+    names = {p.name for p in dbs}
+    assert names == {"Thumbs.db"}
+    assert len(dbs) == 2  # tongue_x/ + 3_phenotype/
+
+
+def test_execute_with_purge_clears_3phenotype_despite_db(tree: Path) -> None:
+    """Full execute flow: moves + Thumbs.db purge + cleanup → 0 3_phenotype.
+
+    The stranding Thumbs.db under 3_phenotype/ would otherwise keep that dir
+    alive; purging it (GR7-approved) lets cleanup remove it.
+    """
+    moves, _ = pn.plan_tree(tree, FILTERED)
+    for m in moves:
+        pn.execute_move(m)
+    for f in pn.find_db_files([tree]):
+        f.unlink()
+    for d in pn.remaining_3phenotype_dirs([tree]):
+        pn._rmtree_empty(d)
+    assert pn.remaining_3phenotype_dirs([tree]) == []
 
 
 def test_manifest_written(tmp_path: Path) -> None:
