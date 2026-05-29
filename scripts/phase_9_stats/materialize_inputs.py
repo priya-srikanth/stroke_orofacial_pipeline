@@ -91,6 +91,12 @@ from stroke_orofacial.spout_behavior.visual_gate import (
     load_session_plot_data,
     load_visual_gate_config,
 )
+from stroke_orofacial.spout_behavior.endpoints_q14 import (
+    accuracy_difference_index_per_session,
+    licks_per_bout_per_session,
+)
+from stroke_orofacial.spout_behavior.sdt import compute_session_sdt
+from stroke_orofacial.spout_behavior.trial_segmentation import build_per_trial_records
 from stroke_orofacial.stats.recovery_epochs import assign_epoch_label
 
 
@@ -184,6 +190,15 @@ class _SessionScalars:
     late_lickiness: dict[str, dict[str, float]] = field(default_factory=dict)
     lick_switch_rate: dict[str, dict[str, float]] = field(default_factory=dict)
 
+    # Q-lock 14 net-new metrics. #6 + #7 are per-(date, side) like the Cat A
+    # set above; #8 d' + #9 c are SESSION-LEVEL (one value per date, pooled
+    # across cue sides — SDT needs both), stored as dict[date] -> float and
+    # emitted with side="global" (Class B single-panel). See Addendum #1 §3/§5.
+    accuracy_difference_index: dict[str, dict[str, float]] = field(default_factory=dict)
+    licks_per_bout: dict[str, dict[str, float]] = field(default_factory=dict)
+    d_prime: dict[str, float] = field(default_factory=dict)
+    criterion_c: dict[str, float] = field(default_factory=dict)
+
     # Per-session per-side per-trial lick rate (for lickRate_byTrial).
     # dict[date][side] → list of (trial_idx, rate_hz) pairs.
     lick_rate_per_trial: dict[
@@ -204,11 +219,18 @@ def _compute_session_scalars_for_animal(
     animal_info: AnimalInfo,
     behavior_params: dict[str, Any],
     visual_gate_config: dict[str, Any],
+    lick_bouts_params: dict[str, Any] | None = None,
 ) -> _SessionScalars:
     """Iterate the animal's Cohort A sessions; compute every scalar
     endpoint Phase 9 Commit A needs. Mirrors the structure of
     ``visual_gate._compute_per_session_stats`` but emits a per-(date,
-    side) result rather than the per-side longitudinal arrays."""
+    side) result rather than the per-side longitudinal arrays.
+
+    ``lick_bouts_params`` is the ``spout_behavior.endpoints.lick_bouts``
+    block (``max_ili_ms`` + ``min_bout_licks``) for the Q-lock 14
+    ``licks_per_bout`` metric; loaded from defaults when None."""
+    if lick_bouts_params is None:
+        lick_bouts_params = load_defaults()["spout_behavior"]["endpoints"]["lick_bouts"]
     scalars = _SessionScalars()
     dates = iter_cohort_a_sessions(animal, resolver)
     scalars.dates = dates
@@ -313,6 +335,39 @@ def _compute_session_scalars_for_animal(
                     lat = float((fcl - int(tones[tone_idx])) / sr)
                 per_trial_latencies[side_tone].append((int(tone_idx), lat))
         scalars.latency_per_trial[date_label] = per_trial_latencies
+
+        # --- Q-lock 14 net-new metrics (#6 ADI, #7 licks/bout, #8 d', #9 c) ---
+        # Build mouse-frame TrialRecords from the SAME SessionPlotData the
+        # other scalars use (data.lick_idx / data.tones_idx are already
+        # mouse-frame post-Phase-6.8). Reward arrays are empty: these four
+        # metrics use only tone_side + windowed licks (never reward/trial_type),
+        # so reward pairing is irrelevant. window_seconds = window_around_tones,
+        # matching the per-trial windowing used elsewhere in this loop.
+        q14_lr = {
+            "Tone_L": data.tones_idx["Tone_L"],
+            "Tone_R": data.tones_idx["Tone_R"],
+            "Lick_L": data.lick_idx["Lick_L"],
+            "Lick_R": data.lick_idx["Lick_R"],
+            "Reward_L": np.empty(0, dtype=int),
+            "Reward_R": np.empty(0, dtype=int),
+            "Fs": data.sample_rate,
+        }
+        q14_trials = build_per_trial_records(
+            q14_lr, window_seconds=tuple(float(w) for w in window_around),
+        )
+        adi = accuracy_difference_index_per_session(q14_trials, endpoints_params={})
+        scalars.accuracy_difference_index[date_label] = {
+            "L": adi.per_session_aggregate["accuracy_difference_index_on_L_trials"],
+            "R": adi.per_session_aggregate["accuracy_difference_index_on_R_trials"],
+        }
+        lpb = licks_per_bout_per_session(q14_trials, endpoints_params=lick_bouts_params)
+        scalars.licks_per_bout[date_label] = {
+            "L": lpb.per_session_aggregate["median_licks_per_bout_on_L_trials"],
+            "R": lpb.per_session_aggregate["median_licks_per_bout_on_R_trials"],
+        }
+        sdt_res = compute_session_sdt(q14_trials, animal_info.stroke_laterality)
+        scalars.d_prime[date_label] = sdt_res.d_prime
+        scalars.criterion_c[date_label] = sdt_res.criterion_c
     return scalars
 
 
@@ -389,6 +444,16 @@ _SESSION_SLUG_TO_FIELD: dict[str, str] = {
     "latency_to_first_correct_lick_s": "latency_to_first_correct_lick_s",
     "late_lickiness": "late_lickiness",
     "lick_switch_rate": "lick_switch_rate",
+    # Q-lock 14 per-(date, side) net-new metrics (#6, #7).
+    "accuracy_difference_index": "accuracy_difference_index",
+    "licks_per_bout": "licks_per_bout",
+}
+
+# Q-lock 14 session-level (non-side-stratified) slugs (#8 d', #9 c). These
+# emit one row per date with side="global" via _materialize_scalar_per_session_global.
+_SESSION_GLOBAL_SLUG_TO_FIELD: dict[str, str] = {
+    "d_prime": "d_prime",
+    "criterion_c": "criterion_c",
 }
 
 
@@ -428,6 +493,51 @@ def _materialize_scalar_per_session(
                 "cohort_bin_size": int(animal_info.bin_days),
                 "epoch_label": assign_epoch_label(int(rel_day), animal_info),
             })
+    return rows
+
+
+def _materialize_scalar_per_session_global(
+    spec: EndpointSpec,
+    animal: str,
+    animal_info: AnimalInfo,
+    session_scalars: _SessionScalars,
+) -> list[dict[str, Any]]:
+    """One row per date for a session-level (non-side-stratified) scalar.
+
+    Q-lock 14 d' (#8) + c (#9) are pooled across cue sides per session, so each
+    emits a SINGLE row per date with ``side="global"`` / ``ipsi_contra="global"``
+    (already in ipsi/contra coordinates internally). The phenotype-pooled
+    renderer routes a non-{L,R} side column to its single-panel cohort-pooled
+    layout (Class B 1×1) via ``endpoint_has_side`` returning False.
+    """
+    field_name = _SESSION_GLOBAL_SLUG_TO_FIELD[spec.slug]
+    per_session = getattr(session_scalars, field_name)
+
+    rows: list[dict[str, Any]] = []
+    for date_label in session_scalars.dates:
+        if date_label not in per_session:
+            continue
+        rel_day = session_scalars.rel_days[date_label]
+        session_date = datetime.date(
+            int(date_label[:4]), int(date_label[4:6]), int(date_label[6:8]),
+        )
+        value = per_session[date_label]
+        is_sentinel = (
+            value is None or (isinstance(value, float) and not np.isfinite(value))
+        )
+        rows.append({
+            "animal": animal,
+            "date": session_date,
+            "rel_day": int(rel_day),
+            "trial_idx": None,
+            "side": "global",
+            "ipsi_contra": "global",
+            "endpoint_slug": spec.slug,
+            "value": None if is_sentinel else float(value),
+            "is_sentinel": bool(is_sentinel),
+            "cohort_bin_size": int(animal_info.bin_days),
+            "epoch_label": assign_epoch_label(int(rel_day), animal_info),
+        })
     return rows
 
 
@@ -866,6 +976,10 @@ def _dispatch_materializer(
     scalar_per_animal_bin, trajectory_per_animal) — the driver marks
     the manifest row as ``"skipped_commit_BC"`` for those.
     """
+    if spec.slug in _SESSION_GLOBAL_SLUG_TO_FIELD:
+        return _materialize_scalar_per_session_global(
+            spec, animal, animal_info, session_scalars,
+        )
     if spec.value_type == "scalar_per_session":
         return _materialize_scalar_per_session(spec, animal, animal_info, session_scalars)
     if spec.value_type == "vector_per_session" and spec.slug == "latency_hist":
@@ -1226,6 +1340,7 @@ def main() -> int:
     resolver = PathResolver(**resolver_kwargs) if resolver_kwargs else PathResolver()
     defaults = load_defaults()
     behavior_params = defaults["behavior_report"]
+    lick_bouts_params = defaults["spout_behavior"]["endpoints"]["lick_bouts"]
     visual_gate_config = load_visual_gate_config()
 
     # DLC filtering (chore/dlc-session-and-trial-filtering). filtered_v1 emits
@@ -1249,6 +1364,7 @@ def main() -> int:
         t0 = time.monotonic()
         session_scalars = _compute_session_scalars_for_animal(
             animal, resolver, animal_info, behavior_params, visual_gate_config,
+            lick_bouts_params,
         )
         per_animal_compute_s = time.monotonic() - t0
         print(

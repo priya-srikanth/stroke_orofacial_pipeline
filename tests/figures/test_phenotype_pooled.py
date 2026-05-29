@@ -322,3 +322,116 @@ def test_load_endpoint_list_strips_comments(tmp_path) -> None:
         "first_lick_accuracy_all",
         "num_correct_licks_per_trial",
     ]
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 14 split-key hardening: pool/split on ipsi_contra, not raw side.
+# ---------------------------------------------------------------------------
+
+
+def test_side_col_hardening_pools_by_lesion_for_mixed_cohort() -> None:
+    """With a mixed L+R-stroke cohort, side_col='ipsi_contra' pools an
+    R-stroke animal's mouse-L (=contra) WITH an L-stroke animal's mouse-R
+    (=contra) — the lesion-relative grouping. Grouping by raw 'side' would
+    (wrongly) mix ipsi and contra in the same panel. This is the whole point
+    of the hardening; it is a no-op only because the current cohort is all-L.
+    """
+    per_animal = pd.DataFrame({
+        "animal":               ["A_L", "A_L", "A_R", "A_R"],
+        "phenotype_tier":       ["mild", "mild", "mild", "mild"],
+        "side":                 ["L", "R", "L", "R"],
+        # A_R is right-stroke: its mouse-L is contra, mouse-R is ipsi.
+        "ipsi_contra":          ["ipsi", "contra", "contra", "ipsi"],
+        "bin_midpoint_rel_day": [1, 1, 1, 1],
+        "value":                [10.0, 20.0, 30.0, 40.0],
+    })
+    pooled_ic = _io.phenotype_pooled_per_bin(
+        per_animal, by_side=True, side_col="ipsi_contra",
+    ).set_index("ipsi_contra")["mean"].to_dict()
+    assert pooled_ic["ipsi"] == pytest.approx(25.0)    # mean(A_L mouse-L=10, A_R mouse-R=40)
+    assert pooled_ic["contra"] == pytest.approx(25.0)  # mean(A_L mouse-R=20, A_R mouse-L=30)
+
+    # Contrast: raw-side grouping yields different (rig-frame) cells.
+    pooled_side = _io.phenotype_pooled_per_bin(
+        per_animal, by_side=True, side_col="side",
+    ).set_index("side")["mean"].to_dict()
+    assert pooled_side["L"] == pytest.approx(20.0)     # mean(10, 30)
+    assert pooled_side["R"] == pytest.approx(30.0)     # mean(20, 40)
+
+
+def test_side_col_hardening_is_noop_for_all_L_cohort() -> None:
+    """All-L cohort: L↔ipsi, R↔contra for every animal, so pooling by
+    ipsi_contra equals pooling by side (relabeled). This is why the rendered
+    figures are byte-identical before/after the hardening on this cohort."""
+    per_animal = pd.DataFrame({
+        "animal":               ["A", "A", "B", "B"],
+        "phenotype_tier":       ["mild", "mild", "severe", "severe"],
+        "side":                 ["L", "R", "L", "R"],
+        "ipsi_contra":          ["ipsi", "contra", "ipsi", "contra"],
+        "bin_midpoint_rel_day": [1, 1, 1, 1],
+        "value":                [1.0, 2.0, 3.0, 4.0],
+    })
+    ic = _io.phenotype_pooled_per_bin(
+        per_animal, by_side=True, side_col="ipsi_contra",
+    ).set_index(["phenotype_tier", "ipsi_contra"])["mean"].to_dict()
+    sd = _io.phenotype_pooled_per_bin(
+        per_animal, by_side=True, side_col="side",
+    ).set_index(["phenotype_tier", "side"])["mean"].to_dict()
+    assert ic[("mild", "ipsi")] == pytest.approx(sd[("mild", "L")])
+    assert ic[("mild", "contra")] == pytest.approx(sd[("mild", "R")])
+    assert ic[("severe", "ipsi")] == pytest.approx(sd[("severe", "L")])
+
+
+def test_side_col_default_is_backward_compatible() -> None:
+    """Omitting side_col preserves the legacy 'side' grouping (keeps Q13b
+    phase_aligned_endpoint_stats, which calls these with the default, intact)."""
+    per_animal = pd.DataFrame({
+        "animal":               ["A", "A"],
+        "phenotype_tier":       ["mild", "mild"],
+        "side":                 ["L", "R"],
+        "bin_midpoint_rel_day": [1, 1],
+        "value":                [1.0, 2.0],
+    })
+    pooled = _io.phenotype_pooled_per_bin(per_animal, by_side=True)
+    assert "side" in pooled.columns
+    assert set(pooled["side"]) == {"L", "R"}
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 14 — 3-tier phenotype collapse (mod-severe -> moderate).
+# ---------------------------------------------------------------------------
+
+
+def test_maybe_remap_3tier_merges_mod_severe_into_moderate() -> None:
+    df = pd.DataFrame({
+        "phenotype_tier": ["mild", "moderate", "moderate-severe", "severe"],
+        "value": [1.0, 2.0, 3.0, 4.0],
+    })
+    out = phenotype_pooled._maybe_remap_3tier(df, remap_3tier=True)
+    assert "moderate-severe" not in set(out["phenotype_tier"])
+    # the mod-severe row is now labeled moderate
+    assert sorted(out["phenotype_tier"]) == ["mild", "moderate", "moderate", "severe"]
+    # original df untouched (copy semantics)
+    assert "moderate-severe" in set(df["phenotype_tier"])
+
+
+def test_maybe_remap_3tier_noop_when_false() -> None:
+    df = pd.DataFrame({"phenotype_tier": ["moderate-severe"], "value": [1.0]})
+    out = phenotype_pooled._maybe_remap_3tier(df, remap_3tier=False)
+    assert list(out["phenotype_tier"]) == ["moderate-severe"]
+
+
+def test_3tier_remap_then_pool_merges_animals() -> None:
+    """After remap, a moderate-severe animal pools WITH a moderate animal."""
+    per_animal = pd.DataFrame({
+        "animal":               ["A", "B"],
+        "phenotype_tier":       ["moderate", "moderate-severe"],
+        "bin_midpoint_rel_day": [1, 1],
+        "value":                [2.0, 4.0],
+    })
+    remapped = phenotype_pooled._maybe_remap_3tier(per_animal, remap_3tier=True)
+    pooled = _io.phenotype_pooled_per_bin(remapped, by_side=False)
+    moderate = pooled[pooled["phenotype_tier"] == "moderate"]
+    assert len(moderate) == 1
+    assert moderate.iloc[0]["mean"] == pytest.approx(3.0)  # mean(2.0, 4.0)
+    assert moderate.iloc[0]["n_animals"] == 2

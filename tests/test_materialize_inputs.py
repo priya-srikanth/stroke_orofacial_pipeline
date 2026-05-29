@@ -18,12 +18,16 @@ from stroke_orofacial.animals import AnimalInfo, EpochBoundaries
 from stroke_orofacial.stats.recovery_epochs import assign_epoch_label
 
 from scripts.phase_9_stats.materialize_inputs import (
+    _SESSION_GLOBAL_SLUG_TO_FIELD,
     EndpointSpec,
     _SessionScalars,
     _TONGUE_DERIVED_PATH,
+    _dispatch_materializer,
     _materialize_latency_hist,
     _materialize_scalar_per_session,
+    _materialize_scalar_per_session_global,
     _reduce_vector_per_trial,
+    load_inventory,
 )
 
 
@@ -431,3 +435,107 @@ class TestLickSwitchRateDestinationSemantics:
             "the materializer doesn't match the destination-semantics "
             "lock."
         )
+
+
+# ---------------------------------------------------------------------------
+# Q-lock 14 — new endpoint materialization (Stage 3)
+# ---------------------------------------------------------------------------
+
+
+def _global_spec(slug: str) -> EndpointSpec:
+    return EndpointSpec(
+        slug=slug,
+        category="Category A — session-aggregate behavioral",
+        value_type="scalar_per_session",
+        is_primary=False,
+        is_confirmatory=False,
+        n_permutations_override=None,
+        comparison_axes_in_scope=("pre_post", "recovery"),
+        notes="test stub",
+    )
+
+
+class TestQ14InventoryRegistration:
+    def test_four_new_endpoints_present(self):
+        slugs = {s.slug for s in load_inventory()}
+        for slug in (
+            "accuracy_difference_index", "licks_per_bout", "d_prime", "criterion_c",
+        ):
+            assert slug in slugs, f"{slug} missing from endpoint_inventory.csv"
+
+
+class TestQ14SessionLevelGlobal:
+    """d'/c emit ONE row per date with side='global' (Class B single-panel)."""
+
+    def test_one_row_per_date_global_side(self):
+        animal_info = _animal_info(acute_max=5, subacute_max=8, chronic_min=9)
+        dates = ["20250313", "20250314", "20250322"]  # pre, acute, chronic
+        rel_days = {d: animal_info.day_relative_to_stroke(
+            datetime.date(int(d[:4]), int(d[4:6]), int(d[6:8])),
+        ) for d in dates}
+        d_prime_vals = {"20250313": 0.0, "20250314": 1.5, "20250322": 2.2}
+        scalars = _session_scalars(
+            dates=dates, rel_days=rel_days, slug="d_prime",
+            per_session_vals=d_prime_vals,
+        )
+        rows = _materialize_scalar_per_session_global(
+            _global_spec("d_prime"),
+            animal="PS_TEST", animal_info=animal_info, session_scalars=scalars,
+        )
+        assert len(rows) == len(dates)  # ONE row per date (not 2)
+        for r in rows:
+            assert r["side"] == "global"
+            assert r["ipsi_contra"] == "global"
+            assert r["trial_idx"] is None
+            assert r["epoch_label"] == assign_epoch_label(int(r["rel_day"]), animal_info)
+        assert [r["value"] for r in rows] == [0.0, 1.5, 2.2]
+
+    def test_nan_value_is_sentinel(self):
+        animal_info = _animal_info()
+        dates = ["20250314"]
+        rel_days = {"20250314": 1}
+        scalars = _session_scalars(
+            dates=dates, rel_days=rel_days, slug="criterion_c",
+            per_session_vals={"20250314": float("nan")},
+        )
+        rows = _materialize_scalar_per_session_global(
+            _global_spec("criterion_c"),
+            animal="PS_TEST", animal_info=animal_info, session_scalars=scalars,
+        )
+        assert len(rows) == 1
+        assert rows[0]["is_sentinel"] is True
+        assert rows[0]["value"] is None
+
+
+class TestQ14Dispatch:
+    def test_dprime_criterion_route_to_global(self):
+        animal_info = _animal_info()
+        dates = ["20250314"]
+        rel_days = {"20250314": 1}
+        for slug in ("d_prime", "criterion_c"):
+            assert slug in _SESSION_GLOBAL_SLUG_TO_FIELD
+            scalars = _session_scalars(
+                dates=dates, rel_days=rel_days, slug=slug,
+                per_session_vals={"20250314": 1.0},
+            )
+            rows = _dispatch_materializer(
+                _global_spec(slug), "PS_TEST", animal_info, scalars, resolver=None,
+            )
+            assert len(rows) == 1  # one global row, not per-side
+            assert rows[0]["side"] == "global"
+
+    def test_adi_and_licks_per_bout_route_per_side(self):
+        animal_info = _animal_info(stroke_laterality="L")
+        dates = ["20250314"]
+        rel_days = {"20250314": 1}
+        for slug in ("accuracy_difference_index", "licks_per_bout"):
+            scalars = _session_scalars(
+                dates=dates, rel_days=rel_days, slug=slug,
+                per_session_vals={"20250314": {"L": 0.4, "R": -0.2}},
+            )
+            rows = _dispatch_materializer(
+                _scalar_spec(slug), "PS_TEST", animal_info, scalars, resolver=None,
+            )
+            assert len(rows) == 2  # per L/R side
+            sides = {r["side"]: r["ipsi_contra"] for r in rows}
+            assert sides == {"L": "ipsi", "R": "contra"}  # L-stroke mapping

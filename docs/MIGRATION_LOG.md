@@ -5,6 +5,59 @@ differences vs. the legacy notebooks.
 
 ---
 
+## Phase 9.1 Q-lock 14 — Phenotype-pooled spout-behavior recovery (Part 1) + ipsi/contra split-key hardening
+
+**Date:** 2026-05-29
+**Tag on merge:** `v9.1-q14-spout-behavior-and-ipsi-contra` (applied post-merge)
+**Branch:** `phase/9.1-q14-spout-behavior-and-ipsi-contra`
+**Kickoff:** [`docs/prompts/phase-9.1-q14-phenotype-pooled-spout-behavior-kickoff.md`](prompts/phase-9.1-q14-phenotype-pooled-spout-behavior-kickoff.md) (LOCKED v1 + **Addendum #1** re-scope)
+
+**What shipped (Part 1 only — Part 2 deferred, see DECISIONS):**
+
+Four genuinely net-new phenotype-pooled spout-behavior recovery metrics, plus a split-key hardening that makes the V4/V5 phenotype-pooled renderer pool + side-split on lesion-relative **ipsi/contra** coordinates rather than rig-frame L/R, plus a **3-tier phenotype-collapse** variant for the V4/V5 renderer.
+
+The kickoff's original framing (9 metrics × 36 figures, a new recoding module, a parallel `ipsi_contra/` subtree, full Q12/13/13b/13c re-emit) collapsed substantially after the **Stage 0 audit** found: (a) all 8 cohort animals are `stroke_laterality="L"` — so ipsi/contra is a relabel today, no sign-flips fire; (b) 5 of the 9 metrics already existed as phenotype-pooled figures; (c) the recoding map already existed as `AnimalInfo.mouse_side_to_ipsi_contra`, already wired into the Phase 9 materializer's `ipsi_contra` column. Addendum #1 records the full re-scope.
+
+**Net-new metrics:**
+- **#6 `accuracy_difference_index`** — `(n_correct − n_incorrect)/(n_correct + n_incorrect)` per cue side; [−1,+1]; NaN on empty denominator.
+- **#7 `licks_per_bout`** — median lick-bout size (Phase 8a.2 `find_lick_bouts`: ≤300 ms ILI, ≥2 licks) within each cue side's trials.
+- **#8 `d_prime`, #9 `criterion_c`** — session-level SDT for first-lick contra-discrimination: `H = P(first lick contra | contra-cued)`, `FA = P(... | ipsi-cued)`, `d' = z(H)−z(FA)`, `c = −(z(H)+z(FA))/2`. Positive c = bias toward ipsi (predicted post-stroke direction). Extreme-only edge correction (0→0.5/N, 1→(N−0.5)/N).
+
+**Stages (one commit each):**
+- **Stage 1** (`68c151e`) — `src/stroke_orofacial/ipsi_contra_recoding.py`: `cue_side_to_ipsi_contra` + net-new `signed_value_to_ipsi_contra` (NaN-safe, self-inverse) + `is_sham` forward hook. Delegates the categorical map to the pre-existing `AnimalInfo.mouse_side_to_ipsi_contra` (single source of truth). 27 tests.
+- **Stage 2** (`a7d8584`) — `spout_behavior/endpoints_q14.py` (#6,#7) + `spout_behavior/sdt.py` (#8,#9). 21 tests.
+- **Stage 3** (`33f5da9`) — Phase 9 materializer wiring. #6/#7 emit per-(date, side) via the existing `_materialize_scalar_per_session` (gets the `ipsi_contra` column for free). #8/#9 are session-level → new `_materialize_scalar_per_session_global` emits one row per date with `side="global"` → renderer single-panel (Class B). +4 rows in `endpoint_inventory.csv`. Verified read-only on real PS46 data.
+- **Stage 4** (`cdccd42`) — split-key hardening. Six `_io` pooling fns gained a backward-compatible `side_col="side"` param (default preserves legacy behavior, so Q13b `phase_aligned_endpoint_stats` is untouched); `phenotype_pooled.py` opts into `side_col="ipsi_contra"`. **Byte-identical regression verified** on the all-L cohort (re-rendered first_lick_accuracy_all + tongue_n_licks + jaw_peak_pos_deflection × V4/V5; date-stripped SVG SHA256 identical).
+- **3-tier feature** (`698ed8f`) — `--remap-phenotypes 3tier` merges moderate-severe → moderate (matching the Q12/Q13 `PHENOTYPE_REMAP_3TIER` convention), routing output to a `3_phenotype/` subdir. Previously the V4/V5 renderer only *filtered* tiers; this adds the kickoff Q14-D 3-tier collapse.
+
+**Cohort numbers (on-disk, gitignored pipeline_outputs/):**
+- **32** input parquets materialized (8 animals × 4 endpoints), 0 errors.
+- **8** new-metric figures at 4-tier (4 metrics × V4/V5) at the canonical `stats/figures/phenotype_pooled/<slug>/`.
+- **84** figures at 3-tier (42 scalar endpoints × V4/V5) under `stats/figures/phenotype_pooled/3_phenotype/`, **additive** — the 4-tier figures are untouched.
+
+**Intentional behavior notes:**
+- ipsi/contra is a **relabel** on the current all-L cohort (no sign-flips fire). The code is correct-by-construction the moment a right-stroke animal joins.
+- d'/c no-response (no-lick) trials **stay in the H/FA denominator** — the literal reading of the kickoff "P(… | contra-cued trial)" conditioning set.
+
+**Forward-pointers:**
+- **Part 2 (Q12 / 13 / 13b / 13c + DLC spatial ipsi/contra re-emit) DEFERRED** — a relabel-only no-op on the all-L cohort; revisit when right-stroke animals join the cohort (DECISIONS 2026-05-29).
+- **Path-structure normalization (4_tier / 3_tier scope subdirs uniformly, 3_phenotype/ → 3_tier/ rename) deferred to chore/dlc-pooled-phenotype-unification. Q14 figures shipped at current paths; will be moved during that chore's Stage 1.5.**
+- 3-tier collapse now lives in the V4/V5 renderer; this phase emitted 3-tier variants for the existing 4-tier-only scalar figures (spout + DLC) into `3_phenotype/`.
+
+**Files modified this PR:**
+- `src/stroke_orofacial/ipsi_contra_recoding.py` (NEW)
+- `src/stroke_orofacial/spout_behavior/endpoints_q14.py` (NEW)
+- `src/stroke_orofacial/spout_behavior/sdt.py` (NEW)
+- `src/stroke_orofacial/figures/_io.py` (side_col param on 6 pooling fns)
+- `src/stroke_orofacial/figures/phenotype_pooled.py` (ipsi_contra split-key + 3-tier collapse)
+- `scripts/phase_9_stats/materialize_inputs.py` (4-endpoint wiring + global-side materializer)
+- `.scratch_phase_9/endpoint_inventory.csv` (+4 rows)
+- `tests/test_ipsi_contra_recoding.py`, `tests/test_sdt.py`, `tests/test_endpoints_q14.py` (NEW); `tests/test_materialize_inputs.py`, `tests/figures/test_phenotype_pooled.py` (extended)
+- `docs/prompts/phase-9.1-q14-phenotype-pooled-spout-behavior-kickoff.md` + `docs/prompts/phase-9.1-q14-addendum-1-stage0-rescope.md` (NEW)
+- `docs/MIGRATION_LOG.md` + `docs/DECISIONS.md` (this entry)
+
+---
+
 ## Phase 9.1 Q-lock 13c — Tongue Y trajectory extension + stats/results split
 
 **Date:** 2026-05-29
