@@ -15,6 +15,37 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-29 — Phase 9.1 Q-lock 14: ipsi/contra coding convention (contra = positive)
+
+- *Context:* Q-lock 14 migrates the phenotype-pooled trial-side dimension from rig-frame LEFT/RIGHT to lesion-relative IPSI/CONTRA, the correct convention for a stroke study (prevents cross-animal pooling artifacts from washing out lesion-induced asymmetry). The kickoff assumed a per-animal field `stroke_side ∈ {left,right,sham}`; the Stage 0 audit found the repo uses `stroke_laterality ∈ {"L","R"}` (loader rejects other values) and that all 8 cohort animals are `"L"`.
+- *Decision:*
+  - **Sign convention: contra direction = POSITIVE.** Right-stroke animals get signed values negated so contra lands on the positive axis cohort-wide; left-stroke animals pass through. Encoded in `signed_value_to_ipsi_contra`.
+  - **SDT `criterion_c` sign emerges from this:** with `H/FA = P(first lick on contra spout | …)`, positive c = bias toward ipsi = the predicted post-stroke lateralization direction. No extra sign handling needed.
+  - **Single source of truth for the categorical map:** the new `ipsi_contra_recoding` module delegates cue-side→ipsi/contra to the pre-existing `AnimalInfo.mouse_side_to_ipsi_contra` (already wired into the Phase 9 materializer's `ipsi_contra` column) rather than duplicating it.
+- *Rationale:* The lesion-relative frame is the scientifically meaningful axis. Anchoring "contra = positive" makes c's sign directly interpretable. On the current all-L cohort the recoding is a relabel (no sign-flips fire), but the code is correct-by-construction once a right-stroke animal joins.
+- *Enforced at:* `src/stroke_orofacial/ipsi_contra_recoding.py`, `src/stroke_orofacial/spout_behavior/sdt.py`, `src/stroke_orofacial/figures/phenotype_pooled.py` (split-key), `AnimalInfo.mouse_side_to_ipsi_contra`.
+
+## 2026-05-29 — Phase 9.1 Q-lock 14: sham-control handling deferred (not representable)
+
+- *Context:* The kickoff specified excluding sham animals from ipsi/contra figures. Stage 0 found `"sham"` is not a representable `stroke_laterality` value — the `animals.yaml` loader accepts only `{"L","R"}` — and there are zero sham animals in the cohort.
+- *Decision:* Do **not** add a sham schema/loader category now. `ipsi_contra_recoding.is_sham()` is a forward hook returning `False` for every loadable animal (reads a future `is_sham_control` attribute if one is ever added). Sham exclusion in the aggregator + the d'/c `sham_animal` status are present but inert today.
+- *Rationale:* A schema migration to the validated loader guarding zero current animals is unjustified churn. The forward hook keeps the downstream API surface intact so a future sham cohort is a localized change. Aligns with the existing "future sham/no-stroke controls" comment in `AnimalInfo`.
+- *Enforced at:* `src/stroke_orofacial/ipsi_contra_recoding.py::is_sham`.
+
+## 2026-05-29 — Phase 9.1 Q-lock 14: Part 2 (Q12/13/13b/13c ipsi/contra re-emit) deferred on all-L cohort
+
+- *Context:* The kickoff bundled a Part 2 — retroactively re-emitting all Q-lock 12/13/13b/13c phenotype-pooled + DLC-spatial figures under ipsi/contra coding. Because every cohort animal is left-stroke, this recoding is a relabel only: no signed value flips, and ipsi=L / contra=R uniformly. The Stage 4 split-key hardening was verified **byte-identical** on the current cohort.
+- *Decision:* Ship **Q14 Part 1 only** (the 4 net-new spout metrics + the latent split-key hardening). **Defer Part 2** (re-emitting Q12/13/13b/13c + DLC spatial under ipsi/contra) until right-stroke animals join the cohort, when the recoding actually changes the data.
+- *Rationale:* On an all-L cohort Part 2 produces data-identical figures with at most relabeled axes — high churn (~120 figures), low value, and it would touch the DLC spatial renderers for no behavioral difference. The hardening is already in place for the scalar renderer; the spatial renderers can be hardened in the same future pass.
+- *Enforced at:* This entry; MIGRATION_LOG Q-lock 14 forward-pointers.
+
+## 2026-05-29 — Phase 9.1 Q-lock 14: 3-tier collapse added to V4/V5; path normalization deferred
+
+- *Context:* The kickoff (Q14-D) wanted both 4-tier and 3-tier (mod-severe collapsed into moderate) phenotype scopes. The V4/V5 phenotype-pooled renderer's `--phenotype-tiers` flag only *filtered* tiers — it could not *collapse* — so every existing phenotype-pooled scalar figure (spout + DLC) was 4-tier only. The collapse logic existed only in the Q12/Q13 spatial/trajectory emitters.
+- *Decision:* Add `--remap-phenotypes {none,3tier}` to the V4/V5 renderer (merge moderate-severe → moderate, matching the established `PHENOTYPE_REMAP_3TIER`), routing 3-tier output to a `3_phenotype/` subdir so 4-tier figures are preserved. Emit 3-tier variants for **all** V4/V5 scalar endpoints (new + existing spout + DLC). **Path-structure normalization (4_tier / 3_tier scope subdirs uniformly, `3_phenotype/` → `3_tier/` rename) is deferred to `chore/dlc-pooled-phenotype-unification`; Q14 figures shipped at current paths and will be moved during that chore's Stage 1.5.**
+- *Rationale:* The 3-tier collapse belongs in the shared renderer (used uniformly), not bolted onto one phase. Shipping at the current `3_phenotype/` path keeps Q14 unblocked; a single later chore normalizes the scope-subdir convention across all phenotype-pooled families rather than each phase inventing its own.
+- *Enforced at:* `src/stroke_orofacial/figures/phenotype_pooled.py` (`--remap-phenotypes`, `_maybe_remap_3tier`, `_THREE_TIER_SUBDIR`).
+
 ## 2026-05-29 — Phase 9.1 Q-lock 13c: y_centered as one-tuple-extension of TRAJECTORY_SIGNALS
 
 - *Context:* Q-lock 13c extends Q-lock 13's phase-aligned mean+SEM trajectory pipeline to a third signal: `y_centered` (tongue Y position in spout-midpoint frame = protrusion / amplitude axis). 99% of the framework is inherited from Q-lock 13. Two architectural choices needed locking: where to plumb the new signal through the pipeline, and what the substrate-level threading shape should look like.
