@@ -458,8 +458,17 @@ def compute_animal_aggregated_histogram(
     animal_info: AnimalInfo | None = None,
     nbins_override: int | None = None,
     use_v7_cleaned: bool = True,
+    x_limits: tuple[float, float] | None = None,
+    y_limits: tuple[float, float] | None = None,
 ) -> tuple[np.ndarray | None, list[float] | None, int, int, int]:
     """Compute-only variant of :func:`render_animal_aggregated_heatmap`.
+
+    ``x_limits`` / ``y_limits`` (Chore whisker-nose Addendum #2) override
+    the per-(bodypart, center_mode) config axis range, forcing an explicit
+    shared bin grid. Default None preserves the config-driven behavior.
+    Used by the pooled-bodypart path so every landmark in a union (e.g.
+    the 3 whiskers per side, whose per-bp config extents differ) histograms
+    on identical bins before the cell-wise sum.
 
     Returns ``(H_total, extent, n_sessions_contributing, n_total_tones,
     n_total_frames_aggregated)`` so a caller can cache the histogram +
@@ -608,6 +617,8 @@ def compute_animal_aggregated_histogram(
         hist = build_histogram(
             df, bodypart, config_for_hist,
             center_mode=center_mode,
+            x_limits=x_limits,
+            y_limits=y_limits,
             x_range=bp_x_range,
             nbins=nbins,
             window=window,
