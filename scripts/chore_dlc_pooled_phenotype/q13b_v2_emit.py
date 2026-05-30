@@ -265,30 +265,29 @@ def load_filtered_recoded_long(
 # ---------------------------------------------------------------------------
 
 
-def render_endpoint_v2_figure(
+#: Ipsi/contra panel titles (all-L cohort → ipsi = mouse-L, contra = mouse-R,
+#: matching the Q14 reference panel labels).
+_PANEL_TITLES: dict[str, str] = {
+    "ipsi": "Ipsi (mouse-L)",
+    "contra": "Contra (mouse-R)",
+}
+
+
+def _draw_endpoint_panel(
+    ax: object,
     *,
     per_session_df: pd.DataFrame,
     pooled_df: pd.DataFrame,
     endpoint: str,
     side: str,
     phenotype_order: tuple[str, ...],
-    output_path: Path,
-    value_col: str = "mean",
-    pooled_value_col: str = "mean",
-    sem_col: str = "sem",
-    display_names: dict[str, str] | None = None,
-    aggregation_subtitle: str = AGGREGATION_SUBTITLE,
-    dpi: int = 150,
-) -> Path:
-    """One (endpoint, ipsi/contra side) figure: per-phenotype line + SEM + dots.
-
-    Q14-matching convention: line through the per-(phenotype, epoch) pooled
-    mean with SEM error bars, jittered per-session dots beneath, phenotype
-    color + marker per the palette.
-    """
-    names = display_names or ENDPOINT_DISPLAY_NAMES
-    fig, ax = plt.subplots(figsize=(8.5, 5.5), dpi=dpi)
-
+    n_animals_by_phenotype: dict[str, int],
+    value_col: str,
+    pooled_value_col: str,
+    sem_col: str,
+    is_delta: bool,
+) -> None:
+    """Draw one ipsi/contra panel: per-phenotype line + SEM bars + dots."""
     sess = per_session_df[
         (per_session_df["endpoint"] == endpoint)
         & (per_session_df["side"] == side)
@@ -296,6 +295,8 @@ def render_endpoint_v2_figure(
     pooled = pooled_df[
         (pooled_df["endpoint"] == endpoint) & (pooled_df["side"] == side)
     ]
+    if is_delta:
+        ax.axhline(0.0, color="0.6", linewidth=0.8, alpha=0.6, zorder=0)
 
     for phenotype in phenotype_order:
         color = phenotype_palette(phenotype)
@@ -308,10 +309,8 @@ def render_endpoint_v2_figure(
         line_yerr: list[float] = []
         scatter_centers: list[int] = []
         scatter_values: list[np.ndarray] = []
-        n_by_epoch: list[int] = []  # per-cell n_sessions (pre/acute/sub/chronic)
         for ei, epoch in enumerate(EPOCH_ORDER):
             prow = p_pool[p_pool["epoch_label"] == epoch]
-            n_cell = 0
             if not prow.empty:
                 m = float(prow[pooled_value_col].iloc[0])
                 if np.isfinite(m):
@@ -319,8 +318,6 @@ def render_endpoint_v2_figure(
                     line_y.append(m)
                     sem = float(prow[sem_col].iloc[0]) if sem_col in prow else np.nan
                     line_yerr.append(sem)
-                n_cell = int(prow["n_sessions"].iloc[0]) if "n_sessions" in prow else 0
-            n_by_epoch.append(n_cell)
             cell = p_sess[p_sess["epoch_label"] == epoch]
             vals = cell[value_col].to_numpy(dtype=np.float64)
             vals = vals[np.isfinite(vals)]
@@ -329,11 +326,8 @@ def render_endpoint_v2_figure(
                 scatter_values.append(vals)
         if not line_x and not scatter_centers:
             continue
-        # SEM error bars (Q14 convention). n_sessions per cell into the legend.
-        label = (
-            f"{phenotype_display_name(phenotype)}  "
-            f"n/cell: {'/'.join(str(n) for n in n_by_epoch)}"
-        )
+        n_an = n_animals_by_phenotype.get(phenotype, 0)
+        label = f"{phenotype_display_name(phenotype)} (n={n_an})"
         render_line_with_jitter_dots(
             ax,
             line_x=line_x, line_y=line_y,
@@ -344,23 +338,75 @@ def render_endpoint_v2_figure(
 
     ax.set_xticks(list(range(len(EPOCH_ORDER))))
     ax.set_xticklabels(
-        [EPOCH_DISPLAY_NAMES.get(e, e) for e in EPOCH_ORDER], fontsize=13,
+        [EPOCH_DISPLAY_NAMES.get(e, e) for e in EPOCH_ORDER], fontsize=12,
     )
-    ax.set_xlabel("Epoch", fontsize=14)
-    ax.set_ylabel(names.get(endpoint, endpoint), fontsize=12)
     ax.set_xlim(-0.5, len(EPOCH_ORDER) - 0.5)
-    fig.suptitle(f"{names.get(endpoint, endpoint)} ({side})", fontsize=13, y=0.99)
-    # Two-line footer: [provenance] / [aggregation method].
-    ax.set_title(
-        f"{V2_SUBTITLE}\n{aggregation_subtitle}", fontsize=7, loc="left",
+    ax.set_xlabel("Epoch", fontsize=13)
+    ax.set_title(_PANEL_TITLES.get(side, side), fontsize=12)
+    ax.legend(loc="best", fontsize=8, framealpha=0.9)
+
+
+def render_endpoint_v2_figure(
+    *,
+    per_session_df: pd.DataFrame,
+    pooled_df: pd.DataFrame,
+    endpoint: str,
+    phenotype_order: tuple[str, ...],
+    output_path: Path,
+    sides: tuple[str, ...] = IPSI_CONTRA_ORDER,
+    value_col: str = "mean",
+    pooled_value_col: str = "mean",
+    sem_col: str = "sem",
+    display_names: dict[str, str] | None = None,
+    aggregation_subtitle: str = AGGREGATION_SUBTITLE,
+    is_delta: bool = False,
+    dpi: int = 150,
+) -> Path:
+    """One endpoint figure with side-by-side Ipsi + Contra panels (Q14 layout).
+
+    Each panel: per-phenotype line through the pooled mean with SEM error
+    bars, faded jittered per-session dots, phenotype color + marker. Legend
+    shows ``n_animals`` per phenotype (Q14 form). Delta figures get a y=0
+    reference line. A two-line footer (provenance + aggregation method) sits
+    at the bottom-left.
+    """
+    names = display_names or ENDPOINT_DISPLAY_NAMES
+    fig, axes = plt.subplots(
+        1, len(sides), figsize=(6.5 * len(sides), 5.6), dpi=dpi, sharey=True,
     )
-    ax.legend(loc="best", fontsize=9, framealpha=0.9)
-    fig.tight_layout()
+    if len(sides) == 1:
+        axes = [axes]
+
+    # n_animals per phenotype tier (constant across epochs/sides; Q14 form).
+    n_an_by = {
+        p: int(
+            per_session_df.loc[
+                per_session_df["recovery_phenotype"] == p, "animal",
+            ].nunique()
+        )
+        for p in phenotype_order
+    }
+
+    for ax, side in zip(axes, sides):
+        _draw_endpoint_panel(
+            ax,
+            per_session_df=per_session_df, pooled_df=pooled_df,
+            endpoint=endpoint, side=side, phenotype_order=phenotype_order,
+            n_animals_by_phenotype=n_an_by,
+            value_col=value_col, pooled_value_col=pooled_value_col,
+            sem_col=sem_col, is_delta=is_delta,
+        )
+    axes[0].set_ylabel(names.get(endpoint, endpoint), fontsize=12)
+
+    fig.suptitle(names.get(endpoint, endpoint), fontsize=14, y=0.99)
+    fig.text(
+        0.01, 0.005, f"{V2_SUBTITLE}\n{aggregation_subtitle}",
+        fontsize=7, va="bottom", ha="left",
+    )
+    fig.tight_layout(rect=[0.0, 0.07, 1.0, 0.97])
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, format="svg", bbox_inches="tight")
-    # PNG sibling (matches the existing scalar-figure 2-format convention).
-    fig.savefig(output_path.with_suffix(".png"), format="png", dpi=dpi,
-                bbox_inches="tight")
+    fig.savefig(output_path, format="svg")
+    fig.savefig(output_path.with_suffix(".png"), format="png", dpi=dpi)
     plt.close(fig)
     return output_path
 
@@ -472,40 +518,42 @@ def run_scope(
 
     ok: list[str] = []
     skip: list[str] = []
+    # One 2-panel (ipsi+contra) figure per endpoint, for raw + delta layers.
     for endpoint in PHASE_ALIGNED_ENDPOINT_SLUGS:
-        for side in IPSI_CONTRA_ORDER:
-            for kind, src, vcol, names in (
-                ("raw", per_session_meta, "mean", ENDPOINT_DISPLAY_NAMES),
-                ("delta", delta_df, "delta_mean", DELTA_ENDPOINT_DISPLAY_NAMES),
-            ):
-                if vcol not in src.columns:
-                    continue
-                fname = (
-                    f"{endpoint}_{side}_v2.svg" if kind == "raw"
-                    else f"delta_{endpoint}_{side}_v2.svg"
-                )
-                target = fig_base / fname
-                if target.exists() and overwrite == "skip":
-                    skip.append(fname)
-                    continue
-                render_endpoint_v2_figure(
-                    per_session_df=src,
-                    pooled_df=pooled if kind == "raw" else pooled_delta,
-                    endpoint=endpoint, side=side,
-                    phenotype_order=phenotype_order,
-                    output_path=target,
-                    value_col=vcol,
-                    display_names=names,
-                )
-                ok.append(fname)
+        for kind, src, pooled_src, vcol, names in (
+            ("raw", per_session_meta, pooled, "mean", ENDPOINT_DISPLAY_NAMES),
+            ("delta", delta_df, pooled_delta, "delta_mean",
+             DELTA_ENDPOINT_DISPLAY_NAMES),
+        ):
+            if vcol not in src.columns:
+                continue
+            fname = (
+                f"{endpoint}_v2.svg" if kind == "raw"
+                else f"delta_{endpoint}_v2.svg"
+            )
+            target = fig_base / fname
+            if target.exists() and overwrite == "skip":
+                skip.append(fname)
+                continue
+            render_endpoint_v2_figure(
+                per_session_df=src,
+                pooled_df=pooled_src,
+                endpoint=endpoint,
+                phenotype_order=phenotype_order,
+                output_path=target,
+                value_col=vcol,
+                display_names=names,
+                is_delta=(kind == "delta"),
+            )
+            ok.append(fname)
 
     # Provenance-stamped CSVs.
     pooled = pooled.assign(provenance=PROVENANCE)
     stats_df = stats_df.assign(provenance=PROVENANCE)
     per_session_meta = per_session_meta.assign(provenance=PROVENANCE)
-    pooled.to_csv(res_base / "phenotype_pooled_median_iqr.csv", index=False)
+    pooled.to_csv(res_base / "phenotype_pooled_mean_sem.csv", index=False)
     stats_df.to_csv(res_base / "phase_aligned_endpoint_stats.csv", index=False)
-    per_session_meta.to_csv(res_base / "per_session_medians.csv", index=False)
+    per_session_meta.to_csv(res_base / "per_session_means.csv", index=False)
 
     warns = _cell_loss_check(pooled, pooled_nf, scope)
     return {

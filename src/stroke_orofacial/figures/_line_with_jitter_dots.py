@@ -46,8 +46,8 @@ from ._layout import _JITTER_SEED, jittered_x_positions
 #: by every line+jitter v2 renderer (Q13b / Q13 / Q13c / Q12 W-2). Q12
 #: proportion-diff heatmaps are a different family and do NOT carry it.
 AGGREGATION_SUBTITLE: str = (
-    "Mean ± SEM session-pooled (n_sessions per cell shown in legend); "
-    "per-session values shown as faded dots."
+    "Mean ± SEM session-pooled (n = animals per phenotype; per-cell "
+    "n_sessions in stats CSV); per-session values shown as faded dots."
 )
 
 __all__ = [

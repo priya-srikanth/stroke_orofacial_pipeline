@@ -56,6 +56,7 @@ def test_cell_loss_ignores_empty_nofilter_cells() -> None:
 def _mean_inputs(endpoint: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Per-session (mean) + pooled (mean/sem/n_sessions) inputs for one cell."""
     per_session = pd.DataFrame({
+        "animal": ["PS46", "PS46", "PS46", "PS46"],
         "recovery_phenotype": ["mild"] * 4,
         "epoch_label": ["pre", "pre", "acute", "acute"],
         "side": ["ipsi"] * 4,
@@ -82,7 +83,7 @@ def test_renderer_writes_svg_and_png(tmp_path: Path) -> None:
     out = tmp_path / "peak_angle_deg_ipsi_v2.svg"
     q.render_endpoint_v2_figure(
         per_session_df=per_session, pooled_df=pooled,
-        endpoint=endpoint, side="ipsi",
+        endpoint=endpoint, sides=("ipsi",),
         phenotype_order=("mild",), output_path=out,
     )
     assert out.exists() and out.stat().st_size > 0
@@ -101,13 +102,13 @@ def test_renderer_footer_has_both_lines(tmp_path: Path) -> None:
     with matplotlib.rc_context({"svg.fonttype": "none"}):
         q.render_endpoint_v2_figure(
             per_session_df=per_session, pooled_df=pooled,
-            endpoint=endpoint, side="ipsi",
+            endpoint=endpoint, sides=("ipsi",),
             phenotype_order=("mild",), output_path=out,
         )
     svg = out.read_text(encoding="utf-8")
     assert "filtered_v1" in svg          # provenance line
     assert "Mean" in svg and "SEM" in svg  # aggregation subtitle line
-    assert "per cell" in svg               # n_sessions-per-cell phrasing
+    assert "animals per phenotype" in svg  # n=animals legend phrasing
 
 
 def test_renderer_skips_absent_phenotype(tmp_path: Path) -> None:
@@ -117,7 +118,7 @@ def test_renderer_skips_absent_phenotype(tmp_path: Path) -> None:
     out = tmp_path / "x.svg"
     q.render_endpoint_v2_figure(
         per_session_df=per_session, pooled_df=pooled,
-        endpoint=endpoint, side="ipsi",
+        endpoint=endpoint, sides=("ipsi",),
         phenotype_order=("mild", "severe"),  # severe absent
         output_path=out,
     )
