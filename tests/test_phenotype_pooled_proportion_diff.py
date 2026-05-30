@@ -265,6 +265,22 @@ class TestRenderPhenotypePooledProportionDiffFigure:
         assert any("pre n=150" in t for t in target)
         assert any("post n=120" in t for t in target)
 
+    def test_subtitle_override_and_side_display(self) -> None:
+        """Chore v2: subtitle_override + side_display relabel the suptitle."""
+        import matplotlib.pyplot as _plt
+        recs = _full_pooled_records()
+        fig = render_phenotype_pooled_proportion_diff_figure(
+            bodypart="tongue", side="L", pooled_records=recs,
+            shared_vmax=0.01,
+            subtitle_override="UNFILTERED IPSI CONTRA V2",
+            side_display={"L": "Ipsi (mouse-L)", "R": "Contra (mouse-R)"},
+        )
+        sup = fig._suptitle.get_text()
+        assert "Ipsi (mouse-L)" in sup
+        assert "side=L" not in sup
+        assert "UNFILTERED IPSI CONTRA V2" in sup
+        _plt.close(fig)
+
 
 # ---------------------------------------------------------------------------
 # emit_phenotype_pooled_proportion_diff_figures

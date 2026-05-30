@@ -179,8 +179,15 @@ def render_phenotype_pooled_proportion_diff_figure(
     shared_vmax: float,
     phenotype_order: Sequence[str] = PHENOTYPE_ORDER,
     defaults: dict[str, Any] | None = None,
+    subtitle_override: str | None = None,
+    side_display: dict[str, str] | None = None,
 ) -> plt.Figure:
     """Render the single (bodypart × side) phenotype × post_epoch figure.
+
+    ``subtitle_override`` replaces the default source-data footer (chore v2
+    re-emit passes the unfiltered + ipsi/contra line); ``side_display`` maps
+    the rig side key to a display label (chore v2: ``{"L": "Ipsi (mouse-L)",
+    ...}``). Both default ``None`` = current behavior.
 
     Phenotype rows ordered per ``phenotype_order`` (defaults to the
     4-tier :data:`stroke_orofacial.figures.palette.PHENOTYPE_ORDER`;
@@ -267,13 +274,16 @@ def render_phenotype_pooled_proportion_diff_figure(
     )
     cbar.set_label("Δ proportion (post − pre)")
 
-    subtitle = FIGURE_SUBTITLE_BY_BODYPART.get(
-        bodypart,
-        "Source: v7-cleaned-trace cohort re-emit",
+    subtitle = (
+        subtitle_override if subtitle_override is not None
+        else FIGURE_SUBTITLE_BY_BODYPART.get(
+            bodypart, "Source: v7-cleaned-trace cohort re-emit",
+        )
     )
+    side_part = (side_display or {}).get(side, f"side={side}")
     fig.suptitle(
         f"Phenotype-pooled proportion-diff heatmap — "
-        f"{bodypart} | side={side} | shared |vmax|={shared_vmax:.4g}\n"
+        f"{bodypart} | {side_part} | shared |vmax|={shared_vmax:.4g}\n"
         f"{subtitle}",
         fontsize=12,
     )
@@ -294,6 +304,8 @@ def emit_phenotype_pooled_proportion_diff_figures(
     shared_vmax: float | None = None,
     phenotype_order: Sequence[str] = PHENOTYPE_ORDER,
     defaults: dict[str, Any] | None = None,
+    subtitle_override: str | None = None,
+    side_display: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Emit the 4 Q-lock 12 SVG figures (2 bodyparts × 2 sides) + manifest.
 
@@ -360,6 +372,8 @@ def emit_phenotype_pooled_proportion_diff_figures(
                     shared_vmax=shared_vmax,
                     phenotype_order=phenotype_order,
                     defaults=defaults,
+                    subtitle_override=subtitle_override,
+                    side_display=side_display,
                 )
                 fig.savefig(target, format="svg", bbox_inches="tight")
                 plt.close(fig)

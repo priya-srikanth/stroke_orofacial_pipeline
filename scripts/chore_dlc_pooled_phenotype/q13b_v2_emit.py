@@ -359,6 +359,7 @@ def render_endpoint_v2_figure(
     sem_col: str = "sem",
     display_names: dict[str, str] | None = None,
     aggregation_subtitle: str = AGGREGATION_SUBTITLE,
+    provenance_subtitle: str = V2_SUBTITLE,
     is_delta: bool = False,
     dpi: int = 150,
 ) -> Path:
@@ -400,7 +401,7 @@ def render_endpoint_v2_figure(
 
     fig.suptitle(names.get(endpoint, endpoint), fontsize=14, y=0.99)
     fig.text(
-        0.01, 0.005, f"{V2_SUBTITLE}\n{aggregation_subtitle}",
+        0.01, 0.005, f"{provenance_subtitle}\n{aggregation_subtitle}",
         fontsize=7, va="bottom", ha="left",
     )
     fig.tight_layout(rect=[0.0, 0.07, 1.0, 0.97])
