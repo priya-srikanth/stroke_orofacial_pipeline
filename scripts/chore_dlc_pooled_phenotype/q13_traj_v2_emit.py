@@ -90,6 +90,15 @@ V2_TRAJ_SUBTITLE = (
     "coding; mean ± SEM session-pooled "
     "(chore vChore-dlc-pooled-phenotype-unification)"
 )
+# v3 substrate-version marker (chore tongue-substrate-v7-routing-fix,
+# 2026-05-30). Same methodology as v2 — the ONLY change is the data source:
+# the phase-aligned substrate now reads the v7-cleaned trace, not the
+# pre-clean interpolated trace. Marker is required for downstream audit.
+V3_TRAJ_SUBTITLE = (
+    "Source: filtered_v1 (substrate v3 — v7-cleaned-trace routing fix per "
+    "chore vChore-tongue-substrate-v7-routing-fix); mean ± SEM session-pooled"
+)
+TRAJ_SUBTITLE_BY_VERSION = {"v2": V2_TRAJ_SUBTITLE, "v3": V3_TRAJ_SUBTITLE}
 # All-L cohort: ipsi = mouse-L, contra = mouse-R.
 SIDE_DISPLAY = {"L": "Ipsi (mouse-L)", "R": "Contra (mouse-R)"}
 
@@ -190,6 +199,12 @@ def main(argv: list[str] | None = None) -> int:
         "--remap-phenotypes", choices=("none", "3tier", "both"), default="none",
     )
     parser.add_argument(
+        "--out-version", choices=("v2", "v3"), default="v3",
+        help="Output subdir + subtitle marker. v3 (default) = the "
+             "v7-cleaned-trace substrate fix; v2 = the pre-fix audit copy "
+             "(retained, not overwritten by a v3 run).",
+    )
+    parser.add_argument(
         "--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"),
         default="INFO",
     )
@@ -241,16 +256,17 @@ def main(argv: list[str] | None = None) -> int:
     fig_root = resolver.pipeline_outputs(subdir=FIGURE_SUBDIR)
     res_root = resolver.pipeline_outputs(subdir=RESULTS_SUBDIR)
     for scope, phenotype_order, amap in scopes:
-        out_dir = fig_root / scope / "v2"
-        res_dir = res_root / scope / "v2"
-        logger.info("[%s] attach metadata + run stats/figures -> %s", scope, out_dir)
+        out_dir = fig_root / scope / args.out_version
+        res_dir = res_root / scope / args.out_version
+        logger.info("[%s] attach metadata + run stats/figures (%s) -> %s",
+                    scope, args.out_version, out_dir)
         scoped = attach_metadata(cohort_df, amap)
         result = run_stats_and_figures(
             scoped,
             resolver=resolver, overwrite=args.overwrite,
             output_dir=out_dir, results_dir=res_dir, logger=logger,
             animals_map=amap, phenotype_order=phenotype_order,
-            figure_subtitle_override=V2_TRAJ_SUBTITLE,
+            figure_subtitle_override=TRAJ_SUBTITLE_BY_VERSION[args.out_version],
             figure_side_display=SIDE_DISPLAY,
         )
         logger.info(
