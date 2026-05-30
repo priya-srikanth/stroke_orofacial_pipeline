@@ -1,6 +1,6 @@
 # Chore: Phenotype-Pooled Whisker + Nose Spatial Analysis Kickoff
 
-**Status:** LOCKED v1 + Addendum #1 + Addendum #2 + Addendum #3 (2026-05-30).
+**Status:** LOCKED v1 + Addendum #1 + Addendum #2 + Addendum #3 + Addendum #4 (2026-05-30).
 **Branch:** `chore/whisker-nose-spatial-pooled`
 **Merge tag (on close):** `vChore-whisker-nose-spatial-pooled`
 **Depends on (DISCHARGED 2026-05-29):** `chore/dlc-pooled-phenotype-unification` — MERGED + TAGGED `vChore-dlc-pooled-phenotype-unification`. Inherits the plot-convention helper module (`figures/_line_with_jitter_dots.py`), the path normalization (`<family>/<scope>/v2/`), the ipsi/contra recoding helper, the line+jitter+dots convention, and the mean+SEM session-pooled aggregation methodology with 2-line aggregation-method subtitle footer.
@@ -239,3 +239,31 @@ The brief said to extend `src/stroke_orofacial/figures/phenotype_wasserstein_rec
 | **TOTAL** | | | | | **18** |
 
 Supersedes A2.3's 30. Exact count is finalized by the Stage 3 emit script and confirmed at the Stage 4 PS46 pilot STOP gate.
+
+---
+
+## Addendum #4 — Nose combined sub-grid heatmap + spout/eye pooled-landmark reaffirmation (2026-05-30)
+
+**ALL OTHER LOCKS UNCHANGED** except where noted. Two clarifications per Priya direction 2026-05-30.
+
+### A4.1 — spout/eye REAFFIRMED as pooled L+R landmarks (NOT midpoint)
+
+An interim direction to switch spout/eye to a single per-frame **midpoint** `(xL+xR)/2,(yL+yR)/2` was **withdrawn** (it was pasted from a cowork thread without review). The locked design is the A2.1 one: **pool both bilateral landmarks** (`L_spout`+`R_spout`; `L_eye`+`R_eye`) into one distribution in the part's self-centered frame. Rationale (Priya): this surfaces **landmark drift that persists despite midpoint centering** — the individual landmarks can still move relative to the midpoint origin even though the midpoint defines the centering. No code change (the committed Stage-1 recipes already do this). The `interpolated_traces` raw-coord / `df_transform` midpoint path is NOT pursued.
+
+### A4.2 — Nose heatmap: ONE combined sub-grid figure (Option B)
+
+Nose's ipsi/contra cue-trial split can't pool into a single `both` map (the two cue-side frame-sets are the contrast). Rather than emit 2 separate per-side heatmap SVGs (the legacy tongue/jaw convention), emit **ONE `nose_*.svg`** with **ipsi and contra as side-by-side phenotype×epoch sub-grids** in a single figure. Requires extending the proportion_diff renderer to a **multi-side sub-grid layout**.
+
+**Intentional convention divergence (document in the Stage 5 MIGRATION_LOG):** legacy tongue/jaw heatmaps remain 2-separate-per-side (preserved under `no_filter/`); the new whisker/nose/spout/eye family uses the combined single-figure layout (whisker/spout/eye via pooled `both`; nose via the ipsi/contra sub-grid). Chosen for cross-bodypart visual symmetry over legacy-convention parity. Not a bug.
+
+### A4.3 — Figure count (REVISED): 16 SVGs
+
+With nose collapsed to one combined figure, every bodypart emits exactly 1 heatmap + 1 W-2 per scope:
+
+| family | per scope (whisker+nose+spout+eye) | × scopes | SVGs |
+|---|---|---|---|
+| proportion_diff heatmaps | 4 | 2 | 8 |
+| wasserstein_recovery (W-2, line+jitter) | 4 | 2 | 8 |
+| **TOTAL** | | | **16** |
+
+Supersedes A3.3's 18 (nose 6→4: its 2 separate heatmaps collapse to 1 combined). Per bodypart = 4 SVGs (1 heatmap + 1 W-2, × 2 scopes).
