@@ -40,7 +40,20 @@ from typing import Any, Sequence
 # one-directional dependency (_layout never imports this module), so no cycle.
 from ._layout import _JITTER_SEED, jittered_x_positions
 
-__all__ = ["jittered_x_positions", "render_line_with_jitter_dots", "_JITTER_SEED"]
+#: Canonical aggregation-method footer line for the mean+SEM phenotype-pooled
+#: convention (chore vChore-dlc-pooled-phenotype-unification, matching Q14).
+#: Rendered as the SECOND footer line, beneath each figure's provenance line,
+#: by every line+jitter v2 renderer (Q13b / Q13 / Q13c / Q12 W-2). Q12
+#: proportion-diff heatmaps are a different family and do NOT carry it.
+AGGREGATION_SUBTITLE: str = (
+    "Mean ± SEM session-pooled (n_sessions per cell shown in legend); "
+    "per-session values shown as faded dots."
+)
+
+__all__ = [
+    "jittered_x_positions", "render_line_with_jitter_dots",
+    "AGGREGATION_SUBTITLE", "_JITTER_SEED",
+]
 
 
 def render_line_with_jitter_dots(
@@ -49,6 +62,7 @@ def render_line_with_jitter_dots(
     line_x: Sequence[float],
     line_y: Sequence[float],
     line_yerr: Sequence[float] | None = None,
+    band_halfwidth: Sequence[float] | None = None,
     scatter_centers: Sequence[float] = (),
     scatter_values: Sequence[Sequence[float]] = (),
     color: Any,
@@ -59,6 +73,8 @@ def render_line_with_jitter_dots(
     scatter_size: float = 12.0,
     scatter_alpha: float = 0.25,
     scatter_zorder: float = 1.0,
+    band_alpha: float = 0.2,
+    band_zorder: float = 2.0,
     line_width: float = 2.0,
     marker_size: float = 6.0,
     capsize: float = 3.5,
@@ -82,6 +98,13 @@ def render_line_with_jitter_dots(
     line_yerr
         Per-point SEM for error bars. ``None`` → line drawn with no error
         bars.
+    band_halfwidth
+        Per-point half-width of a shaded ±band around the line (e.g. SEM),
+        same length as ``line_x``. ``None`` → no band. Drawn as a translucent
+        ``fill_between`` beneath the line (and above the dot underlay) so the
+        central-tendency uncertainty reads as a distinct layer from the
+        per-session dots. Mutually compatible with ``line_yerr`` (you can
+        show both, though typically only one is used).
     scatter_centers
         Nominal x-centers for the background dot underlay (typically the
         same integer epoch positions as ``line_x``, but kept independent so
@@ -113,9 +136,10 @@ def render_line_with_jitter_dots(
     Returns
     -------
     dict
-        ``{"scatter": [PathCollection, ...], "line": ErrorbarContainer}`` —
-        the artists created, for caller inspection / testing. ``"line"`` is
-        ``None`` if ``line_x`` is empty.
+        ``{"scatter": [PathCollection, ...], "line": ErrorbarContainer,
+        "band": PolyCollection | None}`` — the artists created, for caller
+        inspection / testing. ``"line"`` is ``None`` if ``line_x`` is empty;
+        ``"band"`` is ``None`` unless ``band_halfwidth`` was given.
 
     Raises
     ------
@@ -136,6 +160,13 @@ def render_line_with_jitter_dots(
         if len(line_yerr) != len(line_x):
             raise ValueError(
                 f"line_yerr ({len(line_yerr)}) must match line_x "
+                f"({len(line_x)})."
+            )
+    if band_halfwidth is not None:
+        band_halfwidth = list(band_halfwidth)
+        if len(band_halfwidth) != len(line_x):
+            raise ValueError(
+                f"band_halfwidth ({len(band_halfwidth)}) must match line_x "
                 f"({len(line_x)})."
             )
     scatter_centers = list(scatter_centers)
@@ -164,6 +195,17 @@ def render_line_with_jitter_dots(
             )
         )
 
+    # --- Mid layer: shaded ±band (e.g. SEM) beneath the line ---------------
+    band_artist = None
+    if band_halfwidth is not None and line_x:
+        lower = [y - h for y, h in zip(line_y, band_halfwidth)]
+        upper = [y + h for y, h in zip(line_y, band_halfwidth)]
+        band_artist = ax.fill_between(
+            line_x, lower, upper,
+            color=color, alpha=band_alpha, linewidth=0.0,
+            zorder=band_zorder,
+        )
+
     # --- Foreground: line connector + SEM error bars -----------------------
     line_artist = None
     if line_x:
@@ -175,4 +217,4 @@ def render_line_with_jitter_dots(
             label=label, zorder=line_zorder,
         )
 
-    return {"scatter": scatter_artists, "line": line_artist}
+    return {"scatter": scatter_artists, "line": line_artist, "band": band_artist}

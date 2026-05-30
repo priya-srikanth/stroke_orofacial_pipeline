@@ -53,23 +53,32 @@ def test_cell_loss_ignores_empty_nofilter_cells() -> None:
     assert q._cell_loss_check(filtered, nofilter, "4_tier") == []
 
 
-def test_renderer_writes_svg_and_png(tmp_path: Path) -> None:
-    """render_endpoint_v2_figure produces both an SVG and a PNG sibling."""
-    endpoint = "peak_angle_deg"
+def _mean_inputs(endpoint: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Per-session (mean) + pooled (mean/sem/n_sessions) inputs for one cell."""
     per_session = pd.DataFrame({
         "recovery_phenotype": ["mild"] * 4,
         "epoch_label": ["pre", "pre", "acute", "acute"],
         "side": ["ipsi"] * 4,
         "endpoint": [endpoint] * 4,
-        "median": [1.0, 1.2, 2.0, 2.4],
+        "mean": [1.0, 1.2, 2.0, 2.4],
     })
     pooled = pd.DataFrame({
         "recovery_phenotype": ["mild", "mild"],
         "epoch_label": ["pre", "acute"],
         "side": ["ipsi", "ipsi"],
         "endpoint": [endpoint, endpoint],
-        "median": [1.1, 2.2],
+        "mean": [1.1, 2.2],
+        "sem": [0.1, 0.2],
+        "n_sessions": [2, 2],
+        "n_animals": [1, 1],
     })
+    return per_session, pooled
+
+
+def test_renderer_writes_svg_and_png(tmp_path: Path) -> None:
+    """render_endpoint_v2_figure produces both an SVG and a PNG sibling."""
+    endpoint = "peak_angle_deg"
+    per_session, pooled = _mean_inputs(endpoint)
     out = tmp_path / "peak_angle_deg_ipsi_v2.svg"
     q.render_endpoint_v2_figure(
         per_session_df=per_session, pooled_df=pooled,
@@ -80,19 +89,31 @@ def test_renderer_writes_svg_and_png(tmp_path: Path) -> None:
     assert out.with_suffix(".png").exists()
 
 
+def test_renderer_footer_has_both_lines(tmp_path: Path) -> None:
+    """Footer carries BOTH the provenance line and the aggregation subtitle.
+
+    Renders with svg.fonttype='none' so the text is searchable in the SVG.
+    """
+    import matplotlib
+    endpoint = "peak_angle_deg"
+    per_session, pooled = _mean_inputs(endpoint)
+    out = tmp_path / "footer.svg"
+    with matplotlib.rc_context({"svg.fonttype": "none"}):
+        q.render_endpoint_v2_figure(
+            per_session_df=per_session, pooled_df=pooled,
+            endpoint=endpoint, side="ipsi",
+            phenotype_order=("mild",), output_path=out,
+        )
+    svg = out.read_text(encoding="utf-8")
+    assert "filtered_v1" in svg          # provenance line
+    assert "Mean" in svg and "SEM" in svg  # aggregation subtitle line
+    assert "per cell" in svg               # n_sessions-per-cell phrasing
+
+
 def test_renderer_skips_absent_phenotype(tmp_path: Path) -> None:
     """A phenotype with no data contributes nothing but doesn't crash."""
     endpoint = "peak_angle_deg"
-    per_session = pd.DataFrame({
-        "recovery_phenotype": ["mild", "mild"],
-        "epoch_label": ["pre", "acute"],
-        "side": ["ipsi", "ipsi"],
-        "endpoint": [endpoint, endpoint],
-        "median": [1.0, 2.0],
-    })
-    pooled = per_session.rename(columns={"median": "median"}).assign(
-        q25=0, q75=0, iqr=0, n_sessions=1, n_animals=1,
-    )
+    per_session, pooled = _mean_inputs(endpoint)
     out = tmp_path / "x.svg"
     q.render_endpoint_v2_figure(
         per_session_df=per_session, pooled_df=pooled,

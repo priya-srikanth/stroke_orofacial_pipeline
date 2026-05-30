@@ -103,6 +103,8 @@ def compute_phase_aligned_endpoint_stats(
     *,
     phenotype_order: Iterable[str] = PHENOTYPE_ORDER,
     side_order: Iterable[str] = SIDE_ORDER,
+    aggregator: str = "median",
+    value_col: str = "median",
 ) -> pd.DataFrame:
     """Run the Wilcoxon × BH-FDR family on per-session medians.
 
@@ -138,7 +140,7 @@ def compute_phase_aligned_endpoint_stats(
     """
     required = {
         "animal", "recovery_phenotype", "epoch_label",
-        "side", "endpoint", "median",
+        "side", "endpoint", value_col,
     }
     missing = required - set(per_session_df.columns)
     if missing:
@@ -165,8 +167,8 @@ def compute_phase_aligned_endpoint_stats(
                     result = fit_paired_pre_post_wilcoxon(
                         sub,
                         post_epoch=post_epoch,
-                        value_col="median",
-                        aggregator="median",
+                        value_col=value_col,
+                        aggregator=aggregator,
                     )
                     rows.append({
                         "recovery_phenotype": phenotype,

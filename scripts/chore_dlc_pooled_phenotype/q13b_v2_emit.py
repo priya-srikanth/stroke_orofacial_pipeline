@@ -77,6 +77,7 @@ from stroke_orofacial.cohort_filters import (  # noqa: E402
 )
 from stroke_orofacial.config_loader import load_defaults  # noqa: E402
 from stroke_orofacial.figures._line_with_jitter_dots import (  # noqa: E402
+    AGGREGATION_SUBTITLE,
     render_line_with_jitter_dots,
 )
 from stroke_orofacial.figures.palette import (  # noqa: E402
@@ -100,8 +101,8 @@ from stroke_orofacial.ipsi_contra_recoding import (  # noqa: E402
 from stroke_orofacial.paths import PathResolver  # noqa: E402
 from stroke_orofacial.stats.aggregators import (  # noqa: E402
     PHASE_ALIGNED_ENDPOINT_SLUGS,
-    aggregate_per_session_median_iqr,
-    aggregate_phenotype_pooled_median_iqr,
+    aggregate_per_session_mean,
+    aggregate_phenotype_pooled_mean_sem,
     apply_baseline_delta,
     attach_phenotype_and_epoch,
     compute_per_animal_baseline,
@@ -272,12 +273,19 @@ def render_endpoint_v2_figure(
     side: str,
     phenotype_order: tuple[str, ...],
     output_path: Path,
-    value_col: str = "median",
-    pooled_value_col: str = "median",
+    value_col: str = "mean",
+    pooled_value_col: str = "mean",
+    sem_col: str = "sem",
     display_names: dict[str, str] | None = None,
+    aggregation_subtitle: str = AGGREGATION_SUBTITLE,
     dpi: int = 150,
 ) -> Path:
-    """One (endpoint, ipsi/contra side) figure: per-phenotype line + dots."""
+    """One (endpoint, ipsi/contra side) figure: per-phenotype line + SEM + dots.
+
+    Q14-matching convention: line through the per-(phenotype, epoch) pooled
+    mean with SEM error bars, jittered per-session dots beneath, phenotype
+    color + marker per the palette.
+    """
     names = display_names or ENDPOINT_DISPLAY_NAMES
     fig, ax = plt.subplots(figsize=(8.5, 5.5), dpi=dpi)
 
@@ -297,15 +305,22 @@ def render_endpoint_v2_figure(
 
         line_x: list[int] = []
         line_y: list[float] = []
+        line_yerr: list[float] = []
         scatter_centers: list[int] = []
         scatter_values: list[np.ndarray] = []
+        n_by_epoch: list[int] = []  # per-cell n_sessions (pre/acute/sub/chronic)
         for ei, epoch in enumerate(EPOCH_ORDER):
             prow = p_pool[p_pool["epoch_label"] == epoch]
+            n_cell = 0
             if not prow.empty:
                 m = float(prow[pooled_value_col].iloc[0])
                 if np.isfinite(m):
                     line_x.append(ei)
                     line_y.append(m)
+                    sem = float(prow[sem_col].iloc[0]) if sem_col in prow else np.nan
+                    line_yerr.append(sem)
+                n_cell = int(prow["n_sessions"].iloc[0]) if "n_sessions" in prow else 0
+            n_by_epoch.append(n_cell)
             cell = p_sess[p_sess["epoch_label"] == epoch]
             vals = cell[value_col].to_numpy(dtype=np.float64)
             vals = vals[np.isfinite(vals)]
@@ -314,12 +329,17 @@ def render_endpoint_v2_figure(
                 scatter_values.append(vals)
         if not line_x and not scatter_centers:
             continue
+        # SEM error bars (Q14 convention). n_sessions per cell into the legend.
+        label = (
+            f"{phenotype_display_name(phenotype)}  "
+            f"n/cell: {'/'.join(str(n) for n in n_by_epoch)}"
+        )
         render_line_with_jitter_dots(
             ax,
-            line_x=line_x, line_y=line_y, line_yerr=None,
+            line_x=line_x, line_y=line_y,
+            line_yerr=line_yerr if any(np.isfinite(line_yerr)) else None,
             scatter_centers=scatter_centers, scatter_values=scatter_values,
-            color=color, marker=marker,
-            label=phenotype_display_name(phenotype),
+            color=color, marker=marker, label=label,
         )
 
     ax.set_xticks(list(range(len(EPOCH_ORDER))))
@@ -330,8 +350,11 @@ def render_endpoint_v2_figure(
     ax.set_ylabel(names.get(endpoint, endpoint), fontsize=12)
     ax.set_xlim(-0.5, len(EPOCH_ORDER) - 0.5)
     fig.suptitle(f"{names.get(endpoint, endpoint)} ({side})", fontsize=13, y=0.99)
-    ax.set_title(V2_SUBTITLE, fontsize=7, loc="left")
-    ax.legend(loc="best", fontsize=10, framealpha=0.9)
+    # Two-line footer: [provenance] / [aggregation method].
+    ax.set_title(
+        f"{V2_SUBTITLE}\n{aggregation_subtitle}", fontsize=7, loc="left",
+    )
+    ax.legend(loc="best", fontsize=9, framealpha=0.9)
     fig.tight_layout()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, format="svg", bbox_inches="tight")
@@ -404,33 +427,40 @@ def run_scope(
     resolver: PathResolver,
     overwrite: str,
 ) -> dict[str, object]:
-    """Aggregate + stats + render one scope (4_tier or 3_tier)."""
-    per_session = aggregate_per_session_median_iqr(long_df)
+    """Aggregate + stats + render one scope (4_tier or 3_tier).
+
+    Mean+SEM session-pooled convention (matches Q14): per-session means
+    pooled to a per-(phenotype, epoch, side, endpoint) mean with
+    SEM = SD/sqrt(n_sessions). The Wilcoxon test pairs per-animal means
+    upstream (aggregator="mean").
+    """
+    per_session = aggregate_per_session_mean(long_df)
     per_session_meta = attach_phenotype_and_epoch(per_session, animals_map)
-    pooled = aggregate_phenotype_pooled_median_iqr(per_session_meta, by_side=True)
+    pooled = aggregate_phenotype_pooled_mean_sem(
+        per_session_meta, value_col="mean", by_side=True,
+    )
     stats_df = compute_phase_aligned_endpoint_stats(
         per_session_meta,
         phenotype_order=phenotype_order,
         side_order=IPSI_CONTRA_ORDER,
+        aggregator="mean",
+        value_col="mean",
     )
 
     # No-filter pooled (same recode, no DLC filter) for the cell-loss check.
     per_session_nf = attach_phenotype_and_epoch(
-        aggregate_per_session_median_iqr(long_df_nofilter), animals_map,
+        aggregate_per_session_mean(long_df_nofilter), animals_map,
     )
-    pooled_nf = aggregate_phenotype_pooled_median_iqr(
-        per_session_nf, by_side=True,
+    pooled_nf = aggregate_phenotype_pooled_mean_sem(
+        per_session_nf, value_col="mean", by_side=True,
     )
 
-    # Baseline-delta layer (per-animal pre-stroke mean of session medians).
-    baseline = compute_per_animal_baseline(per_session_meta)
-    delta_df = apply_baseline_delta(per_session_meta, baseline)
-    if "delta_median" in delta_df.columns and not delta_df.empty:
-        delta_for_pool = delta_df.drop(columns=["median"]).rename(
-            columns={"delta_median": "median"},
-        )
-        pooled_delta = aggregate_phenotype_pooled_median_iqr(
-            delta_for_pool, by_side=True,
+    # Baseline-delta layer (per-animal pre-stroke mean of per-session means).
+    baseline = compute_per_animal_baseline(per_session_meta, value_col="mean")
+    delta_df = apply_baseline_delta(per_session_meta, baseline, value_col="mean")
+    if "delta_mean" in delta_df.columns and not delta_df.empty:
+        pooled_delta = aggregate_phenotype_pooled_mean_sem(
+            delta_df, value_col="delta_mean", by_side=True,
         )
     else:
         pooled_delta = pooled
@@ -445,8 +475,8 @@ def run_scope(
     for endpoint in PHASE_ALIGNED_ENDPOINT_SLUGS:
         for side in IPSI_CONTRA_ORDER:
             for kind, src, vcol, names in (
-                ("raw", per_session_meta, "median", ENDPOINT_DISPLAY_NAMES),
-                ("delta", delta_df, "delta_median", DELTA_ENDPOINT_DISPLAY_NAMES),
+                ("raw", per_session_meta, "mean", ENDPOINT_DISPLAY_NAMES),
+                ("delta", delta_df, "delta_mean", DELTA_ENDPOINT_DISPLAY_NAMES),
             ):
                 if vcol not in src.columns:
                     continue

@@ -204,6 +204,36 @@ def test_raises_on_yerr_length_mismatch() -> None:
         )
 
 
+def test_no_band_by_default() -> None:
+    """Without band_halfwidth, no band artist is created."""
+    ax = _ax()
+    out = render_line_with_jitter_dots(
+        ax, line_x=[0, 1], line_y=[1.0, 2.0], color="C0",
+    )
+    assert out["band"] is None
+
+
+def test_band_drawn_when_halfwidth_given() -> None:
+    """band_halfwidth produces a fill_between band beneath the line."""
+    ax = _ax()
+    out = render_line_with_jitter_dots(
+        ax, line_x=[0, 1, 2], line_y=[1.0, 2.0, 3.0],
+        band_halfwidth=[0.1, 0.2, 0.15], color="C0",
+    )
+    assert out["band"] is not None
+    # Band sits below the foreground line, above the dot underlay.
+    assert out["band"].get_zorder() < out["line"][0].get_zorder()
+
+
+def test_raises_on_band_length_mismatch() -> None:
+    ax = _ax()
+    with pytest.raises(ValueError, match="band_halfwidth"):
+        render_line_with_jitter_dots(
+            ax, line_x=[0, 1], line_y=[1.0, 2.0],
+            band_halfwidth=[0.1], color="C0",
+        )
+
+
 def test_raises_on_scatter_length_mismatch() -> None:
     ax = _ax()
     with pytest.raises(ValueError, match="scatter_centers"):
