@@ -339,27 +339,34 @@ def render_phenotype_pooled_proportion_diff_multiside_figure(
 
     nrows = len(phenotype_order)
     nepochs = len(EPOCH_ORDER)
-    fig = plt.figure(
-        figsize=(len(sides) * nepochs * 4.0, nrows * 3.6),
+    ncols = len(sides) * nepochs
+    # Single flat grid (NOT subfigures) so the shared colorbar can span every
+    # panel — a colorbar cannot be stolen across separate subfigures. Each
+    # side occupies a contiguous block of EPOCH_ORDER columns; the side label
+    # is carried on that block's top-row panel titles.
+    fig, axes_obj = plt.subplots(
+        nrows=nrows, ncols=ncols,
+        figsize=(ncols * 4.0, nrows * 3.6),
         constrained_layout=True,
     )
+    engine = fig.get_layout_engine()
+    if engine is not None:
+        engine.set(h_pad=0.35, hspace=0.05)
     fig.patch.set_facecolor("white")
-    subfigs_obj = fig.subfigures(1, len(sides), wspace=0.04)
-    subfigs = (
-        [subfigs_obj] if len(sides) == 1 else list(np.asarray(subfigs_obj).ravel())
-    )
+    axes = np.asarray(axes_obj).reshape(nrows, ncols)
 
-    all_axes: list[plt.Axes] = []
-    for side, subfig in zip(sides, subfigs):
-        subfig.patch.set_facecolor("white")
-        axes = np.asarray(
-            subfig.subplots(nrows, nepochs, squeeze=False)
-        ).reshape(nrows, nepochs)
+    def _short_side(s: str) -> str:
+        # "Ipsi (mouse-L)" -> "Ipsi"; "both" -> its display or "both".
+        return (side_display or {}).get(s, s).split(" (")[0]
+
+    for s_idx, side in enumerate(sides):
+        short = _short_side(side)
         for i, phenotype in enumerate(phenotype_order):
             for j, post_epoch in enumerate(EPOCH_ORDER):
-                ax = axes[i, j]
-                all_axes.append(ax)
+                ax = axes[i, s_idx * nepochs + j]
                 rec = pooled_records.get((phenotype, side, bodypart, post_epoch))
+                base_title = _panel_title(phenotype, post_epoch, rec)
+                title = f"[{short}] {base_title}" if i == 0 else base_title
                 _render_proportion_diff_panel(
                     ax,
                     None if rec is None
@@ -367,16 +374,14 @@ def render_phenotype_pooled_proportion_diff_multiside_figure(
                     None if rec is None else rec.get("extent"),
                     bodypart, center_mode,
                     spatial_config=spatial_config,
-                    title=_panel_title(phenotype, post_epoch, rec),
+                    title=title,
                     shared_vmax=shared_vmax,
                 )
-        side_label = (side_display or {}).get(side, f"side={side}")
-        subfig.suptitle(side_label, fontsize=13, fontweight="bold")
 
-    # Shared diverging colorbar across all sub-grids (same convention as the
+    # Shared diverging colorbar across all panels (same convention as the
     # single-side renderer).
     shared_im = None
-    for ax in all_axes:
+    for ax in axes.flat:
         if ax.images:
             shared_im = ax.images[0]
             break
@@ -386,7 +391,7 @@ def render_phenotype_pooled_proportion_diff_multiside_figure(
         sm = plt.cm.ScalarMappable(norm=norm, cmap=_PROPORTION_DIFF_CMAP)
         sm.set_array(np.array([]))
         shared_im = sm
-    cbar = fig.colorbar(shared_im, ax=all_axes, shrink=0.6, pad=0.02)
+    cbar = fig.colorbar(shared_im, ax=list(axes.flat), shrink=0.6, pad=0.02)
     cbar.set_label("Δ proportion (post − pre)")
 
     subtitle = (
