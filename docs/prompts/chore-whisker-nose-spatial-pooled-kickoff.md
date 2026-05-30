@@ -1,6 +1,6 @@
 # Chore: Phenotype-Pooled Whisker + Nose Spatial Analysis Kickoff
 
-**Status:** LOCKED v1 + Addendum #1 + Addendum #2 (2026-05-30).
+**Status:** LOCKED v1 + Addendum #1 + Addendum #2 + Addendum #3 (2026-05-30).
 **Branch:** `chore/whisker-nose-spatial-pooled`
 **Merge tag (on close):** `vChore-whisker-nose-spatial-pooled`
 **Depends on (DISCHARGED 2026-05-29):** `chore/dlc-pooled-phenotype-unification` — MERGED + TAGGED `vChore-dlc-pooled-phenotype-unification`. Inherits the plot-convention helper module (`figures/_line_with_jitter_dots.py`), the path normalization (`<family>/<scope>/v2/`), the ipsi/contra recoding helper, the line+jitter+dots convention, and the mean+SEM session-pooled aggregation methodology with 2-line aggregation-method subtitle footer.
@@ -211,3 +211,31 @@ Supersedes A1.6's 36-SVG count (whisker drops 12→6 by presenting L/R together 
 - whisker: `<family>/<scope>/v2/whisker_*.svg` (one combined L/R figure; no per-side suffix on the file — the two sides are subplots within).
 - nose: `<family>/<scope>/v2/nose_{ipsi,contra}_*.svg`.
 - spout/eye: `<family>/<scope>/v2/{spout,eye}_*.svg`.
+
+---
+
+## Addendum #3 — W-2 = one line+jitter family via the canonical renderer (2026-05-30)
+
+**ALL OTHER LOCKS UNCHANGED** except where noted. Resolves the W-2 figure-family structure + renderer per Priya direction 2026-05-30, after a code audit corrected two assumptions in the brief.
+
+### A3.1 — Audit correction: the named boxplot module is legacy
+
+The brief said to extend `src/stroke_orofacial/figures/phenotype_wasserstein_recovery_boxplot.py`, "which the unification chore already updated to use line+jitter+dots." **Git history shows otherwise:** that module still renders real `ax.boxplot()` and was last touched by the *original* Q12a boxplot commit (`c8ede78`) — the unification chore (PR #160 / `80474a4`) never modified it. The unification chore's actual W-2 box→line+jitter migration lives in the **emit script** `scripts/chore_dlc_pooled_phenotype/q12_v2_emit.py`, which calls the generic line+jitter renderer **`render_endpoint_v2_figure`** (in `q13b_v2_emit.py`) and writes to `wasserstein_recovery/<scope>/v2/`.
+
+### A3.2 — Locks (RESOLVED)
+
+- **Renderer:** reuse the canonical **`render_endpoint_v2_figure`** (line + per-session jittered dots + mean±SEM, with ipsi/contra/`both` side panels). Do NOT extend or migrate the legacy `phenotype_wasserstein_recovery_boxplot.py` (left untouched; tongue/jaw legacy behavior unchanged). Guarantees no box plots for the new bodyparts.
+- **Family count:** **ONE** W-2 figure family per bodypart (mirrors the unification chore, which collapsed the Q12a per-session boxplots into a single `wasserstein_recovery` line+jitter figure). Supersedes A2.3 / the original kickoff's separate `wasserstein_boxplots` family — that second W-2 family is NOT emitted.
+- **Per-side stats inside one figure:** whisker W-2 uses the per-anatomical-side pools (`"L"`, `"R"`) as the two side panels of one figure ("run statistics differently for L and R"); nose uses ipsi/contra cue-side panels; spout/eye use the single `"both"` panel.
+
+### A3.3 — Figure count (REVISED): ~18 SVGs
+
+| Reference point | heatmaps (per-side figs) | W-2 (1 fig, side-panels) | per scope | × scopes | SVGs |
+|---|---|---|---|---|---|
+| whisker | 1 (`both`) | 1 (L/R panels) | 2 | 2 | 4 |
+| nose | 2 (ipsi, contra) | 1 (ipsi/contra panels) | 3 | 2 | 6 |
+| spout | 1 (`both`) | 1 (`both`) | 2 | 2 | 4 |
+| eye | 1 (`both`) | 1 (`both`) | 2 | 2 | 4 |
+| **TOTAL** | | | | | **18** |
+
+Supersedes A2.3's 30. Exact count is finalized by the Stage 3 emit script and confirmed at the Stage 4 PS46 pilot STOP gate.
