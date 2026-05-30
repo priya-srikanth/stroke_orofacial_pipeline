@@ -1144,3 +1144,37 @@ class TestComputeTrajectoryBootstrapEffectCi:
             compute_trajectory_bootstrap_effect_ci(
                 pd.DataFrame(), {}, ci=1.5,
             )
+
+
+class TestTrajectorySubtitleSideOverride:
+    """Chore v2 re-emit: subtitle_override + side_display params."""
+
+    def test_subtitle_override_replaces_source_subtitle(self):
+        df = _pooled_df()
+        fig, _ = build_phase_aligned_trajectory_figure(
+            df, signal="angle_deg", variant="raw", side="L",
+            subtitle_override="V2 FILTERED IPSI CONTRA SUBTITLE",
+        )
+        assert any(
+            "V2 FILTERED IPSI CONTRA SUBTITLE" in t.get_text()
+            for t in fig.texts
+        )
+        plt.close(fig)
+
+    def test_side_display_relabels_title(self):
+        df = _pooled_df()
+        fig, _ = build_phase_aligned_trajectory_figure(
+            df, signal="angle_deg", variant="raw", side="L",
+            side_display={"L": "Ipsi (mouse-L)", "R": "Contra (mouse-R)"},
+        )
+        assert "Ipsi (mouse-L)" in fig._suptitle.get_text()
+        assert "side=L" not in fig._suptitle.get_text()
+        plt.close(fig)
+
+    def test_defaults_unchanged(self):
+        df = _pooled_df()
+        fig, _ = build_phase_aligned_trajectory_figure(
+            df, signal="angle_deg", variant="raw", side="L",
+        )
+        assert "side=L" in fig._suptitle.get_text()
+        plt.close(fig)

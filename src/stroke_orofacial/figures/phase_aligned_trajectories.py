@@ -208,8 +208,16 @@ def build_phase_aligned_trajectory_figure(
     error_band_type: ErrorBandType = DEFAULT_ERROR_BAND_TYPE,
     phenotype_order: tuple[str, ...] = PHENOTYPE_ORDER,
     y_range: tuple[float, float] | None = None,
+    subtitle_override: str | None = None,
+    side_display: dict[str, str] | None = None,
 ) -> tuple[plt.Figure, np.ndarray]:
     """Build the matplotlib Figure for one (signal, variant, side) figure.
+
+    ``subtitle_override`` replaces the default source-data subtitle line
+    (chore v2 re-emit passes a filtered + ipsi/contra + mean+SEM line).
+    ``side_display`` maps the raw side key (``"L"``/``"R"``) to a display
+    label for the title (chore v2 passes ``{"L": "Ipsi (mouse-L)", ...}``);
+    both default to ``None`` = current behavior.
 
     Public Figure-returning entry point separated from
     :func:`render_phase_aligned_trajectory_figure` so tests can inspect
@@ -389,10 +397,16 @@ def build_phase_aligned_trajectory_figure(
     signal_label = SIGNAL_DISPLAY_NAMES.get(signal, signal)
     variant_label = VARIANT_DISPLAY_NAMES.get(variant, variant)
     band_tag = "mean ± SEM" if error_band_type == "sem" else "mean ± SD"
-    title = f"{signal_label} — {variant_label} — side={side} ({band_tag})"
+    side_label = (side_display or {}).get(side)
+    side_part = side_label if side_label is not None else f"side={side}"
+    title = f"{signal_label} — {variant_label} — {side_part} ({band_tag})"
     fig.suptitle(title, fontsize=14, y=0.995)
+    subtitle_text = (
+        subtitle_override if subtitle_override is not None
+        else _source_data_subtitle(variant)
+    )
     fig.text(
-        0.5, 0.970, _source_data_subtitle(variant),
+        0.5, 0.970, subtitle_text,
         ha="center", va="top", fontsize=9,
     )
     fig.text(
@@ -472,6 +486,8 @@ def render_phase_aligned_trajectory_figure(
     error_band_type: ErrorBandType = DEFAULT_ERROR_BAND_TYPE,
     phenotype_order: tuple[str, ...] = PHENOTYPE_ORDER,
     y_range: tuple[float, float] | None = None,
+    subtitle_override: str | None = None,
+    side_display: dict[str, str] | None = None,
 ) -> Path:
     """Build the figure and save it as SVG.
 
@@ -484,6 +500,8 @@ def render_phase_aligned_trajectory_figure(
         error_band_type=error_band_type,
         phenotype_order=phenotype_order,
         y_range=y_range,
+        subtitle_override=subtitle_override,
+        side_display=side_display,
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, format="svg", bbox_inches="tight")
@@ -1452,6 +1470,8 @@ def emit_phase_aligned_trajectory_figures(
     error_band_type: ErrorBandType = DEFAULT_ERROR_BAND_TYPE,
     phenotype_order: tuple[str, ...] = PHENOTYPE_ORDER,
     share_y_across_sides: bool = True,
+    subtitle_override: str | None = None,
+    side_display: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Emit all 12 trajectory figures + a manifest dict.
 
@@ -1538,6 +1558,8 @@ def emit_phase_aligned_trajectory_figures(
                     error_band_type=error_band_type,
                     phenotype_order=phenotype_order,
                     y_range=shared_y.get((signal, variant)),
+                    subtitle_override=subtitle_override,
+                    side_display=side_display,
                 )
                 emitted.append(output_path)
     return {"emitted": emitted, "skipped": skipped}
