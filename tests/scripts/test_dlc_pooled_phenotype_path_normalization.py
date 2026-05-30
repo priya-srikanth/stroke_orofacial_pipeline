@@ -154,9 +154,40 @@ def test_already_migrated_files_not_replanned(tree: Path) -> None:
 def test_execute_moves_files_and_size_checks(tree: Path) -> None:
     moves, _ = pn.plan_tree(tree, FILTERED)
     for m in moves:
-        assert pn.execute_move(m) is True
+        passed, pre_size = pn.execute_move(m)
+        assert passed is True
+        assert pre_size is None  # no pre-existing dst on a clean move
         assert m.dst.exists()
         assert not m.src.exists()
+
+
+def test_execute_refuses_divergent_dst_by_default(tmp_path: Path) -> None:
+    """Default execute_move won't overwrite a divergent destination."""
+    base = tmp_path / "pp"
+    _touch(base / "tongue_x" / "a.svg", b"new-content")
+    moves, _ = pn.plan_tree(base, FILTERED)
+    (m,) = [mv for mv in moves if mv.src.name == "a.svg"]
+    m.dst.parent.mkdir(parents=True, exist_ok=True)
+    m.dst.write_bytes(b"stale-bigger-content")  # different size at dst
+    passed, pre_size = pn.execute_move(m)
+    assert passed is False
+    assert pre_size is None
+    assert m.src.exists()  # source untouched (not clobbered)
+
+
+def test_replace_existing_overwrites_and_reports_pre_size(tmp_path: Path) -> None:
+    """--replace-existing overwrites a divergent dst and reports its size."""
+    base = tmp_path / "pp"
+    _touch(base / "tongue_x" / "a.svg", b"new")
+    moves, _ = pn.plan_tree(base, FILTERED)
+    (m,) = [mv for mv in moves if mv.src.name == "a.svg"]
+    m.dst.parent.mkdir(parents=True, exist_ok=True)
+    m.dst.write_bytes(b"stale-content")  # 13 bytes
+    passed, pre_size = pn.execute_move(m, replace_existing=True)
+    assert passed is True
+    assert pre_size == len(b"stale-content")
+    assert m.dst.read_bytes() == b"new"
+    assert not m.src.exists()
 
 
 def test_execute_then_no_3phenotype_dirs_when_no_cruft(tmp_path: Path) -> None:

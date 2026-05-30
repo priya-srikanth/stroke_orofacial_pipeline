@@ -291,17 +291,41 @@ def remaining_3phenotype_dirs(bases: list[Path]) -> list[Path]:
 # Execution
 # ---------------------------------------------------------------------------
 
-def execute_move(move: Move) -> bool:
-    """Move one file; return ``size_check_passed``. Idempotent-ish: if the
-    destination already exists with the same size, the source is removed."""
+def execute_move(
+    move: Move, *, replace_existing: bool = False,
+) -> tuple[bool, int | None]:
+    """Move one file.
+
+    Returns ``(size_check_passed, pre_existing_dst_size)``.
+    ``pre_existing_dst_size`` is ``None`` unless an existing destination was
+    overwritten (``replace_existing=True``), in which case it is the byte
+    size of the file that was replaced (audit trail).
+
+    Default (``replace_existing=False``) is idempotent-and-safe: if the dst
+    already exists with the SAME size the source is removed (no-op move); if
+    it exists with a DIFFERENT size the move is refused (returns
+    ``(False, None)``) so a stale/divergent dst is never silently clobbered.
+
+    With ``replace_existing=True`` an existing dst is overwritten regardless
+    of size (used by the subtitle-backfill flow, where the new file
+    intentionally differs from the stale normalized one).
+    """
     move.dst.parent.mkdir(parents=True, exist_ok=True)
     if move.dst.exists():
-        same = move.dst.stat().st_size == move.size_bytes
-        if same and move.src.exists():
-            move.src.unlink()
-        return same
+        pre_size = move.dst.stat().st_size
+        same = pre_size == move.size_bytes
+        if not replace_existing:
+            if same and move.src.exists():
+                move.src.unlink()
+            return same, None
+        # Replace: remove stale dst, move the new file in.
+        move.dst.unlink()
+        shutil.move(str(move.src), str(move.dst))
+        passed = move.dst.exists() and move.dst.stat().st_size == move.size_bytes
+        return passed, pre_size
     shutil.move(str(move.src), str(move.dst))
-    return move.dst.exists() and move.dst.stat().st_size == move.size_bytes
+    passed = move.dst.exists() and move.dst.stat().st_size == move.size_bytes
+    return passed, None
 
 
 def _rmtree_empty(p: Path) -> None:
@@ -323,6 +347,7 @@ def write_manifest(manifest_path: Path, rows: list[dict[str, object]]) -> None:
     fields = [
         "src", "dst", "metric_family_type", "scope_tier",
         "scope_layout", "size_bytes", "size_check_passed",
+        "pre_existing_dst_size_bytes",
     ]
     with manifest_path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=fields)
@@ -452,6 +477,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Actually run the moves + write the manifest. Default is "
              "dry-run. GR7: requires per-invocation Priya approval.",
     )
+    parser.add_argument(
+        "--replace-existing", action="store_true",
+        help="Overwrite destination files that already exist (used by the "
+             "subtitle-backfill flow, where re-emitted figures intentionally "
+             "differ from the stale normalized ones). Default refuses to "
+             "overwrite a divergent destination.",
+    )
     args = parser.parse_args(argv)
 
     resolver = PathResolver()
@@ -476,13 +508,19 @@ def main(argv: list[str] | None = None) -> int:
     # EXECUTE.
     rows: list[dict[str, object]] = []
     all_moves = figures_moves + results_moves
+    n_replaced = 0
     for m in all_moves:
-        passed = execute_move(m)
+        passed, pre_size = execute_move(m, replace_existing=args.replace_existing)
+        if pre_size is not None:
+            n_replaced += 1
         rows.append({
             "src": str(m.src), "dst": str(m.dst),
             "metric_family_type": m.metric_family_type,
             "scope_tier": m.scope_tier, "scope_layout": m.scope_layout,
             "size_bytes": m.size_bytes, "size_check_passed": passed,
+            "pre_existing_dst_size_bytes": (
+                pre_size if pre_size is not None else ""
+            ),
         })
     n_moves = len(rows)
 
@@ -498,6 +536,7 @@ def main(argv: list[str] | None = None) -> int:
             "metric_family_type": "thumbs_db_purge",
             "scope_tier": "", "scope_layout": "purged",
             "size_bytes": size, "size_check_passed": "",
+            "pre_existing_dst_size_bytes": "",
         })
 
     # Clean up now-empty legacy dirs.
@@ -505,7 +544,8 @@ def main(argv: list[str] | None = None) -> int:
         _rmtree_empty(d)
     write_manifest(manifest, rows)
     n_pass = sum(1 for r in rows if r["size_check_passed"] is True)
-    print(f"\nMoved {n_moves} files ({n_pass} size-checks passed).", flush=True)
+    print(f"\nMoved {n_moves} files ({n_pass} size-checks passed; "
+          f"{n_replaced} replaced existing).", flush=True)
     print(f"Purged {len(purged)} Thumbs.db/.db files.", flush=True)
     print(f"Manifest ({len(rows)} rows): {manifest}", flush=True)
     leftover = remaining_3phenotype_dirs(bases)
