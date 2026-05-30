@@ -54,14 +54,43 @@ from stroke_orofacial.stats.figures import (  # noqa: E402
 )
 
 
+# Figure scope for the filtered_v1 tongue family. EXPANDED to the FULL set of
+# 23 filtered tongue scalar endpoints (chore tongue-substrate-v7-routing-fix,
+# 2026-05-30, Priya): previously only the 7 Addendum #8 headline kinematics
+# got V1/V2/V3 figures, leaving 16 primary tongue scalars stats-only (no
+# filtered figure). The substrate fix re-materialized all 23, so all 23 now
+# get figures so the corrected cells (incl. the severe/mod-severe acute
+# collapse) are visualized cohort-wide. (Kept the HEADLINE_KINEMATICS name
+# for call-site stability; it now means "all filtered tongue scalar figures".)
 HEADLINE_KINEMATICS: tuple[str, ...] = (
+    # lick-1 / lick-2 first-peak scalars
     "tongue_lick1_y_peak",
     "tongue_lick1_t_peak_ms",
     "tongue_lick1_x_at_ypeak",
+    "tongue_lick1_angle_at_ypeak",
+    "tongue_lick2_y_peak",
+    "tongue_lick2_t_peak_ms",
     "tongue_lick2_x_at_ypeak",
+    "tongue_lick2_angle_at_ypeak",
+    # peak velocity (y-only + 2D), per-lick + first-5 + per-trial median
+    "tongue_lick1_vy_peak",
     "tongue_lick1_vxy_peak",
+    "tongue_max_vy_peak_first5",
     "tongue_max_vxy_peak_first5",
     "tongue_mean_vxy_peak_first5",
+    "tongue_median_vy_peak_per_trial",
+    "tongue_median_vxy_peak_per_trial",
+    # angle scalars
+    "tongue_median_angle_at_peak_velocity",
+    "tongue_median_angle_max_signed_per_lick",
+    # bout / rate / timing
+    "tongue_first_peak_t_ms",
+    "tongue_lick_rate_hz",
+    "tongue_mean_within_bout_ili_ms",
+    # lick-count family (values changed by the n_licks_family routing)
+    "tongue_n_licks",
+    "tongue_n_left",
+    "tongue_n_right",
 )
 
 
