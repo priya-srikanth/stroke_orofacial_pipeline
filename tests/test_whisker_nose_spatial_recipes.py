@@ -377,6 +377,43 @@ class TestRendererAcceptsNewBodyparts:
             )
 
 
+class TestNoseMultiSideRenderer:
+    def test_renders_ipsi_contra_subgrids_in_one_figure(self):
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from stroke_orofacial.figures.palette import PHENOTYPE_ORDER
+        from stroke_orofacial.figures.phenotype_pooled_proportion_diff import (
+            EPOCH_ORDER,
+            render_phenotype_pooled_proportion_diff_multiside_figure,
+        )
+        # Build records for nose sides L + R across phenotype × epoch.
+        recs = {}
+        recs.update(_records_for("nose", "L", grid_extent=[-100, 95, 100, 330]))
+        recs.update(_records_for("nose", "R", grid_extent=[-100, 95, 100, 330]))
+        fig = render_phenotype_pooled_proportion_diff_multiside_figure(
+            bodypart="nose", sides=("L", "R"), pooled_records=recs,
+            shared_vmax=0.01,
+            side_display={"L": "Ipsi (mouse-L)", "R": "Contra (mouse-R)"},
+        )
+        # Two sub-grids → 2 × (phenotypes × epochs) heatmap panels.
+        n_panels = len([a for a in fig.axes if a.images])
+        assert n_panels >= 2 * len(PHENOTYPE_ORDER)  # both sides drawn
+        sup = fig._suptitle.get_text()
+        assert "nose" in sup and "Ipsi" in sup and "Contra" in sup
+        plt.close(fig)
+
+    def test_rejects_side_not_in_recipe(self):
+        from stroke_orofacial.figures.phenotype_pooled_proportion_diff import (
+            render_phenotype_pooled_proportion_diff_multiside_figure,
+        )
+        with pytest.raises(ValueError, match="not valid for bodypart"):
+            render_phenotype_pooled_proportion_diff_multiside_figure(
+                bodypart="nose", sides=("both",), pooled_records={},
+                shared_vmax=0.01,
+            )
+
+
 # --------------------------------------------------------------------------- #
 # Per-session W-2 is recipe-driven (Stage 2 stats)
 # --------------------------------------------------------------------------- #
