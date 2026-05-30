@@ -280,6 +280,67 @@ def aggregate_per_session_median_iqr(
 
 
 # ---------------------------------------------------------------------------
+# Stage 2 (mean convention) — per-session mean + SD + n
+# ---------------------------------------------------------------------------
+
+
+def aggregate_per_session_mean(
+    long_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Collapse to one ``mean`` per (animal, date, side, endpoint).
+
+    Mean-convention sibling of :func:`aggregate_per_session_median_iqr`
+    (chore ``vChore-dlc-pooled-phenotype-unification`` methodology switch
+    median+IQR → mean+SEM across the phenotype-pooled DLC families). The
+    per-session value is the mean of that session's finite per-trial values.
+
+    Parameters
+    ----------
+    long_df : pd.DataFrame
+        Long-form per-trial rows. Required columns: ``animal``, ``date``,
+        ``side``, ``endpoint``, ``value``.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: ``animal``, ``date``, ``side``, ``endpoint``, ``mean``,
+        ``sd``, ``n_trials``. Empty (canonical columns) when input is empty.
+    """
+    cols = ["animal", "date", "side", "endpoint", "mean", "sd", "n_trials"]
+    if long_df.empty:
+        return pd.DataFrame(columns=cols)
+    required = {"animal", "date", "side", "endpoint", "value"}
+    missing = required - set(long_df.columns)
+    if missing:
+        raise ValueError(
+            f"long_df missing required column(s) {sorted(missing)}; "
+            f"got columns {list(long_df.columns)}.",
+        )
+    grouped = long_df.groupby(
+        ["animal", "date", "side", "endpoint"], dropna=False, sort=True,
+    )["value"]
+    rows: list[dict[str, object]] = []
+    for (animal, date, side, endpoint), values in grouped:
+        finite = values.to_numpy(dtype=np.float64)
+        finite = finite[np.isfinite(finite)]
+        n_trials = int(finite.size)
+        if n_trials == 0:
+            mean = float("nan")
+            sd = float("nan")
+        else:
+            mean = float(np.mean(finite))
+            sd = float(np.std(finite, ddof=1)) if n_trials >= 2 else float("nan")
+        rows.append({
+            "animal": animal, "date": date, "side": side,
+            "endpoint": endpoint, "mean": mean, "sd": sd,
+            "n_trials": n_trials,
+        })
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(rows, columns=cols)
+
+
+# ---------------------------------------------------------------------------
 # Stage 3 — phenotype-pooled median + IQR + n_sessions + n_animals
 # ---------------------------------------------------------------------------
 
@@ -454,6 +515,105 @@ def aggregate_phenotype_pooled_median_iqr(
     return pd.DataFrame(rows, columns=cols)
 
 
+def aggregate_phenotype_pooled_mean_sem(
+    per_session_df: pd.DataFrame,
+    *,
+    value_col: str = "mean",
+    by_side: bool = True,
+) -> pd.DataFrame:
+    """Pool per-session values to mean ± SEM with the **session** as the unit.
+
+    Mean-convention sibling of :func:`aggregate_phenotype_pooled_median_iqr`,
+    matching the Q14 spout-behavior convention shipped in PR #159 (chore
+    ``vChore-dlc-pooled-phenotype-unification`` methodology switch median+IQR
+    → mean+SEM). Within each (phenotype, epoch[, side], endpoint) cell, pooling
+    is over the contributing per-session values directly (NOT a per-animal
+    collapse first):
+
+    - ``mean`` = mean across sessions of ``value_col``;
+    - ``sd``   = ``SD(per-session values, ddof=1)`` (NaN for single-session);
+    - ``sem``  = ``sd / sqrt(n_sessions)`` — the cell-level error bar.
+
+    ``n_animals`` is tracked for provenance (the Wilcoxon test upstream still
+    pairs per-animal means), but the SEM denominator here is ``n_sessions``.
+
+    Parameters
+    ----------
+    per_session_df : pd.DataFrame
+        Output of :func:`attach_phenotype_and_epoch`. Required columns:
+        ``recovery_phenotype``, ``epoch_label``, ``endpoint``, ``animal``,
+        ``value_col`` (and ``side`` when ``by_side``).
+    value_col : str, default ``"mean"``
+        Per-session value column to pool.
+    by_side : bool, default True
+        Partition by ``side`` (production split convention).
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: ``recovery_phenotype``, ``epoch_label``, [``side``],
+        ``endpoint``, ``mean``, ``sem``, ``sd``, ``n_sessions``,
+        ``n_animals``.
+    """
+    cols = ["recovery_phenotype", "epoch_label"]
+    if by_side:
+        cols.append("side")
+    cols.extend(["endpoint", "mean", "sem", "sd", "n_sessions", "n_animals"])
+    if per_session_df.empty:
+        return pd.DataFrame(columns=cols)
+
+    required = {"recovery_phenotype", "epoch_label", "endpoint", "animal", value_col}
+    if by_side:
+        required.add("side")
+    missing = required - set(per_session_df.columns)
+    if missing:
+        raise ValueError(
+            f"per_session_df missing required column(s) {sorted(missing)}; "
+            f"got columns {list(per_session_df.columns)}.",
+        )
+
+    df = per_session_df.dropna(subset=["epoch_label"]).copy()
+    if df.empty:
+        return pd.DataFrame(columns=cols)
+
+    keys = ["recovery_phenotype", "epoch_label"]
+    if by_side:
+        keys.append("side")
+    keys.append("endpoint")
+
+    rows: list[dict[str, object]] = []
+    for key_tuple, sub in df.groupby(keys, dropna=False, sort=True):
+        vals = sub[value_col].to_numpy(dtype=np.float64)
+        finite = vals[np.isfinite(vals)]
+        n_sessions = int(finite.size)
+        n_animals = int(sub.loc[
+            np.isfinite(sub[value_col].to_numpy(dtype=np.float64)), "animal",
+        ].nunique())
+        if n_sessions == 0:
+            pooled_mean = sd = sem = float("nan")
+        else:
+            pooled_mean = float(np.mean(finite))
+            if n_sessions >= 2:
+                sd = float(np.std(finite, ddof=1))
+                sem = float(sd / np.sqrt(n_sessions))
+            else:
+                sd = float("nan")
+                sem = float("nan")
+
+        if not isinstance(key_tuple, tuple):
+            key_tuple = (key_tuple,)
+        rec = dict(zip(keys, key_tuple))
+        rec.update({
+            "mean": pooled_mean, "sem": sem, "sd": sd,
+            "n_sessions": n_sessions, "n_animals": n_animals,
+        })
+        rows.append(rec)
+
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame(rows, columns=cols)
+
+
 # ---------------------------------------------------------------------------
 # Baseline-delta computation (per Priya 2026-05-27)
 # ---------------------------------------------------------------------------
@@ -461,6 +621,8 @@ def aggregate_phenotype_pooled_median_iqr(
 
 def compute_per_animal_baseline(
     per_session_df: pd.DataFrame,
+    *,
+    value_col: str = "median",
 ) -> pd.DataFrame:
     """Per-(animal, side, endpoint) pre-stroke baseline mean of session medians.
 
@@ -470,7 +632,7 @@ def compute_per_animal_baseline(
     ``baseline_mean = NaN`` — downstream ``apply_baseline_delta`` drops
     those rows (they can't contribute a meaningful delta).
     """
-    required = {"animal", "side", "endpoint", "epoch_label", "median"}
+    required = {"animal", "side", "endpoint", "epoch_label", value_col}
     missing = required - set(per_session_df.columns)
     if missing:
         raise ValueError(
@@ -482,9 +644,9 @@ def compute_per_animal_baseline(
             columns=["animal", "side", "endpoint", "baseline_mean"],
         )
     agg = (
-        pre.groupby(["animal", "side", "endpoint"], as_index=False)["median"]
+        pre.groupby(["animal", "side", "endpoint"], as_index=False)[value_col]
         .mean()
-        .rename(columns={"median": "baseline_mean"})
+        .rename(columns={value_col: "baseline_mean"})
     )
     return agg
 
@@ -492,21 +654,26 @@ def compute_per_animal_baseline(
 def apply_baseline_delta(
     per_session_df: pd.DataFrame,
     baseline: pd.DataFrame,
+    *,
+    value_col: str = "median",
 ) -> pd.DataFrame:
-    """Attach ``delta_median = median − baseline_mean`` column.
+    """Attach ``delta_<value_col> = <value_col> − baseline_mean`` column.
 
     Sessions whose (animal, side, endpoint) has no baseline (pre-epoch
-    absent) are dropped. Returns a copy; input is not mutated.
+    absent) are dropped. Returns a copy; input is not mutated. The delta
+    column name tracks ``value_col`` (``delta_median`` by default,
+    ``delta_mean`` for the chore mean convention).
     """
+    delta_col = f"delta_{value_col}"
     if per_session_df.empty:
         out = per_session_df.copy()
-        out["delta_median"] = pd.Series(dtype=float)
+        out[delta_col] = pd.Series(dtype=float)
         return out
     joined = per_session_df.merge(
         baseline, on=["animal", "side", "endpoint"], how="inner",
     )
     joined = joined.dropna(subset=["baseline_mean"]).copy()
-    joined["delta_median"] = joined["median"] - joined["baseline_mean"]
+    joined[delta_col] = joined[value_col] - joined["baseline_mean"]
     return joined
 
 

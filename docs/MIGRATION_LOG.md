@@ -5,6 +5,89 @@ differences vs. the legacy notebooks.
 
 ---
 
+## Chore: DLC pooled-phenotype unification
+
+**Date:** 2026-05-29
+**Tag on merge:** `vChore-dlc-pooled-phenotype-unification` (apply post-merge)
+**Branch:** `chore/dlc-pooled-phenotype-unification` (PR #160)
+**Kickoff:** [`docs/prompts/chore-dlc-pooled-phenotype-unification-kickoff.md`](prompts/chore-dlc-pooled-phenotype-unification-kickoff.md) (LOCKED v1 + in-session scope corrections below)
+
+Three deliverables: (1) path-structure normalization of the phenotype-pooled
+figure/results trees; (2) re-emit of the Q12 / Q13 / Q13c / Q13b phenotype-
+pooled outputs as a `v2` family; (3) an aggregation-method-footer backfill onto
+the existing scalar V4/V5 figures.
+
+**Methodology change (intentional, applies to all phenotype-pooled DLC families):**
+median + IQR → **mean ± SEM, session-pooled** (SEM = SD/√n_sessions at the
+phenotype × epoch × side × metric cell). The hypothesis-test family is
+**unchanged** — paired Wilcoxon × BH-FDR on **per-animal means**
+(`aggregator="mean"`); only the per-session aggregator + the figure spread band
+changed. New aggregators: `aggregate_per_session_mean`,
+`aggregate_phenotype_pooled_mean_sem` (in `stats/aggregators.py`).
+
+**Stage 1 — shared plot primitive.** `figures/_line_with_jitter_dots.py`:
+`render_line_with_jitter_dots` (per-series line + optional SEM error bars +
+optional band + jittered per-session dot underlay) extracted from the V5
+`_draw_v5_delta_line_with_scatter` + `_layout.jittered_x_positions`; plus the
+canonical `AGGREGATION_SUBTITLE` footer constant.
+
+**Stage 1.5 — path normalization (EXECUTED).**
+`scripts/chore_dlc_pooled_phenotype/path_normalization.py`. Symmetric
+`<family>/<scope>/{no_filter | flat}/<files>` convention; `3_phenotype/` → `3_tier/`
+everywhere; `4_tier`/`3_tier` scope dirs uniformly. DLC-filterable families (the
+4 figure families + the 23 `tongue_*` scalars that have `filtered_v1` inputs) get
+a `no_filter/` layer; the 6 `jaw_*` + `mismatch_candidate` + 12 spout scalars get
+flat scope (no filtered counterpart — Priya). 519 file moves + 33 Thumbs.db
+purged (GR7-approved); 0 `3_phenotype/` remain; idempotent. Manifest:
+`stats/sensitivity/dlc_pooled_phenotype_path_normalization_manifest.csv`
+(later: `…__stage1p5_normalization.csv` preserves the original after the
+backfill re-ran it). `--replace-existing` added for the backfill.
+
+**Q14 / scalar subtitle backfill.** Re-emitted all 42 scalar V4/V5 figures with
+the `AGGREGATION_SUBTITLE` footer (`phenotype_pooled.py` emit_v4/v5 gained an
+`aggregation_subtitle` kwarg) and migrated `--replace-existing` (336 figs
+replaced).
+
+**v2 re-emits (`<family>/<scope>/v2/`):**
+- **Stage 4 (Q13b)** phase-aligned scalar endpoints: on-the-fly
+  `DlcSessionFilter`(min_trials_with_detected_lick=10) + `DlcTrialFilter`
+  (phase-aligned family, min_licks_per_trial=1) — the endpoints are NOT in the
+  materialized `filtered_v1` tree, so the filter is applied live; ipsi/contra
+  recode; 2-panel mean±SEM line+jitter; `q13b_v2_emit.py`. Cohort: 30 sparse
+  session-sides dropped, 0 cell-loss.
+- **Stage 3 (Q13/Q13c)** phase-bin trajectories: same on-the-fly filter;
+  continuous mean±SEM **band curves** kept (line+jitter dots are discrete-epoch
+  only); `q13_traj_v2_emit.py` reuses the shipped Q13 pipeline (figures SEM+SD +
+  all 6 stats families). Cohort: 462→432 sessions.
+- **Stage 2 (Q12)** spatial proportion-diff heatmaps + W-2: heatmaps
+  **UNFILTERED** (no-licking is meaningful spatial mass — filtering would erase
+  the severe-stroke phenotype; Priya) and kept as heatmaps; W-2 box plots →
+  line+jitter (mean±SEM, 2-panel ipsi/contra); `q12_v2_emit.py`.
+
+**Ipsi/contra = relabel on the all-L cohort** (ipsi = mouse-L, contra = mouse-R):
+pooling-by-rig-side ≡ ipsi/contra pooling and every sign-flip is the identity, so
+the v2 emits keep the L/R pooling machinery + the 6 stats families untouched and
+only relabel panels/subtitle. **Forward-caveat:** a right-stroke animal requires
+a true recode (relabel side col + sign-flip signed metrics / spatial x-bins +
+pool on ipsi/contra), which needs the per-figure-family side iteration
+parametrized.
+
+**Provenance markers:** v2 stats CSVs carry a `provenance` column
+(`v2_filtered_v1_ipsi_contra` for Q13b/Q13; `v2_unfiltered_ipsi_contra` for Q12);
+every v2 figure carries a two-line footer (provenance + aggregation method).
+
+**Forward-pointers:**
+- **Cleanup chore** — drop the legacy `no_filter/` (DLC families + tongue
+  scalars) trees after v2 review. (The legacy trajectory subtitle backfill was
+  intentionally **skipped** — v2 supersedes + cleanup deletes them.)
+- **Q14 spout-behavior mean+SEM re-emit** — separate chore
+  (`chore/q14-spout-behavior-mean-sem-reemit`); out of scope here.
+- **Right-stroke recode** — when a right-stroke animal joins, replace the all-L
+  relabel with a true ipsi/contra recode + parametrize the stats families' side
+  iteration.
+
+---
+
 ## Phase 9.1 Q-lock 14 — Phenotype-pooled spout-behavior recovery (Part 1) + ipsi/contra split-key hardening
 
 **Date:** 2026-05-29

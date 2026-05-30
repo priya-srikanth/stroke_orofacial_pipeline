@@ -28,13 +28,17 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import Iterable, Literal
+from typing import Any, Iterable, Literal
 
 import pandas as pd
 
 from stroke_orofacial.paths import PathResolver
 
 from . import _io, _layout, palette as _palette
+from ._line_with_jitter_dots import (
+    AGGREGATION_SUBTITLE,
+    render_line_with_jitter_dots,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +79,18 @@ FigureType = Literal["v4", "v5"]
 # V4 — per_bin phenotype-pooled curves
 # ---------------------------------------------------------------------------
 
+def _apply_aggregation_footer(fig: Any, subtitle: str | None) -> None:
+    """Stamp the canonical aggregation-method footer at the figure bottom-left.
+
+    Chore ``vChore-dlc-pooled-phenotype-unification``: the V4/V5 phenotype-
+    pooled scalar figures use mean ± SEM session-pooling, so they carry the
+    same aggregation-method footer line as the DLC v2 re-emits. No-op when
+    ``subtitle`` is None.
+    """
+    if subtitle:
+        fig.text(0.01, 0.005, subtitle, fontsize=7, va="bottom", ha="left")
+
+
 def emit_v4_per_endpoint(
     endpoint_slug: str,
     resolver: PathResolver,
@@ -84,6 +100,7 @@ def emit_v4_per_endpoint(
     overwrite: Literal["skip", "force"] = "skip",
     dpi: int = 150,
     remap_3tier: bool = False,
+    aggregation_subtitle: str | None = AGGREGATION_SUBTITLE,
 ) -> tuple[Path, Path] | None:
     """Emit one V4 phenotype-pooled per_bin recovery curve as SVG + PNG.
 
@@ -146,6 +163,7 @@ def emit_v4_per_endpoint(
     else:
         fig = _build_v4_cohort_pooled_figure(pooled, endpoint_slug, n_by_tier)
 
+    _apply_aggregation_footer(fig, aggregation_subtitle)
     endpoint_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(svg_path, bbox_inches="tight")
     fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
@@ -252,6 +270,7 @@ def emit_v5_per_endpoint(
     overwrite: Literal["skip", "force"] = "skip",
     dpi: int = 150,
     remap_3tier: bool = False,
+    aggregation_subtitle: str | None = AGGREGATION_SUBTITLE,
 ) -> tuple[Path, Path] | None:
     """Emit one V5 phenotype-pooled per_epoch delta line as SVG + PNG.
 
@@ -340,6 +359,7 @@ def emit_v5_per_endpoint(
             pooled, sessions_with_delta, endpoint_slug, n_by_tier,
         )
 
+    _apply_aggregation_footer(fig, aggregation_subtitle)
     endpoint_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(svg_path, bbox_inches="tight")
     fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
@@ -416,50 +436,58 @@ def _draw_v5_delta_line_with_scatter(
     cohort-mean delta across the 4 epoch positions, with SEM error bars;
     zorder=3. y=0 reference line at zorder=0 (drawn separately by
     :func:`phenotype_panel`).
+
+    Delegates the per-tier line+dots drawing to the shared
+    :func:`render_line_with_jitter_dots` primitive (chore
+    ``vChore-dlc-pooled-phenotype-unification`` Stage 1 extraction). Drawing
+    is now interleaved per tier rather than all-scatter-then-all-lines, but
+    the explicit ``zorder`` (dots=1 < lines=3) keeps every line above every
+    dot, so the rendered output is unchanged. Per-tier marker shape carries
+    through to the faded background so silhouette identity survives the color
+    wash-out (Task 1a v5).
     """
-    # Background scatter underlay — per-(animal, session) jittered dots.
-    # Per-tier marker shape carries through to background (Task 1a v5) so
-    # silhouette identity stays even when the faded color washes out.
+    order_idx = {e: i for i, e in enumerate(_V5_EPOCH_ORDER)}
     for tier in _palette.PHENOTYPE_ORDER:
+        color = _palette.phenotype_palette(tier)
+        marker = _palette.phenotype_marker(tier)
+
+        # Background underlay inputs — one (center, per-session-values) pair
+        # per epoch that has contributing sessions for this tier.
         tier_scatter = sessions_with_delta[
             sessions_with_delta["phenotype_tier"] == tier
         ]
-        if tier_scatter.empty:
-            continue
-        color = _palette.phenotype_palette(tier)
-        marker = _palette.phenotype_marker(tier)
+        scatter_centers: list[int] = []
+        scatter_values: list[Any] = []
         for epoch_idx, epoch in enumerate(_V5_EPOCH_ORDER):
             cell = tier_scatter[tier_scatter["epoch_label"] == epoch]
             if cell.empty:
                 continue
-            xs = _layout.jittered_x_positions(
-                len(cell), epoch_idx, width=_V5_JITTER_WIDTH,
-            )
-            ax.scatter(
-                xs, cell["delta_value"].to_numpy(),
-                s=12.0, marker=marker,
-                facecolor=color, edgecolor="none",
-                alpha=0.25, zorder=1,
-            )
+            scatter_centers.append(epoch_idx)
+            scatter_values.append(cell["delta_value"].to_numpy())
 
-    # Foreground line connectors + SEM error bars (one per phenotype).
-    for tier in _palette.PHENOTYPE_ORDER:
+        # Foreground line inputs — reindex to canonical epoch order so the
+        # line walks pre→chronic, plotting only epochs the pool summarizes.
         tier_pool = pooled[pooled["phenotype_tier"] == tier]
         if tier_pool.empty:
+            line_x: list[int] = []
+            line_y: list[float] = []
+            line_yerr: list[float] | None = None
+        else:
+            tier_pool = tier_pool.assign(
+                epoch_idx=tier_pool["epoch_label"].map(order_idx)
+            ).sort_values("epoch_idx")
+            line_x = tier_pool["epoch_idx"].tolist()
+            line_y = tier_pool["mean"].tolist()
+            line_yerr = tier_pool["sem"].tolist()
+
+        if not scatter_centers and not line_x:
             continue
-        # Reindex to canonical epoch order so the line walks pre→chronic.
-        order_idx = {e: i for i, e in enumerate(_V5_EPOCH_ORDER)}
-        tier_pool = tier_pool.assign(
-            epoch_idx=tier_pool["epoch_label"].map(order_idx)
-        ).sort_values("epoch_idx")
-        color = _palette.phenotype_palette(tier)
-        marker = _palette.phenotype_marker(tier)
-        ax.errorbar(
-            tier_pool["epoch_idx"], tier_pool["mean"],
-            yerr=tier_pool["sem"],
-            color=color, marker=marker, markersize=6.0,
-            linewidth=2.0, capsize=3.5,
-            label=tier, zorder=3,
+        render_line_with_jitter_dots(
+            ax,
+            line_x=line_x, line_y=line_y, line_yerr=line_yerr,
+            scatter_centers=scatter_centers, scatter_values=scatter_values,
+            color=color, marker=marker, label=tier,
+            jitter_width=_V5_JITTER_WIDTH,
         )
 
     ax.set_xticks(range(len(_V5_EPOCH_ORDER)))

@@ -324,6 +324,8 @@ def run_stats_and_figures(
     logger: logging.Logger,
     animals_map: dict[str, AnimalInfo] | None = None,
     phenotype_order: tuple[str, ...] | None = None,
+    figure_subtitle_override: str | None = None,
+    figure_side_display: dict[str, str] | None = None,
 ) -> dict[str, object]:
     """Run Stages 1→2→3 on the cohort phase-row DataFrame.
 
@@ -382,6 +384,10 @@ def run_stats_and_figures(
     }
     if phenotype_order is not None:
         figure_kwargs["phenotype_order"] = phenotype_order
+    if figure_subtitle_override is not None:
+        figure_kwargs["subtitle_override"] = figure_subtitle_override
+    if figure_side_display is not None:
+        figure_kwargs["side_display"] = figure_side_display
     # Canonical SEM-banded figures.
     figure_result = emit_phase_aligned_trajectory_figures(
         pooled, error_band_type="sem", **figure_kwargs,

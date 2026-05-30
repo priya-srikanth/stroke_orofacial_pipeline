@@ -15,6 +15,50 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-29 — Chore DLC pooled-phenotype unification: methodology + path + scope decisions
+
+- *Context:* Unifying the Q12/Q13/Q13c/Q13b phenotype-pooled outputs (path
+  normalization + a `v2` re-emit) surfaced several forks not settled in the
+  kickoff.
+- *Decisions:*
+  - **Aggregation: mean ± SEM, session-pooled** (SEM = SD/√n_sessions at the
+    cell), replacing median + IQR, across all phenotype-pooled DLC families — to
+    match the Q14 spout-behavior convention already shipped. The **test family is
+    unchanged** (paired Wilcoxon × BH-FDR on per-animal means); only the
+    per-session aggregator + the figure spread band changed.
+  - **Path convention:** symmetric `<family>/<scope>/{no_filter | flat}/<files>`;
+    `3_phenotype/` → `3_tier/`; `no_filter/` layer only for DLC-*filterable*
+    metrics (have a `filtered_v1` input) = the 4 figure families + 23 `tongue_*`
+    scalars; flat scope for the 6 `jaw_*` + `mismatch_candidate` + 12 spout
+    scalars (no filtered counterpart).
+  - **Filter source for Q13b/Q13/Q13c v2:** the phase-aligned endpoints +
+    trajectories are NOT materialized in `filtered_v1` (only the 23 scalar
+    `tongue_*` are), so the DlcSession/TrialFilter is applied **on-the-fly** in
+    each v2 emit (lick counts co-located in the per-trial tongue JSON).
+  - **Q12 spatial is NEVER filtered** — "no licking" produces meaningful spatial
+    mass (rest position) that the heatmap exists to capture; filtering would
+    erase the severe-stroke phenotype. Heatmaps stay heatmaps; W-2 box plots →
+    line+jitter.
+  - **Ipsi/contra is a relabel on the all-L cohort** (ipsi = mouse-L): pooling by
+    rig-side ≡ ipsi/contra pooling and every sign-flip is the identity, so the v2
+    emits keep the L/R pooling machinery + stats families untouched and only
+    relabel panels/subtitle. A right-stroke animal will require a true recode +
+    parametrizing the stats families' side iteration (forward-caveat).
+  - **Trajectory convention:** continuous mean±SEM band curves (the line+jitter
+    dot convention applies to discrete-epoch figures only).
+  - **Legacy trajectory subtitle backfill: skipped** (v2 supersedes + the cleanup
+    chore deletes the `no_filter/` trees); the cheap scalar V4/V5 backfill was
+    done.
+- *Rationale:* match shipped Q14 convention; keep the inferential test stable;
+  preserve the scientifically-meaningful no-licking signal in spatial heatmaps;
+  minimize risk to shipped inference code on the (currently uniform) all-L cohort.
+- *Enforced at:* `scripts/chore_dlc_pooled_phenotype/` (path_normalization +
+  q13b_v2_emit + q13_traj_v2_emit + q12_v2_emit); `stats/aggregators.py`
+  (mean+SEM aggregators); `figures/_line_with_jitter_dots.py`; MIGRATION_LOG
+  chore entry.
+
+---
+
 ## 2026-05-29 — Phase 9.1 Q-lock 14: ipsi/contra coding convention (contra = positive)
 
 - *Context:* Q-lock 14 migrates the phenotype-pooled trial-side dimension from rig-frame LEFT/RIGHT to lesion-relative IPSI/CONTRA, the correct convention for a stroke study (prevents cross-animal pooling artifacts from washing out lesion-induced asymmetry). The kickoff assumed a per-animal field `stroke_side ∈ {left,right,sham}`; the Stage 0 audit found the repo uses `stroke_laterality ∈ {"L","R"}` (loader rejects other values) and that all 8 cohort animals are `"L"`.
