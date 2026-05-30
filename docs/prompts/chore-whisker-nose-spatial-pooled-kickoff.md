@@ -1,6 +1,6 @@
 # Chore: Phenotype-Pooled Whisker + Nose Spatial Analysis Kickoff
 
-**Status:** LOCKED v1 + Addendum #1 (2026-05-30).
+**Status:** LOCKED v1 + Addendum #1 + Addendum #2 (2026-05-30).
 **Branch:** `chore/whisker-nose-spatial-pooled`
 **Merge tag (on close):** `vChore-whisker-nose-spatial-pooled`
 **Depends on (DISCHARGED 2026-05-29):** `chore/dlc-pooled-phenotype-unification` — MERGED + TAGGED `vChore-dlc-pooled-phenotype-unification`. Inherits the plot-convention helper module (`figures/_line_with_jitter_dots.py`), the path normalization (`<family>/<scope>/v2/`), the ipsi/contra recoding helper, the line+jitter+dots convention, and the mean+SEM session-pooled aggregation methodology with 2-line aggregation-method subtitle footer.
@@ -167,3 +167,47 @@ Families: `proportion_diff_heatmaps`, `wasserstein_recovery`, `wasserstein_boxpl
 ### A1.8 — Cohort note
 
 All 8 cohort animals are `stroke_laterality: "L"` → the right-stroke spatial x-bin sign-flip inherited from Q14/unification never fires for this cohort; ipsi/contra recoding applies uniformly (L=ipsi, R=contra). 0 sham animals (matches the Q14 finding).
+
+---
+
+## Addendum #2 — Per-bodypart split semantics + whisker presentation + raw-pooling reuse (2026-05-30)
+
+**ALL OTHER LOCKS UNCHANGED** except where noted. Refines A1.1 / A1.3 / A1.6 per Priya direction 2026-05-30 ("I'd like to plot all whiskers together, but we can run statistics differently for L and R (or … subplots); Nose should be different still for ipsi and contra trials; Spout and eye … for all trials"). Reuses the existing Pattern A pooled-bodypart compute path rather than building new union logic.
+
+### A2.1 — Split semantics (REFINED)
+
+| bodypart | analysis unit(s) | split axis | frames pooled |
+|---|---|---|---|
+| whisker | **L-pool** (`L_whiskers_1/2/3`), **R-pool** (`R_whiskers_1/2/3`) — separate stats | **anatomical** | all trials (both cue sides) |
+| nose | nose @ ipsi-trials, nose @ contra-trials | **cue / trial** side | the cue side |
+| spout | `L_spout` + `R_spout` pooled into one | **none** | all trials (both cue sides) |
+| eye | `L_eye` + `R_eye` pooled into one | **none** | all trials (both cue sides) |
+
+- **Whisker:** "plot all whiskers together, run statistics differently for L and R" → pool the 3 landmarks per **anatomical** side into a per-side distribution; compute proportion_diff + W-2 **separately** for the L-pool and R-pool; **present L and R together** (L/R subplots in one combined figure per family). Anatomical (not cue) split chosen because ipsi/contra whisker recovery is the signal of interest and pooling all 6 would average it away. Frames pooled across both cue-side tone windows (the anatomical landmark side, not the cue, is the split axis).
+- **Nose:** "different still for ipsi and contra trials" → split by **cue/trial side** (the only 2-way split available for a single midline landmark), recoded ipsi/contra. Mirrors the existing tongue/jaw L/R convention.
+- **Spout, eye:** "for all trials" → pool both bilateral landmarks into one distribution AND pool across both cue sides; no split. Exploratory / descriptive only. NOTE (A1.3 self-centered-frame): spout in spout-centered frame and eye in eye-centered frame sit in a ~±20px band (config grids `[-100,100]/[-20,20]` and `[-160,160]/[-20,20]`), so the post-vs-pre signal is expected to be small — a fiducial self-consistency / camera-stability check.
+
+### A2.2 — Reuse existing Pattern A pooled path (NEW)
+
+The phenotype-pooled compute reuses `dlc_spatial.render_on_demand._aggregate_for_dates_pooled_bodyparts` (the existing "pool N bodyparts cell-wise into one pseudo-bp histogram" path that already backs the per-animal combined whisker heatmaps), with two adaptations:
+
+1. **Raw path:** thread `use_v7_cleaned=False` (cleaned-traces parquets do not exist for whisker/nose/spout/eye — path A). The legacy pooled fn implicitly uses the `use_v7_cleaned=True` default; an additive param is required so the new bodyparts read raw DLC.
+2. **Explicit shared grid:** pass an explicit shared bin grid so all pooled landmarks histogram on identical bins — whisker `[-200,200]/[50,360]` (the Q37 unified bilateral range on `L_whiskers_1`), spout `[-100,100]/[-20,20]`, eye `[-160,160]/[-20,20]`, nose `[-100,95]/[100,330]`. This fixes the legacy per-bp-extent approximation in `_aggregate_for_dates_pooled_bodyparts` (it labels the cell-wise sum with the *first* bp's extent while computing each bp on its own config grid). spout/eye L-R already share extents; whisker per-landmark extents differ, so the explicit grid is load-bearing for whisker correctness. nbins = 80×80; all four families have `x_range: null`.
+
+### A2.3 — Figure count (REVISED): 30 SVGs
+
+| Reference point | figures/family | × families | × scopes | SVGs |
+|---|---|---|---|---|
+| whisker | 1 (L/R subplots together) | 3 | 2 | 6 |
+| nose | 2 (ipsi/contra trials) | 3 | 2 | 12 |
+| spout | 1 (no split) | 3 | 2 | 6 |
+| eye | 1 (no split) | 3 | 2 | 6 |
+| **TOTAL** | | | | **30** |
+
+Supersedes A1.6's 36-SVG count (whisker drops 12→6 by presenting L/R together in one figure instead of two per-side files). The whisker heatmap sub-presentation (all-6-pooled into one map vs L/R subplots) and exact file counts are confirmable at the Stage 4 PS46 pilot; whisker = 6 either way.
+
+### A2.4 — Output path stems (REFINED)
+
+- whisker: `<family>/<scope>/v2/whisker_*.svg` (one combined L/R figure; no per-side suffix on the file — the two sides are subplots within).
+- nose: `<family>/<scope>/v2/nose_{ipsi,contra}_*.svg`.
+- spout/eye: `<family>/<scope>/v2/{spout,eye}_*.svg`.
