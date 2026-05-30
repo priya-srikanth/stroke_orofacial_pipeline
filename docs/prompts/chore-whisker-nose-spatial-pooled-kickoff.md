@@ -1,6 +1,6 @@
 # Chore: Phenotype-Pooled Whisker + Nose Spatial Analysis Kickoff
 
-**Status:** LOCKED v1 (2026-05-29).
+**Status:** LOCKED v1 + Addendum #1 (2026-05-30).
 **Branch:** `chore/whisker-nose-spatial-pooled`
 **Merge tag (on close):** `vChore-whisker-nose-spatial-pooled`
 **Depends on (DISCHARGED 2026-05-29):** `chore/dlc-pooled-phenotype-unification` — MERGED + TAGGED `vChore-dlc-pooled-phenotype-unification`. Inherits the plot-convention helper module (`figures/_line_with_jitter_dots.py`), the path normalization (`<family>/<scope>/v2/`), the ipsi/contra recoding helper, the line+jitter+dots convention, and the mean+SEM session-pooled aggregation methodology with 2-line aggregation-method subtitle footer.
@@ -108,3 +108,62 @@ Net-new outputs (no legacy variants for these bodyparts), so NO `no_filter/` sub
 - **F-P-1** — phenotype map (mild/moderate/mod-severe/severe; 3-tier collapse via Q-lock 12 Addendum #4).
 - **`dlc_spatial/pixel_bins.py`** — canonical spatial bin infrastructure.
 - **`dlc_spatial/render_on_demand.py`** — proportion_diff + spatial render primitives.
+
+---
+
+## Addendum #1 — Scope expansion: four reference points + bilateral-part drift (2026-05-30)
+
+**ALL OTHER LOCKS UNCHANGED** except where noted. Expands the chore from 2 bodyparts (whisker, nose) to **four reference points** and resolves centering, the W-2 render convention, and the bilateral-drift design per Priya direction 2026-05-30. The doc title ("Whisker + Nose") is now under-inclusive; the chore covers whisker, nose, spout, and eye.
+
+### A1.1 — Reference points (4)
+
+| # | Entity | Centering frame | Landmarks → distribution | Side split | Role |
+|---|---|---|---|---|---|
+| 1 | whisker | `eye_midpoint` | union of `L/R_whiskers_1/2/3` (3 per side) | ipsi/contra | primary |
+| 2 | nose | `eye_midpoint` | single `nose` | ipsi/contra | primary |
+| 3 | spout | `spout_midpoint` | union of `L_spout` + `R_spout` (both pooled) | none | exploratory / descriptive |
+| 4 | eye | `eye_midpoint` | union of `L_eye` + `R_eye` (both pooled) | none | exploratory / descriptive |
+
+### A1.2 — Centering (RESOLVED)
+
+- **Whisker + nose: `eye_midpoint`** (Priya 2026-05-30: "I meant eye_midpoint centered"). Supersedes the scope-expansion's "raw spout-centered frame" wording. Consistent with jaw, the analogous facial landmark (eye-centered per Q12 Addendum #3). For the record: the scope-expansion's justification "Q12 tongue + jaw heatmaps are spout-centered" is imprecise — Q12 locks tongue=`spout_midpoint` but jaw=`eye_midpoint`; `eye_midpoint` for the new facial bodyparts aligns with jaw, not tongue.
+- **Spout (#3): `spout_midpoint`-centered. Eye (#4): `eye_midpoint`-centered** (Priya 2026-05-30: "eye should be eye_centered, and spout should be spout_centered").
+
+### A1.3 — Bilateral-part drift (#3, #4) — RESOLVED
+
+- "Bilateral part drift, not midpoint drift" (Priya 2026-05-30): analyze the bilateral fiducial PARTS (spout L/R, eye L/R), **not** their collapsed midpoint.
+- "Treat the combination of both parts as one distribution" (Priya 2026-05-30): pool BOTH bilateral landmarks into ONE distribution per part — compare {both eyes} vs {both eyes}, {both spouts} vs {both spouts}, **not one side at a time**. No side split.
+- Methodology = the standard **Q12-A per-animal pre-pool normalization** applied to these pooled distributions: each post-epoch pooled distribution is differenced against the animal's own pre-stroke pooled distribution; phenotype-pooled mean. The per-session W-2 against the pre-pool **is** the "session-to-session drift relative to baseline" the scope expansion described — **no separate baseline-mean subtraction step is introduced.**
+- **Self-centered-frame note:** because eye is analyzed in eye-centered frame and spout in spout-centered frame, the bilateral parts sit ~symmetric about origin by construction; the post-vs-pre signal is expected to be **small** — a fiducial self-consistency / camera-stability check. This is the intended exploratory read (descriptive only; not used for hypothesis testing).
+
+### A1.4 — Multi-whisker aggregation (RESOLVED)
+
+Union of all 3 whisker landmarks per side into one per-side distribution (Priya approved 2026-05-30). All 6 landmarks track comparably on the PS46 pilot session (median likelihood 0.90–0.93, >99.6% above lik 0.6), so no landmark dominates the union with noise. Each frame contributes 3 position samples per side, each independently likelihood-gated.
+
+### A1.5 — W-2 per-session family: line+jitter+dots (NOT box plots)
+
+- Render convention: **line + per-session jittered dots**, inherited from the unification chore's Stage 2 box→line+jitter migration. **Extend the existing renderer `src/stroke_orofacial/figures/phenotype_wasserstein_recovery_boxplot.py`** (already migrated by the unification chore) with bodypart parameterization. Do NOT re-introduce box plots for any new reference point (would create visual asymmetry with the existing tongue + jaw W-2 figures).
+- The `wasserstein_boxplots/` directory name is a legacy semantic carryover (Q12a "per-session W-2 distribution") and remains the canonical path. Don't rename; emit line+jitter+dots into it.
+
+### A1.6 — Figure count (REVISED): 36 SVGs
+
+| Reference point | sides | × families | × scopes | SVGs |
+|---|---|---|---|---|
+| whisker | 2 (ipsi/contra) | 3 | 2 | 12 |
+| nose | 2 (ipsi/contra) | 3 | 2 | 12 |
+| spout | 1 (no split) | 3 | 2 | 6 |
+| eye | 1 (no split) | 3 | 2 | 6 |
+| **TOTAL** | | | | **36** (+ CSV siblings) |
+
+Families: `proportion_diff_heatmaps`, `wasserstein_recovery`, `wasserstein_boxplots`. Scopes: `4_tier` + `3_tier`.
+
+### A1.7 — Output paths
+
+- whisker/nose: `stats/figures/phenotype_pooled/<family>/<scope>/v2/{whisker,nose}_{ipsi,contra}_*.svg`
+- spout/eye: `stats/figures/phenotype_pooled/<family>/<scope>/v2/{spout,eye}_*.svg` (no side suffix)
+- Stats CSVs mirror at `stats/results/phenotype_pooled/<family>/<scope>/v2/...`
+- File-stem decision: `spout_`/`eye_` (the analyzed pooled part) rather than `spout_midpoint_`/`eye_midpoint_` (which name only the centering frame). Flagged for confirmation at the Stage 1 STOP gate.
+
+### A1.8 — Cohort note
+
+All 8 cohort animals are `stroke_laterality: "L"` → the right-stroke spatial x-bin sign-flip inherited from Q14/unification never fires for this cohort; ipsi/contra recoding applies uniformly (L=ipsi, R=contra). 0 sham animals (matches the Q14 finding).
