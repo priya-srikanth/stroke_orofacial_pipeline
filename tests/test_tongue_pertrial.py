@@ -3292,8 +3292,9 @@ class TestExtractFirstVsSecondPeakPairs:
 
 class TestV7CleanedBundleArraysRouting:
     """chore tongue-substrate-v7-routing-fix — the Q13/Q13b/Q13c phase-aligned
-    bundle substrate must be the v7-CLEANED trace (NaN at baseline-fill), not
-    the pre-clean interpolated trace. Regression guard for the PR #162 bug.
+    bundle substrate must be the v7-CLEANED trace (used AS-IS, y=0 at
+    baseline-fill — no NaN mask per Priya 2026-05-30), not the pre-clean
+    interpolated trace. Regression guard for the PR #162 bug.
 
     Uses a synthetic interpolated session + a hand-built v7 trial result so the
     test runs without the (unpopulated) v7_canonical fixture tree.
@@ -3312,13 +3313,12 @@ class TestV7CleanedBundleArraysRouting:
             "fill_method": ["none"] * n,
         })
 
-    def test_baseline_fill_frames_become_nan_kept_frames_take_cleaned(self):
+    def test_substrate_is_cleaned_as_is_kept_and_wiped_frames(self):
         n = 20
         interp_df = self._interp_df(n)
-        angle = np.full(n, 30.0, dtype=np.float64)
         # One trial spanning session frames [5, 14]. Within it, the v7 cleaning
         # KEEPS frames 8-11 (a real protrusion, y=50) and baseline-fills the
-        # rest (rejected — y wiped to 0, is_baseline_fill_clean=True).
+        # rest (rejected — y wiped to the 0 baseline, is_baseline_fill_clean).
         lo, hi = 5, 14
         span = hi - lo + 1
         y_clean = np.zeros(span, dtype=np.float64)
@@ -3337,24 +3337,23 @@ class TestV7CleanedBundleArraysRouting:
             session_frame_lo=lo, session_frame_hi=hi,
         )
 
-        x_b, y_b, a_b = _v7_cleaned_bundle_arrays(interp_df, [v7], angle)
+        x_b, y_b = _v7_cleaned_bundle_arrays(interp_df, [v7])
 
+        # No NaN anywhere — the cleaned trace is used AS-IS (y=0 baseline).
+        assert not np.any(np.isnan(y_b))
+        assert not np.any(np.isnan(x_b))
         # Frames outside the trial span: untouched interpolated values.
         assert np.all(y_b[:lo] == 100.0)
         assert np.all(y_b[hi + 1:] == 100.0)
-        assert np.all(a_b[:lo] == 30.0)
-        # Baseline-fill frames inside the span (rejected protrusions): NaN in
-        # ALL three signals — so they drop out of the phase rows.
+        # Wiped (baseline-fill) frames inside the span: take the cleaned
+        # baseline value (0), NOT the interpolated protrusion (100) — so they
+        # produce no peak and rejected trials drop.
         bf_session = np.arange(lo, hi + 1)[is_bf]
-        assert np.all(np.isnan(y_b[bf_session]))
-        assert np.all(np.isnan(x_b[bf_session]))
-        assert np.all(np.isnan(a_b[bf_session]))
-        # Kept frames: take the cleaned values (NOT the interpolated y=100), and
-        # angle stays finite (post-hoc mask only touches baseline-fill frames).
+        assert np.all(y_b[bf_session] == 0.0)
+        # Kept frames: take the cleaned protrusion values.
         kept_session = np.arange(8, 12)
         assert np.allclose(y_b[kept_session], 50.0)
         assert np.allclose(x_b[kept_session], 7.0)
-        assert np.all(np.isfinite(a_b[kept_session]))
 
     def test_substrate_differs_from_interpolated_when_v7_rejects(self):
         # The whole point: the cleaned substrate is NOT the interpolated one
@@ -3362,8 +3361,7 @@ class TestV7CleanedBundleArraysRouting:
         # back to reading interpolated_trace.
         n = 12
         interp_df = self._interp_df(n)
-        angle = np.full(n, 30.0, dtype=np.float64)
-        y_clean = np.full(6, 0.0)       # entire trial rejected
+        y_clean = np.full(6, 0.0)       # entire trial rejected -> wiped to 0
         v7 = _V7TrialResult(
             trial_index=0, side="L",
             y_clean=y_clean, x_clean=np.zeros(6),
@@ -3372,8 +3370,9 @@ class TestV7CleanedBundleArraysRouting:
             kept_licks=[], preclean_diag=_PrecleanDiagnostics(),
             session_frame_lo=3, session_frame_hi=8,
         )
-        _, y_b, _ = _v7_cleaned_bundle_arrays(interp_df, [v7], angle)
+        _, y_b = _v7_cleaned_bundle_arrays(interp_df, [v7])
         interp_y = interp_df["y_final"].to_numpy()
-        # Differs from interpolated exactly on the rejected span (now NaN).
-        assert not np.array_equal(np.nan_to_num(y_b, nan=-1.0), interp_y)
-        assert np.all(np.isnan(y_b[3:9]))
+        # Differs from interpolated exactly on the rejected span (now 0, was 100).
+        assert not np.array_equal(y_b, interp_y)
+        assert np.all(y_b[3:9] == 0.0)
+        assert not np.any(np.isnan(y_b))
