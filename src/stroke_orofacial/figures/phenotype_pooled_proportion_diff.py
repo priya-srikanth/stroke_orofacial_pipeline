@@ -48,6 +48,7 @@ from stroke_orofacial.stats.spatial_proportion_diff import (
     BODYPART_CENTER_MODES,
     POST_EPOCHS,
     SIDES,
+    get_spatial_recipe,
 )
 
 # Q-lock 12b Addendum #7: include ``"pre"`` as the first column (baseline
@@ -66,6 +67,11 @@ FIGURE_SUBDIR: str = "stats/figures/phenotype_pooled/proportion_diff_heatmaps"
 FIGURE_SUBTITLE_BY_BODYPART: dict[str, str] = {
     "tongue": "Source: v7-cleaned-trace cohort re-emit (Phase 7e + Phase 7e.4)",
     "jaw": "Source: v7-cleaned-trace cohort re-emit (Phase 7e + Phase 7e.4 + Phase 7f)",
+    # Chore whisker-nose (Addendum #2): raw DLC (path A; no cleaned traces).
+    "whisker": "Source: raw DLC tracking (all whiskers pooled; chore whisker-nose)",
+    "nose": "Source: raw DLC tracking (chore whisker-nose)",
+    "spout": "Source: raw DLC tracking (both spouts pooled, all trials; chore whisker-nose)",
+    "eye": "Source: raw DLC tracking (both eyes pooled, all trials; chore whisker-nose)",
 }
 
 # Display names for the epoch column headers (capitalized; "Subacute" as
@@ -207,17 +213,21 @@ def render_phenotype_pooled_proportion_diff_figure(
 
     A single figure-level colorbar is attached on the right.
     """
-    if bodypart not in BODYPART_CENTER_MODES:
+    # Recipe-driven (chore whisker-nose Addendum #2): tongue/jaw resolve to
+    # their legacy center_mode + ("L", "R") sides — byte-identical behavior.
+    # New bodyparts (whisker/nose/spout/eye) resolve their own center_mode +
+    # output sides (whisker "both" = combined all-6 heatmap; spout/eye
+    # "both" = pooled no-split).
+    recipe = get_spatial_recipe(bodypart)
+    if side not in recipe.output_sides:
         raise ValueError(
-            f"bodypart {bodypart!r} not in Q12-B scope; expected one of "
-            f"{tuple(BODYPART_CENTER_MODES)}.",
+            f"side {side!r} not valid for bodypart {bodypart!r}; expected "
+            f"one of {recipe.output_sides}.",
         )
-    if side not in SIDES:
-        raise ValueError(f"side {side!r} not in {SIDES}.")
     if defaults is None:
         defaults = load_defaults()
     spatial_config = defaults["dlc_spatial"]
-    center_mode = BODYPART_CENTER_MODES[bodypart]
+    center_mode = recipe.center_mode
 
     nrows = len(phenotype_order)
     ncols = len(EPOCH_ORDER)
