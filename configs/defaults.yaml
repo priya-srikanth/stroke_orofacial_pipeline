@@ -544,6 +544,16 @@ dlc_kinematics:
   interpolation_method: pchip
   interpolation_fallback: linear
   tongue:
+    # Bodypart-scoped flag for PURE CONSUMERS of the tongue trace (the
+    # mean_sem_visual V4/V5 cohort loader). When True, those consumers read
+    # from `cleaned_traces/tongue/` (Phase 7e v7 cleanup) instead of
+    # `interpolated_traces/tongue/` (Phase 7a.2 v5p3 raw). Flipped False→True
+    # in the chore tongue-substrate-v7-routing-fix (2026-05-30, Priya-
+    # approved) — the prior False default was the V4/V5 leg of the PR #162
+    # routing bug. NOTE: the tongue_pertrial PRODUCER core does NOT read this
+    # flag — its bundle/endpoint substrate is gated on `use_v7_pipeline`
+    # (in-memory Option-1 fix). Set False for a v5p3-input A/B audit.
+    use_cleaned_traces: true
     center_mode: centered_spout_midpoint
     interpolation:
       x_range_pm: 150.0

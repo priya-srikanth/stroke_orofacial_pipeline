@@ -61,6 +61,7 @@ from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
     _per_cell_detector,
     _resolve_eye_midpoint_session_median,
     _V7TrialResult,
+    _v7_cleaned_bundle_arrays,
     build_tongue_pertrial,
 )
 from stroke_orofacial.dlc_kinematics._preclean import _PrecleanDiagnostics
@@ -3287,3 +3288,92 @@ class TestExtractFirstVsSecondPeakPairs:
             "peak1_t_ms", "peak1_angle_deg",
         ):
             assert col in out.columns
+
+
+class TestV7CleanedBundleArraysRouting:
+    """chore tongue-substrate-v7-routing-fix — the Q13/Q13b/Q13c phase-aligned
+    bundle substrate must be the v7-CLEANED trace (NaN at baseline-fill), not
+    the pre-clean interpolated trace. Regression guard for the PR #162 bug.
+
+    Uses a synthetic interpolated session + a hand-built v7 trial result so the
+    test runs without the (unpopulated) v7_canonical fixture tree.
+    """
+
+    @staticmethod
+    def _interp_df(n: int) -> pd.DataFrame:
+        # Interpolated trace = a finite "protrusion" at EVERY frame (y=100).
+        return pd.DataFrame({
+            "frame_idx": np.arange(n, dtype=np.int64),
+            "x_final": np.full(n, 5.0, dtype=np.float64),
+            "y_final": np.full(n, 100.0, dtype=np.float64),
+            "likelihood_raw": np.full(n, 0.9, dtype=np.float64),
+            "is_interp_fill": np.zeros(n, dtype=bool),
+            "is_baseline_fill": np.zeros(n, dtype=bool),
+            "fill_method": ["none"] * n,
+        })
+
+    def test_baseline_fill_frames_become_nan_kept_frames_take_cleaned(self):
+        n = 20
+        interp_df = self._interp_df(n)
+        angle = np.full(n, 30.0, dtype=np.float64)
+        # One trial spanning session frames [5, 14]. Within it, the v7 cleaning
+        # KEEPS frames 8-11 (a real protrusion, y=50) and baseline-fills the
+        # rest (rejected — y wiped to 0, is_baseline_fill_clean=True).
+        lo, hi = 5, 14
+        span = hi - lo + 1
+        y_clean = np.zeros(span, dtype=np.float64)
+        x_clean = np.zeros(span, dtype=np.float64)
+        is_bf = np.ones(span, dtype=bool)
+        kept_local = slice(3, 7)  # span-local frames 3..6 == session 8..11
+        y_clean[kept_local] = 50.0
+        x_clean[kept_local] = 7.0
+        is_bf[kept_local] = False
+        v7 = _V7TrialResult(
+            trial_index=0, side="L",
+            y_clean=y_clean, x_clean=x_clean,
+            is_baseline_fill_clean=is_bf,
+            t_ms=np.arange(span, dtype=np.float64),
+            kept_licks=[], preclean_diag=_PrecleanDiagnostics(),
+            session_frame_lo=lo, session_frame_hi=hi,
+        )
+
+        x_b, y_b, a_b = _v7_cleaned_bundle_arrays(interp_df, [v7], angle)
+
+        # Frames outside the trial span: untouched interpolated values.
+        assert np.all(y_b[:lo] == 100.0)
+        assert np.all(y_b[hi + 1:] == 100.0)
+        assert np.all(a_b[:lo] == 30.0)
+        # Baseline-fill frames inside the span (rejected protrusions): NaN in
+        # ALL three signals — so they drop out of the phase rows.
+        bf_session = np.arange(lo, hi + 1)[is_bf]
+        assert np.all(np.isnan(y_b[bf_session]))
+        assert np.all(np.isnan(x_b[bf_session]))
+        assert np.all(np.isnan(a_b[bf_session]))
+        # Kept frames: take the cleaned values (NOT the interpolated y=100), and
+        # angle stays finite (post-hoc mask only touches baseline-fill frames).
+        kept_session = np.arange(8, 12)
+        assert np.allclose(y_b[kept_session], 50.0)
+        assert np.allclose(x_b[kept_session], 7.0)
+        assert np.all(np.isfinite(a_b[kept_session]))
+
+    def test_substrate_differs_from_interpolated_when_v7_rejects(self):
+        # The whole point: the cleaned substrate is NOT the interpolated one
+        # whenever v7 rejects any frame. Guards against a silent regression
+        # back to reading interpolated_trace.
+        n = 12
+        interp_df = self._interp_df(n)
+        angle = np.full(n, 30.0, dtype=np.float64)
+        y_clean = np.full(6, 0.0)       # entire trial rejected
+        v7 = _V7TrialResult(
+            trial_index=0, side="L",
+            y_clean=y_clean, x_clean=np.zeros(6),
+            is_baseline_fill_clean=np.ones(6, dtype=bool),
+            t_ms=np.arange(6, dtype=np.float64),
+            kept_licks=[], preclean_diag=_PrecleanDiagnostics(),
+            session_frame_lo=3, session_frame_hi=8,
+        )
+        _, y_b, _ = _v7_cleaned_bundle_arrays(interp_df, [v7], angle)
+        interp_y = interp_df["y_final"].to_numpy()
+        # Differs from interpolated exactly on the rejected span (now NaN).
+        assert not np.array_equal(np.nan_to_num(y_b, nan=-1.0), interp_y)
+        assert np.all(np.isnan(y_b[3:9]))
