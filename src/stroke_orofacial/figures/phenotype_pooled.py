@@ -35,7 +35,10 @@ import pandas as pd
 from stroke_orofacial.paths import PathResolver
 
 from . import _io, _layout, palette as _palette
-from ._line_with_jitter_dots import render_line_with_jitter_dots
+from ._line_with_jitter_dots import (
+    AGGREGATION_SUBTITLE,
+    render_line_with_jitter_dots,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +79,18 @@ FigureType = Literal["v4", "v5"]
 # V4 — per_bin phenotype-pooled curves
 # ---------------------------------------------------------------------------
 
+def _apply_aggregation_footer(fig: Any, subtitle: str | None) -> None:
+    """Stamp the canonical aggregation-method footer at the figure bottom-left.
+
+    Chore ``vChore-dlc-pooled-phenotype-unification``: the V4/V5 phenotype-
+    pooled scalar figures use mean ± SEM session-pooling, so they carry the
+    same aggregation-method footer line as the DLC v2 re-emits. No-op when
+    ``subtitle`` is None.
+    """
+    if subtitle:
+        fig.text(0.01, 0.005, subtitle, fontsize=7, va="bottom", ha="left")
+
+
 def emit_v4_per_endpoint(
     endpoint_slug: str,
     resolver: PathResolver,
@@ -85,6 +100,7 @@ def emit_v4_per_endpoint(
     overwrite: Literal["skip", "force"] = "skip",
     dpi: int = 150,
     remap_3tier: bool = False,
+    aggregation_subtitle: str | None = AGGREGATION_SUBTITLE,
 ) -> tuple[Path, Path] | None:
     """Emit one V4 phenotype-pooled per_bin recovery curve as SVG + PNG.
 
@@ -147,6 +163,7 @@ def emit_v4_per_endpoint(
     else:
         fig = _build_v4_cohort_pooled_figure(pooled, endpoint_slug, n_by_tier)
 
+    _apply_aggregation_footer(fig, aggregation_subtitle)
     endpoint_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(svg_path, bbox_inches="tight")
     fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
@@ -253,6 +270,7 @@ def emit_v5_per_endpoint(
     overwrite: Literal["skip", "force"] = "skip",
     dpi: int = 150,
     remap_3tier: bool = False,
+    aggregation_subtitle: str | None = AGGREGATION_SUBTITLE,
 ) -> tuple[Path, Path] | None:
     """Emit one V5 phenotype-pooled per_epoch delta line as SVG + PNG.
 
@@ -341,6 +359,7 @@ def emit_v5_per_endpoint(
             pooled, sessions_with_delta, endpoint_slug, n_by_tier,
         )
 
+    _apply_aggregation_footer(fig, aggregation_subtitle)
     endpoint_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(svg_path, bbox_inches="tight")
     fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
