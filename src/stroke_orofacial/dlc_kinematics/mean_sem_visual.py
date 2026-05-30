@@ -2366,8 +2366,12 @@ def _load_session_xy_filtered(
     )
     table = pq.read_table(parquet_path)
     raw_meta = table.schema.metadata or {}
-    fps = float(raw_meta[b"fps"].decode())
-    n_frames = int(raw_meta[b"n_frames"].decode())
+    # fps/n_frames via fallback: tongue cleaned_traces (Phase 7e) lack these
+    # metadata keys, so read them with a sibling-interpolated fallback
+    # (chore tongue-substrate-v7-routing-fix, 2026-05-30).
+    fps, n_frames = _read_trace_fps_n_frames(
+        bodypart, animal, date, resolver, params,
+    )
     interp_version = _trace_source_label(
         bodypart, params,
         raw_meta.get(b"interpolation_version", b"unknown").decode(),
