@@ -15,6 +15,36 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-05-30 — Tongue substrate v7-routing fix: mixed in-memory/toggle architecture
+
+- *Context:* PR #162 (CC #4) found the Q13c trajectory + Q13b endpoint substrate (`TongueVisualBundle.df_trials.{y_snip,x_snip}`) read the **interpolated** pre-clean trace, not the v7-cleaned output. The bundle is *produced* by the same core (`_build_tongue_pertrial_core`) that runs the v7 pipeline, whereas `mean_sem_visual` is a *pure consumer* of the trace.
+- *Decision:* **Mixed architecture.** Producer core gets an **in-memory** fix — build cleaned session arrays from `v7_trial_results` (via `_build_cleaned_trace_df`) and feed those to the bundle, gated on `use_v7_pipeline`. Pure consumers (`mean_sem_visual`) get a `use_cleaned_traces` **toggle**. Cleaned trace used **as-is** (`y=0` fill, no NaN mask).
+- *Rationale:* A loader-toggle on the producer would double-clean (it both produces and would consume the cleaned trace) + create a disk-ordering dependency + hit the tongue `cleaned_traces` metadata gap. In-memory avoids all three. "Cleaned-as-is" (no mask) keeps it a true data-source-only change: v7-rejected protrusions are already wiped to baseline so they yield no peak → the trial drops; masking would alter v2 trajectory methodology and risk NaN-boundary under-detection of kept licks.
+- *Enforced at:* `tongue_pertrial._v7_cleaned_bundle_arrays` + the post-loop bundle build in `_build_tongue_pertrial_core`; `mean_sem_visual._use_cleaned_traces`.
+
+## 2026-05-30 — mean_sem_visual tongue `use_cleaned_traces` default flipped True
+
+- *Context:* The tongue default was `False` (interpolated) — the V4/V5 leg of the PR #162 routing bug.
+- *Decision:* Flip the tongue default to `True` (symmetric with jaw); V4/V5 tongue mean-sem now reads the v7-cleaned trace.
+- *Rationale:* No principled reason for tongue to differ from jaw; the `False` default was the mean-sem manifestation of the same routing bug.
+- *Enforced at:* `mean_sem_visual._use_cleaned_traces` (default `bodypart in {jaw, tongue}`) + `configs/defaults.yaml dlc_kinematics.tongue.use_cleaned_traces: true`. Required `_read_trace_fps_n_frames()` (sibling-interpolated metadata fallback) since tongue `cleaned_traces` omit `fps`/`n_frames` metadata.
+
+## 2026-05-30 — SessionFilter effective-threshold tightening via v7-cleaned n_licks
+
+- *Context:* `DlcSessionFilter(min_trials_with_detected_lick=10)` counted `n_licks_family.n_licks` from the interpolated/legacy path.
+- *Decision:* Route `n_licks_family` to the v7-cleaned slice so the filter counts v7-kept licks.
+- *Rationale:* Otherwise the `<10` filter inherits the routing bug — artifact-inflated counts kept sparse/degraded sessions. Consequence: severe + mod-severe **acute** session-sides legitimately drop (462→403 kept; 29 newly flipped); the cell-loss is the **correct scientific outcome**, not data loss.
+- *Enforced at:* `tongue_pertrial._build_tongue_pertrial_core` (n_licks computed on the v7-cleaned per-trial slice).
+
+## 2026-05-30 — filtered_v1-only re-emit; unfiltered tree deferred to CC #9
+
+- *Context:* Per-trial lick/velocity values are unchanged by the fix (already v7-clean); only `n_licks` + cell membership changed. The unfiltered tongue tree also still carries stale secondary-spout sessions.
+- *Decision:* Re-emit the `filtered_v1` tree only (figures + stats + scalars). The unfiltered (`--filter-variant none`) tree is **not** refreshed in this chore.
+- *Rationale:* Refreshing the unfiltered tree would propagate a separate **per-date-vs-per-half** secondary-spout skip bug (dropping legitimate bare-half data); that fix + the unfiltered refresh are owned by **CC #9**.
+- *Enforced at:* this chore re-emitted `filtered_v1` only; MIGRATION_LOG 2026-05-30 entry Stage-4-deferred note + CC #9 cross-ref.
+
+---
+
 ## 2026-05-29 — Chore DLC pooled-phenotype unification: methodology + path + scope decisions
 
 - *Context:* Unifying the Q12/Q13/Q13c/Q13b phenotype-pooled outputs (path

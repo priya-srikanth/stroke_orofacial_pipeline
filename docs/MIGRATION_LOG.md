@@ -7165,3 +7165,41 @@ DLC session + trial filtering infrastructure shipped as a Pipeline-B materialize
 **Env-collision incident #4:** parallel CC sessions sharing the single `stroke_orofacial` conda env continued to flip the editable `.pth`; CC #1 ran emits hermetically via `PYTHONPATH`. Reinforces per-worktree-conda-env chore priority (fourth documented incident).
 
 References: PR #157 sensitivity probe (`vChore-filter-sensitivity-probe`); Q-lock 12a Addendum #6 (v1 SessionFilter origin); Q-lock 13b (phase-aligned scalar endpoints the filter applies to).
+
+## 2026-05-30 — chore/tongue-substrate-v7-routing-fix (PR #163)
+
+**5th Phase 7e cascade routing discharge.** Fixes the substrate-routing bug diagnosed in PR #162 (CC #4): the Q13c phase-aligned tongue trajectories AND the Q13b phase-aligned scalar endpoints were built from `TongueVisualBundle.df_trials.{y_snip,x_snip}`, sliced from the **interpolated (pre-clean)** trace via the legacy `_slope_detect_lick_peaks`, while the Phase 7e v7 pipeline (preclean → detect_v2 → gates F/D/E/M) fed only the `cleaned_traces`/`lick_events` parquets. The figures therefore plotted protrusions v7 had rejected.
+
+### Fix (cleaned-as-is `y=0`, no NaN mask — Priya 2026-05-30)
+- `_build_tongue_pertrial_core` (`tongue_pertrial.py`): the visual-bundle build was moved out of the per-trial loop; under `use_v7_pipeline` (default True) the bundle's `x_snip`/`y_snip` substrate is now the v7-**cleaned** trace (byte-identical to `cleaned_traces` via `_build_cleaned_trace_df`, used **as-is**, no masking) via new helper `_v7_cleaned_bundle_arrays()`. The interpolated trace stays the v7 *preclean input*; only the bundle *substrate* changed. `angle` stays on the interpolated-derived `angle_per_frame` (per-frame angle parquet + cross-session angle scalars OUT of scope).
+- `_extract_n_licks_family` routed to the per-trial v7-cleaned slice → `DlcSessionFilter.n_trials_with_detected_lick` now counts v7-kept licks.
+- `mean_sem_visual.py`: tongue `use_cleaned_traces` default flipped False→True (V4/V5 now read cleaned); added `_read_trace_fps_n_frames()` sibling-interpolated metadata fallback at 3 reader sites (tongue `cleaned_traces` lack `fps`/`n_frames` metadata).
+- `configs/defaults.yaml`: `dlc_kinematics.tongue.use_cleaned_traces: true`.
+- **Per-trial lick/velocity values UNCHANGED:** `lick1/lick2` (Phase 7e.1) and `vy/vxy` velocities (Phase 7e.2) were already computed from the v7-cleaned trace (`lick_events` byte-equal pre/post). Only `n_licks_family` + cell membership changed.
+
+### Re-emit (cohort)
+- Tongue endpoints JSON + cleaned_traces/lick_events: **231 OK / 121 SKIP / 0 FAIL**.
+- `filtered_v1` tongue scalars re-materialized; **SessionFilter 462 → 403 session-sides kept** (29 newly flipped PASS→FAIL + 30 already sub-threshold).
+- Q13b endpoints + Q13/Q13c trajectories re-emitted to **`<family>/<scope>/v3/`** (4_tier + 3_tier) via new `--out-version {v2,v3}` flag (default v3) on `q13b_v2_emit.py` + `q13_traj_v2_emit.py`; **v2 retained as the "shipped-with-bug" audit copy**; v3 carries a substrate-version provenance subtitle.
+- Scalar stats re-run (`run_stats_axis --filter-variant filtered_v1`, 213 CSVs). **Task-7 scalar figure scope expanded 7 → 23** (all filtered tongue scalars now get V1/V2/V3 figures, not just the Addendum #8 headline-7).
+- V4/V5 tongue mean-sem cohort re-emitted (**8/8 OK**), now reading `interp-v3.4-cleaned`. (Used `PYTHONIOENCODING=utf-8` to dodge the line-7163 cp1252 print crash.)
+
+### Verification (Stage 5 re-probe)
+- **v7-rejected% → 0 cohort-wide** (0/40 sampled survivors rejected in every phenotype × epoch cell).
+- moderate-severe acute **12 → 0** trials; severe acute **127 → 0** trials. Reference cells (mild/moderate) unchanged → no regression on healthy populations.
+
+### Scientific finding
+The pre-CC-#6 implausible scalar values in the severe/mod-severe **acute** cells were **artifact-dominated (~92–94%)**; v7 cleanup correctly rejects them and the **empty acute cells are the right rendering** for severe + mod-severe phenotypes. **Largely resolves Task #16's severe/mod-severe acute implausible-scalar concern.**
+
+### Forward-pointers (anti-confusion)
+- **Empty V4/V5 acute cells (severe + mod-severe) will likely STAY empty after CC #9 lands bare-half data** — bare-half acute trials in severe-stroke mice are biologically expected to be similarly artifact-dominated. Future readers should NOT interpret persistent empty cells as data-availability gaps once CC #9 lands.
+- **Stage 4 (`no_filter` unfiltered re-mat): DEFERRED — superseded by CC #9** (secondary-spout per-half-skip pipeline fix). Stale unfiltered tree's +12000 outlier in PS51 2025-05-05 acute-L reflects **real bare-half kinematics, not contamination**; investigation continues under CC #9 Step 5. The +12000 capture is folded into CC #9 Stage 4 because the bare-half data lives behind the per-date-skip bug CC #9 fixes.
+- **Per-date-vs-per-half secondary-spout skip bug (finding):** the v7/endpoints pipeline applies the `secondary_spout_sessions` exclusion **per-date** rather than **per-half** (`session_suffix="b"` only), wrongly dropping legitimate bare-half primary-spout sessions (PS51 ×4, PS54 ×13, PS55 ×7 dates). **Owned by CC #9** (`chore-substrate-routing-and-secondary-spout-per-half-fix`); out of this chore's scope.
+- **6th-cascade absorbed:** CC #7's cross-session angle substrate routing fix is folded into CC #9 (single comprehensive chore rather than two parallel ones).
+
+### Diagnostics (read-only, this chore)
+- **Figure-1 (V4/V5 cam2) vs Figure-2 (phase-aligned) X-trajectory discrepancy = benign:** same `centered_spout_midpoint` frame; the −40 px (tone-aligned wide window, R-cue) vs −10 px (phase-aligned, narrow Y-peak-centered) is an alignment + R-cue-directionality difference, not a coordinate bug.
+- **PS46 phase-aligned chronic X overshoot = genuine first-lick compensation** (first-lick |X| 12.7 → 33.1 px pre→chronic; subsequent stable) — not an artifact.
+- Probe/report artifacts on the share under `stats/sensitivity/` (`substrate_routing_audit.md`, `substrate_fix_pilot/`, `stage5_reprobe_report.md`, `ps46_chronic_first_vs_subsequent_lick_deflection.md`).
+
+Tag on merge: `vChore-tongue-substrate-v7-routing-fix`.
