@@ -12,6 +12,11 @@ from stroke_orofacial.dlc_kinematics.interpolation import (
     build_interpolated_trace,
     build_interpolated_trace_by_animal_date,
 )
+from stroke_orofacial.dlc_kinematics.jaw_cleanup_v34 import (
+    CLEANUP_VERSION as JAW_CLEANUP_VERSION,
+    build_jaw_cleaned_trace,
+    build_jaw_cleaned_trace_by_animal_date,
+)
 from stroke_orofacial.dlc_kinematics.jaw_pertrial import (
     JAW_PERTRIAL_VERSION,
     JawPertrialResult,
@@ -120,8 +125,11 @@ __all__ = [
     "build_tongue_angle_cohort_aggregates",
     "build_individual_sessions",
     "build_individual_sessions_animal",
+    "JAW_CLEANUP_VERSION",
     "build_interpolated_trace",
     "build_interpolated_trace_by_animal_date",
+    "build_jaw_cleaned_trace",
+    "build_jaw_cleaned_trace_by_animal_date",
     "build_jaw_pertrial",
     "build_jaw_pertrial_by_animal_date",
     "build_mean_sem_by_animal_date",
