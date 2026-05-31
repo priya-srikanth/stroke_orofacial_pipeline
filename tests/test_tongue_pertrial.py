@@ -1493,6 +1493,91 @@ class TestDriverAndSchema:
             assert path.stat().st_size > 0
             assert not path.with_name(path.name + ".tmp").exists()
 
+    # Stage 1b (chore substrate-routing-and-secondary-spout-per-half-fix):
+    # the per-frame angle parquet is derived from the v7-CLEANED substrate.
+    def test_angle_parquet_parity_when_no_v7_rejections(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """PARITY / unaffected-session safety: when the v7 cleaning rejects
+        nothing (cleaned trace == interpolated trace), the angle parquet is
+        byte-identical whether use_v7_pipeline is on or off. The synthetic
+        fixture produces no rejections, so routing the angle through the
+        cleaned substrate must not change it."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+
+        r_on, m_on, ev_on = self._setup_session_outputs(tmp_path / "on")
+        base_params["dlc_kinematics"]["tongue_pertrial"]["use_v7_pipeline"] = True
+        out_on = build_tongue_pertrial(
+            manifest=m_on, resolver=r_on, trial_events=ev_on,
+            params=base_params, overwrite="force",
+        )
+        angle_on = pd.read_parquet(out_on["angle_parquet"])
+        cleaned = pd.read_parquet(out_on["cleaned_traces_parquet"])
+        interp = pd.read_parquet(r_on.interpolated_trace(
+            "tongue", m_on.animal, m_on.date, variant="parquet",
+        ))
+        # Precondition for this fixture: v7 rejects nothing here.
+        assert np.allclose(
+            cleaned["y_final"].to_numpy(), interp["y_final"].to_numpy(),
+            equal_nan=True,
+        )
+
+        r_off, m_off, ev_off = self._setup_session_outputs(tmp_path / "off")
+        base_params["dlc_kinematics"]["tongue_pertrial"]["use_v7_pipeline"] = False
+        out_off = build_tongue_pertrial(
+            manifest=m_off, resolver=r_off, trial_events=ev_off,
+            params=base_params, overwrite="force",
+        )
+        angle_off = pd.read_parquet(out_off["angle_parquet"])
+
+        np.testing.assert_allclose(
+            angle_on["angle_deg_smoothed"].to_numpy(),
+            angle_off["angle_deg_smoothed"].to_numpy(),
+            equal_nan=True,
+        )
+
+    def test_angle_parquet_derived_from_v7_cleaned_arrays(
+        self, monkeypatch, tmp_path, base_params,
+    ):
+        """ROUTING: the per-frame angle parquet is computed from the output of
+        ``_v7_cleaned_bundle_arrays`` (the cleaned substrate), not the raw
+        interpolated trace. Perturbing that helper's output must change the
+        emitted angle — the direct proof that Stage 1b routed angle to cleaned."""
+        monkeypatch.setenv("STROKE_PIPELINE_MACHINE", _HOST_KEY)
+        import stroke_orofacial.dlc_kinematics.tongue_pertrial as _M
+
+        base_params["dlc_kinematics"]["tongue_pertrial"]["use_v7_pipeline"] = True
+        r0, m0, ev0 = self._setup_session_outputs(tmp_path / "base")
+        out0 = build_tongue_pertrial(
+            manifest=m0, resolver=r0, trial_events=ev0,
+            params=base_params, overwrite="force",
+        )
+        angle0 = pd.read_parquet(
+            out0["angle_parquet"])["angle_deg_smoothed"].to_numpy()
+
+        # Wrap the cleaned-array helper to offset x by a constant → the
+        # atan2-based angle must change. (The synthetic trace sits on the
+        # midline, x≈0, so a sign flip would be a no-op; an offset is not.)
+        real_fn = _M._v7_cleaned_bundle_arrays
+
+        def _perturbed(tongue_df, v7_trial_results):
+            x, y = real_fn(tongue_df, v7_trial_results)
+            return x + 50.0, y
+
+        monkeypatch.setattr(_M, "_v7_cleaned_bundle_arrays", _perturbed)
+        r1, m1, ev1 = self._setup_session_outputs(tmp_path / "pert")
+        out1 = build_tongue_pertrial(
+            manifest=m1, resolver=r1, trial_events=ev1,
+            params=base_params, overwrite="force",
+        )
+        angle1 = pd.read_parquet(
+            out1["angle_parquet"])["angle_deg_smoothed"].to_numpy()
+
+        assert not np.allclose(angle0, angle1, equal_nan=True), (
+            "angle parquet unchanged after perturbing _v7_cleaned_bundle_arrays "
+            "— angle is NOT derived from the v7-cleaned substrate"
+        )
+
     # 34
     def test_build_tongue_pertrial_overwrite_skip_partial_rebuild(
         self, monkeypatch, tmp_path, base_params,

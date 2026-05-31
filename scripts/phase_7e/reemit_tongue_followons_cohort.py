@@ -32,8 +32,6 @@ import sys
 import time
 from pathlib import Path
 
-import yaml
-
 from stroke_orofacial.cohort_enumeration import yaml_driven_session_dates
 from stroke_orofacial.dlc_kinematics import (
     build_tongue_angle_cohort,
@@ -62,17 +60,6 @@ logging.basicConfig(
 log = logging.getLogger("phase_7e.reemit_tongue_followons_cohort")
 
 
-def _load_secondary_spout_exclusion_set(
-    session_overrides_yaml: Path = Path("configs/session_overrides.yaml"),
-) -> set[tuple[str, dt.date]]:
-    cfg = yaml.safe_load(session_overrides_yaml.read_text())
-    out: set[tuple[str, dt.date]] = set()
-    for animal, dates in (cfg.get("secondary_spout_sessions") or {}).items():
-        for iso in dates or {}:
-            out.add((animal, dt.date.fromisoformat(iso)))
-    return out
-
-
 def _read_prior_manifest() -> dict[tuple[str, str, str], str]:
     """Return {(animal, stage, key): status} for prior runs."""
     if not MANIFEST_PATH.exists():
@@ -96,15 +83,8 @@ def _append_manifest(row: dict) -> None:
 
 def _process_within_session(
     animal: str, date: dt.date, resolver: PathResolver,
-    exclusion_set: set[tuple[str, dt.date]],
 ) -> dict:
     date_iso = date.isoformat()
-    if (animal, date) in exclusion_set:
-        return {
-            "animal": animal, "stage": "within_session", "key": date_iso,
-            "runtime_seconds": "", "n_paths_written": 0,
-            "status": "SKIP", "anomaly_notes": "secondary_spout_session_no_dlc",
-        }
     interp_path = resolver.interpolated_trace(
         bodypart="tongue", animal=animal, date=date,
     )
@@ -187,12 +167,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     resolver = PathResolver()
-    exclusion_set = _load_secondary_spout_exclusion_set()
     prior = _read_prior_manifest()
-    log.info(
-        "Loaded exclusion set: %d entries; prior manifest rows: %d",
-        len(exclusion_set), len(prior),
-    )
+    log.info("Prior manifest rows: %d", len(prior))
 
     animals = (args.animal,) if args.animal else COHORT_ORDER
     cohort_failures = sum(1 for s in prior.values() if s == "FAIL")
@@ -214,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
                     log.error("STOP: %s failures %d >= %d", animal, per_animal_fail[animal], MAX_PER_ANIMAL_FAILURES)
                     return 2
                 log.info("[%s %s within_session] starting", animal, date.isoformat())
-                row = _process_within_session(animal, date, resolver, exclusion_set)
+                row = _process_within_session(animal, date, resolver)
                 _append_manifest(row)
                 if row["status"] == "OK":
                     log.info(

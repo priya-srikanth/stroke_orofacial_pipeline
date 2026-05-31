@@ -779,6 +779,60 @@ def iter_session_suffixes(
     return [None, "b"]
 
 
+def is_secondary_spout_b_half(
+    animal: str,
+    date: datetime.date,
+    session_suffix: str | None,
+    overrides_config: dict[str, Any],
+) -> bool:
+    """Return ``True`` iff ``(animal, date, session_suffix)`` is the *b half*
+    of a registered secondary-spout (Pattern B) session.
+
+    The b half (``session_suffix == "b"``) is the closer-spout exploratory
+    acquisition with NO DLC inference — it must be excluded from DLC analyses
+    and standard spout-behavior metrics (it appears ONLY in the explicit
+    ``spout_close_vs_std`` comparison). The **bare half**
+    (``session_suffix is None``) of the same date is a normal primary-spout
+    session WITH DLC and must flow through ALL standard analyses, so this
+    predicate returns ``False`` for it.
+
+    This is the single source of truth for "which half to drop from DLC /
+    standard pipelines." Any driver that iterates :func:`iter_session_suffixes`
+    and feeds a DLC or standard-spout-behavior consumer should gate the b half
+    through this predicate (NOT a per-date membership test, which would also
+    drop the legitimate bare half — the per-date-skip bug fixed in chore
+    ``substrate-routing-and-secondary-spout-per-half-fix``).
+
+    Parameters
+    ----------
+    animal : str
+        Animal ID (e.g. ``"PS55"``).
+    date : datetime.date
+        Session date.
+    session_suffix : str or None
+        The half being considered. ``None`` for the bare half; ``"b"`` for the
+        closer-spout half.
+    overrides_config : dict
+        Parsed ``configs/session_overrides.yaml`` contents.
+
+    Returns
+    -------
+    bool
+        ``True`` only when ``session_suffix == "b"`` AND ``(animal, date)`` is
+        registered in ``secondary_spout_sessions:``. ``False`` for the bare
+        half of a Pattern B session, and for any non-Pattern-B session
+        regardless of suffix.
+
+    Raises
+    ------
+    OverlappingRegistryError, ValueError
+        Propagated from :func:`get_secondary_spout_entry`.
+    """
+    if session_suffix != "b":
+        return False
+    return get_secondary_spout_entry(animal, date, overrides_config) is not None
+
+
 def build_manifest(
     animal: str,
     date: datetime.date,
