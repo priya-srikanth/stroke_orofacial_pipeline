@@ -1943,6 +1943,40 @@ def _build_cleaned_trace_df(
     return df
 
 
+def _v7_cleaned_bundle_arrays(
+    tongue_df: pd.DataFrame,
+    v7_trial_results: list[_V7TrialResult],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Build the v7-CLEANED session ``(x, y)`` arrays for the visual bundle.
+
+    The substrate fix (chore tongue-substrate-v7-routing-fix, 2026-05-30).
+    Overlays each trial's v7-cleaned ``x_clean``/``y_clean`` onto the
+    interpolated session arrays — **byte-identical to the ``cleaned_traces``
+    parquet** via :func:`_build_cleaned_trace_df`, used AS-IS with no further
+    masking (Priya decision 2026-05-30: "cleaned as-is, y=0").
+
+    Rationale for no NaN mask: v7-rejected protrusions are already wiped to
+    the baseline-fill value (``y≈0``) by the v7 preclean, so they produce no
+    detectable peak and the trial drops from the phase-aligned analysis
+    (the ``n_sessions_kept→0`` cell-loss outcome). Masking those frames to
+    NaN is unnecessary for that and would (a) change trajectory methodology
+    vs the v2 figures — which included the ``y=0`` baseline frames — and
+    (b) risk under-detecting kept licks at NaN boundaries. So this is a true
+    "data-source-only" change: interpolated → cleaned, same methodology.
+
+    ``angle`` is intentionally NOT cleaned here — the bundle keeps using the
+    session-wide ``angle_per_frame`` (interpolated-derived). The per-frame
+    angle parquet + cross-session angle scalars are OUT of this chore's scope
+    (Priya decision 2026-05-30, item 3; queued as the 6th-cascade discharge).
+
+    Returns ``(x_bundle, y_bundle)`` — session-length cleaned coordinates.
+    """
+    cleaned_df = _build_cleaned_trace_df(tongue_df, v7_trial_results)
+    x_bundle = cleaned_df["x_final"].to_numpy(dtype=np.float64, copy=False)
+    y_bundle = cleaned_df["y_final"].to_numpy(dtype=np.float64, copy=False)
+    return x_bundle, y_bundle
+
+
 def _build_lick_events_df(
     animal: str,
     date: datetime.date,
@@ -3438,8 +3472,23 @@ def _build_tongue_pertrial_core(
         )
         velocity_records.append(vel)
 
+        # Route n_licks_family to the v7-CLEANED substrate (chore
+        # tongue-substrate-v7-routing-fix, decision 4, 2026-05-30). The
+        # DlcSessionFilter's n_trials_with_detected_lick counts
+        # n_licks_family.n_licks, so it must reflect v7-kept licks rather
+        # than pre-clean detections (else the <10 filter inherits the
+        # routing bug). Uses the per-trial v7-cleaned slice AS-IS (y≈0 at
+        # baseline-fill — no NaN mask, per Priya 2026-05-30 "cleaned as-is"):
+        # v7-rejected protrusions are wiped to baseline so the slope detector
+        # finds no peak there, and the effective <10 threshold tightens. Falls
+        # back to the raw interpolated slice when use_v7_pipeline is off.
+        if use_v7_pipeline and v7_result_for_trial is not None:
+            y_nlicks = v7_result_for_trial.y_clean
+            x_nlicks = v7_result_for_trial.x_clean
+        else:
+            y_nlicks, x_nlicks = y_slice, x_slice
         n_licks = _extract_n_licks_family(
-            y_slice, x_slice, t_ms, fps, params=params,
+            y_nlicks, x_nlicks, t_ms, fps, params=params,
         )
         n_licks_records.append(n_licks)
 
@@ -3492,13 +3541,36 @@ def _build_tongue_pertrial_core(
         if ev.side in apply_peaks_per_side:
             apply_peaks_per_side[ev.side].append(apply_peaks)
 
-        # Phase 7a.4 visual-bundle compute (additive; emit-set untouched).
+    # Phase 7a.4 visual-bundle compute (additive; legacy emit-set untouched).
+    # MOVED out of the per-trial loop (chore tongue-substrate-v7-routing-fix,
+    # 2026-05-30) so it can consume the v7-CLEANED substrate. Under
+    # use_v7_pipeline (default True), the bundle's y_snip/x_snip — which feed
+    # the Q13b phase-aligned scalar endpoints and the Q13/Q13c phase-aligned
+    # trajectories — are built from the cleaned trace AS-IS (byte-identical to
+    # the cleaned_traces parquet via _build_cleaned_trace_df; no NaN mask, per
+    # Priya 2026-05-30 "cleaned as-is, y=0"). This is the in-memory "Option 1"
+    # fix: the interpolated trace stays the v7 PRECLEAN INPUT, but the bundle
+    # SUBSTRATE is the cleaned output — v7-rejected protrusions are wiped to
+    # the baseline value, so they no longer appear in the figures as licks and
+    # fully-rejected trials drop (no detectable peak). ``angle`` stays on the
+    # interpolated-derived ``angle_per_frame`` (per-frame angle parquet +
+    # cross-session angle are out of scope — 6th-cascade discharge). Falls back
+    # to the raw interpolated x/y when use_v7_pipeline is off (A/B audit).
+    if use_v7_pipeline and v7_trial_results:
+        x_final_bundle, y_final_bundle = _v7_cleaned_bundle_arrays(
+            tongue_df, v7_trial_results,
+        )
+    else:
+        y_final_bundle = y_final
+        x_final_bundle = x_final
+
+    for ev in trial_events:
         # Uses Cell 50's own windows from the tongue_visual.bundle block.
         v_trial, v_bouts, v_phase = _build_visual_bundle_per_trial(
             trial_index=int(ev.trial_index),
             side=ev.side,
-            x_final=x_final,
-            y_final=y_final,
+            x_final=x_final_bundle,
+            y_final=y_final_bundle,
             angle_per_frame=angle_per_frame,
             tone_frame_idx=int(ev.tone_frame_idx),
             fps=fps,

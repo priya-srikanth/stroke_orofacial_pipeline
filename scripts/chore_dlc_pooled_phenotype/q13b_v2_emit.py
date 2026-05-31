@@ -129,7 +129,19 @@ V2_SUBTITLE = (
     "Source: filtered_v1 (on-the-fly DlcSession+TrialFilter) + ipsi/contra "
     "coding + line+jitter convention (chore vChore-dlc-pooled-phenotype-unification)"
 )
+# v3 substrate-version marker (chore tongue-substrate-v7-routing-fix,
+# 2026-05-30): same methodology as v2, only the data source changed (the
+# phase-aligned substrate now reads the v7-cleaned trace). Required for audit.
+V3_SUBTITLE = (
+    "Source: filtered_v1 (substrate v3 — v7-cleaned-trace routing fix per "
+    "chore vChore-tongue-substrate-v7-routing-fix); mean ± SEM session-pooled"
+)
+SUBTITLE_BY_VERSION = {"v2": V2_SUBTITLE, "v3": V3_SUBTITLE}
 PROVENANCE = "v2_filtered_v1_ipsi_contra"
+PROVENANCE_BY_VERSION = {
+    "v2": "v2_filtered_v1_ipsi_contra",
+    "v3": "v3_filtered_v1_v7_cleaned_substrate",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -473,6 +485,7 @@ def run_scope(
     phenotype_order: tuple[str, ...],
     resolver: PathResolver,
     overwrite: str,
+    out_version: str = "v3",
 ) -> dict[str, object]:
     """Aggregate + stats + render one scope (4_tier or 3_tier).
 
@@ -512,8 +525,8 @@ def run_scope(
     else:
         pooled_delta = pooled
 
-    fig_base = resolver.pipeline_outputs(subdir=FAMILY_FIG_SUBDIR) / scope / "v2"
-    res_base = resolver.pipeline_outputs(subdir=FAMILY_RESULTS_SUBDIR) / scope / "v2"
+    fig_base = resolver.pipeline_outputs(subdir=FAMILY_FIG_SUBDIR) / scope / out_version
+    res_base = resolver.pipeline_outputs(subdir=FAMILY_RESULTS_SUBDIR) / scope / out_version
     fig_base.mkdir(parents=True, exist_ok=True)
     res_base.mkdir(parents=True, exist_ok=True)
 
@@ -529,8 +542,8 @@ def run_scope(
             if vcol not in src.columns:
                 continue
             fname = (
-                f"{endpoint}_v2.svg" if kind == "raw"
-                else f"delta_{endpoint}_v2.svg"
+                f"{endpoint}_{out_version}.svg" if kind == "raw"
+                else f"delta_{endpoint}_{out_version}.svg"
             )
             target = fig_base / fname
             if target.exists() and overwrite == "skip":
@@ -545,13 +558,15 @@ def run_scope(
                 value_col=vcol,
                 display_names=names,
                 is_delta=(kind == "delta"),
+                provenance_subtitle=SUBTITLE_BY_VERSION[out_version],
             )
             ok.append(fname)
 
     # Provenance-stamped CSVs.
-    pooled = pooled.assign(provenance=PROVENANCE)
-    stats_df = stats_df.assign(provenance=PROVENANCE)
-    per_session_meta = per_session_meta.assign(provenance=PROVENANCE)
+    prov = PROVENANCE_BY_VERSION[out_version]
+    pooled = pooled.assign(provenance=prov)
+    stats_df = stats_df.assign(provenance=prov)
+    per_session_meta = per_session_meta.assign(provenance=prov)
     pooled.to_csv(res_base / "phenotype_pooled_mean_sem.csv", index=False)
     stats_df.to_csv(res_base / "phase_aligned_endpoint_stats.csv", index=False)
     per_session_meta.to_csv(res_base / "per_session_means.csv", index=False)
@@ -570,6 +585,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--overwrite", choices=("skip", "force"), default="skip")
     parser.add_argument(
         "--remap-phenotypes", choices=("none", "3tier", "both"), default="none",
+    )
+    parser.add_argument(
+        "--out-version", choices=("v2", "v3"), default="v3",
+        help="Output subdir + filename suffix + subtitle/provenance marker. "
+             "v3 (default) = the v7-cleaned-trace substrate fix; v2 = the "
+             "pre-fix audit copy (retained, not overwritten by a v3 run).",
     )
     parser.add_argument(
         "--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"),
@@ -634,7 +655,7 @@ def main(argv: list[str] | None = None) -> int:
             long_df=long_df, long_df_nofilter=long_df_nofilter,
             animals_map=amap, scope=scope,
             phenotype_order=phenotype_order, resolver=resolver,
-            overwrite=args.overwrite,
+            overwrite=args.overwrite, out_version=args.out_version,
         )
         logger.info(
             "[%s] figures=%d skip=%d pooled_rows=%d -> %s",

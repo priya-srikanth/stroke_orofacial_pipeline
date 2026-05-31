@@ -125,14 +125,19 @@ _CLEANED_TRACE_SOURCE_LABEL = "v3.4-cleaned"
 def _use_cleaned_traces(bodypart: str, params: dict[str, Any] | None) -> bool:
     """Return True if the bodypart-scoped ``use_cleaned_traces`` flag is set.
 
-    Per-bodypart defaults: True for jaw (Phase 7f v3.4 cleanup is the
-    canonical jaw trace source post-2026-05-26 lock), False for tongue
-    (cleaned_traces semantics differ — Phase 7e tongue cleanup writes a
-    different schema). When ``params`` is None, returns the default. Set
+    Per-bodypart defaults: True for BOTH jaw and tongue. Jaw uses Phase 7f
+    v3.4 cleanup; tongue uses Phase 7e v7 cleanup. The tongue default was
+    flipped False→True in the chore tongue-substrate-v7-routing-fix
+    (2026-05-30, Priya-approved): the prior False default routed the V4/V5
+    tongue mean-sem cohort figures through the pre-clean interpolated trace,
+    the same routing bug diagnosed in PR #162. (Tongue cleaned_traces are a
+    column-compatible drop-in; they merely lack ``fps``/``n_frames``
+    metadata, which :func:`_read_trace_fps_n_frames` recovers via the
+    sibling interpolated parquet.) Set
     ``dlc_kinematics.<bodypart>.use_cleaned_traces: false`` in params to
     force the legacy ``interpolated_traces/`` loader (A/B audit hook).
     """
-    default = bodypart == "jaw"
+    default = bodypart in ("jaw", "tongue")
     if params is None:
         return default
     return bool(
@@ -161,6 +166,31 @@ def _resolve_trace_path(
     return resolver.interpolated_trace(
         bodypart=bodypart, animal=animal, date=date,
     )
+
+
+def _read_trace_fps_n_frames(
+    bodypart: str, animal: str, date: datetime.date,
+    resolver: PathResolver, params: dict[str, Any] | None,
+) -> tuple[float, int]:
+    """Return ``(fps, n_frames)`` for the active trace parquet.
+
+    Tongue cleaned_traces (Phase 7e) do NOT stamp ``fps``/``n_frames``
+    metadata (only jaw's Phase 7f cleaned_traces do). When the active
+    parquet lacks those keys, fall back to the sibling interpolated_traces
+    parquet, which always carries them. Mirrors the metadata fallback in
+    ``tongue_jaw_mismatch._load_bodypart_y_final`` (Phase 7e.3) and is what
+    lets the tongue ``use_cleaned_traces`` default flip to True without the
+    cleaned_traces metadata gap breaking the mean-sem readers.
+    """
+    active = _resolve_trace_path(bodypart, animal, date, resolver, params)
+    meta = pq.read_schema(active).metadata or {}
+    if b"fps" in meta and b"n_frames" in meta:
+        return float(meta[b"fps"].decode()), int(meta[b"n_frames"].decode())
+    interp = resolver.interpolated_trace(
+        bodypart=bodypart, animal=animal, date=date,
+    )
+    imeta = pq.read_schema(interp).metadata or {}
+    return float(imeta[b"fps"].decode()), int(imeta[b"n_frames"].decode())
 
 
 def _resolve_trace_dir(
@@ -634,15 +664,9 @@ def _derive_reward_events_for_bodypart(
             f"7f Step 1 cleanup driver) or set "
             f"dlc_kinematics.{bodypart}.use_cleaned_traces=false.",
         )
-    schema = pq.read_schema(parquet_path)
-    raw_meta = schema.metadata or {}
-    n_frames_meta = raw_meta.get(b"n_frames")
-    if n_frames_meta is None:
-        raise ValueError(
-            f"7a.2 {bodypart} parquet at {parquet_path} missing "
-            f"'n_frames' metadata key (expected per the 7a.2 schema lock).",
-        )
-    n_frames = int(n_frames_meta)
+    _, n_frames = _read_trace_fps_n_frames(
+        bodypart, animal, date, resolver, params,
+    )
 
     # Phase 2 licks_and_rewards NPZ path via the Phase 7d (Addendum #4)
     # spout_licks_and_rewards_npz resolver method.
@@ -753,8 +777,11 @@ def _load_session_aggregates(
     table = pq.read_table(parquet_path)
     raw_meta = table.schema.metadata or {}
 
-    fps = float(raw_meta[b"fps"].decode())
-    n_frames = int(raw_meta[b"n_frames"].decode())
+    # fps/n_frames via fallback: tongue cleaned_traces lack these metadata
+    # keys (Phase 7e), so read them with a sibling-interpolated fallback.
+    fps, n_frames = _read_trace_fps_n_frames(
+        bodypart, animal, date, resolver, params,
+    )
     interp_version = _trace_source_label(
         bodypart, params,
         raw_meta.get(b"interpolation_version", b"unknown").decode(),
@@ -2339,8 +2366,12 @@ def _load_session_xy_filtered(
     )
     table = pq.read_table(parquet_path)
     raw_meta = table.schema.metadata or {}
-    fps = float(raw_meta[b"fps"].decode())
-    n_frames = int(raw_meta[b"n_frames"].decode())
+    # fps/n_frames via fallback: tongue cleaned_traces (Phase 7e) lack these
+    # metadata keys, so read them with a sibling-interpolated fallback
+    # (chore tongue-substrate-v7-routing-fix, 2026-05-30).
+    fps, n_frames = _read_trace_fps_n_frames(
+        bodypart, animal, date, resolver, params,
+    )
     interp_version = _trace_source_label(
         bodypart, params,
         raw_meta.get(b"interpolation_version", b"unknown").decode(),
