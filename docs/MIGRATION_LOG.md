@@ -5,6 +5,88 @@ differences vs. the legacy notebooks.
 
 ---
 
+## Chore: Phenotype-pooled whisker + nose + spout + eye spatial analysis
+
+**Date:** 2026-05-30
+**Tag on merge:** `vChore-whisker-nose-spatial-pooled` (apply post-merge)
+**Branch:** `chore/whisker-nose-spatial-pooled` (PR #161)
+**Kickoff:** [`docs/prompts/chore-whisker-nose-spatial-pooled-kickoff.md`](prompts/chore-whisker-nose-spatial-pooled-kickoff.md) (LOCKED v1 + Addenda #1-4)
+
+Extends Q-lock 12's phenotype-pooled spatial methodology (proportion-diff
+heatmaps + Wasserstein-2 recovery) to **four new reference points** —
+**whisker, nose, spout, eye** — using **raw DLC tracking** (path A; no
+cleanup-pipeline analog, since cleaned-traces parquets exist only for
+tongue/jaw). Re-uses the unification chore's plot conventions + path structure;
+emits to the `v2/` subtree alongside the existing tongue/jaw v2.
+
+**What shipped:**
+- `stats/spatial_proportion_diff.py`: a `SpatialBodypartRecipe` registry +
+  `compute_pooled_recipe_histogram` — pools the existing
+  `compute_animal_aggregated_histogram` primitive over (landmark × tone
+  trial-group), with an explicit shared bin grid + a raw (`use_v7_cleaned=False`)
+  path. The 3 Stage-1 stats functions are recipe-driven; **tongue/jaw call args
+  are byte-identical** (regression-tested).
+- `stats/spatial_wasserstein.py`: per-session W-2 recipe-driven (pooled, raw).
+- `figures/phenotype_pooled_proportion_diff.py`: renderer accepts the new
+  bodyparts; new `_multiside_figure` renders ipsi/contra as side-by-side
+  sub-grids in one figure.
+- `dlc_spatial/render_on_demand.py`: one backward-compatible `x_limits/y_limits`
+  override on the histogram primitive (shared grid for unions).
+- `scripts/chore_whisker_nose_spatial/emit_cohort.py`: the cohort emit
+  (`--animals/--bodyparts/--cohort-scope/--overwrite`).
+
+**Per-bodypart compute (intentional, NOT a single uniform recipe):**
+- **whisker** (eye-centered): heatmap pools **all 6 landmarks** into one
+  combined bilateral `both` map (L-whiskers at +x, R-whiskers at −x — one map
+  shows both sides); W-2 **stats split per anatomical side** (L-pool vs R-pool,
+  2 panels). "Plot all whiskers together, run statistics differently for L/R."
+- **nose** (eye-centered, single midline landmark): split by **ipsi/contra cue
+  trials** (the only 2-way split available); heatmap = one figure with
+  ipsi+contra sub-grids; W-2 = 2 panels.
+- **spout / eye** (spout-/eye-centered respectively): **pool both bilateral
+  landmarks** into one distribution (bimodal), no side split, all trials.
+  Exploratory/descriptive only. Self-centered ⇒ the post-vs-pre signal is small
+  (fiducial sits in a ~±20px band); surfaces *landmark drift that persists
+  despite midpoint centering* (NOT a per-frame midpoint — an interim
+  midpoint-average direction was withdrawn).
+
+**Intentional convention divergence (per Addendum #4):** the new family uses a
+**combined single-figure heatmap** per bodypart (whisker/spout/eye via pooled
+`both`; nose via the ipsi/contra sub-grid), whereas the legacy tongue/jaw
+heatmaps remain **2-separate-per-side** SVGs (preserved untouched, co-located in
+the same `v2/` dirs as `*_cleaned_trace.svg`). Chosen for cross-bodypart visual
+symmetry over legacy-convention parity. The legacy
+`figures/phenotype_wasserstein_recovery_boxplot.py` (still `ax.boxplot`) is left
+untouched; the new W-2 uses the canonical line+jitter `render_endpoint_v2_figure`
+(one W-2 family, mirroring the unification chore's box→line+jitter collapse).
+
+**Ipsi/contra:** pure relabel on the all-L cohort (L→ipsi, R→contra); the
+right-stroke spatial x-bin sign-flip never fires. 0 sham animals.
+
+**Cohort emit (PS46-PS55, 8 animals):** 160 D-records + 1530 per-session W-2
+rows; **16 SVGs, 16 OK / 0 FAIL** across {4_tier, 3_tier} × {proportion_diff
+heatmaps, wasserstein_recovery} × {whisker, nose, spout, eye}. Wall-time ~2h55m
+(heavy centered-parquet reads over the network mount; PS51/54/55 carry 78-79
+sessions each). Per-bodypart `shared_vmax` (the 4 reference points live on very
+different spatial scales). Visual QC (SVG→PNG via Edge headless; no
+cairosvg/inkscape offline) confirmed: whisker bilateral lobes; nose ipsi/contra
+sub-grid; whisker W-2 severity gradient (severe/mod-severe > mild) with
+line+jitter+dots; spout/eye small-but-present drift as designed. Sparse-tracking
+sessions (PS50 R_eye ~0-2%, PS55 L_spout ~3% pass-rate at lik 0.8) degrade
+gracefully via skip/sparse warnings.
+
+**Outputs:** `pipeline_outputs/stats/figures/phenotype_pooled/{proportion_diff_heatmaps,
+wasserstein_recovery}/{4_tier,3_tier}/v2/{whisker,nose,spout,eye}_*.svg`; W-2
+mean+SEM CSVs under the parallel `stats/results/...` tree; emit manifest at
+`stats/sensitivity/whisker_nose_spatial_emit_manifest.csv`.
+
+**Forward-pointer:** whisker/nose cleanup pipelines (path B) only if raw-data
+signal proves artifact-contaminated — the cohort QC did NOT trip this
+(whisker/nose tracking is solid; only the exploratory eye/spout fiducials show
+sparse sessions, handled gracefully).
+
+---
+
 ## Chore: DLC pooled-phenotype unification
 
 **Date:** 2026-05-29

@@ -43,6 +43,55 @@ Entries are reverse-chronological (newest at top). Format:
 - *Rationale:* Refreshing the unfiltered tree would propagate a separate **per-date-vs-per-half** secondary-spout skip bug (dropping legitimate bare-half data); that fix + the unfiltered refresh are owned by **CC #9**.
 - *Enforced at:* this chore re-emitted `filtered_v1` only; MIGRATION_LOG 2026-05-30 entry Stage-4-deferred note + CC #9 cross-ref.
 
+## 2026-05-30 — Chore whisker+nose+spout+eye spatial: raw path, per-bodypart recipes, heatmap convention divergence
+
+- *Context:* Extending Q-lock 12's phenotype-pooled spatial methodology to four
+  new reference points surfaced several forks not in the kickoff; the design was
+  refined live across Addenda #1-4 (with a couple of in-flight reversals).
+- *Decisions:*
+  - **Raw DLC (path A), not a cleanup pipeline.** whisker/nose/spout/eye have no
+    `cleaned_traces` parquets (those exist only for tongue v7 / jaw v3.4), so the
+    recipes run `use_v7_cleaned=False`. The Stage-0 + cohort QC showed
+    whisker/nose tracking is solid, so path B (cleanup analog) is NOT pursued.
+  - **Per-bodypart recipes, not one uniform rule** (a `SpatialBodypartRecipe`
+    registry): whisker pools all 6 landmarks for the heatmap (`both`) but splits
+    L/R for W-2 stats; nose (single midline) splits by ipsi/contra **cue trials**;
+    spout/eye pool both bilateral landmarks (bimodal), no split.
+  - **spout/eye = pooled bilateral landmarks, NOT a per-frame midpoint.** An
+    interim direction to use the `(xL+xR)/2` midpoint was withdrawn (pasted from
+    a cowork thread without review). Pooling both landmarks in the self-centered
+    frame is intentional: it surfaces **landmark drift that persists despite
+    midpoint centering**. These are exploratory/descriptive-only; the signal is
+    small by construction (the fiducial defines its own centering origin).
+  - **Whisker heatmap = combined all-6 `both` map; W-2 = per-anatomical-side.**
+    "Plot all whiskers together, run statistics differently for L and R." The
+    combined map naturally shows both sides (L +x, R −x) without losing the
+    per-side recovery quantification in W-2.
+  - **Nose heatmap = one combined figure with ipsi/contra sub-grids** (a new
+    multi-side renderer), *diverging* from the legacy tongue/jaw 2-separate-per-
+    side heatmap convention. Chosen for cross-bodypart visual symmetry; the
+    legacy convention is preserved untouched for tongue/jaw.
+  - **One W-2 family via the canonical line+jitter renderer.** Reuse
+    `render_endpoint_v2_figure` (NOT the legacy `phenotype_wasserstein_recovery_
+    boxplot.py`, which a code audit found is still `ax.boxplot` — the unification
+    chore's box→line+jitter migration lived in `q12_v2_emit.py`, not that module).
+    The separate `wasserstein_boxplots` family from the original kickoff is
+    dropped (mirrors the unification chore's collapse).
+  - **Per-bodypart `shared_vmax`** (not cohort-wide): the 4 reference points live
+    on very different spatial scales (whisker spans ~400px; spout/eye sit in a
+    ~40px band), so a single cohort-wide vmax would wash out the tight maps.
+  - **Ipsi/contra = relabel on the all-L cohort** (L→ipsi, R→contra; sign-flip is
+    the identity) — inherited from the unification chore.
+- *Rationale:* match the science to each bodypart's geometry (bilateral whiskers,
+  midline nose, fiducial spout/eye); reuse the unification chore's proven
+  line+jitter + path machinery; prefer visual symmetry across the new family
+  while leaving shipped tongue/jaw outputs untouched.
+- *Enforced at:* `stats/spatial_proportion_diff.py` (`SPATIAL_BODYPART_RECIPES`,
+  `compute_pooled_recipe_histogram`); `stats/spatial_wasserstein.py`;
+  `figures/phenotype_pooled_proportion_diff.py` (`_multiside_figure`);
+  `scripts/chore_whisker_nose_spatial/emit_cohort.py`; kickoff Addenda #1-4 +
+  MIGRATION_LOG chore entry.
+
 ---
 
 ## 2026-05-29 — Chore DLC pooled-phenotype unification: methodology + path + scope decisions

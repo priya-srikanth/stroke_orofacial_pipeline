@@ -179,11 +179,10 @@ def compute_per_animal_per_session_w2_long(
     None or zero-mass (no contributing tones / parquets) are skipped
     silently — the caller treats them as missing.
     """
-    from stroke_orofacial.dlc_spatial.render_on_demand import (
-        TASK5_TONE_WINDOW_MS,
-        compute_animal_aggregated_histogram,
+    from stroke_orofacial.stats.spatial_proportion_diff import (
+        compute_pooled_recipe_histogram,
+        get_spatial_recipe,
     )
-    from stroke_orofacial.stats.spatial_proportion_diff import BODYPART_CENTER_MODES
 
     if defaults is None:
         from stroke_orofacial.config_loader import load_defaults
@@ -191,14 +190,16 @@ def compute_per_animal_per_session_w2_long(
     if animal_info is None:
         from stroke_orofacial.animals import get_animal
         animal_info = get_animal(animal)
-    center_mode = BODYPART_CENTER_MODES[bodypart]
+    # Recipe-driven (chore whisker-nose Addendum #2): pools landmarks ×
+    # trial_groups per side, routes raw vs v7-cleaned per recipe. tongue/jaw
+    # resolve to their legacy single-landmark, cue-split, v7-cleaned path.
+    recipe = get_spatial_recipe(bodypart)
 
     rows: list[dict[str, Any]] = []
     for d in post_dates:
         H_post, ext, _n_sess, _n_tones, n_total_post = (
-            compute_animal_aggregated_histogram(
-                animal, [d], bodypart, center_mode, resolver,
-                trial_group=side, window_ms=TASK5_TONE_WINDOW_MS,
+            compute_pooled_recipe_histogram(
+                animal, [d], recipe, side, resolver,
                 defaults=defaults, animal_info=animal_info,
             )
         )

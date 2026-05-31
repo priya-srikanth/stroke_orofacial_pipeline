@@ -26,6 +26,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -54,6 +55,240 @@ BODYPART_CENTER_MODES: dict[str, str] = {
     "tongue": "spout_midpoint",
     "jaw": "eye_midpoint",
 }
+
+
+# ---------------------------------------------------------------------------
+# Chore whisker-nose (Addendum #2): per-bodypart pooling recipes.
+#
+# Each LOGICAL bodypart maps to a recipe describing how to build its pooled
+# spatial distribution per output side. The pooled histogram for one
+# (animal, dates, output_side) sums :func:`compute_animal_aggregated_histogram`
+# over every (landmark, trial_group) pair:
+#   - ``landmarks``: which DLC bodypart columns feed the distribution
+#     (e.g. the 3 whisker landmarks per anatomical side; both bilateral
+#     spout/eye landmarks; the single tongue/jaw/nose landmark).
+#   - ``trial_groups``: which tone trial-groups (cue sides) to pool frames
+#     over. Anatomical-split + no-split recipes pool BOTH cue sides; the
+#     cue-split recipes (tongue/jaw/nose) use the single output cue side.
+#   - ``grid``: explicit shared (x_limits, y_limits) bin grid so all pooled
+#     landmarks histogram on identical bins (load-bearing for whiskers,
+#     whose per-landmark config extents differ). None = use per-bp config
+#     (single-landmark recipes only).
+#
+# tongue/jaw recipes reproduce the legacy single-bodypart, cue-split,
+# v7-cleaned behavior exactly (1 landmark × 1 trial_group, no grid
+# override) so existing Q12 output is byte-identical.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SpatialBodypartRecipe:
+    """How to build a logical bodypart's pooled spatial distribution.
+
+    Attributes
+    ----------
+    name : str
+        Logical bodypart name (``"tongue"``, ``"whisker"``, ``"spout"`` …).
+    center_mode : str
+        Centering frame (``"spout_midpoint"`` or ``"eye_midpoint"``).
+    use_v7_cleaned : bool
+        ``True`` for tongue/jaw (v7/v3.4 cleaned-trace substrate); ``False``
+        for whisker/nose/spout/eye (raw DLC — path A; no cleaned-traces
+        parquets exist).
+    side_split : str
+        ``"cue"`` (split by tone trial-group; tongue/jaw/nose),
+        ``"anatomical"`` (split by landmark side; whisker), or ``"none"``
+        (single pooled distribution; spout/eye).
+    output_sides : tuple[str, ...]
+        Side keys this recipe emits — ``("L", "R")`` for split recipes,
+        ``("both",)`` for no-split.
+    landmarks_by_side : dict[str, tuple[str, ...]]
+        DLC landmark columns to pool, per output side.
+    trial_groups_by_side : dict[str, tuple[str, ...]]
+        Tone trial-groups (cue sides) to pool frames over, per output side.
+    grid : tuple[tuple[float, float], tuple[float, float]] | None
+        Explicit ``((x_lo, x_hi), (y_lo, y_hi))`` shared bin grid, or None
+        to use each landmark's per-bp config extent.
+    """
+
+    name: str
+    center_mode: str
+    use_v7_cleaned: bool
+    side_split: str
+    output_sides: tuple[str, ...]
+    landmarks_by_side: dict[str, tuple[str, ...]]
+    trial_groups_by_side: dict[str, tuple[str, ...]]
+    grid: tuple[tuple[float, float], tuple[float, float]] | None
+
+
+# Shared bin grids (Addendum #2). Whisker = Q37 unified bilateral range on
+# L_whiskers_1; nose/spout/eye from configs/defaults.yaml per_center_mode.
+_WHISKER_GRID = ((-200.0, 200.0), (50.0, 360.0))
+_NOSE_GRID = ((-100.0, 95.0), (100.0, 330.0))
+_SPOUT_GRID = ((-100.0, 100.0), (-20.0, 20.0))
+_EYE_GRID = ((-160.0, 160.0), (-20.0, 20.0))
+
+_BOTH_CUE_SIDES: tuple[str, str] = ("L", "R")
+
+SPATIAL_BODYPART_RECIPES: dict[str, SpatialBodypartRecipe] = {
+    # Legacy cue-split single-landmark recipes (byte-identical to pre-chore).
+    "tongue": SpatialBodypartRecipe(
+        name="tongue", center_mode="spout_midpoint", use_v7_cleaned=True,
+        side_split="cue", output_sides=("L", "R"),
+        landmarks_by_side={"L": ("tongue",), "R": ("tongue",)},
+        trial_groups_by_side={"L": ("L",), "R": ("R",)},
+        grid=None,
+    ),
+    "jaw": SpatialBodypartRecipe(
+        name="jaw", center_mode="eye_midpoint", use_v7_cleaned=True,
+        side_split="cue", output_sides=("L", "R"),
+        landmarks_by_side={"L": ("jaw",), "R": ("jaw",)},
+        trial_groups_by_side={"L": ("L",), "R": ("R",)},
+        grid=None,
+    ),
+    # Whisker: anatomical L/R split, 3 landmarks pooled per side, frames
+    # pooled across both cue sides, raw DLC, shared bilateral grid. The
+    # ``"both"`` output side pools all 6 landmarks into one bilateral
+    # distribution — used for the proportion_diff HEATMAP ("plot all
+    # whiskers together"; L whiskers sit at +x, R at -x in the eye-centered
+    # frame, so one map shows both sides spatially separated). The ``"L"`` /
+    # ``"R"`` sides (3 landmarks each) drive the per-side W-2 STATISTICS
+    # ("run statistics differently for L and R"). Addendum #2.
+    "whisker": SpatialBodypartRecipe(
+        name="whisker", center_mode="eye_midpoint", use_v7_cleaned=False,
+        side_split="anatomical", output_sides=("L", "R", "both"),
+        landmarks_by_side={
+            "L": ("L_whiskers_1", "L_whiskers_2", "L_whiskers_3"),
+            "R": ("R_whiskers_1", "R_whiskers_2", "R_whiskers_3"),
+            "both": ("L_whiskers_1", "L_whiskers_2", "L_whiskers_3",
+                     "R_whiskers_1", "R_whiskers_2", "R_whiskers_3"),
+        },
+        trial_groups_by_side={
+            "L": _BOTH_CUE_SIDES, "R": _BOTH_CUE_SIDES,
+            "both": _BOTH_CUE_SIDES,
+        },
+        grid=_WHISKER_GRID,
+    ),
+    # Nose: single midline landmark, cue-split (ipsi/contra trials), raw DLC.
+    "nose": SpatialBodypartRecipe(
+        name="nose", center_mode="eye_midpoint", use_v7_cleaned=False,
+        side_split="cue", output_sides=("L", "R"),
+        landmarks_by_side={"L": ("nose",), "R": ("nose",)},
+        trial_groups_by_side={"L": ("L",), "R": ("R",)},
+        grid=_NOSE_GRID,
+    ),
+    # Spout: both bilateral landmarks pooled, all trials, no split, raw DLC.
+    "spout": SpatialBodypartRecipe(
+        name="spout", center_mode="spout_midpoint", use_v7_cleaned=False,
+        side_split="none", output_sides=("both",),
+        landmarks_by_side={"both": ("L_spout", "R_spout")},
+        trial_groups_by_side={"both": _BOTH_CUE_SIDES},
+        grid=_SPOUT_GRID,
+    ),
+    # Eye: both bilateral landmarks pooled, all trials, no split, raw DLC.
+    "eye": SpatialBodypartRecipe(
+        name="eye", center_mode="eye_midpoint", use_v7_cleaned=False,
+        side_split="none", output_sides=("both",),
+        landmarks_by_side={"both": ("L_eye", "R_eye")},
+        trial_groups_by_side={"both": _BOTH_CUE_SIDES},
+        grid=_EYE_GRID,
+    ),
+}
+
+
+def get_spatial_recipe(bodypart: str) -> SpatialBodypartRecipe:
+    """Look up a bodypart's pooling recipe.
+
+    Raises
+    ------
+    ValueError
+        If ``bodypart`` is not a registered logical bodypart.
+    """
+    try:
+        return SPATIAL_BODYPART_RECIPES[bodypart]
+    except KeyError:
+        raise ValueError(
+            f"bodypart {bodypart!r} has no spatial recipe; expected one of "
+            f"{tuple(SPATIAL_BODYPART_RECIPES)}.",
+        ) from None
+
+
+def compute_pooled_recipe_histogram(
+    animal: str,
+    dates: Sequence[dt.date],
+    recipe: SpatialBodypartRecipe,
+    output_side: str,
+    resolver: PathResolver,
+    *,
+    defaults: dict[str, Any] | None = None,
+    animal_info: AnimalInfo | None = None,
+    use_v7_cleaned: bool | None = None,
+) -> tuple[np.ndarray | None, list[float] | None, int, int, int]:
+    """Pool ``compute_animal_aggregated_histogram`` over landmark × trial_group.
+
+    Sums the per-``(landmark, trial_group)`` count histograms cell-wise (the
+    same Pattern-A pooling method as
+    :func:`~stroke_orofacial.dlc_spatial.render_on_demand._aggregate_for_dates_pooled_bodyparts`),
+    returning the same 5-tuple shape as
+    :func:`compute_animal_aggregated_histogram`:
+    ``(H_total, extent, n_sessions, n_tones, n_total_frames)``.
+
+    Denominator semantics (Addendum #2): ``n_total_frames`` is summed over
+    EVERY (landmark, trial_group) call, so it inflates by ``n_landmarks``
+    to match the ``n_landmarks``-fold inflation of the summed counts — the
+    pooled proportion ``H_total / n_total_frames`` stays a per-landmark-sample
+    fraction ≤ 1. ``n_tones`` is landmark-independent, so it is counted ONCE
+    per trial_group (summed across the pooled cue sides) rather than per
+    landmark.
+
+    Returns ``(None, None, 0, 0, 0)`` when nothing contributes.
+    """
+    if use_v7_cleaned is None:
+        use_v7_cleaned = recipe.use_v7_cleaned
+    if output_side not in recipe.landmarks_by_side:
+        raise ValueError(
+            f"output_side {output_side!r} not valid for recipe "
+            f"{recipe.name!r}; expected one of {recipe.output_sides}.",
+        )
+    landmarks = recipe.landmarks_by_side[output_side]
+    trial_groups = recipe.trial_groups_by_side[output_side]
+    if recipe.grid is not None:
+        x_limits: tuple[float, float] | None = recipe.grid[0]
+        y_limits: tuple[float, float] | None = recipe.grid[1]
+    else:
+        x_limits = y_limits = None
+
+    H_total: np.ndarray | None = None
+    extent: list[float] | None = None
+    n_sess_max = 0
+    n_tones_total = 0
+    n_total_summed = 0
+    date_list = list(dates)
+    for tg in trial_groups:
+        tg_n_tones: int | None = None
+        for landmark in landmarks:
+            H, ext, n_sess, n_tones, n_total = compute_animal_aggregated_histogram(
+                animal, date_list, landmark, recipe.center_mode, resolver,
+                trial_group=tg, window_ms=TASK5_TONE_WINDOW_MS,
+                defaults=defaults, animal_info=animal_info,
+                use_v7_cleaned=use_v7_cleaned,
+                x_limits=x_limits, y_limits=y_limits,
+            )
+            n_total_summed += int(n_total)
+            n_sess_max = max(n_sess_max, int(n_sess))
+            # n_tones is bodypart-independent: record once per trial_group.
+            if tg_n_tones is None and int(n_total) > 0:
+                tg_n_tones = int(n_tones)
+            if H is None:
+                continue
+            if H_total is None:
+                H_total = H.copy()
+                extent = list(ext) if ext is not None else None
+            else:
+                H_total += H
+        if tg_n_tones is not None:
+            n_tones_total += tg_n_tones
+    return H_total, extent, n_sess_max, n_tones_total, n_total_summed
 
 
 def split_post_dates_by_epoch(
@@ -162,7 +397,7 @@ def compute_per_animal_pre_pool(
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
     pre_dates: Sequence[dt.date] | None = None,
-    use_v7_cleaned: bool = True,
+    use_v7_cleaned: bool | None = None,
 ) -> dict[str, Any] | None:
     """Compute the per-animal pre-stroke pool histogram for one (bp, side).
 
@@ -195,13 +430,12 @@ def compute_per_animal_pre_pool(
         ``{"H_pre_counts", "extent", "n_pre_sessions", "n_pre_trials",
         "n_total_pre_frames"}``.
     """
-    if bodypart not in BODYPART_CENTER_MODES:
+    recipe = get_spatial_recipe(bodypart)
+    if side not in recipe.output_sides:
         raise ValueError(
-            f"bodypart {bodypart!r} not in Q12-B scope; expected one of "
-            f"{tuple(BODYPART_CENTER_MODES)}.",
+            f"side {side!r} not valid for bodypart {bodypart!r}; expected "
+            f"one of {recipe.output_sides}.",
         )
-    if side not in SIDES:
-        raise ValueError(f"side {side!r} not in {SIDES}.")
     if defaults is None:
         defaults = load_defaults()
     if animal_info is None:
@@ -219,12 +453,10 @@ def compute_per_animal_pre_pool(
             animal, bodypart, side,
         )
         return None
-    center_mode = BODYPART_CENTER_MODES[bodypart]
 
     H_pre, extent, n_pre_sessions, n_pre_trials, n_total_pre_frames = (
-        compute_animal_aggregated_histogram(
-            animal, list(pre_dates), bodypart, center_mode, resolver,
-            trial_group=side, window_ms=TASK5_TONE_WINDOW_MS,
+        compute_pooled_recipe_histogram(
+            animal, list(pre_dates), recipe, side, resolver,
             defaults=defaults, animal_info=animal_info,
             use_v7_cleaned=use_v7_cleaned,
         )
@@ -257,7 +489,7 @@ def compute_per_animal_per_epoch_diff(
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
     post_dates_by_epoch: dict[str, list[dt.date]] | None = None,
-    use_v7_cleaned: bool = True,
+    use_v7_cleaned: bool | None = None,
 ) -> dict[str, Any] | None:
     """Compute D = P(post_epoch) − P(pre) for one (animal, bp, side, epoch).
 
@@ -305,11 +537,10 @@ def compute_per_animal_per_epoch_diff(
     if not epoch_dates:
         return None
 
-    center_mode = BODYPART_CENTER_MODES[bodypart]
+    recipe = get_spatial_recipe(bodypart)
     H_post, extent_post, n_post_sessions, n_post_trials, n_total_post_frames = (
-        compute_animal_aggregated_histogram(
-            animal, list(epoch_dates), bodypart, center_mode, resolver,
-            trial_group=side, window_ms=TASK5_TONE_WINDOW_MS,
+        compute_pooled_recipe_histogram(
+            animal, list(epoch_dates), recipe, side, resolver,
             defaults=defaults, animal_info=animal_info,
             use_v7_cleaned=use_v7_cleaned,
         )
@@ -347,7 +578,7 @@ def compute_per_animal_pre_self_diff(
     pre_dates: list[dt.date],
     defaults: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
-    use_v7_cleaned: bool = True,
+    use_v7_cleaned: bool | None = None,
 ) -> dict[str, Any] | None:
     """Compute per-animal Pre-self proportion-diff (Q12-O Addendum #7).
 
@@ -378,7 +609,7 @@ def compute_per_animal_pre_self_diff(
     if not pre_dates:
         return None
 
-    center_mode = BODYPART_CENTER_MODES[bodypart]
+    recipe = get_spatial_recipe(bodypart)
     H_pre_pool = pre_pool["H_pre_counts"]
     n_total_pre = int(pre_pool["n_total_pre_frames"])
 
@@ -386,9 +617,8 @@ def compute_per_animal_pre_self_diff(
     n_sess_contributed = 0
     for d in pre_dates:
         H_sess, ext_sess, _n_sess, _n_tones, n_total_sess = (
-            compute_animal_aggregated_histogram(
-                animal, [d], bodypart, center_mode, resolver,
-                trial_group=side, window_ms=TASK5_TONE_WINDOW_MS,
+            compute_pooled_recipe_histogram(
+                animal, [d], recipe, side, resolver,
                 defaults=defaults, animal_info=animal_info,
                 use_v7_cleaned=use_v7_cleaned,
             )
@@ -426,9 +656,13 @@ __all__ = [
     "BODYPART_CENTER_MODES",
     "POST_EPOCHS",
     "SIDES",
+    "SPATIAL_BODYPART_RECIPES",
+    "SpatialBodypartRecipe",
     "compute_per_animal_per_epoch_diff",
     "compute_per_animal_pre_pool",
     "compute_per_animal_pre_self_diff",
+    "compute_pooled_recipe_histogram",
     "compute_proportion_diff_within",
+    "get_spatial_recipe",
     "split_post_dates_by_epoch",
 ]

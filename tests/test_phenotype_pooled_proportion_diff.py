@@ -230,14 +230,16 @@ class TestRenderPhenotypePooledProportionDiffFigure:
         )
 
     def test_invalid_bodypart_raises(self) -> None:
-        with pytest.raises(ValueError, match="not in Q12-B scope"):
+        # "nose" is now a valid recipe (chore whisker-nose); use a truly
+        # unknown bodypart to exercise the unknown-recipe error path.
+        with pytest.raises(ValueError, match="no spatial recipe"):
             render_phenotype_pooled_proportion_diff_figure(
-                bodypart="nose", side="L", pooled_records={},
+                bodypart="eyebrow", side="L", pooled_records={},
                 shared_vmax=0.01,
             )
 
     def test_invalid_side_raises(self) -> None:
-        with pytest.raises(ValueError, match="not in"):
+        with pytest.raises(ValueError, match="not valid for bodypart"):
             render_phenotype_pooled_proportion_diff_figure(
                 bodypart="tongue", side="C", pooled_records={},
                 shared_vmax=0.01,

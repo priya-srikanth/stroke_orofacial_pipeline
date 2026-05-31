@@ -48,6 +48,7 @@ from stroke_orofacial.stats.spatial_proportion_diff import (
     BODYPART_CENTER_MODES,
     POST_EPOCHS,
     SIDES,
+    get_spatial_recipe,
 )
 
 # Q-lock 12b Addendum #7: include ``"pre"`` as the first column (baseline
@@ -66,6 +67,11 @@ FIGURE_SUBDIR: str = "stats/figures/phenotype_pooled/proportion_diff_heatmaps"
 FIGURE_SUBTITLE_BY_BODYPART: dict[str, str] = {
     "tongue": "Source: v7-cleaned-trace cohort re-emit (Phase 7e + Phase 7e.4)",
     "jaw": "Source: v7-cleaned-trace cohort re-emit (Phase 7e + Phase 7e.4 + Phase 7f)",
+    # Chore whisker-nose (Addendum #2): raw DLC (path A; no cleaned traces).
+    "whisker": "Source: raw DLC tracking (all whiskers pooled; chore whisker-nose)",
+    "nose": "Source: raw DLC tracking (chore whisker-nose)",
+    "spout": "Source: raw DLC tracking (both spouts pooled, all trials; chore whisker-nose)",
+    "eye": "Source: raw DLC tracking (both eyes pooled, all trials; chore whisker-nose)",
 }
 
 # Display names for the epoch column headers (capitalized; "Subacute" as
@@ -207,17 +213,21 @@ def render_phenotype_pooled_proportion_diff_figure(
 
     A single figure-level colorbar is attached on the right.
     """
-    if bodypart not in BODYPART_CENTER_MODES:
+    # Recipe-driven (chore whisker-nose Addendum #2): tongue/jaw resolve to
+    # their legacy center_mode + ("L", "R") sides — byte-identical behavior.
+    # New bodyparts (whisker/nose/spout/eye) resolve their own center_mode +
+    # output sides (whisker "both" = combined all-6 heatmap; spout/eye
+    # "both" = pooled no-split).
+    recipe = get_spatial_recipe(bodypart)
+    if side not in recipe.output_sides:
         raise ValueError(
-            f"bodypart {bodypart!r} not in Q12-B scope; expected one of "
-            f"{tuple(BODYPART_CENTER_MODES)}.",
+            f"side {side!r} not valid for bodypart {bodypart!r}; expected "
+            f"one of {recipe.output_sides}.",
         )
-    if side not in SIDES:
-        raise ValueError(f"side {side!r} not in {SIDES}.")
     if defaults is None:
         defaults = load_defaults()
     spatial_config = defaults["dlc_spatial"]
-    center_mode = BODYPART_CENTER_MODES[bodypart]
+    center_mode = recipe.center_mode
 
     nrows = len(phenotype_order)
     ncols = len(EPOCH_ORDER)
@@ -284,6 +294,118 @@ def render_phenotype_pooled_proportion_diff_figure(
     fig.suptitle(
         f"Phenotype-pooled proportion-diff heatmap — "
         f"{bodypart} | {side_part} | shared |vmax|={shared_vmax:.4g}\n"
+        f"{subtitle}",
+        fontsize=12,
+    )
+    return fig
+
+
+def render_phenotype_pooled_proportion_diff_multiside_figure(
+    bodypart: str,
+    sides: Sequence[str],
+    pooled_records: Mapping[tuple[str, str, str, str], Mapping[str, Any]],
+    *,
+    shared_vmax: float,
+    phenotype_order: Sequence[str] = PHENOTYPE_ORDER,
+    defaults: dict[str, Any] | None = None,
+    subtitle_override: str | None = None,
+    side_display: dict[str, str] | None = None,
+) -> plt.Figure:
+    """Render ONE figure with multiple sides as side-by-side sub-grids.
+
+    Chore whisker-nose Addendum #4 (Option B): the nose ipsi/contra cue-trial
+    sets can't pool into a single ``both`` map, so they are shown as adjacent
+    phenotype×epoch sub-grids in a single figure (one matplotlib subfigure per
+    side, each carrying the side display label as its header). The per-panel
+    draw + shared diverging colorbar reuse the single-side path's primitives,
+    so the cmap / no-data masking / shared_vmax conventions are identical.
+
+    ``sides`` are the record-side keys (e.g. ``("L", "R")``); ``side_display``
+    maps each to a header label (e.g. ``{"L": "Ipsi (mouse-L)", ...}``).
+    """
+    recipe = get_spatial_recipe(bodypart)
+    for side in sides:
+        if side not in recipe.output_sides:
+            raise ValueError(
+                f"side {side!r} not valid for bodypart {bodypart!r}; expected "
+                f"one of {recipe.output_sides}.",
+            )
+    if not sides:
+        raise ValueError("sides must be non-empty.")
+    if defaults is None:
+        defaults = load_defaults()
+    spatial_config = defaults["dlc_spatial"]
+    center_mode = recipe.center_mode
+
+    nrows = len(phenotype_order)
+    nepochs = len(EPOCH_ORDER)
+    ncols = len(sides) * nepochs
+    # Single flat grid (NOT subfigures) so the shared colorbar can span every
+    # panel — a colorbar cannot be stolen across separate subfigures. Each
+    # side occupies a contiguous block of EPOCH_ORDER columns; the side label
+    # is carried on that block's top-row panel titles.
+    fig, axes_obj = plt.subplots(
+        nrows=nrows, ncols=ncols,
+        figsize=(ncols * 4.0, nrows * 3.6),
+        constrained_layout=True,
+    )
+    engine = fig.get_layout_engine()
+    if engine is not None:
+        engine.set(h_pad=0.35, hspace=0.05)
+    fig.patch.set_facecolor("white")
+    axes = np.asarray(axes_obj).reshape(nrows, ncols)
+
+    def _short_side(s: str) -> str:
+        # "Ipsi (mouse-L)" -> "Ipsi"; "both" -> its display or "both".
+        return (side_display or {}).get(s, s).split(" (")[0]
+
+    for s_idx, side in enumerate(sides):
+        short = _short_side(side)
+        for i, phenotype in enumerate(phenotype_order):
+            for j, post_epoch in enumerate(EPOCH_ORDER):
+                ax = axes[i, s_idx * nepochs + j]
+                rec = pooled_records.get((phenotype, side, bodypart, post_epoch))
+                base_title = _panel_title(phenotype, post_epoch, rec)
+                title = f"[{short}] {base_title}" if i == 0 else base_title
+                _render_proportion_diff_panel(
+                    ax,
+                    None if rec is None
+                    else np.asarray(rec["D_mean"], dtype=np.float64),
+                    None if rec is None else rec.get("extent"),
+                    bodypart, center_mode,
+                    spatial_config=spatial_config,
+                    title=title,
+                    shared_vmax=shared_vmax,
+                )
+
+    # Shared diverging colorbar across all panels (same convention as the
+    # single-side renderer).
+    shared_im = None
+    for ax in axes.flat:
+        if ax.images:
+            shared_im = ax.images[0]
+            break
+    if shared_im is None:
+        import matplotlib.colors as mcolors
+        norm = mcolors.Normalize(vmin=-shared_vmax, vmax=shared_vmax)
+        sm = plt.cm.ScalarMappable(norm=norm, cmap=_PROPORTION_DIFF_CMAP)
+        sm.set_array(np.array([]))
+        shared_im = sm
+    cbar = fig.colorbar(shared_im, ax=list(axes.flat), shrink=0.6, pad=0.02)
+    cbar.set_label("Δ proportion (post − pre)")
+
+    subtitle = (
+        subtitle_override if subtitle_override is not None
+        else FIGURE_SUBTITLE_BY_BODYPART.get(
+            bodypart, "Source: v7-cleaned-trace cohort re-emit",
+        )
+    )
+    sides_part = " + ".join(
+        (side_display or {}).get(s, s) for s in sides
+    )
+    fig.suptitle(
+        f"Phenotype-pooled proportion-diff heatmap — "
+        f"{bodypart} | {sides_part} | shared |vmax|={shared_vmax:.4g}\n"
         f"{subtitle}",
         fontsize=12,
     )
@@ -412,4 +534,5 @@ __all__ = [
     "compute_cohort_shared_vmax",
     "emit_phenotype_pooled_proportion_diff_figures",
     "render_phenotype_pooled_proportion_diff_figure",
+    "render_phenotype_pooled_proportion_diff_multiside_figure",
 ]
