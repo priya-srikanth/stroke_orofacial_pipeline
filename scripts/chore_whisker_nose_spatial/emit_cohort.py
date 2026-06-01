@@ -73,6 +73,7 @@ from stroke_orofacial.stats.spatial_proportion_diff import (  # noqa: E402
     get_spatial_recipe,
     split_post_dates_by_epoch,
 )
+from stroke_orofacial.stats.normalization import ratio_to_baseline  # noqa: E402
 from stroke_orofacial.stats.spatial_wasserstein import (  # noqa: E402
     compute_per_animal_per_session_w2_long,
 )
@@ -239,7 +240,7 @@ def compute_animal(
                     animal=animal, pre_pool=pre_pool, post_dates=dates,
                     side=side, bodypart=bodypart, resolver=resolver,
                     defaults=defaults, animal_info=animal_info,
-                    epoch_label=epoch_label)
+                    epoch_label=epoch_label, with_ot_decomposition=True)
                 for row in rows:
                     row["recovery_phenotype"] = animal_info.recovery_phenotype
                 w2_rows.extend(rows)
@@ -405,7 +406,60 @@ def main(argv: list[str] | None = None) -> int:
         res_dir.mkdir(parents=True, exist_ok=True)
         pooled_w2.assign(provenance=PROVENANCE).to_csv(
             res_dir / "wasserstein_recovery_mean_sem.csv", index=False)
+        # Persist per-session W-2 (+ OT create/destroy/move) for reuse.
+        w2_scoped.assign(provenance=PROVENANCE).to_csv(
+            res_dir / "wasserstein_recovery_per_session.csv", index=False)
         logger.info("[%s] W-2 line+jitter -> %s", scope, w2_dir)
+
+        # --- Normalized W-2 recovery (per-animal pre-stroke baseline, per side)
+        # parallel to the q12 tongue/jaw build (D). ---
+        w2_for_norm = w2_scoped.copy()
+        if "is_sentinel" not in w2_for_norm.columns:
+            w2_for_norm["is_sentinel"] = False
+        w2_norm = ratio_to_baseline(
+            w2_for_norm, group_cols=("animal", "side"),
+            value_col="w2", baseline_label="pre",
+        ).dropna(subset=["value_norm"])
+        pooled_w2_norm = aggregate_phenotype_pooled_mean_sem(
+            w2_norm, value_col="value_norm", by_side=True)
+        norm_dir = resolver.pipeline_outputs(
+            subdir="stats/figures/phenotype_pooled/normalized_wasserstein_recovery",
+        ) / scope / "v2"
+        norm_dir.mkdir(parents=True, exist_ok=True)
+        norm_names = {
+            bp: f"Normalized W-2 (x pre-stroke baseline) -- {bp}"
+            for bp in bodyparts
+        }
+        for bodypart in bodyparts:
+            w2_side_keys = tuple(
+                _SIDE_RELABEL.get(s, s) for s in W2_SIDES[bodypart])
+            ntarget = norm_dir / f"{bodypart}_normalized_wasserstein_recovery_v2.svg"
+            try:
+                from scripts.chore_dlc_pooled_phenotype.q13b_v2_emit import (
+                    render_endpoint_v2_figure,
+                )
+                render_endpoint_v2_figure(
+                    per_session_df=w2_norm, pooled_df=pooled_w2_norm,
+                    endpoint=bodypart, phenotype_order=phenotype_order,
+                    output_path=ntarget, sides=w2_side_keys,
+                    value_col="value_norm", display_names=norm_names,
+                    aggregation_subtitle=W2_AGG_SUBTITLE,
+                    provenance_subtitle=W2_PROVENANCE, is_delta=False)
+                manifest_rows.append({"scope": scope, "bodypart": bodypart,
+                                      "family": "w2_norm", "status": "OK",
+                                      "path": str(ntarget)})
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("[%s/%s] norm W-2 FAILED", scope, bodypart)
+                manifest_rows.append({"scope": scope, "bodypart": bodypart,
+                                      "family": "w2_norm", "status": "FAIL",
+                                      "path": repr(exc)})
+        nres_dir = resolver.pipeline_outputs(
+            subdir="stats/results/phenotype_pooled/normalized_wasserstein_recovery",
+        ) / scope / "v2"
+        nres_dir.mkdir(parents=True, exist_ok=True)
+        pooled_w2_norm.assign(provenance=PROVENANCE).to_csv(
+            nres_dir / "normalized_wasserstein_recovery_mean_sem.csv", index=False)
+        logger.info("[%s] normalized W-2 -> %s", scope, norm_dir)
 
     manifest_dir = resolver.pipeline_outputs(
         subdir="stats/sensitivity")
