@@ -149,6 +149,38 @@ def compute_per_animal_wasserstein2(
     )
 
 
+def _ot_decomposition_scalars(
+    H_pre: "np.ndarray", H_post: "np.ndarray", extent: list[float],
+) -> dict[str, float]:
+    """Per-session unbalanced-OT decomposition scalars (create/destroy/move).
+
+    Sums the unbalanced-OT mass-change maps for one (pre, post) histogram pair:
+
+      * ``ot_create``  = total proportion of mass present in POST but not
+        transported from PRE (sum of ``mass_create``).
+      * ``ot_destroy`` = total proportion present in PRE but not transported to
+        POST (sum of ``mass_destroy``).
+      * ``ot_move``    = total mass-weighted displacement of transported mass
+        (sum of ``mass_grid * mag``) — the "how far did the kept mass move"
+        energy, complementary to the balanced W-2.
+
+    Returns NaNs if the unbalanced plan can't be solved (empty marginals).
+    """
+    import numpy as np
+    from stroke_orofacial.dlc_spatial.render_on_demand import (
+        _compute_unbalanced_ot_plan,
+    )
+    plan = _compute_unbalanced_ot_plan(H_pre, H_post, extent)
+    if plan is None:
+        return {"ot_create": float("nan"), "ot_destroy": float("nan"),
+                "ot_move": float("nan")}
+    return {
+        "ot_create": float(np.sum(plan["mass_create"])),
+        "ot_destroy": float(np.sum(plan["mass_destroy"])),
+        "ot_move": float(np.sum(plan["mass_grid"] * plan["mag"])),
+    }
+
+
 def compute_per_animal_per_session_w2_long(
     *,
     animal: str,
@@ -160,6 +192,7 @@ def compute_per_animal_per_session_w2_long(
     defaults: dict[str, Any] | None = None,
     animal_info=None,
     epoch_label: str | None = None,
+    with_ot_decomposition: bool = False,
 ) -> list[dict[str, Any]]:
     """Compute per-session W-2 against the animal's pre-pool.
 
@@ -205,18 +238,21 @@ def compute_per_animal_per_session_w2_long(
         )
         if H_post is None or n_total_post == 0:
             continue
-        w2 = compute_wasserstein2_2d(
-            pre_pool["H_pre_counts"], H_post,
-            pre_pool["extent"] if pre_pool["extent"] is not None else ext,
-        )
-        rows.append({
+        extent = pre_pool["extent"] if pre_pool["extent"] is not None else ext
+        w2 = compute_wasserstein2_2d(pre_pool["H_pre_counts"], H_post, extent)
+        row = {
             "animal": animal,
             "date": d,
             "side": side,
             "bodypart": bodypart,
             "epoch_label": epoch_label,
             "w2": float(w2),
-        })
+        }
+        if with_ot_decomposition:
+            row.update(_ot_decomposition_scalars(
+                pre_pool["H_pre_counts"], H_post, extent,
+            ))
+        rows.append(row)
     return rows
 
 

@@ -117,6 +117,7 @@ def compute_per_animal_records(
     filter_spec: SessionFilter | None = None,
     skip_w2_boxplots: bool = False,
     skip_heatmaps: bool = False,
+    with_ot_decomposition: bool = False,
 ) -> tuple[
     list[dict], list[dict], list[dict], list[dict[str, object]],
 ]:
@@ -226,6 +227,7 @@ def compute_per_animal_records(
                     side=side, bodypart=bodypart, resolver=resolver,
                     defaults=defaults, animal_info=animal_info,
                     epoch_label="pre",
+                    with_ot_decomposition=with_ot_decomposition,
                 )
                 for row in pre_session_rows:
                     row["recovery_phenotype"] = animal_info.recovery_phenotype
@@ -393,6 +395,7 @@ def compute_per_animal_records(
                         side=side, bodypart=bodypart, resolver=resolver,
                         defaults=defaults, animal_info=animal_info,
                         epoch_label=post_epoch,
+                        with_ot_decomposition=with_ot_decomposition,
                     )
                     for row in post_session_rows:
                         row["recovery_phenotype"] = animal_info.recovery_phenotype

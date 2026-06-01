@@ -65,6 +65,7 @@ from scripts.phase_9_1_q12.emit_cohort import (  # noqa: E402
 from scripts.chore_dlc_pooled_phenotype.q13b_v2_emit import (  # noqa: E402
     render_endpoint_v2_figure,
 )
+from stroke_orofacial.stats.normalization import ratio_to_baseline  # noqa: E402
 
 logger = logging.getLogger("chore.q12_v2_emit")
 
@@ -91,6 +92,27 @@ W2_DISPLAY_NAMES = {
     "jaw": "W-2 distance from pre-stroke (px) — jaw",
 }
 PROVENANCE = "v2_unfiltered_ipsi_contra"
+
+# --- Normalized W-2 recovery (NEW, CC #9): each session's W-2 divided by that
+# animal's pre-stroke mean W-2 (per side), via the multiplicative
+# stats.normalization.ratio_to_baseline. Expresses recovery as a fold-change of
+# the animal's own pre-stroke spatial variability (pre-stroke ~ 1), controlling
+# for animal-to-animal absolute-W-2 differences. Unfiltered, same substrate as
+# the absolute W-2 figure it normalizes.
+NORM_W2_SUBDIR = "stats/figures/phenotype_pooled/normalized_wasserstein_recovery"
+NORM_W2_DISPLAY_NAMES = {
+    "tongue": "Normalized W-2 (× pre-stroke baseline) — tongue",
+    "jaw": "Normalized W-2 (× pre-stroke baseline) — jaw",
+}
+NORM_W2_PROVENANCE = (
+    "Source: spatial W-2 ÷ per-animal pre-stroke baseline (per side; UNFILTERED) "
+    "+ ipsi/contra coding (chore vChore-dlc-pooled-phenotype-unification)"
+)
+NORM_W2_AGG_SUBTITLE = (
+    "Mean ± SEM session-pooled; each session's W-2 ÷ that animal's pre-stroke "
+    "mean W-2 (per side). Pre-stroke ≈ 1; per-session ratios shown as faded dots."
+)
+NORM_PROVENANCE = "v2_normalized_unfiltered_ipsi_contra"
 
 
 def parse_animals(raw: str) -> list[str]:
@@ -148,6 +170,7 @@ def main(argv: list[str] | None = None) -> int:
             animal=animal, resolver=resolver, defaults=defaults,
             animals_map=animals_map_full, logger=logger,
             filter_spec=PASS_THROUGH_FILTER,
+            with_ot_decomposition=True,
         )
         all_records.extend(records)
         all_w2_rows.extend(per_session_w2)
@@ -218,7 +241,45 @@ def main(argv: list[str] | None = None) -> int:
         res_dir.mkdir(parents=True, exist_ok=True)
         pooled_w2.assign(provenance=PROVENANCE).to_csv(
             res_dir / "wasserstein_recovery_mean_sem.csv", index=False)
+        # Persist the PER-SESSION W-2 (the figure's scatter values) so any
+        # future normalization / re-pool never needs another OT recompute.
+        w2_scoped.assign(provenance=PROVENANCE).to_csv(
+            res_dir / "wasserstein_recovery_per_session.csv", index=False)
         logger.info("[%s] W-2 line+jitter figs=%d -> %s", scope, n_figs, w2_dir)
+
+        # --- Normalized W-2 recovery (NEW): per-session W-2 / per-animal
+        # pre-stroke baseline W-2 (per side). Reuses the same per-session pool
+        # as the absolute figure, so no extra spatial compute. ---
+        w2_for_norm = w2_scoped.copy()
+        if "is_sentinel" not in w2_for_norm.columns:
+            w2_for_norm["is_sentinel"] = False
+        w2_norm = ratio_to_baseline(
+            w2_for_norm, group_cols=("animal", "side"),
+            value_col="w2", baseline_label="pre",
+        ).dropna(subset=["value_norm"])
+        pooled_w2_norm = aggregate_phenotype_pooled_mean_sem(
+            w2_norm, value_col="value_norm", by_side=True,
+        )
+        norm_dir = resolver.pipeline_outputs(subdir=NORM_W2_SUBDIR) / scope / "v2"
+        norm_dir.mkdir(parents=True, exist_ok=True)
+        n_norm = 0
+        for bodypart in ("tongue", "jaw"):
+            target = norm_dir / f"{bodypart}_normalized_wasserstein_recovery_v2.svg"
+            render_endpoint_v2_figure(
+                per_session_df=w2_norm, pooled_df=pooled_w2_norm,
+                endpoint=bodypart, phenotype_order=phenotype_order,
+                output_path=target, sides=("ipsi", "contra"),
+                value_col="value_norm", display_names=NORM_W2_DISPLAY_NAMES,
+                aggregation_subtitle=NORM_W2_AGG_SUBTITLE,
+                provenance_subtitle=NORM_W2_PROVENANCE, is_delta=False,
+            )
+            n_norm += 1
+        res_norm = resolver.pipeline_outputs(
+            subdir=NORM_W2_SUBDIR.replace("figures", "results")) / scope / "v2"
+        res_norm.mkdir(parents=True, exist_ok=True)
+        pooled_w2_norm.assign(provenance=NORM_PROVENANCE).to_csv(
+            res_norm / "normalized_wasserstein_recovery_mean_sem.csv", index=False)
+        logger.info("[%s] normalized W-2 figs=%d -> %s", scope, n_norm, norm_dir)
 
     logger.info("Q12 v2 re-emit complete.")
     return 0
