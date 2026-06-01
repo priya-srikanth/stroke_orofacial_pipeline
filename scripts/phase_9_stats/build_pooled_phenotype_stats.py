@@ -130,6 +130,28 @@ def load_phase_aligned_family(resolver: PathResolver, animals: list[str]) -> pd.
     return out
 
 
+def load_all_licks_endpoints_family(resolver: PathResolver) -> pd.DataFrame:
+    """Precomputed per-LICK all-licks endpoints (stats/inputs/all_licks_endpoints/)
+    -> per-session long-form. Requires precompute_all_licks_endpoints.py to have
+    run; returns empty otherwise."""
+    root = resolver.pipeline_outputs(subdir="stats") / "inputs" / "all_licks_endpoints"
+    if not root.exists():
+        return pd.DataFrame()
+    frames = []
+    for ep_dir in sorted(root.iterdir()):
+        if not ep_dir.is_dir():
+            continue
+        pqs = glob.glob(str(ep_dir / "*.parquet"))
+        if not pqs:
+            continue
+        df = pd.concat([pd.read_parquet(p) for p in pqs], ignore_index=True)
+        sess = _persession_from_pertrial(df, ep_dir.name)
+        if not sess.empty:
+            sess["family"] = "phase_aligned_endpoints_all_licks"
+            frames.append(sess)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
 def load_wasserstein_family(resolver: PathResolver) -> pd.DataFrame:
     """Persisted per-session W-2 (absolute + normalized) -> per-session long-form."""
     res = resolver.pipeline_outputs(subdir="stats") / "results" / "phenotype_pooled"
@@ -191,7 +213,8 @@ def _run_family(long_df: pd.DataFrame, *, n_boot: int) -> pd.DataFrame:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--families", nargs="*",
-                   default=["scalar", "phase_aligned_endpoints", "wasserstein"])
+                   default=["scalar", "phase_aligned_endpoints",
+                            "phase_aligned_endpoints_all_licks", "wasserstein"])
     p.add_argument("--n-boot", type=int, default=5000)
     p.add_argument("--scopes", nargs="*", default=["4_tier", "3_tier"])
     args = p.parse_args(argv)
@@ -206,6 +229,9 @@ def main(argv: list[str] | None = None) -> int:
     if "phase_aligned_endpoints" in args.families:
         log.info("loading phase_aligned family ...")
         base_long.append(load_phase_aligned_family(resolver, animals))
+    if "phase_aligned_endpoints_all_licks" in args.families:
+        log.info("loading all-licks endpoints family ...")
+        base_long.append(load_all_licks_endpoints_family(resolver))
     if "wasserstein" in args.families:
         log.info("loading wasserstein family ...")
         base_long.append(load_wasserstein_family(resolver))
