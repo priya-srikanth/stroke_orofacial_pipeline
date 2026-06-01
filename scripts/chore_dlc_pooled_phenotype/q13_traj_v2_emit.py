@@ -205,6 +205,13 @@ def main(argv: list[str] | None = None) -> int:
              "(retained, not overwritten by a v3 run).",
     )
     parser.add_argument(
+        "--lick-set", choices=("first_lick", "all_multi"), default="first_lick",
+        help="Which lick peaks center the phase rows. 'first_lick' (default) "
+             "= each trial's first lick (the shipped pooled trajectory). "
+             "'all_multi' = EVERY detected lick peak across all bouts; routes "
+             "to the sibling 'phase_aligned_trajectories_all_licks/' family.",
+    )
+    parser.add_argument(
         "--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"),
         default="INFO",
     )
@@ -228,6 +235,7 @@ def main(argv: list[str] | None = None) -> int:
     # Heavy step: walk the cohort once (bundle rebuild -> phase rows).
     cohort_df, _manifest = walk_cohort(
         animals=animals, resolver=resolver, logger=logger,
+        lick_set=args.lick_set,
     )
     if cohort_df.empty:
         logger.error("walk_cohort returned 0 rows; aborting.")
@@ -253,8 +261,11 @@ def main(argv: list[str] | None = None) -> int:
         scopes.append(("3_tier", PHENOTYPE_ORDER_3TIER,
                        remap_animals_to_3tier(animals_map_full)))
 
-    fig_root = resolver.pipeline_outputs(subdir=FIGURE_SUBDIR)
-    res_root = resolver.pipeline_outputs(subdir=RESULTS_SUBDIR)
+    # all_multi routes to a sibling family so it never collides with the
+    # shipped first-lick pooled trajectory (F, Priya 2026-06-01).
+    _suffix = "_all_licks" if args.lick_set == "all_multi" else ""
+    fig_root = resolver.pipeline_outputs(subdir=FIGURE_SUBDIR + _suffix)
+    res_root = resolver.pipeline_outputs(subdir=RESULTS_SUBDIR + _suffix)
     for scope, phenotype_order, amap in scopes:
         out_dir = fig_root / scope / args.out_version
         res_dir = res_root / scope / args.out_version

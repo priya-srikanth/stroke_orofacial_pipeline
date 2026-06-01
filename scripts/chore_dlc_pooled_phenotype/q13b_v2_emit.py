@@ -175,6 +175,7 @@ def load_filtered_recoded_long(
     resolver: PathResolver,
     defaults: dict,
     apply_filter: bool = True,
+    lick_set: str = "first_lick",
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Build the per-trial long-form, filtered + ipsi/contra-recoded.
 
@@ -201,7 +202,9 @@ def load_filtered_recoded_long(
             logger.info("[%s] sham — excluded from ipsi/contra v2.", animal)
             continue
         for d in enumerate_session_dates(animal, resolver):
-            ep = load_session_phase_aligned_endpoints_long(animal, d, resolver)
+            ep = load_session_phase_aligned_endpoints_long(
+                animal, d, resolver, lick_set=lick_set,
+            )
             if ep.empty:
                 continue
             licks = build_dlc_pertrial_lick_frame(animal, d, resolver)
@@ -486,6 +489,7 @@ def run_scope(
     resolver: PathResolver,
     overwrite: str,
     out_version: str = "v3",
+    lick_set: str = "first_lick",
 ) -> dict[str, object]:
     """Aggregate + stats + render one scope (4_tier or 3_tier).
 
@@ -525,8 +529,11 @@ def run_scope(
     else:
         pooled_delta = pooled
 
-    fig_base = resolver.pipeline_outputs(subdir=FAMILY_FIG_SUBDIR) / scope / out_version
-    res_base = resolver.pipeline_outputs(subdir=FAMILY_RESULTS_SUBDIR) / scope / out_version
+    # all_multi routes to the sibling family so it never collides with the
+    # shipped first-lick per-trial endpoints (I, 2026-06-01).
+    _sfx = "_all_licks" if lick_set == "all_multi" else ""
+    fig_base = resolver.pipeline_outputs(subdir=FAMILY_FIG_SUBDIR + _sfx) / scope / out_version
+    res_base = resolver.pipeline_outputs(subdir=FAMILY_RESULTS_SUBDIR + _sfx) / scope / out_version
     fig_base.mkdir(parents=True, exist_ok=True)
     res_base.mkdir(parents=True, exist_ok=True)
 
@@ -593,6 +600,13 @@ def main(argv: list[str] | None = None) -> int:
              "pre-fix audit copy (retained, not overwritten by a v3 run).",
     )
     parser.add_argument(
+        "--lick-set", choices=("first_lick", "all_multi"), default="first_lick",
+        help="first_lick (default) = the shipped per-trial first-lick "
+             "endpoints. all_multi = per-LICK endpoints over every detected "
+             "lick (n=licks), routed to the sibling "
+             "'phase_aligned_endpoints_all_licks/' family.",
+    )
+    parser.add_argument(
         "--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"),
         default="INFO",
     )
@@ -619,10 +633,12 @@ def main(argv: list[str] | None = None) -> int:
     long_df, report = load_filtered_recoded_long(
         animals=animals, animals_map=animals_map_full,
         resolver=resolver, defaults=defaults, apply_filter=True,
+        lick_set=args.lick_set,
     )
     long_df_nofilter, _ = load_filtered_recoded_long(
         animals=animals, animals_map=animals_map_full,
         resolver=resolver, defaults=defaults, apply_filter=False,
+        lick_set=args.lick_set,
     )
     logger.info(
         "Filter report: trials %d->%d, sessions %d->%d; long rows=%d "
@@ -656,6 +672,7 @@ def main(argv: list[str] | None = None) -> int:
             animals_map=amap, scope=scope,
             phenotype_order=phenotype_order, resolver=resolver,
             overwrite=args.overwrite, out_version=args.out_version,
+            lick_set=args.lick_set,
         )
         logger.info(
             "[%s] figures=%d skip=%d pooled_rows=%d -> %s",

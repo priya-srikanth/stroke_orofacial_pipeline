@@ -50,6 +50,7 @@ import pandas as pd
 
 from .tongue_pertrial import (
     TongueVisualBundle,
+    build_all_licks_centered_phase_rows,
     build_first_lick_centered_phase_rows,
 )
 
@@ -93,6 +94,8 @@ def _empty_phase_aligned_endpoints_df() -> pd.DataFrame:
 
 def compute_phase_aligned_endpoints_per_trial(
     bundle: TongueVisualBundle,
+    *,
+    lick_set: str = "first_lick",
 ) -> pd.DataFrame:
     """Compute Phase 9.1 Q-lock 13b endpoints A + B + C per (trial, side).
 
@@ -118,34 +121,44 @@ def compute_phase_aligned_endpoints_per_trial(
     if not (np.isfinite(synth) and synth > 0):
         return _empty_phase_aligned_endpoints_df()
 
-    phase_rows = build_first_lick_centered_phase_rows(
-        bundle, synthetic_ili_ms=synth, ili_source="synthetic_only",
-    )
+    # ``all_multi`` (I, 2026-06-01) computes the SAME endpoints per individual
+    # lick (group also by ``peak_t_ms``), pooled downstream as n=licks; the
+    # default ``first_lick`` keeps the shipped per-trial first-lick grain.
+    if lick_set == "all_multi":
+        phase_rows = build_all_licks_centered_phase_rows(
+            bundle, synthetic_ili_ms=synth, ili_source="synthetic_only",
+        )
+        group_keys = ["trial_index", "side", "peak_t_ms"]
+    else:
+        phase_rows = build_first_lick_centered_phase_rows(
+            bundle, synthetic_ili_ms=synth, ili_source="synthetic_only",
+        )
+        group_keys = ["trial_index", "side"]
     if phase_rows.empty:
         return _empty_phase_aligned_endpoints_df()
 
     out_rows: list[dict[str, Any]] = []
-    for (trial_idx, side), grp in phase_rows.groupby(
-        ["trial_index", "side"], sort=True,
-    ):
-        peak_angle = _endpoint_a_peak_angle(grp)
-        max_abs_angle = _endpoint_b_max_abs_angle(grp)
-        signed_x = _endpoint_c_signed_x_at_max_abs(grp)
-        peak_y = _endpoint_d_peak_y(grp)
-        signed_y = _endpoint_e_signed_y_at_max_abs(grp)
-        out_rows.append({
+    for key, grp in phase_rows.groupby(group_keys, sort=True):
+        trial_idx, side = key[0], key[1]
+        row = {
             "trial_index": int(trial_idx),
             "side": str(side),
-            "peak_angle_deg": peak_angle,
-            "signed_angle_at_max_abs_phase_0_075_deg": max_abs_angle,
-            "signed_x_at_max_abs_phase_0_075_px": signed_x,
-            "peak_y_px": peak_y,
-            "signed_y_at_max_abs_phase_0_075_px": signed_y,
-        })
+            "peak_angle_deg": _endpoint_a_peak_angle(grp),
+            "signed_angle_at_max_abs_phase_0_075_deg": _endpoint_b_max_abs_angle(grp),
+            "signed_x_at_max_abs_phase_0_075_px": _endpoint_c_signed_x_at_max_abs(grp),
+            "peak_y_px": _endpoint_d_peak_y(grp),
+            "signed_y_at_max_abs_phase_0_075_px": _endpoint_e_signed_y_at_max_abs(grp),
+        }
+        if lick_set == "all_multi":
+            row["peak_t_ms"] = float(key[2])
+        out_rows.append(row)
 
     if not out_rows:
         return _empty_phase_aligned_endpoints_df()
-    return pd.DataFrame(out_rows, columns=list(PHASE_ALIGNED_ENDPOINT_COLUMNS))
+    cols = list(PHASE_ALIGNED_ENDPOINT_COLUMNS)
+    if lick_set == "all_multi":
+        cols = cols + ["peak_t_ms"]
+    return pd.DataFrame(out_rows, columns=cols)
 
 
 def _endpoint_a_peak_angle(grp: pd.DataFrame) -> float:
