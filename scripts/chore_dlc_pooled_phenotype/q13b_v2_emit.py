@@ -301,8 +301,13 @@ def _draw_endpoint_panel(
     pooled_value_col: str,
     sem_col: str,
     is_delta: bool,
+    sig_by: dict[tuple[str, str], str] | None = None,
 ) -> None:
-    """Draw one ipsi/contra panel: per-phenotype line + SEM bars + dots."""
+    """Draw one ipsi/contra panel: per-phenotype line + SEM bars + dots.
+
+    ``sig_by`` (optional) maps ``(phenotype, epoch) -> marker`` (e.g. ``"*"``)
+    for the session-grain stats; markers are drawn above the pooled-mean point.
+    """
     sess = per_session_df[
         (per_session_df["endpoint"] == endpoint)
         & (per_session_df["side"] == side)
@@ -324,6 +329,7 @@ def _draw_endpoint_panel(
         line_yerr: list[float] = []
         scatter_centers: list[int] = []
         scatter_values: list[np.ndarray] = []
+        y_by_epoch: dict[str, float] = {}
         for ei, epoch in enumerate(EPOCH_ORDER):
             prow = p_pool[p_pool["epoch_label"] == epoch]
             if not prow.empty:
@@ -331,6 +337,7 @@ def _draw_endpoint_panel(
                 if np.isfinite(m):
                     line_x.append(ei)
                     line_y.append(m)
+                    y_by_epoch[epoch] = m
                     sem = float(prow[sem_col].iloc[0]) if sem_col in prow else np.nan
                     line_yerr.append(sem)
             cell = p_sess[p_sess["epoch_label"] == epoch]
@@ -350,6 +357,17 @@ def _draw_endpoint_panel(
             scatter_centers=scatter_centers, scatter_values=scatter_values,
             color=color, marker=marker, label=label,
         )
+        # Session-grain significance markers above the pooled-mean point.
+        if sig_by:
+            for ei, epoch in enumerate(EPOCH_ORDER):
+                mark = sig_by.get((phenotype, epoch))
+                if mark and epoch in y_by_epoch:
+                    ax.annotate(
+                        mark, (ei, y_by_epoch[epoch]),
+                        textcoords="offset points", xytext=(0, 8),
+                        ha="center", va="bottom", color=color,
+                        fontsize=12, fontweight="bold", clip_on=False,
+                    )
 
     ax.set_xticks(list(range(len(EPOCH_ORDER))))
     ax.set_xticklabels(
@@ -359,6 +377,30 @@ def _draw_endpoint_panel(
     ax.set_xlabel("Epoch", fontsize=13)
     ax.set_title(_PANEL_TITLES.get(side, side), fontsize=12)
     ax.legend(loc="best", fontsize=8, framealpha=0.9)
+
+
+def _load_session_grain_sig(
+    resolver: PathResolver, scope: str,
+) -> dict[tuple[str, str, str, str], str]:
+    """Session-grain significance markers from the consolidated per-scope stats
+    sheet (build_pooled_phenotype_stats). Returns ``{(endpoint, phenotype, side,
+    post_epoch): "*"}`` where LMM-FDR < 0.05 for the phase_aligned endpoints.
+    Side L/R -> ipsi/contra (all-L cohort). Empty if the sheet isn't built yet."""
+    f = (resolver.pipeline_outputs(subdir="stats") / "results"
+         / "phenotype_pooled" / scope / "pooled_phenotype_stats.csv")
+    if not f.exists():
+        return {}
+    df = pd.read_csv(f)
+    df = df[df.get("family") == "phase_aligned_endpoints"]
+    smap = {"L": "ipsi", "R": "contra", "ipsi": "ipsi", "contra": "contra"}
+    out: dict[tuple[str, str, str, str], str] = {}
+    for _, r in df.iterrows():
+        padj = r.get("lmm_p_fdr")
+        if padj is not None and pd.notna(padj) and float(padj) < 0.05:
+            out[(str(r["endpoint"]), str(r["recovery_phenotype"]),
+                 smap.get(str(r["side"]), str(r["side"])),
+                 str(r["post_epoch"]))] = "*"
+    return out
 
 
 def render_endpoint_v2_figure(
@@ -377,6 +419,7 @@ def render_endpoint_v2_figure(
     provenance_subtitle: str = V2_SUBTITLE,
     is_delta: bool = False,
     dpi: int = 150,
+    stats_sig: dict[tuple[str, str, str], str] | None = None,
 ) -> Path:
     """One endpoint figure with side-by-side Ipsi + Contra panels (Q14 layout).
 
@@ -404,13 +447,18 @@ def render_endpoint_v2_figure(
     }
 
     for ax, side in zip(axes, sides):
+        side_sig = None
+        if stats_sig:
+            side_sig = {
+                (ph, ep): m for (ph, sd, ep), m in stats_sig.items() if sd == side
+            }
         _draw_endpoint_panel(
             ax,
             per_session_df=per_session_df, pooled_df=pooled_df,
             endpoint=endpoint, side=side, phenotype_order=phenotype_order,
             n_animals_by_phenotype=n_an_by,
             value_col=value_col, pooled_value_col=pooled_value_col,
-            sem_col=sem_col, is_delta=is_delta,
+            sem_col=sem_col, is_delta=is_delta, sig_by=side_sig,
         )
     axes[0].set_ylabel(names.get(endpoint, endpoint), fontsize=12)
 
@@ -537,6 +585,10 @@ def run_scope(
     fig_base.mkdir(parents=True, exist_ok=True)
     res_base.mkdir(parents=True, exist_ok=True)
 
+    # Session-grain significance markers (from the consolidated stats sheet) for
+    # the delta figures; empty if the sheet isn't built yet (graceful).
+    sig_all = _load_session_grain_sig(resolver, scope)
+
     ok: list[str] = []
     skip: list[str] = []
     # One 2-panel (ipsi+contra) figure per endpoint, for raw + delta layers.
@@ -566,6 +618,11 @@ def run_scope(
                 display_names=names,
                 is_delta=(kind == "delta"),
                 provenance_subtitle=SUBTITLE_BY_VERSION[out_version],
+                stats_sig=(
+                    {(ph, sd, ep): m
+                     for (e, ph, sd, ep), m in sig_all.items() if e == endpoint}
+                    if kind == "delta" else None
+                ),
             )
             ok.append(fname)
 
