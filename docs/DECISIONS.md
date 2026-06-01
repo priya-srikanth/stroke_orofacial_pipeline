@@ -15,6 +15,29 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-06-01 — Pooled-scalar writer emits the canonical layout directly (retire the normalizer post-step)
+
+- *Context:* The DLC-pooled-phenotype-unification chore migrated `phenotype_pooled/` to the symmetric `<endpoint>/<scope>/<subtype>/` layout via a one-time file move (`path_normalization.py`), but never updated the WRITER (`figures/phenotype_pooled.py`), which still emitted the legacy flat / `3_phenotype/` layout and relied on the normalizer running after every emit. A CC #9 re-emit hit the footgun: fresh figures landed in legacy paths while the canonical copies stayed stale (split-brain).
+- *Decision:* Fix the writer to emit `<endpoint>/<scope>/[subtype]/` DIRECTLY (matching the already-updated q13b/q13_traj/q12 siblings). Lift the layout/classification logic (`classify_scalar`, scope/subtype constants, `pooled_scalar_endpoint_dir`) into `figures/_layout.py` as the single source of truth, imported by BOTH the writer and `path_normalization.py`. The normalizer reverts to a one-time historical migration.
+- *Rationale:* The siblings already wrote canonical; the writer was the lone holdout. Direct-write removes the recurring emit-then-destructively-move dance (GR7-aligned: overwrite at write-time, no separate destructive step) and the split-brain footgun.
+- *Enforced at:* `figures/_layout.py` (`pooled_scalar_endpoint_dir`, `classify_scalar`, `FILTERED_V3`/`FILTERED_V3_NA_MASKED`); `figures/phenotype_pooled.py` (emit_v4/v5); `scripts/chore_dlc_pooled_phenotype/path_normalization.py` (imports the shared names); `tests/figures/test_phenotype_pooled.py`.
+
+## 2026-06-01 — All-licks phase-aligned: per-lick densify + per-lick endpoint grain
+
+- *Context:* New all-licks (`all_multi`) pooled angle trajectories (F) were jagged. Root cause: `densify_phase_rows_via_interp` ran one `np.interp` per (trial, side); for all-licks a trial has MANY licks (multiple interleaved 0→1 phase sweeps), so the sort-by-phase interp zigzagged across different licks' angles. The same earlier fix (Q-lock 13.2 densify) had addressed cross-animal ILI-lattice jaggedness but assumed one sweep per trial.
+- *Decision:* Densify per (trial, side, `peak_t_ms`) — each lick is a monotonic sweep — then collapse the per-lick interpolated curves back to per-(trial, bin) by mean (keeps the per-trial grain + "n=trials" unit). For the all-licks ENDPOINTS (I), the grain is per-LICK (group the producer by `peak_t_ms`, pool as n=licks) per Priya. Both default to `first_lick` (guarded no-op: one peak per trial). All-licks output routes to sibling families (`phase_aligned_trajectories_all_licks/`, `phase_aligned_endpoints_all_licks/`).
+- *Rationale:* Per-lick interp is the correct unit (each lick is a real phase cycle); collapsing to per-trial for the TRAJECTORY preserves the established grain while removing the zigzag. Endpoints pool as n=licks (Priya's choice) since "all licks" is the analysis intent there. Sibling families guarantee the shipped first-lick figures are never touched.
+- *Enforced at:* `stats/aggregators.py` (`densify_phase_rows_via_interp` peak_key; `load_session_phase_aligned_endpoints_long` lick_set + `_compute_all_licks_endpoints_long`); `dlc_kinematics/tongue_phase_aligned_endpoints.py` (`compute_phase_aligned_endpoints_per_trial` lick_set); `scripts/chore_dlc_pooled_phenotype/q13_traj_v2_emit.py` + `q13b_v2_emit.py` (`--lick-set`); `scripts/phase_9_1_q13/emit_cohort.py`.
+
+## 2026-06-01 — Lick-count zero-fill (v3 canonical) + NA-masked sibling (v3_na_masked)
+
+- *Context:* The filtered_v1 lick-filter drops no-usable-lick sessions (Stage A <10 detected-lick trials + Stage C emptied), so the 5 lick-COUNT endpoints' v3 figures showed NA gaps where a session had no licks. A no-lick session = 0 licks, not missing data.
+- *Decision:* For the 5 lick-count endpoints (`tongue_n_licks/n_left/n_right` + the 2 cue-relative), the filtered (v3) figure ZERO-FILLS dropped rows (no-usable-lick session = 0) — this becomes the canonical v3. The previous NA-masked version is preserved as a separate `v3_na_masked/` subtype (a new `--filter-variant filtered_v1_na_masked` materialize + figure path). Non-count kinematics are never zero-filled (no meaningful 0 for a no-lick trial).
+- *Rationale:* A count of 0 is meaningful signal (esp. for severe-stroke no-lick sessions); dropping them biases the pooled mean upward and loses the phenotype. Keeping the masked sibling preserves the prior view for comparison.
+- *Enforced at:* `scripts/phase_9_stats/materialize_inputs.py` (`_filter_tongue_rows` zero_fill_dropped, `_TONGUE_LICK_COUNT_SLUGS`, `filtered_v1_na_masked` variant); `figures/_io.py` + `_layout.py` (`v3_na_masked` subtype); `figures/phenotype_pooled.py` `--filter-variant`.
+
+---
+
 ## 2026-05-30 — Tongue substrate v7-routing fix: mixed in-memory/toggle architecture
 
 - *Context:* PR #162 (CC #4) found the Q13c trajectory + Q13b endpoint substrate (`TongueVisualBundle.df_trials.{y_snip,x_snip}`) read the **interpolated** pre-clean trace, not the v7-cleaned output. The bundle is *produced* by the same core (`_build_tongue_pertrial_core`) that runs the v7 pipeline, whereas `mean_sem_visual` is a *pure consumer* of the trace.
