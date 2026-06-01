@@ -1,0 +1,27 @@
+# CC #9 chore — tongue cleaned-trace (v7) derived scalar endpoints.
+# Pooled-scalar phenotype_pooled re-emit scope (DLC-affected only; behavior frozen).
+tongue_first_peak_t_ms
+tongue_lick1_angle_at_ypeak
+tongue_lick1_t_peak_ms
+tongue_lick1_vxy_peak
+tongue_lick1_vy_peak
+tongue_lick1_x_at_ypeak
+tongue_lick1_y_peak
+tongue_lick2_angle_at_ypeak
+tongue_lick2_t_peak_ms
+tongue_lick2_x_at_ypeak
+tongue_lick2_y_peak
+tongue_lick_rate_hz
+tongue_max_vxy_peak_first5
+tongue_max_vy_peak_first5
+tongue_mean_vxy_peak_first5
+tongue_mean_within_bout_ili_ms
+tongue_median_angle_at_peak_velocity
+tongue_median_angle_max_signed_per_lick
+tongue_median_vxy_peak_per_trial
+tongue_median_vy_peak_per_trial
+tongue_n_left
+tongue_n_licks
+tongue_n_right
+tongue_num_correct_licks_dlc
+tongue_num_incorrect_licks_dlc

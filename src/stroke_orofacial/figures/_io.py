@@ -109,10 +109,11 @@ def load_stats_inputs(
     resolver: PathResolver,
     *,
     cohort: Iterable[str] = COHORT_8,
+    filter_variant: str = "none",
 ) -> pd.DataFrame:
     """Concat all per-animal stats input parquets for one endpoint.
 
-    Source: ``<output_root>/stats/inputs/<endpoint_slug>/<animal>.parquet``
+    Source: ``<output_root>/stats/inputs/[filtered_v1/]<endpoint_slug>/<animal>.parquet``
     (Phase 9 Task 2 schema; 11-column canonical layout). Drops sentinel +
     NaN value rows.
 
@@ -124,6 +125,12 @@ def load_stats_inputs(
         Provides the ``pipeline_outputs(subdir="stats")`` root.
     cohort : iterable of str, optional
         Restrict to a subset of animals; default = 8-animal Phase 9 cohort.
+    filter_variant : {"none", "filtered_v1"}, optional
+        ``"none"`` (default) reads the unfiltered ``stats/inputs/<slug>/``
+        tree. ``"filtered_v1"`` reads the lick-filtered
+        ``stats/inputs/filtered_v1/<slug>/`` tree — only the DLC-filterable
+        scalars (the ~23 ``tongue_*`` kinematics) have one, so non-filterable
+        slugs return an empty frame (the caller skips them).
 
     Returns
     -------
@@ -132,7 +139,16 @@ def load_stats_inputs(
         ``is_sentinel`` and NaN ``value`` rows dropped. Empty DataFrame
         if the endpoint dir is missing or empty.
     """
-    stats_root = resolver.pipeline_outputs(subdir="stats") / "inputs" / endpoint_slug
+    inputs_root = resolver.pipeline_outputs(subdir="stats") / "inputs"
+    if filter_variant in ("filtered_v1", "filtered_v1_na_masked"):
+        stats_root = inputs_root / filter_variant / endpoint_slug
+    elif filter_variant == "none":
+        stats_root = inputs_root / endpoint_slug
+    else:
+        raise ValueError(
+            "filter_variant must be 'none', 'filtered_v1', or "
+            f"'filtered_v1_na_masked'; got {filter_variant!r}.",
+        )
     if not stats_root.exists():
         return pd.DataFrame()
     parquets = [stats_root / f"{a}.parquet" for a in cohort]
