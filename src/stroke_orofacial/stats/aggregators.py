@@ -78,6 +78,29 @@ TRAJECTORY_SIGNALS: tuple[str, ...] = (
 # ---------------------------------------------------------------------------
 
 
+_BUNDLE_CACHE: dict = {}
+
+
+def _cached_tongue_bundle(
+    animal: str, date_iso: str, resolver_id: int, resolver: PathResolver,
+):
+    """Memoize the per-session tongue visual bundle so the all-licks endpoint
+    loader doesn't rebuild it on the filtered + nofilter passes (I, 2026-06-01).
+    Keyed by (animal, date, resolver identity)."""
+    key = (animal, date_iso, resolver_id)
+    bundle = _BUNDLE_CACHE.get(key)
+    if bundle is None:
+        from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
+            build_tongue_visual_bundle_by_animal_date,
+        )
+        bundle = build_tongue_visual_bundle_by_animal_date(
+            animal=animal, date=datetime.date.fromisoformat(date_iso),
+            resolver=resolver,
+        )
+        _BUNDLE_CACHE[key] = bundle
+    return bundle
+
+
 def _compute_all_licks_endpoints_long(
     animal: str, date: datetime.date, resolver: PathResolver,
 ) -> pd.DataFrame:
@@ -91,13 +114,8 @@ def _compute_all_licks_endpoints_long(
     from stroke_orofacial.dlc_kinematics.tongue_phase_aligned_endpoints import (
         compute_phase_aligned_endpoints_per_trial,
     )
-    from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
-        build_tongue_visual_bundle_by_animal_date,
-    )
     try:
-        bundle = build_tongue_visual_bundle_by_animal_date(
-            animal=animal, date=date, resolver=resolver,
-        )
+        bundle = _cached_tongue_bundle(animal, date.isoformat(), id(resolver), resolver)
     except Exception:
         return _empty_long_df()
     df = compute_phase_aligned_endpoints_per_trial(bundle, lick_set="all_multi")

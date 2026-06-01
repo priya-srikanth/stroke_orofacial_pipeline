@@ -88,6 +88,11 @@ logger = logging.getLogger("chore.whisker_nose_emit")
 
 COHORT_8 = ("PS46", "PS47", "PS48", "PS49", "PS50", "PS51", "PS54", "PS55")
 ALL_BODYPARTS = ("whisker", "nose", "spout", "eye")
+# Per-session OT create/destroy/move decomposition (G) is EXPENSIVE (an
+# unbalanced sinkhorn per session × bodypart × side × epoch). Off by default so
+# the normalized-W2 emit stays fast; flip to True (or wire a CLI flag) for the
+# OT pass.
+WITH_OT_DECOMPOSITION = False
 
 HEATMAP_SUBDIR = "stats/figures/phenotype_pooled/proportion_diff_heatmaps"
 W2_SUBDIR = "stats/figures/phenotype_pooled/wasserstein_recovery"
@@ -240,7 +245,8 @@ def compute_animal(
                     animal=animal, pre_pool=pre_pool, post_dates=dates,
                     side=side, bodypart=bodypart, resolver=resolver,
                     defaults=defaults, animal_info=animal_info,
-                    epoch_label=epoch_label, with_ot_decomposition=True)
+                    epoch_label=epoch_label,
+                    with_ot_decomposition=WITH_OT_DECOMPOSITION)
                 for row in rows:
                     row["recovery_phenotype"] = animal_info.recovery_phenotype
                 w2_rows.extend(rows)
