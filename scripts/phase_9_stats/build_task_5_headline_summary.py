@@ -346,7 +346,7 @@ def main() -> int:
           + (f"  [filter variant: {variant}]" if variant else ""))
 
     stats_root = resolver.pipeline_outputs(subdir="stats")
-    results_root = (stats_root / "results" / variant) if variant else (stats_root / "results")
+    results_root = stats_root / "results" / (variant or "none")  # symmetric none/
     inputs_root = (stats_root / "inputs" / variant) if variant else (stats_root / "inputs")
     out_path = (
         REPO_ROOT / ".scratch_phase_9" / f"task_5_headline_summary_{variant}.csv"
