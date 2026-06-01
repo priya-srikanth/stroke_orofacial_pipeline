@@ -31,6 +31,7 @@ import logging
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -38,6 +39,14 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from stroke_orofacial.animals import load_animals  # noqa: E402
+from stroke_orofacial.cohort_filters import (  # noqa: E402
+    DlcSessionFilter,
+    build_dlc_pertrial_lick_frame,
+    compute_dlc_session_lick_stats,
+    load_dlc_filter_spec_from_defaults,
+    resolve_dlc_trial_filter,
+)
+from stroke_orofacial.config_loader import load_defaults  # noqa: E402
 from stroke_orofacial.paths import PathResolver  # noqa: E402
 from stroke_orofacial.stats import pooled_endpoint_suite as SUITE  # noqa: E402
 from stroke_orofacial.stats.aggregators import (  # noqa: E402
@@ -60,6 +69,116 @@ PHASE_ALIGNED_ENDPOINTS = (
 # Behavior d'/criterion pool across cue sides -> can't split by cue side.
 CROSS_CUE_ENDPOINTS = frozenset({"d_prime", "criterion_c"})
 
+# Diagnostic scalar endpoints excluded from the pooled-phenotype hypothesis set
+# (Priya 2026-06-01): QC frame-count + pass flag + redundant jaw-deflection
+# variants (jaw_peak_abs_deflection is retained as the canonical deflection).
+# These are additionally pruned ON TOP of the figured-only scope below; the
+# combined effect shrinks the BH-FDR family to genuine hypothesis endpoints.
+SCALAR_DIAGNOSTIC_DROP = frozenset({
+    "jaw_n_frames_over_thresh",
+    "jaw_pass_qc",
+    "jaw_peak_neg_deflection",
+    "jaw_peak_pos_deflection",
+    "jaw_peak_selected_deflection",
+})
+
+# Families whose headline significance is the session-MWU (+ bootstrap CI), NOT
+# the LMM: the per-session scalar/endpoint cells have only 2-4 animals per
+# phenotype, so the animal random-effect variance is frequently non-estimable
+# (singular -> convergence_failed). The LMM is reported as a supporting column
+# where it converges; trajectories (rich per-trial nesting) keep LMM as their
+# headline in their own per-family CSVs. (Priya 2026-06-01.)
+MWU_HEADLINE_FAMILIES = frozenset({
+    "scalar", "phase_aligned_endpoints",
+    "phase_aligned_endpoints_all_licks", "wasserstein_recovery",
+    "normalized_wasserstein_recovery",
+})
+DLC_FILTER_METRIC = "dlc_tongue_trajectory_metrics"
+
+
+def _figured_scalar_endpoints(resolver: PathResolver) -> set[str]:
+    """Slugs that have a phenotype-pooled FIGURE dir (the in-scope set).
+
+    The consolidated sheet's scope is "stats for the figures in the
+    phenotype_pooled folder" (Priya). Scalar endpoints with no figure dir
+    (the 50 ``spatial_*`` divergence/UOT/wasserstein variants + ``latency_hist``)
+    are out of scope and excluded.
+    """
+    fig = resolver.pipeline_outputs(subdir="stats") / "figures" / "phenotype_pooled"
+    if not fig.is_dir():
+        return set()
+    return {p.name for p in fig.iterdir() if p.is_dir()}
+
+
+def _session_stats_frame(animal: str, resolver: PathResolver) -> pd.DataFrame:
+    """Per-(animal, date, side) DLC v7-kept session lick stats (port of q13b)."""
+    from stroke_orofacial.cohort_filters import (
+        DLC_SESSION_N_KEPT_LICKS_COL,
+        DLC_SESSION_N_TRIALS_TOTAL_COL,
+        DLC_SESSION_N_TRIALS_WITH_LICK_COL,
+    )
+    from stroke_orofacial.cohort_enumeration import yaml_driven_session_dates
+    import datetime
+    rows: list[dict] = []
+    for d in yaml_driven_session_dates(animal):
+        if isinstance(d, str):
+            d = datetime.date.fromisoformat(d)
+        stats = compute_dlc_session_lick_stats(animal, d, resolver)
+        if stats is None:
+            continue
+        for s in stats:
+            rows.append({
+                "animal": s.animal, "date": s.date, "side": s.side,
+                DLC_SESSION_N_TRIALS_TOTAL_COL: s.n_trials_of_side,
+                DLC_SESSION_N_TRIALS_WITH_LICK_COL: s.n_trials_with_detected_lick,
+                DLC_SESSION_N_KEPT_LICKS_COL: s.n_kept_licks,
+            })
+    return pd.DataFrame(rows)
+
+
+def _build_dlc_filter(animals: list[str], resolver: PathResolver):
+    """Return ``(trial_filter, kept_keys)`` for the filtered_v1 variant.
+
+    ``kept_keys`` is the set of ``(animal, date, side)`` sessions that pass the
+    ``DlcSessionFilter`` (``min_trials_with_detected_lick``); ``None`` if the
+    filter is pass-through. ``trial_filter`` gates per-trial rows by
+    ``min_licks_per_trial``. This mirrors the on-the-fly filter the v3 figures
+    apply in q13b_v2_emit so the stats match the canonical figures.
+    """
+    defaults = load_defaults()
+    trial_filter = resolve_dlc_trial_filter(DLC_FILTER_METRIC, defaults)
+    session_filter: DlcSessionFilter = load_dlc_filter_spec_from_defaults(defaults)
+    kept_keys: set | None = None
+    if not session_filter.is_pass_through():
+        sess_frames = [_session_stats_frame(a, resolver) for a in animals]
+        sess_frames = [f for f in sess_frames if not f.empty]
+        if sess_frames:
+            sess_df = pd.concat(sess_frames, ignore_index=True)
+            kept_sess, res = session_filter.filter(sess_df)
+            kept_keys = {
+                (r["animal"], r["date"], r["side"])
+                for _, r in kept_sess.iterrows()
+            }
+            log.info("DLC session filter: %d/%d (animal,date,side) sessions kept",
+                     res.n_sessions_kept, res.n_sessions_in)
+    return trial_filter, kept_keys
+
+
+def _apply_trial_then_session_filter(
+    long_df: pd.DataFrame, trial_filter, kept_keys: set | None,
+) -> pd.DataFrame:
+    """Drop low-lick trials then sparse sessions (per-trial long-form in)."""
+    out = long_df
+    if (trial_filter is not None and not trial_filter.is_pass_through()
+            and "n_licks_per_trial" in out.columns):
+        keep = (out["n_licks_per_trial"].isna()
+                | (out["n_licks_per_trial"] >= trial_filter.min_licks_per_trial))
+        out = out[keep]
+    if kept_keys is not None:
+        out = out[out.apply(
+            lambda r: (r["animal"], r["date"], r["side"]) in kept_keys, axis=1)]
+    return out.copy()
+
 
 def _persession_from_pertrial(df: pd.DataFrame, endpoint: str) -> pd.DataFrame:
     """Per-(animal, date, side) mean of finite per-trial values."""
@@ -74,16 +193,33 @@ def _persession_from_pertrial(df: pd.DataFrame, endpoint: str) -> pd.DataFrame:
     return g
 
 
-def load_scalar_family(resolver: PathResolver) -> pd.DataFrame:
-    """All stats/inputs scalar endpoints -> per-session long-form."""
+def load_scalar_family(
+    resolver: PathResolver, *, filter_variant: str = "filtered_v1",
+) -> pd.DataFrame:
+    """Scalar endpoints -> per-session long-form, scoped + filtered.
+
+    Scope: only endpoints with a phenotype-pooled FIGURE dir, minus the
+    diagnostic drop-set. Input: when ``filter_variant == "filtered_v1"`` each
+    endpoint reads ``stats/inputs/filtered_v1/<ep>/`` if that tree exists
+    (the QC-filtered tongue family), else falls back to the unfiltered
+    ``stats/inputs/<ep>/`` (jaw / spout-behavior have no filtered tree and are
+    unfiltered in their canonical figures too).
+    """
     inp = resolver.pipeline_outputs(subdir="stats") / "inputs"
+    figured = _figured_scalar_endpoints(resolver)
     eps = sorted(
         d.name for d in inp.iterdir()
         if d.is_dir() and not d.name.startswith(("filtered", "_", "inputs"))
     )
     frames = []
+    n_filtered = n_unfiltered = 0
     for ep in eps:
-        pqs = glob.glob(str(inp / ep / "*.parquet"))
+        if ep not in figured or ep in SCALAR_DIAGNOSTIC_DROP:
+            continue
+        filt_dir = inp / "filtered_v1" / ep
+        use_filtered = filter_variant == "filtered_v1" and filt_dir.is_dir()
+        src = filt_dir if use_filtered else inp / ep
+        pqs = glob.glob(str(src / "*.parquet"))
         if not pqs:
             continue
         df = pd.concat([pd.read_parquet(p) for p in pqs], ignore_index=True)
@@ -93,16 +229,30 @@ def load_scalar_family(resolver: PathResolver) -> pd.DataFrame:
         if not sess.empty:
             sess["family"] = "scalar"
             frames.append(sess)
+            n_filtered += int(use_filtered)
+            n_unfiltered += int(not use_filtered)
+    log.info("scalar family: %d endpoints (%d filtered_v1, %d unfiltered) "
+             "after figured-scope + diagnostic drop", n_filtered + n_unfiltered,
+             n_filtered, n_unfiltered)
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
-def load_phase_aligned_family(resolver: PathResolver, animals: list[str]) -> pd.DataFrame:
-    """First-lick phase-aligned endpoints (per-trial JSON) -> per-session."""
+def load_phase_aligned_family(
+    resolver: PathResolver, animals: list[str], *,
+    trial_filter=None, kept_keys: set | None = None,
+) -> pd.DataFrame:
+    """First-lick phase-aligned endpoints (per-trial JSON) -> per-session.
+
+    When ``kept_keys`` is provided the per-trial rows are gated by the same
+    trial+session DLC filter the v3 figures apply (q13b), so the stats match
+    the canonical filtered figures rather than all sessions.
+    """
     import datetime
 
     from stroke_orofacial.cohort_enumeration import yaml_driven_session_dates
     from stroke_orofacial.stats.recovery_epochs import assign_epoch_label
     amap = load_animals()
+    do_filter = kept_keys is not None
     rows = []
     for animal in animals:
         info = amap.get(animal)
@@ -114,6 +264,17 @@ def load_phase_aligned_family(resolver: PathResolver, animals: list[str]) -> pd.
             ep_long = load_session_phase_aligned_endpoints_long(animal, d, resolver)
             if ep_long.empty:
                 continue
+            if do_filter:
+                licks = build_dlc_pertrial_lick_frame(animal, d, resolver)
+                if licks is not None and "trial_index" in ep_long.columns:
+                    ep_long = ep_long.merge(
+                        licks[["animal", "date", "side", "trial_index",
+                               "n_licks_per_trial"]],
+                        on=["animal", "date", "side", "trial_index"], how="left")
+                ep_long = _apply_trial_then_session_filter(
+                    ep_long, trial_filter, kept_keys)
+                if ep_long.empty:
+                    continue
             # The JSON loader doesn't carry epoch_label; derive from rel_day.
             rel = int(info.day_relative_to_stroke(d))
             epoch = assign_epoch_label(rel, info)
@@ -130,10 +291,14 @@ def load_phase_aligned_family(resolver: PathResolver, animals: list[str]) -> pd.
     return out
 
 
-def load_all_licks_endpoints_family(resolver: PathResolver) -> pd.DataFrame:
+def load_all_licks_endpoints_family(
+    resolver: PathResolver, *, trial_filter=None, kept_keys: set | None = None,
+) -> pd.DataFrame:
     """Precomputed per-LICK all-licks endpoints (stats/inputs/all_licks_endpoints/)
     -> per-session long-form. Requires precompute_all_licks_endpoints.py to have
-    run; returns empty otherwise."""
+    run; returns empty otherwise. ``kept_keys`` applies the session filter (and
+    the trial filter where ``n_licks_per_trial`` is present) so the all-licks
+    stats match the canonical v3 figures."""
     root = resolver.pipeline_outputs(subdir="stats") / "inputs" / "all_licks_endpoints"
     if not root.exists():
         return pd.DataFrame()
@@ -145,6 +310,10 @@ def load_all_licks_endpoints_family(resolver: PathResolver) -> pd.DataFrame:
         if not pqs:
             continue
         df = pd.concat([pd.read_parquet(p) for p in pqs], ignore_index=True)
+        if kept_keys is not None:
+            df = _apply_trial_then_session_filter(df, trial_filter, kept_keys)
+            if df.empty:
+                continue
         sess = _persession_from_pertrial(df, ep_dir.name)
         if not sess.empty:
             sess["family"] = "phase_aligned_endpoints_all_licks"
@@ -187,8 +356,10 @@ def _attach_phenotype(df: pd.DataFrame, scope: str) -> pd.DataFrame:
 def _run_family(long_df: pd.DataFrame, *, n_boot: int) -> pd.DataFrame:
     """Engine over every (family, endpoint, phenotype, side, post_epoch) cell."""
     out_rows: list[dict] = []
-    for endpoint, ep_df in long_df.groupby("endpoint"):
-        family = ep_df["family"].iloc[0]
+    # Group by (family, endpoint): the first-lick and all-licks phase-aligned
+    # families share endpoint names (peak_angle_deg, ...), so grouping by
+    # endpoint alone would collide them into one cell.
+    for (family, endpoint), ep_df in long_df.groupby(["family", "endpoint"]):
         cross_cue = endpoint in CROSS_CUE_ENDPOINTS
         # Δ-from-pre per (animal, side) [or per animal if cross-cue].
         grp = ("animal",) if cross_cue else ("animal", "side")
@@ -210,6 +381,62 @@ def _run_family(long_df: pd.DataFrame, *, n_boot: int) -> pd.DataFrame:
     return pd.DataFrame(out_rows)
 
 
+def _attach_headline(res: pd.DataFrame) -> pd.DataFrame:
+    """Add the per-family headline-test columns + a bootstrap-agreement flag.
+
+    Session-MWU is the headline for the per-session scalar/endpoint families
+    (LMM is non-estimable at 2-4 animals/phenotype); the LMM/Wilcoxon FDR
+    columns remain as supporting evidence. ``headline_sig`` is the FDR-corrected
+    headline call; ``headline_and_bootstrap_sig`` flags cells where the headline
+    AND the session-bootstrap CI both reject the null.
+    """
+    res = res.copy()
+    is_mwu = res["family"].isin(MWU_HEADLINE_FAMILIES)
+    res["headline_test"] = np.where(is_mwu, "mwu_session", "lmm")
+    res["headline_p_fdr"] = np.where(
+        is_mwu, res.get("mwu_session_p_fdr"), res.get("lmm_p_fdr"))
+    res["headline_sig"] = res["headline_p_fdr"] < 0.05
+    res["headline_and_bootstrap_sig"] = (
+        res["headline_sig"] & res.get("excludes_zero", False).astype(bool))
+    return res
+
+
+def _write_highlighted_xlsx(res: pd.DataFrame, out_path: Path) -> None:
+    """Emit an .xlsx with per-test-column green(reject)/red(non-reject) fills.
+
+    For each FDR test column (Wilcoxon / session-MWU / LMM): green if p<0.05
+    (reject null), red if >=0.05, grey if NaN (e.g. LMM convergence_failed).
+    The bootstrap ``excludes_zero`` bool: green if True, red if False. The
+    headline columns get the same green/red treatment. (Priya 2026-06-01.)
+    """
+    from openpyxl.styles import PatternFill
+    GREEN = PatternFill("solid", fgColor="C6EFCE")
+    RED = PatternFill("solid", fgColor="FFC7CE")
+    GREY = PatternFill("solid", fgColor="D9D9D9")
+    cols = list(res.columns)
+    pcols = [c for c in ("headline_p_fdr", "wilcoxon_p_fdr",
+                         "mwu_session_p_fdr", "lmm_p_fdr") if c in cols]
+    boolcols = [c for c in ("excludes_zero", "headline_sig",
+                            "headline_and_bootstrap_sig") if c in cols]
+    with pd.ExcelWriter(out_path, engine="openpyxl") as xw:
+        res.to_excel(xw, index=False, sheet_name="stats")
+        ws = xw.sheets["stats"]
+        ws.freeze_panes = "A2"
+        for c in pcols:
+            ci = cols.index(c) + 1
+            for r in range(len(res)):
+                v = res.iloc[r][c]
+                cell = ws.cell(row=r + 2, column=ci)
+                cell.fill = GREY if pd.isna(v) else (
+                    GREEN if v < 0.05 else RED)
+        for c in boolcols:
+            ci = cols.index(c) + 1
+            for r in range(len(res)):
+                v = res.iloc[r][c]
+                cell = ws.cell(row=r + 2, column=ci)
+                cell.fill = GREEN if bool(v) else RED
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--families", nargs="*",
@@ -217,31 +444,48 @@ def main(argv: list[str] | None = None) -> int:
                             "phase_aligned_endpoints_all_licks", "wasserstein"])
     p.add_argument("--n-boot", type=int, default=5000)
     p.add_argument("--scopes", nargs="*", default=["4_tier", "3_tier"])
+    p.add_argument("--filter-variant", choices=("filtered_v1", "none"),
+                   default="filtered_v1",
+                   help=("filtered_v1 (default): scalars read filtered_v1 "
+                         "inputs where available + phase-aligned families apply "
+                         "the trial+session DLC filter, matching the canonical "
+                         "v3 figures. Spatial/wasserstein stays unfiltered. "
+                         "none: all sessions (legacy)."))
     args = p.parse_args(argv)
 
     resolver = PathResolver()
     animals = sorted(load_animals().keys())
+    filtered = args.filter_variant == "filtered_v1"
+
+    # Build the DLC trial+session filter ONCE (shared by both phase-aligned
+    # loaders). Unfiltered for --filter-variant none.
+    trial_filter = kept_keys = None
+    if filtered:
+        log.info("building DLC trial+session filter (filtered_v1) ...")
+        trial_filter, kept_keys = _build_dlc_filter(animals, resolver)
 
     base_long = []
     if "scalar" in args.families:
         log.info("loading scalar family ...")
-        base_long.append(load_scalar_family(resolver))
+        base_long.append(load_scalar_family(resolver, filter_variant=args.filter_variant))
     if "phase_aligned_endpoints" in args.families:
         log.info("loading phase_aligned family ...")
-        base_long.append(load_phase_aligned_family(resolver, animals))
+        base_long.append(load_phase_aligned_family(
+            resolver, animals, trial_filter=trial_filter, kept_keys=kept_keys))
     if "phase_aligned_endpoints_all_licks" in args.families:
         log.info("loading all-licks endpoints family ...")
-        base_long.append(load_all_licks_endpoints_family(resolver))
+        base_long.append(load_all_licks_endpoints_family(
+            resolver, trial_filter=trial_filter, kept_keys=kept_keys))
     if "wasserstein" in args.families:
-        log.info("loading wasserstein family ...")
+        log.info("loading wasserstein family (always unfiltered — spatial) ...")
         base_long.append(load_wasserstein_family(resolver))
     base_long = [d for d in base_long if not d.empty]
     if not base_long:
         log.error("no family data loaded")
         return 1
     long_all = pd.concat(base_long, ignore_index=True)
-    log.info("per-session rows: %d across %d endpoints",
-             len(long_all), long_all["endpoint"].nunique())
+    log.info("per-session rows: %d across %d endpoints (filter_variant=%s)",
+             len(long_all), long_all["endpoint"].nunique(), args.filter_variant)
 
     for scope in args.scopes:
         scoped = _attach_phenotype(long_all, scope)
@@ -257,14 +501,17 @@ def main(argv: list[str] | None = None) -> int:
             res = apply_correction_to_results_df(res, group_cols=("family",))
             res = res.rename(columns={"p_value": pcol, "p_adj": adj})
             res = res.drop(columns=["reject"], errors="ignore")
+        res = _attach_headline(res)
         out_dir = (resolver.pipeline_outputs(subdir="stats") / "results"
                    / "phenotype_pooled" / scope)
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / "pooled_phenotype_stats.csv"
         res.to_csv(out_path, index=False)
-        n_sig = int((res["lmm_p_fdr"] < 0.05).sum()) if "lmm_p_fdr" in res else 0
-        log.info("[%s] %d rows (%d LMM-FDR-sig) -> %s",
-                 scope, len(res), n_sig, out_path)
+        _write_highlighted_xlsx(res, out_dir / "pooled_phenotype_stats.xlsx")
+        n_head = int(res["headline_sig"].sum())
+        n_both = int(res["headline_and_bootstrap_sig"].sum())
+        log.info("[%s] %d rows | %d headline-sig (MWU-FDR) | %d also bootstrap-sig "
+                 "-> %s (+ .xlsx)", scope, len(res), n_head, n_both, out_path)
     return 0
 
 
