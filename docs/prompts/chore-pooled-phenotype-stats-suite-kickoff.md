@@ -15,8 +15,21 @@ collect it into ONE spreadsheet per scope at
 `stats/results/phenotype_pooled/<3_tier|4_tier>/` (the consolidated-layout
 request, 2026-06-01).
 
+## Comparison structure (Priya 2026-06-01)
+Every test is a **post-epoch vs pre** contrast: **acute vs pre, sub_acute vs pre,
+chronic vs pre** — 3 contrasts per cell — run for **BOTH scopes (3_tier AND
+4_tier)**. `pre` is always the reference. BH-FDR applied within family per scope.
+
+**Split by trial CUE side** (Tone_L vs Tone_R): the `side` dimension is the trial's
+cued spout (already the per-trial `side` column for the DLC endpoints; relabeled
+ipsi/contra on the all-L cohort). So each cell is also split by cue side.
+**Exception:** metrics that are inherently cross-cue (d′, criterion_c — SDT pools
+hits on one cue + false alarms on the other per session) cannot split by cue side;
+either add a per-cue-side conditional variant or keep them cross-cue and flag it.
+
 ## The suite (per Priya, 2026-06-01)
-Per (phenotype × side × endpoint × post_epoch) cell:
+Per (phenotype × side × endpoint × post_epoch ∈ {acute, sub_acute, chronic}) cell,
+for each scope ∈ {3_tier, 4_tier}:
 
 1. **Per-animal paired Wilcoxon** — pre vs post, per-animal aggregate (the
    existing conservative test; keep for continuity).
