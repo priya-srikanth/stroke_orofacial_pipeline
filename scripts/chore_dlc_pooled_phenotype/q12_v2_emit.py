@@ -235,12 +235,13 @@ def main(argv: list[str] | None = None) -> int:
                 provenance_subtitle=W2_V2_PROVENANCE, is_delta=False,
             )
             n_figs += 1
-        # Provenance-stamped W-2 pooled CSV under the results tree.
+        # Per-session W-2 under the results tree. (The pooled mean+SEM summary
+        # CSV is no longer written — it was a write-only orphan that nothing
+        # read; the figures render from the in-memory ``pooled_w2`` and the
+        # mean+SEM is trivially recomputable from the per_session file below.)
         res_dir = resolver.pipeline_outputs(
             subdir=W2_SUBDIR.replace("figures", "results")) / scope / "v2"
         res_dir.mkdir(parents=True, exist_ok=True)
-        pooled_w2.assign(provenance=PROVENANCE).to_csv(
-            res_dir / "wasserstein_recovery_mean_sem.csv", index=False)
         # Persist the PER-SESSION W-2 (the figure's scatter values) so any
         # future normalization / re-pool never needs another OT recompute.
         # Namespaced under a producer-specific ``tongue_jaw/`` subdir so the
@@ -283,8 +284,8 @@ def main(argv: list[str] | None = None) -> int:
         res_norm = resolver.pipeline_outputs(
             subdir=NORM_W2_SUBDIR.replace("figures", "results")) / scope / "v2"
         res_norm.mkdir(parents=True, exist_ok=True)
-        pooled_w2_norm.assign(provenance=NORM_PROVENANCE).to_csv(
-            res_norm / "normalized_wasserstein_recovery_mean_sem.csv", index=False)
+        # (normalized mean+SEM summary CSV removed — write-only orphan; see the
+        # absolute-W2 note above.)
         # Per-session normalized W-2 (previously only mean+SEM was persisted, so
         # the consolidated-stats normalized_wasserstein_recovery family loaded
         # empty). Write ``value_norm`` into a ``w2`` column because the loader

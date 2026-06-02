@@ -406,12 +406,12 @@ def main(argv: list[str] | None = None) -> int:
                                       "family": "w2", "status": "FAIL",
                                       "path": repr(exc)})
 
-        # Stats CSV (W-2 pooled mean+SEM) under the results tree.
+        # Per-session W-2 under the results tree. (The pooled mean+SEM summary
+        # CSV is no longer written — write-only orphan; figures render from the
+        # in-memory ``pooled_w2`` and mean+SEM recomputes from per_session.)
         res_dir = resolver.pipeline_outputs(
             subdir=W2_SUBDIR.replace("figures", "results")) / scope / "v2"
         res_dir.mkdir(parents=True, exist_ok=True)
-        pooled_w2.assign(provenance=PROVENANCE).to_csv(
-            res_dir / "wasserstein_recovery_mean_sem.csv", index=False)
         # Persist per-session W-2 (+ OT create/destroy/move) for reuse.
         # Namespaced under ``whisker_nose/`` so the consolidated-stats loader's
         # recursive ``**`` glob reads this file AND the q12 tongue/jaw sibling
@@ -469,8 +469,7 @@ def main(argv: list[str] | None = None) -> int:
             subdir="stats/results/phenotype_pooled/normalized_wasserstein_recovery",
         ) / scope / "v2"
         nres_dir.mkdir(parents=True, exist_ok=True)
-        pooled_w2_norm.assign(provenance=PROVENANCE).to_csv(
-            nres_dir / "normalized_wasserstein_recovery_mean_sem.csv", index=False)
+        # (normalized mean+SEM summary CSV removed — write-only orphan.)
         # Per-session normalized W-2 (mirrors q12): write ``value_norm`` into a
         # ``w2`` column under a ``whisker_nose/`` subdir so the consolidated-
         # stats loader picks up the normalized family for these bodyparts too
