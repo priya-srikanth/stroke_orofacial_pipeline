@@ -339,7 +339,20 @@ def load_wasserstein_family(resolver: PathResolver) -> pd.DataFrame:
             keep["endpoint"] = keep["bodypart"]
             keep["family"] = fam
             frames.append(keep.drop(columns=["bodypart"]))
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    if not frames:
+        return pd.DataFrame()
+    out = pd.concat(frames, ignore_index=True)
+    # De-duplicate scope-independent per-session rows. Each producer writes an
+    # IDENTICAL per_session file under every phenotype-scope dir (``4_tier/``,
+    # ``3_tier/``) because the write sits inside the per-scope emit loop, and
+    # the recursive ``**`` glob above reads every copy. The W-2 per-session
+    # value is scope-independent (phenotype tiering only affects downstream
+    # pooling, not the raw session W-2), so without this dedup every session
+    # would be counted once PER scope dir — inflating n and shrinking CIs/
+    # p-values in the pooled stats. Key on the natural session identity; one
+    # row per (animal, date, side, endpoint, epoch_label, family) is correct.
+    key = ["animal", "date", "side", "endpoint", "epoch_label", "family"]
+    return out.drop_duplicates(subset=key, ignore_index=True)
 
 
 def _attach_phenotype(df: pd.DataFrame, scope: str) -> pd.DataFrame:

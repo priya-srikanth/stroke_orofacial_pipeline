@@ -413,8 +413,14 @@ def main(argv: list[str] | None = None) -> int:
         pooled_w2.assign(provenance=PROVENANCE).to_csv(
             res_dir / "wasserstein_recovery_mean_sem.csv", index=False)
         # Persist per-session W-2 (+ OT create/destroy/move) for reuse.
+        # Namespaced under ``whisker_nose/`` so the consolidated-stats loader's
+        # recursive ``**`` glob reads this file AND the q12 tongue/jaw sibling
+        # without either clobbering the other (both formerly wrote the same
+        # un-namespaced ``<scope>/v2/wasserstein_recovery_per_session.csv``).
+        ps_dir = res_dir / "whisker_nose"
+        ps_dir.mkdir(parents=True, exist_ok=True)
         w2_scoped.assign(provenance=PROVENANCE).to_csv(
-            res_dir / "wasserstein_recovery_per_session.csv", index=False)
+            ps_dir / "wasserstein_recovery_per_session.csv", index=False)
         logger.info("[%s] W-2 line+jitter -> %s", scope, w2_dir)
 
         # --- Normalized W-2 recovery (per-animal pre-stroke baseline, per side)
@@ -465,6 +471,16 @@ def main(argv: list[str] | None = None) -> int:
         nres_dir.mkdir(parents=True, exist_ok=True)
         pooled_w2_norm.assign(provenance=PROVENANCE).to_csv(
             nres_dir / "normalized_wasserstein_recovery_mean_sem.csv", index=False)
+        # Per-session normalized W-2 (mirrors q12): write ``value_norm`` into a
+        # ``w2`` column under a ``whisker_nose/`` subdir so the consolidated-
+        # stats loader picks up the normalized family for these bodyparts too
+        # (it formerly loaded empty — only mean+SEM was persisted).
+        nps_dir = nres_dir / "whisker_nose"
+        nps_dir.mkdir(parents=True, exist_ok=True)
+        _norm_cols = ["animal", "date", "side", "endpoint", "epoch_label"]
+        w2_norm.assign(w2=w2_norm["value_norm"], provenance=PROVENANCE)[
+            _norm_cols + ["w2", "provenance"]
+        ].to_csv(nps_dir / "wasserstein_recovery_per_session.csv", index=False)
         logger.info("[%s] normalized W-2 -> %s", scope, norm_dir)
 
     manifest_dir = resolver.pipeline_outputs(

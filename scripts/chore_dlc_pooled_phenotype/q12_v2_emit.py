@@ -243,8 +243,14 @@ def main(argv: list[str] | None = None) -> int:
             res_dir / "wasserstein_recovery_mean_sem.csv", index=False)
         # Persist the PER-SESSION W-2 (the figure's scatter values) so any
         # future normalization / re-pool never needs another OT recompute.
+        # Namespaced under a producer-specific ``tongue_jaw/`` subdir so the
+        # consolidated-stats loader's recursive ``**`` glob reads BOTH this
+        # file and the whisker/nose chore's sibling without either clobbering
+        # the other (both formerly wrote the same un-namespaced path).
+        ps_dir = res_dir / "tongue_jaw"
+        ps_dir.mkdir(parents=True, exist_ok=True)
         w2_scoped.assign(provenance=PROVENANCE).to_csv(
-            res_dir / "wasserstein_recovery_per_session.csv", index=False)
+            ps_dir / "wasserstein_recovery_per_session.csv", index=False)
         logger.info("[%s] W-2 line+jitter figs=%d -> %s", scope, n_figs, w2_dir)
 
         # --- Normalized W-2 recovery (NEW): per-session W-2 / per-animal
@@ -279,6 +285,20 @@ def main(argv: list[str] | None = None) -> int:
         res_norm.mkdir(parents=True, exist_ok=True)
         pooled_w2_norm.assign(provenance=NORM_PROVENANCE).to_csv(
             res_norm / "normalized_wasserstein_recovery_mean_sem.csv", index=False)
+        # Per-session normalized W-2 (previously only mean+SEM was persisted, so
+        # the consolidated-stats normalized_wasserstein_recovery family loaded
+        # empty). Write ``value_norm`` into a ``w2`` column because the loader
+        # (build_pooled_phenotype_stats.load_wasserstein_family) keys on a
+        # ``w2`` column + the file name ``wasserstein_recovery_per_session.csv``;
+        # the ``normalized_wasserstein_recovery/`` parent dir is what tags the
+        # family. Namespaced under ``tongue_jaw/`` for the same de-collision
+        # reason as the absolute file above.
+        nps_dir = res_norm / "tongue_jaw"
+        nps_dir.mkdir(parents=True, exist_ok=True)
+        _norm_cols = ["animal", "date", "side", "endpoint", "epoch_label"]
+        w2_norm.assign(w2=w2_norm["value_norm"], provenance=NORM_PROVENANCE)[
+            _norm_cols + ["w2", "provenance"]
+        ].to_csv(nps_dir / "wasserstein_recovery_per_session.csv", index=False)
         logger.info("[%s] normalized W-2 figs=%d -> %s", scope, n_norm, norm_dir)
 
     logger.info("Q12 v2 re-emit complete.")
