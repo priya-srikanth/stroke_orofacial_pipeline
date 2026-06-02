@@ -704,7 +704,11 @@ def _output_path(
         )
         out_root.mkdir(parents=True, exist_ok=True)
         return out_root / f"{animal}_cleaned_trace.parquet"
-    out_root = resolver.pipeline_outputs(subdir="stats") / "inputs" / slug
+    # Unfiltered spatial endpoints share the ``inputs/no_filter/`` wrapper with
+    # the scalar endpoints (2026-06 stats-layout cleanup; was flat
+    # ``inputs/<slug>/``). The ``inputs_cleaned_trace/`` branch above is a
+    # separate sibling tree, left untouched.
+    out_root = resolver.pipeline_outputs(subdir="stats") / "inputs" / "no_filter" / slug
     out_root.mkdir(parents=True, exist_ok=True)
     return out_root / f"{animal}.parquet"
 

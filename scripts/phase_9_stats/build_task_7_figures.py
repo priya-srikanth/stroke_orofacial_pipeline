@@ -237,7 +237,7 @@ def main() -> int:
     resolver = PathResolver()
     variant = None if args.filter_variant == "none" else args.filter_variant
     stats_root = resolver.pipeline_outputs(subdir="stats")
-    inputs_root = (stats_root / "inputs" / variant) if variant else (stats_root / "inputs")
+    inputs_root = stats_root / "inputs" / (variant or "no_filter")  # symmetric wrapper
     results_root = stats_root / "results" / (variant or "no_filter")  # symmetric wrapper
     # Wrap the unfiltered task-7 figures (headlines/ per_animal/ forest_plots/)
     # under figures/no_filter/ so they parallel figures/filtered_v1/ instead of

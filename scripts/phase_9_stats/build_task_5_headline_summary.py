@@ -347,7 +347,7 @@ def main() -> int:
 
     stats_root = resolver.pipeline_outputs(subdir="stats")
     results_root = stats_root / "results" / (variant or "no_filter")  # symmetric wrapper
-    inputs_root = (stats_root / "inputs" / variant) if variant else (stats_root / "inputs")
+    inputs_root = stats_root / "inputs" / (variant or "no_filter")  # symmetric wrapper
     out_path = (
         REPO_ROOT / ".scratch_phase_9" / f"task_5_headline_summary_{variant}.csv"
         if variant else OUT_PATH

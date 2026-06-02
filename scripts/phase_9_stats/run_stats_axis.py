@@ -102,11 +102,12 @@ def _load_endpoint_parquets(
     endpoints have no ``filtered_v1`` input, so a filtered run naturally
     restricts to the tongue family).
 
-    ``variant`` (e.g. ``"filtered_v1"``) reads from
-    ``stats/inputs/<variant>/<slug>/`` instead of ``stats/inputs/<slug>/``.
+    ``variant`` reads from ``stats/inputs/<variant>/<slug>/``; the unfiltered
+    variant (``variant is None``) reads ``stats/inputs/no_filter/<slug>/``
+    (2026-06 stats-layout cleanup; was flat ``stats/inputs/<slug>/``).
     """
     base = resolver.pipeline_outputs(subdir="stats") / "inputs"
-    in_dir = (base / variant / endpoint_slug) if variant else (base / endpoint_slug)
+    in_dir = base / (variant or "no_filter") / endpoint_slug
     if not in_dir.exists():
         return pd.DataFrame()
     parquets = sorted(in_dir.glob("*.parquet"))

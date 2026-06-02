@@ -126,11 +126,13 @@ def load_stats_inputs(
     cohort : iterable of str, optional
         Restrict to a subset of animals; default = 8-animal Phase 9 cohort.
     filter_variant : {"none", "filtered_v1"}, optional
-        ``"none"`` (default) reads the unfiltered ``stats/inputs/<slug>/``
+        ``"none"`` (default) reads the unfiltered ``stats/inputs/no_filter/<slug>/``
         tree. ``"filtered_v1"`` reads the lick-filtered
         ``stats/inputs/filtered_v1/<slug>/`` tree — only the DLC-filterable
         scalars (the ~23 ``tongue_*`` kinematics) have one, so non-filterable
-        slugs return an empty frame (the caller skips them).
+        slugs return an empty frame (the caller skips them). The unfiltered
+        wrapper is ``no_filter/`` (not flat) so both trees are symmetric
+        siblings (2026-06 stats-layout cleanup).
 
     Returns
     -------
@@ -143,7 +145,7 @@ def load_stats_inputs(
     if filter_variant in ("filtered_v1", "filtered_v1_na_masked"):
         stats_root = inputs_root / filter_variant / endpoint_slug
     elif filter_variant == "none":
-        stats_root = inputs_root / endpoint_slug
+        stats_root = inputs_root / "no_filter" / endpoint_slug
     else:
         raise ValueError(
             "filter_variant must be 'none', 'filtered_v1', or "

@@ -206,11 +206,13 @@ def load_scalar_family(
     unfiltered in their canonical figures too).
     """
     inp = resolver.pipeline_outputs(subdir="stats") / "inputs"
+    no_filter_root = inp / "no_filter"
     figured = _figured_scalar_endpoints(resolver)
+    # Enumerate the unfiltered scalar slugs from the ``no_filter/`` wrapper
+    # (2026-06 stats-layout cleanup; was flat ``inputs/<slug>/``).
     eps = sorted(
-        d.name for d in inp.iterdir()
-        if d.is_dir() and not d.name.startswith(("filtered", "_", "inputs"))
-    )
+        d.name for d in no_filter_root.iterdir() if d.is_dir()
+    ) if no_filter_root.is_dir() else []
     frames = []
     n_filtered = n_unfiltered = 0
     for ep in eps:
@@ -218,7 +220,7 @@ def load_scalar_family(
             continue
         filt_dir = inp / "filtered_v1" / ep
         use_filtered = filter_variant == "filtered_v1" and filt_dir.is_dir()
-        src = filt_dir if use_filtered else inp / ep
+        src = filt_dir if use_filtered else no_filter_root / ep
         pqs = glob.glob(str(src / "*.parquet"))
         if not pqs:
             continue
