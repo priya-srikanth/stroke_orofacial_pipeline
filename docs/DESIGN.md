@@ -14,6 +14,15 @@
 
 ## 0. DATA SAFETY GROUND RULES (non-negotiable) `[DECIDED]`
 
+> **As-built note (2026-06):** The §0 text below is the *original* statement
+> of the rules. The **canonical, maintained** version now lives in
+> [`CLAUDE.md`](../CLAUDE.md) §"Ground Rules", which has since extended these:
+> it names **two** legacy reference repos (Priya's fork + Rich's upstream),
+> adds the **raw Flea3 camera paths** to the source-data list, requires
+> **per-invocation** approval for destructive ops on `pipeline_outputs/` trees,
+> and adds **git-worktree** and **phase-close-tag** discipline. Read `CLAUDE.md`
+> for the binding rules; the original §0 is preserved here for provenance.
+
 These rules bind every Claude Code session working on this project. They should be the first thing Claude Code reads at session start (via `CLAUDE.md`).
 
 1. **Never modify, overwrite, rename, or delete source data.** "Source data" = any raw file produced by an instrument, experiment, or upstream processing that is not already produced by this new consolidated codebase. Concretely this includes, but is not limited to:
@@ -61,6 +70,12 @@ These rules bind every Claude Code session working on this project. They should 
 ## 2. EXISTING CODE & DATA INVENTORY
 
 ### 2.1 Legacy code locations `[DECIDED]`
+
+> **As-built note (2026-06):** There are **two** read-only legacy reference
+> repos, not one (see `CLAUDE.md` §"Ground Rules" rule 2): Priya's working fork
+> (`…_Priya`, below) and Rich's upstream `…/facerhythm_stroke_biomarker_exp`,
+> which holds a few helpers found only there (e.g.
+> `make_alignment_templates_20251216.py`).
 
 **Spout behavior code (Mac, local):**
 - Root: `/Users/Priya2/Github/facerhythm_stroke_biomarker_exp_Priya`
@@ -113,6 +128,22 @@ Stroke dates, session ranges, session exclusions, and animal IDs are currently r
 ## 3. TARGET REPO LAYOUT `[DECIDED, proposal]`
 
 Repo name (pick whatever you like; suggestion): **`stroke_orofacial_pipeline`** — generic enough to hold future neural-recording modules.
+
+> **As-built note (2026-06):** The tree below is the *original proposal*. The
+> realized `src/stroke_orofacial/` has grown substantially — additions not shown
+> include `lr_convention.py` (§14.1 boundary-layer L/R), `cohort_enumeration.py`,
+> the package-private `_utils/` (vendored bnpm helpers + `indexing.py`),
+> `dlc_kinematics/{tongue_pertrial,jaw_pertrial,jaw_cleanup_v34,interpolation}.py`,
+> `spout_behavior/spout_close_vs_std.py`, `figures/_layout.py` +
+> `figures/phenotype_pooled.py`, the realized `stats/` package, and
+> `configs/session_overrides.yaml` (multi-half + secondary-spout registries).
+> The notebook set was also **renamed** (current: `01_spout_behavior_figures`,
+> `02_alignment`, `10_dlc_inference`, `11_dlc_build_parquets`,
+> `12_dlc_kinematics_tongue`, `13_dlc_kinematics_jaw`). `scripts/` now holds
+> per-phase subdirs (`phase_9_stats/`, `phase_9_1_q13/`, `chore_*/`). For the
+> current layout consult the repo `src/` tree, [`DATA_MODEL.md`](DATA_MODEL.md)
+> (output tree) and [`STATS_PIPELINE.md`](STATS_PIPELINE.md) (stats driver
+> entry-points). The proposal below is kept for design provenance.
 
 ```
 stroke_orofacial_pipeline/
@@ -231,6 +262,17 @@ A `PathResolver` class that:
 
 Per-session single source of truth, cached to disk in the new outputs area.
 
+> **As-built note (2026-06):** The dataclass snippet below is the original
+> schema and is now a subset of the built class. `SessionManifest` additionally
+> carries the per-half `session_suffix` (`None` for single/bare half, `"b"` for
+> the secondary-spout half), the multi-half `HalfSpec` plumbing (Pattern A), and
+> the L/R-convention scalars (`wavesurfer_sides_match_mouse_sides`,
+> `side_convention_version`; see §14.1). The session is keyed on
+> `(animal, date, session_suffix)`. For the authoritative field list and the
+> Pattern A (multi-half merge) / Pattern B (secondary-spout per-half) semantics,
+> see `src/stroke_orofacial/manifest.py` and [`DATA_MODEL.md`](DATA_MODEL.md)
+> §"Session keying."
+
 ```python
 @dataclass
 class SessionManifest:
@@ -291,6 +333,13 @@ All analyses operate in `session_time` internally. Every dataframe has a `sessio
 
 ## 5. NOTEBOOK → MODULE MIGRATION MAP `[PROPOSAL, TO BE CONFIRMED ONCE CODE IS READ]`
 
+> **As-built note (2026-06):** The table below is the *original proposal*. The
+> realized notebook→module mapping diverged (module names, notebook names, and
+> the phase ordering all evolved — see §3 as-built note and §7). The
+> authoritative per-phase record of what was actually ported, in which commit,
+> with any intentional behavior differences, is [`MIGRATION_LOG.md`](MIGRATION_LOG.md)
+> (Phases 2 → 9.1). The proposal is kept for provenance.
+
 | Legacy notebook | New module(s) | Notes |
 |---|---|---|
 | `batch_process_20260410PS.ipynb` | `spout_behavior/session_processing.py` + `notebooks/00_session_processing.ipynb` | Preserve trial segmentation and bout definitions exactly; factor out lick-detection thresholds to `configs/defaults.yaml`. |
@@ -313,6 +362,16 @@ All analyses operate in `session_time` internally. Every dataframe has a `sessio
 
 This is the part that needs the most thought. The scientific problem is hard and no single off-the-shelf recipe fits. This section lays out the architecture and flags the choices for deliberate decision-making; some are `[TODO]` on purpose.
 
+> **As-built note (2026-06):** This section is the *design rationale*; the stats
+> pipeline has since been **implemented** (Phases 9 and 9.1). The authoritative
+> as-built reference is [`STATS_PIPELINE.md`](STATS_PIPELINE.md) — it documents
+> the filter-variant output layout (`{no_filter, filtered_v1, phenotype_pooled}`
+> × `{inputs, results, figures}`), the phenotype-pooled families (Q12 spatial,
+> Q13/Q13b/Q13c phase-aligned, scalar V4/V5, Wasserstein recovery), the realized
+> inferential test hierarchy, and the per-driver entry points. The motivating
+> framing (§6.1) and the decided menus (§6.4, §6.5, §6.7) below still hold;
+> §6.3 and §6.6 have been superseded as noted inline.
+
 ### 6.1 The heterogeneity problem (restated for the record)
 
 Post L-VLS stroke phenotypes range from:
@@ -331,7 +390,15 @@ Naive pooling with a MixedLM on "day post-stroke" will (a) drown mild animals in
 2. **All endpoints produce the same tidy-data shape** (long format: animal, session_time / day / epoch, endpoint_name, value, n_trials, …), so the stats layer is endpoint-agnostic.
 3. **Normalization is a named strategy**, not an ad-hoc transform. Strategies live in `stats/normalization.py` and are applied before modeling. Each strategy is explicit about what it does at the floor (zero baseline or zero value).
 
-### 6.3 Recovery epoch classification `[TODO — major scientific design task]`
+### 6.3 Recovery epoch classification `[RESOLVED — see STATS_PIPELINE.md]`
+
+> **As-built note (2026-06):** This was the central `[TODO]` methodological
+> task; it is now **resolved**. The implemented scheme classifies each animal
+> into a recovery **phenotype** and partitions sessions into **epochs**, and the
+> phenotype × epoch × side cells drive the pooled-phenotype families. See
+> [`STATS_PIPELINE.md`](STATS_PIPELINE.md) and the canonical-conventions memory
+> (`project_phase_9_1_unification_canonical_conventions`). The original menu of
+> candidate approaches is kept below for design provenance.
 
 Animals should be re-aligned not only to calendar time post-stroke but also to **data-driven recovery phases**. This is the central methodological piece to work through. Directions to evaluate:
 
@@ -359,7 +426,17 @@ Each endpoint analysis chooses one of:
 - A session **excluded for technical reasons** (listed in `animals.yaml`) is missing and is dropped.
 - A session where the animal licked but an endpoint is undefined (e.g. "first-lick accuracy given no first lick") is **NaN with a documented reason**, and the endpoint's aggregator decides the rule for that case.
 
-### 6.6 Models `[DECIDED PROGRESSION]`
+### 6.6 Models `[DECIDED PROGRESSION — see STATS_PIPELINE.md for realized hierarchy]`
+
+> **As-built note (2026-06):** The realized inferential hierarchy differs in
+> emphasis from the progression below. At the project's cohort size (2–4
+> animals/phenotype after the 3-tier collapse) the **LMM is non-estimable** and
+> is dropped for the pooled sheet; the **session-level Mann-Whitney is the
+> headline test**, with **cluster permutation** secondary for trajectory
+> families. **Trial-grain MWU is explicitly excluded** (39–46 % type-I error
+> under H0 per the Q13 null-calibration). BH-FDR is applied per family. See
+> [`STATS_PIPELINE.md`](STATS_PIPELINE.md) §"Inferential test hierarchy." The
+> general progression below remains the design intent where cohort size permits.
 
 Apply in this order and use the first one whose assumptions are defensible for the endpoint:
 
@@ -382,6 +459,15 @@ All model outputs go through a unified reporter that yields a dataframe: `endpoi
 ## 7. STAGED MIGRATION PLAN
 
 Each phase ends with a commit on a branch + a short section added to `MIGRATION_LOG.md`. Nothing touches source data at any phase.
+
+> **As-built note (2026-06):** Phases 0–6 ran roughly as written below. The
+> Phase 7 → 10 tail, however, expanded into a much finer-grained progression
+> (Phase 7 alone became 7-pre / 7a.0–7a.6 / 7b / 7c.1–7c.2 / 7d / 7e+7e.1–7e.4 /
+> 7f, plus 8a.7–8a.10.1, then 9 and 9.1-q12…q14, plus a chore series). Phase 10
+> (final cleanup + `v0.1.0` tag) is **not yet reached**. The per-phase Phase 7+
+> entries below are kept as the original plan; the **as-built progression** is
+> summarized in the new §7.1 and recorded authoritatively, phase by phase, in
+> [`MIGRATION_LOG.md`](MIGRATION_LOG.md).
 
 **Phase 0 — Repo skeleton (Claude Code, first session).**
 - Create the directory tree.
@@ -450,6 +536,91 @@ Each phase ends with a commit on a branch + a short section added to `MIGRATION_
 
 ---
 
+## 7.1 As-built phase progression (post-Phase 6) `[ADDED 2026-06]`
+
+Architectural overview of the work that landed after Phase 6. This is a map,
+not a per-phase log — the authoritative phase-by-phase record (commits,
+intentional behavior differences, parity checks) is in
+[`MIGRATION_LOG.md`](MIGRATION_LOG.md); schema details are in
+[`DATA_MODEL.md`](DATA_MODEL.md); stats details in
+[`STATS_PIPELINE.md`](STATS_PIPELINE.md).
+
+**Session-structure groundwork (Phase 7-pre).** Before DLC kinematics, the
+session model gained two acquisition patterns beyond the default single-half
+`(animal, date)` session, both registered in `configs/session_overrides.yaml`:
+
+- **Pattern A — multi-half merge** (`multi_half_sessions:`): two halves of one
+  logical session (technical interruption) joined at the wavesurfer + camera +
+  DLC layers into ONE merged session. A three-layer write-guard plus a
+  `MultiHalfNotDeclaredError` trip-wire (fires on `n_dlc ≥ 2` with no registry
+  entry) prevents silently analyzing only one half. Current cohort: PS48
+  2025-03-14.
+- **Pattern B — secondary-spout per-half** (`secondary_spout_sessions:`): a
+  date with a primary-spout acquisition plus a separate closer-spout
+  exploratory acquisition. Yields TWO logical single-half manifests — the
+  **bare** half (`session_suffix=None`, primary spout, full DLC + standard
+  pipeline) and the **b** half (`session_suffix="b"`, closer spout, no DLC).
+  Current cohort: 23 dates across PS51/PS54/PS55.
+
+Phase 7-pre also extended `AnimalInfo.exclusions.applies_to` to dotted
+hierarchical namespaced tags (§14.2) and emitted cohort-wide alignment
+templates.
+
+**DLC kinematics (Phases 7a–7d).** Tongue and jaw filter/interpolate + per-trial
+features + reward/phase-aligned analyses were ported from the legacy notebooks
+(7a.0–7a.6), followed by a DLC-source narrative cleanup (7b), source-side
+renames + cohort re-emit (7c.1/7c.2), and a `dlc_kinematics/` naming-hygiene +
+PathResolver-bypass sweep (7d).
+
+**Cleanup pipelines (Phases 7e, 7f).** Raw DLC traces contain detector
+artifacts that corrupt lick-level kinematics, so two per-bodypart cleanup
+pipelines were added and made the canonical substrate for their bodypart:
+
+- **Phase 7e — tongue v7 pre-clean + detector.** A v7 pre-clean produces the
+  tongue `cleaned_traces` parquet and a v7 lick detector + gate pipeline
+  produces the `lick_events` parquet (one row per detected lick). Downstream
+  "what counts as a lick" — per-lick scalars and, after the CC #9
+  lick-definition unification, the bout/phase/trajectory family too — derives
+  from this parquet's `kept_licks`. Schemas in
+  [`DATA_MODEL.md`](DATA_MODEL.md) §"cleaned_traces" / §"lick_events."
+- **Phase 7f — jaw v3.4 cleanup.** A jaw cleanup pipeline (`jaw_cleanup_v34.py`,
+  reconstructed in-repo during CC #9 after the original scratch producer was
+  lost) produces the jaw `cleaned_traces` parquet (`cleanup_version="v3.4"`).
+  The pre-existing on-disk jaw cleaned_traces were over-aggressive (wiped real
+  licks to baseline); v3.4 is the canonical, less-aggressive correction.
+
+Non-lick spatial bodyparts (whisker / nose / spout / eye) intentionally stay on
+**raw DLC** — no cleanup pipeline exists for them (accepted divergence,
+DECISIONS 2026-06-01).
+
+**Substrate routing fixes (CC #9 chore series).** A set of fixes repointed
+consumers at the cleaned substrate where one exists: the cross-session **tongue
+angle** is now computed from the v7-cleaned (x, y); the **session filter** counts
+v7-cleaned `n_licks`; and the per-half predicate
+`manifest.is_secondary_spout_b_half()` became the single source of truth for
+dropping the b half from DLC + standard pipelines (replacing a per-date skip
+that had also dropped the legitimate bare half).
+
+**Spout-behavior reporting + recovery trajectories (Phase 8a.x).** Per-session
+JSON endpoints + schema (8a.7), the criteria hierarchy port (8a.7.5),
+recovery-trajectory visualization (8a.8), a spout-behavior visual gate +
+close-vs-standard comparison (8a.10), and a cohort-wide Tone↔Reward channel-label
+swap fix at wavesurfer read time (8a.10.1).
+
+**Statistics pipeline (Phases 9, 9.1).** Phase 9 brought the behavioral stats
+framework online; Phase 9.1 added the phenotype-pooled figure families (Q12
+proportion-diff heatmaps, Q13/Q13b/Q13c phase-aligned trajectories + endpoints,
+Q14 spout-behavior + ipsi/contra) and the consolidated MWU-session stats sheet.
+Output layout, filter-variant semantics, and the test hierarchy are documented
+in [`STATS_PIPELINE.md`](STATS_PIPELINE.md).
+
+**Remaining toward Phase 10.** Final cleanup, the scientific end-to-end audit,
+finalizing `DATA_MODEL.md` / `STATS_PIPELINE.md`, and the `v0.1.0` tag are still
+pending; ongoing cleanup chores (this docs refresh among them) chip away at the
+Phase 10 backlog.
+
+---
+
 ## 8. ENVIRONMENT SETUP
 
 **Current state (post-Phase 13):** a single unified `environment.yml` creates the `stroke_orofacial` conda env on both macOS and Windows. See README §"Setup" for the install recipe. Legacy per-platform envs (`frsb` on Mac, `deeplabcut` on Windows) are intentionally left intact and run parallel to the new env — `deeplabcut` remains the correct env for DLC training / O2 inference / Keypoint-MoSeq work, and `frsb` is preserved primarily so strict-port parity tests for the vendored bnpm helpers can run against live bnpm on demand.
@@ -460,6 +631,13 @@ Each phase ends with a commit on a branch + a short section added to `MIGRATION_
 
 ## 9. GIT STRATEGY
 
+> **As-built note (2026-06):** The day-to-day git discipline has grown well
+> beyond the basics below. The canonical rules — feature-branch-per-change,
+> never commit to `main` (pre-commit hook enforced), **phase-close tags**
+> (`v{phase}-{slug}`) on every merge, **git-worktree-per-parallel-session**,
+> and the safe branch-delete protocol — are maintained in [`CLAUDE.md`](../CLAUDE.md)
+> §"Ground Rules" rule 8–9. The points below are the original starting policy.
+
 1. Create a new **private** GitHub repo named (suggestion) `stroke_orofacial_pipeline`.
 2. Initialize locally first (`git init` in the new directory), commit the skeleton on `main`, then push to GitHub.
 3. Each migration phase = its own feature branch off `main`, PR-merged (even as a solo developer — it keeps the migration log clean and reversible).
@@ -469,6 +647,13 @@ Each phase ends with a commit on a branch + a short section added to `MIGRATION_
 ---
 
 ## 10. CLAUDE CODE: FIRST-TIME USER SETUP (macOS)
+
+> **Historical note (2026-06):** §10 and §11 are the *original* first-time
+> onboarding playbook, written for a macOS Terminal setup at project start. The
+> project is now developed primarily on **Windows** (PowerShell + the env at
+> `.conda/envs/stroke_orofacial`), and the day-to-day workflow conventions are
+> maintained in [`CLAUDE.md`](../CLAUDE.md). These two sections are kept for
+> historical/onboarding provenance and are not the current operating procedure.
 
 ### 10.1 Install
 
@@ -608,6 +793,27 @@ Paste this at the top of your first Claude Code session in the new empty repo:
 ## 12. OPEN QUESTIONS / DECISIONS DEFERRED
 
 These are `[TODO]` on purpose; they need either more code-reading or Priya's scientific input before locking in.
+
+> **As-built note (2026-06):** Most of these are now **resolved** and are kept
+> for provenance:
+> - **1** (SMB mount point) — resolved during Phase 1 paths setup (`PathResolver`
+>   + `configs/paths.yaml`).
+> - **2** (wavesurfer sample rate + frame-trigger channel) — resolved in Phase 3
+>   alignment (codified in the alignment module + `MIGRATION_LOG.md` Phase 3).
+> - **3** (lick-detection method) — resolved in Phase 2; thresholds live in
+>   `configs/defaults.yaml`.
+> - **4** (DLC likelihood threshold) — resolved in Phase 4 DLC I/O.
+> - **5** (recovery-epoch scheme) — resolved; see §6.3 as-built note +
+>   `STATS_PIPELINE.md`.
+> - **6** (other master-metadata cells) — resolved; `configs/animals.yaml` is the
+>   single source.
+> - **7** (DLC re-inference inside the repo) — settled **no**; `dlc_inference_o2/`
+>   stays a standalone O2-only tool.
+> - **9** (target Python) — settled at **3.11** (unified `stroke_orofacial` env,
+>   §2.3 / §8).
+>
+> Only **8** (nbstripout / Jupytext) remains genuinely open. The original list
+> follows.
 
 1. Exact mount point of the SMB share on Priya's Mac (e.g. `/Volumes/MICROSCOPE`?).
 2. Wavesurfer sample rate and which analog/digital channel carries the Flea3 frame trigger/strobe.

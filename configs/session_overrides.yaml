@@ -149,7 +149,7 @@ secondary_spout_sessions:
     # 2026-05-31): hard-excluded in animals.yaml (applies_to [dlc, spout_behavior],
     # "experimenter error"), n_dlc=0 — not a real bare-vs-b secondary-spout
     # session. The entry was inert (the exclusion always won); dropped to avoid
-    # confusion. See docs/prompts/chore-substrate-routing-stage0-audit.md §1.
+    # confusion. See docs/prompts/archive/chore-substrate-routing-stage0-audit.md §1.
     "2025-04-30": {}
     "2025-05-30": {}
     "2025-06-01": {}

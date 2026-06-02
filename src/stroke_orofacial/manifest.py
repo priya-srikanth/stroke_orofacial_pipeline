@@ -39,12 +39,24 @@ class MultiHalfNotDeclaredError(RuntimeError):
     auto-detected YAML stub the user can copy-paste into
     ``session_overrides.yaml`` after review.
 
-    Pattern B (n_dlc=1 + n_ws=2 + n_cam=2; the 19 PS51/PS54/PS55
-    sessions identified in the Task 1 cohort scan) does NOT trip this
-    error — the existing single-half discovery path is the canonical
-    behavior for those by design (the unlabeled-half / bare ``{DATE}``
-    WS subdir is the analyzed half; half-b is exploratory and silently
-    discarded).
+    Pattern B (n_dlc=1 + n_ws=2 + n_cam=2) does NOT trip this error —
+    the existing single-half discovery path is the canonical behavior
+    for those by design. Pattern B dates are registered in
+    ``secondary_spout_sessions:`` in ``configs/session_overrides.yaml``
+    (currently 23 dates across PS51/PS54/PS55; was 19 at the
+    Phase-7-pre-secondary-spout Task 1 scan — PS55 2025-04-28 was later
+    dropped as an inert hard-excluded entry). Each Pattern B date yields
+    TWO logical single-half manifests: the **bare** half
+    (``session_suffix=None`` — primary spout, full DLC + standard
+    pipeline) and the **b** half (``session_suffix="b"`` — closer
+    "secondary" spout, no DLC). The b half is NOT silently discarded: it
+    is selectively excluded from DLC and standard spout-behavior analyses
+    via :func:`is_secondary_spout_b_half` (the single source of truth for
+    "which half to drop"), while still feeding the explicit
+    close-vs-standard comparison in
+    :mod:`stroke_orofacial.spout_behavior.spout_close_vs_std` (PR #165 /
+    CC #9). See ``docs/DATA_MODEL.md`` "Session keying" for the full
+    per-half data model.
     """
 
 

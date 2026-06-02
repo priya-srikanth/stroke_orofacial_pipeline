@@ -5,7 +5,7 @@ families: per-endpoint scalars incl. spout-behavior, wasserstein /
 normalized_wasserstein) up to the powered TRAJECTORY suite, on the
 pre-stroke-baseline-normalized Δ metric at **session grain**.
 
-Per Priya 2026-06-01 (see docs/prompts/chore-pooled-phenotype-stats-suite-kickoff.md):
+Per Priya 2026-06-01 (see docs/prompts/archive/chore-pooled-phenotype-stats-suite-kickoff.md):
 each (phenotype × side[cue] × endpoint × post_epoch ∈ {acute, sub_acute, chronic})
 cell, both scopes (3_tier, 4_tier), `pre` as reference, gets:
 
