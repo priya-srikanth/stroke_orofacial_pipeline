@@ -129,6 +129,22 @@ Stroke dates, session ranges, session exclusions, and animal IDs are currently r
 
 Repo name (pick whatever you like; suggestion): **`stroke_orofacial_pipeline`** — generic enough to hold future neural-recording modules.
 
+> **As-built note (2026-06):** The tree below is the *original proposal*. The
+> realized `src/stroke_orofacial/` has grown substantially — additions not shown
+> include `lr_convention.py` (§14.1 boundary-layer L/R), `cohort_enumeration.py`,
+> the package-private `_utils/` (vendored bnpm helpers + `indexing.py`),
+> `dlc_kinematics/{tongue_pertrial,jaw_pertrial,jaw_cleanup_v34,interpolation}.py`,
+> `spout_behavior/spout_close_vs_std.py`, `figures/_layout.py` +
+> `figures/phenotype_pooled.py`, the realized `stats/` package, and
+> `configs/session_overrides.yaml` (multi-half + secondary-spout registries).
+> The notebook set was also **renamed** (current: `01_spout_behavior_figures`,
+> `02_alignment`, `10_dlc_inference`, `11_dlc_build_parquets`,
+> `12_dlc_kinematics_tongue`, `13_dlc_kinematics_jaw`). `scripts/` now holds
+> per-phase subdirs (`phase_9_stats/`, `phase_9_1_q13/`, `chore_*/`). For the
+> current layout consult the repo `src/` tree, [`DATA_MODEL.md`](DATA_MODEL.md)
+> (output tree) and [`STATS_PIPELINE.md`](STATS_PIPELINE.md) (stats driver
+> entry-points). The proposal below is kept for design provenance.
+
 ```
 stroke_orofacial_pipeline/
 ├── README.md
@@ -246,6 +262,17 @@ A `PathResolver` class that:
 
 Per-session single source of truth, cached to disk in the new outputs area.
 
+> **As-built note (2026-06):** The dataclass snippet below is the original
+> schema and is now a subset of the built class. `SessionManifest` additionally
+> carries the per-half `session_suffix` (`None` for single/bare half, `"b"` for
+> the secondary-spout half), the multi-half `HalfSpec` plumbing (Pattern A), and
+> the L/R-convention scalars (`wavesurfer_sides_match_mouse_sides`,
+> `side_convention_version`; see §14.1). The session is keyed on
+> `(animal, date, session_suffix)`. For the authoritative field list and the
+> Pattern A (multi-half merge) / Pattern B (secondary-spout per-half) semantics,
+> see `src/stroke_orofacial/manifest.py` and [`DATA_MODEL.md`](DATA_MODEL.md)
+> §"Session keying."
+
 ```python
 @dataclass
 class SessionManifest:
@@ -305,6 +332,13 @@ All analyses operate in `session_time` internally. Every dataframe has a `sessio
 ---
 
 ## 5. NOTEBOOK → MODULE MIGRATION MAP `[PROPOSAL, TO BE CONFIRMED ONCE CODE IS READ]`
+
+> **As-built note (2026-06):** The table below is the *original proposal*. The
+> realized notebook→module mapping diverged (module names, notebook names, and
+> the phase ordering all evolved — see §3 as-built note and §7). The
+> authoritative per-phase record of what was actually ported, in which commit,
+> with any intentional behavior differences, is [`MIGRATION_LOG.md`](MIGRATION_LOG.md)
+> (Phases 2 → 9.1). The proposal is kept for provenance.
 
 | Legacy notebook | New module(s) | Notes |
 |---|---|---|
