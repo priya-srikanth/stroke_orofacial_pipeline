@@ -362,6 +362,16 @@ All analyses operate in `session_time` internally. Every dataframe has a `sessio
 
 This is the part that needs the most thought. The scientific problem is hard and no single off-the-shelf recipe fits. This section lays out the architecture and flags the choices for deliberate decision-making; some are `[TODO]` on purpose.
 
+> **As-built note (2026-06):** This section is the *design rationale*; the stats
+> pipeline has since been **implemented** (Phases 9 and 9.1). The authoritative
+> as-built reference is [`STATS_PIPELINE.md`](STATS_PIPELINE.md) — it documents
+> the filter-variant output layout (`{no_filter, filtered_v1, phenotype_pooled}`
+> × `{inputs, results, figures}`), the phenotype-pooled families (Q12 spatial,
+> Q13/Q13b/Q13c phase-aligned, scalar V4/V5, Wasserstein recovery), the realized
+> inferential test hierarchy, and the per-driver entry points. The motivating
+> framing (§6.1) and the decided menus (§6.4, §6.5, §6.7) below still hold;
+> §6.3 and §6.6 have been superseded as noted inline.
+
 ### 6.1 The heterogeneity problem (restated for the record)
 
 Post L-VLS stroke phenotypes range from:
@@ -380,7 +390,15 @@ Naive pooling with a MixedLM on "day post-stroke" will (a) drown mild animals in
 2. **All endpoints produce the same tidy-data shape** (long format: animal, session_time / day / epoch, endpoint_name, value, n_trials, …), so the stats layer is endpoint-agnostic.
 3. **Normalization is a named strategy**, not an ad-hoc transform. Strategies live in `stats/normalization.py` and are applied before modeling. Each strategy is explicit about what it does at the floor (zero baseline or zero value).
 
-### 6.3 Recovery epoch classification `[TODO — major scientific design task]`
+### 6.3 Recovery epoch classification `[RESOLVED — see STATS_PIPELINE.md]`
+
+> **As-built note (2026-06):** This was the central `[TODO]` methodological
+> task; it is now **resolved**. The implemented scheme classifies each animal
+> into a recovery **phenotype** and partitions sessions into **epochs**, and the
+> phenotype × epoch × side cells drive the pooled-phenotype families. See
+> [`STATS_PIPELINE.md`](STATS_PIPELINE.md) and the canonical-conventions memory
+> (`project_phase_9_1_unification_canonical_conventions`). The original menu of
+> candidate approaches is kept below for design provenance.
 
 Animals should be re-aligned not only to calendar time post-stroke but also to **data-driven recovery phases**. This is the central methodological piece to work through. Directions to evaluate:
 
@@ -408,7 +426,17 @@ Each endpoint analysis chooses one of:
 - A session **excluded for technical reasons** (listed in `animals.yaml`) is missing and is dropped.
 - A session where the animal licked but an endpoint is undefined (e.g. "first-lick accuracy given no first lick") is **NaN with a documented reason**, and the endpoint's aggregator decides the rule for that case.
 
-### 6.6 Models `[DECIDED PROGRESSION]`
+### 6.6 Models `[DECIDED PROGRESSION — see STATS_PIPELINE.md for realized hierarchy]`
+
+> **As-built note (2026-06):** The realized inferential hierarchy differs in
+> emphasis from the progression below. At the project's cohort size (2–4
+> animals/phenotype after the 3-tier collapse) the **LMM is non-estimable** and
+> is dropped for the pooled sheet; the **session-level Mann-Whitney is the
+> headline test**, with **cluster permutation** secondary for trajectory
+> families. **Trial-grain MWU is explicitly excluded** (39–46 % type-I error
+> under H0 per the Q13 null-calibration). BH-FDR is applied per family. See
+> [`STATS_PIPELINE.md`](STATS_PIPELINE.md) §"Inferential test hierarchy." The
+> general progression below remains the design intent where cohort size permits.
 
 Apply in this order and use the first one whose assumptions are defensible for the endpoint:
 
