@@ -1,7 +1,7 @@
 """Phase 7f Step 2 — jaw_pertrial cohort re-emit (reads v3.4 cleaned_traces).
 
 Surgical driver dedicated to the jaw_pertrial re-emit described in
-docs/prompts/phase-7f-jaw-cleanup-cohort-reemit-kickoff.md. Equivalent
+docs/prompts/archive/phase-7f-jaw-cleanup-cohort-reemit-kickoff.md. Equivalent
 in spirit to scripts/phase_7e/reemit_tongue_pertrial_cohort.py but
 narrowed to the single jaw_pertrial output per session.
 

@@ -1,7 +1,7 @@
 """Phase 7f Step 4 — jaw mean+SEM cohort re-emit (reads v3.4 cleaned_traces).
 
 Surgical driver dedicated to the jaw-only mean+SEM + mean_video re-emit
-described in docs/prompts/phase-7f-jaw-cleanup-cohort-reemit-kickoff.md
+described in docs/prompts/archive/phase-7f-jaw-cleanup-cohort-reemit-kickoff.md
 Step 4. Equivalent in spirit to
 scripts/phase_7e/reemit_tongue_mean_sem_cohort.py but for the jaw
 bodypart branch.
