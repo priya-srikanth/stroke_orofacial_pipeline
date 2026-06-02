@@ -7548,3 +7548,70 @@ Tag on merge: `vChore-tongue-substrate-v7-routing-fix`.
 
 Stage 0 audit: `pipeline_outputs/stats/sensitivity/repo_cleanup_audit_2026-06.md`.
 Tag on merge: `vChore-repo-cleanup-2026-06`.
+
+## 2026-06-02 — chore-docs-and-cleanup-refresh (docs + cleanup, follow-on to PR #169)
+
+**Docs refresh + the deferred cleanup PR #169 left behind.** A four-stage docs +
+hygiene pass: refresh `manifest.py`'s Pattern B docstring and `DESIGN.md` to the
+as-built system, sweep closed-chore prompts into an archive subdir, and dispose
+of the `.scratch_chore_phase_7e_reemit` buffer that PR #169 explicitly held back.
+No source data, no live pipeline-output trees, and no branches touched.
+
+**Stage 1 — `manifest.py` Pattern B docstring.** Refreshed the
+`MultiHalfNotDeclaredError` class docstring's Pattern B paragraph: the
+secondary-spout registry is now 23 dates (was 19 at the Phase-7-pre-secondary-spout
+Task 1 scan; PS55 2025-04-28 later dropped as an inert hard-excluded entry), and
+the b half is selectively excluded via `is_secondary_spout_b_half()` (PR #165 /
+CC #9) — not "silently discarded" — while still feeding `spout_close_vs_std`.
+Docstring text only; no behavior, signature, or caller change.
+
+**Stage 2 — `DESIGN.md` refresh.** Section-by-section refresh (5 commit-clusters)
+that preserves every original-design block verbatim under "As-built note (2026-06)"
+/ "Historical note" callouts: (1) §0/§2.1/§9 re-point ground rules, the two legacy
+repos, and git discipline to `CLAUDE.md`; (2) §3/§4.2/§5 as-built banners for the
+realized `src/` + notebook + `scripts/` layout, the `(animal,date,session_suffix)`
+SessionManifest, and the migration map; (3) §6 stats sections point to
+`STATS_PIPELINE.md` and clear the resolved §6.3 recovery-epoch `[TODO]`; (4) a new
+§7.1 as-built progression covering Pattern A/B session structure, 7a–7d kinematics,
+the 7e tongue-v7 / 7f jaw-v3.4 cleanup pipelines, CC #9 substrate routing, 8a.x,
+and Phase 9/9.1 stats; (5) §10/§11 historical (macOS→Windows) banners + §12
+open-questions 1–7+9 marked resolved. Net +208/−2; ADD content cross-references
+`DATA_MODEL.md` / `STATS_PIPELINE.md` / `MIGRATION_LOG.md` rather than duplicating.
+
+**Stage 3 — `docs/prompts/` archive sweep.** Created `docs/prompts/archive/` and
+`git mv`-d 7 closed+tagged kickoffs into it (substrate-routing trio, phase-7e.4,
+phase-7f, chore-dlc-session-and-trial-filtering, chore-pooled-phenotype-stats-suite),
+updating their handful of inbound operational-pointer references in `configs/`,
+`scripts/phase_7f/`, and `stats/pooled_endpoint_suite.py` in the same commits.
+The 8th candidate (`phase-9.1-phenotype-pooled-figures-kickoff`) was reverted to
+top-level: re-verification across **all** tracked files (not just docs/) found 3
+references in the committed `.scratch_phase_9_1/notes_running.md`, one a dated
+"this commit added X" historical record that must not be rewritten — so it failed
+the zero-inbound-link rule. The ~40 cited-but-closed kickoffs were intentionally
+left in place (archiving them would churn ~150–200 relative links in the frozen
+`MIGRATION_LOG` / `DECISIONS` audit trail); a deeper archive pass is a separate
+future decision. Prompts are permanent artifacts — moved, never deleted.
+
+**Stage 4 — `.scratch_chore_phase_7e_reemit` cleanup.** Disposed of the buffer
+hold PR #169 left ("cohort manifests referenced by next-pass cleanup"). Preserved
+the one substantive narrative — `stale_output_audit.md` (Stage 6 stale-output
+classification) — into `pipeline_outputs/archive/scratch_preserved_2026-06/7e_reemit_chore/`
+(committed, byte-for-byte). Deleted the directory (34 files / 499 KB, gitignored
+in the main working tree) after confirming with Priya that no parallel session
+held the path; the other 33 files (regenerable cohort manifests, gate-check JSONs,
+one-off `_*.py` verification scripts, PR-body/commit-msg drafts already in git
+history) were not preserved. Per-invocation GR7 approval obtained for the `rm -rf`.
+
+### Notes
+- Executed in an isolated worktree (`stroke_orofacial_pipeline-docs-refresh`) off
+  `origin/main` per GR9 (a parallel CC session held the main working tree on
+  `docs/readme-pipeline-walkthrough`). The scratch delete targeted the main
+  working tree (gitignored, branch-independent) after explicit session-safety
+  coordination with Priya.
+- New discipline memory recorded: archive/move audits must `git grep` the whole
+  tracked tree (incl. unusually-committed `.scratch_*/*.md`), distinguishing
+  operational pointers (repoint) from dated historical records (treat as
+  archive-ineligible). The phase-9.1 revert was that rule in action.
+
+Stage 0 audit: `pipeline_outputs/stats/sensitivity/docs_refresh_audit_2026-06.md`.
+Tag on merge: `vChore-docs-and-cleanup-refresh-2026-06`.
