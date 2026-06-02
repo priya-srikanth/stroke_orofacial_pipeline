@@ -460,6 +460,15 @@ All model outputs go through a unified reporter that yields a dataframe: `endpoi
 
 Each phase ends with a commit on a branch + a short section added to `MIGRATION_LOG.md`. Nothing touches source data at any phase.
 
+> **As-built note (2026-06):** Phases 0–6 ran roughly as written below. The
+> Phase 7 → 10 tail, however, expanded into a much finer-grained progression
+> (Phase 7 alone became 7-pre / 7a.0–7a.6 / 7b / 7c.1–7c.2 / 7d / 7e+7e.1–7e.4 /
+> 7f, plus 8a.7–8a.10.1, then 9 and 9.1-q12…q14, plus a chore series). Phase 10
+> (final cleanup + `v0.1.0` tag) is **not yet reached**. The per-phase Phase 7+
+> entries below are kept as the original plan; the **as-built progression** is
+> summarized in the new §7.1 and recorded authoritatively, phase by phase, in
+> [`MIGRATION_LOG.md`](MIGRATION_LOG.md).
+
 **Phase 0 — Repo skeleton (Claude Code, first session).**
 - Create the directory tree.
 - Write `README.md`, `CLAUDE.md`, empty `docs/*`, `configs/defaults.yaml`.
@@ -524,6 +533,91 @@ Each phase ends with a commit on a branch + a short section added to `MIGRATION_
 - **Scientific end-to-end audit on one exemplar animal** (PS46): enumerate every output the consolidated pipeline produces (per-session NPZs, parquets, figures, cross-session aggregates, params.json provenance records) across all phases. Map each output to its scientific purpose. Identify gaps vs. Priya's research needs, excesses that aren't used, and desired edits. Gaps become either pre-v0.1.0 fixes or post-v0.1.0 backlog items. This audit happens in Cowork, not Claude Code — it's review + decision work, not code editing.
 - A **mid-consolidation audit** (smaller-scope version of the above) is scheduled separately after Phase 6 per `docs/DECISIONS.md` "End-to-end output audits scheduled at two points." Phase 10's audit is the comprehensive final pass.
 - Tag `v0.1.0`.
+
+---
+
+## 7.1 As-built phase progression (post-Phase 6) `[ADDED 2026-06]`
+
+Architectural overview of the work that landed after Phase 6. This is a map,
+not a per-phase log — the authoritative phase-by-phase record (commits,
+intentional behavior differences, parity checks) is in
+[`MIGRATION_LOG.md`](MIGRATION_LOG.md); schema details are in
+[`DATA_MODEL.md`](DATA_MODEL.md); stats details in
+[`STATS_PIPELINE.md`](STATS_PIPELINE.md).
+
+**Session-structure groundwork (Phase 7-pre).** Before DLC kinematics, the
+session model gained two acquisition patterns beyond the default single-half
+`(animal, date)` session, both registered in `configs/session_overrides.yaml`:
+
+- **Pattern A — multi-half merge** (`multi_half_sessions:`): two halves of one
+  logical session (technical interruption) joined at the wavesurfer + camera +
+  DLC layers into ONE merged session. A three-layer write-guard plus a
+  `MultiHalfNotDeclaredError` trip-wire (fires on `n_dlc ≥ 2` with no registry
+  entry) prevents silently analyzing only one half. Current cohort: PS48
+  2025-03-14.
+- **Pattern B — secondary-spout per-half** (`secondary_spout_sessions:`): a
+  date with a primary-spout acquisition plus a separate closer-spout
+  exploratory acquisition. Yields TWO logical single-half manifests — the
+  **bare** half (`session_suffix=None`, primary spout, full DLC + standard
+  pipeline) and the **b** half (`session_suffix="b"`, closer spout, no DLC).
+  Current cohort: 23 dates across PS51/PS54/PS55.
+
+Phase 7-pre also extended `AnimalInfo.exclusions.applies_to` to dotted
+hierarchical namespaced tags (§14.2) and emitted cohort-wide alignment
+templates.
+
+**DLC kinematics (Phases 7a–7d).** Tongue and jaw filter/interpolate + per-trial
+features + reward/phase-aligned analyses were ported from the legacy notebooks
+(7a.0–7a.6), followed by a DLC-source narrative cleanup (7b), source-side
+renames + cohort re-emit (7c.1/7c.2), and a `dlc_kinematics/` naming-hygiene +
+PathResolver-bypass sweep (7d).
+
+**Cleanup pipelines (Phases 7e, 7f).** Raw DLC traces contain detector
+artifacts that corrupt lick-level kinematics, so two per-bodypart cleanup
+pipelines were added and made the canonical substrate for their bodypart:
+
+- **Phase 7e — tongue v7 pre-clean + detector.** A v7 pre-clean produces the
+  tongue `cleaned_traces` parquet and a v7 lick detector + gate pipeline
+  produces the `lick_events` parquet (one row per detected lick). Downstream
+  "what counts as a lick" — per-lick scalars and, after the CC #9
+  lick-definition unification, the bout/phase/trajectory family too — derives
+  from this parquet's `kept_licks`. Schemas in
+  [`DATA_MODEL.md`](DATA_MODEL.md) §"cleaned_traces" / §"lick_events."
+- **Phase 7f — jaw v3.4 cleanup.** A jaw cleanup pipeline (`jaw_cleanup_v34.py`,
+  reconstructed in-repo during CC #9 after the original scratch producer was
+  lost) produces the jaw `cleaned_traces` parquet (`cleanup_version="v3.4"`).
+  The pre-existing on-disk jaw cleaned_traces were over-aggressive (wiped real
+  licks to baseline); v3.4 is the canonical, less-aggressive correction.
+
+Non-lick spatial bodyparts (whisker / nose / spout / eye) intentionally stay on
+**raw DLC** — no cleanup pipeline exists for them (accepted divergence,
+DECISIONS 2026-06-01).
+
+**Substrate routing fixes (CC #9 chore series).** A set of fixes repointed
+consumers at the cleaned substrate where one exists: the cross-session **tongue
+angle** is now computed from the v7-cleaned (x, y); the **session filter** counts
+v7-cleaned `n_licks`; and the per-half predicate
+`manifest.is_secondary_spout_b_half()` became the single source of truth for
+dropping the b half from DLC + standard pipelines (replacing a per-date skip
+that had also dropped the legitimate bare half).
+
+**Spout-behavior reporting + recovery trajectories (Phase 8a.x).** Per-session
+JSON endpoints + schema (8a.7), the criteria hierarchy port (8a.7.5),
+recovery-trajectory visualization (8a.8), a spout-behavior visual gate +
+close-vs-standard comparison (8a.10), and a cohort-wide Tone↔Reward channel-label
+swap fix at wavesurfer read time (8a.10.1).
+
+**Statistics pipeline (Phases 9, 9.1).** Phase 9 brought the behavioral stats
+framework online; Phase 9.1 added the phenotype-pooled figure families (Q12
+proportion-diff heatmaps, Q13/Q13b/Q13c phase-aligned trajectories + endpoints,
+Q14 spout-behavior + ipsi/contra) and the consolidated MWU-session stats sheet.
+Output layout, filter-variant semantics, and the test hierarchy are documented
+in [`STATS_PIPELINE.md`](STATS_PIPELINE.md).
+
+**Remaining toward Phase 10.** Final cleanup, the scientific end-to-end audit,
+finalizing `DATA_MODEL.md` / `STATS_PIPELINE.md`, and the `v0.1.0` tag are still
+pending; ongoing cleanup chores (this docs refresh among them) chip away at the
+Phase 10 backlog.
 
 ---
 
