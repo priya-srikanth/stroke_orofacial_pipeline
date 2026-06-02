@@ -39,7 +39,6 @@ import logging
 import re
 import sys
 import time
-import traceback
 from pathlib import Path
 
 import numpy as np
@@ -54,6 +53,7 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 from stroke_orofacial.animals import AnimalInfo, load_animals  # noqa: E402
 from stroke_orofacial.dlc_kinematics.tongue_pertrial import (  # noqa: E402
+    build_all_licks_centered_phase_rows,
     build_first_lick_centered_phase_rows,
     build_tongue_visual_bundle_by_animal_date,
 )
@@ -128,6 +128,7 @@ def build_session_phase_rows(
     date: datetime.date,
     resolver: PathResolver,
     logger: logging.Logger,
+    lick_set: str = "first_lick",
 ) -> tuple[pd.DataFrame, float, str]:
     """Build centered phase rows for one (animal, date).
 
@@ -154,7 +155,12 @@ def build_session_phase_rows(
                 time.perf_counter() - t0,
                 "SKIP_NO_ILI",
             )
-        rows = build_first_lick_centered_phase_rows(
+        builder = (
+            build_all_licks_centered_phase_rows
+            if lick_set == "all_multi"
+            else build_first_lick_centered_phase_rows
+        )
+        rows = builder(
             bundle,
             synthetic_ili_ms=synth,
             ili_source="synthetic_only",
@@ -186,8 +192,14 @@ def walk_cohort(
     animals: list[str],
     resolver: PathResolver,
     logger: logging.Logger,
+    lick_set: str = "first_lick",
 ) -> tuple[pd.DataFrame, list[dict[str, object]]]:
-    """For each (animal, date), build phase rows. Returns cohort df + manifest."""
+    """For each (animal, date), build phase rows. Returns cohort df + manifest.
+
+    ``lick_set`` ∈ {``"first_lick"`` (default — centered on each trial's first
+    lick peak), ``"all_multi"`` (centered on EVERY detected lick peak across
+    all bouts)}. Threaded to :func:`build_session_phase_rows`.
+    """
     cohort_frames: list[pd.DataFrame] = []
     manifest_rows: list[dict[str, object]] = []
     for animal in animals:
@@ -196,6 +208,7 @@ def walk_cohort(
         for d in dates:
             df, elapsed, status = build_session_phase_rows(
                 animal=animal, date=d, resolver=resolver, logger=logger,
+                lick_set=lick_set,
             )
             if not df.empty:
                 cohort_frames.append(df)

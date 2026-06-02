@@ -25,6 +25,7 @@ from stroke_orofacial.config_loader import load_session_overrides
 from stroke_orofacial.manifest import (
     OverlappingRegistryError,
     get_secondary_spout_entry,
+    is_secondary_spout_b_half,
     iter_session_suffixes,
     load_secondary_spout_sessions,
 )
@@ -41,8 +42,11 @@ EXPECTED_COHORT: dict[str, list[str]] = {
         "2025-06-18", "2025-06-19", "2025-06-20", "2025-06-21", "2025-06-23",
         "2025-06-24", "2025-06-25", "2025-06-26",
     ],
+    # PS55 2025-04-28 removed (chore substrate-routing-and-secondary-spout-
+    # per-half-fix, 2026-05-31): hard-excluded in animals.yaml + n_dlc=0, not a
+    # real bare-vs-b session; the inert registry entry was dropped.
     "PS55": [
-        "2025-04-24", "2025-04-25", "2025-04-28", "2025-04-30", "2025-05-30",
+        "2025-04-24", "2025-04-25", "2025-04-30", "2025-05-30",
         "2025-06-01", "2025-06-05",
     ],
 }
@@ -100,8 +104,9 @@ class TestRealConfigLoad:
             )
 
     def test_total_cohort_size(self, overrides_config):
-        """Cohort totals 24 sessions (19 Phase-7-pre + 5 Phase-8a.10
-        a-suffix entries) across PS51/PS54/PS55."""
+        """Cohort totals 23 registered Pattern B dates across PS51/PS54/PS55
+        (was 24 before chore substrate-routing-and-secondary-spout-per-half-fix
+        dropped the inert PS55 2025-04-28 entry)."""
         registry = load_secondary_spout_sessions(overrides_config)
         total = sum(len(d) for d in registry.values())
         expected_total = sum(len(d) for d in EXPECTED_COHORT.values())
@@ -181,6 +186,59 @@ class TestGetSecondarySpoutEntry:
             "PS48", datetime.date(2025, 3, 14), overrides_config,
         )
         assert entry is None
+
+
+# ---------- Integration: is_secondary_spout_b_half predicate ----------
+
+
+class TestIsSecondarySpoutBHalf:
+    """The per-half predicate that replaced the per-date secondary-spout skip
+    (chore substrate-routing-and-secondary-spout-per-half-fix). The core
+    invariant: the BARE half of a Pattern B date is NOT flagged (it is a
+    normal primary-spout DLC session); only the ``b`` half is."""
+
+    def test_bare_half_of_registered_date_is_false(self, overrides_config):
+        """CORE REGRESSION: bare half (suffix=None) of a Pattern B date must
+        return False — the bare half flows through all standard analyses."""
+        assert is_secondary_spout_b_half(
+            "PS55", datetime.date(2025, 4, 24), None, overrides_config,
+        ) is False
+
+    def test_b_half_of_registered_date_is_true(self, overrides_config):
+        """The b half of a Pattern B date is flagged for exclusion."""
+        assert is_secondary_spout_b_half(
+            "PS55", datetime.date(2025, 4, 24), "b", overrides_config,
+        ) is True
+
+    def test_non_pattern_b_date_false_for_any_suffix(self, overrides_config):
+        """A vanilla single-half session is never flagged, suffix regardless."""
+        for suffix in (None, "b"):
+            assert is_secondary_spout_b_half(
+                "PS46", datetime.date(2025, 3, 7), suffix, overrides_config,
+            ) is False
+
+    def test_pattern_a_multi_half_is_false(self, overrides_config):
+        """Pattern A (multi_half_sessions:) is NOT secondary-spout — never
+        flagged. PS48/2025-03-14, both suffixes."""
+        for suffix in (None, "b"):
+            assert is_secondary_spout_b_half(
+                "PS48", datetime.date(2025, 3, 14), suffix, overrides_config,
+            ) is False
+
+    def test_b_suffix_on_unregistered_date_false(self, overrides_config):
+        """A b suffix on a date NOT in the registry is not flagged (guards the
+        suffix-set-but-unregistered case)."""
+        assert is_secondary_spout_b_half(
+            "PS46", datetime.date(2025, 3, 7), "b", overrides_config,
+        ) is False
+
+    def test_removed_ps55_0428_not_flagged(self, overrides_config):
+        """PS55 2025-04-28 was dropped from the registry — neither half is a
+        registered secondary-spout session anymore."""
+        for suffix in (None, "b"):
+            assert is_secondary_spout_b_half(
+                "PS55", datetime.date(2025, 4, 28), suffix, overrides_config,
+            ) is False
 
 
 # ---------- Synthetic: error-path coverage (no on-disk YAML dependency) ----------

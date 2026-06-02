@@ -1964,10 +1964,15 @@ def _v7_cleaned_bundle_arrays(
     (b) risk under-detecting kept licks at NaN boundaries. So this is a true
     "data-source-only" change: interpolated → cleaned, same methodology.
 
-    ``angle`` is intentionally NOT cleaned here — the bundle keeps using the
-    session-wide ``angle_per_frame`` (interpolated-derived). The per-frame
-    angle parquet + cross-session angle scalars are OUT of this chore's scope
-    (Priya decision 2026-05-30, item 3; queued as the 6th-cascade discharge).
+    Angle: as of chore substrate-routing-and-secondary-spout-per-half-fix
+    (Stage 1b, 2026-05-31) the per-frame ``angle_per_frame`` is ALSO derived
+    from these cleaned arrays — the caller computes the cleaned ``(x, y)`` once
+    via this helper, then feeds them to ``_extract_per_frame_angle_smoothed``,
+    so the per-frame angle parquet, the cross-session angle figures, AND the
+    per-trial angle scalars all use the cleaned substrate. The 6th-cascade
+    discharge CC #6 deferred (interpolated-derived angle) is now CLOSED. This
+    function still returns only ``(x, y)``; the angle routing lives at the
+    call site in ``_build_tongue_pertrial_core``.
 
     Returns ``(x_bundle, y_bundle)`` — session-length cleaned coordinates.
     """
@@ -2742,6 +2747,7 @@ def _extract_n_licks_family(
 def _extract_licking_dynamics_reductions(
     y_t: np.ndarray, x_t: np.ndarray, t_ms: np.ndarray, fps: float,
     *, params: dict[str, Any],
+    kept_licks: list[dict[str, Any]] | None = None,
 ) -> dict[str, float | int]:
     """Per-trial Cell 42 reductions: ``bout_count``,
     ``mean_within_bout_ili_ms``, ``lick_rate_hz``.
@@ -2769,15 +2775,24 @@ def _extract_licking_dynamics_reductions(
     min_ili = float(bout["min_ili_ms"])
     min_in_bout = int(bout["min_licks_in_bout_for_ili"])
 
-    peaks = _slope_detect_lick_peaks(
-        y_t, x_t, t_ms, fps,
-        detect_win_ms=detect_win, detector_params=detector,
-    )
-    in_apply = (
-        (peaks.peak_times_ms >= apply_win[0])
-        & (peaks.peak_times_ms <= apply_win[1])
-    )
-    apply_peaks_t = peaks.peak_times_ms[in_apply]
+    # Lick-definition unification (2026-06-01): peak times from v7 kept_licks
+    # when supplied, else legacy raw re-detection.
+    if kept_licks is not None:
+        apply_peaks_t = np.asarray(sorted(
+            float(lk["t_ms"]) for lk in kept_licks
+            if np.isfinite(float(lk["t_ms"]))
+            and apply_win[0] <= float(lk["t_ms"]) <= apply_win[1]
+        ), dtype=np.float64)
+    else:
+        peaks = _slope_detect_lick_peaks(
+            y_t, x_t, t_ms, fps,
+            detect_win_ms=detect_win, detector_params=detector,
+        )
+        in_apply = (
+            (peaks.peak_times_ms >= apply_win[0])
+            & (peaks.peak_times_ms <= apply_win[1])
+        )
+        apply_peaks_t = peaks.peak_times_ms[in_apply]
 
     win_duration_s = (apply_win[1] - apply_win[0]) / 1000.0
     lick_rate_hz = (
@@ -3002,6 +3017,65 @@ def _assign_phase_peak_to_peak_shifted(
     return phase
 
 
+@dataclass(frozen=True)
+class _BundlePeaks:
+    """Minimal peaks view (the subset of ``_LickPeaks`` the visual bundle uses)
+    built from v7 ``kept_licks`` so bouts/phase/first_peak derive from the SAME
+    cleaned lick set as the per-lick scalars (lick-definition unification,
+    2026-06-01). ``peak_indices`` are already TRIAL-SLICE-local (no
+    detect_lo_offset needed)."""
+
+    peak_times_ms: np.ndarray
+    peak_x: np.ndarray
+    peak_y: np.ndarray
+    peak_indices: np.ndarray
+    peak_angle_deg: np.ndarray
+
+    def __len__(self) -> int:
+        return int(self.peak_times_ms.size)
+
+
+def _kept_licks_to_bundle_peaks(
+    kept_licks: list[dict[str, Any]], t_ms: np.ndarray,
+    *, detect_win_ms: tuple[float, float], max_n: int,
+) -> "_BundlePeaks":
+    """Convert v7 ``kept_licks`` into bundle peaks within ``detect_win_ms``.
+
+    Each kept lick's ``t_ms`` (tone-relative) is mapped to the nearest frame in
+    the trial-slice grid ``t_ms`` to get a trial-slice-local peak index, so the
+    downstream angle-lookup + phase-assignment logic is unchanged.
+    """
+    empty = np.array([], dtype=np.float64)
+    if not kept_licks or t_ms.size == 0:
+        return _BundlePeaks(empty, empty, empty,
+                            np.array([], dtype=np.int64), empty)
+    lo, hi = float(detect_win_ms[0]), float(detect_win_ms[1])
+    times: list[float] = []
+    xs: list[float] = []
+    ys: list[float] = []
+    idxs: list[int] = []
+    angs: list[float] = []
+    for lk in kept_licks:
+        tp = float(lk["t_ms"])
+        if not np.isfinite(tp) or tp < lo or tp > hi:
+            continue
+        fi = int(np.clip(np.searchsorted(t_ms, tp), 0, t_ms.size - 1))
+        if fi > 0 and abs(t_ms[fi - 1] - tp) < abs(t_ms[fi] - tp):
+            fi -= 1
+        times.append(tp)
+        xs.append(float(lk.get("x", float("nan"))))
+        ys.append(float(lk.get("y", float("nan"))))
+        idxs.append(fi)
+        angs.append(float(lk.get("peak_angle_deg", float("nan"))))
+        if max_n and len(times) >= max_n:
+            break
+    return _BundlePeaks(
+        np.asarray(times, dtype=np.float64), np.asarray(xs, dtype=np.float64),
+        np.asarray(ys, dtype=np.float64), np.asarray(idxs, dtype=np.int64),
+        np.asarray(angs, dtype=np.float64),
+    )
+
+
 def _build_visual_bundle_per_trial(
     trial_index: int,
     side: str,
@@ -3020,6 +3094,7 @@ def _build_visual_bundle_per_trial(
     max_licks_per_trial: int,
     phase_bin_edges: np.ndarray,
     phase_bin_centers: np.ndarray,
+    kept_licks: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     """Compute one trial's contribution to df_trials, df_bouts, df_phase.
 
@@ -3045,42 +3120,39 @@ def _build_visual_bundle_per_trial(
         angle_per_frame, tone_frame_idx, plot_win_ms, fps,
     )
 
-    # Per-trial peak detection within detect_win_ms (Cell 50 = [70, 3000]).
-    peaks = _slope_detect_lick_peaks(
-        y_snip, x_snip, t_ms, fps,
-        detect_win_ms=detect_win_ms,
-        detector_params=detector_params,
-        n_max=int(max_licks_per_trial),
-    )
-    n_peaks = len(peaks)
-
-    # C5.5 (2026-04-30) — peak_indices coordinate fix. The 7a.3 V3
-    # ``_slope_detect_lick_peaks`` returns ``peak_indices`` that are LOCAL
-    # to its internal ``yseg = y_snip[i_lo:i_hi+1]`` (the detect-window
-    # subset of the trial slice). Translating to trial-slice frame
-    # indices requires adding the i_lo offset (= the frame in t_ms where
-    # detect_win_ms[0] starts). 7a.3 V3 emit-set consumers don't trip
-    # this because they use peak_times_ms / peak_y (which the detector
-    # already pre-offset via ``tseg`` / ``yseg`` indexing). The bundle
-    # consumer DOES use peak_indices directly to:
-    #   (a) lookup angle_snip at the peak (peak_angle_deg field of
-    #       df_bouts), and
-    #   (b) seed the phase-assignment frame range
-    #       (`_assign_phase_peak_to_peak_shifted`).
-    # Without this offset, peak markers in the QC plot offset off the
-    # angle line, AND multi-bout phase assignment shifts (peaks no
-    # longer land at phase=0.5).
-    if t_ms.size > 0:
-        in_win = (t_ms >= detect_win_ms[0]) & (t_ms <= detect_win_ms[1])
-        detect_lo_offset = (
-            int(np.argmax(in_win)) if np.any(in_win) else 0
+    # Per-trial peak set. Lick-definition unification (2026-06-01): when v7
+    # ``kept_licks`` are supplied, the bouts / phase / first_peak / n_peaks all
+    # derive from the SAME cleaned lick set as the per-lick scalars, instead of
+    # re-running the raw slope detector on the cleaned trace. The kept-lick
+    # frame indices are already trial-slice-local, so no detect_lo_offset.
+    if kept_licks is not None:
+        peaks = _kept_licks_to_bundle_peaks(
+            kept_licks, t_ms, detect_win_ms=detect_win_ms,
+            max_n=int(max_licks_per_trial),
         )
+        n_peaks = len(peaks)
+        peaks_in_snip = peaks.peak_indices
     else:
-        detect_lo_offset = 0
-    # Trial-slice-local peak frame indices (consumed below by phase
-    # assignment + per-peak angle lookups). Original peaks.peak_indices
-    # remains unchanged so 7a.3 V3 consumers see no behavior change.
-    peaks_in_snip = peaks.peak_indices + detect_lo_offset
+        # Legacy raw-detector path (use_v7_pipeline=False / A-B audit).
+        peaks = _slope_detect_lick_peaks(
+            y_snip, x_snip, t_ms, fps,
+            detect_win_ms=detect_win_ms,
+            detector_params=detector_params,
+            n_max=int(max_licks_per_trial),
+        )
+        n_peaks = len(peaks)
+        # C5.5 (2026-04-30) — peak_indices coordinate fix: _slope_detect's
+        # peak_indices are LOCAL to its internal yseg (the detect-window subset
+        # of the trial slice); add the i_lo offset to translate to trial-slice
+        # frame indices (consumed by angle lookup + phase assignment).
+        if t_ms.size > 0:
+            in_win = (t_ms >= detect_win_ms[0]) & (t_ms <= detect_win_ms[1])
+            detect_lo_offset = (
+                int(np.argmax(in_win)) if np.any(in_win) else 0
+            )
+        else:
+            detect_lo_offset = 0
+        peaks_in_snip = peaks.peak_indices + detect_lo_offset
 
     # Build bouts.
     bouts_idx_lists = _build_bouts(peaks.peak_times_ms, float(max_ili_ms))
@@ -3371,18 +3443,87 @@ def _build_tongue_pertrial_core(
     eye_df = _load_consolidated_eye_landmarks(manifest, resolver)
     eye_x, eye_y = _resolve_eye_midpoint_session_median(eye_df, params=params)
 
-    # Step 4: per-frame smoothed signed angle for the whole session.
+    # Step 5 prep: widest detect window for trial slices (Cells 39/42/50 =
+    # [70, 8000]; each cell enforces its own narrower window inside its
+    # detector call). Hoisted above the v7 pre-pass below, which needs it.
+    widest_detect = (70.0, 8000.0)
+    peak_pad_ms = float(detector["peak_pad_ms"])
+
+    # Phase 7e v7 pre-pass (chore substrate-routing, Stage 1b 2026-05-31).
+    # Compute the per-trial v7 results ONCE, up front, so the v7-CLEANED
+    # session (x, y) — and the per-frame angle derived from it — are available
+    # before the metric-extraction loop + angle sampling. The main loop REUSES
+    # these via ``v7_results_by_pos`` (no second v7 compute per trial). Under
+    # ``use_v7_pipeline=False`` the list stays all-None and the angle falls
+    # back to the interpolated trace (A/B audit + back-compat).
+    v7_results_by_pos: list["_V7TrialResult | None"] = [None] * len(trial_events)
+    if use_v7_pipeline:
+        for _pos, ev in enumerate(trial_events):
+            x_slice, t_ms = _extract_trial_slice(
+                x_final, ev.tone_frame_idx, widest_detect, fps,
+            )
+            y_slice, _ = _extract_trial_slice(
+                y_final, ev.tone_frame_idx, widest_detect, fps,
+            )
+            is_intp_slice, _ = _extract_trial_slice(
+                is_interp_fill_session, ev.tone_frame_idx, widest_detect, fps,
+            )
+            is_base_slice, _ = _extract_trial_slice(
+                is_baseline_fill_session, ev.tone_frame_idx, widest_detect, fps,
+            )
+            lik_slice, _ = _extract_trial_slice(
+                likelihood_raw_session, ev.tone_frame_idx, widest_detect, fps,
+            )
+            # Session-frame range for this slice (matches _extract_trial_slice's
+            # lo/hi) so the v7 result can map trial-local frames back to
+            # session-level frame_idx for the cleaned_traces writer.
+            _lo_fi = max(
+                0,
+                int(ev.tone_frame_idx
+                    + np.floor(widest_detect[0] / 1000.0 * fps)),
+            )
+            _hi_fi = min(
+                n_frames_session - 1,
+                int(ev.tone_frame_idx
+                    + np.ceil(widest_detect[1] / 1000.0 * fps)),
+            )
+            res = _run_v7_pipeline_per_trial(
+                y_slice=y_slice, x_slice=x_slice,
+                is_interp_fill_slice=is_intp_slice,
+                is_baseline_fill_slice=is_base_slice,
+                likelihood_slice=lik_slice,
+                t_ms=t_ms, fps=fps,
+                trial_index=int(ev.trial_index), side=ev.side,
+                tone_frame_idx=int(ev.tone_frame_idx),
+                session_frame_lo=_lo_fi,
+                session_frame_hi=_hi_fi,
+                eye_x_in_spout_frame=eye_x,
+                eye_y_in_spout_frame=eye_y,
+                params=params,
+            )
+            v7_results_by_pos[_pos] = res
+            v7_trial_results.append(res)
+
+    # Step 4: per-frame smoothed signed angle for the whole session. Stage 1b
+    # (chore substrate-routing, 2026-05-31): derive the angle from the
+    # v7-CLEANED session (x, y) — via the same _v7_cleaned_bundle_arrays helper
+    # CC #6 used for the X/Y trajectory — so the per-frame angle parquet, the
+    # cross-session angle figures, AND the per-trial angle scalars all use the
+    # cleaned substrate (the "6th-cascade discharge"; angle now matches the
+    # X-position routing). The cleaned arrays are byte-identical to the
+    # cleaned_traces parquet and are computed ONCE here, then reused for the
+    # visual bundle below. Interpolated fallback when use_v7_pipeline is off.
+    if use_v7_pipeline and v7_trial_results:
+        x_final_bundle, y_final_bundle = _v7_cleaned_bundle_arrays(
+            tongue_df, v7_trial_results,
+        )
+    else:
+        x_final_bundle, y_final_bundle = x_final, y_final
     angle_per_frame = _extract_per_frame_angle_smoothed(
-        x_final=x_final, y_final=y_final,
+        x_final=x_final_bundle, y_final=y_final_bundle,
         eye_x_in_spout_frame=eye_x, eye_y_in_spout_frame=eye_y,
         fps=fps, params=params,
     )
-
-    # Step 5: per-trial extraction. Use widest detect window for the slice
-    # (Cells 39/42/50 = [70, 8000]); each cell enforces its own narrower
-    # window inside its detector call.
-    widest_detect = (70.0, 8000.0)
-    peak_pad_ms = float(detector["peak_pad_ms"])
 
     n_trials = len(trial_events)
     trial_indices: list[int] = []
@@ -3402,7 +3543,7 @@ def _build_tongue_pertrial_core(
     visual_bout_rows: list[dict[str, Any]] = []
     visual_phase_rows: list[dict[str, Any]] = []
 
-    for ev in trial_events:
+    for _pos, ev in enumerate(trial_events):
         x_slice, t_ms = _extract_trial_slice(
             x_final, ev.tone_frame_idx, widest_detect, fps,
         )
@@ -3413,52 +3554,13 @@ def _build_tongue_pertrial_core(
         trial_indices.append(int(ev.trial_index))
         sides.append(ev.side)
 
-        # Phase 7e v7 pipeline (Task 5) — run BEFORE the legacy per-cell
-        # extractions when the feature flag is on, so the per-trial v7
-        # result can be routed into _extract_lick1_lick2 (Phase 7e.1).
-        # _extract_peak_velocity_first5 + downstream cells still consume
-        # the original y_slice/x_slice; only lick1/lick2 are v7-routed in
-        # this phase (matched scope to the gate-(d) regression).
-        v7_result_for_trial: "_V7TrialResult | None" = None
-        if use_v7_pipeline:
-            is_intp_slice, _ = _extract_trial_slice(
-                is_interp_fill_session, ev.tone_frame_idx, widest_detect, fps,
-            )
-            is_base_slice, _ = _extract_trial_slice(
-                is_baseline_fill_session, ev.tone_frame_idx, widest_detect, fps,
-            )
-            lik_slice, _ = _extract_trial_slice(
-                likelihood_raw_session, ev.tone_frame_idx, widest_detect, fps,
-            )
-            # Derive session-frame range for this trial slice (matches
-            # _extract_trial_slice's lo/hi computation) so the v7 result
-            # carries enough context for the cleaned_traces writer to
-            # map trial-local frames back to session-level frame_idx.
-            _lo_fi = max(
-                0,
-                int(ev.tone_frame_idx
-                    + np.floor(widest_detect[0] / 1000.0 * fps)),
-            )
-            _hi_fi = min(
-                n_frames_session - 1,
-                int(ev.tone_frame_idx
-                    + np.ceil(widest_detect[1] / 1000.0 * fps)),
-            )
-            v7_result_for_trial = _run_v7_pipeline_per_trial(
-                y_slice=y_slice, x_slice=x_slice,
-                is_interp_fill_slice=is_intp_slice,
-                is_baseline_fill_slice=is_base_slice,
-                likelihood_slice=lik_slice,
-                t_ms=t_ms, fps=fps,
-                trial_index=int(ev.trial_index), side=ev.side,
-                tone_frame_idx=int(ev.tone_frame_idx),
-                session_frame_lo=_lo_fi,
-                session_frame_hi=_hi_fi,
-                eye_x_in_spout_frame=eye_x,
-                eye_y_in_spout_frame=eye_y,
-                params=params,
-            )
-            v7_trial_results.append(v7_result_for_trial)
+        # Phase 7e v7 result for this trial — computed ONCE in the pre-pass
+        # above (chore substrate-routing, Stage 1b 2026-05-31) and reused here
+        # (no second v7 compute). Routed into _extract_lick1_lick2 (Phase
+        # 7e.1) + _extract_peak_velocity_first5 + n_licks_family below; the
+        # legacy extractors still take the interpolated y_slice/x_slice as the
+        # v7 PRECLEAN INPUT.
+        v7_result_for_trial: "_V7TrialResult | None" = v7_results_by_pos[_pos]
 
         lick12 = _extract_lick1_lick2(
             y_slice, x_slice, t_ms, fps, params=params,
@@ -3492,13 +3594,19 @@ def _build_tongue_pertrial_core(
         )
         n_licks_records.append(n_licks)
 
+        # Lick-definition unification (2026-06-01): route bout-level scalars
+        # through this trial's v7 kept_licks (None under use_v7_pipeline=False).
+        _v7r_kept = (
+            v7_results_by_pos[_pos].kept_licks
+            if v7_results_by_pos[_pos] is not None else None
+        )
         ld_red = _extract_licking_dynamics_reductions(
-            y_slice, x_slice, t_ms, fps, params=params,
+            y_slice, x_slice, t_ms, fps, params=params, kept_licks=_v7r_kept,
         )
         licking_dyn_records.append(ld_red)
 
         cell50 = _extract_cell50_own_bout_scalars(
-            y_slice, x_slice, t_ms, fps, params=params,
+            y_slice, x_slice, t_ms, fps, params=params, kept_licks=_v7r_kept,
         )
         cell50_own.append(cell50)
 
@@ -3527,45 +3635,47 @@ def _build_tongue_pertrial_core(
         # Cell 42 traces per-side aggregation: gather apply-window peaks.
         # Use per-cell-overridden detector (matches the per-trial reductions
         # path) so legacy_approximate parity stays consistent.
-        peaks_for_traces = _slope_detect_lick_peaks(
-            y_slice, x_slice, t_ms, fps,
-            detect_win_ms=tuple(tp["licking_dyn_detect_win_ms"]),
-            detector_params=_per_cell_detector(params, "cell42"),
-        )
         apply_lo, apply_hi = tuple(tp["licking_dyn_apply_win_ms"])
-        in_apply = (
-            (peaks_for_traces.peak_times_ms >= apply_lo)
-            & (peaks_for_traces.peak_times_ms <= apply_hi)
-        )
-        apply_peaks = peaks_for_traces.peak_times_ms[in_apply]
+        # Lick-definition unification (2026-06-01): trace peak times from v7
+        # kept_licks when supplied, else legacy raw re-detection.
+        if _v7r_kept is not None:
+            apply_peaks = np.asarray(sorted(
+                float(lk["t_ms"]) for lk in _v7r_kept
+                if np.isfinite(float(lk["t_ms"]))
+                and apply_lo <= float(lk["t_ms"]) <= apply_hi
+            ), dtype=np.float64)
+        else:
+            peaks_for_traces = _slope_detect_lick_peaks(
+                y_slice, x_slice, t_ms, fps,
+                detect_win_ms=tuple(tp["licking_dyn_detect_win_ms"]),
+                detector_params=_per_cell_detector(params, "cell42"),
+            )
+            in_apply = (
+                (peaks_for_traces.peak_times_ms >= apply_lo)
+                & (peaks_for_traces.peak_times_ms <= apply_hi)
+            )
+            apply_peaks = peaks_for_traces.peak_times_ms[in_apply]
         if ev.side in apply_peaks_per_side:
             apply_peaks_per_side[ev.side].append(apply_peaks)
 
     # Phase 7a.4 visual-bundle compute (additive; legacy emit-set untouched).
-    # MOVED out of the per-trial loop (chore tongue-substrate-v7-routing-fix,
-    # 2026-05-30) so it can consume the v7-CLEANED substrate. Under
-    # use_v7_pipeline (default True), the bundle's y_snip/x_snip — which feed
-    # the Q13b phase-aligned scalar endpoints and the Q13/Q13c phase-aligned
-    # trajectories — are built from the cleaned trace AS-IS (byte-identical to
-    # the cleaned_traces parquet via _build_cleaned_trace_df; no NaN mask, per
-    # Priya 2026-05-30 "cleaned as-is, y=0"). This is the in-memory "Option 1"
-    # fix: the interpolated trace stays the v7 PRECLEAN INPUT, but the bundle
-    # SUBSTRATE is the cleaned output — v7-rejected protrusions are wiped to
-    # the baseline value, so they no longer appear in the figures as licks and
-    # fully-rejected trials drop (no detectable peak). ``angle`` stays on the
-    # interpolated-derived ``angle_per_frame`` (per-frame angle parquet +
-    # cross-session angle are out of scope — 6th-cascade discharge). Falls back
-    # to the raw interpolated x/y when use_v7_pipeline is off (A/B audit).
-    if use_v7_pipeline and v7_trial_results:
-        x_final_bundle, y_final_bundle = _v7_cleaned_bundle_arrays(
-            tongue_df, v7_trial_results,
-        )
-    else:
-        y_final_bundle = y_final
-        x_final_bundle = x_final
-
-    for ev in trial_events:
+    # Under use_v7_pipeline the bundle's y_snip/x_snip — which feed the Q13b
+    # phase-aligned scalar endpoints and the Q13/Q13c phase-aligned
+    # trajectories — are built from the v7-CLEANED trace AS-IS (byte-identical
+    # to the cleaned_traces parquet via _build_cleaned_trace_df; no NaN mask,
+    # per Priya 2026-05-30 "cleaned as-is, y=0"): v7-rejected protrusions are
+    # wiped to the baseline value so they no longer appear as licks and
+    # fully-rejected trials drop. ``x_final_bundle`` / ``y_final_bundle`` AND
+    # ``angle_per_frame`` were computed ONCE above the pre-pass (chore
+    # substrate-routing, Stage 1b 2026-05-31) — angle now ALSO derives from the
+    # cleaned substrate (matching the X/Y routing; 6th-cascade discharge).
+    # Interpolated fallback when use_v7_pipeline is off (A/B audit).
+    for pos, ev in enumerate(trial_events):
         # Uses Cell 50's own windows from the tongue_visual.bundle block.
+        # Lick-definition unification (2026-06-01): feed the trial's v7
+        # kept_licks so bouts/phase/first_peak use the cleaned lick set (None
+        # under use_v7_pipeline=False -> legacy raw re-detection).
+        _v7r = v7_results_by_pos[pos]
         v_trial, v_bouts, v_phase = _build_visual_bundle_per_trial(
             trial_index=int(ev.trial_index),
             side=ev.side,
@@ -3583,6 +3693,7 @@ def _build_tongue_pertrial_core(
             max_licks_per_trial=bundle_max_licks,
             phase_bin_edges=phase_bin_edges,
             phase_bin_centers=phase_bin_centers,
+            kept_licks=(_v7r.kept_licks if _v7r is not None else None),
         )
         visual_trial_rows.append(v_trial)
         visual_bout_rows.extend(v_bouts)

@@ -59,10 +59,12 @@ _IPSI_CONTRA_PANELS: tuple[str, ...] = ("ipsi", "contra")
 
 # 3-tier phenotype collapse (Q-lock 14, Addendum #1 §8 / Q14-D). Merges
 # moderate-severe INTO moderate, matching the established convention in the
-# Q12/Q13 emitters (PHENOTYPE_REMAP_3TIER). 3-tier output routes to a
-# "3_phenotype/" subdir so the canonical 4-tier figures are preserved.
+# Q12/Q13 emitters (PHENOTYPE_REMAP_3TIER). The DATA collapse lives here; the
+# OUTPUT-PATH scope (``3_tier`` vs ``4_tier`` subdir) is owned by
+# ``_layout.pooled_scalar_endpoint_dir`` — the writer emits the canonical
+# ``<endpoint>/<scope>/[no_filter/]`` layout directly (2026-05-31, the legacy
+# flat / ``3_phenotype/`` layout + post-emit path_normalization step retired).
 _THREE_TIER_REMAP: dict[str, str] = {"moderate-severe": "moderate"}
-_THREE_TIER_SUBDIR = "3_phenotype"
 
 
 def _maybe_remap_3tier(df: "pd.DataFrame", remap_3tier: bool) -> "pd.DataFrame":
@@ -100,6 +102,7 @@ def emit_v4_per_endpoint(
     overwrite: Literal["skip", "force"] = "skip",
     dpi: int = 150,
     remap_3tier: bool = False,
+    filter_variant: str = "none",
     aggregation_subtitle: str | None = AGGREGATION_SUBTITLE,
 ) -> tuple[Path, Path] | None:
     """Emit one V4 phenotype-pooled per_bin recovery curve as SVG + PNG.
@@ -109,7 +112,9 @@ def emit_v4_per_endpoint(
     per Q-lock 10(c) otherwise.
 
     When ``remap_3tier`` is True, moderate-severe is merged into moderate
-    (3-tier collapse) and output is routed to the ``3_phenotype/`` subdir.
+    (3-tier collapse) and output routes to the ``<endpoint>/3_tier/`` scope
+    subdir (``4_tier`` otherwise); the ``no_filter/`` layer is added for
+    DLC-filterable scalars per :func:`_layout.pooled_scalar_endpoint_dir`.
     """
     if endpoint_slug.startswith("spatial_"):
         logger.warning(
@@ -123,9 +128,12 @@ def emit_v4_per_endpoint(
             resolver.pipeline_outputs(subdir=PHASE_9_1_FIGURES_SUBDIR)
             / "phenotype_pooled"
         )
-        if remap_3tier:
-            output_dir = output_dir / _THREE_TIER_SUBDIR
-    endpoint_dir = output_dir / endpoint_slug
+    endpoint_dir = _layout.pooled_scalar_endpoint_dir(
+        output_dir, endpoint_slug,
+        remap_3tier=remap_3tier,
+        filtered_slugs=_layout.load_filtered_slugs(resolver),
+        filter_variant=filter_variant,
+    )
     svg_path = endpoint_dir / f"{V4_VARIANT_FILENAME}.svg"
     png_path = endpoint_dir / f"{V4_VARIANT_FILENAME}.png"
 
@@ -133,7 +141,7 @@ def emit_v4_per_endpoint(
         logger.info("skip (exists): %s", svg_path)
         return None
 
-    df = _io.load_stats_inputs(endpoint_slug, resolver)
+    df = _io.load_stats_inputs(endpoint_slug, resolver, filter_variant=filter_variant)
     if df.empty:
         logger.warning("no stats inputs on disk for endpoint %r; skipping", endpoint_slug)
         return None
@@ -182,7 +190,7 @@ def _build_v4_side_split_figure(
     fig, ipsi_ax, contra_ax = _layout.phenotype_side_split_panels()
     for ic, ax in zip(_IPSI_CONTRA_PANELS, (ipsi_ax, contra_ax)):
         side_df = pooled[pooled[_SIDE_SPLIT_COL] == ic]
-        _draw_v4_traces(ax, side_df)
+        _draw_v4_traces(ax, side_df, pad_y=False)
         _layout.phenotype_panel(
             ax,
             endpoint_slug=endpoint_slug,
@@ -191,6 +199,11 @@ def _build_v4_side_split_figure(
             set_title=False,  # ipsi/contra titles already set
         )
         _layout.phenotype_legend(ax, n_by_tier=n_by_tier)
+    # Shared (sharey) y-range = union over BOTH panels, set once after both
+    # are drawn (fixes the per-panel expand_y_axis sharey-clip bug).
+    yr = _side_split_yrange(pooled["mean"], pooled["sem"])
+    if yr is not None:
+        ipsi_ax.set_ylim(*yr)
     # V4 plots cohort recovery curves; not baseline-subtracted, so no
     # italic subheading. Suptitle = display_name only.
     _layout.apply_side_split_suptitle(
@@ -224,8 +237,29 @@ def _build_v4_cohort_pooled_figure(
     return fig
 
 
-def _draw_v4_traces(ax, sub: pd.DataFrame) -> None:
-    """Draw 4 phenotype traces (mean line + SEM band) onto one axes."""
+def _side_split_yrange(
+    means: "pd.Series", sems: "pd.Series", extra: "pd.Series | None" = None,
+) -> tuple[float, float] | None:
+    """Union padded y-range over mean±SEM (and optional per-session deltas).
+
+    Computed across BOTH ipsi+contra panels (the caller passes the full,
+    not side-filtered, frames) so the shared y-axis fits every panel.
+    """
+    lo = (means - sems.fillna(0.0)).tolist()
+    hi = (means + sems.fillna(0.0)).tolist()
+    vals = lo + hi
+    if extra is not None:
+        vals += extra.tolist()
+    return _layout.padded_range(vals)
+
+
+def _draw_v4_traces(ax, sub: pd.DataFrame, *, pad_y: bool = True) -> None:
+    """Draw 4 phenotype traces (mean line + SEM band) onto one axes.
+
+    ``pad_y`` (default True) applies the single-panel :func:`expand_y_axis`.
+    Side-split callers pass ``pad_y=False`` and set a shared union range after
+    both panels are drawn (avoids the sharey-clip bug).
+    """
     for tier in _palette.PHENOTYPE_ORDER:
         tier_df = sub[sub["phenotype_tier"] == tier]
         if tier_df.empty:
@@ -245,7 +279,8 @@ def _draw_v4_traces(ax, sub: pd.DataFrame) -> None:
                 tier_df["mean"] + tier_df["sem"].fillna(0.0),
                 color=color, alpha=0.25, linewidth=0, zorder=2,
             )
-    _layout.expand_y_axis(ax)
+    if pad_y:
+        _layout.expand_y_axis(ax)
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +305,7 @@ def emit_v5_per_endpoint(
     overwrite: Literal["skip", "force"] = "skip",
     dpi: int = 150,
     remap_3tier: bool = False,
+    filter_variant: str = "none",
     aggregation_subtitle: str | None = AGGREGATION_SUBTITLE,
 ) -> tuple[Path, Path] | None:
     """Emit one V5 phenotype-pooled per_epoch delta line as SVG + PNG.
@@ -301,9 +337,12 @@ def emit_v5_per_endpoint(
             resolver.pipeline_outputs(subdir=PHASE_9_1_FIGURES_SUBDIR)
             / "phenotype_pooled"
         )
-        if remap_3tier:
-            output_dir = output_dir / _THREE_TIER_SUBDIR
-    endpoint_dir = output_dir / endpoint_slug
+    endpoint_dir = _layout.pooled_scalar_endpoint_dir(
+        output_dir, endpoint_slug,
+        remap_3tier=remap_3tier,
+        filtered_slugs=_layout.load_filtered_slugs(resolver),
+        filter_variant=filter_variant,
+    )
     svg_path = endpoint_dir / f"{V5_VARIANT_FILENAME}.svg"
     png_path = endpoint_dir / f"{V5_VARIANT_FILENAME}.png"
 
@@ -311,7 +350,7 @@ def emit_v5_per_endpoint(
         logger.info("skip (exists): %s", svg_path)
         return None
 
-    df = _io.load_stats_inputs(endpoint_slug, resolver)
+    df = _io.load_stats_inputs(endpoint_slug, resolver, filter_variant=filter_variant)
     if df.empty:
         logger.warning("no stats inputs on disk for endpoint %r; skipping", endpoint_slug)
         return None
@@ -379,7 +418,7 @@ def _build_v5_side_split_figure(
     for ic, ax in zip(_IPSI_CONTRA_PANELS, (ipsi_ax, contra_ax)):
         pooled_side = pooled[pooled[_SIDE_SPLIT_COL] == ic]
         scatter_side = sessions_with_delta[sessions_with_delta[_SIDE_SPLIT_COL] == ic]
-        _draw_v5_delta_line_with_scatter(ax, pooled_side, scatter_side)
+        _draw_v5_delta_line_with_scatter(ax, pooled_side, scatter_side, pad_y=False)
         _layout.phenotype_panel(
             ax,
             endpoint_slug=endpoint_slug,
@@ -390,6 +429,14 @@ def _build_v5_side_split_figure(
             draw_stroke_onset=False,
         )
         _layout.phenotype_legend(ax, n_by_tier=n_by_tier)
+    # Shared (sharey) y-range = union over BOTH panels incl. the per-session
+    # delta scatter, set once after both are drawn (fixes the sharey-clip bug
+    # where the contra panel's larger range was cut off — e.g. tongue_n_right).
+    yr = _side_split_yrange(
+        pooled["mean"], pooled["sem"], extra=sessions_with_delta["delta_value"],
+    )
+    if yr is not None:
+        ipsi_ax.set_ylim(*yr)
     _layout.apply_side_split_suptitle(
         fig, endpoint_slug, baseline_subtracted=True,
     )
@@ -427,6 +474,8 @@ def _draw_v5_delta_line_with_scatter(
     ax,
     pooled: pd.DataFrame,
     sessions_with_delta: pd.DataFrame,
+    *,
+    pad_y: bool = True,
 ) -> None:
     """Render Q-lock 11 V5: per-phenotype delta lines + faded scatter underlay.
 
@@ -495,7 +544,8 @@ def _draw_v5_delta_line_with_scatter(
         [_layout.get_epoch_display(e) for e in _V5_EPOCH_ORDER]
     )
     ax.set_xlim(-0.5, len(_V5_EPOCH_ORDER) - 0.5)
-    _layout.expand_y_axis(ax)
+    if pad_y:
+        _layout.expand_y_axis(ax)
 
 
 # ---------------------------------------------------------------------------
@@ -558,7 +608,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--remap-phenotypes", choices=("none", "3tier"), default="none",
         help='Phenotype-tier scope. "none" (default) = 4-tier (F-P-1). '
              '"3tier" merges moderate-severe into moderate; output routes to '
-             'a "3_phenotype/" subdir so the 4-tier figures are preserved.',
+             'the "<endpoint>/3_tier/" scope subdir ("4_tier" otherwise), so '
+             'the 4-tier figures are preserved.',
+    )
+    parser.add_argument(
+        "--filter-variant",
+        choices=("none", "filtered_v1", "filtered_v1_na_masked"), default="none",
+        help='Stats-input variant. "none" (default) = unfiltered tree '
+             '(stats/inputs/<slug>/) → "<endpoint>/<scope>/no_filter/" '
+             '(flat for non-filterable jaw/spout). "filtered_v1" = '
+             'lick-filtered tree (stats/inputs/filtered_v1/<slug>/) → '
+             '"<endpoint>/<scope>/v3/"; only the DLC-filterable tongue '
+             'scalars have a filtered_v1 input, so non-filterable slugs are '
+             'skipped (no-data).',
     )
     return parser.parse_args(argv)
 
@@ -607,6 +669,7 @@ def main(argv: list[str] | None = None) -> int:
                 overwrite=args.overwrite,
                 dpi=args.dpi,
                 remap_3tier=remap_3tier,
+                filter_variant=args.filter_variant,
             )
             if result is not None:
                 svg, png = result
@@ -621,6 +684,7 @@ def main(argv: list[str] | None = None) -> int:
                 overwrite=args.overwrite,
                 dpi=args.dpi,
                 remap_3tier=remap_3tier,
+                filter_variant=args.filter_variant,
             )
             if result is not None:
                 svg, png = result

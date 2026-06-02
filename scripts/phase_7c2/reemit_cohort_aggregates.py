@@ -56,7 +56,6 @@ from pathlib import Path
 from stroke_orofacial.cohort_enumeration import yaml_driven_session_dates
 from stroke_orofacial.config_loader import load_defaults
 from stroke_orofacial.dlc_kinematics import (
-    aggregate_licking_dynamics_day_binned_by_animal,
     build_individual_sessions_animal,
     build_mean_sem_cohort,
     build_tongue_angle_cohort,
@@ -300,19 +299,16 @@ def _process_animal(animal: str, resolver: PathResolver) -> tuple[bool, dict]:
         log.error(f"  [E3c] trial_overlays: ERR {ex!r}")
         return False, _build_err_row(animal, animal_t0, anomalies)
 
-    # ----- E4: day-binned licking-dynamics -----
-    t0 = time.perf_counter()
-    try:
-        db_paths = aggregate_licking_dynamics_day_binned_by_animal(
-            animal=animal, resolver=resolver, overwrite="force",
-        )
-        rt_db = time.perf_counter() - t0
-        n_db = len(db_paths) if db_paths else 0
-        log.info(f"  [E4] day_binned: {rt_db:.1f}s ({n_db} paths)")
-    except Exception as ex:
-        anomalies.append(f"E4-day_binned: {ex!r}")
-        log.error(f"  [E4] day_binned: ERR {ex!r}")
-        return False, _build_err_row(animal, animal_t0, anomalies)
+    # ----- E4: day-binned licking-dynamics — DEPRECATED (disabled) -----
+    # The day_binned parquet (dlc_kinematics/licking_dynamics/day_binned/) is a
+    # write-only ORPHAN — no code reads it. The binned figure renderers in
+    # mean_sem_visual + tongue_angle_cohort do their OWN rel-day binning from
+    # the trace (they only import the `_compute_rel_day_bin_label` helper, not
+    # this parquet). The stale output dir was deleted and this producer stage
+    # disabled in chore substrate-routing-and-secondary-spout-per-half-fix
+    # (2026-05-31, Priya-approved) so it cannot silently recreate the orphan.
+    # See src/stroke_orofacial/dlc_kinematics/_day_binned.py module docstring.
+    rt_db, n_db = 0.0, 0
 
     animal_rt = time.perf_counter() - animal_t0
     log.info(f"=== animal={animal}: complete — runtime {animal_rt:.1f}s "

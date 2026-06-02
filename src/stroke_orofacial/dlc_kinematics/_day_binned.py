@@ -1,5 +1,17 @@
 """Phase 7a.4 — Cell 42 day-binned cross-session traces aggregator.
 
+.. deprecated:: chore substrate-routing-and-secondary-spout-per-half-fix (2026-05-31)
+    This aggregator writes ``dlc_kinematics/licking_dynamics/day_binned/`` — a
+    WRITE-ONLY ORPHAN. No code reads the parquet: the binned figure renderers in
+    ``mean_sem_visual`` + ``tongue_angle_cohort`` do their own rel-day binning
+    from the trace (they import only the :func:`_compute_rel_day_bin_label`
+    helper below, not this parquet). The stale output dir was deleted and the
+    sole producer call (``scripts/phase_7c2/reemit_cohort_aggregates.py`` E4
+    stage) disabled, per Priya 2026-05-31. The functions are retained for the
+    ``_compute_rel_day_bin_label`` helper (still imported elsewhere) and test
+    coverage; do NOT re-wire :func:`aggregate_licking_dynamics_day_binned` into a
+    production driver without a confirmed downstream consumer.
+
 Ported from the canonical tongue notebook
 (``20260203_DLC_analysis_ws_aligned_parquet_input_tongue.ipynb``,
 SHA256 ``ED12C54CD4CF348470CBD0FC05EE2FE20548195A52BE9832C1164737DABDB643``,

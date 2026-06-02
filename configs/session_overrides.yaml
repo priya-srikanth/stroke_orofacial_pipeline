@@ -145,7 +145,11 @@ secondary_spout_sessions:
       bare_ws_subdir_override: "20250424a"   # bare cam dir IS "20250424"; only WS is asymmetric
     "2025-04-25":
       bare_ws_subdir_override: "20250425a"   # added Phase 8a.10 cohort re-emit; legacy include_dates lists "20250425a"
-    "2025-04-28": {}                          # n_dlc=0 OK — Phase 2/3 are DLC-free
+    # 2025-04-28 removed (chore substrate-routing-and-secondary-spout-per-half-fix,
+    # 2026-05-31): hard-excluded in animals.yaml (applies_to [dlc, spout_behavior],
+    # "experimenter error"), n_dlc=0 — not a real bare-vs-b secondary-spout
+    # session. The entry was inert (the exclusion always won); dropped to avoid
+    # confusion. See docs/prompts/chore-substrate-routing-stage0-audit.md §1.
     "2025-04-30": {}
     "2025-05-30": {}
     "2025-06-01": {}

@@ -238,8 +238,11 @@ def main() -> int:
     variant = None if args.filter_variant == "none" else args.filter_variant
     stats_root = resolver.pipeline_outputs(subdir="stats")
     inputs_root = (stats_root / "inputs" / variant) if variant else (stats_root / "inputs")
-    results_root = (stats_root / "results" / variant) if variant else (stats_root / "results")
-    figures_root = (stats_root / "figures" / variant) if variant else (stats_root / "figures")
+    results_root = stats_root / "results" / (variant or "no_filter")  # symmetric wrapper
+    # Wrap the unfiltered task-7 figures (headlines/ per_animal/ forest_plots/)
+    # under figures/no_filter/ so they parallel figures/filtered_v1/ instead of
+    # sitting loose at the top of figures/ (2026-06-01 cleanup).
+    figures_root = stats_root / "figures" / (variant or "no_filter")
     headline_summary = REPO_ROOT / ".scratch_phase_9" / (
         f"task_5_headline_summary_{variant}.csv" if variant
         else "task_5_headline_summary.csv"

@@ -78,12 +78,75 @@ TRAJECTORY_SIGNALS: tuple[str, ...] = (
 # ---------------------------------------------------------------------------
 
 
+_BUNDLE_CACHE: dict = {}
+
+
+def _cached_tongue_bundle(
+    animal: str, date_iso: str, resolver_id: int, resolver: PathResolver,
+):
+    """Memoize the per-session tongue visual bundle so the all-licks endpoint
+    loader doesn't rebuild it on the filtered + nofilter passes (I, 2026-06-01).
+    Keyed by (animal, date, resolver identity)."""
+    key = (animal, date_iso, resolver_id)
+    bundle = _BUNDLE_CACHE.get(key)
+    if bundle is None:
+        from stroke_orofacial.dlc_kinematics.tongue_pertrial import (
+            build_tongue_visual_bundle_by_animal_date,
+        )
+        bundle = build_tongue_visual_bundle_by_animal_date(
+            animal=animal, date=datetime.date.fromisoformat(date_iso),
+            resolver=resolver,
+        )
+        _BUNDLE_CACHE[key] = bundle
+    return bundle
+
+
+def _compute_all_licks_endpoints_long(
+    animal: str, date: datetime.date, resolver: PathResolver,
+) -> pd.DataFrame:
+    """On-the-fly per-LICK all-licks phase-aligned endpoints, long-form (I).
+
+    Builds the tongue visual bundle and computes the 3 endpoints per
+    individual lick (``compute_phase_aligned_endpoints_per_trial`` with
+    ``lick_set="all_multi"``), melted to the same long-form schema the JSON
+    loader returns. Each lick is its own row (pooled downstream as n=licks).
+    """
+    from stroke_orofacial.dlc_kinematics.tongue_phase_aligned_endpoints import (
+        compute_phase_aligned_endpoints_per_trial,
+    )
+    try:
+        bundle = _cached_tongue_bundle(animal, date.isoformat(), id(resolver), resolver)
+    except Exception:
+        return _empty_long_df()
+    df = compute_phase_aligned_endpoints_per_trial(bundle, lick_set="all_multi")
+    if df.empty:
+        return _empty_long_df()
+    rows: list[dict[str, object]] = []
+    for _, r in df.iterrows():
+        for slug in PHASE_ALIGNED_ENDPOINT_SLUGS:
+            v = r.get(slug)
+            if v is None or not np.isfinite(float(v)):
+                continue
+            rows.append({
+                "animal": animal, "date": date,
+                "trial_index": int(r["trial_index"]), "side": str(r["side"]),
+                "endpoint": slug, "value": float(v),
+            })
+    return pd.DataFrame(rows) if rows else _empty_long_df()
+
+
 def load_session_phase_aligned_endpoints_long(
     animal: str,
     date: datetime.date,
     resolver: PathResolver,
+    *,
+    lick_set: str = "first_lick",
 ) -> pd.DataFrame:
     """Load one per-trial endpoints JSON; return long-form rows.
+
+    ``lick_set="all_multi"`` (I) bypasses the JSON and computes the per-LICK
+    all-licks endpoints on the fly (the JSON only carries the shipped
+    first-lick per-trial endpoints).
 
     Reads ``dlc_kinematics/per_trial/tongue/<animal>/<YYYYMMDD>.json`` and
     transforms the ``tongue.phase_aligned_endpoints`` block (three NaN-
@@ -106,6 +169,8 @@ def load_session_phase_aligned_endpoints_long(
         rows). Empty DataFrame if the JSON or the
         ``phase_aligned_endpoints`` block is missing.
     """
+    if lick_set == "all_multi":
+        return _compute_all_licks_endpoints_long(animal, date, resolver)
     path = resolver.tongue_pertrial_endpoints_json(animal=animal, date=date)
     if not path.exists():
         return _empty_long_df()
@@ -811,6 +876,15 @@ def densify_phase_rows_via_interp(
         raise ValueError(f"n_phase_bins must be >= 2; got {n_bins!r}.")
 
     trial_keys = ["animal", "date", "trial_index", "side"]
+    # All-licks phase rows carry one phase sweep PER LICK within a trial
+    # (distinct ``peak_t_ms``); first-lick has exactly one. The interp must run
+    # per-lick (each is a monotonic 0->1 sweep) — otherwise np.interp zigzags
+    # across the interleaved licks' phases and the pooled trajectory is jagged
+    # (F, 2026-06-01). We densify per (trial, peak) then collapse the peaks back
+    # to per-(trial, bin) so the output schema + per-trial grain are unchanged.
+    # For first-lick, peak_key is constant per trial -> a pure no-op.
+    peak_key = ["peak_t_ms"] if "peak_t_ms" in phase_rows_long.columns else []
+    group_keys = trial_keys + peak_key
     required = set(trial_keys) | {"phase", "epoch_label"} | set(signals)
     missing = required - set(phase_rows_long.columns)
     if missing:
@@ -847,7 +921,7 @@ def densify_phase_rows_via_interp(
         0.5 / n_bins, 1.0 - 0.5 / n_bins, n_bins,
     )
 
-    grouped = phase_rows_long.groupby(trial_keys, sort=False)
+    grouped = phase_rows_long.groupby(group_keys, sort=False)
     chunks: list[pd.DataFrame] = []
     for trial_key, trial_df in grouped:
         if len(trial_df) == 0:
@@ -856,12 +930,13 @@ def densify_phase_rows_via_interp(
         sort_idx = np.argsort(phases)
         phases_sorted = phases[sort_idx]
 
-        # Per-trial metadata (same value across trial rows; take first).
+        # Per-(trial, peak) metadata (same value across the group; take first).
         carry_vals = {col: trial_df[col].iloc[0] for col in carry_cols}
 
         chunk: dict[str, np.ndarray | list] = {}
-        # trial_keys broadcast across n_bins rows.
-        for ki, kname in enumerate(trial_keys):
+        # group_keys broadcast across n_bins rows (peak_key carried for the
+        # post-interp per-trial collapse below).
+        for ki, kname in enumerate(group_keys):
             chunk[kname] = [trial_key[ki]] * n_bins
         chunk["phase_bin"] = np.arange(n_bins, dtype=np.int64)
         chunk["phase_bin_center"] = bin_centers.copy()
@@ -903,6 +978,18 @@ def densify_phase_rows_via_interp(
             )) for c in out_cols}
         )
     out = pd.concat(chunks, ignore_index=True)
+    if peak_key:
+        # Collapse the per-lick interpolated curves back to one row per
+        # (trial, bin) = mean across the trial's licks at that bin. Keeps the
+        # downstream per-trial grain + "n=trials" unit; the smoothing comes from
+        # interpolating EACH lick monotonically before averaging.
+        agg = {s: "mean" for s in signals}
+        agg["phase_bin_center"] = "first"
+        for c in carry_cols:
+            agg[c] = "first"
+        out = out.groupby(
+            trial_keys + ["phase_bin"], as_index=False, sort=False,
+        ).agg(agg)
     return out[out_cols]
 
 

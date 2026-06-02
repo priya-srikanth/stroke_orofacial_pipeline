@@ -18,15 +18,19 @@ overwrite="force"):
   - pipeline_outputs/dlc_kinematics/cleaned_traces/tongue/<animal>/<YYYYMMDD>.parquet  [v7]
   - pipeline_outputs/dlc_kinematics/lick_events/tongue/<animal>/<YYYYMMDD>.parquet     [v7]
 
-Cohort enumeration (Addendum #1):
-  - Primary: yaml_driven_session_dates(animal, analysis_context="dlc")
-  - (b) Defensive pre-filter: skip (animal, date) entries listed in
-    configs/session_overrides.yaml secondary_spout_sessions: — those
-    sessions lack DLC inference inputs upstream of tongue_pertrial.
-  - (c) Runtime pre-check: resolver.interpolated_trace(bodypart="tongue",
+Cohort enumeration:
+  - Primary: yaml_driven_session_dates(animal, analysis_context="dlc"). This
+    INCLUDES the bare half of secondary-spout (Pattern B) dates — the bare
+    half is a normal primary-spout session WITH DLC. The chore
+    substrate-routing-and-secondary-spout-per-half-fix (2026-05-31) removed
+    the prior per-date secondary_spout skip, which wrongly dropped the bare
+    half along with the b half. The b half is never enumerated here (no
+    session_suffix fan-out at this driver).
+  - Runtime pre-check: resolver.interpolated_trace(bodypart="tongue",
     animal, date).exists() — missing => manifest status="SKIP" with
     anomaly_notes="no_tongue_interpolated_trace"; NOT counted toward
-    failure anomaly thresholds.
+    failure anomaly thresholds. This is the sole guard for genuinely
+    DLC-less dates (already dropped upstream by the dlc exclusion filter).
 
 Manifest:
   .scratch_chore_phase_7e_reemit/cohort_manifest.csv
@@ -60,8 +64,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from stroke_orofacial.cohort_enumeration import yaml_driven_session_dates
 from stroke_orofacial.dlc_kinematics import build_tongue_pertrial_by_animal_date
 from stroke_orofacial.paths import PathResolver
@@ -89,20 +91,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("phase_7e.reemit_tongue_pertrial_cohort")
-
-
-def _load_secondary_spout_exclusion_set(
-    session_overrides_yaml: Path = Path("configs/session_overrides.yaml"),
-) -> set[tuple[str, dt.date]]:
-    """Read configs/session_overrides.yaml secondary_spout_sessions: as a
-    set of (animal, date). Addendum #1 (b) defensive pre-filter source.
-    """
-    cfg = yaml.safe_load(session_overrides_yaml.read_text())
-    out: set[tuple[str, dt.date]] = set()
-    for animal, dates in (cfg.get("secondary_spout_sessions") or {}).items():
-        for iso in dates or {}:
-            out.add((animal, dt.date.fromisoformat(iso)))
-    return out
 
 
 def _sha256(path: Path) -> str:
@@ -174,7 +162,6 @@ def _process_one_session(
     animal: str,
     date: dt.date,
     resolver: PathResolver,
-    exclusion_set: set[tuple[str, dt.date]],
 ) -> dict[str, Any]:
     """Returns a manifest row dict (status in {OK, FAIL, SKIP})."""
     date_iso = date.isoformat()
@@ -187,11 +174,6 @@ def _process_one_session(
         "status": "",
         "anomaly_notes": "",
     }
-
-    if (animal, date) in exclusion_set:
-        row["status"] = "SKIP"
-        row["anomaly_notes"] = "secondary_spout_session_no_dlc"
-        return row
 
     interp_path = resolver.interpolated_trace(
         bodypart="tongue", animal=animal, date=date,
@@ -247,13 +229,10 @@ def _process_one_session(
 
 def _iter_planned_sessions(
     animals: tuple[str, ...],
-    exclusion_set: set[tuple[str, dt.date]],
 ) -> list[tuple[str, dt.date]]:
     plan: list[tuple[str, dt.date]] = []
     for animal in animals:
         for date in yaml_driven_session_dates(animal, analysis_context="dlc"):
-            if (animal, date) in exclusion_set:
-                continue
             plan.append((animal, date))
     return plan
 
@@ -276,15 +255,13 @@ def main(argv: list[str] | None = None) -> int:
 
     animals = (args.animal,) if args.animal else COHORT_ORDER
     resolver = PathResolver()
-    exclusion_set = _load_secondary_spout_exclusion_set()
-    log.info("Loaded secondary_spout exclusion set: %d entries", len(exclusion_set))
 
     prior = _read_existing_manifest()
     log.info("Prior manifest rows: %d (OK + FAIL + SKIP)", len(prior))
 
-    planned = _iter_planned_sessions(animals, exclusion_set)
+    planned = _iter_planned_sessions(animals)
     log.info(
-        "Planned fresh-cohort sessions (after (b) pre-filter): %d across %s",
+        "Planned fresh-cohort sessions: %d across %s",
         len(planned),
         ",".join(animals),
     )
@@ -326,7 +303,7 @@ def main(argv: list[str] | None = None) -> int:
             break
 
         log.info("[%s %s] starting", animal, date.isoformat())
-        row = _process_one_session(animal, date, resolver, exclusion_set)
+        row = _process_one_session(animal, date, resolver)
         _append_manifest_row(row)
         processed_this_invocation += 1
 

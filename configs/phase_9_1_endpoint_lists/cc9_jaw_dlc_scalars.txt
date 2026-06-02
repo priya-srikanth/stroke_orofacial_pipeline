@@ -1,0 +1,9 @@
+# CC #9 chore — jaw v3.4 cleaned-trace derived scalar endpoints + mismatch.
+# Pooled-scalar phenotype_pooled re-emit scope (DLC-affected only; behavior frozen).
+jaw_n_frames_over_thresh
+jaw_pass_qc
+jaw_peak_abs_deflection
+jaw_peak_neg_deflection
+jaw_peak_pos_deflection
+jaw_peak_selected_deflection
+mismatch_candidate_no_lick_with_jaw_move

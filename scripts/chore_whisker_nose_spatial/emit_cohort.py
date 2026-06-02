@@ -73,6 +73,7 @@ from stroke_orofacial.stats.spatial_proportion_diff import (  # noqa: E402
     get_spatial_recipe,
     split_post_dates_by_epoch,
 )
+from stroke_orofacial.stats.normalization import ratio_to_baseline  # noqa: E402
 from stroke_orofacial.stats.spatial_wasserstein import (  # noqa: E402
     compute_per_animal_per_session_w2_long,
 )
@@ -87,6 +88,11 @@ logger = logging.getLogger("chore.whisker_nose_emit")
 
 COHORT_8 = ("PS46", "PS47", "PS48", "PS49", "PS50", "PS51", "PS54", "PS55")
 ALL_BODYPARTS = ("whisker", "nose", "spout", "eye")
+# Per-session OT create/destroy/move decomposition (G) is EXPENSIVE (an
+# unbalanced sinkhorn per session × bodypart × side × epoch). Off by default so
+# the normalized-W2 emit stays fast; flip to True (or wire a CLI flag) for the
+# OT pass.
+WITH_OT_DECOMPOSITION = False
 
 HEATMAP_SUBDIR = "stats/figures/phenotype_pooled/proportion_diff_heatmaps"
 W2_SUBDIR = "stats/figures/phenotype_pooled/wasserstein_recovery"
@@ -239,7 +245,8 @@ def compute_animal(
                     animal=animal, pre_pool=pre_pool, post_dates=dates,
                     side=side, bodypart=bodypart, resolver=resolver,
                     defaults=defaults, animal_info=animal_info,
-                    epoch_label=epoch_label)
+                    epoch_label=epoch_label,
+                    with_ot_decomposition=WITH_OT_DECOMPOSITION)
                 for row in rows:
                     row["recovery_phenotype"] = animal_info.recovery_phenotype
                 w2_rows.extend(rows)
@@ -405,7 +412,76 @@ def main(argv: list[str] | None = None) -> int:
         res_dir.mkdir(parents=True, exist_ok=True)
         pooled_w2.assign(provenance=PROVENANCE).to_csv(
             res_dir / "wasserstein_recovery_mean_sem.csv", index=False)
+        # Persist per-session W-2 (+ OT create/destroy/move) for reuse.
+        # Namespaced under ``whisker_nose/`` so the consolidated-stats loader's
+        # recursive ``**`` glob reads this file AND the q12 tongue/jaw sibling
+        # without either clobbering the other (both formerly wrote the same
+        # un-namespaced ``<scope>/v2/wasserstein_recovery_per_session.csv``).
+        ps_dir = res_dir / "whisker_nose"
+        ps_dir.mkdir(parents=True, exist_ok=True)
+        w2_scoped.assign(provenance=PROVENANCE).to_csv(
+            ps_dir / "wasserstein_recovery_per_session.csv", index=False)
         logger.info("[%s] W-2 line+jitter -> %s", scope, w2_dir)
+
+        # --- Normalized W-2 recovery (per-animal pre-stroke baseline, per side)
+        # parallel to the q12 tongue/jaw build (D). ---
+        w2_for_norm = w2_scoped.copy()
+        if "is_sentinel" not in w2_for_norm.columns:
+            w2_for_norm["is_sentinel"] = False
+        w2_norm = ratio_to_baseline(
+            w2_for_norm, group_cols=("animal", "side"),
+            value_col="w2", baseline_label="pre",
+        ).dropna(subset=["value_norm"])
+        pooled_w2_norm = aggregate_phenotype_pooled_mean_sem(
+            w2_norm, value_col="value_norm", by_side=True)
+        norm_dir = resolver.pipeline_outputs(
+            subdir="stats/figures/phenotype_pooled/normalized_wasserstein_recovery",
+        ) / scope / "v2"
+        norm_dir.mkdir(parents=True, exist_ok=True)
+        norm_names = {
+            bp: f"Normalized W-2 (x pre-stroke baseline) -- {bp}"
+            for bp in bodyparts
+        }
+        for bodypart in bodyparts:
+            w2_side_keys = tuple(
+                _SIDE_RELABEL.get(s, s) for s in W2_SIDES[bodypart])
+            ntarget = norm_dir / f"{bodypart}_normalized_wasserstein_recovery_v2.svg"
+            try:
+                from scripts.chore_dlc_pooled_phenotype.q13b_v2_emit import (
+                    render_endpoint_v2_figure,
+                )
+                render_endpoint_v2_figure(
+                    per_session_df=w2_norm, pooled_df=pooled_w2_norm,
+                    endpoint=bodypart, phenotype_order=phenotype_order,
+                    output_path=ntarget, sides=w2_side_keys,
+                    value_col="value_norm", display_names=norm_names,
+                    aggregation_subtitle=W2_AGG_SUBTITLE,
+                    provenance_subtitle=W2_PROVENANCE, is_delta=False)
+                manifest_rows.append({"scope": scope, "bodypart": bodypart,
+                                      "family": "w2_norm", "status": "OK",
+                                      "path": str(ntarget)})
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("[%s/%s] norm W-2 FAILED", scope, bodypart)
+                manifest_rows.append({"scope": scope, "bodypart": bodypart,
+                                      "family": "w2_norm", "status": "FAIL",
+                                      "path": repr(exc)})
+        nres_dir = resolver.pipeline_outputs(
+            subdir="stats/results/phenotype_pooled/normalized_wasserstein_recovery",
+        ) / scope / "v2"
+        nres_dir.mkdir(parents=True, exist_ok=True)
+        pooled_w2_norm.assign(provenance=PROVENANCE).to_csv(
+            nres_dir / "normalized_wasserstein_recovery_mean_sem.csv", index=False)
+        # Per-session normalized W-2 (mirrors q12): write ``value_norm`` into a
+        # ``w2`` column under a ``whisker_nose/`` subdir so the consolidated-
+        # stats loader picks up the normalized family for these bodyparts too
+        # (it formerly loaded empty — only mean+SEM was persisted).
+        nps_dir = nres_dir / "whisker_nose"
+        nps_dir.mkdir(parents=True, exist_ok=True)
+        _norm_cols = ["animal", "date", "side", "endpoint", "epoch_label"]
+        w2_norm.assign(w2=w2_norm["value_norm"], provenance=PROVENANCE)[
+            _norm_cols + ["w2", "provenance"]
+        ].to_csv(nps_dir / "wasserstein_recovery_per_session.csv", index=False)
+        logger.info("[%s] normalized W-2 -> %s", scope, norm_dir)
 
     manifest_dir = resolver.pipeline_outputs(
         subdir="stats/sensitivity")

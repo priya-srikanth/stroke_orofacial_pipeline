@@ -278,7 +278,12 @@ def main() -> int:
 
     results_df = pd.DataFrame(results)
     results_base = resolver.pipeline_outputs(subdir="stats") / "results"
-    out_root = (results_base / variant) if variant else results_base
+    # Symmetric filter-variant wrapper: no-filter -> results/no_filter/,
+    # filtered_v1 -> results/filtered_v1/. The unfiltered wrapper is named
+    # "no_filter" (not "none") to match the phenotype_pooled figure convention
+    # (<ep>/<scope>/no_filter/ vs /v3/) — one consistent filter-variant dir name
+    # across results/ and figures/ (2026-06-01 cleanup).
+    out_root = results_base / (variant or "no_filter")
     out_root.mkdir(parents=True, exist_ok=True)
 
     total_csvs = 0

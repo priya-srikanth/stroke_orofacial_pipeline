@@ -36,8 +36,6 @@ import sys
 import time
 from pathlib import Path
 
-import yaml
-
 from stroke_orofacial.cohort_enumeration import yaml_driven_session_dates
 from stroke_orofacial.dlc_kinematics import (
     classify_tongue_jaw_mismatch_by_animal_date,
@@ -67,17 +65,6 @@ logging.basicConfig(
 log = logging.getLogger("phase_7e.reemit_tongue_jaw_mismatch_cohort")
 
 
-def _load_secondary_spout_exclusion_set(
-    session_overrides_yaml: Path = Path("configs/session_overrides.yaml"),
-) -> set[tuple[str, dt.date]]:
-    cfg = yaml.safe_load(session_overrides_yaml.read_text())
-    out: set[tuple[str, dt.date]] = set()
-    for animal, dates in (cfg.get("secondary_spout_sessions") or {}).items():
-        for iso in dates or {}:
-            out.add((animal, dt.date.fromisoformat(iso)))
-    return out
-
-
 def _read_prior_manifest() -> dict[tuple[str, str, str], str]:
     if not MANIFEST_PATH.exists():
         return {}
@@ -100,17 +87,12 @@ def _append_manifest(row: dict) -> None:
 
 def _process_classify(
     animal: str, date: dt.date, resolver: PathResolver,
-    exclusion_set: set[tuple[str, dt.date]],
 ) -> dict:
     date_iso = date.isoformat()
-    if (animal, date) in exclusion_set:
-        return {
-            "animal": animal, "stage": "classify", "key": date_iso,
-            "runtime_seconds": "", "n_paths_written": 0,
-            "status": "SKIP", "anomaly_notes": "secondary_spout_session_no_dlc",
-        }
     # Pre-check: both tongue + jaw cleaned_traces must exist (Phase 7e.3
-    # routing reads from these).
+    # routing reads from these). This is the sole guard — the bare half of a
+    # secondary-spout date is a normal DLC session and must NOT be skipped
+    # per-date (chore substrate-routing-and-secondary-spout-per-half-fix).
     tongue_ct = resolver.cleaned_trace(
         bodypart="tongue", animal=animal, date=date,
     )
@@ -151,15 +133,8 @@ def _process_classify(
 
 def _process_within_session(
     animal: str, date: dt.date, resolver: PathResolver,
-    exclusion_set: set[tuple[str, dt.date]],
 ) -> dict:
     date_iso = date.isoformat()
-    if (animal, date) in exclusion_set:
-        return {
-            "animal": animal, "stage": "within_session", "key": date_iso,
-            "runtime_seconds": "", "n_paths_written": 0,
-            "status": "SKIP", "anomaly_notes": "secondary_spout_session_no_dlc",
-        }
     candidate_path = resolver.tongue_jaw_mismatch_candidate_trials_parquet(
         animal, date,
     )
@@ -245,12 +220,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     resolver = PathResolver()
-    exclusion_set = _load_secondary_spout_exclusion_set()
     prior = _read_prior_manifest()
-    log.info(
-        "Loaded exclusion set: %d entries; prior manifest rows: %d",
-        len(exclusion_set), len(prior),
-    )
+    log.info("Prior manifest rows: %d", len(prior))
 
     animals = (args.animal,) if args.animal else COHORT_ORDER
     cohort_failures = sum(1 for s in prior.values() if s == "FAIL")
@@ -276,7 +247,7 @@ def main(argv: list[str] | None = None) -> int:
                             log.error("STOP: %s failures %d >= %d", animal, per_animal_fail[animal], MAX_PER_ANIMAL_FAILURES)
                             return 2
                         log.info("[%s %s classify] starting", animal, date_iso)
-                        row = _process_classify(animal, date, resolver, exclusion_set)
+                        row = _process_classify(animal, date, resolver)
                         _append_manifest(row)
                         if row["status"] == "OK":
                             log.info(
@@ -306,7 +277,7 @@ def main(argv: list[str] | None = None) -> int:
                         if per_animal_fail.get(animal, 0) >= MAX_PER_ANIMAL_FAILURES:
                             return 2
                         log.info("[%s %s within_session] starting", animal, date_iso)
-                        row = _process_within_session(animal, date, resolver, exclusion_set)
+                        row = _process_within_session(animal, date, resolver)
                         _append_manifest(row)
                         if row["status"] == "OK":
                             log.info(

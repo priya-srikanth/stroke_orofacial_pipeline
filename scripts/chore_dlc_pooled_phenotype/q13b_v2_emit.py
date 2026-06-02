@@ -175,6 +175,7 @@ def load_filtered_recoded_long(
     resolver: PathResolver,
     defaults: dict,
     apply_filter: bool = True,
+    lick_set: str = "first_lick",
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Build the per-trial long-form, filtered + ipsi/contra-recoded.
 
@@ -201,7 +202,9 @@ def load_filtered_recoded_long(
             logger.info("[%s] sham — excluded from ipsi/contra v2.", animal)
             continue
         for d in enumerate_session_dates(animal, resolver):
-            ep = load_session_phase_aligned_endpoints_long(animal, d, resolver)
+            ep = load_session_phase_aligned_endpoints_long(
+                animal, d, resolver, lick_set=lick_set,
+            )
             if ep.empty:
                 continue
             licks = build_dlc_pertrial_lick_frame(animal, d, resolver)
@@ -298,8 +301,13 @@ def _draw_endpoint_panel(
     pooled_value_col: str,
     sem_col: str,
     is_delta: bool,
+    sig_by: dict[tuple[str, str], str] | None = None,
 ) -> None:
-    """Draw one ipsi/contra panel: per-phenotype line + SEM bars + dots."""
+    """Draw one ipsi/contra panel: per-phenotype line + SEM bars + dots.
+
+    ``sig_by`` (optional) maps ``(phenotype, epoch) -> marker`` (e.g. ``"*"``)
+    for the session-grain stats; markers are drawn above the pooled-mean point.
+    """
     sess = per_session_df[
         (per_session_df["endpoint"] == endpoint)
         & (per_session_df["side"] == side)
@@ -321,6 +329,7 @@ def _draw_endpoint_panel(
         line_yerr: list[float] = []
         scatter_centers: list[int] = []
         scatter_values: list[np.ndarray] = []
+        y_by_epoch: dict[str, float] = {}
         for ei, epoch in enumerate(EPOCH_ORDER):
             prow = p_pool[p_pool["epoch_label"] == epoch]
             if not prow.empty:
@@ -328,6 +337,7 @@ def _draw_endpoint_panel(
                 if np.isfinite(m):
                     line_x.append(ei)
                     line_y.append(m)
+                    y_by_epoch[epoch] = m
                     sem = float(prow[sem_col].iloc[0]) if sem_col in prow else np.nan
                     line_yerr.append(sem)
             cell = p_sess[p_sess["epoch_label"] == epoch]
@@ -347,6 +357,22 @@ def _draw_endpoint_panel(
             scatter_centers=scatter_centers, scatter_values=scatter_values,
             color=color, marker=marker, label=label,
         )
+        # Session-grain significance markers in a band near the TOP of the
+        # panel (one row per phenotype, x-aligned to the epoch column), so they
+        # stay legible and never crowd the data points (Priya 2026-06-01).
+        # x = epoch index in data coords; y = axes fraction (0..1).
+        if sig_by:
+            slot = list(phenotype_order).index(phenotype)
+            y_frac = 0.985 - slot * 0.055
+            for ei, epoch in enumerate(EPOCH_ORDER):
+                mark = sig_by.get((phenotype, epoch))
+                if mark:
+                    ax.annotate(
+                        mark, (ei, y_frac),
+                        xycoords=("data", "axes fraction"),
+                        ha="center", va="top", color=color,
+                        fontsize=13, fontweight="bold", clip_on=False,
+                    )
 
     ax.set_xticks(list(range(len(EPOCH_ORDER))))
     ax.set_xticklabels(
@@ -356,6 +382,40 @@ def _draw_endpoint_panel(
     ax.set_xlabel("Epoch", fontsize=13)
     ax.set_title(_PANEL_TITLES.get(side, side), fontsize=12)
     ax.legend(loc="best", fontsize=8, framealpha=0.9)
+
+
+def _load_session_grain_sig(
+    resolver: PathResolver, scope: str,
+    family: str = "phase_aligned_endpoints",
+) -> dict[tuple[str, str, str, str], str]:
+    """Session-grain significance markers from the consolidated per-scope stats
+    sheet (build_pooled_phenotype_stats). Returns ``{(endpoint, phenotype, side,
+    post_epoch): marker}`` where ``marker`` is ``"*"`` when the headline test
+    (session-MWU, BH-FDR < 0.05) is significant and ``"**"`` when the
+    session-bootstrap CI also excludes zero (``headline_and_bootstrap_sig``).
+
+    Uses the MWU headline (``headline_sig``), not the LMM — the per-session
+    scalar/endpoint cells have too few animals for the LMM random-effect to be
+    estimable (Priya 2026-06-01). ``family`` selects first-lick
+    (``phase_aligned_endpoints``) vs all-licks
+    (``phase_aligned_endpoints_all_licks``). Side L/R -> ipsi/contra (all-L
+    cohort). Empty if the sheet isn't built yet."""
+    f = (resolver.pipeline_outputs(subdir="stats") / "results"
+         / "phenotype_pooled" / scope / "pooled_phenotype_stats.csv")
+    if not f.exists():
+        return {}
+    df = pd.read_csv(f)
+    df = df[df.get("family") == family]
+    smap = {"L": "ipsi", "R": "contra", "ipsi": "ipsi", "contra": "contra"}
+    out: dict[tuple[str, str, str, str], str] = {}
+    for _, r in df.iterrows():
+        if not bool(r.get("headline_sig", False)):
+            continue
+        marker = "**" if bool(r.get("headline_and_bootstrap_sig", False)) else "*"
+        out[(str(r["endpoint"]), str(r["recovery_phenotype"]),
+             smap.get(str(r["side"]), str(r["side"])),
+             str(r["post_epoch"]))] = marker
+    return out
 
 
 def render_endpoint_v2_figure(
@@ -374,6 +434,7 @@ def render_endpoint_v2_figure(
     provenance_subtitle: str = V2_SUBTITLE,
     is_delta: bool = False,
     dpi: int = 150,
+    stats_sig: dict[tuple[str, str, str], str] | None = None,
 ) -> Path:
     """One endpoint figure with side-by-side Ipsi + Contra panels (Q14 layout).
 
@@ -401,13 +462,18 @@ def render_endpoint_v2_figure(
     }
 
     for ax, side in zip(axes, sides):
+        side_sig = None
+        if stats_sig:
+            side_sig = {
+                (ph, ep): m for (ph, sd, ep), m in stats_sig.items() if sd == side
+            }
         _draw_endpoint_panel(
             ax,
             per_session_df=per_session_df, pooled_df=pooled_df,
             endpoint=endpoint, side=side, phenotype_order=phenotype_order,
             n_animals_by_phenotype=n_an_by,
             value_col=value_col, pooled_value_col=pooled_value_col,
-            sem_col=sem_col, is_delta=is_delta,
+            sem_col=sem_col, is_delta=is_delta, sig_by=side_sig,
         )
     axes[0].set_ylabel(names.get(endpoint, endpoint), fontsize=12)
 
@@ -486,6 +552,7 @@ def run_scope(
     resolver: PathResolver,
     overwrite: str,
     out_version: str = "v3",
+    lick_set: str = "first_lick",
 ) -> dict[str, object]:
     """Aggregate + stats + render one scope (4_tier or 3_tier).
 
@@ -525,10 +592,21 @@ def run_scope(
     else:
         pooled_delta = pooled
 
-    fig_base = resolver.pipeline_outputs(subdir=FAMILY_FIG_SUBDIR) / scope / out_version
-    res_base = resolver.pipeline_outputs(subdir=FAMILY_RESULTS_SUBDIR) / scope / out_version
+    # all_multi routes to the sibling family so it never collides with the
+    # shipped first-lick per-trial endpoints (I, 2026-06-01).
+    _sfx = "_all_licks" if lick_set == "all_multi" else ""
+    fig_base = resolver.pipeline_outputs(subdir=FAMILY_FIG_SUBDIR + _sfx) / scope / out_version
+    res_base = resolver.pipeline_outputs(subdir=FAMILY_RESULTS_SUBDIR + _sfx) / scope / out_version
     fig_base.mkdir(parents=True, exist_ok=True)
     res_base.mkdir(parents=True, exist_ok=True)
+
+    # Session-grain significance markers (from the consolidated stats sheet) for
+    # the delta figures; empty if the sheet isn't built yet (graceful). Use the
+    # sibling all-licks family when emitting the all_multi figures.
+    sig_all = _load_session_grain_sig(
+        resolver, scope,
+        family=("phase_aligned_endpoints_all_licks"
+                if lick_set == "all_multi" else "phase_aligned_endpoints"))
 
     ok: list[str] = []
     skip: list[str] = []
@@ -559,6 +637,11 @@ def run_scope(
                 display_names=names,
                 is_delta=(kind == "delta"),
                 provenance_subtitle=SUBTITLE_BY_VERSION[out_version],
+                stats_sig=(
+                    {(ph, sd, ep): m
+                     for (e, ph, sd, ep), m in sig_all.items() if e == endpoint}
+                    if kind == "delta" else None
+                ),
             )
             ok.append(fname)
 
@@ -593,6 +676,13 @@ def main(argv: list[str] | None = None) -> int:
              "pre-fix audit copy (retained, not overwritten by a v3 run).",
     )
     parser.add_argument(
+        "--lick-set", choices=("first_lick", "all_multi"), default="first_lick",
+        help="first_lick (default) = the shipped per-trial first-lick "
+             "endpoints. all_multi = per-LICK endpoints over every detected "
+             "lick (n=licks), routed to the sibling "
+             "'phase_aligned_endpoints_all_licks/' family.",
+    )
+    parser.add_argument(
         "--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"),
         default="INFO",
     )
@@ -619,10 +709,12 @@ def main(argv: list[str] | None = None) -> int:
     long_df, report = load_filtered_recoded_long(
         animals=animals, animals_map=animals_map_full,
         resolver=resolver, defaults=defaults, apply_filter=True,
+        lick_set=args.lick_set,
     )
     long_df_nofilter, _ = load_filtered_recoded_long(
         animals=animals, animals_map=animals_map_full,
         resolver=resolver, defaults=defaults, apply_filter=False,
+        lick_set=args.lick_set,
     )
     logger.info(
         "Filter report: trials %d->%d, sessions %d->%d; long rows=%d "
@@ -656,6 +748,7 @@ def main(argv: list[str] | None = None) -> int:
             animals_map=amap, scope=scope,
             phenotype_order=phenotype_order, resolver=resolver,
             overwrite=args.overwrite, out_version=args.out_version,
+            lick_set=args.lick_set,
         )
         logger.info(
             "[%s] figures=%d skip=%d pooled_rows=%d -> %s",

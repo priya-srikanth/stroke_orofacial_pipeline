@@ -697,6 +697,60 @@ def _materialize_tongue_derived(
     return rows
 
 
+# Cue-relative DLC lick counts (CC #9). Reclassify the per-trial n_left /
+# n_right tongue-protrusion counts by the trial's CUE side: "correct" =
+# protrusions toward the cued spout (Tone_L → n_left; Tone_R → n_right);
+# "incorrect" = away from cue. The DLC-kinematic analog of the spout-behavior
+# num_correct_licks_per_trial / num_incorrect_licks_per_trial counts.
+_TONGUE_CUE_RELATIVE: dict[str, str] = {
+    "tongue_num_correct_licks_dlc": "correct",
+    "tongue_num_incorrect_licks_dlc": "incorrect",
+}
+
+
+def _materialize_tongue_cue_relative(
+    spec: EndpointSpec,
+    animal: str,
+    animal_info: AnimalInfo,
+    session_scalars: _SessionScalars,
+    resolver: PathResolver,
+) -> list[dict[str, Any]]:
+    """One row per (date, trial_idx, side): cue-relative DLC lick count.
+
+    Per trial, select the toward-cue (``correct``) or away-from-cue
+    (``incorrect``) tongue-protrusion count from the ``n_licks_family``
+    ``n_left`` / ``n_right`` pair using the trial's cue ``side``. ``None``
+    counts propagate as sentinels via :func:`_emit_tongue_per_trial_rows`.
+    """
+    which = _TONGUE_CUE_RELATIVE[spec.slug]
+    rows: list[dict[str, Any]] = []
+    for date_label in session_scalars.dates:
+        payload = _load_tongue_pertrial_json(animal, date_label, resolver)
+        if payload is None:
+            continue
+        n_left = payload["tongue"]["n_licks_family"]["n_left"]
+        n_right = payload["tongue"]["n_licks_family"]["n_right"]
+        sides = payload["sides"]
+
+        def _cue_select(_p, _nl=n_left, _nr=n_right, _s=sides, _which=which):
+            out: list[Any] = []
+            for left, right, side in zip(_nl, _nr, _s):
+                if left is None or right is None:
+                    out.append(None)
+                elif _which == "correct":
+                    out.append(left if side == "L" else right)
+                else:
+                    out.append(right if side == "L" else left)
+            return out
+
+        rows.extend(_emit_tongue_per_trial_rows(
+            payload=payload, spec=spec, animal=animal,
+            animal_info=animal_info, date_label=date_label,
+            session_scalars=session_scalars, value_getter=_cue_select,
+        ))
+    return rows
+
+
 def _emit_tongue_per_trial_rows(
     *,
     payload: dict[str, Any],
@@ -990,6 +1044,10 @@ def _dispatch_materializer(
         return _materialize_tongue_derived(
             spec, animal, animal_info, session_scalars, resolver,
         )
+    if spec.slug in _TONGUE_CUE_RELATIVE:
+        return _materialize_tongue_cue_relative(
+            spec, animal, animal_info, session_scalars, resolver,
+        )
     if spec.slug in _TONGUE_SCALAR_PATH:
         return _materialize_tongue_scalar_per_trial(
             spec, animal, animal_info, session_scalars, resolver,
@@ -1159,6 +1217,17 @@ def _build_tongue_lick_lookups(
     return n_licks_by_trial, session_stats
 
 
+#: Lick-COUNT endpoints where a no-usable-lick trial/session means 0 (not NA).
+#: Their filtered (v3) figures zero-fill dropped rows; the NA-masked variant is
+#: kept separately (H, Priya 2026-06-01). Non-count tongue endpoints (y_peak,
+#: angle, …) have no meaningful 0 for a no-lick trial, so they are never
+#: zero-filled.
+_TONGUE_LICK_COUNT_SLUGS: frozenset[str] = frozenset({
+    "tongue_n_licks", "tongue_n_left", "tongue_n_right",
+    "tongue_num_correct_licks_dlc", "tongue_num_incorrect_licks_dlc",
+})
+
+
 def _filter_tongue_rows(
     rows: list[dict[str, Any]],
     *,
@@ -1167,6 +1236,7 @@ def _filter_tongue_rows(
     session_stats: dict[tuple, DlcSessionLickStats],
     session_filter: DlcSessionFilter,
     defaults: dict[str, Any],
+    zero_fill_dropped: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any], set[tuple]]:
     """Apply Stage A (session) + Stage B (trial) filters to one endpoint's rows.
 
@@ -1194,15 +1264,31 @@ def _filter_tongue_rows(
     present_a: set[tuple] = set()   # (date, side) present pre-trial-filter, Stage-A-kept
     survived: set[tuple] = set()    # (date, side) with >=1 row post-trial-filter
     n_in = len(rows)
+
+    def _zero_row(r: dict[str, Any]) -> dict[str, Any]:
+        rr = dict(r)
+        rr["value"] = 0.0
+        rr["is_sentinel"] = False
+        return rr
+
     for r in rows:
         key = (r["date"], r["side"])
         if not session_kept.get(key, False):
-            continue  # Stage A drop
+            # Stage A drop. For zero-fill count endpoints, a Stage-A session
+            # (no/low usable licks) contributes 0 rather than vanishing.
+            if zero_fill_dropped:
+                filtered.append(_zero_row(r))
+                survived.add(key)
+            continue
         present_a.add(key)
         if min_licks is not None:
             n = n_licks_by_trial.get((r["date"], int(r["trial_idx"])), 0)
             if n < min_licks:
-                continue  # Stage B drop
+                # Stage B drop. Zero-fill: a sub-threshold trial = 0 usable licks.
+                if zero_fill_dropped:
+                    filtered.append(_zero_row(r))
+                    survived.add(key)
+                continue
         filtered.append(r)
         survived.add(key)
     emptied = present_a - survived
@@ -1265,7 +1351,8 @@ def _parse_args() -> argparse.Namespace:
         "--inventory", type=Path, default=DEFAULT_INVENTORY_PATH,
     )
     p.add_argument(
-        "--filter-variant", choices=("none", "filtered_v1"), default="none",
+        "--filter-variant",
+        choices=("none", "filtered_v1", "filtered_v1_na_masked"), default="none",
         help=(
             "none (default): emit the unfiltered stats/inputs tree. "
             "filtered_v1: emit DLC session/trial-filtered TONGUE endpoints to "
@@ -1346,7 +1433,7 @@ def main() -> int:
     # DLC filtering (chore/dlc-session-and-trial-filtering). filtered_v1 emits
     # session+trial-filtered TONGUE endpoints alongside the unfiltered tree.
     variant: str | None = (
-        None if args.filter_variant == "none" else FILTER_VARIANT_SUBDIR
+        None if args.filter_variant == "none" else args.filter_variant
     )
     dlc_session_filter = (
         load_dlc_filter_spec_from_defaults(defaults) if variant else None
@@ -1388,6 +1475,18 @@ def main() -> int:
                 manifest_rows.append({
                     "endpoint_slug": spec.slug, "animal": animal,
                     "status": "skipped_not_tongue_filter_scope",
+                    "n_rows": 0, "n_sentinel": 0, "output_path": "",
+                    "wall_time_s": 0.0,
+                })
+                continue
+            # filtered_v1_na_masked is ONLY the count endpoints' NA-masked
+            # sibling (H). Non-count endpoints are byte-identical to filtered_v1
+            # there, so skip them to avoid a duplicate tree.
+            if (variant == "filtered_v1_na_masked"
+                    and spec.slug not in _TONGUE_LICK_COUNT_SLUGS):
+                manifest_rows.append({
+                    "endpoint_slug": spec.slug, "animal": animal,
+                    "status": "skipped_na_masked_noncount",
                     "n_rows": 0, "n_sentinel": 0, "output_path": "",
                     "wall_time_s": 0.0,
                 })
@@ -1442,6 +1541,10 @@ def main() -> int:
                     session_stats=session_stats,
                     session_filter=dlc_session_filter,
                     defaults=defaults,
+                    zero_fill_dropped=(
+                        variant == "filtered_v1"
+                        and spec.slug in _TONGUE_LICK_COUNT_SLUGS
+                    ),
                 )
                 trial_mrow["animal"] = animal
                 filter_trial_manifest.append(trial_mrow)

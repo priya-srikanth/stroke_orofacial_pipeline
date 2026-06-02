@@ -159,6 +159,7 @@ def _extract_angle_max_signed_per_lick(
 def _extract_cell50_own_bout_scalars(
     y_t: np.ndarray, x_t: np.ndarray, t_ms: np.ndarray, fps: float,
     *, params: dict[str, Any],
+    kept_licks: list[dict[str, Any]] | None = None,
 ) -> dict[str, float | int]:
     """Cell 50 own per-trial bout scalars (constrained to apply window).
 
@@ -170,6 +171,11 @@ def _extract_cell50_own_bout_scalars(
     the first multi-lick bout (0 if no multi-lick bout). Feeds the
     session-inclusion ``n_phase_licks`` aggregation
     (``sum(n_licks_in_first_multi_bout)`` across trials).
+
+    Lick-definition unification (2026-06-01): when ``kept_licks`` is supplied
+    (v7 pipeline), the peak *times* come from the cleaned lick set instead of
+    re-running the raw slope detector, so ``n_peaks`` / ``first_peak_t_ms`` etc.
+    match the per-lick scalars + the visual bundle.
     """
     tp = params["dlc_kinematics"]["tongue_pertrial"]
     detect_win = tuple(tp["angle_detect_win_ms"])
@@ -181,17 +187,24 @@ def _extract_cell50_own_bout_scalars(
         _per_cell_bout,
         _per_cell_detector,
     )
-    detector = _per_cell_detector(params, "cell50")
     bout = _per_cell_bout(params, "cell50")
-    peaks = _slope_detect_lick_peaks(
-        y_t, x_t, t_ms, fps,
-        detect_win_ms=detect_win, detector_params=detector,
-    )
-    in_apply = (
-        (peaks.peak_times_ms >= apply_win[0])
-        & (peaks.peak_times_ms <= apply_win[1])
-    )
-    apply_t = peaks.peak_times_ms[in_apply]
+    if kept_licks is not None:
+        apply_t = np.asarray(sorted(
+            float(lk["t_ms"]) for lk in kept_licks
+            if np.isfinite(float(lk["t_ms"]))
+            and apply_win[0] <= float(lk["t_ms"]) <= apply_win[1]
+        ), dtype=np.float64)
+    else:
+        detector = _per_cell_detector(params, "cell50")
+        peaks = _slope_detect_lick_peaks(
+            y_t, x_t, t_ms, fps,
+            detect_win_ms=detect_win, detector_params=detector,
+        )
+        in_apply = (
+            (peaks.peak_times_ms >= apply_win[0])
+            & (peaks.peak_times_ms <= apply_win[1])
+        )
+        apply_t = peaks.peak_times_ms[in_apply]
     n_peaks = int(len(apply_t))
     bouts = _build_bouts(apply_t, float(bout["max_ili_ms"]))
     n_bouts = len(bouts)

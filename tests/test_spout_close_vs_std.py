@@ -91,10 +91,14 @@ def _real_registry() -> dict:
                 "2025-06-25": {},
                 "2025-06-26": {},
             },
+            # PS55 2025-04-28 removed (chore substrate-routing-and-secondary-
+            # spout-per-half-fix, 2026-05-31) to match the real config — it was
+            # hard-excluded in animals.yaml + n_dlc=0, not a real bare-vs-b
+            # session. (It was pre-stroke anyway, so its removal does not change
+            # the 14-session post-filter cohort.)
             "PS55": {
                 "2025-04-24": {"bare_ws_subdir_override": "20250424a"},
                 "2025-04-25": {"bare_ws_subdir_override": "20250425a"},
-                "2025-04-28": {},
                 "2025-04-30": {},
                 "2025-05-30": {},
                 "2025-06-01": {},
@@ -225,28 +229,26 @@ class TestIterCohortBSessionKeys:
         ))
         assert keys == [("PS_TEST", datetime.date(2025, 5, 6))]
 
-    def test_handles_PS55_2025_04_28_n_dlc_zero(self, tmp_path):
-        """The real PS55/2025-04-28 entry is n_dlc=0 (DLC-free; Phase 2
-        outputs present). It also happens to be pre-stroke (rel_day=-2
-        for PS55's 2025-04-30 stroke), so the filter excludes it. This
-        test pins that the iterator's filter is rel_day-based and does
-        NOT gate on n_dlc — the same entry with rel_day >= 2 would be
-        included transparently. We verify the exclusion side here; the
-        inclusion-when-post-stroke case is covered by the keys-yield-14
-        test (the filter logic is the same)."""
+    def test_ps55_2025_04_28_absent_from_cohort_b(self, tmp_path):
+        """PS55/2025-04-28 was REMOVED from secondary_spout_sessions: (chore
+        substrate-routing-and-secondary-spout-per-half-fix, 2026-05-31) — it
+        is hard-excluded in animals.yaml + n_dlc=0, not a real bare-vs-b
+        session. It was also pre-stroke (rel_day=-2 for PS55's 2025-04-30
+        stroke). Guard that it does not appear in Cohort B from either the
+        synthetic snapshot or the real config."""
         resolver = PathResolver(output_root=tmp_path)
-        keys = list(iter_cohort_b_session_keys(
-            resolver,
-            overrides_config=_real_registry(),
-            animal_info_cache=_real_animal_info_cache(),
-            require_on_disk=False,
-            animals=["PS55"],
-        ))
-        ps55_dates = [d for (_a, d) in keys]
-        assert datetime.date(2025, 4, 28) not in ps55_dates, (
-            "PS55/2025-04-28 should be excluded by rel_day filter "
-            "(rel_day=-2 < 2)"
-        )
+        for cfg in (_real_registry(), None):  # synthetic snapshot AND real cfg
+            keys = list(iter_cohort_b_session_keys(
+                resolver,
+                overrides_config=cfg,
+                animal_info_cache=(
+                    _real_animal_info_cache() if cfg is not None else None
+                ),
+                require_on_disk=False,
+                animals=["PS55"],
+            ))
+            ps55_dates = [d for (_a, d) in keys]
+            assert datetime.date(2025, 4, 28) not in ps55_dates
 
     def test_animals_filter_unknown_silently_drops(self, tmp_path):
         """Passing an animal not in the registry yields nothing for
@@ -261,6 +263,75 @@ class TestIterCohortBSessionKeys:
             animals=["PS_NOT_IN_REGISTRY"],
         ))
         assert keys == []
+
+
+class TestBHalfStillFlowsThroughCloseVsStd:
+    """REGRESSION (chore substrate-routing-and-secondary-spout-per-half-fix):
+    the per-half fix removes the bare half from the DLC drivers' skip, but the
+    ``b`` half MUST still flow through the close-vs-std comparison. This is the
+    asymmetry guard Priya flagged — the b half is load-bearing here even though
+    it is excluded from every DLC + standard spout-behavior pipeline.
+
+    ``iter_cohort_b_session_keys(require_on_disk=True)`` requires BOTH the bare
+    and the ``b`` NPZ to exist for a session to be enumerated, so it is a
+    direct test that the b half is consumed."""
+
+    @staticmethod
+    def _touch_npz(resolver, animal, date, *, suffix=None):
+        path = resolver.spout_licks_and_rewards_npz(
+            animal, date, session_suffix=suffix,
+        ) if suffix else resolver.spout_licks_and_rewards_npz(animal, date)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"")  # existence is all iter_*_keys checks
+        return path
+
+    def _setup(self, tmp_path):
+        resolver = PathResolver(output_root=tmp_path)
+        overrides = {
+            "secondary_spout_sessions": {"PS_TEST": {"2025-05-10": {}}},
+        }
+        cache = {
+            "PS_TEST": _make_animal_info(
+                "PS_TEST", stroke_date=datetime.date(2025, 5, 4),
+            ),
+        }
+        return resolver, overrides, cache
+
+    def test_session_yielded_when_both_halves_present(self, tmp_path):
+        """Bare + b NPZ both on disk → the post-stroke session IS in Cohort B."""
+        resolver, overrides, cache = self._setup(tmp_path)
+        d = datetime.date(2025, 5, 10)
+        self._touch_npz(resolver, "PS_TEST", d)                 # bare half
+        self._touch_npz(resolver, "PS_TEST", d, suffix="b")     # b half
+        keys = list(iter_cohort_b_session_keys(
+            resolver, overrides_config=overrides,
+            animal_info_cache=cache, require_on_disk=True,
+        ))
+        assert keys == [("PS_TEST", d)]
+
+    def test_session_dropped_when_b_half_missing(self, tmp_path):
+        """Only the bare NPZ present (no b half) → the session is NOT in
+        Cohort B. Proves the b half is required — if a refactor stopped
+        consuming the b half, this would (wrongly) still yield the session."""
+        resolver, overrides, cache = self._setup(tmp_path)
+        d = datetime.date(2025, 5, 10)
+        self._touch_npz(resolver, "PS_TEST", d)                 # bare half ONLY
+        keys = list(iter_cohort_b_session_keys(
+            resolver, overrides_config=overrides,
+            animal_info_cache=cache, require_on_disk=True,
+        ))
+        assert keys == []
+
+    def test_b_half_resolver_path_distinct_from_bare(self, tmp_path):
+        """The b half resolves to a distinct on-disk path (session_suffix='b')
+        from the bare half — the two halves are not collapsed."""
+        resolver = PathResolver(output_root=tmp_path)
+        d = datetime.date(2025, 5, 10)
+        bare = resolver.spout_licks_and_rewards_npz("PS_TEST", d)
+        b = resolver.spout_licks_and_rewards_npz(
+            "PS_TEST", d, session_suffix="b",
+        )
+        assert bare != b
 
 
 class TestSessionPairData:

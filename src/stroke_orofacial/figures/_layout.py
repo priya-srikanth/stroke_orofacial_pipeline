@@ -13,9 +13,14 @@ Q-locks:
 """
 from __future__ import annotations
 
-from typing import Any
+from functools import lru_cache
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from .palette import PHENOTYPE_ORDER, phenotype_display_name, phenotype_palette
+
+if TYPE_CHECKING:
+    from stroke_orofacial.paths import PathResolver
 
 
 def phenotype_panel(
@@ -222,6 +227,14 @@ ENDPOINT_DISPLAY_NAMES: dict[str, tuple[str, str]] = {
         "Tongue lick-1 X at Y-peak",
         "Delta X (px)",
     ),
+    "tongue_num_correct_licks_dlc": (
+        "DLC cue-correct licks / trial",
+        "Delta licks / trial",
+    ),
+    "tongue_num_incorrect_licks_dlc": (
+        "DLC cue-incorrect licks / trial",
+        "Delta licks / trial",
+    ),
 }
 
 
@@ -321,6 +334,33 @@ def expand_y_axis(ax: Any, *, frac: float = 0.08) -> None:
     ax.set_ylim(ymin - pad, ymax + pad)
 
 
+def padded_range(values: Any, *, frac: float = 0.08) -> tuple[float, float] | None:
+    """Return ``(lo, hi)`` spanning all finite ``values`` padded by ``frac*span``.
+
+    Returns ``None`` when there are no finite values or the span is zero (the
+    caller then leaves matplotlib's autoscale in place).
+
+    Used to set a UNION y-range across the two ``sharey`` side-split panels
+    (ipsi + contra) from the underlying data, computed once after BOTH panels
+    are drawn. The per-panel :func:`expand_y_axis` cannot do this: on a shared
+    axis, the first panel's ``set_ylim`` freezes autoscale, so the second
+    (larger-range) panel is clipped — the bug fixed 2026-05-31 (``tongue_n_right``
+    contra panel ran off the bottom).
+    """
+    import numpy as np
+    arr = np.asarray(
+        [v for v in values if v is not None and np.isfinite(v)], dtype=float,
+    )
+    if arr.size == 0:
+        return None
+    lo, hi = float(arr.min()), float(arr.max())
+    span = hi - lo
+    if span <= 0:
+        return None
+    pad = frac * span
+    return lo - pad, hi + pad
+
+
 # ---------------------------------------------------------------------------
 # Scatter underlay jitter (Q-lock 11 V5 + reusable for any categorical-x plot)
 # ---------------------------------------------------------------------------
@@ -367,3 +407,113 @@ def jittered_x_positions(
         float(epoch_idx) + float(off)
         for off in rng.uniform(-width, width, n_points)
     ]
+
+
+# ---------------------------------------------------------------------------
+# Canonical phenotype-pooled OUTPUT-PATH layout (scope + filter subtype)
+# ---------------------------------------------------------------------------
+#
+# The locked symmetric output tree (Stage 1.5, chore
+# ``dlc-pooled-phenotype-unification``):
+#
+#     <phenotype_pooled>/<endpoint>/<scope>/[no_filter/]<files>
+#
+# where ``<scope>`` ∈ {``4_tier``, ``3_tier``} and the ``no_filter/`` layer is
+# present ONLY for DLC-*filterable* scalars — those with a
+# ``stats/inputs/filtered_v1/<slug>/`` input (the 23 ``tongue_*`` metrics),
+# which gain a ``v2/`` filtered sibling in the filtered re-emit. Flat-scope
+# metrics (the 6 ``jaw_*`` scalars, ``mismatch_candidate_no_lick_with_jaw_move``,
+# and the 12 spout-behavior scalars) have no filtered counterpart, so no
+# ``no_filter/`` layer.
+#
+# This is the SINGLE source of truth for the layout, imported by BOTH the writer
+# (``figures/phenotype_pooled.py``) and the one-time migration tool
+# (``scripts/chore_dlc_pooled_phenotype/path_normalization.py``). Before
+# 2026-05-31 the writer emitted the legacy flat / ``3_phenotype/`` layout and
+# relied on the migration tool running after every emit; the writer now emits
+# canonical paths directly (matching the q13b/q13_traj/q12 siblings), so the
+# migration tool reverts to its proper one-time-historical role.
+
+SCOPE_4TIER = "4_tier"
+SCOPE_3TIER = "3_tier"
+NO_FILTER = "no_filter"
+#: Filtered (lick-filtered) subtype dir for DLC-filterable scalars. ``v3`` =
+#: filtered_v1 + v7-cleaned substrate, matching the q13b/q13_traj families'
+#: ``v3_filtered_v1_v7_cleaned_substrate`` convention (the v7-routing chore).
+FILTERED_V3 = "v3"
+#: NA-masked sibling of v3 for the lick-COUNT endpoints (H): the filtered figure
+#: WITHOUT zero-filling no-usable-lick sessions (they drop out, leaving gaps).
+#: v3 is the canonical zero-filled version; v3_na_masked preserves the masked one.
+FILTERED_V3_NA_MASKED = "v3_na_masked"
+#: Legacy 3-tier dir name (pre-unification). Retained as a constant only so the
+#: migration tool can still recognise + drain any historical ``3_phenotype/``
+#: tree; the writer no longer emits it.
+LEGACY_3TIER_DIRNAME = "3_phenotype"
+
+
+def classify_scalar(slug: str, filtered_slugs: frozenset[str]) -> tuple[str, str]:
+    """Return ``(metric_family_type, scope_layout)`` for a scalar metric.
+
+    A scalar is DLC-filterable — ``("dlc", "no_filter")`` — iff it has a
+    ``filtered_v1`` input; otherwise it is flat-scope ``("spout", "flat")``.
+    Data-driven off ``filtered_slugs`` (read live from disk), so a slug
+    auto-promotes the moment a ``filtered_v1`` input appears for it.
+    """
+    if slug in filtered_slugs:
+        return "dlc", NO_FILTER
+    return "spout", "flat"
+
+
+@lru_cache(maxsize=None)
+def _filtered_slugs_for_dir(filtered_v1_str: str) -> frozenset[str]:
+    """Cached disk read of the ``filtered_v1`` slug set (keyed by abs path)."""
+    p = Path(filtered_v1_str)
+    if not p.exists():
+        return frozenset()
+    return frozenset(
+        d.name for d in p.iterdir()
+        if d.is_dir() and not d.name.startswith("_")
+    )
+
+
+def load_filtered_slugs(resolver: "PathResolver") -> frozenset[str]:
+    """Slugs with a ``stats/inputs/filtered_v1/<slug>/`` input (DLC-filterable).
+
+    Cached per ``filtered_v1`` path so a per-endpoint emit loop reads disk once.
+    """
+    filtered_v1 = (
+        resolver.pipeline_outputs(subdir="stats") / "inputs" / "filtered_v1"
+    )
+    return _filtered_slugs_for_dir(str(filtered_v1))
+
+
+def pooled_scalar_endpoint_dir(
+    base: Path,
+    slug: str,
+    *,
+    remap_3tier: bool,
+    filtered_slugs: frozenset[str],
+    filter_variant: str = "none",
+) -> Path:
+    """Canonical output dir for one pooled-scalar endpoint figure.
+
+    ``<base>/<slug>/<scope>/[<subtype>/]`` — ``scope`` is ``3_tier`` when
+    ``remap_3tier`` else ``4_tier``. The subtype layer is:
+
+    * ``filter_variant="filtered_v1"`` → ``v3/`` (the lick-filtered figure;
+      only DLC-filterable slugs have filtered_v1 inputs, so this path is only
+      ever taken for them).
+    * ``filter_variant="none"`` → ``no_filter/`` iff the slug is DLC-filterable
+      (see :func:`classify_scalar`), else a flat scope (no subtype layer) for
+      jaw / mismatch / spout metrics with no filtered counterpart.
+    """
+    scope = SCOPE_3TIER if remap_3tier else SCOPE_4TIER
+    _, layout = classify_scalar(slug, filtered_slugs)
+    parts = [slug, scope]
+    if filter_variant == "filtered_v1":
+        parts.append(FILTERED_V3)
+    elif filter_variant == "filtered_v1_na_masked":
+        parts.append(FILTERED_V3_NA_MASKED)
+    elif layout == NO_FILTER:
+        parts.append(NO_FILTER)
+    return base.joinpath(*parts)

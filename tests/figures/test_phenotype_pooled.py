@@ -16,6 +16,121 @@ import pytest
 from stroke_orofacial.figures import _io, _layout, phenotype_pooled
 
 
+class TestCanonicalOutputLayout:
+    """The writer emits the canonical ``<endpoint>/<scope>/[no_filter/]`` tree
+    directly (2026-05-31 — legacy flat / ``3_phenotype/`` layout + post-emit
+    path_normalization step retired). Guards
+    :func:`_layout.pooled_scalar_endpoint_dir`, the single source of truth
+    shared with the migration tool."""
+
+    FILTERED = frozenset({"tongue_lick1_y_peak"})  # one DLC-filterable slug
+
+    def test_tongue_filterable_gets_no_filter_layer(self, tmp_path) -> None:
+        base = tmp_path / "phenotype_pooled"
+        d4 = _layout.pooled_scalar_endpoint_dir(
+            base, "tongue_lick1_y_peak",
+            remap_3tier=False, filtered_slugs=self.FILTERED,
+        )
+        d3 = _layout.pooled_scalar_endpoint_dir(
+            base, "tongue_lick1_y_peak",
+            remap_3tier=True, filtered_slugs=self.FILTERED,
+        )
+        assert d4 == base / "tongue_lick1_y_peak" / "4_tier" / "no_filter"
+        assert d3 == base / "tongue_lick1_y_peak" / "3_tier" / "no_filter"
+
+    def test_jaw_flat_scope_no_no_filter_layer(self, tmp_path) -> None:
+        base = tmp_path / "phenotype_pooled"
+        d4 = _layout.pooled_scalar_endpoint_dir(
+            base, "jaw_peak_pos_deflection",
+            remap_3tier=False, filtered_slugs=self.FILTERED,
+        )
+        d3 = _layout.pooled_scalar_endpoint_dir(
+            base, "jaw_peak_pos_deflection",
+            remap_3tier=True, filtered_slugs=self.FILTERED,
+        )
+        assert d4 == base / "jaw_peak_pos_deflection" / "4_tier"
+        assert d3 == base / "jaw_peak_pos_deflection" / "3_tier"
+
+    def test_no_legacy_3phenotype_segment(self, tmp_path) -> None:
+        """Regression: the legacy top-level ``3_phenotype/`` dir is never emitted."""
+        for slug in ("tongue_lick1_y_peak", "jaw_peak_pos_deflection"):
+            d = _layout.pooled_scalar_endpoint_dir(
+                tmp_path, slug, remap_3tier=True, filtered_slugs=self.FILTERED,
+            )
+            assert "3_phenotype" not in d.parts
+            assert "3_tier" in d.parts
+
+    def test_filtered_variant_routes_to_v3(self, tmp_path) -> None:
+        """``filter_variant="filtered_v1"`` routes the filterable tongue scalar
+        to the ``v3/`` subtype (matching the q13b/q13_traj families)."""
+        base = tmp_path / "phenotype_pooled"
+        d4 = _layout.pooled_scalar_endpoint_dir(
+            base, "tongue_lick1_y_peak", remap_3tier=False,
+            filtered_slugs=self.FILTERED, filter_variant="filtered_v1",
+        )
+        d3 = _layout.pooled_scalar_endpoint_dir(
+            base, "tongue_lick1_y_peak", remap_3tier=True,
+            filtered_slugs=self.FILTERED, filter_variant="filtered_v1",
+        )
+        assert d4 == base / "tongue_lick1_y_peak" / "4_tier" / "v3"
+        assert d3 == base / "tongue_lick1_y_peak" / "3_tier" / "v3"
+
+
+class TestSideSplitSharedYRange:
+    """The ipsi+contra panels share a y-axis (``sharey=True``); the shared
+    range must be the UNION of both panels' data so neither is clipped.
+    Regression for the 2026-05-31 bug where the per-panel ``expand_y_axis``
+    froze the shared axis to the first (ipsi) panel, cutting off the larger
+    contra panel (``tongue_n_right`` / ``tongue_lick_rate_hz`` contra ran off
+    the bottom)."""
+
+    def _pooled(self) -> "pd.DataFrame":
+        # ipsi: small range near 0; contra: a deep negative excursion at acute.
+        rows = []
+        for ic, mean_acute in (("ipsi", 0.5), ("contra", -10.0)):
+            for ep, m in (("pre", 0.0), ("acute", mean_acute),
+                          ("sub_acute", -0.5), ("chronic", -0.3)):
+                rows.append({
+                    "phenotype_tier": "mild", "epoch_label": ep,
+                    "ipsi_contra": ic, "mean": m, "sem": 0.2,
+                })
+        return pd.DataFrame(rows)
+
+    def _sessions(self) -> "pd.DataFrame":
+        rows = []
+        for ic, v in (("ipsi", 0.4), ("contra", -11.0)):
+            rows.append({
+                "phenotype_tier": "mild", "epoch_label": "acute",
+                "ipsi_contra": ic, "delta_value": v,
+            })
+        return pd.DataFrame(rows)
+
+    def test_v5_shared_axis_fits_contra(self) -> None:
+        import matplotlib
+        matplotlib.use("Agg")
+        fig = phenotype_pooled._build_v5_side_split_figure(
+            self._pooled(), self._sessions(), "tongue_n_right", {"mild": 4},
+        )
+        ipsi_ax, contra_ax = fig.axes[0], fig.axes[1]
+        # sharey → both share limits; the deep contra delta (-11) must be inside.
+        assert ipsi_ax.get_ylim() == contra_ax.get_ylim()
+        assert ipsi_ax.get_ylim()[0] <= -11.0, ipsi_ax.get_ylim()
+
+    def test_v4_shared_axis_fits_contra(self) -> None:
+        import matplotlib
+        matplotlib.use("Agg")
+        pooled = self._pooled().rename(columns={"epoch_label": "_e"})
+        # V4 keys on bin_midpoint_rel_day, not epoch; map epochs → bin midpoints.
+        bins = {"pre": 0.0, "acute": 1.0, "sub_acute": 5.0, "chronic": 20.0}
+        pooled["bin_midpoint_rel_day"] = self._pooled()["epoch_label"].map(bins)
+        fig = phenotype_pooled._build_v4_side_split_figure(
+            pooled, "tongue_n_right", {"mild": 4},
+        )
+        ipsi_ax, contra_ax = fig.axes[0], fig.axes[1]
+        assert ipsi_ax.get_ylim() == contra_ax.get_ylim()
+        assert ipsi_ax.get_ylim()[0] <= -10.0, ipsi_ax.get_ylim()
+
+
 def test_cli_help_parses() -> None:
     """`--help` exits 0 without invoking the runner."""
     with pytest.raises(SystemExit) as exc:

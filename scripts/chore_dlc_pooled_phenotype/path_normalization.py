@@ -70,16 +70,22 @@ import sys
 from pathlib import Path
 from typing import NamedTuple
 
+from stroke_orofacial.figures._layout import (
+    LEGACY_3TIER_DIRNAME,
+    NO_FILTER,
+    SCOPE_3TIER,
+    SCOPE_4TIER,
+    classify_scalar,
+)
 from stroke_orofacial.paths import PathResolver
 
 # ---------------------------------------------------------------------------
 # Convention constants
 # ---------------------------------------------------------------------------
-
-SCOPE_4TIER = "4_tier"
-SCOPE_3TIER = "3_tier"
-NO_FILTER = "no_filter"
-LEGACY_3TIER_DIRNAME = "3_phenotype"
+# Scope/layout constants + ``classify_scalar`` are imported from
+# ``stroke_orofacial.figures._layout`` — the single source of truth shared with
+# the writer (``figures/phenotype_pooled.py``). This tool is now a one-time
+# historical migration; the writer emits the canonical layout directly.
 
 #: Scope-marker dir names — files already nested under one are pre-migrated.
 _SCOPE_MARKERS: frozenset[str] = frozenset({SCOPE_4TIER, SCOPE_3TIER})
@@ -123,17 +129,6 @@ class SkippedFile(NamedTuple):
 # ---------------------------------------------------------------------------
 # Classification
 # ---------------------------------------------------------------------------
-
-def classify_scalar(slug: str, filtered_slugs: frozenset[str]) -> tuple[str, str]:
-    """Return ``(metric_family_type, scope_layout)`` for a scalar metric.
-
-    A scalar is DLC-filterable (→ ``no_filter`` layout, ``dlc`` type) iff it
-    has a ``filtered_v1`` input; otherwise it is flat (→ ``spout`` type).
-    """
-    if slug in filtered_slugs:
-        return "dlc", NO_FILTER
-    return "spout", "flat"
-
 
 def _layout_segment(scope_layout: str) -> tuple[str, ...]:
     """Path segments contributed by the layout (``no_filter`` adds a dir)."""

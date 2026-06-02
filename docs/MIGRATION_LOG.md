@@ -5,6 +5,172 @@ differences vs. the legacy notebooks.
 
 ---
 
+## Chore: Substrate-routing + secondary-spout per-half fix + comprehensive re-emit (CC #9)
+
+**Date:** 2026-05-30 → 2026-06-01
+**Tags on merge:** `vChore-substrate-routing-and-secondary-spout-per-half-fix` +
+`vChore-jaw-v34-cleanup-correctness-fix` (apply post-merge to the merge SHA).
+**Branch:** `chore-substrate-routing-and-secondary-spout-per-half-fix`
+(off `origin/main` @ `be5871d`).
+
+Began as two code fixes + a comprehensive figure re-emit; expanded (live, Priya-
+directed) into a batch of new phenotype-pooled analyses. All landed as small,
+tested commits on the feature branch.
+
+### §A — Original scope (re-emit chore)
+- **Stage 1 — secondary-spout per-half fix** (`696e649`): the v7/endpoints/jaw
+  re-emit drivers read `secondary_spout_sessions:` as a per-DATE skip, wrongly
+  dropping the bare (primary-spout, DLC) half. `manifest.is_secondary_spout_b_half`
+  now skips ONLY the `b` half; trace-existence is the sole guard.
+- **Stage 1b — tongue angle substrate → v7-cleaned** (`696e649`): the cross-session
+  angle substrate was the interpolated trace; now routes through the v7-cleaned
+  trace (Priya: "tongue angle should be from cleaned traces"). v7 pre-pass computes
+  `v7_trial_results` once.
+- **Stage 0b — jaw v3.4 cleanup producer reconstructed in-repo** (`73355bc`): the
+  231 on-disk jaw cleaned_traces came from a lost, over-aggressive scratch producer
+  (wiped real licks to baseline). Rebuilt as `jaw_cleanup_v34.py` (re-PCHIP of x+y
+  from surviving anchors); adopted v3.4 as canonical; re-emitted all jaw + cascade.
+- **Comprehensive re-emit**: ALL tongue (v7) + jaw (v3.4) trace consumers —
+  cleaned_traces / lick_events / per-trial JSON / per_frame angle; QC + cross-session
+  angle; Q13/Q13c trajectories + Q13b endpoints (both tiers); mean±SEM cohort
+  overlays + **individual_sessions + trial_overlays** (the per-session families were
+  missed by the cohort driver — a new jaw extras driver was added, `8b6efdb`);
+  mismatch; Q12 spatial; scalar parquets (none + filtered_v1); Phase-9 stats finale
+  (`run_stats_axis` none+filtered_v1 → `build_task_5` → `build_task_7 --mode all`:
+  124 figures = headlines + per_animal + forest).
+- **day_binned cleanup** (`a8700b8`): deleted the write-only-orphan
+  `licking_dynamics/day_binned` (no in-repo readers) + deprecated its producer.
+
+### §B — Pooled-scalar figure infrastructure (`7b8d7dc`)
+- **Writer fix**: `figures/phenotype_pooled.py` now emits the canonical
+  `<endpoint>/<scope>/[subtype]/` layout DIRECTLY (matching the q13b/q13_traj
+  siblings), retiring the post-emit `path_normalization` dance that had left fresh
+  figures in legacy paths + stale canonical copies. Layout logic lifted to
+  `figures/_layout.py` (single source of truth, imported by writer + migration tool).
+- **filtered-v3**: `--filter-variant {none, filtered_v1, filtered_v1_na_masked}`
+  (`_io.load_stats_inputs` reads the matching inputs tree) → `no_filter` / `v3` /
+  `v3_na_masked` subtypes.
+- **y-scale side-split fix**: the `sharey` ipsi/contra panels clipped the larger
+  panel (first panel's `expand_y_axis` froze the shared axis). V4/V5 now set a UNION
+  padded y-range over both panels after both are drawn. (`tongue_n_right`,
+  `tongue_lick_rate_hz` contra panels.)
+
+### §C — New phenotype-pooled analyses
+- **C — DLC cue-relative licks** (`7f45263`): `tongue_num_correct/incorrect_licks_dlc`
+  — per-trial cross-select of `n_left`/`n_right` by the cued spout side (toward-cue =
+  correct). DLC-kinematic analog of the spout `num_correct/incorrect_licks_per_trial`.
+- **D — normalized W-2 recovery** (`9b4a773` tongue/jaw, `e18a2db` whisker/nose/
+  spout/eye): each session W-2 ÷ that animal's pre-stroke mean W-2 per side
+  (`ratio_to_baseline`). New `normalized_wasserstein_recovery/` family.
+- **E — figure-provenance CSV** (`8b6efdb`): `figure_provenance.csv` documents
+  source / substrate / filter per family (disambiguates the v2/v3/no_filter naming
+  collision across families).
+- **F — all-licks pooled angle trajectory** (`65e1200`): `q13_traj_v2_emit
+  --lick-set all_multi` → sibling `phase_aligned_trajectories_all_licks/` family.
+- **G — per-session OT create/destroy/move** (`9b4a773`, `e18a2db`): unbalanced-OT
+  decomposition scalars persisted alongside the per-session W-2.
+- **H — zero-fill lick counts** (`7f45263` + `7b8d7dc`): the 5 lick-COUNT endpoints'
+  filtered (v3) figures zero-fill no-usable-lick sessions (= 0, not NA gaps); the
+  NA-masked version is preserved as the `v3_na_masked` subtype sibling.
+- **I — all-licks phase-aligned endpoints** (`65e1200`): `q13b_v2_emit --lick-set
+  all_multi` → per-LICK (n=licks) endpoints → sibling
+  `phase_aligned_endpoints_all_licks/` family.
+
+### Behavior fix
+- **densify per-lick** (`65e1200`): `densify_phase_rows_via_interp` interpolated one
+  `np.interp` per TRIAL; for all-licks (many licks per trial) that zigzagged across
+  interleaved phase sweeps → jagged trajectories. Now interpolates per (trial,
+  `peak_t_ms`) then collapses peaks back to per-(trial, bin). Default `first_lick` is
+  a guarded no-op (one peak per trial); 83 trajectory tests unchanged.
+
+### §D — Lick-definition unification (2026-06-01)
+
+- **Root change** (`7cf32b7`): Tongue per-lick scalars (`lick1`/`lick2`/velocity/
+  `n_licks`) already routed through v7 `kept_licks`; the BOUT/PHASE/TRAJECTORY family
+  (`n_peaks`/`n_bouts`, `first_peak_t_ms`, `mean_within_bout_ili`, `bout_count`,
+  `lick_rate`, Cell-50 own-bout scalars, Cell-42 trace peak times, phase-aligned
+  endpoint substrate) still re-ran the raw peak detector. Unified onto kept_licks
+  across:
+  - `tongue_pertrial.py`: `_BundlePeaks` + `_kept_licks_to_bundle_peaks()` (maps
+    `lick.t_ms` → trial-slice frame); `_build_visual_bundle_per_trial(kept_licks=)`
+    branch; caller threads `v7_results_by_pos[pos].kept_licks`;
+    `_extract_licking_dynamics_reductions`; Cell-42 trace peak-time path.
+  - `_angle.py`: `_extract_cell50_own_bout_scalars`.
+  - `tongue_jaw_mismatch.py`: default `use_v7_cleaned` False → True (separate
+    DECISIONS entry).
+  - Legacy raw-detector path preserved under `use_v7_pipeline=False` (A/B audit).
+
+  Pilot verifier (`scripts/chore_lick_unification/pilot_verify.py`, PS51): NEW
+  `first_peak == lick1` = 100% vs PRE = 54.5%.
+
+- **Cohort burn — DONE, on disk, do NOT redo:**
+  - `reemit_tongue_pertrial_cohort.py`: **248 OK / 127 SKIP / 0 FAIL**. On-disk
+    verified `first_peak == lick1 == 100%`. The 248 = the analysis cohort
+    (sessions with interpolated traces); the 127 missing-trace sessions are
+    non-analysis and correctly skipped.
+  - Re-materialized stats inputs (`none` + `filtered_v1`) + all-licks precompute
+    (236 sessions) from the new JSON.
+  - Tongue follow-ons `reemit_tongue_followons_cohort.py`: **256 OK** (248
+    within-session QC + 8 cross-session angle).
+  - Manifests reset + backed up at `.scratch_chore_phase_7e_reemit/{cohort_manifest,
+    stage5b_manifest,stage5_manifest}.csv.pre_lick_unif*.bak` (clear current
+    manifest before any re-run to avoid resume-skip).
+
+- **Running at handoff:** mismatch re-emit `reemit_tongue_jaw_mismatch_cohort.py`
+  (was at PS50 at handoff; manifest auto-resumes OK rows on relaunch).
+
+- **Remaining re-emit (dependency order):**
+  1. After mismatch done → re-materialize the `mismatch_candidate_no_lick_with_jaw_move`
+     scalar (`materialize_inputs.py` picked up the OLD interpolated mismatch before
+     the `use_v7_cleaned` flip → STALE).
+  2. Cohort aggregates `reemit_cohort_aggregates.py`: ONLY E3b individual_sessions +
+     E3c trial_overlays for TONGUE (E1 angle + E2 mismatch already covered by
+     followons/mismatch; E3 mean/SEM UNCHANGED; E4 day-binned DEPRECATED / disabled).
+  3. Wasserstein de-collision (separate DECISIONS entry; GATES the stats sheets):
+     q12 + whisker/nose per_session writes namespaced into `tongue_jaw/` and
+     `whisker_nose/` chore subdirs; pooled-stats loader recursive-glob reads both;
+     normalized W-2 per_session write added.
+  4. Phenotype-pooled: q13b (`q13b_v2_emit.py --remap-phenotypes both --lick-set
+     {first_lick,all_multi} --out-version v3 --overwrite force`) + q13_traj
+     (`q13_traj_v2_emit.py`) + scalar V4/V5 (`figures/phenotype_pooled.py`) →
+     consolidated pooled-stats sheet (`build_pooled_phenotype_stats.py --n-boot
+     5000`) → deck (`build_stats_figure_deck.py`). q13b annotates from sheet's
+     `headline_sig` (sheet runs BEFORE q13b). Marker placement: top-of-panel band.
+  5. Phase-9 axis-testing stats (separate from the deck sheet):
+     `run_stats_axis.py` (none + filtered_v1) → `build_task_5_headline_summary.py`
+     → `build_task_7_figures.py` headlines. Covers the changed scalars
+     (`first_peak_t_ms`, `mean_within_bout_ili_ms`, `lick_rate_hz`, `bout_count`,
+     `n_peaks` / `n_bouts`) + phase-aligned endpoints.
+
+- **Intentional behavior difference vs. legacy / pre-unification:** bout-level +
+  phase-aligned outputs now match the per-lick scalars they sit next to (e.g.
+  `tongue_first_peak_t_ms` agrees with `tongue_lick1_t_peak_ms`; pilot PS51
+  100% post-fix vs 54.5% pre). Figures predating the cohort burn are based on
+  the disagreed-with-scalars version and supersede on re-emit.
+
+- **UNCHANGED, do NOT re-emit:** `cleaned_traces` + `lick_events` parquets (v7
+  untouched); per-frame angle; `lick1`/`lick2` + velocity + `n_licks` scalars; ALL
+  jaw outputs; ALL spatial / wasserstein computation; tongue mean±SEM time-series;
+  tone / whole-session heatmaps.
+
+- **Key commits:** `7cf32b7` (lick-unification core), `a904105` (pooled-stats
+  driver: filtered_v1 + figured-scope + MWU headline + xlsx), `0fc418d` (deck
+  builder), `fd04179` (#4 axis-tree symmetry).
+
+- **Uncommitted at handoff:** `build_stats_figure_deck.py` on-slide significance
+  panels (phenotype × epoch × side grid from `headline_sig` /
+  `headline_and_bootstrap_sig`) + whisker(singular) naming fix.
+
+### Known follow-ups
+- C's endpoint registration lives in the gitignored `.scratch_phase_9/
+  endpoint_inventory.csv` — promote to a committed config.
+- I (all-licks endpoints) rebuilds per-session bundles on-the-fly twice
+  (filtered + nofilter) — cache the bundle build if re-run often.
+- §D's uncommitted deck-builder edits (significance panels + whisker naming
+  fix) — land before Stage 5 close.
+
+---
+
 ## Chore: Phenotype-pooled whisker + nose + spout + eye spatial analysis
 
 **Date:** 2026-05-30

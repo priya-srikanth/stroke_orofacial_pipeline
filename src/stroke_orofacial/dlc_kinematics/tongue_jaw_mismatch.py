@@ -44,8 +44,10 @@ consumes the masked traces; baseline-fill placeholder values
 no-data rather than biological tongue-at-rest signal for the mismatch
 detector's ``quiet_tongue_pass`` predicate. Mirrors the Phase 7e.1
 (``_extract_lick1_lick2``) and Phase 7e.2 (``_extract_peak_velocity_first5``)
-routing patterns that landed for per-trial endpoints. Default
-``use_v7_cleaned=False`` preserves backwards compat.
+routing patterns that landed for per-trial endpoints. Default flipped to
+``use_v7_cleaned=True`` (lick-definition unification, 2026-06-01) so the
+mismatch quiet-tongue predicate reads the cleaned substrate like everything
+else; pass ``False`` explicitly for the legacy interpolated A/B comparison.
 
 Outputs (atomic)
 ----------------
@@ -171,7 +173,7 @@ def classify_tongue_jaw_mismatch(
     *,
     overwrite: Literal["skip", "force"] = "skip",
     animal_info: AnimalInfo | None = None,
-    use_v7_cleaned: bool = False,
+    use_v7_cleaned: bool = True,
 ) -> Path | None:
     """Classify mismatch trials for one session and write the parquet atomically.
 
@@ -265,7 +267,7 @@ def render_within_session_figures(
     *,
     candidate_trials_df: pd.DataFrame | None = None,
     overwrite: Literal["skip", "force"] = "skip",
-    use_v7_cleaned: bool = False,
+    use_v7_cleaned: bool = True,
 ) -> dict[str, list[Path]]:
     """Render the 2 within-session figure families for one ``(animal, date)``.
 
@@ -362,7 +364,7 @@ def render_cross_session_figures(
     *,
     overwrite: Literal["skip", "force"] = "skip",
     animal_info: AnimalInfo | None = None,
-    use_v7_cleaned: bool = False,
+    use_v7_cleaned: bool = True,
 ) -> dict[str, Path]:
     """Render the 2 cross-session figure families for one mouse.
 
@@ -450,7 +452,7 @@ def _build_classifier_result(
     params: dict[str, Any],
     animal_info: AnimalInfo,
     *,
-    use_v7_cleaned: bool = False,
+    use_v7_cleaned: bool = True,
 ) -> TongueJawMismatchResult:
     """Pure-compute path: build the per-trial DataFrame + metadata dict."""
     cfg = params["dlc_kinematics"]["tongue_jaw_mismatch"]
@@ -639,7 +641,7 @@ def _build_tongue_detector_params(tongue_detector_cfg: dict[str, Any]) -> dict[s
 def _load_bodypart_y_final(
     resolver: PathResolver, animal: str, date: datetime.date,
     *, bodypart: Literal["tongue", "jaw"],
-    use_v7_cleaned: bool = False,
+    use_v7_cleaned: bool = True,
 ) -> tuple[np.ndarray, float, int]:
     """Read ``y_final`` + ``fps`` + ``n_frames``.
 
