@@ -648,6 +648,13 @@ Phase 10 backlog.
 
 ## 10. CLAUDE CODE: FIRST-TIME USER SETUP (macOS)
 
+> **Historical note (2026-06):** §10 and §11 are the *original* first-time
+> onboarding playbook, written for a macOS Terminal setup at project start. The
+> project is now developed primarily on **Windows** (PowerShell + the env at
+> `.conda/envs/stroke_orofacial`), and the day-to-day workflow conventions are
+> maintained in [`CLAUDE.md`](../CLAUDE.md). These two sections are kept for
+> historical/onboarding provenance and are not the current operating procedure.
+
 ### 10.1 Install
 
 In Terminal on your Mac, either:
@@ -786,6 +793,27 @@ Paste this at the top of your first Claude Code session in the new empty repo:
 ## 12. OPEN QUESTIONS / DECISIONS DEFERRED
 
 These are `[TODO]` on purpose; they need either more code-reading or Priya's scientific input before locking in.
+
+> **As-built note (2026-06):** Most of these are now **resolved** and are kept
+> for provenance:
+> - **1** (SMB mount point) — resolved during Phase 1 paths setup (`PathResolver`
+>   + `configs/paths.yaml`).
+> - **2** (wavesurfer sample rate + frame-trigger channel) — resolved in Phase 3
+>   alignment (codified in the alignment module + `MIGRATION_LOG.md` Phase 3).
+> - **3** (lick-detection method) — resolved in Phase 2; thresholds live in
+>   `configs/defaults.yaml`.
+> - **4** (DLC likelihood threshold) — resolved in Phase 4 DLC I/O.
+> - **5** (recovery-epoch scheme) — resolved; see §6.3 as-built note +
+>   `STATS_PIPELINE.md`.
+> - **6** (other master-metadata cells) — resolved; `configs/animals.yaml` is the
+>   single source.
+> - **7** (DLC re-inference inside the repo) — settled **no**; `dlc_inference_o2/`
+>   stays a standalone O2-only tool.
+> - **9** (target Python) — settled at **3.11** (unified `stroke_orofacial` env,
+>   §2.3 / §8).
+>
+> Only **8** (nbstripout / Jupytext) remains genuinely open. The original list
+> follows.
 
 1. Exact mount point of the SMB share on Priya's Mac (e.g. `/Volumes/MICROSCOPE`?).
 2. Wavesurfer sample rate and which analog/digital channel carries the Flea3 frame trigger/strobe.
