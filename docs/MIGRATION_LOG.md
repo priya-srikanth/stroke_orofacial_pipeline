@@ -7520,3 +7520,31 @@ The pre-CC-#6 implausible scalar values in the severe/mod-severe **acute** cells
 - Probe/report artifacts on the share under `stats/sensitivity/` (`substrate_routing_audit.md`, `substrate_fix_pilot/`, `stage5_reprobe_report.md`, `ps46_chronic_first_vs_subsequent_lick_deflection.md`).
 
 Tag on merge: `vChore-tongue-substrate-v7-routing-fix`.
+
+## 2026-06-02 — chore-repo-cleanup (PR #169)
+
+**Closed-phase repo hygiene.** Deletes stale gitignored `.scratch_*` scratch dirs for disk recovery, after lifting durable provenance into a committed archive. No source, no live pipeline-output trees, and no branches were touched. **Most of this is invisible in the PR diff** — deleted scratch dirs are gitignored, so ~2.35 GB of on-disk deletion produces zero git change.
+
+### Deleted (on-disk, gitignored — not in diff)
+- **16 CLOSED-PHASE-SAFE scratch dirs → ~2.3 GB.** Headline: `.scratch_phase_8a_10_1` (1.9G, Phase 8a.10.1 `inspect_npz_output/`), `.scratch_phase_7b_light` (359M, `spot_check/`). Each verified to contain **no canonical-data producer** (any flagged `.py` writes only audit/verify `to_csv`/`json.dump` reports, never pipeline parquet/npz); all correspond to merged+tagged phases (`v7a.3-*`, `v7b-light-*`, `v7c.*`, `v7d-*`, `v8a.10*`, …).
+- **3 preserve-gated dirs → ~54 MB:** `.scratch_7a3` (417K), `.scratch_phase_7e` (2.4M), `.scratch_phase_7f_scoping` (51M) — deleted only after provenance archived (below).
+- **Net disk recovery ≈ 2.32 GB** (after the 32M archive footprint).
+
+### Preserved before deletion (committed — anti-lost-producer, per the jaw v3.4 lesson)
+`pipeline_outputs/archive/scratch_preserved_2026-06/` (preservation-only; not read by the pipeline):
+- `7a3_tongue_kinematics_port_source/` — 5 Phase-7a.3 `tongue_cell*.py` legacy notebook port-source (logic already in `src/.../tongue_pertrial.py`; e.g. cell36 peak-velocity → `_extract_peak_velocity_first5`).
+- `7e_v7_canonical_fixtures/gen_v7_canonical_fixtures.py` — fixture-population tool for `tests/fixtures/v7_canonical/`.
+- `7f_jaw_cleanup_v34_provenance/` — the `audit_jaw_cleanup_sim_v3p1→v3p4` refinement ladder (how the v3.4 constants were derived; canonical algorithm itself committed at `src/.../jaw_cleanup_v34.py`, PR #165) + `audit_results/` parity tables/PNGs.
+- **78 files committed; 11 derived `*.parquet` (~25M) preserved on-disk only** (global `*.parquet` gitignore; reproducible from the committed v3.4 producer).
+
+### Explicitly NOT touched
+- **Branches: none.** Per GR8 (primacy over the kickoff's Stage 1(c), which called for `git branch -D` of squash-merged-equivalents), no local branches were pruned and origin was left intact. Specifically preserved: `chore/v7-spatial-impact-audit` (PR #147 OPEN), `docs/cowork-state-phase-7e-cascade-close` (PR #146 OPEN), `investigation/dlc-tongue-quality-severe-acute` (3 unique unmerged commits incl. a Phase-9.1 figure scaffold — local-only, no origin copy).
+- **Scratch holds:** `.scratch_phase_9` / `.scratch_phase_9_1` (ACTIVE Phase 9.1); `.scratch_chore_phase_7e_reemit` (buffer hold — cohort manifests referenced by next-pass cleanup).
+
+### Notes
+- Executed in an isolated worktree (`stroke_orofacial_pipeline-cleanup`) off `origin/main` per GR9 (a parallel CC session held the main working tree on `docs/readme-pipeline-walkthrough`). Scratch deletes targeted the main working tree (gitignored, branch-independent).
+- Kickoff referenced a discipline memory (`feedback_enumerate_branch_unique_files_before_force_delete`) that does not exist; the equivalent existing discipline (`verify_producer_code_in_repo_before_depending_on_outputs` + the jaw v3.4 memory) was applied instead.
+- Stage 2 (`docs/prompts/` archive sweep) and Cowork-side memory consolidation were out of scope.
+
+Stage 0 audit: `pipeline_outputs/stats/sensitivity/repo_cleanup_audit_2026-06.md`.
+Tag on merge: `vChore-repo-cleanup-2026-06`.

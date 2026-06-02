@@ -1,0 +1,17 @@
+phenotype,epoch_label,n_trials_compared,n_sign_flips,frac_sign_flips
+mild,acute,408,1,0.0024509803921568627
+mild,chronic,3856,2,0.0005186721991701245
+mild,pre,2581,3,0.001162340178225494
+mild,sub_acute,1144,1,0.0008741258741258741
+moderate,acute,479,1,0.0020876826722338203
+moderate,chronic,581,0,0.0
+moderate,pre,676,0,0.0
+moderate,sub_acute,283,0,0.0
+moderate-severe,acute,384,0,0.0
+moderate-severe,chronic,2649,1,0.00037750094375235937
+moderate-severe,pre,577,0,0.0
+moderate-severe,sub_acute,868,1,0.001152073732718894
+severe,acute,2316,1,0.0004317789291882556
+severe,chronic,1672,0,0.0
+severe,pre,1056,1,0.000946969696969697
+severe,sub_acute,2833,1,0.00035298270384751147

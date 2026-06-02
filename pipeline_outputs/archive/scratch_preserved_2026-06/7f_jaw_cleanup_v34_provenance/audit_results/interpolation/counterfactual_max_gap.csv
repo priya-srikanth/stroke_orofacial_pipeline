@@ -1,0 +1,5 @@
+tightened_cap_ms,n_pchip_or_linear_gaps_flipped,n_frames_flipped,n_total_pchip_or_linear_frames,frac_pchip_frames_flipped
+30.0,204860,2737177,4130035,0.6627491050317975
+60.0,53530,1064465,4130035,0.2577375252267838
+90.0,12189,316022,4130035,0.0765179956102067
+120.0,0,0,4130035,0.0

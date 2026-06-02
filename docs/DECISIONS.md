@@ -6217,3 +6217,17 @@ The following decisions are **deliberately deferred** — recorded here so they 
 **Rationale:** Matches kickoff `filtered_v1/` subdir spec; `runners.py` unchanged; filtered tree independently inspectable + reproducible; multi-consumer flexibility; small disk cost for per-trial parquets.
 
 **Enforced at:** `scripts/phase_9_stats/materialize_inputs.py` Option-I implementation.
+
+---
+
+## 2026-06-02: Scratch-dir cleanup — preserve provenance to a committed archive; GR8 has primacy over kickoff branch-prune
+
+**Context:** The repo-cleanup chore (PR #169) deleted ~2.35 GB of closed-phase `.scratch_*` dirs. Two policy questions surfaced: (a) how to avoid the jaw-v3.4 "lost producer" failure when deleting scratch dirs that may hold one-of-a-kind provenance; (b) the kickoff's Stage 1(c) instructed `git branch -D` of squash-merged-equivalent local branches, which conflicts with GR8.
+
+**Decision:**
+1. Before deleting any scratch dir, grep it for canonical-data writers (`to_parquet`/`savez`) and lift any unique provenance into a **preservation-only** archive at `pipeline_outputs/archive/scratch_preserved_<YYYY-MM>/` (with a README documenting origin + that it is not pipeline-read). Derived `*.parquet` stay on-disk-gitignored there (reproducible); `.py`/`.csv`/`.png` provenance is committed.
+2. **GR8 has primacy over any kickoff that requests local branch pruning.** Claude Code does not `git branch -D`; local branch pruning is Priya's manual call and origin is left intact — regardless of a kickoff Q-lock to the contrary.
+
+**Rationale:** (1) Codifies the jaw-v3.4 lesson ([[verify-producer-code-in-repo-before-depending-on-outputs]]) into the cleanup workflow so provenance survives disk reclamation. (2) A non-negotiable ground rule outranks a chore kickoff; the kickoff author can be wrong, and force-deleting branches is irreversible with no disk benefit (content is on origin).
+
+**Enforced at:** `pipeline_outputs/archive/scratch_preserved_2026-06/` (pattern instance); the repo-cleanup chore performed zero branch operations.
