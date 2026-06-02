@@ -357,16 +357,21 @@ def _draw_endpoint_panel(
             scatter_centers=scatter_centers, scatter_values=scatter_values,
             color=color, marker=marker, label=label,
         )
-        # Session-grain significance markers above the pooled-mean point.
+        # Session-grain significance markers in a band near the TOP of the
+        # panel (one row per phenotype, x-aligned to the epoch column), so they
+        # stay legible and never crowd the data points (Priya 2026-06-01).
+        # x = epoch index in data coords; y = axes fraction (0..1).
         if sig_by:
+            slot = list(phenotype_order).index(phenotype)
+            y_frac = 0.985 - slot * 0.055
             for ei, epoch in enumerate(EPOCH_ORDER):
                 mark = sig_by.get((phenotype, epoch))
-                if mark and epoch in y_by_epoch:
+                if mark:
                     ax.annotate(
-                        mark, (ei, y_by_epoch[epoch]),
-                        textcoords="offset points", xytext=(0, 8),
-                        ha="center", va="bottom", color=color,
-                        fontsize=12, fontweight="bold", clip_on=False,
+                        mark, (ei, y_frac),
+                        xycoords=("data", "axes fraction"),
+                        ha="center", va="top", color=color,
+                        fontsize=13, fontweight="bold", clip_on=False,
                     )
 
     ax.set_xticks(list(range(len(EPOCH_ORDER))))
@@ -381,25 +386,35 @@ def _draw_endpoint_panel(
 
 def _load_session_grain_sig(
     resolver: PathResolver, scope: str,
+    family: str = "phase_aligned_endpoints",
 ) -> dict[tuple[str, str, str, str], str]:
     """Session-grain significance markers from the consolidated per-scope stats
     sheet (build_pooled_phenotype_stats). Returns ``{(endpoint, phenotype, side,
-    post_epoch): "*"}`` where LMM-FDR < 0.05 for the phase_aligned endpoints.
-    Side L/R -> ipsi/contra (all-L cohort). Empty if the sheet isn't built yet."""
+    post_epoch): marker}`` where ``marker`` is ``"*"`` when the headline test
+    (session-MWU, BH-FDR < 0.05) is significant and ``"**"`` when the
+    session-bootstrap CI also excludes zero (``headline_and_bootstrap_sig``).
+
+    Uses the MWU headline (``headline_sig``), not the LMM — the per-session
+    scalar/endpoint cells have too few animals for the LMM random-effect to be
+    estimable (Priya 2026-06-01). ``family`` selects first-lick
+    (``phase_aligned_endpoints``) vs all-licks
+    (``phase_aligned_endpoints_all_licks``). Side L/R -> ipsi/contra (all-L
+    cohort). Empty if the sheet isn't built yet."""
     f = (resolver.pipeline_outputs(subdir="stats") / "results"
          / "phenotype_pooled" / scope / "pooled_phenotype_stats.csv")
     if not f.exists():
         return {}
     df = pd.read_csv(f)
-    df = df[df.get("family") == "phase_aligned_endpoints"]
+    df = df[df.get("family") == family]
     smap = {"L": "ipsi", "R": "contra", "ipsi": "ipsi", "contra": "contra"}
     out: dict[tuple[str, str, str, str], str] = {}
     for _, r in df.iterrows():
-        padj = r.get("lmm_p_fdr")
-        if padj is not None and pd.notna(padj) and float(padj) < 0.05:
-            out[(str(r["endpoint"]), str(r["recovery_phenotype"]),
-                 smap.get(str(r["side"]), str(r["side"])),
-                 str(r["post_epoch"]))] = "*"
+        if not bool(r.get("headline_sig", False)):
+            continue
+        marker = "**" if bool(r.get("headline_and_bootstrap_sig", False)) else "*"
+        out[(str(r["endpoint"]), str(r["recovery_phenotype"]),
+             smap.get(str(r["side"]), str(r["side"])),
+             str(r["post_epoch"]))] = marker
     return out
 
 
@@ -586,8 +601,12 @@ def run_scope(
     res_base.mkdir(parents=True, exist_ok=True)
 
     # Session-grain significance markers (from the consolidated stats sheet) for
-    # the delta figures; empty if the sheet isn't built yet (graceful).
-    sig_all = _load_session_grain_sig(resolver, scope)
+    # the delta figures; empty if the sheet isn't built yet (graceful). Use the
+    # sibling all-licks family when emitting the all_multi figures.
+    sig_all = _load_session_grain_sig(
+        resolver, scope,
+        family=("phase_aligned_endpoints_all_licks"
+                if lick_set == "all_multi" else "phase_aligned_endpoints"))
 
     ok: list[str] = []
     skip: list[str] = []

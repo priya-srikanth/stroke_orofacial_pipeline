@@ -45,8 +45,20 @@ SCALAR_DIAGNOSTIC_DROP = {
     "jaw_n_frames_over_thresh", "jaw_pass_qc", "jaw_peak_neg_deflection",
     "jaw_peak_pos_deflection", "jaw_peak_selected_deflection",
 }
-WASSERSTEIN_BODYPARTS = ("tongue", "jaw", "nose", "whiskers", "eye", "spout")
-NORM_W2_EXPECTED = ("tongue", "jaw", "nose", "whiskers")  # placeholders for missing
+# NB: on-disk wasserstein figure bodypart is "whisker" (singular), not "whiskers".
+WASSERSTEIN_BODYPARTS = ("tongue", "jaw", "nose", "whisker", "eye", "spout")
+NORM_W2_EXPECTED = ("tongue", "jaw", "nose", "whisker", "eye", "spout")
+
+# Significance-panel config (route B — annotate on the slides from the rebuilt
+# sheet's MWU headline). "*" = headline_sig (session-MWU BH-FDR<0.05);
+# "**" = headline_and_bootstrap_sig (+ bootstrap CI excludes zero).
+SIG_EPOCHS = ("acute", "sub_acute", "chronic")
+PHENO_ORDER = {
+    "3_tier": ("mild", "moderate", "severe"),
+    "4_tier": ("mild", "moderate", "moderate-severe", "severe"),
+}
+SIG_GREEN = RGBColor(0xC6, 0xEF, 0xCE)
+SIG_HEADER = RGBColor(0x1F, 0x2D, 0x3D)
 
 # 16:9 widescreen
 SLIDE_W, SLIDE_H = Inches(13.333), Inches(7.5)
@@ -93,7 +105,8 @@ def build_manifest(resolver: PathResolver, scope: str) -> list[dict]:
         p = _scalar_v5(fig, ep, scope)
         if p:
             items.append({"family": "Scalars (V5 per-epoch boxplot)",
-                          "title": ep, "png": p, "caption": p.name})
+                          "title": ep, "png": p, "caption": p.name,
+                          "sheet_family": "scalar", "sheet_endpoint": ep})
 
     # 2) phase-aligned endpoints (first-lick + all-licks), value + delta
     for fam, label in [("phase_aligned_endpoints",
@@ -101,9 +114,11 @@ def build_manifest(resolver: PathResolver, scope: str) -> list[dict]:
                        ("phase_aligned_endpoints_all_licks",
                         "Phase-aligned endpoints (all-licks)")]:
         for p in sorted((fig / fam / scope / "v3").glob("*.png")):
+            ep = p.stem.replace("_v3", "").replace("delta_", "")
             items.append({"family": label,
                           "title": p.stem.replace("_v3", ""),
-                          "png": p, "caption": p.name})
+                          "png": p, "caption": p.name,
+                          "sheet_family": fam, "sheet_endpoint": ep})
 
     # 3) phase-aligned trajectories (SVG -> PNG)
     for fam, label in [("phase_aligned_trajectories",
@@ -121,7 +136,9 @@ def build_manifest(resolver: PathResolver, scope: str) -> list[dict]:
         if p.exists():
             items.append({"family": "Wasserstein recovery (W-2)",
                           "title": f"{bp} — Wasserstein recovery",
-                          "png": p, "caption": p.name})
+                          "png": p, "caption": p.name,
+                          "sheet_family": "wasserstein_recovery",
+                          "sheet_endpoint": bp})
 
     # 5) normalized wasserstein recovery (+ placeholders for missing bodyparts)
     ndir = fig / "normalized_wasserstein_recovery" / scope / "v2"
@@ -179,6 +196,80 @@ def convert_svgs(specs: list[dict], cache_dir: Path, scale: float = 2.0) -> None
 
 
 # --------------------------------------------------------------------------- #
+# significance panels (route B — from the rebuilt sheet's MWU headline)
+# --------------------------------------------------------------------------- #
+def load_sig_sheets(resolver: PathResolver) -> dict[str, "pd.DataFrame"]:
+    out = {}
+    for sc in SCOPES:
+        f = (resolver.pipeline_outputs(subdir="stats") / "results"
+             / "phenotype_pooled" / sc / "pooled_phenotype_stats.csv")
+        out[sc] = pd.read_csv(f) if f.exists() else pd.DataFrame()
+    return out
+
+
+def sig_grid(df: "pd.DataFrame", scope: str, family: str, endpoint: str):
+    """Return {sides, phenos, marks{(side,pheno,epoch): '*'|'**'}} or None."""
+    if df is None or df.empty:
+        return None
+    sub = df[(df["family"] == family) & (df["endpoint"] == endpoint)]
+    if sub.empty:
+        return None
+    order = {"ipsi": 0, "L": 0, "contra": 1, "R": 1, "both": 2}
+    sides = sorted(sub["side"].dropna().astype(str).unique(),
+                   key=lambda s: order.get(s, 3))
+    present = set(sub["recovery_phenotype"].astype(str))
+    phenos = [p for p in PHENO_ORDER[scope] if p in present]
+    marks: dict[tuple[str, str, str], str] = {}
+    for _, r in sub.iterrows():
+        if not bool(r.get("headline_sig", False)):
+            continue
+        marks[(str(r["side"]), str(r["recovery_phenotype"]),
+               str(r["post_epoch"]))] = (
+            "**" if bool(r.get("headline_and_bootstrap_sig", False)) else "*")
+    return {"sides": sides, "phenos": phenos, "marks": marks}
+
+
+def _add_sig_table(slide, grid, *, left, top, width, height):
+    """Transposed grid: rows=epochs, cols=side/phenotype; sig cells filled."""
+    cols = [(s, p) for s in grid["sides"] for p in grid["phenos"]]
+    if not cols:
+        return
+    ncol, nrow = 1 + len(cols), 1 + len(SIG_EPOCHS)
+    tbl = slide.shapes.add_table(nrow, ncol, left, top, width, height).table
+    tbl.first_row = False
+    tbl.horz_banding = False
+    hdr = ["epoch"] + [f"{s}/{p[:4]}" for s, p in cols]
+    for j, t in enumerate(hdr):
+        tbl.cell(0, j).text = t
+    for i, ep in enumerate(SIG_EPOCHS, 1):
+        tbl.cell(i, 0).text = ep.replace("sub_acute", "sub-ac")
+        for j, (s, p) in enumerate(cols, 1):
+            m = grid["marks"].get((s, p, ep), "")
+            c = tbl.cell(i, j)
+            c.text = m
+            if m:
+                c.fill.solid()
+                c.fill.fore_color.rgb = SIG_GREEN
+            else:
+                c.fill.solid()
+                c.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+    for ri, row in enumerate(tbl.rows):
+        for cell in row.cells:
+            cell.margin_left = cell.margin_right = Inches(0.02)
+            cell.margin_top = cell.margin_bottom = Inches(0.0)
+            para = cell.text_frame.paragraphs[0]
+            para.alignment = PP_ALIGN.CENTER
+            para.font.size = Pt(8)
+            para.font.bold = ri == 0
+            if ri == 0:
+                para.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        if ri == 0:
+            for cell in row.cells:
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = SIG_HEADER
+
+
+# --------------------------------------------------------------------------- #
 # pptx assembly
 # --------------------------------------------------------------------------- #
 def _blank(prs):
@@ -229,14 +320,18 @@ def _figure_slide(prs, spec):
              width=Inches(12.5), height=Inches(0.7), size=22, bold=True)
     _textbox(s, spec["family"], left=Inches(0.4), top=Inches(0.78),
              width=Inches(9.0), height=Inches(0.4), size=12, color=AMBER)
+    grid = spec.get("sig_grid")
+    has_table = bool(grid and grid["sides"] and grid["phenos"]
+                     and not spec.get("placeholder"))
     if spec.get("placeholder"):
         _textbox(s, spec["placeholder"], left=Inches(1.5), top=Inches(3.0),
                  width=Inches(10.3), height=Inches(1.6), size=22, bold=True,
                  color=AMBER, align=PP_ALIGN.CENTER)
     else:
-        # fit image into the content box, preserve aspect, center
-        box_l, box_t = Inches(0.4), Inches(1.25)
-        box_w, box_h = Inches(12.53), Inches(5.7)
+        # fit image into the content box (shorter when a sig table follows)
+        box_l, box_t = Inches(0.4), Inches(1.2)
+        box_w = Inches(12.53)
+        box_h = Inches(4.6) if has_table else Inches(5.7)
         iw, ih = Image.open(spec["png"]).size
         ar = iw / ih
         if box_w / box_h > ar:
@@ -248,6 +343,13 @@ def _figure_slide(prs, spec):
         left = box_l + (box_w - w) // 2
         top = box_t + (box_h - h) // 2
         s.shapes.add_picture(str(spec["png"]), left, top, width=w, height=h)
+    if has_table:
+        _add_sig_table(s, grid, left=Inches(0.4), top=Inches(5.95),
+                       width=Inches(10.9), height=Inches(0.85))
+        _textbox(s, "Significance (session-MWU, BH-FDR)\n"
+                 "* p<0.05   ** + bootstrap CI excludes 0",
+                 left=Inches(11.45), top=Inches(6.0), width=Inches(1.85),
+                 height=Inches(0.8), size=8, color=GREY)
     _textbox(s, spec["caption"], left=Inches(0.4), top=Inches(7.08),
              width=Inches(12.5), height=Inches(0.35), size=9, color=GREY)
 
@@ -259,9 +361,17 @@ def main() -> int:
     cache_dir = deck_dir / "_png_cache"
 
     manifests = {sc: build_manifest(resolver, sc) for sc in SCOPES}
+    sheets = load_sig_sheets(resolver)
     for sc in SCOPES:
         print(f"[{sc}] {len(manifests[sc])} figure slides")
         convert_svgs(manifests[sc], cache_dir)
+        n_tab = 0
+        for spec in manifests[sc]:
+            if spec.get("sheet_family") and spec.get("sheet_endpoint"):
+                spec["sig_grid"] = sig_grid(
+                    sheets[sc], sc, spec["sheet_family"], spec["sheet_endpoint"])
+                n_tab += int(bool(spec["sig_grid"]))
+        print(f"[{sc}] significance tables on {n_tab} slides")
 
     prs = Presentation()
     prs.slide_width, prs.slide_height = SLIDE_W, SLIDE_H
