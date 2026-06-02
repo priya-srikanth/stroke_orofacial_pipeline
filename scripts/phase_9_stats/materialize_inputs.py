@@ -1080,12 +1080,14 @@ def _output_path(
     output subtree (parallel to ``spout_behavior/``, ``dlc_kinematics/``,
     ``dlc_analysis/``).
 
-    ``variant`` (e.g. ``"filtered_v1"``) inserts a subdir between
-    ``inputs/`` and ``<slug>/`` so filtered outputs sit ALONGSIDE the
-    unfiltered tree (chore/dlc-session-and-trial-filtering Option I).
+    The filter-variant wrapper sits between ``inputs/`` and ``<slug>/``:
+    ``filtered_v1`` -> ``inputs/filtered_v1/<slug>/``; the unfiltered variant
+    (``variant is None``) -> ``inputs/no_filter/<slug>/``. Both wrappers are
+    explicit so the unfiltered and filtered trees are symmetric siblings
+    (2026-06 stats-layout cleanup; was a flat ``inputs/<slug>/`` for unfiltered).
     """
     base = resolver.pipeline_outputs(subdir="stats") / "inputs"
-    out_root = (base / variant / slug) if variant else (base / slug)
+    out_root = base / (variant or "no_filter") / slug
     out_root.mkdir(parents=True, exist_ok=True)
     return out_root / f"{animal}.parquet"
 

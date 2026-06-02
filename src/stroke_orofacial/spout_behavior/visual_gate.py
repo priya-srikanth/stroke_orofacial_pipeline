@@ -2186,7 +2186,7 @@ def render_recovery_trajectories(
 
     # Per-mouse scatter: this animal only.
     parquet_path = (
-        resolver.pipeline_outputs(subdir="stats") / "inputs"
+        resolver.pipeline_outputs(subdir="stats") / "inputs" / "no_filter"
         / endpoint_slug / f"{animal}.parquet"
     )
     if not parquet_path.exists():
