@@ -15,6 +15,29 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-06-01 — Unify the filter-variant wrapper layout to `no_filter` across `stats/results/` + `stats/figures/`
+
+- *Context:* The `stats/results/` tree used `results/none/` for the unfiltered variant (mismatched the `stats/figures/` tree which used loose `figures/{forest_plots, headlines, per_animal}/` siblings). The asymmetry made it harder to reason about which inputs produced which figures + invited variant-name confusion (`none` vs `no_filter` showed up inconsistently in driver flags + doc references).
+- *Decision:* Both trees now share the layout `{filtered_v1, no_filter, phenotype_pooled}` as top-level filter-variant directories. The old `results/none/` directory is renamed `results/no_filter/`; the loose `figures/{forest_plots, headlines, per_animal}/` siblings are folded under `figures/no_filter/`. `phenotype_pooled` is the third wrapper at the same level for pooled outputs (q12 / q13b / q13_traj / scalar V4-V5 / wasserstein / normalized).
+- *Rationale:* Single canonical name for the unfiltered variant across results + figures + driver flags (no "none vs no_filter" mismatch). Symmetric `results/<variant>/` ↔ `figures/<variant>/` makes the producer-to-figure path inspectable by directory walk. `phenotype_pooled` as a peer wrapper (not as a subdir under each filter) preserves the pooled outputs' "consume across filter variants" semantics.
+- *Enforced at:* commit `16d1518`; `stats/results/{filtered_v1, no_filter, phenotype_pooled}/`; `stats/figures/{filtered_v1, no_filter, phenotype_pooled}/`; driver flag normalization across `materialize_inputs.py`, `run_stats_axis.py`, `build_task_5_headline_summary.py`, `build_task_7_figures.py`, `build_pooled_phenotype_stats.py`, and the q13b / q13_traj / V4-V5 emit scripts. Existing absolute paths in `figures/_layout.py` constants updated.
+
+## 2026-06-01 — Wasserstein loader `drop_duplicates` over scope (cross-scope double-count fix)
+
+- *Context:* After the wasserstein de-collision (chore-namespaced `tongue_jaw/` + `whisker_nose/` per_session subdirs, see 2026-06-01 entry below), the pooled-stats loader's recursive glob across `<scope>/v2/{tongue_jaw,whisker_nose}/wasserstein_recovery_per_session.csv` correctly absorbed both producer subtrees — but a separate path-shape issue caused some rows to appear under BOTH `<scope>` values (e.g., once under `4_tier`, once under `3_tier`), inflating pooled counts and biasing pooled means downward.
+- *Decision:* The loader applies `drop_duplicates` on the `(session_id, bodypart, side, phenotype, epoch, scope)` key after the recursive concat. Cross-scope duplication that survived the de-collision is now eliminated at load time.
+- *Rationale:* Producer-side dedup would have required coordinated rewrites across q12 + whisker/nose + normalized-W2. Loader-side `drop_duplicates` is a single-site fix at the consumption boundary, robust to future producers that might write into either scope's subtree. Keys chosen to preserve legitimate per-(session, bodypart, side) multiplicity within a single scope.
+- *Enforced at:* commit `27b421e`; pooled-stats loader (`stats/aggregators.py` and the q12 / wasserstein read path). Verified: all 6 wasserstein bodyparts (tongue / jaw / whisker / nose / spout / eye) reappear in both `absolute` and `normalized` pooled families post-fix.
+
+## 2026-06-01 — Deck on-slide significance panels + q13b top-band markers from sheet `headline_sig`
+
+- *Context:* The consolidated pooled-phenotype stats sheet (`build_pooled_phenotype_stats.py --n-boot 5000`) emits per-(scalar, phenotype, epoch, side) MWU `headline_sig` (and bootstrap-augmented `headline_and_bootstrap_sig`), but the figures consuming those — q13b panels + the per-scalar V4/V5 deck slides — had no on-figure marker channel. Significance lived only in the xlsx, which forced reviewers to cross-reference cell-by-cell during readout.
+- *Decision:* (i) **q13b panels** read the sheet's `headline_sig` and place a top-of-panel band marker (above the data area, NOT overlaid on traces) per (phenotype × epoch × side) cell that crosses the headline threshold. (ii) **Deck slides** (`build_stats_figure_deck.py`) render a per-(phenotype × epoch × side) significance grid panel beside each scalar's V4/V5 figure, sourcing the same `headline_sig` column. Sheet runs BEFORE q13b and BEFORE the deck builder so annotations always reflect the sheet state.
+- *Rationale:* On-figure significance signaling is the conventional readout aid; top-of-panel band keeps the trajectories visually clean while making the headline result inspectable per cell. The deck-side grid panel is a single legible-at-readout overlay of the whole sheet result onto each scalar. Single source of truth (`headline_sig`) prevents marker-vs-sheet drift.
+- *Enforced at:* commit `222bbd8`; `scripts/phase_9_1_q13/build_stats_figure_deck.py` (on-slide significance grid; whisker(singular) naming fix); `scripts/chore_dlc_pooled_phenotype/q13b_v2_emit.py` (top-band marker placement; reads `headline_sig` from the sheet); pipeline order: pooled-stats sheet → q13b → deck.
+
+---
+
 ## 2026-06-01 — Unify the tongue "lick" definition on v7 `kept_licks` (bouts/phase/trajectory)
 
 - *Context:* Tongue per-lick scalars (`lick1`/`lick2`/velocity/`n_licks`) already routed through v7-cleaned `kept_licks`, but the BOUT/PHASE/TRAJECTORY family (`n_peaks`/`n_bouts`, `first_peak_t_ms`, `mean_within_bout_ili`, `bout_count`, `lick_rate`, Cell-50 own-bout scalars, Cell-42 traces, phase-aligned endpoint substrate) still re-ran the raw peak detector. The two lick definitions disagreed at the scalar level — PS51 pilot showed `tongue_first_peak_t_ms == tongue_lick1_t_peak_ms` only 54.5% of trials.
