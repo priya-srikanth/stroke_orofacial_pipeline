@@ -454,14 +454,17 @@ LEGACY_3TIER_DIRNAME = "3_phenotype"
 def classify_scalar(slug: str, filtered_slugs: frozenset[str]) -> tuple[str, str]:
     """Return ``(metric_family_type, scope_layout)`` for a scalar metric.
 
-    A scalar is DLC-filterable — ``("dlc", "no_filter")`` — iff it has a
-    ``filtered_v1`` input; otherwise it is flat-scope ``("spout", "flat")``.
-    Data-driven off ``filtered_slugs`` (read live from disk), so a slug
-    auto-promotes the moment a ``filtered_v1`` input appears for it.
+    Every unfiltered scalar figure routes under ``no_filter/`` now (2026-06
+    stats-layout cleanup), so the layout is always ``NO_FILTER``. The
+    ``metric_family_type`` still distinguishes DLC-filterable scalars
+    (``"dlc"`` — those with a ``filtered_v1`` input, which also get a ``v3/``
+    filtered figure) from non-filterable ones (``"spout"`` — jaw / mismatch /
+    spout-behavioral, no filtered counterpart). Data-driven off
+    ``filtered_slugs`` (read live from disk).
     """
     if slug in filtered_slugs:
         return "dlc", NO_FILTER
-    return "spout", "flat"
+    return "spout", NO_FILTER
 
 
 @lru_cache(maxsize=None)
@@ -503,9 +506,9 @@ def pooled_scalar_endpoint_dir(
     * ``filter_variant="filtered_v1"`` → ``v3/`` (the lick-filtered figure;
       only DLC-filterable slugs have filtered_v1 inputs, so this path is only
       ever taken for them).
-    * ``filter_variant="none"`` → ``no_filter/`` iff the slug is DLC-filterable
-      (see :func:`classify_scalar`), else a flat scope (no subtype layer) for
-      jaw / mismatch / spout metrics with no filtered counterpart.
+    * ``filter_variant="none"`` → ``no_filter/`` for EVERY scalar (DLC-
+      filterable and non-filterable alike, 2026-06 cleanup), so the unfiltered
+      figure marker is consistent across the whole pooled-scalar tree.
     """
     scope = SCOPE_3TIER if remap_3tier else SCOPE_4TIER
     _, layout = classify_scalar(slug, filtered_slugs)

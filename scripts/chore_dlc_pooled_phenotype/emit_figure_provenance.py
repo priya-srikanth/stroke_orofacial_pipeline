@@ -49,7 +49,7 @@ _TONGUE_KIN_NOTE = (
 )
 _JAW_KIN_NOTE = (
     "DLC jaw kinematic scalar; values from the v3.4-cleaned trace per-trial JSON. "
-    "Jaw has no filtered_v1 input -> flat scope (no no_filter/ or v3/ layer)."
+    "Jaw has no filtered_v1 input -> no_filter/ only (no v3/ filtered layer)."
 )
 _SPOUT_NOTE = (
     "Spout/lickport behavior (wavesurfer NPZ + licks_and_rewards); NOT a DLC "
@@ -74,11 +74,11 @@ ROWS: list[tuple[str, ...]] = [
     # Jaw kinematic scalars.
     ("phenotype_pooled/jaw_<kinematic>/", "V4 + V5",
      "dlc_kinematics", "v3.4_cleaned", "none",
-     "4_tier|3_tier (flat)", _JAW_KIN_NOTE),
+     "4_tier|3_tier / {no_filter}", _JAW_KIN_NOTE),
     # Mismatch (consumes BOTH tongue v7 + jaw v3.4).
     ("phenotype_pooled/mismatch_candidate_no_lick_with_jaw_move/", "V4 + V5",
      "dlc_kinematics", "v7_cleaned + v3.4_cleaned", "none",
-     "4_tier|3_tier (flat)",
+     "4_tier|3_tier / {no_filter}",
      "Tongue-jaw mismatch candidate; consumes both cleaned traces."),
     # Spout-behavior scalars (frozen).
     ("phenotype_pooled/{d_prime,criterion_c,first_lick_accuracy_all,"
@@ -86,7 +86,7 @@ ROWS: list[tuple[str, ...]] = [
      "licks_per_bout,num_correct_licks_per_trial,num_incorrect_licks_per_trial,"
      "num_all_licks_per_trial,accuracy_difference_index,lickRate_byTrial}/",
      "V4 + V5", "spout_behavior", "n/a", "n/a",
-     "4_tier|3_tier (flat)", _SPOUT_NOTE),
+     "4_tier|3_tier / {no_filter}", _SPOUT_NOTE),
 
     # --- phenotype-pooled FAMILY figures ---
     ("phenotype_pooled/phase_aligned_trajectories/", "trajectory (mean+/-SEM/SD)",

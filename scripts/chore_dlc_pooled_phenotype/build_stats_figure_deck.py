@@ -82,10 +82,14 @@ def _scalar_stats_endpoints(resolver: PathResolver, scope: str) -> list[str]:
 
 
 def _scalar_v5(fig_root: Path, ep: str, scope: str) -> Path | None:
-    """V5 per-epoch png for a scalar endpoint (v3 subtype else flat)."""
+    """V5 per-epoch png for a scalar endpoint: the filtered ``v3/`` figure if
+    present (DLC-filterable tongue scalars), else the unfiltered ``no_filter/``
+    figure — every scalar now writes the unfiltered variant under
+    ``no_filter/`` (2026-06 stats-layout cleanup; was a bare-flat scope for
+    non-filterable jaw/mismatch/spout metrics)."""
     cands = [
         fig_root / ep / scope / "v3" / "v5_per_epoch_phenotype_pooled.png",
-        fig_root / ep / scope / "v5_per_epoch_phenotype_pooled.png",
+        fig_root / ep / scope / "no_filter" / "v5_per_epoch_phenotype_pooled.png",
     ]
     return next((c for c in cands if c.exists()), None)
 
