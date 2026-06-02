@@ -161,13 +161,82 @@ tested commits on the feature branch.
   panels (phenotype × epoch × side grid from `headline_sig` /
   `headline_and_bootstrap_sig`) + whisker(singular) naming fix.
 
+### §E — Wasserstein de-collision + `stats/` layout cleanup + deck polish (2026-06-01)
+
+Four commits landed on origin (`7cf32b7..222bbd8` range) closing §D's open
+items + delivering the consolidated pooled-stats sheet → q13b → deck pipeline.
+
+- **`7cf32b7` — lick-definition unification core** (covered in §D above).
+
+- **`27b421e` — wasserstein de-collision + double-count fix + normalized-W2
+  `per_session` write**:
+  - Per-session producers now write under chore-namespaced subdirs
+    (`q12_v2_emit.py` → `wasserstein_recovery/<scope>/v2/tongue_jaw/`;
+    `chore_whisker_nose_spatial/emit_cohort.py` →
+    `wasserstein_recovery/<scope>/v2/whisker_nose/`). Pooled-stats loader
+    consumes both via recursive glob; old un-namespaced top-level
+    `wasserstein_recovery_per_session.csv` removed.
+  - Loader-side `drop_duplicates` on the `(session_id, bodypart, side,
+    phenotype, epoch, scope)` key eliminates cross-scope double-counting
+    that survived the de-collision (separate DECISIONS entry).
+  - Normalized W-2 family was emitting only `mean_sem` (no `per_session`);
+    `per_session` write added → normalized stats family no longer empty.
+  - **Verified:** all 6 wasserstein bodyparts (tongue / jaw / whisker / nose
+    / spout / eye) restored in BOTH `absolute` and `normalized` pooled
+    families.
+
+- **`16d1518` — `stats/` layout cleanup (filter-variant wrapper unified to
+  `no_filter`)**:
+  - `stats/results/` was `results/none/`; `stats/figures/` had loose
+    `figures/{forest_plots, headlines, per_animal}/` siblings — asymmetric
+    + drove "none vs no_filter" driver-flag confusion.
+  - Both trees now share the same top-level wrappers:
+    `{filtered_v1, no_filter, phenotype_pooled}`. Loose figures/ siblings
+    folded under `figures/no_filter/`. Driver flags + `figures/_layout.py`
+    constants updated.
+  - Separate DECISIONS entry.
+
+- **`222bbd8` — deck on-slide significance panels + q13b top-band markers
+  (sourced from sheet `headline_sig`)**:
+  - q13b panels gain a top-of-panel band marker per (phenotype × epoch ×
+    side) cell crossing the MWU `headline_sig` threshold from the
+    consolidated sheet.
+  - Deck slides (`build_stats_figure_deck.py`) render a per-(phenotype ×
+    epoch × side) significance grid beside each scalar's V4/V5 figure,
+    reading from the same `headline_sig` column.
+  - Pipeline order: sheet → q13b → deck.
+  - Discharges §D's "uncommitted at handoff" item (on-slide significance
+    panels + whisker(singular) naming fix).
+
+**Additional polish landing alongside the four commits:**
+- `mismatch_candidate_no_lick_with_jaw_move` V5 figure re-emitted (was
+  stale: materialized BEFORE the `tongue_jaw_mismatch` `use_v7_cleaned`
+  flip; refreshed after the mismatch cohort re-emit completed). §D's
+  "STALE: re-materialize after mismatch" item discharged.
+- 4 orphan `mean_sem` CSVs deleted (no in-repo producer or consumer
+  references; cleanup-only, no behavior change).
+
+**Full downstream re-emit VERIFIED:**
+- Consolidated pooled-stats sheet (`build_pooled_phenotype_stats.py
+  --n-boot 5000`) → q13b + q13_traj + scalar V4/V5 → 209-slide deck.
+- Axis-testing stats (`run_stats_axis.py` none + filtered_v1) →
+  `build_task_5_headline_summary.py` → `build_task_7_figures.py`
+  headlines.
+- All 6 wasserstein bodyparts present in pooled stats (both absolute +
+  normalized).
+
+**Status:** §D + §E together close the lick-definition unification re-emit
+arc. Branch ready for Stage 5 close (MIGRATION_LOG + DECISIONS + memory
+update + dual tags `vChore-substrate-routing-and-secondary-spout-per-half-fix`
++ `vChore-jaw-v34-cleanup-correctness-fix` per the dual-concern addendum).
+
 ### Known follow-ups
 - C's endpoint registration lives in the gitignored `.scratch_phase_9/
   endpoint_inventory.csv` — promote to a committed config.
 - I (all-licks endpoints) rebuilds per-session bundles on-the-fly twice
   (filtered + nofilter) — cache the bundle build if re-run often.
-- §D's uncommitted deck-builder edits (significance panels + whisker naming
-  fix) — land before Stage 5 close.
+- Remaining `stats/` folder structure cleanup items — see open backlog
+  in memory `project_stats_folder_cleanup_backlog.md` (not yet done).
 
 ---
 
