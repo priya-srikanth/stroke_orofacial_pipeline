@@ -1,0 +1,404 @@
+2026-05-26 11:23:58,067 | INFO    | Phase 7f scoping audit — jaw DLC quality
+2026-05-26 11:23:58,067 | INFO    | Output dir: C:\Users\sabatini\GitHub\stroke_orofacial_pipeline\.scratch_phase_7f_scoping\audit_results
+2026-05-26 11:23:58,076 | INFO    | == Animal PS46 ==
+2026-05-26 11:23:58,114 | INFO    |   31 session dates
+2026-05-26 11:23:58,569 | INFO    |   OK   PS46/2025-03-07 (rel_day=-6, epoch=pre) — 96 trials
+2026-05-26 11:23:59,384 | INFO    |   OK   PS46/2025-03-08 (rel_day=-5, epoch=pre) — 97 trials
+2026-05-26 11:24:00,228 | INFO    |   OK   PS46/2025-03-09 (rel_day=-4, epoch=pre) — 97 trials
+2026-05-26 11:24:01,036 | INFO    |   OK   PS46/2025-03-10 (rel_day=-3, epoch=pre) — 96 trials
+2026-05-26 11:24:01,842 | INFO    |   OK   PS46/2025-03-11 (rel_day=-2, epoch=pre) — 96 trials
+2026-05-26 11:24:02,645 | INFO    |   OK   PS46/2025-03-12 (rel_day=-1, epoch=pre) — 97 trials
+2026-05-26 11:24:03,462 | INFO    |   OK   PS46/2025-03-13 (rel_day=+0, epoch=pre) — 97 trials
+2026-05-26 11:24:04,289 | INFO    |   OK   PS46/2025-03-14 (rel_day=+1, epoch=acute) — 96 trials
+2026-05-26 11:24:05,396 | INFO    |   OK   PS46/2025-03-15 (rel_day=+2, epoch=acute) — 97 trials
+2026-05-26 11:24:06,228 | INFO    |   OK   PS46/2025-03-16 (rel_day=+3, epoch=acute) — 96 trials
+2026-05-26 11:24:07,045 | INFO    |   OK   PS46/2025-03-17 (rel_day=+4, epoch=acute) — 94 trials
+2026-05-26 11:24:07,859 | INFO    |   OK   PS46/2025-03-18 (rel_day=+5, epoch=acute) — 96 trials
+2026-05-26 11:24:08,685 | INFO    |   OK   PS46/2025-03-19 (rel_day=+6, epoch=sub_acute) — 91 trials
+2026-05-26 11:24:09,527 | INFO    |   OK   PS46/2025-03-20 (rel_day=+7, epoch=sub_acute) — 96 trials
+2026-05-26 11:24:10,361 | INFO    |   OK   PS46/2025-03-21 (rel_day=+8, epoch=sub_acute) — 96 trials
+2026-05-26 11:24:11,195 | INFO    |   OK   PS46/2025-03-22 (rel_day=+9, epoch=chronic) — 96 trials
+2026-05-26 11:24:12,037 | INFO    |   OK   PS46/2025-03-23 (rel_day=+10, epoch=chronic) — 97 trials
+2026-05-26 11:24:12,949 | INFO    |   OK   PS46/2025-03-24 (rel_day=+11, epoch=chronic) — 97 trials
+2026-05-26 11:24:13,806 | INFO    |   OK   PS46/2025-03-25 (rel_day=+12, epoch=chronic) — 97 trials
+2026-05-26 11:24:14,642 | INFO    |   OK   PS46/2025-03-26 (rel_day=+13, epoch=chronic) — 97 trials
+2026-05-26 11:24:15,472 | INFO    |   OK   PS46/2025-03-27 (rel_day=+14, epoch=chronic) — 97 trials
+2026-05-26 11:24:15,489 | WARNING |   SKIP PS46/2025-03-28 — jaw parquet missing
+2026-05-26 11:24:15,507 | WARNING |   SKIP PS46/2025-03-29 — jaw parquet missing
+2026-05-26 11:24:15,522 | WARNING |   SKIP PS46/2025-03-30 — jaw parquet missing
+2026-05-26 11:24:15,540 | WARNING |   SKIP PS46/2025-03-31 — jaw parquet missing
+2026-05-26 11:24:15,556 | WARNING |   SKIP PS46/2025-04-01 — jaw parquet missing
+2026-05-26 11:24:15,571 | WARNING |   SKIP PS46/2025-04-02 — jaw parquet missing
+2026-05-26 11:24:15,586 | WARNING |   SKIP PS46/2025-04-03 — jaw parquet missing
+2026-05-26 11:24:15,601 | WARNING |   SKIP PS46/2025-04-04 — jaw parquet missing
+2026-05-26 11:24:15,616 | WARNING |   SKIP PS46/2025-04-05 — jaw parquet missing
+2026-05-26 11:24:15,631 | WARNING |   SKIP PS46/2025-04-06 — jaw parquet missing
+2026-05-26 11:24:15,632 | INFO    | == Animal PS47 ==
+2026-05-26 11:24:15,644 | INFO    |   31 session dates
+2026-05-26 11:24:16,490 | INFO    |   OK   PS47/2025-03-07 (rel_day=-6, epoch=pre) — 96 trials
+2026-05-26 11:24:17,293 | INFO    |   OK   PS47/2025-03-08 (rel_day=-5, epoch=pre) — 96 trials
+2026-05-26 11:24:18,115 | INFO    |   OK   PS47/2025-03-09 (rel_day=-4, epoch=pre) — 97 trials
+2026-05-26 11:24:18,923 | INFO    |   OK   PS47/2025-03-10 (rel_day=-3, epoch=pre) — 96 trials
+2026-05-26 11:24:19,763 | INFO    |   OK   PS47/2025-03-11 (rel_day=-2, epoch=pre) — 96 trials
+2026-05-26 11:24:20,604 | INFO    |   OK   PS47/2025-03-12 (rel_day=-1, epoch=pre) — 97 trials
+2026-05-26 11:24:21,452 | INFO    |   OK   PS47/2025-03-13 (rel_day=+0, epoch=pre) — 97 trials
+2026-05-26 11:24:22,293 | INFO    |   OK   PS47/2025-03-14 (rel_day=+1, epoch=acute) — 97 trials
+2026-05-26 11:24:23,081 | INFO    |   OK   PS47/2025-03-15 (rel_day=+2, epoch=sub_acute) — 97 trials
+2026-05-26 11:24:23,915 | INFO    |   OK   PS47/2025-03-16 (rel_day=+3, epoch=sub_acute) — 97 trials
+2026-05-26 11:24:24,724 | INFO    |   OK   PS47/2025-03-17 (rel_day=+4, epoch=sub_acute) — 96 trials
+2026-05-26 11:24:25,535 | INFO    |   OK   PS47/2025-03-18 (rel_day=+5, epoch=chronic) — 97 trials
+2026-05-26 11:24:26,361 | INFO    |   OK   PS47/2025-03-19 (rel_day=+6, epoch=chronic) — 96 trials
+2026-05-26 11:24:27,160 | INFO    |   OK   PS47/2025-03-20 (rel_day=+7, epoch=chronic) — 97 trials
+2026-05-26 11:24:27,963 | INFO    |   OK   PS47/2025-03-21 (rel_day=+8, epoch=chronic) — 97 trials
+2026-05-26 11:24:28,779 | INFO    |   OK   PS47/2025-03-22 (rel_day=+9, epoch=chronic) — 96 trials
+2026-05-26 11:24:29,588 | INFO    |   OK   PS47/2025-03-23 (rel_day=+10, epoch=chronic) — 96 trials
+2026-05-26 11:24:30,394 | INFO    |   OK   PS47/2025-03-24 (rel_day=+11, epoch=chronic) — 96 trials
+2026-05-26 11:24:31,219 | INFO    |   OK   PS47/2025-03-25 (rel_day=+12, epoch=chronic) — 97 trials
+2026-05-26 11:24:32,027 | INFO    |   OK   PS47/2025-03-26 (rel_day=+13, epoch=chronic) — 97 trials
+2026-05-26 11:24:32,821 | INFO    |   OK   PS47/2025-03-27 (rel_day=+14, epoch=chronic) — 97 trials
+2026-05-26 11:24:32,837 | WARNING |   SKIP PS47/2025-03-28 — jaw parquet missing
+2026-05-26 11:24:32,852 | WARNING |   SKIP PS47/2025-03-29 — jaw parquet missing
+2026-05-26 11:24:32,869 | WARNING |   SKIP PS47/2025-03-30 — jaw parquet missing
+2026-05-26 11:24:32,884 | WARNING |   SKIP PS47/2025-03-31 — jaw parquet missing
+2026-05-26 11:24:32,899 | WARNING |   SKIP PS47/2025-04-01 — jaw parquet missing
+2026-05-26 11:24:32,914 | WARNING |   SKIP PS47/2025-04-02 — jaw parquet missing
+2026-05-26 11:24:32,930 | WARNING |   SKIP PS47/2025-04-03 — jaw parquet missing
+2026-05-26 11:24:32,946 | WARNING |   SKIP PS47/2025-04-04 — jaw parquet missing
+2026-05-26 11:24:32,961 | WARNING |   SKIP PS47/2025-04-05 — jaw parquet missing
+2026-05-26 11:24:32,976 | WARNING |   SKIP PS47/2025-04-06 — jaw parquet missing
+2026-05-26 11:24:32,976 | INFO    | == Animal PS48 ==
+2026-05-26 11:24:32,989 | INFO    |   31 session dates
+2026-05-26 11:24:33,817 | INFO    |   OK   PS48/2025-03-07 (rel_day=-6, epoch=pre) — 96 trials
+2026-05-26 11:24:34,900 | INFO    |   OK   PS48/2025-03-08 (rel_day=-5, epoch=pre) — 97 trials
+2026-05-26 11:24:35,871 | INFO    |   OK   PS48/2025-03-09 (rel_day=-4, epoch=pre) — 96 trials
+2026-05-26 11:24:36,697 | INFO    |   OK   PS48/2025-03-10 (rel_day=-3, epoch=pre) — 97 trials
+2026-05-26 11:24:37,565 | INFO    |   OK   PS48/2025-03-11 (rel_day=-2, epoch=pre) — 97 trials
+2026-05-26 11:24:38,372 | INFO    |   OK   PS48/2025-03-12 (rel_day=-1, epoch=pre) — 97 trials
+2026-05-26 11:24:39,179 | INFO    |   OK   PS48/2025-03-13 (rel_day=+0, epoch=pre) — 97 trials
+2026-05-26 11:24:40,015 | INFO    |   OK   PS48/2025-03-14 (rel_day=+1, epoch=acute) — 130 trials
+2026-05-26 11:24:40,830 | INFO    |   OK   PS48/2025-03-15 (rel_day=+2, epoch=sub_acute) — 96 trials
+2026-05-26 11:24:41,661 | INFO    |   OK   PS48/2025-03-16 (rel_day=+3, epoch=sub_acute) — 90 trials
+2026-05-26 11:24:42,426 | INFO    |   OK   PS48/2025-03-17 (rel_day=+4, epoch=sub_acute) — 91 trials
+2026-05-26 11:24:43,236 | INFO    |   OK   PS48/2025-03-18 (rel_day=+5, epoch=chronic) — 96 trials
+2026-05-26 11:24:44,044 | INFO    |   OK   PS48/2025-03-19 (rel_day=+6, epoch=chronic) — 97 trials
+2026-05-26 11:24:44,849 | INFO    |   OK   PS48/2025-03-20 (rel_day=+7, epoch=chronic) — 96 trials
+2026-05-26 11:24:45,657 | INFO    |   OK   PS48/2025-03-21 (rel_day=+8, epoch=chronic) — 96 trials
+2026-05-26 11:24:46,479 | INFO    |   OK   PS48/2025-03-22 (rel_day=+9, epoch=chronic) — 96 trials
+2026-05-26 11:24:47,278 | INFO    |   OK   PS48/2025-03-23 (rel_day=+10, epoch=chronic) — 96 trials
+2026-05-26 11:24:48,100 | INFO    |   OK   PS48/2025-03-24 (rel_day=+11, epoch=chronic) — 97 trials
+2026-05-26 11:24:48,961 | INFO    |   OK   PS48/2025-03-25 (rel_day=+12, epoch=chronic) — 96 trials
+2026-05-26 11:24:49,768 | INFO    |   OK   PS48/2025-03-26 (rel_day=+13, epoch=chronic) — 96 trials
+2026-05-26 11:24:50,583 | INFO    |   OK   PS48/2025-03-27 (rel_day=+14, epoch=chronic) — 96 trials
+2026-05-26 11:24:50,600 | WARNING |   SKIP PS48/2025-03-28 — jaw parquet missing
+2026-05-26 11:24:50,614 | WARNING |   SKIP PS48/2025-03-29 — jaw parquet missing
+2026-05-26 11:24:50,631 | WARNING |   SKIP PS48/2025-03-30 — jaw parquet missing
+2026-05-26 11:24:50,645 | WARNING |   SKIP PS48/2025-03-31 — jaw parquet missing
+2026-05-26 11:24:50,664 | WARNING |   SKIP PS48/2025-04-01 — jaw parquet missing
+2026-05-26 11:24:50,679 | WARNING |   SKIP PS48/2025-04-02 — jaw parquet missing
+2026-05-26 11:24:50,694 | WARNING |   SKIP PS48/2025-04-03 — jaw parquet missing
+2026-05-26 11:24:50,710 | WARNING |   SKIP PS48/2025-04-04 — jaw parquet missing
+2026-05-26 11:24:50,724 | WARNING |   SKIP PS48/2025-04-05 — jaw parquet missing
+2026-05-26 11:24:50,740 | WARNING |   SKIP PS48/2025-04-06 — jaw parquet missing
+2026-05-26 11:24:50,740 | INFO    | == Animal PS49 ==
+2026-05-26 11:24:50,752 | INFO    |   28 session dates
+2026-05-26 11:24:51,565 | INFO    |   OK   PS49/2025-03-10 (rel_day=-7, epoch=pre) — 97 trials
+2026-05-26 11:24:52,372 | INFO    |   OK   PS49/2025-03-11 (rel_day=-6, epoch=pre) — 72 trials
+2026-05-26 11:24:53,199 | INFO    |   OK   PS49/2025-03-12 (rel_day=-5, epoch=pre) — 96 trials
+2026-05-26 11:24:53,998 | INFO    |   OK   PS49/2025-03-13 (rel_day=-4, epoch=pre) — 97 trials
+2026-05-26 11:24:54,815 | INFO    |   OK   PS49/2025-03-14 (rel_day=-3, epoch=pre) — 97 trials
+2026-05-26 11:24:55,618 | INFO    |   OK   PS49/2025-03-15 (rel_day=-2, epoch=pre) — 96 trials
+2026-05-26 11:24:56,420 | INFO    |   OK   PS49/2025-03-16 (rel_day=-1, epoch=pre) — 96 trials
+2026-05-26 11:24:57,214 | INFO    |   OK   PS49/2025-03-17 (rel_day=+0, epoch=pre) — 97 trials
+2026-05-26 11:24:58,041 | INFO    |   OK   PS49/2025-03-18 (rel_day=+1, epoch=acute) — 96 trials
+2026-05-26 11:24:58,871 | INFO    |   OK   PS49/2025-03-19 (rel_day=+2, epoch=sub_acute) — 96 trials
+2026-05-26 11:24:59,699 | INFO    |   OK   PS49/2025-03-20 (rel_day=+3, epoch=sub_acute) — 97 trials
+2026-05-26 11:25:00,509 | INFO    |   OK   PS49/2025-03-21 (rel_day=+4, epoch=sub_acute) — 96 trials
+2026-05-26 11:25:01,332 | INFO    |   OK   PS49/2025-03-22 (rel_day=+5, epoch=chronic) — 96 trials
+2026-05-26 11:25:02,150 | INFO    |   OK   PS49/2025-03-23 (rel_day=+6, epoch=chronic) — 96 trials
+2026-05-26 11:25:02,952 | INFO    |   OK   PS49/2025-03-24 (rel_day=+7, epoch=chronic) — 96 trials
+2026-05-26 11:25:03,775 | INFO    |   OK   PS49/2025-03-25 (rel_day=+8, epoch=chronic) — 97 trials
+2026-05-26 11:25:04,571 | INFO    |   OK   PS49/2025-03-26 (rel_day=+9, epoch=chronic) — 97 trials
+2026-05-26 11:25:05,363 | INFO    |   OK   PS49/2025-03-27 (rel_day=+10, epoch=chronic) — 97 trials
+2026-05-26 11:25:06,185 | INFO    |   OK   PS49/2025-03-28 (rel_day=+11, epoch=chronic) — 96 trials
+2026-05-26 11:25:06,990 | INFO    |   OK   PS49/2025-03-29 (rel_day=+12, epoch=chronic) — 97 trials
+2026-05-26 11:25:07,827 | INFO    |   OK   PS49/2025-03-30 (rel_day=+13, epoch=chronic) — 96 trials
+2026-05-26 11:25:08,643 | INFO    |   OK   PS49/2025-03-31 (rel_day=+14, epoch=chronic) — 97 trials
+2026-05-26 11:25:08,661 | WARNING |   SKIP PS49/2025-04-01 — jaw parquet missing
+2026-05-26 11:25:08,677 | WARNING |   SKIP PS49/2025-04-02 — jaw parquet missing
+2026-05-26 11:25:08,692 | WARNING |   SKIP PS49/2025-04-03 — jaw parquet missing
+2026-05-26 11:25:08,708 | WARNING |   SKIP PS49/2025-04-04 — jaw parquet missing
+2026-05-26 11:25:08,723 | WARNING |   SKIP PS49/2025-04-05 — jaw parquet missing
+2026-05-26 11:25:08,738 | WARNING |   SKIP PS49/2025-04-06 — jaw parquet missing
+2026-05-26 11:25:08,738 | INFO    | == Animal PS50 ==
+2026-05-26 11:25:08,750 | INFO    |   19 session dates
+2026-05-26 11:25:09,595 | INFO    |   OK   PS50/2025-03-19 (rel_day=-4, epoch=pre) — 96 trials
+2026-05-26 11:25:10,415 | INFO    |   OK   PS50/2025-03-20 (rel_day=-3, epoch=pre) — 96 trials
+2026-05-26 11:25:11,218 | INFO    |   OK   PS50/2025-03-21 (rel_day=-2, epoch=pre) — 96 trials
+2026-05-26 11:25:12,102 | INFO    |   OK   PS50/2025-03-22 (rel_day=-1, epoch=pre) — 97 trials
+2026-05-26 11:25:12,927 | INFO    |   OK   PS50/2025-03-23 (rel_day=+0, epoch=pre) — 96 trials
+2026-05-26 11:25:13,725 | INFO    |   OK   PS50/2025-03-24 (rel_day=+1, epoch=acute) — 85 trials
+2026-05-26 11:25:14,541 | INFO    |   OK   PS50/2025-03-25 (rel_day=+2, epoch=sub_acute) — 96 trials
+2026-05-26 11:25:15,356 | INFO    |   OK   PS50/2025-03-26 (rel_day=+3, epoch=sub_acute) — 95 trials
+2026-05-26 11:25:16,156 | INFO    |   OK   PS50/2025-03-27 (rel_day=+4, epoch=sub_acute) — 97 trials
+2026-05-26 11:25:16,977 | INFO    |   OK   PS50/2025-03-28 (rel_day=+5, epoch=chronic) — 97 trials
+2026-05-26 11:25:17,783 | INFO    |   OK   PS50/2025-03-29 (rel_day=+6, epoch=chronic) — 96 trials
+2026-05-26 11:25:18,606 | INFO    |   OK   PS50/2025-03-30 (rel_day=+7, epoch=chronic) — 97 trials
+2026-05-26 11:25:19,421 | INFO    |   OK   PS50/2025-03-31 (rel_day=+8, epoch=chronic) — 97 trials
+2026-05-26 11:25:20,250 | INFO    |   OK   PS50/2025-04-01 (rel_day=+9, epoch=chronic) — 97 trials
+2026-05-26 11:25:21,071 | INFO    |   OK   PS50/2025-04-02 (rel_day=+10, epoch=chronic) — 97 trials
+2026-05-26 11:25:21,887 | INFO    |   OK   PS50/2025-04-03 (rel_day=+11, epoch=chronic) — 96 trials
+2026-05-26 11:25:22,699 | INFO    |   OK   PS50/2025-04-04 (rel_day=+12, epoch=chronic) — 93 trials
+2026-05-26 11:25:23,522 | INFO    |   OK   PS50/2025-04-05 (rel_day=+13, epoch=chronic) — 97 trials
+2026-05-26 11:25:24,694 | INFO    |   OK   PS50/2025-04-06 (rel_day=+14, epoch=chronic) — 96 trials
+2026-05-26 11:25:24,696 | INFO    | == Animal PS51 ==
+2026-05-26 11:25:24,708 | INFO    |   78 session dates
+2026-05-26 11:25:25,566 | INFO    |   OK   PS51/2025-04-21 (rel_day=-8, epoch=pre) — 96 trials
+2026-05-26 11:25:26,402 | INFO    |   OK   PS51/2025-04-22 (rel_day=-7, epoch=pre) — 96 trials
+2026-05-26 11:25:27,222 | INFO    |   OK   PS51/2025-04-23 (rel_day=-6, epoch=pre) — 96 trials
+2026-05-26 11:25:27,234 | INFO    |   SKIP PS51/2025-04-24 — secondary-spout session
+2026-05-26 11:25:27,246 | INFO    |   SKIP PS51/2025-04-25 — secondary-spout session
+2026-05-26 11:25:28,108 | INFO    |   OK   PS51/2025-04-27 (rel_day=-2, epoch=pre) — 97 trials
+2026-05-26 11:25:28,937 | INFO    |   OK   PS51/2025-04-28 (rel_day=-1, epoch=pre) — 96 trials
+2026-05-26 11:25:29,767 | INFO    |   OK   PS51/2025-04-29 (rel_day=+0, epoch=pre) — 96 trials
+2026-05-26 11:25:29,779 | INFO    |   SKIP PS51/2025-04-30 — secondary-spout session
+2026-05-26 11:25:30,600 | INFO    |   OK   PS51/2025-05-01 (rel_day=+2, epoch=acute) — 96 trials
+2026-05-26 11:25:31,420 | INFO    |   OK   PS51/2025-05-02 (rel_day=+3, epoch=acute) — 96 trials
+2026-05-26 11:25:32,228 | INFO    |   OK   PS51/2025-05-03 (rel_day=+4, epoch=acute) — 96 trials
+2026-05-26 11:25:33,050 | INFO    |   OK   PS51/2025-05-04 (rel_day=+5, epoch=acute) — 96 trials
+2026-05-26 11:25:33,063 | INFO    |   SKIP PS51/2025-05-05 — secondary-spout session
+2026-05-26 11:25:33,896 | INFO    |   OK   PS51/2025-05-06 (rel_day=+7, epoch=sub_acute) — 97 trials
+2026-05-26 11:25:34,753 | INFO    |   OK   PS51/2025-05-07 (rel_day=+8, epoch=sub_acute) — 96 trials
+2026-05-26 11:25:35,584 | INFO    |   OK   PS51/2025-05-08 (rel_day=+9, epoch=sub_acute) — 96 trials
+2026-05-26 11:25:36,413 | INFO    |   OK   PS51/2025-05-09 (rel_day=+10, epoch=sub_acute) — 96 trials
+2026-05-26 11:25:36,429 | WARNING |   SKIP PS51/2025-05-10 — jaw parquet missing
+2026-05-26 11:25:37,284 | INFO    |   OK   PS51/2025-05-11 (rel_day=+12, epoch=sub_acute) — 96 trials
+2026-05-26 11:25:37,302 | WARNING |   SKIP PS51/2025-05-12 — jaw parquet missing
+2026-05-26 11:25:37,324 | WARNING |   SKIP PS51/2025-05-13 — jaw parquet missing
+2026-05-26 11:25:38,170 | INFO    |   OK   PS51/2025-05-14 (rel_day=+15, epoch=sub_acute) — 97 trials
+2026-05-26 11:25:38,187 | WARNING |   SKIP PS51/2025-05-15 — jaw parquet missing
+2026-05-26 11:25:38,203 | WARNING |   SKIP PS51/2025-05-16 — jaw parquet missing
+2026-05-26 11:25:38,221 | WARNING |   SKIP PS51/2025-05-18 — jaw parquet missing
+2026-05-26 11:25:38,237 | WARNING |   SKIP PS51/2025-05-19 — jaw parquet missing
+2026-05-26 11:25:39,124 | INFO    |   OK   PS51/2025-05-20 (rel_day=+21, epoch=sub_acute) — 97 trials
+2026-05-26 11:25:39,144 | WARNING |   SKIP PS51/2025-05-21 — jaw parquet missing
+2026-05-26 11:25:39,161 | WARNING |   SKIP PS51/2025-05-22 — jaw parquet missing
+2026-05-26 11:25:39,177 | WARNING |   SKIP PS51/2025-05-23 — jaw parquet missing
+2026-05-26 11:25:39,197 | WARNING |   SKIP PS51/2025-05-24 — jaw parquet missing
+2026-05-26 11:25:39,212 | WARNING |   SKIP PS51/2025-05-25 — jaw parquet missing
+2026-05-26 11:25:39,230 | WARNING |   SKIP PS51/2025-05-26 — jaw parquet missing
+2026-05-26 11:25:39,246 | WARNING |   SKIP PS51/2025-05-27 — jaw parquet missing
+2026-05-26 11:25:40,061 | INFO    |   OK   PS51/2025-05-28 (rel_day=+29, epoch=sub_acute) — 97 trials
+2026-05-26 11:25:40,912 | INFO    |   OK   PS51/2025-05-29 (rel_day=+30, epoch=sub_acute) — 96 trials
+2026-05-26 11:25:41,750 | INFO    |   OK   PS51/2025-05-30 (rel_day=+31, epoch=chronic) — 96 trials
+2026-05-26 11:25:42,595 | INFO    |   OK   PS51/2025-05-31 (rel_day=+32, epoch=chronic) — 97 trials
+2026-05-26 11:25:43,430 | INFO    |   OK   PS51/2025-06-01 (rel_day=+33, epoch=chronic) — 97 trials
+2026-05-26 11:25:44,256 | INFO    |   OK   PS51/2025-06-02 (rel_day=+34, epoch=chronic) — 96 trials
+2026-05-26 11:25:45,084 | INFO    |   OK   PS51/2025-06-03 (rel_day=+35, epoch=chronic) — 97 trials
+2026-05-26 11:25:45,910 | INFO    |   OK   PS51/2025-06-04 (rel_day=+36, epoch=chronic) — 96 trials
+2026-05-26 11:25:46,737 | INFO    |   OK   PS51/2025-06-05 (rel_day=+37, epoch=chronic) — 97 trials
+2026-05-26 11:25:47,570 | INFO    |   OK   PS51/2025-06-06 (rel_day=+38, epoch=chronic) — 100 trials
+2026-05-26 11:25:48,425 | INFO    |   OK   PS51/2025-06-07 (rel_day=+39, epoch=chronic) — 99 trials
+2026-05-26 11:25:49,249 | INFO    |   OK   PS51/2025-06-08 (rel_day=+40, epoch=chronic) — 92 trials
+2026-05-26 11:25:50,069 | INFO    |   OK   PS51/2025-06-09 (rel_day=+41, epoch=chronic) — 100 trials
+2026-05-26 11:25:50,893 | INFO    |   OK   PS51/2025-06-10 (rel_day=+42, epoch=chronic) — 95 trials
+2026-05-26 11:25:51,722 | INFO    |   OK   PS51/2025-06-11 (rel_day=+43, epoch=chronic) — 100 trials
+2026-05-26 11:25:52,513 | INFO    |   OK   PS51/2025-06-12 (rel_day=+44, epoch=chronic) — 99 trials
+2026-05-26 11:25:53,358 | INFO    |   OK   PS51/2025-06-13 (rel_day=+45, epoch=chronic) — 100 trials
+2026-05-26 11:25:53,375 | WARNING |   SKIP PS51/2025-06-14 — jaw parquet missing
+2026-05-26 11:25:53,391 | WARNING |   SKIP PS51/2025-06-15 — jaw parquet missing
+2026-05-26 11:25:54,230 | INFO    |   OK   PS51/2025-06-16 (rel_day=+48, epoch=chronic) — 99 trials
+2026-05-26 11:25:55,061 | INFO    |   OK   PS51/2025-06-17 (rel_day=+49, epoch=chronic) — 99 trials
+2026-05-26 11:25:55,955 | INFO    |   OK   PS51/2025-06-18 (rel_day=+50, epoch=chronic) — 99 trials
+2026-05-26 11:25:56,792 | INFO    |   OK   PS51/2025-06-19 (rel_day=+51, epoch=chronic) — 100 trials
+2026-05-26 11:25:57,626 | INFO    |   OK   PS51/2025-06-20 (rel_day=+52, epoch=chronic) — 100 trials
+2026-05-26 11:25:58,450 | INFO    |   OK   PS51/2025-06-21 (rel_day=+53, epoch=chronic) — 99 trials
+2026-05-26 11:25:58,466 | WARNING |   SKIP PS51/2025-06-22 — jaw parquet missing
+2026-05-26 11:25:59,294 | INFO    |   OK   PS51/2025-06-23 (rel_day=+55, epoch=chronic) — 100 trials
+2026-05-26 11:26:00,136 | INFO    |   OK   PS51/2025-06-24 (rel_day=+56, epoch=chronic) — 100 trials
+2026-05-26 11:26:00,966 | INFO    |   OK   PS51/2025-06-25 (rel_day=+57, epoch=chronic) — 100 trials
+2026-05-26 11:26:01,794 | INFO    |   OK   PS51/2025-06-26 (rel_day=+58, epoch=chronic) — 100 trials
+2026-05-26 11:26:01,811 | WARNING |   SKIP PS51/2025-06-27 — jaw parquet missing
+2026-05-26 11:26:01,826 | WARNING |   SKIP PS51/2025-06-28 — jaw parquet missing
+2026-05-26 11:26:01,841 | WARNING |   SKIP PS51/2025-06-29 — jaw parquet missing
+2026-05-26 11:26:01,858 | WARNING |   SKIP PS51/2025-06-30 — jaw parquet missing
+2026-05-26 11:26:01,873 | WARNING |   SKIP PS51/2025-07-01 — jaw parquet missing
+2026-05-26 11:26:01,888 | WARNING |   SKIP PS51/2025-07-02 — jaw parquet missing
+2026-05-26 11:26:02,721 | INFO    |   OK   PS51/2025-07-03 (rel_day=+65, epoch=chronic) — 100 trials
+2026-05-26 11:26:02,736 | WARNING |   SKIP PS51/2025-07-04 — jaw parquet missing
+2026-05-26 11:26:02,753 | WARNING |   SKIP PS51/2025-07-05 — jaw parquet missing
+2026-05-26 11:26:02,770 | WARNING |   SKIP PS51/2025-07-06 — jaw parquet missing
+2026-05-26 11:26:02,785 | WARNING |   SKIP PS51/2025-07-07 — jaw parquet missing
+2026-05-26 11:26:02,802 | WARNING |   SKIP PS51/2025-07-08 — jaw parquet missing
+2026-05-26 11:26:03,674 | INFO    |   OK   PS51/2025-07-09 (rel_day=+71, epoch=chronic) — 92 trials
+2026-05-26 11:26:03,674 | INFO    | == Animal PS54 ==
+2026-05-26 11:26:03,694 | INFO    |   79 session dates
+2026-05-26 11:26:04,558 | INFO    |   OK   PS54/2025-04-21 (rel_day=-9, epoch=pre) — 96 trials
+2026-05-26 11:26:05,502 | INFO    |   OK   PS54/2025-04-22 (rel_day=-8, epoch=pre) — 91 trials
+2026-05-26 11:26:06,322 | INFO    |   OK   PS54/2025-04-23 (rel_day=-7, epoch=pre) — 95 trials
+2026-05-26 11:26:06,333 | INFO    |   SKIP PS54/2025-04-24 — secondary-spout session
+2026-05-26 11:26:06,347 | INFO    |   SKIP PS54/2025-04-25 — secondary-spout session
+2026-05-26 11:26:07,163 | INFO    |   OK   PS54/2025-04-27 (rel_day=-3, epoch=pre) — 97 trials
+2026-05-26 11:26:07,972 | INFO    |   OK   PS54/2025-04-28 (rel_day=-2, epoch=pre) — 97 trials
+2026-05-26 11:26:08,804 | INFO    |   OK   PS54/2025-04-29 (rel_day=-1, epoch=pre) — 97 trials
+2026-05-26 11:26:08,816 | INFO    |   SKIP PS54/2025-04-30 — secondary-spout session
+2026-05-26 11:26:09,631 | INFO    |   OK   PS54/2025-05-01 (rel_day=+1, epoch=acute) — 97 trials
+2026-05-26 11:26:10,486 | INFO    |   OK   PS54/2025-05-02 (rel_day=+2, epoch=acute) — 97 trials
+2026-05-26 11:26:11,322 | INFO    |   OK   PS54/2025-05-03 (rel_day=+3, epoch=acute) — 97 trials
+2026-05-26 11:26:12,134 | INFO    |   OK   PS54/2025-05-04 (rel_day=+4, epoch=acute) — 96 trials
+2026-05-26 11:26:12,949 | INFO    |   OK   PS54/2025-05-05 (rel_day=+5, epoch=acute) — 96 trials
+2026-05-26 11:26:13,752 | INFO    |   OK   PS54/2025-05-06 (rel_day=+6, epoch=acute) — 96 trials
+2026-05-26 11:26:14,567 | INFO    |   OK   PS54/2025-05-07 (rel_day=+7, epoch=acute) — 97 trials
+2026-05-26 11:26:15,395 | INFO    |   OK   PS54/2025-05-08 (rel_day=+8, epoch=acute) — 96 trials
+2026-05-26 11:26:16,218 | INFO    |   OK   PS54/2025-05-09 (rel_day=+9, epoch=acute) — 97 trials
+2026-05-26 11:26:16,235 | WARNING |   SKIP PS54/2025-05-10 — jaw parquet missing
+2026-05-26 11:26:17,042 | INFO    |   OK   PS54/2025-05-11 (rel_day=+11, epoch=acute) — 96 trials
+2026-05-26 11:26:17,057 | WARNING |   SKIP PS54/2025-05-12 — jaw parquet missing
+2026-05-26 11:26:17,072 | WARNING |   SKIP PS54/2025-05-13 — jaw parquet missing
+2026-05-26 11:26:17,898 | INFO    |   OK   PS54/2025-05-14 (rel_day=+14, epoch=acute) — 96 trials
+2026-05-26 11:26:17,914 | WARNING |   SKIP PS54/2025-05-15 — jaw parquet missing
+2026-05-26 11:26:17,932 | WARNING |   SKIP PS54/2025-05-16 — jaw parquet missing
+2026-05-26 11:26:18,748 | INFO    |   OK   PS54/2025-05-17 (rel_day=+17, epoch=acute) — 97 trials
+2026-05-26 11:26:18,764 | WARNING |   SKIP PS54/2025-05-18 — jaw parquet missing
+2026-05-26 11:26:18,786 | WARNING |   SKIP PS54/2025-05-19 — jaw parquet missing
+2026-05-26 11:26:19,647 | INFO    |   OK   PS54/2025-05-20 (rel_day=+20, epoch=sub_acute) — 97 trials
+2026-05-26 11:26:19,664 | WARNING |   SKIP PS54/2025-05-21 — jaw parquet missing
+2026-05-26 11:26:19,681 | WARNING |   SKIP PS54/2025-05-22 — jaw parquet missing
+2026-05-26 11:26:19,699 | WARNING |   SKIP PS54/2025-05-23 — jaw parquet missing
+2026-05-26 11:26:19,723 | WARNING |   SKIP PS54/2025-05-24 — jaw parquet missing
+2026-05-26 11:26:19,745 | WARNING |   SKIP PS54/2025-05-25 — jaw parquet missing
+2026-05-26 11:26:19,762 | WARNING |   SKIP PS54/2025-05-26 — jaw parquet missing
+2026-05-26 11:26:19,778 | WARNING |   SKIP PS54/2025-05-27 — jaw parquet missing
+2026-05-26 11:26:20,607 | INFO    |   OK   PS54/2025-05-28 (rel_day=+28, epoch=sub_acute) — 97 trials
+2026-05-26 11:26:21,445 | INFO    |   OK   PS54/2025-05-29 (rel_day=+29, epoch=sub_acute) — 97 trials
+2026-05-26 11:26:21,459 | INFO    |   SKIP PS54/2025-05-30 — secondary-spout session
+2026-05-26 11:26:22,264 | INFO    |   OK   PS54/2025-05-31 (rel_day=+31, epoch=sub_acute) — 97 trials
+2026-05-26 11:26:23,076 | INFO    |   OK   PS54/2025-06-01 (rel_day=+32, epoch=sub_acute) — 96 trials
+2026-05-26 11:26:23,913 | INFO    |   OK   PS54/2025-06-02 (rel_day=+33, epoch=sub_acute) — 96 trials
+2026-05-26 11:26:24,749 | INFO    |   OK   PS54/2025-06-03 (rel_day=+34, epoch=sub_acute) — 97 trials
+2026-05-26 11:26:25,987 | INFO    |   OK   PS54/2025-06-04 (rel_day=+35, epoch=sub_acute) — 96 trials
+2026-05-26 11:26:27,822 | INFO    |   OK   PS54/2025-06-05 (rel_day=+36, epoch=sub_acute) — 96 trials
+2026-05-26 11:26:28,615 | INFO    |   OK   PS54/2025-06-06 (rel_day=+37, epoch=sub_acute) — 99 trials
+2026-05-26 11:26:29,437 | INFO    |   OK   PS54/2025-06-07 (rel_day=+38, epoch=sub_acute) — 99 trials
+2026-05-26 11:26:30,236 | INFO    |   OK   PS54/2025-06-08 (rel_day=+39, epoch=sub_acute) — 99 trials
+2026-05-26 11:26:31,087 | INFO    |   OK   PS54/2025-06-09 (rel_day=+40, epoch=chronic) — 95 trials
+2026-05-26 11:26:31,910 | INFO    |   OK   PS54/2025-06-10 (rel_day=+41, epoch=chronic) — 99 trials
+2026-05-26 11:26:32,759 | INFO    |   OK   PS54/2025-06-11 (rel_day=+42, epoch=chronic) — 94 trials
+2026-05-26 11:26:33,687 | INFO    |   OK   PS54/2025-06-12 (rel_day=+43, epoch=chronic) — 99 trials
+2026-05-26 11:26:35,911 | INFO    |   OK   PS54/2025-06-13 (rel_day=+44, epoch=chronic) — 100 trials
+2026-05-26 11:26:35,928 | WARNING |   SKIP PS54/2025-06-14 — jaw parquet missing
+2026-05-26 11:26:35,943 | WARNING |   SKIP PS54/2025-06-15 — jaw parquet missing
+2026-05-26 11:26:35,955 | INFO    |   SKIP PS54/2025-06-16 — secondary-spout session
+2026-05-26 11:26:36,776 | INFO    |   OK   PS54/2025-06-17 (rel_day=+48, epoch=chronic) — 99 trials
+2026-05-26 11:26:36,789 | INFO    |   SKIP PS54/2025-06-18 — secondary-spout session
+2026-05-26 11:26:36,800 | INFO    |   SKIP PS54/2025-06-19 — secondary-spout session
+2026-05-26 11:26:36,812 | INFO    |   SKIP PS54/2025-06-20 — secondary-spout session
+2026-05-26 11:26:36,824 | INFO    |   SKIP PS54/2025-06-21 — secondary-spout session
+2026-05-26 11:26:36,840 | WARNING |   SKIP PS54/2025-06-22 — jaw parquet missing
+2026-05-26 11:26:36,852 | INFO    |   SKIP PS54/2025-06-23 — secondary-spout session
+2026-05-26 11:26:36,863 | INFO    |   SKIP PS54/2025-06-24 — secondary-spout session
+2026-05-26 11:26:36,876 | INFO    |   SKIP PS54/2025-06-25 — secondary-spout session
+2026-05-26 11:26:36,888 | INFO    |   SKIP PS54/2025-06-26 — secondary-spout session
+2026-05-26 11:26:36,903 | WARNING |   SKIP PS54/2025-06-27 — jaw parquet missing
+2026-05-26 11:26:36,918 | WARNING |   SKIP PS54/2025-06-28 — jaw parquet missing
+2026-05-26 11:26:36,936 | WARNING |   SKIP PS54/2025-06-29 — jaw parquet missing
+2026-05-26 11:26:36,951 | WARNING |   SKIP PS54/2025-06-30 — jaw parquet missing
+2026-05-26 11:26:36,966 | WARNING |   SKIP PS54/2025-07-01 — jaw parquet missing
+2026-05-26 11:26:36,982 | WARNING |   SKIP PS54/2025-07-02 — jaw parquet missing
+2026-05-26 11:26:37,802 | INFO    |   OK   PS54/2025-07-03 (rel_day=+64, epoch=chronic) — 100 trials
+2026-05-26 11:26:37,817 | WARNING |   SKIP PS54/2025-07-04 — jaw parquet missing
+2026-05-26 11:26:37,833 | WARNING |   SKIP PS54/2025-07-05 — jaw parquet missing
+2026-05-26 11:26:37,848 | WARNING |   SKIP PS54/2025-07-06 — jaw parquet missing
+2026-05-26 11:26:37,863 | WARNING |   SKIP PS54/2025-07-07 — jaw parquet missing
+2026-05-26 11:26:37,878 | WARNING |   SKIP PS54/2025-07-08 — jaw parquet missing
+2026-05-26 11:26:38,678 | INFO    |   OK   PS54/2025-07-09 (rel_day=+70, epoch=chronic) — 99 trials
+2026-05-26 11:26:38,678 | INFO    | == Animal PS55 ==
+2026-05-26 11:26:38,691 | INFO    |   78 session dates
+2026-05-26 11:26:39,585 | INFO    |   OK   PS55/2025-04-21 (rel_day=-9, epoch=pre) — 97 trials
+2026-05-26 11:26:40,403 | INFO    |   OK   PS55/2025-04-22 (rel_day=-8, epoch=pre) — 96 trials
+2026-05-26 11:26:41,318 | INFO    |   OK   PS55/2025-04-23 (rel_day=-7, epoch=pre) — 97 trials
+2026-05-26 11:26:41,330 | INFO    |   SKIP PS55/2025-04-24 — secondary-spout session
+2026-05-26 11:26:41,343 | INFO    |   SKIP PS55/2025-04-25 — secondary-spout session
+2026-05-26 11:26:42,294 | INFO    |   OK   PS55/2025-04-26 (rel_day=-4, epoch=pre) — 96 trials
+2026-05-26 11:26:43,471 | INFO    |   OK   PS55/2025-04-29 (rel_day=-1, epoch=pre) — 97 trials
+2026-05-26 11:26:43,484 | INFO    |   SKIP PS55/2025-04-30 — secondary-spout session
+2026-05-26 11:26:45,378 | INFO    |   OK   PS55/2025-05-01 (rel_day=+1, epoch=acute) — 96 trials
+2026-05-26 11:26:46,220 | INFO    |   OK   PS55/2025-05-02 (rel_day=+2, epoch=acute) — 97 trials
+2026-05-26 11:26:47,039 | INFO    |   OK   PS55/2025-05-03 (rel_day=+3, epoch=acute) — 96 trials
+2026-05-26 11:26:47,846 | INFO    |   OK   PS55/2025-05-04 (rel_day=+4, epoch=acute) — 97 trials
+2026-05-26 11:26:48,689 | INFO    |   OK   PS55/2025-05-05 (rel_day=+5, epoch=acute) — 96 trials
+2026-05-26 11:26:49,497 | INFO    |   OK   PS55/2025-05-06 (rel_day=+6, epoch=acute) — 97 trials
+2026-05-26 11:26:50,379 | INFO    |   OK   PS55/2025-05-07 (rel_day=+7, epoch=acute) — 97 trials
+2026-05-26 11:26:51,228 | INFO    |   OK   PS55/2025-05-08 (rel_day=+8, epoch=acute) — 97 trials
+2026-05-26 11:26:52,293 | INFO    |   OK   PS55/2025-05-09 (rel_day=+9, epoch=acute) — 96 trials
+2026-05-26 11:26:52,325 | WARNING |   SKIP PS55/2025-05-10 — jaw parquet missing
+2026-05-26 11:26:54,282 | INFO    |   OK   PS55/2025-05-11 (rel_day=+11, epoch=acute) — 97 trials
+2026-05-26 11:26:54,298 | WARNING |   SKIP PS55/2025-05-12 — jaw parquet missing
+2026-05-26 11:26:54,313 | WARNING |   SKIP PS55/2025-05-13 — jaw parquet missing
+2026-05-26 11:26:55,105 | INFO    |   OK   PS55/2025-05-14 (rel_day=+14, epoch=acute) — 96 trials
+2026-05-26 11:26:55,120 | WARNING |   SKIP PS55/2025-05-15 — jaw parquet missing
+2026-05-26 11:26:55,136 | WARNING |   SKIP PS55/2025-05-16 — jaw parquet missing
+2026-05-26 11:26:55,951 | INFO    |   OK   PS55/2025-05-17 (rel_day=+17, epoch=acute) — 96 trials
+2026-05-26 11:26:55,967 | WARNING |   SKIP PS55/2025-05-18 — jaw parquet missing
+2026-05-26 11:26:55,982 | WARNING |   SKIP PS55/2025-05-19 — jaw parquet missing
+2026-05-26 11:26:56,780 | INFO    |   OK   PS55/2025-05-20 (rel_day=+20, epoch=sub_acute) — 97 trials
+2026-05-26 11:26:56,797 | WARNING |   SKIP PS55/2025-05-21 — jaw parquet missing
+2026-05-26 11:26:56,813 | WARNING |   SKIP PS55/2025-05-22 — jaw parquet missing
+2026-05-26 11:26:56,828 | WARNING |   SKIP PS55/2025-05-23 — jaw parquet missing
+2026-05-26 11:26:56,843 | WARNING |   SKIP PS55/2025-05-24 — jaw parquet missing
+2026-05-26 11:26:56,860 | WARNING |   SKIP PS55/2025-05-25 — jaw parquet missing
+2026-05-26 11:26:56,876 | WARNING |   SKIP PS55/2025-05-26 — jaw parquet missing
+2026-05-26 11:26:56,890 | WARNING |   SKIP PS55/2025-05-27 — jaw parquet missing
+2026-05-26 11:26:57,731 | INFO    |   OK   PS55/2025-05-28 (rel_day=+28, epoch=sub_acute) — 97 trials
+2026-05-26 11:26:58,546 | INFO    |   OK   PS55/2025-05-29 (rel_day=+29, epoch=sub_acute) — 97 trials
+2026-05-26 11:26:58,558 | INFO    |   SKIP PS55/2025-05-30 — secondary-spout session
+2026-05-26 11:26:59,439 | INFO    |   OK   PS55/2025-05-31 (rel_day=+31, epoch=sub_acute) — 97 trials
+2026-05-26 11:26:59,452 | INFO    |   SKIP PS55/2025-06-01 — secondary-spout session
+2026-05-26 11:27:00,322 | INFO    |   OK   PS55/2025-06-02 (rel_day=+33, epoch=sub_acute) — 97 trials
+2026-05-26 11:27:02,597 | INFO    |   OK   PS55/2025-06-03 (rel_day=+34, epoch=sub_acute) — 97 trials
+2026-05-26 11:27:03,396 | INFO    |   OK   PS55/2025-06-04 (rel_day=+35, epoch=sub_acute) — 97 trials
+2026-05-26 11:27:03,409 | INFO    |   SKIP PS55/2025-06-05 — secondary-spout session
+2026-05-26 11:27:03,425 | WARNING |   SKIP PS55/2025-06-06 — jaw parquet missing
+2026-05-26 11:27:04,223 | INFO    |   OK   PS55/2025-06-07 (rel_day=+38, epoch=sub_acute) — 99 trials
+2026-05-26 11:27:05,023 | INFO    |   OK   PS55/2025-06-08 (rel_day=+39, epoch=sub_acute) — 100 trials
+2026-05-26 11:27:05,842 | INFO    |   OK   PS55/2025-06-09 (rel_day=+40, epoch=sub_acute) — 100 trials
+2026-05-26 11:27:06,657 | INFO    |   OK   PS55/2025-06-10 (rel_day=+41, epoch=sub_acute) — 100 trials
+2026-05-26 11:27:07,565 | INFO    |   OK   PS55/2025-06-11 (rel_day=+42, epoch=sub_acute) — 99 trials
+2026-05-26 11:27:08,433 | INFO    |   OK   PS55/2025-06-12 (rel_day=+43, epoch=sub_acute) — 99 trials
+2026-05-26 11:27:09,415 | INFO    |   OK   PS55/2025-06-13 (rel_day=+44, epoch=sub_acute) — 99 trials
+2026-05-26 11:27:09,439 | WARNING |   SKIP PS55/2025-06-14 — jaw parquet missing
+2026-05-26 11:27:09,463 | WARNING |   SKIP PS55/2025-06-15 — jaw parquet missing
+2026-05-26 11:27:11,530 | INFO    |   OK   PS55/2025-06-16 (rel_day=+47, epoch=sub_acute) — 100 trials
+2026-05-26 11:27:12,359 | INFO    |   OK   PS55/2025-06-17 (rel_day=+48, epoch=sub_acute) — 99 trials
+2026-05-26 11:27:13,166 | INFO    |   OK   PS55/2025-06-18 (rel_day=+49, epoch=sub_acute) — 93 trials
+2026-05-26 11:27:13,978 | INFO    |   OK   PS55/2025-06-19 (rel_day=+50, epoch=chronic) — 99 trials
+2026-05-26 11:27:14,797 | INFO    |   OK   PS55/2025-06-20 (rel_day=+51, epoch=chronic) — 99 trials
+2026-05-26 11:27:15,623 | INFO    |   OK   PS55/2025-06-21 (rel_day=+52, epoch=chronic) — 99 trials
+2026-05-26 11:27:15,640 | WARNING |   SKIP PS55/2025-06-22 — jaw parquet missing
+2026-05-26 11:27:16,499 | INFO    |   OK   PS55/2025-06-23 (rel_day=+54, epoch=chronic) — 100 trials
+2026-05-26 11:27:17,326 | INFO    |   OK   PS55/2025-06-24 (rel_day=+55, epoch=chronic) — 94 trials
+2026-05-26 11:27:18,321 | INFO    |   OK   PS55/2025-06-25 (rel_day=+56, epoch=chronic) — 99 trials
+2026-05-26 11:27:20,360 | INFO    |   OK   PS55/2025-06-26 (rel_day=+57, epoch=chronic) — 99 trials
+2026-05-26 11:27:20,376 | WARNING |   SKIP PS55/2025-06-27 — jaw parquet missing
+2026-05-26 11:27:20,392 | WARNING |   SKIP PS55/2025-06-28 — jaw parquet missing
+2026-05-26 11:27:20,408 | WARNING |   SKIP PS55/2025-06-29 — jaw parquet missing
+2026-05-26 11:27:20,424 | WARNING |   SKIP PS55/2025-06-30 — jaw parquet missing
+2026-05-26 11:27:20,439 | WARNING |   SKIP PS55/2025-07-01 — jaw parquet missing
+2026-05-26 11:27:20,455 | WARNING |   SKIP PS55/2025-07-02 — jaw parquet missing
+2026-05-26 11:27:21,273 | INFO    |   OK   PS55/2025-07-03 (rel_day=+64, epoch=chronic) — 99 trials
+2026-05-26 11:27:21,288 | WARNING |   SKIP PS55/2025-07-04 — jaw parquet missing
+2026-05-26 11:27:21,305 | WARNING |   SKIP PS55/2025-07-05 — jaw parquet missing
+2026-05-26 11:27:21,319 | WARNING |   SKIP PS55/2025-07-06 — jaw parquet missing
+2026-05-26 11:27:21,335 | WARNING |   SKIP PS55/2025-07-07 — jaw parquet missing
+2026-05-26 11:27:21,350 | WARNING |   SKIP PS55/2025-07-08 — jaw parquet missing
+2026-05-26 11:27:22,150 | INFO    |   OK   PS55/2025-07-09 (rel_day=+70, epoch=chronic) — 99 trials
+2026-05-26 11:27:22,150 | INFO    | Total per-trial rows: 22363
+2026-05-26 11:27:22,150 | INFO    | Elapsed: 204.1 s
+2026-05-26 11:27:22,243 | INFO    | Wrote per_trial.parquet (22363 rows)
+2026-05-26 11:27:22,297 | INFO    | Wrote per_session.parquet (231 sessions)
+2026-05-26 11:27:22,325 | INFO    | Wrote by_phenotype_epoch.csv (16 rows)
+2026-05-26 11:27:22,356 | INFO    | Wrote counterfactual_means.csv (80 rows)
+2026-05-26 11:27:22,375 | INFO    | Wrote sign_flip_flags.csv (64 rows)
+2026-05-26 11:27:22,382 | INFO    | Wrote stage5_fill_prevalence.csv (16 rows)
+2026-05-26 11:27:23,595 | INFO    | Wrote lk_at_peak_hist.png
+2026-05-26 11:27:24,593 | INFO    | Wrote stage5_fill_hist.png
+
