@@ -14,6 +14,15 @@
 
 ## 0. DATA SAFETY GROUND RULES (non-negotiable) `[DECIDED]`
 
+> **As-built note (2026-06):** The §0 text below is the *original* statement
+> of the rules. The **canonical, maintained** version now lives in
+> [`CLAUDE.md`](../CLAUDE.md) §"Ground Rules", which has since extended these:
+> it names **two** legacy reference repos (Priya's fork + Rich's upstream),
+> adds the **raw Flea3 camera paths** to the source-data list, requires
+> **per-invocation** approval for destructive ops on `pipeline_outputs/` trees,
+> and adds **git-worktree** and **phase-close-tag** discipline. Read `CLAUDE.md`
+> for the binding rules; the original §0 is preserved here for provenance.
+
 These rules bind every Claude Code session working on this project. They should be the first thing Claude Code reads at session start (via `CLAUDE.md`).
 
 1. **Never modify, overwrite, rename, or delete source data.** "Source data" = any raw file produced by an instrument, experiment, or upstream processing that is not already produced by this new consolidated codebase. Concretely this includes, but is not limited to:
@@ -61,6 +70,12 @@ These rules bind every Claude Code session working on this project. They should 
 ## 2. EXISTING CODE & DATA INVENTORY
 
 ### 2.1 Legacy code locations `[DECIDED]`
+
+> **As-built note (2026-06):** There are **two** read-only legacy reference
+> repos, not one (see `CLAUDE.md` §"Ground Rules" rule 2): Priya's working fork
+> (`…_Priya`, below) and Rich's upstream `…/facerhythm_stroke_biomarker_exp`,
+> which holds a few helpers found only there (e.g.
+> `make_alignment_templates_20251216.py`).
 
 **Spout behavior code (Mac, local):**
 - Root: `/Users/Priya2/Github/facerhythm_stroke_biomarker_exp_Priya`
@@ -459,6 +474,13 @@ Each phase ends with a commit on a branch + a short section added to `MIGRATION_
 ---
 
 ## 9. GIT STRATEGY
+
+> **As-built note (2026-06):** The day-to-day git discipline has grown well
+> beyond the basics below. The canonical rules — feature-branch-per-change,
+> never commit to `main` (pre-commit hook enforced), **phase-close tags**
+> (`v{phase}-{slug}`) on every merge, **git-worktree-per-parallel-session**,
+> and the safe branch-delete protocol — are maintained in [`CLAUDE.md`](../CLAUDE.md)
+> §"Ground Rules" rule 8–9. The points below are the original starting policy.
 
 1. Create a new **private** GitHub repo named (suggestion) `stroke_orofacial_pipeline`.
 2. Initialize locally first (`git init` in the new directory), commit the skeleton on `main`, then push to GitHub.
