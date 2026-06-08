@@ -55,7 +55,7 @@ Null-floor-corrected burdens (deficit-days) and the focal (contra−ipsi) defici
 | animal | laser (mW) | contra burden | ipsi burden | **focal deficit** | group |
 | --- | --- | --- | --- | --- | --- |
 | PS54 | 3.0 | 56.6 | 20.2 | **36.4** | severe |
-| PS51 | 3.0 | 35.1 | 14.8 | **20.3** | moderate-severe |
+| PS51 | 3.0 | 35.1 | 14.8 | **20.3** | moderate (acute bilateral, recovers) |
 | PS55 | 5.0 | 55.1 | 36.7 | **18.4** | severe (most bilateral → lower *focal*) |
 | PS46 | 2.2 | 5.0 | 1.0 | **4.1** | moderate (focal, lateralized) |
 | PS50 | 2.5 | 0.9 | 0.4 | 0.5 | mild |
@@ -77,32 +77,36 @@ Null-floor-corrected burdens (deficit-days) and the focal (contra−ipsi) defici
 
 ## Composite clinical grade (recommended)
 
-The burden/focal metrics above are continuous severity *scores*. To reproduce the
-**clinical grading** (mild / moderate / moderate-severe / severe) we combine three
+The burden/focal metrics above are continuous severity *scores*. To assign a
+three-tier **clinical grade** (mild / moderate / severe) we combine three
 interpretable spout axes — each matching a stated diagnostic criterion
 (`severity_grade()` in `severity.py`):
 
 - **A — bilateral cessation days**: post days with *both* responses < 25% baseline
-  (acute total absence of licking). → drives *severe* / *mod-severe*.
+  (acute total absence of licking).
 - **B — contra-absent days**: post days with the contralesional response < 25%
-  baseline (duration of absent contra licking). → drives *moderate*.
+  baseline (duration of absent contra licking).
 - **C — contra persistence**: residual contra deficit over the last ~6 sessions
-  (does contra recover, or persist to the end?). → drives *severe*.
+  (does contra recover, or persist to the end?).
 
 (The A and B suppression thresholds were originally 20% and 30%; they are unified
-to 25%. The four-way grouping is invariant to this choice — verified at
-20 / 25 / 30%, where the A/B counts shift slightly but never cross a grade
-boundary.)
+to 25%. The grouping is invariant to this choice — verified at 20 / 25 / 30%,
+where the A/B counts shift slightly but never cross a grade boundary.)
 
-Rule (cohort-tuned, N=8): `severe` if C>0.6 (persists) or A≥10 (very long cessation);
-else `mod-severe` if A≥2 (acute bilateral cessation that recovers); else `moderate`
-if B≥3 (sustained contra-only); else `mild`.
+Rule (cohort-tuned, N=8): `severe` if C>0.6 (contra deficit persists to the end)
+or A≥10 (prolonged bilateral cessation); else `moderate` if A≥2 (acute bilateral
+cessation that recovers) or B≥3 (sustained contra-only deficit, ipsi spared);
+else `mild`. The moderate tier thus covers both a focal contralesional-only
+deficit (PS46) and transient bilateral cessation that recovers (PS51) — both
+share the defining feature that contralesional licking ultimately returns,
+distinguishing them from the severe animals (prolonged cessation + incomplete
+contra recovery).
 
-Summary view — all three axes at once (x = bilateral cessation duration → severe;
-y = unilateral contra-only deficit duration → moderate; marker size = contra
-persistence). Each grade occupies its own region: mild at the origin, moderate up
-the y-axis (unilateral), mod-severe/severe out along x (bilateral), with PS54's large
-marker flagging the persistent (never-recovering) contra deficit.
+Summary view — all three axes at once (x = bilateral cessation duration; y =
+unilateral contra-only deficit duration; marker size = contra persistence). Mild
+sits at the origin, moderate spreads up the y-axis (contra-only, PS46) and out
+along x (bilateral-but-recovering, PS51), and severe sits at high x with large
+markers (PS54's flagging the persistent, never-recovering contra deficit).
 
 ![severity 2-axis map](figures/severity/severity_2axis_map.png)
 
@@ -117,13 +121,13 @@ Per-axis breakdown:
 | PS49 | 0 | 0 | 0.09 | mild |
 | PS50 | 0 | 1 | 0.00 | mild |
 | PS46 | 0 | 5 | 0.07 | **moderate** (contra-only deficit, ipsi spared) |
-| PS51 | 7 | 13 | 0.44 | **mod-severe** (acute bilateral, then recovers) |
+| PS51 | 7 | 13 | 0.44 | **moderate** (acute bilateral cessation, then recovers) |
 | PS55 | 17 | 38 | 0.43 | **severe** (longest cessation) |
 | PS54 | 12 | 48 | 1.00 | **severe** (contra deficit persists to end) |
 
-This reproduces the clinical grading exactly: mild {PS47–50}, moderate {PS46},
-mod-severe {PS51}, severe {PS54, PS55} — and shows *which axis* drives each call
-(PS46 = B; PS51 = A with recovery; PS54 = C persistence; PS55 = A duration).
+This yields the three-tier grading: mild {PS47–50}, moderate {PS46, PS51},
+severe {PS54, PS55} — and shows *which axis* drives each call (PS46 = B,
+contra-only; PS51 = A with recovery; PS54 = C persistence; PS55 = A duration).
 
 ## Caveats
 - N = 8, exploratory. The severe group's burdens are lower bounds (recovery can

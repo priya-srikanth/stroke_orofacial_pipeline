@@ -196,7 +196,7 @@ class SeverityGrade:
         < 25% of baseline (duration of absent contra licking).
       - ``contra_persistence`` (C): residual contra deficit over the last sessions
         (1 − mean contra response / baseline) — does the contra deficit persist to
-        the end (severe) or recover (mod-severe)?
+        the end (severe) or recover (moderate)?
 
     The two suppression thresholds were originally 20 % (cessation) and 30 %
     (absence); they are unified to 25 % here. The four-way grouping is invariant
@@ -209,16 +209,25 @@ class SeverityGrade:
     bilateral_cessation_days: int
     contra_absent_days: int
     contra_persistence: float
-    grade: str  # "mild" | "moderate" | "mod-severe" | "severe"
+    grade: str  # "mild" | "moderate" | "severe"
 
 
 def _grade(A: int, B: int, C: float) -> str:
-    """Grading rule (thresholds tuned to the PS46–55 cohort; N=8, exploratory)."""
-    if C > 0.6 or A >= 10:   # contra deficit persists to end, OR very long cessation
+    """Three-tier grading rule (thresholds tuned to the PS46–55 cohort; N=8).
+
+    - **severe**: a prolonged shutdown with incomplete recovery — the contra
+      deficit fails to resolve by the end of recording (``C > 0.6``) OR
+      bilateral cessation lasts a long time (``A >= 10`` days).
+    - **moderate**: a clear, sustained deficit that nonetheless recovers —
+      either acute bilateral cessation that then returns (``A >= 2``; e.g.
+      PS51) or a sustained contralesional-only deficit with the ipsi side
+      spared (``B >= 3``; e.g. PS46). Both routes share the defining moderate
+      feature: contralesional licking ultimately returns.
+    - **mild**: licking essentially intact, at most a brief deficit.
+    """
+    if C > 0.6 or A >= 10:    # persistent contra deficit OR prolonged cessation
         return "severe"
-    if A >= 2:               # acute bilateral cessation, but then recovers
-        return "mod-severe"
-    if B >= 3:               # sustained contra-only deficit (ipsi spared)
+    if A >= 2 or B >= 3:      # sustained deficit that recovers (bilateral or contra-only)
         return "moderate"
     return "mild"
 

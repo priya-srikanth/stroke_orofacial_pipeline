@@ -78,7 +78,7 @@ def main() -> None:
 
     # Composite clinical grade (3 spout axes) — reproduces the clinical grading
     grades = cohort_grade(animals, resolver)
-    order = {"mild": 0, "moderate": 1, "mod-severe": 2, "severe": 3}
+    order = {"mild": 0, "moderate": 1, "severe": 2}
     with open(out_dir / "severity_grade.csv", "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["animal", "bilateral_cessation_days", "contra_absent_days",
