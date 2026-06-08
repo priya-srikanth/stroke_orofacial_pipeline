@@ -136,8 +136,8 @@ PS47:
       y0: 310.0
   epoch_boundaries:
     acute_max_rel_day: 1         # acute = rel_day 1
-    subacute_max_rel_day: 4      # sub-acute = rel_day 2..4
-    chronic_min_rel_day: 5       # chronic = rel_day >= 5
+    subacute_max_rel_day: 2      # sub-acute = rel_day 2
+    chronic_min_rel_day: 3       # chronic = rel_day >= 3
 
 PS48:
   stroke_date: 2025-03-13
@@ -165,8 +165,8 @@ PS48:
       y0: 310.0
   epoch_boundaries:
     acute_max_rel_day: 1
-    subacute_max_rel_day: 4
-    chronic_min_rel_day: 5
+    subacute_max_rel_day: 2
+    chronic_min_rel_day: 3
 
 PS49:
   stroke_date: 2025-03-17
@@ -194,8 +194,8 @@ PS49:
       y0: 310.0
   epoch_boundaries:
     acute_max_rel_day: 1
-    subacute_max_rel_day: 4
-    chronic_min_rel_day: 5
+    subacute_max_rel_day: 5
+    chronic_min_rel_day: 6
 
 PS50:
   stroke_date: 2025-03-23
@@ -258,8 +258,8 @@ PS51:
       y0: 290.0
   epoch_boundaries:
     acute_max_rel_day: 6         # acute = rel_day 1..6
-    subacute_max_rel_day: 30     # sub-acute = rel_day 7..30
-    chronic_min_rel_day: 31      # chronic = rel_day >= 31
+    subacute_max_rel_day: 31     # sub-acute = rel_day 7..31
+    chronic_min_rel_day: 32      # chronic = rel_day >= 32
 
 PS54:
   stroke_date: 2025-04-30
@@ -289,12 +289,13 @@ PS54:
       x0: 12.0
       y0: 290.0
   epoch_boundaries:
-    # acute = rel_day 1..17; sub-acute = rel_day 18..39; chronic = rel_day >= 40.
-    # Per 2026-05-23 Priya clarification: no recorded sessions on rel_day 18-19;
-    # subacute_min collapses to rel_day 18 (no data-availability gap encoded in schema).
-    acute_max_rel_day: 17
-    subacute_max_rel_day: 39
-    chronic_min_rel_day: 40
+    # acute = rel_day 1..19; sub-acute = rel_day 20..38; chronic = rel_day >= 39.
+    # Re-derived 2026-06-08 from the combined recovery-index criterion
+    # (docs/epoch_criteria.md); acute ends at first observable recovery (d20; no
+    # recorded sessions d18-19 -> acute_max=19). Was 17/39/40 (2026-05-23 hand stamp).
+    acute_max_rel_day: 19
+    subacute_max_rel_day: 38
+    chronic_min_rel_day: 39
 
 # PS55 has a longer recovery trajectory than PS54 (higher laser power, 5.0 mW vs 3.0 mW).
 PS55:
@@ -328,12 +329,12 @@ PS55:
       x0: 0.0
       y0: 290.0
   epoch_boundaries:
-    # PS55 re-stamped 2026-05-23 (second pass): acute = rel_day 1..17;
-    # sub-acute = rel_day 18..49 (data range d20-49; d18-19 has no recorded
-    # sessions, treated as data-availability artifact, not categorization gap);
-    # chronic = rel_day >= 50. PS55 sub-acute + chronic boundaries differ from
-    # PS54 by +10 days due to longer recovery trajectory (5.0 mW vs 3.0 mW
-    # laser power).
-    acute_max_rel_day: 17
-    subacute_max_rel_day: 49
-    chronic_min_rel_day: 50
+    # PS55 re-derived 2026-06-08 from the combined recovery-index criterion
+    # (docs/epoch_criteria.md): acute = rel_day 1..19 (first observable recovery
+    # d20; no recorded sessions d18-19), sub-acute = rel_day 20..50, chronic =
+    # rel_day >= 51. Sub-acute + chronic run ~+10 days later than PS54 due to the
+    # longer recovery trajectory (5.0 mW vs 3.0 mW laser power). Was 17/49/50 in
+    # the 2026-05-23 hand stamp.
+    acute_max_rel_day: 19
+    subacute_max_rel_day: 50
+    chronic_min_rel_day: 51
