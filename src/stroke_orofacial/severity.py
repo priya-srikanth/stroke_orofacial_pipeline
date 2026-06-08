@@ -191,12 +191,18 @@ class SeverityGrade:
 
     Reproduces the clinical grading from per-session lick observations:
       - ``bilateral_cessation_days`` (A): post days with BOTH the contra and ipsi
-        correct responses < 20% of baseline (acute total absence of licking).
+        correct responses < 25% of baseline (acute total absence of licking).
       - ``contra_absent_days`` (B): post days with the contralesional response
-        < 30% of baseline (duration of absent contra licking).
+        < 25% of baseline (duration of absent contra licking).
       - ``contra_persistence`` (C): residual contra deficit over the last sessions
         (1 − mean contra response / baseline) — does the contra deficit persist to
         the end (severe) or recover (mod-severe)?
+
+    The two suppression thresholds were originally 20 % (cessation) and 30 %
+    (absence); they are unified to 25 % here. The four-way grouping is invariant
+    to this choice (verified at 20 / 25 / 30 % — the A/B counts shift slightly
+    but never cross a grade boundary), so a single threshold is used for
+    simplicity.
     """
 
     animal: str
@@ -224,8 +230,8 @@ def severity_grade(
     baseline_n: int = 5,
     min_trials: int = 10,
     late_window: int = 6,
-    cessation_frac: float = 0.2,
-    absent_frac: float = 0.3,
+    cessation_frac: float = 0.25,
+    absent_frac: float = 0.25,
 ) -> SeverityGrade:
     """Composite behavioral severity grade for one animal (see :class:`SeverityGrade`)."""
     resolver = resolver or PathResolver()

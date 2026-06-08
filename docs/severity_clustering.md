@@ -82,12 +82,17 @@ The burden/focal metrics above are continuous severity *scores*. To reproduce th
 interpretable spout axes — each matching a stated diagnostic criterion
 (`severity_grade()` in `severity.py`):
 
-- **A — bilateral cessation days**: post days with *both* responses < 20% baseline
+- **A — bilateral cessation days**: post days with *both* responses < 25% baseline
   (acute total absence of licking). → drives *severe* / *mod-severe*.
-- **B — contra-absent days**: post days with the contralesional response < 30%
+- **B — contra-absent days**: post days with the contralesional response < 25%
   baseline (duration of absent contra licking). → drives *moderate*.
 - **C — contra persistence**: residual contra deficit over the last ~6 sessions
   (does contra recover, or persist to the end?). → drives *severe*.
+
+(The A and B suppression thresholds were originally 20% and 30%; they are unified
+to 25%. The four-way grouping is invariant to this choice — verified at
+20 / 25 / 30%, where the A/B counts shift slightly but never cross a grade
+boundary.)
 
 Rule (cohort-tuned, N=8): `severe` if C>0.6 (persists) or A≥10 (very long cessation);
 else `mod-severe` if A≥2 (acute bilateral cessation that recovers); else `moderate`
