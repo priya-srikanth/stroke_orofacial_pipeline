@@ -209,25 +209,43 @@ class SeverityGrade:
     bilateral_cessation_days: int
     contra_absent_days: int
     contra_persistence: float
-    grade: str  # "mild" | "moderate" | "severe"
+    grade: str  # 3-tier: mild|moderate|severe; 4-tier adds mod-severe
 
 
-def _grade(A: int, B: int, C: float) -> str:
-    """Three-tier grading rule (thresholds tuned to the PS46–55 cohort; N=8).
+#: Grading schemes. The 3-tier scheme collapses the 4-tier "mod-severe" tier
+#: (acute bilateral cessation that recovers) into "moderate", so a focal
+#: contra-only deficit (PS46) and a recovering bilateral cessation (PS51) share
+#: one "moderate" grade. Both schemes share the severe / mild cutoffs.
+GRADING_SCHEMES = ("3tier", "4tier")
 
-    - **severe**: a prolonged shutdown with incomplete recovery — the contra
-      deficit fails to resolve by the end of recording (``C > 0.6``) OR
-      bilateral cessation lasts a long time (``A >= 10`` days).
-    - **moderate**: a clear, sustained deficit that nonetheless recovers —
-      either acute bilateral cessation that then returns (``A >= 2``; e.g.
-      PS51) or a sustained contralesional-only deficit with the ipsi side
-      spared (``B >= 3``; e.g. PS46). Both routes share the defining moderate
-      feature: contralesional licking ultimately returns.
-    - **mild**: licking essentially intact, at most a brief deficit.
+
+def _grade(A: int, B: int, C: float, scheme: str = "3tier") -> str:
+    """Composite severity grade from the three axes (PS46–55-tuned; N=8).
+
+    Shared cutoffs: **severe** if the contra deficit fails to resolve by the end
+    (``C > 0.6``) OR bilateral cessation is prolonged (``A >= 10`` days);
+    **mild** if there is at most a brief deficit.
+
+    The middle differs by ``scheme``:
+
+    - ``"4tier"``: **mod-severe** if acute bilateral cessation recovers
+      (``A >= 2``), else **moderate** if a sustained contra-only deficit
+      (``B >= 3``). PS51 → mod-severe, PS46 → moderate.
+    - ``"3tier"`` (default): a single **moderate** tier covering both routes
+      (``A >= 2 or B >= 3``). PS51 and PS46 both → moderate.
     """
-    if C > 0.6 or A >= 10:    # persistent contra deficit OR prolonged cessation
+    if scheme not in GRADING_SCHEMES:
+        raise ValueError(f"scheme must be one of {GRADING_SCHEMES}, got {scheme!r}")
+    if C > 0.6 or A >= 10:        # persistent contra deficit OR prolonged cessation
         return "severe"
-    if A >= 2 or B >= 3:      # sustained deficit that recovers (bilateral or contra-only)
+    if scheme == "4tier":
+        if A >= 2:                # acute bilateral cessation that recovers
+            return "mod-severe"
+        if B >= 3:                # sustained contra-only deficit (ipsi spared)
+            return "moderate"
+        return "mild"
+    # 3-tier: collapse mod-severe into moderate
+    if A >= 2 or B >= 3:
         return "moderate"
     return "mild"
 
@@ -241,8 +259,14 @@ def severity_grade(
     late_window: int = 6,
     cessation_frac: float = 0.25,
     absent_frac: float = 0.25,
+    scheme: str = "3tier",
 ) -> SeverityGrade:
-    """Composite behavioral severity grade for one animal (see :class:`SeverityGrade`)."""
+    """Composite behavioral severity grade for one animal (see :class:`SeverityGrade`).
+
+    ``scheme`` selects the 3-tier (default) or 4-tier grading (see :func:`_grade`).
+    The three axes (A/B/C) are identical across schemes; only the grade label
+    differs.
+    """
     resolver = resolver or PathResolver()
     info, days, contra, ipsi = _response_trajectory(animal, resolver, min_trials)
     pre = days <= 0
@@ -253,18 +277,18 @@ def severity_grade(
     B = int(np.sum(post & (cf < absent_frac)))
     late = post & (days >= days[post].max() - late_window)
     C = float(max(0.0, 1 - np.nanmean(cf[late])))
-    return SeverityGrade(animal, A, B, C, _grade(A, B, C))
+    return SeverityGrade(animal, A, B, C, _grade(A, B, C, scheme))
 
 
 def cohort_grade(
-    animals: list[str], resolver: PathResolver | None = None
+    animals: list[str], resolver: PathResolver | None = None, *, scheme: str = "3tier"
 ) -> list[SeverityGrade]:
-    """Composite severity grade for several animals."""
+    """Composite severity grade for several animals (``scheme`` = ``"3tier"``/``"4tier"``)."""
     resolver = resolver or PathResolver()
     out = []
     for a in animals:
         try:
-            out.append(severity_grade(a, resolver))
+            out.append(severity_grade(a, resolver, scheme=scheme))
         except (KeyError, FileNotFoundError):
             continue
     return out

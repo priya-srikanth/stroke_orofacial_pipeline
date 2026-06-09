@@ -108,11 +108,20 @@ sits at the origin, moderate spreads up the y-axis (contra-only, PS46) and out
 along x (bilateral-but-recovering, PS51), and severe sits at high x with large
 markers (PS54's flagging the persistent, never-recovering contra deficit).
 
-![severity 2-axis map](figures/severity/severity_2axis_map.png)
+All three figures below (2-axis map, per-axis breakdown, and an unsupervised
+k-means clustering of the animals in the severity-axis + burden space) are
+produced for **both** the 3-tier and 4-tier schemes by
+[`scripts/run_severity_figures.py`](../scripts/run_severity_figures.py), written
+to `pipeline_outputs/severity/severity_{composite_axes,2axis_map,clusters}_{3tier,4tier}.png`.
+The 3-tier versions are shown here.
+
+![severity 2-axis map](figures/severity/severity_2axis_map_3tier.png)
 
 Per-axis breakdown:
 
-![composite axes](figures/severity/severity_composite_axes.png)
+![composite axes](figures/severity/severity_composite_axes_3tier.png)
+
+A / B / C values below are at the unified 25 % threshold:
 
 | animal | A (cessation d) | B (contra-absent d) | C (persistence) | grade |
 | --- | --- | --- | --- | --- |
@@ -121,13 +130,15 @@ Per-axis breakdown:
 | PS49 | 0 | 0 | 0.09 | mild |
 | PS50 | 0 | 1 | 0.00 | mild |
 | PS46 | 0 | 5 | 0.07 | **moderate** (contra-only deficit, ipsi spared) |
-| PS51 | 7 | 13 | 0.44 | **moderate** (acute bilateral cessation, then recovers) |
-| PS55 | 17 | 38 | 0.43 | **severe** (longest cessation) |
-| PS54 | 12 | 48 | 1.00 | **severe** (contra deficit persists to end) |
+| PS51 | 6 | 10 | 0.44 | **moderate** (acute bilateral cessation, then recovers) |
+| PS55 | 17 | 28 | 0.41 | **severe** (longest cessation) |
+| PS54 | 11 | 38 | 1.00 | **severe** (contra deficit persists to end) |
 
 This yields the three-tier grading: mild {PS47–50}, moderate {PS46, PS51},
 severe {PS54, PS55} — and shows *which axis* drives each call (PS46 = B,
 contra-only; PS51 = A with recovery; PS54 = C persistence; PS55 = A duration).
+Under the **4-tier** scheme PS51 separates out as mod-severe (acute bilateral
+cessation that recovers); all other grades are unchanged.
 
 ## Caveats
 - N = 8, exploratory. The severe group's burdens are lower bounds (recovery can

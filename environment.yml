@@ -100,6 +100,14 @@ dependencies:
   - pot             # Python Optimal Transport (Wasserstein distance for
                     #   pixel-bin distribution comparison). Used in 3 legacy
                     #   DLC stats notebooks. Conda-forge package name is `pot`.
+  - openpyxl        # Phase 9.1 pooled-phenotype stats sheet: highlighted .xlsx
+                    #   export in scripts/phase_9_stats/build_pooled_phenotype_stats.py
+                    #   (_write_highlighted_xlsx). Surfaced as a missing dep
+                    #   during the 2026-06-08 epoch/3-tier pooled re-run.
+  - python-pptx     # Phase 9.1 stats figure deck: 209-slide .pptx assembly in
+                    #   scripts/chore_dlc_pooled_phenotype/build_stats_figure_deck.py.
+                    #   Import name is `pptx`; conda-forge package is `python-pptx`.
+                    #   Surfaced as a missing dep during the 2026-06-08 re-run.
 
   # ---- Dev + notebook runtime ----
   - pytest

@@ -7615,3 +7615,69 @@ history) were not preserved. Per-invocation GR7 approval obtained for the `rm -r
 
 Stage 0 audit: `pipeline_outputs/stats/sensitivity/docs_refresh_audit_2026-06.md`.
 Tag on merge: `vChore-docs-and-cleanup-refresh-2026-06`.
+
+## 2026-06-08 — rerun-pooled-phenotype-epoch-3tier (epoch re-derivation + 3-tier severity pooled re-run)
+
+Re-ran the entire pooled-phenotype analysis after two upstream definition
+changes that landed earlier the same day: (1) `configs/animals.yaml`
+`epoch_boundaries` **re-derived** from the combined recovery-index criterion
+(`docs/epoch_criteria.md` + `stats/epoch_derivation.py`) — PS47 1/2/3, PS48
+1/2/3, PS49 1/5/6, PS51 6/31/32, PS54 19/38/39, PS55 19/50/51 (PS46 5/8/9,
+PS50 1/4/5 unchanged); (2) a **3-tier** behavioral severity grading scheme
+(`severity.py` `GRADING_SCHEMES = ("3tier","4tier")`, threshold unified to 25%),
+collapsing the 4-tier `mod-severe` tier into `moderate`.
+
+**Phenotype groupings.** The pooled analysis was reproduced under BOTH groupings,
+kept separate via the pre-existing `<scope>` subdirs (`4_tier/` vs `3_tier/`):
+the 4-tier `recovery_phenotype` YAML field (**unchanged**) and the 3-tier
+`moderate ∪ moderate-severe` remap. Verified: the 3-tier remap partition is
+**identical** to `severity.severity_grade(scheme="3tier")` for this cohort, and
+the 4-tier partition matches `scheme="4tier"` (the only difference is the label
+string `moderate-severe` vs `mod-severe`; figure legends render `mod-severe` via
+`figures/palette.py::phenotype_display_name`, unchanged).
+
+**Pipeline executed (in dependency order):** re-materialized the `epoch_label`
+column across all stats-input trees (`no_filter`, `filtered_v1`,
+`filtered_v1_na_masked`, `inputs_cleaned_trace` spatial, `all_licks_endpoints`);
+re-ran severity figures both schemes (`run_severity_figures.py`); axis stats +
+task_5/task_7 (both filter variants); spatial pooled producers q12 (tongue_jaw)
++ whisker_nose (both scopes); the consolidated MWU sheet
+(`build_pooled_phenotype_stats.py --scopes 4_tier 3_tier --n-boot 5000`:
+4_tier 782 headline-sig / 3_tier 662); q13b + q13_traj (first_lick + all_multi,
+both scopes); V4/V5 scalar figures (tongue+jaw × both scopes × `no_filter`+
+`filtered_v1`); and the 209-slide figure deck.
+
+### Intentional behavior differences / notes
+- **Inputs were RE-LABELED, not recomputed, for the spatial + all_licks trees.**
+  Per-session/per-trial endpoint **values are boundary-independent**; only the
+  derived `epoch_label` column changes when boundaries move. The expensive
+  spatial trees (`inputs_cleaned_trace`, `no_filter/spatial_*`) and `all_licks`
+  were updated in place via a pyarrow `set_column('epoch_label', …)` rewrite
+  (`value` + all other columns + schema metadata byte-identical; proven on a
+  sample: value column identical, only boundary-shifted rows relabeled). The
+  `no_filter`/`filtered_v1`/`filtered_v1_na_masked` scalar trees were instead
+  fully re-materialized via the standard producer (also correct; reproduces
+  identical values + fresh labels). No `rm -rf`/pre-wipe; all overwrites at write
+  time.
+- **Secondary endpoints required explicit `--endpoints`.** `materialize_inputs.py`
+  splits primary (`_commit_ab_endpoints`, default) vs secondary endpoints
+  (`criterion_c`, `d_prime`, `accuracy_difference_index`, `licks_per_bout`,
+  `jaw_pass_qc`, jaw deflections, `tongue_num_*_licks_dlc`) — the latter only run
+  when named. A default-then-sweep-for-stale loop ensured every non-spatial slug
+  was refreshed.
+- **Two undeclared dependencies surfaced** and were added to `environment.yml`:
+  `openpyxl` (pooled-stats `.xlsx` export) and `python-pptx` (figure deck).
+- **SMB mountpoint tolerance** (`configs/paths.yaml`): the MICROSCOPE share
+  auto-mounts at `/Volumes/Neurobio`, `/Volumes/MICROSCOPE`, or `/Volumes/Priya`
+  depending on the mounted share level; the mac mounts for the MICROSCOPE-backed
+  roots became candidate lists (canonical Neurobio first) using PathResolver's
+  existing first-existing-wins support. Motivated by a mid-run SMB drop (caused
+  by briefly running two heavy server-reading jobs concurrently — avoided
+  thereafter; Stage 5/6 ran strictly serially).
+- **Tests updated** (`test_animals.py`, `test_stats_recovery_epochs.py`): epoch
+  tuples + the PS54↔PS55 divergence (now +12d on sub-acute/chronic, shared acute
+  d+19; previously +10d / d+17); the cohort-distribution sample day moved 50→60
+  so all animals are chronic under PS55's new chronic_min=51. The 4-tier
+  `recovery_phenotype` count tests are unchanged (that field did not change).
+  `docs/DECISIONS.md` got a "superseded 2026-06-08" note on the prior boundary
+  lock; historical kickoff/scoping prompts left intact.

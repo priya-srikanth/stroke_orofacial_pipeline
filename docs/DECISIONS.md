@@ -564,6 +564,8 @@ The 12 OPEN-Q locks from the kickoff scoping doc landed unchanged: (a) materiali
 
 **PS54 vs PS55 boundary divergence locked.** Both severe-tier but `chronic_min_rel_day = 40` (PS54) vs `50` (PS55). +10d shift for PS55 due to higher laser power (5.0 mW vs PS54's 3.0 mW). Phenotype-pooled analyses MUST look up boundaries per-animal, not by phenotype.
 
+> **Superseded 2026-06-08.** The `epoch_boundaries` were re-derived from the combined recovery-index criterion (see `docs/epoch_criteria.md` + `src/stroke_orofacial/stats/epoch_derivation.py`). New values: PS47 1/2/3, PS48 1/2/3, PS49 1/5/6, PS51 6/31/32, PS54 19/38/39, PS55 19/50/51 (PS46 5/8/9, PS50 1/4/5 unchanged). PS54↔PS55 now share acute at d+19 and the sub-acute/chronic divergence is **+12d** (was +10d). The 4-tier `recovery_phenotype` enum + distribution above are **unchanged**; a parallel 3-tier severity scheme (`severity.py` `GRADING_SCHEMES`, merging mod-severe→moderate) is now also available.
+
 **Single-stroke-laterality caveat.** All 8 cohort animals received L-hemisphere strokes. Ipsi-contra results frame `mouse-L = ipsi` and `mouse-R = contra`. Phase 9 ipsi-contra axis is therefore a single-regime cohort summary; cross-laterality generalization is OUT OF SCOPE.
 
 **KS test methodology for `vector_per_session`** (Addendum #4): per-animal `scipy.stats.ks_2samp` + Fisher's combined p-value across animals. Used for `latency_hist` endpoint. Runner bridge `runners._ks_on_flat_per_trial` handles the flat per-trial parquet schema (Commit B implementation choice — see Decision 5).

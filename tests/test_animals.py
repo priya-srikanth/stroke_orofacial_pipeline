@@ -1258,15 +1258,19 @@ class TestRealCohortEpochBoundariesRoundtrip:
 
     # Cohort reference table — kickoff §"AnimalInfo.epoch_boundaries +
     # recovery_phenotype schema extensions" lines 207-244.
+    # Epoch boundaries re-derived 2026-06-08 from the combined recovery-index
+    # criterion (docs/epoch_criteria.md). recovery_phenotype (4-tier YAML field)
+    # is UNCHANGED. Previous boundaries: PS47 (1,4,5), PS48 (1,4,5),
+    # PS49 (1,4,5), PS51 (6,30,31), PS54 (17,39,40), PS55 (17,49,50).
     EXPECTED: dict[str, tuple[str, tuple[int, int, int]]] = {
         "PS46": ("moderate",         (5, 8, 9)),
-        "PS47": ("mild",             (1, 4, 5)),
-        "PS48": ("mild",             (1, 4, 5)),
-        "PS49": ("mild",             (1, 4, 5)),
+        "PS47": ("mild",             (1, 2, 3)),
+        "PS48": ("mild",             (1, 2, 3)),
+        "PS49": ("mild",             (1, 5, 6)),
         "PS50": ("mild",             (1, 4, 5)),
-        "PS51": ("moderate-severe",  (6, 30, 31)),
-        "PS54": ("severe",           (17, 39, 40)),
-        "PS55": ("severe",           (17, 49, 50)),
+        "PS51": ("moderate-severe",  (6, 31, 32)),
+        "PS54": ("severe",           (19, 38, 39)),
+        "PS55": ("severe",           (19, 50, 51)),
     }
 
     def test_all_eight_animals_load_with_expected_values(self):
@@ -1299,29 +1303,33 @@ class TestRealCohortEpochBoundariesRoundtrip:
     def test_ps54_ps55_share_phenotype_diverge_boundaries(self):
         """Priya verification reminder #1: PS54 and PS55 both carry
         ``recovery_phenotype="severe"`` but have DIFFERENT epoch_boundaries
-        (PS55's subacute_max_rel_day + chronic_min_rel_day are +10d
+        (PS55's subacute_max_rel_day + chronic_min_rel_day are +12d
         relative to PS54 because PS55 received higher laser power and
         recovered more slowly). Phase 9.1 phenotype-pooled consumers MUST
         look up per-animal boundaries — phenotype-level pooling would
-        silently smear a 10-day recovery-window divergence. This test
+        silently smear a recovery-window divergence. This test
         breaks loudly if the YAML ever collapses to identical boundaries.
+
+        Post 2026-06-08 re-derivation: acute is shared at d+19 (was d+17);
+        the sub-acute + chronic divergence widened from +10d to +12d
+        (PS54 38/39 vs PS55 50/51).
         """
         animals = load_animals()
         ps54 = animals["PS54"]
         ps55 = animals["PS55"]
         assert ps54.recovery_phenotype == ps55.recovery_phenotype == "severe"
-        # Acute boundary IS shared (both d+17) — only sub-acute + chronic
-        # differ by +10d for PS55.
+        # Acute boundary IS shared (both d+19) — only sub-acute + chronic
+        # differ by +12d for PS55.
         assert ps54.epoch_boundaries.acute_max_rel_day == \
             ps55.epoch_boundaries.acute_max_rel_day
         assert (
             ps55.epoch_boundaries.subacute_max_rel_day
             - ps54.epoch_boundaries.subacute_max_rel_day
-        ) == 10, "PS55 subacute_max should be PS54's + 10d"
+        ) == 12, "PS55 subacute_max should be PS54's + 12d"
         assert (
             ps55.epoch_boundaries.chronic_min_rel_day
             - ps54.epoch_boundaries.chronic_min_rel_day
-        ) == 10, "PS55 chronic_min should be PS54's + 10d"
+        ) == 12, "PS55 chronic_min should be PS54's + 12d"
 
 
 class TestCohortPhenotypeDistribution:

@@ -103,34 +103,35 @@ class TestAssignEpochLabel:
         assert assign_epoch_label(9999, a) == "chronic"
 
     def test_real_cohort_ps54_boundaries(self):
-        """PS54: severe phenotype, acute 1..17, subacute 18..39,
-        chronic >=40 (kickoff 2026-05-23)."""
+        """PS54: severe phenotype, acute 1..19, subacute 20..38,
+        chronic >=39 (re-derived 2026-06-08; was 1..17 / 18..39 / >=40)."""
         animals = load_animals()
         ps54 = animals["PS54"]
         assert assign_epoch_label(0, ps54) == "pre"
         assert assign_epoch_label(1, ps54) == "acute"
-        assert assign_epoch_label(17, ps54) == "acute"
-        assert assign_epoch_label(18, ps54) == "sub_acute"
-        assert assign_epoch_label(39, ps54) == "sub_acute"
-        assert assign_epoch_label(40, ps54) == "chronic"
+        assert assign_epoch_label(19, ps54) == "acute"
+        assert assign_epoch_label(20, ps54) == "sub_acute"
+        assert assign_epoch_label(38, ps54) == "sub_acute"
+        assert assign_epoch_label(39, ps54) == "chronic"
 
     def test_real_cohort_ps55_boundaries_diverge_from_ps54(self):
         """PS55 shares severe phenotype with PS54 but boundaries are
-        shifted +10d (laser power 5.0 vs 3.0 mW). This pins the
-        per-animal-not-per-phenotype consumer contract."""
+        shifted +12d on sub-acute/chronic (laser power 5.0 vs 3.0 mW). This
+        pins the per-animal-not-per-phenotype consumer contract.
+        Re-derived 2026-06-08 (was a +10d shift; acute was d+17)."""
         animals = load_animals()
         ps54 = animals["PS54"]
         ps55 = animals["PS55"]
-        # Acute boundary IS shared at d+17.
-        assert assign_epoch_label(17, ps54) == "acute"
-        assert assign_epoch_label(17, ps55) == "acute"
-        # rel_day 18..39 is sub_acute for PS54, also sub_acute for PS55
-        # (PS55's subacute_max=49). The difference shows at rel_day 40+:
-        # chronic for PS54, sub_acute for PS55.
-        assert assign_epoch_label(40, ps54) == "chronic"
-        assert assign_epoch_label(40, ps55) == "sub_acute"
-        assert assign_epoch_label(49, ps55) == "sub_acute"
-        assert assign_epoch_label(50, ps55) == "chronic"
+        # Acute boundary IS shared at d+19.
+        assert assign_epoch_label(19, ps54) == "acute"
+        assert assign_epoch_label(19, ps55) == "acute"
+        # rel_day 20..38 is sub_acute for both. The divergence shows at
+        # rel_day 39+: chronic for PS54 (chronic_min=39), still sub_acute
+        # for PS55 (subacute_max=50, chronic_min=51).
+        assert assign_epoch_label(39, ps54) == "chronic"
+        assert assign_epoch_label(39, ps55) == "sub_acute"
+        assert assign_epoch_label(50, ps55) == "sub_acute"
+        assert assign_epoch_label(51, ps55) == "chronic"
 
 
 class TestAssignEpochLabelsToInputsDF:
@@ -183,7 +184,7 @@ class TestAssignEpochLabelsToInputsDF:
         animals = load_animals()
         rows = []
         for aid, a in animals.items():
-            for rel_day in (-1, 0, 1, 50):
+            for rel_day in (-1, 0, 1, 60):
                 rows.append({"animal": aid, "rel_day": rel_day})
         df = pd.DataFrame(rows)
         out = assign_epoch_labels_to_inputs_df(df, animals)
@@ -193,11 +194,11 @@ class TestAssignEpochLabelsToInputsDF:
         # rel_day = 1 → all acute (every animal has acute_max >= 1).
         acute_rows = out[out["rel_day"] == 1]
         assert (acute_rows["epoch_label"] == "acute").all()
-        # rel_day = 50: PS46-PS50 (acute_max=1 or 5; subacute_max <= 14;
-        # chronic_min from 5-9), so 50 is chronic. PS51 chronic_min=31 so
-        # 50 is chronic. PS54 chronic_min=40 so 50 is chronic. PS55
-        # chronic_min=50 so 50 is chronic. All chronic.
-        far_rows = out[out["rel_day"] == 50]
+        # rel_day = 60: chronic for every animal. The latest chronic_min in
+        # the cohort is PS55's 51 (2026-06-08 re-derivation; was 50), so 60
+        # is past every animal's chronic_min. (Sampling 50 would now be
+        # sub_acute for PS55, whose chronic_min is 51.)
+        far_rows = out[out["rel_day"] == 60]
         assert (far_rows["epoch_label"] == "chronic").all()
 
 
@@ -220,7 +221,7 @@ class TestCohortPhenotypeSummary:
     """Pin the cohort_phenotype_summary output schema + content."""
 
     def test_returns_one_row_per_animal_sorted_by_id(self):
-        a1 = _animal(animal_id="PS47", acute_max=1, subacute_max=4, chronic_min=5)
+        a1 = _animal(animal_id="PS47", acute_max=1, subacute_max=2, chronic_min=3)
         a2 = _animal(animal_id="PS46", acute_max=5, subacute_max=8, chronic_min=9)
         df = cohort_phenotype_summary({"PS47": a1, "PS46": a2})
         assert list(df["animal"]) == ["PS46", "PS47"]
@@ -274,5 +275,6 @@ class TestCohortPhenotypeSummary:
         ps54, ps55 = severe.iloc[0], severe.iloc[1]
         assert ps54["animal"] == "PS54"
         assert ps55["animal"] == "PS55"
-        # PS55 is +10d shifted vs PS54 per the higher-laser-power yaml stamp.
-        assert ps55["chronic_min_rel_day"] - ps54["chronic_min_rel_day"] == 10
+        # PS55 is +12d shifted vs PS54 per the higher-laser-power yaml stamp
+        # (2026-06-08 re-derivation; was +10d).
+        assert ps55["chronic_min_rel_day"] - ps54["chronic_min_rel_day"] == 12
