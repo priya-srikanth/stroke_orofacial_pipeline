@@ -9,14 +9,25 @@
 logical_roots:
   microscope_server:
     description: "Shared MICROSCOPE server (DLC outputs, alignment templates, raw videos)"
+    # mac is a candidate list (first existing wins): the SMB share auto-mounts
+    # at a different /Volumes point depending on which level was mounted —
+    # /Volumes/Neurobio (Neurobio share), /Volumes/MICROSCOPE (…/MICROSCOPE),
+    # or /Volumes/Priya (…/MICROSCOPE/Priya). Canonical Neurobio is first.
     mounts:
-      mac: "/Volumes/Neurobio/MICROSCOPE/Priya"  # confirmed on Priya's MacBook 2026-04-17
+      mac:
+        - "/Volumes/Neurobio/MICROSCOPE/Priya"  # confirmed on Priya's MacBook 2026-04-17
+        - "/Volumes/MICROSCOPE/Priya"
+        - "/Volumes/Priya"
       windows: "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya"
 
   microscope_pipeline_outputs:
     description: "Consolidated pipeline outputs (stroke_orofacial_pipeline)"
+    # See microscope_server note re: candidate-list mountpoint tolerance.
     mounts:
-      mac: "/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs"
+      mac:
+        - "/Volumes/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs"
+        - "/Volumes/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs"
+        - "/Volumes/Priya/stroke_orofacial_pipeline_outputs"
       windows: "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\stroke_orofacial_pipeline_outputs"
 
   wavesurfer_raw:
@@ -27,6 +38,8 @@ logical_roots:
     mounts:
       mac:
         - "/Volumes/Neurobio/MICROSCOPE/Priya/facerhythm_stroke_biomarker_exp/wavesurfer"
+        - "/Volumes/MICROSCOPE/Priya/facerhythm_stroke_biomarker_exp/wavesurfer"
+        - "/Volumes/Priya/facerhythm_stroke_biomarker_exp/wavesurfer"
         - "/Users/Priya2/Documents/data/facerhythm_stroke_biomarker_exp/wavesurfer"
       windows: "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Priya\\facerhythm_stroke_biomarker_exp\\wavesurfer"
 
@@ -34,8 +47,12 @@ logical_roots:
     description: >
       Raw Flea3 camera acquisition output (timestamp CSVs and .avi video files).
       Located on MICROSCOPE under Rich's data tree. Read-only — never write here.
+    # mac candidate list (mountpoint tolerance; see microscope_server note).
+    # No /Volumes/Priya variant — Rich's tree is not under the Priya share.
     mounts:
-      mac: "/Volumes/Neurobio/MICROSCOPE/Rich/data/2pRAM/facerhythm_stroke_biomarker_exp/camera"
+      mac:
+        - "/Volumes/Neurobio/MICROSCOPE/Rich/data/2pRAM/facerhythm_stroke_biomarker_exp/camera"
+        - "/Volumes/MICROSCOPE/Rich/data/2pRAM/facerhythm_stroke_biomarker_exp/camera"
       windows: "\\\\research.files.med.harvard.edu\\Neurobio\\MICROSCOPE\\Rich\\data\\2pRAM\\facerhythm_stroke_biomarker_exp\\camera"
 
   local_processed_spout:
