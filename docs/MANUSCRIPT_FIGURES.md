@@ -184,6 +184,31 @@ tongue raw + normalized, jaw, nose, whisker) swapped to the `v2_loo` pipeline fi
 slide notes repointed to `3_tier/v2_loo/`. Figure 3 H/I in `DLC.ai` still holds the published
 (v2) panels — swap in `wass_panels_loo/meanSEM_wasserstein_recovery_tongue.svg` in Illustrator.
 
+## Archive of retired material (2026-09-17)
+
+`vls_stroke_paper/_archive_2026-09-17/` (local and server) holds everything retired from the
+working folder. Nothing was deleted; each item can be moved back. See its README for the
+full list. Summary:
+
+* `manuscript_versions/` - every build older than the current one: docx v3-v9, compiled PDFs
+  (unversioned and v2-v7), overleaf zips (unversioned and v2-v7), figure decks v2, v3, v4, v7, v8.
+  Current and left in place: `VLS_stroke_manuscript_revised_v11.docx` (with v10),
+  `VLS_stroke_manuscript_compiled_v8.pdf`, `VLS_stroke_overleaf_v8.zip`,
+  `VLS_stroke_figures_compilation_v9.pptx`.
+* `panels/` - `meanSEM_sig_panels` (-> `_v2`), `angle_panels` (-> `_v2`), `median_CI_panels`,
+  `_v2`, `_v3` (obsolete median+CI convention), `meanSEM_abs_panels` (not in the manuscript;
+  regenerate with `--absolute`), and the server-only `phase_panels`,
+  `traj_panels_regenerated`, `wass_panels`. Also the `superseded_tightbbox_*` first-pass
+  renders whose canvas was a few points off the published size.
+* `drafts/` - the draft figure deck, the two methods drafts and the paper outline.
+
+Six stale Office/Illustrator lock files (`~$*.docx`, `~$*.pptx`, `~ai-*.tmp`) were deleted
+rather than archived; they hold no content. `fr_stroke menu of options.pptx` was kept in the
+working folder at Priya's request.
+
+The working folder is now 479 MB (was 863 MB) and every remaining figure folder is either
+current or has a saved generator.
+
 ## Figure-code audit (2026-09-17)
 
 Every manuscript figure panel now has code in this repo that regenerates it.
