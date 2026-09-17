@@ -103,3 +103,19 @@ Pre-edit copies: `overleaf_backup_2026-09-17/`. Not updated (need Illustrator): 
 See DECISIONS 2026-09-17 "Manuscript consequences". Files: `VLS_stroke_manuscript_revised_v7.docx`,
 `VLS_stroke_manuscript_compiled_v3.pdf`, `VLS_stroke_overleaf_v3.zip`, `overleaf_project/main.tex`
 (pre-edit copy: `overleaf_backup_2026-09-17/main_after_stats_wording.tex`). Local and server match.
+
+## Within-animal trajectory shading (2026-09-17)
+
+Ran `run_within_animal_cluster_perm.py --lick-set both` (cached substrate:
+`trial_bin_substrate.parquet` in each `3_tier/v3/` results dir). All manuscript shaded
+windows survive with near-identical extents (details in DECISIONS 2026-09-17). Figures:
+`vls_stroke_paper/traj_panels_within_animal/` (made with `plot_traj_panels.py --test within_animal`).
+
+## Figure 1 / Figure 3 legend update (2026-09-17)
+
+Legends edited in `Behavior.ai` / `DLC.ai`; `overleaf_project/figures/Figure1_behavior.pdf` and
+`Figure3_dlc.pdf` regenerated from the .ai files (Ghostscript pdfwrite; previous versions in
+`overleaf_backup_2026-09-17/`). Figure 3 was re-lettered (J-K first-lick timing, L-M within-bout ILI,
+N-Q angle scalars, R-U trajectories); main.tex + docx legends updated to match.
+Current versions: `VLS_stroke_manuscript_revised_v8.docx`, `VLS_stroke_manuscript_compiled_v5.pdf`,
+`VLS_stroke_overleaf_v5.zip`.
