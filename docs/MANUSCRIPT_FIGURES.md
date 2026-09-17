@@ -119,3 +119,5 @@ Legends edited in `Behavior.ai` / `DLC.ai`; `overleaf_project/figures/Figure1_be
 N-Q angle scalars, R-U trajectories); main.tex + docx legends updated to match.
 Current versions: `VLS_stroke_manuscript_revised_v8.docx`, `VLS_stroke_manuscript_compiled_v5.pdf`,
 `VLS_stroke_overleaf_v5.zip`.
+
+Current manuscript versions (2026-09-17, after the full within-animal run): `VLS_stroke_manuscript_revised_v9.docx`, `VLS_stroke_manuscript_compiled_v6.pdf`, `VLS_stroke_overleaf_v6.zip`.
