@@ -204,6 +204,28 @@ The pipeline-side figures (`stats/figures/...`) have always had code under
 `src/stroke_orofacial/figures/` and the `scripts/phase_*` emitters; the table above is about
 the manuscript-specific renders.
 
+### Why the angle panels have no severe acute point (2026-09-17)
+
+PS51, PS54 and PS55 have **zero acute sessions that pass the DLC session QC gate**
+(`stats.dlc_session_filter.dlc_tongue_trajectory_metrics.min_trials_with_detected_lick = 10`,
+tongue, v7 DLC-detected licks). Acutely those animals barely lick, so no session reaches ten
+trials with a detected lick. The phase-aligned families and the consolidated stats sheet are
+both built on filtered_v1, so there is no severe acute cell in the statistics either, and the
+published `angle_panels` have always shown a dashed bridge across it. This is not a change
+introduced by the new generator.
+
+The scalar per-trial angle panels (`tongue_lick1_angle_at_ypeak`,
+`tongue_lick2_angle_at_ypeak`) do show a severe acute point, because the June-30 panels were
+drawn from `no_filter`. That point rests on 46 trials spread over sessions with **1 to 6 usable
+trials each** (PS51 12, PS54 26, PS55 20), whose per-session means range from -5.6 to +8.9 deg.
+It carries no `**` because the sheet has no severe acute row to test. Regenerating from
+filtered_v1 (the default of `plot_scalar_meansem_panels.py`) removes it, which is the
+self-consistent choice: figure and statistics then see the same sessions.
+
+The Results text already reports only mild and moderate acute angle values and flags the
+moderate one as coming from the single moderate animal licking acutely, so no wording change
+is needed.
+
 ### Recovered figure data (2026-09-17)
 
 Figure 1 F/G (caudoputamen area, body weights) and the videofluoroscopy panels were produced
