@@ -184,6 +184,64 @@ tongue raw + normalized, jaw, nose, whisker) swapped to the `v2_loo` pipeline fi
 slide notes repointed to `3_tier/v2_loo/`. Figure 3 H/I in `DLC.ai` still holds the published
 (v2) panels — swap in `wass_panels_loo/meanSEM_wasserstein_recovery_tongue.svg` in Illustrator.
 
+## Scalar meanSEM panel generator (2026-09-17)
+
+`scripts/manuscript/plot_scalar_meansem_panels.py` regenerates the
+`meanSEM_sig_panels` figures, whose original script was never saved. It rebuilds the
+per-session values the same way the stats build does (per-trial -> per-(animal, date, side)
+mean -> minus that animal's own pre-stroke mean per side) and reads `**` from
+`pooled_phenotype_stats*.csv` (`headline_and_bootstrap_sig`, or `wa_sig` for the
+within-animal variant). Output: `vls_stroke_paper/meanSEM_sig_panels_v2/` (local + server),
+30 endpoints, svg + png + pdf, at the published 720 x 331.2 pt (424.8 for `d_prime` /
+`criterion_c`) geometry. All 30 panels carry exactly the same `**` marks as the June-30
+files, verified mark-for-mark.
+
+```bash
+python scripts/manuscript/plot_scalar_meansem_panels.py \
+  <outputs>/stats <outputs>/stats/results/phenotype_pooled/3_tier/pooled_phenotype_stats.csv \
+  <out_dir> [--endpoints <slug> ...] [--sig-col headline_and_bootstrap_sig|wa_sig] \
+  [--filter-variant auto|no_filter]
+```
+
+Two substantive differences from the published files:
+
+1. The italic subtitle now reads "session-bootstrap CI of the post-pre difference in means",
+   which is what the code computes; the old files said "bootstrap CI of median diff". This
+   closes the open item about stale footers on the scalar panels.
+2. **Input precedence.** The June-30 panels were drawn from `stats/inputs/no_filter/` for
+   every endpoint, while the significance sheet uses `filtered_v1` when that tree exists.
+   The script now follows the sheet's precedence, so a panel can no longer show a point in a
+   cell that has no row in the sheet. The clearest case is the severe ACUTE point of
+   `tongue_mean_within_bout_ili_ms`: it rests on 11 QC-failing trials (PS54 n=3, PS55 n=8),
+   is absent from the stats sheet, and is absent here. `--filter-variant no_filter`
+   reproduces the old look.
+
+SVG text is emitted as real text (`svg.fonttype=none`) rather than outlined glyphs, so labels
+stay editable in Illustrator; use the `.pdf` if DejaVu Sans is not installed.
+
+### Within-bout ILI direction (2026-09-17)
+
+Checked because the panels read as a post-stroke decrease. The effect is biphasic and not
+consistent across animals: ILI rises acutely (+13 to +22 ms in mild and moderate; severe
+animals contribute no acute data), then falls a few ms below baseline sub-acutely and
+chronically. Chronic per-animal deltas split 3 down (PS48, PS51, PS55, -7 to -17 ms) against
+5 flat-to-up (PS46 +12, PS47, PS49, PS50, PS54). Of the chronic `**` calls only severe
+ipsilesional (-8.3 ms) has both its animals moving the same way and survives the within-animal
+permutation; moderate contralesional (-10 ms) is carried entirely by PS51 (PS46 is +7.1) and
+fails it (q = 0.15). Magnitude is 3-4% of a ~160 ms baseline.
+
+Two mechanisms were checked. Selection: post-stroke yield of a valid ILI falls to 57-80% in
+the impaired animals (99% pre-stroke), but restricting to trials with >= 8 or >= 12 licks
+leaves the deltas essentially unchanged, so it is not simply weak trials dropping out.
+Censoring: the endpoint is the mean ILI inside the FIRST multi-lick bout with intervals
+censored to <= `bout.max_ili_ms` (300 ms), so long intervals both split the bout and are
+excluded; this caps how slow the measure can look but not how fast, and therefore biases
+toward the observed decrease. Also, pre-stroke ILI drifts upward in all 8 animals during
+baseline (+0.5 to +2.9 ms/session), so a negative chronic delta runs against the baseline
+trend rather than continuing it. The manuscript's current wording ("changes in within-bout
+inter-lick interval were small and not consistent in direction across animals and epochs")
+matches this and needs no change.
+
 ## Trajectory panel geometry (2026-09-17)
 
 `scripts/manuscript/plot_traj_panels.py` now renders at exactly **1149.84 x 648.98 pt**, the size
