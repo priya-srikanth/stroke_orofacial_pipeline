@@ -10,16 +10,15 @@ Last updated 2026-09-17.
 | Server mirror | `smb://research.files.med.harvard.edu/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/vls_stroke_paper/` (mounted at `/Volumes/Priya/...` or `/Volumes/Neurobio/MICROSCOPE/Priya/...`) | Synced from local 2026-09-17 (missing files copied; stale server copies replaced with the newer local versions, except `VLS_stroke_manuscript_revised_v3.docx` where the server copy is newer). The server is slow (~150 KB/s): copy large files in resumable chunks |
 | Overleaf | cloud project; bundle = `VLS_stroke_overleaf.zip` / `overleaf_project/` | Manuscript text source of truth. Re-upload to update |
 
-Server-only items: `traj_panels_regenerated/`, `phase_panels/` (2026-09-16 regenerations, see below),
+Server-only items: `traj_panels_regenerated/`, `phase_panels/` (2026-09-16 regenerations; see
+"Phase-aligned trajectory figures" below),
 `VLS_stroke_figures_compilation_v4.pptx` (0 bytes, failed copy; no intact v4 exists locally).
 
 ## Panel folders and the code that made them
 
 | Folder | Content | Code | Input data |
 |---|---|---|---|
-| `traj_panels/` | Phase-aligned first-lick / all-lick delta tongue-angle trajectories, ipsi + contra, cluster-permutation shading (June-30 originals) | Original script NOT saved (one-off session scratch). Reproduced exactly by `scripts/manuscript/plot_traj_panels.py` | `stats/results/phenotype_pooled/phase_aligned_trajectories[_all_licks]/3_tier/v3/{phenotype_pooled_phase_bin_mean_sem,trajectory_cluster_permutation_bh_fdr}.csv` |
-| `traj_panels_regenerated/` (server) | Output of `plot_traj_panels.py` (same 4 manuscript panels + `extra/` for tongue x/y and raw variants) | `scripts/manuscript/plot_traj_panels.py` | as above |
-| `phase_panels/` (server) | First-pass regeneration (first-lick only; smaller fonts) | `scripts/manuscript/plot_phase_traj_clustersig.py` (superseded by `plot_traj_panels.py`) | first-lick CSVs above |
+| Trajectory folders (`traj_panels*/`, `phase_panels/`) | Phase-aligned tongue trajectories | See "Phase-aligned trajectory figures" below | |
 | `meanSEM_sig_panels/`, `meanSEM_abs_panels/`, `median_CI_panels_v3/`, `angle_panels/` | Per-epoch endpoint panels (mean +/- SEM with `**` significance, absolute, median + CI, tongue-angle scalars) | Not in repo (session scratch; see each folder's README for the conventions) | `stats/results/phenotype_pooled/pooled_phenotype_stats` (3-tier) + per-session metric tables |
 | `vector_main_figures/`, `histology_panels/`, `severity_figures/`, `vfss_examples/` | Assembled main/supp figures, histology montages, severity clustering, VFSS examples | Not in repo, except: severity PNGs match `scripts/run_severity_figures.py` outputs (SVG versions were a session export); VFSS from `~/Github/mouse_vfss` | various |
 
@@ -39,6 +38,37 @@ Shading = clusters with `reject == True` (Maris-Oostenveld cluster permutation v
 - Tongue angle: signed angle between eye-midpoint→spout-midpoint and eye-midpoint→tongue
   (`src/stroke_orofacial/dlc_kinematics/_angle.py`, `sign_flip = -1`, 8 ms Gaussian smoothing).
 - d′ / criterion c: `src/stroke_orofacial/spout_behavior/sdt.py`.
+
+## Phase-aligned trajectory figures: versions, provenance, manuscript choice (2026-09-17)
+
+All sets plot the same data: 3-tier phenotypes, v3 substrate (v7-cleaned tongue trace +
+filtered_v1 DLC trial/session filters), phase-bin mean +/- SEM across trials from
+`stats/results/phenotype_pooled/phase_aligned_trajectories[_all_licks]/3_tier/v3/phenotype_pooled_phase_bin_mean_sem.csv`.
+They differ in the shading (which significance test, if any), the variant plotted, and the style.
+
+| Set | Where | Variant(s) | Shading (stats file) | Made by | Status |
+|---|---|---|---|---|---|
+| Pipeline renders | `stats/figures/phenotype_pooled/phase_aligned_trajectories[_all_licks]/3_tier/v3/` (+ `sd_band/`) | delta + raw; angle, x, y | none | `figures/phase_aligned_trajectories.py` via `scripts/chore_dlc_pooled_phenotype/q13_traj_v2_emit.py` | QC / archive; not manuscript style |
+| **June-30 originals** | `vls_stroke_paper/traj_panels/` (local + server) | delta, tongue angle only (first-lick / all-lick x ipsi / contra) | pooled cluster permutation (`trajectory_cluster_permutation_bh_fdr.csv`) | one-off session script (not saved) | **Manuscript Figure 3 R-U** (placed in `DLC.ai`) |
+| Regenerated originals | `vls_stroke_paper/traj_panels_regenerated/` (server only) | delta angle (4 panels) + `extra/` (x, y, raw) | pooled (same CSV) | `scripts/manuscript/plot_traj_panels.py` (default `--test pooled`) | Reproduces the originals (same data, shading, style); use to rebuild or edit |
+| First-pass regeneration | `vls_stroke_paper/phase_panels/` (server only) | delta + raw, first-lick only | pooled (same CSV) | `scripts/manuscript/plot_phase_traj_clustersig.py` | Superseded (smaller fonts); do not use |
+| Within-animal sensitivity | `vls_stroke_paper/traj_panels_within_animal/` (local + server) | delta angle (4 panels) + `extra/` (x, y, **raw**) | within-animal cluster permutation (`trajectory_cluster_permutation_within_animal_bh_fdr.csv`, rows `variant == delta` or `raw`) | `plot_traj_panels.py --test within_animal`; stats from `scripts/manuscript/run_within_animal_cluster_perm.py` | Supplementary / sensitivity |
+
+Stats files (both in each `3_tier/v3/` results dir; each holds raw and delta rows, all signals):
+- `trajectory_cluster_permutation_bh_fdr.csv`: pooled shuffle (labels exchanged across animals), Welch t per bin, |t| > 2, mixed-sign clusters, p = k/N, BH-FDR across the family. Published.
+- `trajectory_cluster_permutation_within_animal_bh_fdr.csv`: labels exchanged only within each animal, animal-balanced t, same-sign clusters, p = (1+k)/(1+N), BH-FDR across the family; adds `n_animals`, `min_attainable_p`.
+- Substrate cache for reruns: `trial_bin_substrate.parquet` (same dirs).
+
+How the shading differs:
+- **Delta, pooled vs within-animal:** every manuscript window is significant under both, with near-identical extents. Exception worth knowing: first-lick, moderate, contralesional, sub-acute, bins 32-47 (phase ~0.44-0.67) are not significant within-animal because PS46 (about -2 deg) and PS51 (about +4.8 deg) move in opposite directions and the pooled test is dominated by PS51's 10 sub-acute sessions (PS46 has 3). Other small changes: severe contra chronic 0-71 -> 17-71; mild contra sub-acute 13-71 -> 15-54; all-lick mild contra sub-acute 0-71 -> 1-22 + 49-71.
+- **Raw vs delta, within-animal:** identical clusters (a per-animal, per-bin baseline cancels in within-animal contrasts). Only the curves differ: raw curves are pooled across animals without baseline removal, so the pre-stroke curve is not flat (about -2 deg mid-phase in mild/moderate) and the mean can shift when the animal mix changes between epochs.
+- **Raw, pooled:** not valid inference (between-animal offsets enter the pooled shuffle); never shade raw curves with the pooled CSV.
+
+### Manuscript choice (decided 2026-09-17)
+- **Main text, Figure 3 R-U:** delta tongue angle with **pooled** shading (`traj_panels/`, reproducible with `plot_traj_panels.py`). Methods describe the pooled test and its null calibration.
+- **Sensitivity (Methods sentence and/or Supplement):** within-animal delta panels (`traj_panels_within_animal/`), stating that all shaded windows survive, and noting that the moderate contralesional sub-acute mid-phase window is carried by PS51.
+- **Raw angle trajectories:** not in the main figures. If shown (Supplement, absolute angle), use only `traj_panels_within_animal/extra/traj_*_angle_deg_raw_*` (within-animal shading).
+- Do not use `phase_panels/` or the unshaded pipeline renders in the manuscript.
 
 ## Trajectory significance tests
 
