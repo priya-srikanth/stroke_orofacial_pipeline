@@ -184,6 +184,19 @@ tongue raw + normalized, jaw, nose, whisker) swapped to the `v2_loo` pipeline fi
 slide notes repointed to `3_tier/v2_loo/`. Figure 3 H/I in `DLC.ai` still holds the published
 (v2) panels — swap in `wass_panels_loo/meanSEM_wasserstein_recovery_tongue.svg` in Illustrator.
 
+## Trajectory panel geometry (2026-09-17)
+
+`scripts/manuscript/plot_traj_panels.py` now renders at exactly **1149.84 x 648.98 pt**, the size
+of the published pipeline trajectory figures
+(`stats/figures/phenotype_pooled/phase_aligned_trajectories/3_tier/v3/angle_deg_*_mean_sem_cleaned_trace.svg`),
+so the manuscript panels are drop-in replacements in the `.ai` files. `bbox_inches="tight"` was
+removed: it retrimmed every figure separately, which is why the first passes came out
+1126.7-1126.9 x 648.9 pt (pooled) and 1114.2 x 627.0 pt (within-animal), all slightly different
+from each other. Both `traj_panels/` and `traj_panels_within_animal/` (main four + `extra/`)
+were regenerated at the matched size; the earlier files are kept in each folder's
+`superseded_tightbbox/`. `angle_panels/` needed no change: those were already 720 x 331.2 pt
+with the `meanSEM_sig_panels` axes fractions.
+
 ## Wasserstein terminology (2026-09-17, v11 / v8)
 
 The manuscript now uses **"Wasserstein-2"** everywhere (previously mixed with

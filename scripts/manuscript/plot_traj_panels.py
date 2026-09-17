@@ -35,7 +35,10 @@ LW_MEAN, LW_ZERO = 2.6, 1.2
 ZERO_COLOR = "#999999"
 BAND_ALPHA, SHADE_ALPHA = 0.25, 0.16
 COLORS = {"mild": "#f2c12e", "moderate": "#f0822e", "severe": "#b4001e"}
-FIGSIZE = (15.5, 8.6)
+# Canvas matched to the published pipeline trajectory figures
+# (stats/figures/phenotype_pooled/phase_aligned_trajectories/3_tier/v3/*.svg =
+# 1149.84 x 648.98 pt) so these panels are drop-in replacements in the .ai files.
+FIGSIZE = (1149.84 / 72, 648.98 / 72)      # 15.970 x 9.014 in
 
 PHENOS = ["mild", "moderate", "severe"]
 EPOCHS = [("pre", "Pre-stroke"), ("acute", "Acute"),
@@ -98,8 +101,10 @@ def render(d, c, ylim, *, title, ylabel, out_stem):
              multialignment="center", fontsize=FS_YLAB)
     fig.text(0.5, 0.005, CAPTION, ha="center", fontsize=FS_CAPTION, style="italic")
     out_stem.parent.mkdir(parents=True, exist_ok=True)
+    # no bbox_inches="tight": it retrims the canvas per figure and would break
+    # the exact 1149.84 x 648.98 pt match with the published panels.
     for ext in ("svg", "png", "pdf"):
-        fig.savefig(f"{out_stem}.{ext}", bbox_inches="tight", dpi=200)
+        fig.savefig(f"{out_stem}.{ext}", dpi=200)
     plt.close(fig)
     print("wrote", out_stem)
 
