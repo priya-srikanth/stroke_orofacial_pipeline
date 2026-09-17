@@ -1,0 +1,41 @@
+# Manuscript figures (VLS stroke orofacial paper): locations and code
+
+Last updated 2026-09-17.
+
+## Where the files live
+
+| Copy | Path | Notes |
+|---|---|---|
+| Local working copy (source of truth for manuscript assets) | `/Users/Priya2/Documents/Sabatini Lab/Manuscripts/VLS stroke methods paper/` | Illustrator `.ai` masters, figure decks (`VLS_stroke_figures_compilation_v*.pptx`), manuscript drafts, `overleaf_project/`, panel folders |
+| Server mirror | `smb://research.files.med.harvard.edu/Neurobio/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/vls_stroke_paper/` (mounted at `/Volumes/Priya/...` or `/Volumes/Neurobio/MICROSCOPE/Priya/...`) | Synced from local 2026-09-17 (missing files copied; stale server copies replaced with the newer local versions, except `VLS_stroke_manuscript_revised_v3.docx` where the server copy is newer). The server is slow (~150 KB/s): copy large files in resumable chunks |
+| Overleaf | cloud project; bundle = `VLS_stroke_overleaf.zip` / `overleaf_project/` | Manuscript text source of truth. Re-upload to update |
+
+Server-only items: `traj_panels_regenerated/`, `phase_panels/` (2026-09-16 regenerations, see below),
+`VLS_stroke_figures_compilation_v4.pptx` (0 bytes, failed copy; no intact v4 exists locally).
+
+## Panel folders and the code that made them
+
+| Folder | Content | Code | Input data |
+|---|---|---|---|
+| `traj_panels/` | Phase-aligned first-lick / all-lick delta tongue-angle trajectories, ipsi + contra, cluster-permutation shading (June-30 originals) | Original script NOT saved (one-off session scratch). Reproduced exactly by `scripts/manuscript/plot_traj_panels.py` | `stats/results/phenotype_pooled/phase_aligned_trajectories[_all_licks]/3_tier/v3/{phenotype_pooled_phase_bin_mean_sem,trajectory_cluster_permutation_bh_fdr}.csv` |
+| `traj_panels_regenerated/` (server) | Output of `plot_traj_panels.py` (same 4 manuscript panels + `extra/` for tongue x/y and raw variants) | `scripts/manuscript/plot_traj_panels.py` | as above |
+| `phase_panels/` (server) | First-pass regeneration (first-lick only; smaller fonts) | `scripts/manuscript/plot_phase_traj_clustersig.py` (superseded by `plot_traj_panels.py`) | first-lick CSVs above |
+| `meanSEM_sig_panels/`, `meanSEM_abs_panels/`, `median_CI_panels_v3/`, `angle_panels/` | Per-epoch endpoint panels (mean +/- SEM with `**` significance, absolute, median + CI, tongue-angle scalars) | Not in repo (session scratch; see each folder's README for the conventions) | `stats/results/phenotype_pooled/pooled_phenotype_stats` (3-tier) + per-session metric tables |
+| `vector_main_figures/`, `histology_panels/`, `severity_figures/`, `vfss_examples/` | Assembled main/supp figures, histology montages, severity clustering, VFSS examples | Not in repo, except: severity PNGs match `scripts/run_severity_figures.py` outputs (SVG versions were a session export); VFSS from `~/Github/mouse_vfss` | various |
+
+### Rerun the trajectory panels
+
+```bash
+python3 scripts/manuscript/plot_traj_panels.py \
+  <outputs>/stats/results/phenotype_pooled  <out_dir>
+```
+
+Style (measured from the June-30 SVGs): title 24 bold, column titles 21, row labels / x-label 18,
+ticks 15, n-labels 12, y-label 19, caption 13; mean lw 2.6, SEM band alpha 0.25, shading alpha 0.16;
+colors mild `#f2c12e`, moderate `#f0822e`, severe `#b4001e`.
+Shading = clusters with `reject == True` (Maris-Oostenveld cluster permutation vs pre-stroke, BH-FDR q<0.05).
+
+### Metric definitions used in these figures
+- Tongue angle: signed angle between eye-midpoint→spout-midpoint and eye-midpoint→tongue
+  (`src/stroke_orofacial/dlc_kinematics/_angle.py`, `sign_flip = -1`, 8 ms Gaussian smoothing).
+- d′ / criterion c: `src/stroke_orofacial/spout_behavior/sdt.py`.
