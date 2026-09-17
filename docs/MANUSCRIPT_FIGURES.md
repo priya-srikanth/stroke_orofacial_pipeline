@@ -153,3 +153,24 @@ Current versions: `VLS_stroke_manuscript_revised_v8.docx`, `VLS_stroke_manuscrip
 Current manuscript versions (2026-09-17, after the full within-animal run): `VLS_stroke_manuscript_revised_v9.docx`, `VLS_stroke_manuscript_compiled_v6.pdf`, `VLS_stroke_overleaf_v6.zip`.
 
 After the full W-2 leave-one-out run: `VLS_stroke_manuscript_revised_v10.docx`, `VLS_stroke_manuscript_compiled_v7.pdf`, `VLS_stroke_overleaf_v7.zip` (occupancy reported with the LOO reference).
+
+## W-2 occupancy panels, leave-one-out (2026-09-17)
+
+`scripts/manuscript/plot_w2_meansem_panels.py` rebuilds the manuscript `meanSEM_sig_panels`
+style for the W-2 families (the original W-2 panel script was never saved; `wass_panels/` is
+empty). Style measured from `meanSEM_sig_panels/*.svg`: title 14 bold, subtitles 7 italic,
+panel titles 13, ticks 13, axis labels 15, `**` 12, legend 10; colors mild `#f2c12e`,
+moderate `#f0822e`, severe `#b4001e`; session dots alpha 0.16; `**` stacked severe/moderate/mild.
+
+```bash
+python scripts/manuscript/plot_w2_meansem_panels.py \
+  <outputs>/stats/results/phenotype_pooled pooled_phenotype_stats_w2loo_within_animal.csv \
+  <out_dir> [--w2-version v2_loo] [--sig-col headline_and_bootstrap_sig|wa_sig]
+```
+
+Outputs (local + server): `vls_stroke_paper/wass_panels_loo/meanSEM_<family>_<bodypart>.{svg,png,pdf}`
+for all six bodyparts, raw and normalized, plus the script and a README.
+Deck: `VLS_stroke_figures_compilation_v9.pptx` = v8 with the five W-2 slides (22, 65-68:
+tongue raw + normalized, jaw, nose, whisker) swapped to the `v2_loo` pipeline figures and their
+slide notes repointed to `3_tier/v2_loo/`. Figure 3 H/I in `DLC.ai` still holds the published
+(v2) panels — swap in `wass_panels_loo/meanSEM_wasserstein_recovery_tongue.svg` in Illustrator.
