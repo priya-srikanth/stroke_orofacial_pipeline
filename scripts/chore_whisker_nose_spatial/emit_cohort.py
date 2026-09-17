@@ -202,7 +202,10 @@ def compute_animal(
         get_spatial_recipe(bodypart)  # validates the bodypart early
 
         # --- Heatmap D records (HEATMAP_SIDES) ---
-        for side in HEATMAP_SIDES[bodypart]:
+        # Leave-one-out runs only re-emit W-2 and never render heatmaps, so the
+        # (slow) heatmap D computation is skipped for them.
+        heatmap_sides = () if w2_pre_leave_one_out else HEATMAP_SIDES[bodypart]
+        for side in heatmap_sides:
             pre_pool = compute_per_animal_pre_pool(
                 animal=animal, bodypart=bodypart, side=side, resolver=resolver,
                 defaults=defaults, animal_info=animal_info, pre_dates=pre_dates)
