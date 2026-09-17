@@ -2,7 +2,9 @@
 significance shading (3-tier, v3). Style matched to the June-30 manuscript
 panels (traj_panels/traj_firstlick_ipsi.svg): font sizes, colors, alphas.
 
-Usage: python3 plot_traj_panels.py <phenotype_pooled_results_dir> <out_dir>
+Usage: python3 plot_traj_panels.py <phenotype_pooled_results_dir> <out_dir> [--test pooled|within_animal]
+  --test within_animal shades from trajectory_cluster_permutation_within_animal_bh_fdr.csv
+  (scripts/manuscript/run_within_animal_cluster_perm.py) instead of the pooled-shuffle CSV.
   <phenotype_pooled_results_dir> = stats/results/phenotype_pooled
 Reads, per lick set:
   phase_aligned_trajectories[_all_licks]/3_tier/v3/phenotype_pooled_phase_bin_mean_sem.csv
@@ -45,8 +47,15 @@ LICKSETS = {"firstlick": ("phase_aligned_trajectories", "First-lick"),
 SIGNALS = {"angle_deg": ("tongue angle", "deg"),
            "x_centered": ("tongue x", "px"),
            "y_centered": ("tongue y", "px")}
-CAPTION = ("Shaded = cluster-based permutation–significant phase window "
-           "vs pre-stroke (BH-FDR q<0.05)")
+CLUSTER_FILES = {
+    "pooled": ("trajectory_cluster_permutation_bh_fdr.csv",
+               "Shaded = cluster-based permutation\u2013significant phase window "
+               "vs pre-stroke (BH-FDR q<0.05)"),
+    "within_animal": ("trajectory_cluster_permutation_within_animal_bh_fdr.csv",
+                      "Shaded = significant cluster vs pre-stroke, within-animal "
+                      "cluster permutation (BH-FDR q<0.05)"),
+}
+CAPTION = CLUSTER_FILES["pooled"][1]
 
 
 def render(d, c, ylim, *, title, ylabel, out_stem):
@@ -95,11 +104,13 @@ def render(d, c, ylim, *, title, ylabel, out_stem):
     print("wrote", out_stem)
 
 
-def main(res_root, out_dir):
+def main(res_root, out_dir, test="pooled"):
+    global CAPTION
+    cluster_file, CAPTION = CLUSTER_FILES[test]
     for ls_key, (subdir, ls_name) in LICKSETS.items():
         rd = res_root / subdir / "3_tier" / "v3"
         m = pd.read_csv(rd / "phenotype_pooled_phase_bin_mean_sem.csv")
-        cc = pd.read_csv(rd / "trajectory_cluster_permutation_bh_fdr.csv")
+        cc = pd.read_csv(rd / cluster_file)
         for sig, (sig_name, unit) in SIGNALS.items():
             for var in ("delta", "raw"):
                 dd = m[(m.signal == sig) & (m.variant == var)
@@ -128,4 +139,10 @@ def main(res_root, out_dir):
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]), Path(sys.argv[2]))
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("results_root", type=Path)
+    ap.add_argument("out_dir", type=Path)
+    ap.add_argument("--test", choices=tuple(CLUSTER_FILES), default="pooled")
+    a = ap.parse_args()
+    main(a.results_root, a.out_dir, a.test)

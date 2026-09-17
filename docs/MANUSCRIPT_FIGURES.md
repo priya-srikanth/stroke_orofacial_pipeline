@@ -39,3 +39,21 @@ Shading = clusters with `reject == True` (Maris-Oostenveld cluster permutation v
 - Tongue angle: signed angle between eye-midpoint→spout-midpoint and eye-midpoint→tongue
   (`src/stroke_orofacial/dlc_kinematics/_angle.py`, `sign_flip = -1`, 8 ms Gaussian smoothing).
 - d′ / criterion c: `src/stroke_orofacial/spout_behavior/sdt.py`.
+
+## Trajectory significance tests
+
+- **Pooled shuffle (current CSVs)**: `compute_trajectory_cluster_permutation_stats`
+  (`figures/phase_aligned_trajectories.py`) permutes pre/post session labels freely
+  ACROSS animals. Ignores animal nesting, so p-values are anticonservative (in a
+  simulation with no true effect and animal-imbalanced sessions it flagged 20/20
+  datasets; within-animal version 1/20).
+- **Within-animal shuffle (new)**: `stats/trajectory_within_animal_cluster.py`.
+  Session unit (trials averaged), animal-balanced per-bin t with pooled within-animal
+  variance, labels shuffled only within each animal, same-sign clusters,
+  p = (1+k)/(1+N), BH-FDR over the same family. Inference is conditional on the
+  animals studied (n = 2-4 per 3-tier phenotype).
+  Run on the Mac (needs the raw session substrate; ~30-60 min per lick set,
+  cached to `trial_bin_substrate.parquet` for reruns):
+  `python -m scripts.manuscript.run_within_animal_cluster_perm --lick-set both`
+  then `python scripts/manuscript/plot_traj_panels.py <stats/results/phenotype_pooled> <out> --test within_animal`.
+  Tests: `tests/test_trajectory_within_animal_cluster.py`.
