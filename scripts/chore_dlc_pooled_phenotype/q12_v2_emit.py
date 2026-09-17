@@ -146,7 +146,14 @@ def main(argv: list[str] | None = None) -> int:
         "--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"),
         default="INFO",
     )
+    parser.add_argument(
+        "--w2-pre-leave-one-out", action="store_true",
+        help="Compare each pre session's W-2 against the pool of the animal's "
+             "OTHER pre sessions (removes the self-inclusion bias toward 0). "
+             "W-2 outputs go to <scope>/v2_loo/ instead of <scope>/v2/.",
+    )
     args = parser.parse_args(argv)
+    w2_ver = "v2_loo" if args.w2_pre_leave_one_out else "v2"
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S",
@@ -171,6 +178,7 @@ def main(argv: list[str] | None = None) -> int:
             animals_map=animals_map_full, logger=logger,
             filter_spec=PASS_THROUGH_FILTER,
             with_ot_decomposition=True,
+            w2_pre_leave_one_out=args.w2_pre_leave_one_out,
         )
         all_records.extend(records)
         all_w2_rows.extend(per_session_w2)
@@ -221,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
         pooled_w2 = aggregate_phenotype_pooled_mean_sem(
             w2_scoped, value_col="w2", by_side=True,
         )
-        w2_dir = resolver.pipeline_outputs(subdir=W2_SUBDIR) / scope / "v2"
+        w2_dir = resolver.pipeline_outputs(subdir=W2_SUBDIR) / scope / w2_ver
         w2_dir.mkdir(parents=True, exist_ok=True)
         n_figs = 0
         for bodypart in ("tongue", "jaw"):
@@ -240,7 +248,7 @@ def main(argv: list[str] | None = None) -> int:
         # read; the figures render from the in-memory ``pooled_w2`` and the
         # mean+SEM is trivially recomputable from the per_session file below.)
         res_dir = resolver.pipeline_outputs(
-            subdir=W2_SUBDIR.replace("figures", "results")) / scope / "v2"
+            subdir=W2_SUBDIR.replace("figures", "results")) / scope / w2_ver
         res_dir.mkdir(parents=True, exist_ok=True)
         # Persist the PER-SESSION W-2 (the figure's scatter values) so any
         # future normalization / re-pool never needs another OT recompute.
@@ -267,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
         pooled_w2_norm = aggregate_phenotype_pooled_mean_sem(
             w2_norm, value_col="value_norm", by_side=True,
         )
-        norm_dir = resolver.pipeline_outputs(subdir=NORM_W2_SUBDIR) / scope / "v2"
+        norm_dir = resolver.pipeline_outputs(subdir=NORM_W2_SUBDIR) / scope / w2_ver
         norm_dir.mkdir(parents=True, exist_ok=True)
         n_norm = 0
         for bodypart in ("tongue", "jaw"):
@@ -282,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             n_norm += 1
         res_norm = resolver.pipeline_outputs(
-            subdir=NORM_W2_SUBDIR.replace("figures", "results")) / scope / "v2"
+            subdir=NORM_W2_SUBDIR.replace("figures", "results")) / scope / w2_ver
         res_norm.mkdir(parents=True, exist_ok=True)
         # (normalized mean+SEM summary CSV removed — write-only orphan; see the
         # absolute-W2 note above.)

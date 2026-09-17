@@ -323,8 +323,12 @@ def load_all_licks_endpoints_family(
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
-def load_wasserstein_family(resolver: PathResolver) -> pd.DataFrame:
-    """Persisted per-session W-2 (absolute + normalized) -> per-session long-form."""
+def load_wasserstein_family(resolver: PathResolver, *, w2_version: str = "v2") -> pd.DataFrame:
+    """Persisted per-session W-2 (absolute + normalized) -> per-session long-form.
+
+    ``w2_version`` selects the ``<scope>/<version>/`` subdir: ``v2`` (published,
+    pre sessions vs full pre pool) or ``v2_loo`` (leave-one-out pre reference).
+    """
     res = resolver.pipeline_outputs(subdir="stats") / "results" / "phenotype_pooled"
     frames = []
     for fam, sub in [("wasserstein_recovery", "wasserstein_recovery"),
@@ -332,6 +336,8 @@ def load_wasserstein_family(resolver: PathResolver) -> pd.DataFrame:
                       "normalized_wasserstein_recovery")]:
         for f in glob.glob(str(res / sub / "**" / "wasserstein_recovery_per_session.csv"),
                            recursive=True):
+            if Path(f).parent.parent.name != w2_version:
+                continue
             df = pd.read_csv(f)
             if df.empty or "w2" not in df.columns:
                 continue
@@ -466,6 +472,10 @@ def main(argv: list[str] | None = None) -> int:
                          "the trial+session DLC filter, matching the canonical "
                          "v3 figures. Spatial/wasserstein stays unfiltered. "
                          "none: all sessions (legacy)."))
+    p.add_argument("--w2-version", choices=("v2", "v2_loo"), default="v2",
+                   help="W-2 per-session source: v2 (published) or v2_loo "
+                        "(leave-one-out pre reference). v2_loo writes "
+                        "pooled_phenotype_stats_w2loo.csv instead.")
     args = p.parse_args(argv)
 
     resolver = PathResolver()
@@ -493,7 +503,7 @@ def main(argv: list[str] | None = None) -> int:
             resolver, trial_filter=trial_filter, kept_keys=kept_keys))
     if "wasserstein" in args.families:
         log.info("loading wasserstein family (always unfiltered — spatial) ...")
-        base_long.append(load_wasserstein_family(resolver))
+        base_long.append(load_wasserstein_family(resolver, w2_version=args.w2_version))
     base_long = [d for d in base_long if not d.empty]
     if not base_long:
         log.error("no family data loaded")
@@ -520,9 +530,11 @@ def main(argv: list[str] | None = None) -> int:
         out_dir = (resolver.pipeline_outputs(subdir="stats") / "results"
                    / "phenotype_pooled" / scope)
         out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / "pooled_phenotype_stats.csv"
+        stem = ("pooled_phenotype_stats" if args.w2_version == "v2"
+                else "pooled_phenotype_stats_w2loo")
+        out_path = out_dir / f"{stem}.csv"
         res.to_csv(out_path, index=False)
-        _write_highlighted_xlsx(res, out_dir / "pooled_phenotype_stats.xlsx")
+        _write_highlighted_xlsx(res, out_dir / f"{stem}.xlsx")
         n_head = int(res["headline_sig"].sum())
         n_both = int(res["headline_and_bootstrap_sig"].sum())
         log.info("[%s] %d rows | %d headline-sig (MWU-FDR) | %d also bootstrap-sig "

@@ -179,7 +179,7 @@ def _d_record(animal, side, bodypart, post_epoch, rec, *, pre_trials_key):
 
 def compute_animal(
     animal: str, *, resolver: PathResolver, defaults: dict, animal_info,
-    bodyparts: list[str],
+    bodyparts: list[str], w2_pre_leave_one_out: bool = False,
 ) -> tuple[list[dict], list[dict]]:
     """Compute heatmap D records + per-session W-2 rows for one animal.
 
@@ -246,7 +246,8 @@ def compute_animal(
                     side=side, bodypart=bodypart, resolver=resolver,
                     defaults=defaults, animal_info=animal_info,
                     epoch_label=epoch_label,
-                    with_ot_decomposition=WITH_OT_DECOMPOSITION)
+                    with_ot_decomposition=WITH_OT_DECOMPOSITION,
+                    leave_one_out=w2_pre_leave_one_out)
                 for row in rows:
                     row["recovery_phenotype"] = animal_info.recovery_phenotype
                 w2_rows.extend(rows)
@@ -270,7 +271,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--log-level",
                         choices=("DEBUG", "INFO", "WARNING", "ERROR"),
                         default="INFO")
+    parser.add_argument("--w2-pre-leave-one-out", action="store_true",
+                        help="Leave-one-out pre reference for pre-session W-2; "
+                             "W-2 outputs go to <scope>/v2_loo/.")
     args = parser.parse_args(argv)
+    w2_ver = "v2_loo" if args.w2_pre_leave_one_out else "v2"
     if isinstance(args.bodyparts, str):  # default "all" not run through type
         args.bodyparts = parse_bodyparts(args.bodyparts)
     logging.basicConfig(
@@ -293,7 +298,8 @@ def main(argv: list[str] | None = None) -> int:
     for animal in animals:
         recs, w2 = compute_animal(
             animal, resolver=resolver, defaults=defaults,
-            animal_info=animals_map_full[animal], bodyparts=bodyparts)
+            animal_info=animals_map_full[animal], bodyparts=bodyparts,
+            w2_pre_leave_one_out=args.w2_pre_leave_one_out)
         all_records.extend(recs)
         all_w2_rows.extend(w2)
     logger.info("Compute: %d D-records, %d per-session W-2 rows",
@@ -375,7 +381,7 @@ def main(argv: list[str] | None = None) -> int:
         w2_scoped = w2_scoped.dropna(subset=["recovery_phenotype"])
         pooled_w2 = aggregate_phenotype_pooled_mean_sem(
             w2_scoped, value_col="w2", by_side=True)
-        w2_dir = resolver.pipeline_outputs(subdir=W2_SUBDIR) / scope / "v2"
+        w2_dir = resolver.pipeline_outputs(subdir=W2_SUBDIR) / scope / w2_ver
         w2_dir.mkdir(parents=True, exist_ok=True)
         for bodypart in bodyparts:
             w2_side_keys = tuple(
@@ -410,7 +416,7 @@ def main(argv: list[str] | None = None) -> int:
         # CSV is no longer written — write-only orphan; figures render from the
         # in-memory ``pooled_w2`` and mean+SEM recomputes from per_session.)
         res_dir = resolver.pipeline_outputs(
-            subdir=W2_SUBDIR.replace("figures", "results")) / scope / "v2"
+            subdir=W2_SUBDIR.replace("figures", "results")) / scope / w2_ver
         res_dir.mkdir(parents=True, exist_ok=True)
         # Persist per-session W-2 (+ OT create/destroy/move) for reuse.
         # Namespaced under ``whisker_nose/`` so the consolidated-stats loader's
