@@ -1,7 +1,15 @@
-"""Manuscript-style mean +/- SEM panels for the SCALAR endpoints (with ** significance).
+"""Manuscript-style mean +/- SEM endpoint panels (with ** significance).
 
-Regenerates the `meanSEM_sig_panels` figures whose original script was never
-saved (the June-30 renders). Same recipe as the published panels:
+Regenerates the `meanSEM_sig_panels` and `angle_panels` figures whose original
+scripts were never saved (the June-30 renders). Three endpoint families:
+
+* ``scalar`` (default) -- the `meanSEM_sig_panels` set, 30 endpoints
+* ``phase_aligned_endpoints`` -- first-lick family; ``peak_angle_deg`` is the
+  published `angle_panels/angle_firstlick_peak`
+* ``phase_aligned_endpoints_all_licks`` -- all-lick family; ``peak_angle_deg``
+  is `angle_panels/angle_alllick_peak` (Figure 3 P/Q)
+
+For the scalar family the recipe matches the published panels:
 
 * per-trial values from ``stats/inputs/filtered_v1/<endpoint>/<animal>.parquet``
   when that tree exists, else ``stats/inputs/no_filter/<endpoint>/`` (matching
@@ -20,12 +28,24 @@ Differences from the June-30 files this replaces:
 * canvas and axes geometry are pinned rather than produced by ``tight_layout`` +
   ``bbox_inches="tight"``, so every panel is exactly the published size
 
+The phase-aligned families read the per-session substrate the stats build wrote,
+``stats/results/phenotype_pooled/<family>/<scope>/<version>/per_session_means.csv``
+(column ``mean``), and are baseline-corrected the same way. Gaps left by an epoch
+with no qualifying sessions (severe / acute) are bridged with a dashed segment,
+the convention of the published angle panels; this now applies to every family,
+including the scalar panels (``--solid-gaps`` restores the old solid bridge).
+
 Usage::
 
+    # meanSEM_sig_panels
     python scripts/manuscript/plot_scalar_meansem_panels.py \
         <outputs>/stats <outputs>/stats/results/phenotype_pooled/3_tier/pooled_phenotype_stats.csv \
-        <out_dir> [--endpoints tongue_mean_within_bout_ili_ms tongue_lick1_t_peak_ms] \
-        [--sig-col headline_and_bootstrap_sig|wa_sig]
+        <out_dir> [--endpoints tongue_mean_within_bout_ili_ms] [--sig-col ...]
+
+    # angle_panels (Figure 3 N-Q)
+    python scripts/manuscript/plot_scalar_meansem_panels.py \
+        <outputs>/stats <outputs>/.../pooled_phenotype_stats.csv <out_dir> \
+        --family phase_aligned_endpoints_all_licks --endpoints peak_angle_deg
 """
 from __future__ import annotations
 
@@ -96,6 +116,25 @@ LABELS = {
 }
 
 
+# per-family: (results subdir, value column, {endpoint: (title, ylabel)}, subtitle,
+#              dashed bridge over missing epochs, output stem template)
+PHASE_LABELS = {
+    "peak_angle_deg": ("{lickset} peak tongue angle (Δ from pre-stroke)",
+                       "Δ peak angle (deg)"),
+    "signed_angle_at_max_abs_phase_0_075_deg":
+        ("{lickset} signed tongue angle at max |phase 0-0.075|", "Δ angle (deg)"),
+    "signed_x_at_max_abs_phase_0_075_px":
+        ("{lickset} signed tongue x at max |phase 0-0.075|", "Δ x (px)"),
+}
+PHASE_FAMILY = {
+    "phase_aligned_endpoints": ("First-lick", "angle_firstlick"),
+    "phase_aligned_endpoints_all_licks": ("All-lick", "angle_alllick"),
+}
+PHASE_SUB = ("mean ± SEM (baseline-subtracted); filtered_v1 sessions; ** = q<0.05 "
+             "(session MWU+BH-FDR) & session-bootstrap CI of the post−pre "
+             "difference in means excludes 0")
+
+
 def _phenotype_map() -> dict[str, str]:
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -143,8 +182,33 @@ def load_per_session(stats_root: Path, endpoint: str,
     return sess.dropna(subset=["delta", "recovery_phenotype"])
 
 
+def load_phase_per_session(results_root: Path, family: str, scope: str,
+                           version: str) -> pd.DataFrame:
+    """Per-session, baseline-corrected values for a phase-aligned family.
+
+    Source is the substrate the stats build wrote, so panel and sheet agree.
+    ``side`` is ipsi/contra here and L/R in the sheet; all animals are
+    left-lesioned, so ipsi -> L and contra -> R.
+    """
+    p = results_root / family / scope / version / "per_session_means.csv"
+    if not p.is_file():
+        raise SystemExit(f"no per-session means at {p}")
+    d = pd.read_csv(p)
+    d = d.rename(columns={"mean": "value"})
+    d["side"] = d.side.map({"ipsi": "L", "contra": "R"}).fillna(d.side)
+    base = (d[d.epoch_label == "pre"]
+            .groupby(["animal", "side", "endpoint"]).value.mean().rename("baseline"))
+    d = d.merge(base, on=["animal", "side", "endpoint"], how="left")
+    d["delta"] = d.value - d.baseline
+    d["recovery_phenotype"] = d.recovery_phenotype.replace(
+        {"moderate-severe": "moderate"})          # 3-tier
+    return d.dropna(subset=["delta", "recovery_phenotype"])
+
+
 def render(d: pd.DataFrame, sig: pd.DataFrame, *, endpoint: str,
-           out_stem: Path, sig_col: str) -> None:
+           out_stem: Path, sig_col: str, labels: tuple[str, str] | None = None,
+           subtitles: tuple[str, ...] = (SUB1, SUB2),
+           dashed_gaps: bool = True) -> None:
     sides = [s for s in ("L", "R", "global") if s in set(d.side)]
     # Canvas and axes geometry are matched exactly to the published panels so
     # these are drop-in replacements inside the multi-panel Illustrator files:
@@ -177,8 +241,18 @@ def render(d: pd.DataFrame, sig: pd.DataFrame, *, endpoint: str,
                            color=COLORS[ph], alpha=0.16, marker=MARKERS[ph], linewidths=0)
                 xs.append(i); ms.append(v.mean())
                 es.append(v.std(ddof=1) / max(len(v) ** 0.5, 1) if len(v) > 1 else 0.0)
-            ax.errorbar(xs, ms, yerr=es, color=COLORS[ph], marker=MARKERS[ph], ms=7,
-                        lw=2, capsize=3, zorder=3)
+            if dashed_gaps:
+                # solid between adjacent epochs, dashed across an epoch with no
+                # qualifying sessions (e.g. severe / acute)
+                ax.errorbar(xs, ms, yerr=es, color=COLORS[ph], marker=MARKERS[ph],
+                            ms=7, lw=0, capsize=3, zorder=3)
+                for k in range(len(xs) - 1):
+                    style = "-" if xs[k + 1] - xs[k] == 1 else "--"
+                    ax.plot(xs[k:k + 2], ms[k:k + 2], style, color=COLORS[ph],
+                            lw=2, zorder=3)
+            else:
+                ax.errorbar(xs, ms, yerr=es, color=COLORS[ph], marker=MARKERS[ph],
+                            ms=7, lw=2, capsize=3, zorder=3)
         # ** band: one row per phenotype, severe on top
         for row, ph in enumerate(STAR_ORDER):
             y = ymax - (0.045 + 0.055 * row) * (ymax - ymin)
@@ -199,11 +273,13 @@ def render(d: pd.DataFrame, sig: pd.DataFrame, *, endpoint: str,
             ax.set_title(SIDE_TITLE[side], fontsize=FS_PANEL)
         ax.set_ylim(ymin, ymax)
         ax.spines[["top", "right"]].set_visible(False)
-    title, ylab = LABELS.get(endpoint, (endpoint.replace("_", " "), "Δ value"))
+    title, ylab = labels or LABELS.get(endpoint,
+                                       (endpoint.replace("_", " "), "Δ value"))
     axes[0].set_ylabel(ylab, fontsize=FS_AXLAB)
     fig.suptitle(title, fontsize=FS_TITLE, fontweight="bold", y=0.995)
-    fig.text(0.5, 0.935, SUB1, ha="center", fontsize=FS_SUB, style="italic")
-    fig.text(0.5, 0.900, SUB2, ha="center", fontsize=FS_SUB, style="italic")
+    for k, sub in enumerate(subtitles):
+        fig.text(0.5, 0.935 - 0.035 * k, sub, ha="center", fontsize=FS_SUB,
+                 style="italic")
     handles = [plt.Line2D([], [], color=COLORS[p], marker=MARKERS[p], ms=7, lw=2,
                           label=f"{p} (n={N_ANIMALS[p]})") for p in PHENOS]
     fig.legend(handles=handles, title="phenotype", fontsize=FS_LEG, title_fontsize=FS_LEG,
@@ -228,13 +304,45 @@ def main(argv=None) -> int:
                     help="endpoint slugs; default = every slug in LABELS that has input data")
     ap.add_argument("--sig-col", default="headline_and_bootstrap_sig",
                     choices=("headline_and_bootstrap_sig", "wa_sig"))
+    ap.add_argument("--solid-gaps", action="store_true",
+                    help="draw a solid segment across an epoch with no qualifying "
+                         "sessions; default is the dashed-bridge convention of the "
+                         "published angle panels")
+    ap.add_argument("--family", default="scalar",
+                    choices=("scalar", "phase_aligned_endpoints",
+                             "phase_aligned_endpoints_all_licks"))
+    ap.add_argument("--results-root", type=Path, default=None,
+                    help="stats/results/phenotype_pooled (phase-aligned families; "
+                         "default <stats_root>/results/phenotype_pooled)")
+    ap.add_argument("--scope", default="3_tier")
+    ap.add_argument("--version", default="v3")
     ap.add_argument("--filter-variant", default="auto",
                     choices=("auto", "no_filter"),
                     help="auto = stats-build precedence (filtered_v1 then no_filter); "
                          "no_filter reproduces the June-30 panels")
     a = ap.parse_args(argv)
     sig = pd.read_csv(a.stats_sheet)
-    sig = sig[sig.family == "scalar"] if "family" in sig.columns else sig
+    if "family" in sig.columns:
+        sig = sig[sig.family == a.family]
+
+    if a.family != "scalar":
+        lickset, stem_prefix = PHASE_FAMILY[a.family]
+        root = a.results_root or (a.stats_root / "results" / "phenotype_pooled")
+        d_all = load_phase_per_session(root, a.family, a.scope, a.version)
+        eps = a.endpoints or sorted(d_all.endpoint.unique())
+        for ep in eps:
+            d = d_all[d_all.endpoint == ep]
+            if d.empty:
+                print("skip (no data):", ep)
+                continue
+            t, ylab = PHASE_LABELS.get(ep, (ep.replace("_", " "), "Δ value"))
+            stem = (f"{stem_prefix}_peak" if ep == "peak_angle_deg"
+                    else f"{stem_prefix}_{ep}")
+            render(d, sig, endpoint=ep, out_stem=a.out_dir / stem,
+                   sig_col=a.sig_col, labels=(t.format(lickset=lickset), ylab),
+                   subtitles=(PHASE_SUB,), dashed_gaps=not a.solid_gaps)
+        return 0
+
     eps = a.endpoints or sorted(LABELS)
     missing = [e for e in eps if e not in LABELS]
     if missing:
@@ -246,7 +354,7 @@ def main(argv=None) -> int:
             continue
         d = load_per_session(a.stats_root, ep, a.filter_variant)
         render(d, sig, endpoint=ep, out_stem=a.out_dir / f"meanSEM_{ep}",
-               sig_col=a.sig_col)
+               sig_col=a.sig_col, dashed_gaps=not a.solid_gaps)
     return 0
 
 

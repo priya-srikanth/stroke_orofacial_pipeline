@@ -184,6 +184,29 @@ tongue raw + normalized, jaw, nose, whisker) swapped to the `v2_loo` pipeline fi
 slide notes repointed to `3_tier/v2_loo/`. Figure 3 H/I in `DLC.ai` still holds the published
 (v2) panels — swap in `wass_panels_loo/meanSEM_wasserstein_recovery_tongue.svg` in Illustrator.
 
+## Figure-code audit (2026-09-17)
+
+Which manuscript figure sets now have a saved generator in this repo, and which do not.
+
+| folder in `vls_stroke_paper/` | manuscript panels | generator |
+|---|---|---|
+| `meanSEM_sig_panels_v2` | Fig 1 SDT, Fig 3 B-M | `scripts/manuscript/plot_scalar_meansem_panels.py` |
+| `angle_panels_v2` | Fig 3 N-Q | same script, `--family phase_aligned_endpoints[_all_licks]` |
+| `wass_panels_loo` | Fig 3 H, I | `scripts/manuscript/plot_w2_meansem_panels.py` |
+| `traj_panels`, `traj_panels_within_animal` | Fig 3 R-U | `scripts/manuscript/plot_traj_panels.py` (+ `run_within_animal_cluster_perm.py`) |
+| `severity_figures` | Supp S2-S4 | `scripts/run_severity_figures.py` |
+| `meanSEM_abs_panels` | not used (absolute, not baseline-subtracted) | none; `plot_scalar_meansem_panels.py` could be extended |
+| `median_CI_panels_v3` | superseded by the meanSEM convention | none; not worth rebuilding |
+| `histology_panels` | Fig 1 histology, infarct time course | **none in this repo** |
+| `vector_main_figures` (weights, caudoputamen quant) | Fig 1 F, G | **none in this repo** |
+| `vfss_examples` | Fig 2 | **none in this repo** |
+
+The pipeline-side figures (`stats/figures/...`) all have code under `src/stroke_orofacial/figures/`
+and the `scripts/phase_*` emitters; the table above is about the manuscript-specific renders.
+The three "none in this repo" sets are the histology/infarct quantification, the body-weight
+and caudoputamen-area plots, and the videofluoroscopy stills, which were made outside this
+pipeline. If they need to be reproducible, that code has to be found or written.
+
 ## Scalar meanSEM panel generator (2026-09-17)
 
 `scripts/manuscript/plot_scalar_meansem_panels.py` regenerates the
@@ -218,6 +241,18 @@ Two substantive differences from the published files:
 
 SVG text is emitted as real text (`svg.fonttype=none`) rather than outlined glyphs, so labels
 stay editable in Illustrator; use the `.pdf` if DejaVu Sans is not installed.
+
+The same script also makes the **angle panels** (Figure 3 N-Q) with
+`--family phase_aligned_endpoints` (first-lick) and `--family phase_aligned_endpoints_all_licks`
+(all-lick), reading `stats/results/phenotype_pooled/<family>/3_tier/v3/per_session_means.csv`
+and mapping its ipsi/contra sides to the sheet's L/R. Output: `vls_stroke_paper/angle_panels_v2/`.
+Verified against the published `angle_panels`: same canvas, same axes geometry, same `**` counts
+(first-lick 15, all-lick 13).
+
+A **dashed segment** now bridges any epoch with no qualifying sessions (the severe/acute cell),
+which was the published convention in the angle panels and is now applied to the scalar panels
+too; `--solid-gaps` restores the old solid bridge. Among the scalar panels this changes only
+`tongue_mean_within_bout_ili_ms`, whose severe line has no acute point under filtered_v1.
 
 ### Within-bout ILI direction (2026-09-17)
 
