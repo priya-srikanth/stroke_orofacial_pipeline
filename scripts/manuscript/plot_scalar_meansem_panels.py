@@ -208,7 +208,7 @@ def load_phase_per_session(results_root: Path, family: str, scope: str,
 def render(d: pd.DataFrame, sig: pd.DataFrame, *, endpoint: str,
            out_stem: Path, sig_col: str, labels: tuple[str, str] | None = None,
            subtitles: tuple[str, ...] = (SUB1, SUB2),
-           dashed_gaps: bool = True) -> None:
+           dashed_gaps: bool = True, value_col: str = "delta") -> None:
     sides = [s for s in ("L", "R", "global") if s in set(d.side)]
     # Canvas and axes geometry are matched exactly to the published panels so
     # these are drop-in replacements inside the multi-panel Illustrator files:
@@ -224,7 +224,8 @@ def render(d: pd.DataFrame, sig: pd.DataFrame, *, endpoint: str,
     legend_x = 0.82 if two else 0.696
     for ax, left in zip(axes, ax_lefts):
         ax.set_position([left, 0.145, ax_width, 0.575])
-    lo = d.delta.min(); hi = d.delta.max(); span = max(hi - lo, 1e-9)
+    d = d.rename(columns={value_col: "_v"}) if value_col != "_v" else d
+    lo = d._v.min(); hi = d._v.max(); span = max(hi - lo, 1e-9)
     ymin, ymax = lo - 0.05 * span, hi + 0.30 * span      # headroom for the ** band
     for ax, side in zip(axes, sides):
         ds = d[d.side == side]
@@ -234,7 +235,7 @@ def render(d: pd.DataFrame, sig: pd.DataFrame, *, endpoint: str,
                 continue
             xs, ms, es = [], [], []
             for i, (ep, _) in enumerate(EPOCHS):
-                v = dp[dp.epoch_label == ep].delta
+                v = dp[dp.epoch_label == ep]._v
                 if v.empty:
                     continue
                 ax.scatter([i + 0.02 * (PHENOS.index(ph) - 1)] * len(v), v, s=14,
@@ -275,6 +276,8 @@ def render(d: pd.DataFrame, sig: pd.DataFrame, *, endpoint: str,
         ax.spines[["top", "right"]].set_visible(False)
     title, ylab = labels or LABELS.get(endpoint,
                                        (endpoint.replace("_", " "), "Δ value"))
+    if value_col == "value":
+        ylab = ylab.replace("Δ ", "").replace("Δ", "").strip() or "value"
     axes[0].set_ylabel(ylab, fontsize=FS_AXLAB)
     fig.suptitle(title, fontsize=FS_TITLE, fontweight="bold", y=0.995)
     for k, sub in enumerate(subtitles):
@@ -304,6 +307,9 @@ def main(argv=None) -> int:
                     help="endpoint slugs; default = every slug in LABELS that has input data")
     ap.add_argument("--sig-col", default="headline_and_bootstrap_sig",
                     choices=("headline_and_bootstrap_sig", "wa_sig"))
+    ap.add_argument("--absolute", action="store_true",
+                    help="plot the raw per-session values instead of the change from "
+                         "each animal's pre-stroke mean (the meanSEM_abs_panels set)")
     ap.add_argument("--solid-gaps", action="store_true",
                     help="draw a solid segment across an epoch with no qualifying "
                          "sessions; default is the dashed-bridge convention of the "
@@ -340,7 +346,8 @@ def main(argv=None) -> int:
                     else f"{stem_prefix}_{ep}")
             render(d, sig, endpoint=ep, out_stem=a.out_dir / stem,
                    sig_col=a.sig_col, labels=(t.format(lickset=lickset), ylab),
-                   subtitles=(PHASE_SUB,), dashed_gaps=not a.solid_gaps)
+                   subtitles=(PHASE_SUB,), dashed_gaps=not a.solid_gaps,
+                   value_col="value" if a.absolute else "delta")
         return 0
 
     eps = a.endpoints or sorted(LABELS)
@@ -353,8 +360,13 @@ def main(argv=None) -> int:
             print("skip (no input data):", ep)
             continue
         d = load_per_session(a.stats_root, ep, a.filter_variant)
-        render(d, sig, endpoint=ep, out_stem=a.out_dir / f"meanSEM_{ep}",
-               sig_col=a.sig_col, dashed_gaps=not a.solid_gaps)
+        vcol = "value" if a.absolute else "delta"
+        sub = ((("mean ± SEM (absolute, not baseline-subtracted); faded=sessions"),
+                SUB2) if a.absolute else (SUB1, SUB2))
+        stem = f"meanSEM_{ep}_abs" if a.absolute else f"meanSEM_{ep}"
+        render(d, sig, endpoint=ep, out_stem=a.out_dir / stem,
+               sig_col=a.sig_col, dashed_gaps=not a.solid_gaps,
+               value_col=vcol, subtitles=sub)
     return 0
 
 

@@ -186,7 +186,7 @@ slide notes repointed to `3_tier/v2_loo/`. Figure 3 H/I in `DLC.ai` still holds 
 
 ## Figure-code audit (2026-09-17)
 
-Which manuscript figure sets now have a saved generator in this repo, and which do not.
+Every manuscript figure panel now has code in this repo that regenerates it.
 
 | folder in `vls_stroke_paper/` | manuscript panels | generator |
 |---|---|---|
@@ -194,18 +194,35 @@ Which manuscript figure sets now have a saved generator in this repo, and which 
 | `angle_panels_v2` | Fig 3 N-Q | same script, `--family phase_aligned_endpoints[_all_licks]` |
 | `wass_panels_loo` | Fig 3 H, I | `scripts/manuscript/plot_w2_meansem_panels.py` |
 | `traj_panels`, `traj_panels_within_animal` | Fig 3 R-U | `scripts/manuscript/plot_traj_panels.py` (+ `run_within_animal_cluster_perm.py`) |
+| `recovered_panels` | Fig 1 F/G, Fig 2 VFSS quant, Fig S5 | `scripts/manuscript/plot_recovered_panels.py` (data via `extract_svg_series.py`) |
 | `severity_figures` | Supp S2-S4 | `scripts/run_severity_figures.py` |
-| `meanSEM_abs_panels` | not used (absolute, not baseline-subtracted) | none; `plot_scalar_meansem_panels.py` could be extended |
-| `median_CI_panels_v3` | superseded by the meanSEM convention | none; not worth rebuilding |
-| `histology_panels` | Fig 1 histology, infarct time course | **none in this repo** |
-| `vector_main_figures` (weights, caudoputamen quant) | Fig 1 F, G | **none in this repo** |
-| `vfss_examples` | Fig 2 | **none in this repo** |
+| `meanSEM_abs_panels` | not used in the manuscript | `plot_scalar_meansem_panels.py --absolute` |
+| `median_CI_panels_v3` | superseded by the meanSEM convention | not rebuilt (obsolete convention) |
+| `histology_panels` | Fig 1 histology | photomicrographs: no code can regenerate the images; the montage lives in `.ai` |
 
-The pipeline-side figures (`stats/figures/...`) all have code under `src/stroke_orofacial/figures/`
-and the `scripts/phase_*` emitters; the table above is about the manuscript-specific renders.
-The three "none in this repo" sets are the histology/infarct quantification, the body-weight
-and caudoputamen-area plots, and the videofluoroscopy stills, which were made outside this
-pipeline. If they need to be reproducible, that code has to be found or written.
+The pipeline-side figures (`stats/figures/...`) have always had code under
+`src/stroke_orofacial/figures/` and the `scripts/phase_*` emitters; the table above is about
+the manuscript-specific renders.
+
+### Recovered figure data (2026-09-17)
+
+Figure 1 F/G (caudoputamen area, body weights) and the videofluoroscopy panels were produced
+outside this repository and their plotting code was not preserved. `extract_svg_series.py`
+reads a published matplotlib SVG, calibrates the pixel -> data transform from the axis ticks,
+and writes every plotted point (lines, markers, scatter, bars, with the artist colour that
+identifies the series) to a tidy CSV; `plot_recovered_panels.py` redraws the panel from it.
+Tables live at `data/recovered_figure_series/*.csv` (84 KB, committed) and are copied beside
+the panels in `vls_stroke_paper/recovered_panels/recovered_data/`.
+
+What survives recovery: the drawn values, at matplotlib's path precision (far finer than a
+plotting pixel). The weight figure comes back as 8 per-animal trajectories over day -7 to +14
+with the phenotype colours intact; the VFSS panels as PS89/PS90/PS91 across pre1/pre2/post1/post2.
+What does not: anything the figure did not draw (excluded points, replicates behind a mean,
+units converted before plotting), and the statistical annotations, which are text in the
+published SVGs and are not recomputed. **These CSVs are a recovery of what the figure drew,
+not the upstream measurements.** If the real source tables are found (infarct/gliosis
+measurements, the body-weight log, the VFSS scoring sheet), dropping them in with the same
+columns makes these panels reproducible from source.
 
 ## Scalar meanSEM panel generator (2026-09-17)
 
