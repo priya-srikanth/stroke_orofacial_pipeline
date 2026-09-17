@@ -174,3 +174,21 @@ Deck: `VLS_stroke_figures_compilation_v9.pptx` = v8 with the five W-2 slides (22
 tongue raw + normalized, jaw, nose, whisker) swapped to the `v2_loo` pipeline figures and their
 slide notes repointed to `3_tier/v2_loo/`. Figure 3 H/I in `DLC.ai` still holds the published
 (v2) panels — swap in `wass_panels_loo/meanSEM_wasserstein_recovery_tongue.svg` in Illustrator.
+
+## Wasserstein terminology (2026-09-17, v11 / v8)
+
+The manuscript now uses **"Wasserstein-2"** everywhere (previously mixed with
+"2-Wasserstein": `main.tex` lines 776 and 881, and the matching docx paragraphs 85
+Statistical analysis and 90 Figure 3 legend). Figure axes use **"W-2"** as the shorthand
+("Δ W-2 from pre-stroke (px)", "Δ W-2 (x pre-stroke baseline)"), which is what
+`scripts/manuscript/plot_w2_meansem_panels.py` writes; no code change was needed.
+
+Two stale "2-Wasserstein" strings remain **inside `DLC.ai`** and therefore inside
+`overleaf_project/figures/Figure3_dlc.pdf`: the H and I panel titles
+("2-Wasserstein distance, tongue") and the older in-figure legend block, which also still
+reads "peak tongue velocity" and uses the pre-relettering D-I panel letters. These are
+Illustrator edits; once `DLC.ai` is updated, re-export `Figure3_dlc.pdf` and recompile.
+
+Current manuscript versions: `VLS_stroke_manuscript_revised_v11.docx`,
+`VLS_stroke_manuscript_compiled_v8.pdf`, `VLS_stroke_overleaf_v8.zip`.
+The pre-rename tex is kept at `overleaf_backup_2026-09-17/main.tex.pre_wasserstein2_naming`.
