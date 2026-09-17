@@ -168,6 +168,15 @@ python scripts/manuscript/plot_w2_meansem_panels.py \
   <out_dir> [--w2-version v2_loo] [--sig-col headline_and_bootstrap_sig|wa_sig]
 ```
 
+Panel geometry (2026-09-17): the panels are sized to be drop-in replacements inside the
+multi-panel `.ai` files. Canvas and axes fractions are copied from `meanSEM_sig_panels/*.svg`:
+720.0 x 331.2 pt with axes at left 0.110 / 0.49469 and width 0.30531 for two-side endpoints,
+424.8 x 331.2 pt with axes at left 0.185 and width 0.47500 for the single-panel ones
+(eye, spout); both use bottom 0.145, height 0.575, and the legend "center left" at x 0.82
+(two-panel) or 0.70 (one-panel). `tight_layout` and `bbox_inches="tight"` are deliberately not
+used, since either resizes the canvas (the first pass came out 773.5 x 332.9 pt). The
+first-pass files are kept in `wass_panels_loo/superseded_tightbbox/`.
+
 Outputs (local + server): `vls_stroke_paper/wass_panels_loo/meanSEM_<family>_<bodypart>.{svg,png,pdf}`
 for all six bodyparts, raw and normalized, plus the script and a README.
 Deck: `VLS_stroke_figures_compilation_v9.pptx` = v8 with the five W-2 slides (22, 65-68:

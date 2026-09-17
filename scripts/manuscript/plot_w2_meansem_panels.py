@@ -79,9 +79,21 @@ def load_per_session(res_root: Path, family: str, scope: str, version: str) -> p
 def render(d: pd.DataFrame, sig: pd.DataFrame, *, family: str, bodypart: str,
            out_stem: Path, sig_col: str) -> None:
     sides = [s for s in ("ipsi", "contra", "both") if s in set(d.side)]
-    fig, axes = plt.subplots(1, len(sides), figsize=(10 if len(sides) > 1 else 5.6, 4.6),
+    # Canvas and axes geometry are matched exactly to the published manuscript
+    # panels in ``meanSEM_sig_panels`` so these figures are drop-in replacements
+    # inside the multi-panel Illustrator files:
+    #   two-panel  720.0 x 331.2 pt, axes left 0.110/0.49469, w 0.30531
+    #   one-panel  424.8 x 331.2 pt, axes left 0.185,         w 0.47500
+    #   both       bottom 0.145, height 0.575; legend anchored at the same x
+    two = len(sides) > 1
+    fig, axes = plt.subplots(1, len(sides), figsize=(10.0 if two else 5.9, 4.6),
                              squeeze=False)
     axes = axes[0]
+    ax_lefts = (0.110, 0.49469) if two else (0.185,)
+    ax_width = 0.30531 if two else 0.47500
+    legend_x = 0.82 if two else 0.70
+    for ax, left in zip(axes, ax_lefts):
+        ax.set_position([left, 0.145, ax_width, 0.575])
     lo = d.delta.min(); hi = d.delta.max(); span = max(hi - lo, 1e-9)
     ymin, ymax = lo - 0.05 * span, hi + 0.30 * span      # headroom for the ** band
     for ax, side in zip(axes, sides):
@@ -129,11 +141,12 @@ def render(d: pd.DataFrame, sig: pd.DataFrame, *, family: str, bodypart: str,
     handles = [plt.Line2D([], [], color=COLORS[p], marker=MARKERS[p], ms=7, lw=2,
                           label=f"{p} (n={N_ANIMALS[p]})") for p in PHENOS]
     fig.legend(handles=handles, title="phenotype", fontsize=FS_LEG, title_fontsize=FS_LEG,
-               loc="center left", bbox_to_anchor=(0.90, 0.5), frameon=True)
-    fig.tight_layout(rect=[0, 0, 0.89, 0.875])
+               loc="center left", bbox_to_anchor=(legend_x, 0.5), frameon=True)
+    # no tight_layout / bbox_inches="tight": both would resize the canvas away
+    # from the published 720 x 331.2 pt (or 424.8 x 331.2 pt) panel size.
     out_stem.parent.mkdir(parents=True, exist_ok=True)
     for ext in ("svg", "png", "pdf"):
-        fig.savefig(f"{out_stem}.{ext}", bbox_inches="tight", dpi=200)
+        fig.savefig(f"{out_stem}.{ext}", dpi=200)
     plt.close(fig)
     print("wrote", out_stem)
 
