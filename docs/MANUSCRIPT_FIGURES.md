@@ -97,3 +97,9 @@ Pre-edit copies: `overleaf_backup_2026-09-17/`. Not updated (need Illustrator): 
 54 within-animal-only (34 of them with animals moving in opposite directions);
 92 of 570 published `**` calls have direction disagreement among animals. File:
 `stats/results/phenotype_pooled/3_tier/pooled_phenotype_stats_within_animal_scalar_w2_only.csv`.
+
+## Results-text corrections (2026-09-17, v7)
+
+See DECISIONS 2026-09-17 "Manuscript consequences". Files: `VLS_stroke_manuscript_revised_v7.docx`,
+`VLS_stroke_manuscript_compiled_v3.pdf`, `VLS_stroke_overleaf_v3.zip`, `overleaf_project/main.tex`
+(pre-edit copy: `overleaf_backup_2026-09-17/main_after_stats_wording.tex`). Local and server match.
