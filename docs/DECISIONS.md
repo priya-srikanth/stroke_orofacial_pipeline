@@ -15,6 +15,31 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-09-17 — Statistics audit: within-animal sensitivity tests, W-2 leave-one-out option, manuscript wording
+
+- *Context:* Review of whether the manuscript statistics respect the animal > session > trial nesting (2-4 animals per 3-tier grade). Findings:
+  1. **Scalar / endpoint / W-2 headline (`**`)** = two-sided session-level MWU on values baseline-corrected to each animal's own pre-stroke mean (per cue side; per animal for d′/criterion c), BH-FDR per family, plus a 95% bootstrap CI that resamples sessions from the POOLED pre and post groups (effect = post − pre difference in session means; reported value = bootstrap median). The only within-animal step is the baseline subtraction; the MWU and bootstrap ignore animal identity. Manuscript text had called the effect a "median paired difference" (wrong).
+  2. **Trajectory shading** = Maris-Oostenveld cluster permutation on session trajectories of the delta variant (per animal × side × phase-bin baseline), labels shuffled across animals, BH-FDR across all clusters in the family. The Q13 null calibration (2026-05-28 entry below) supports its calibration. Simulations at the cohort's real session counts (delta variant): 0-2/20 false positives; raw variant with animal offsets: 20/20 (raw-variant clusters are not inferential).
+  3. **W-2 self-inclusion bias**: pre sessions are compared against a pre pool that includes themselves (Q-lock 12a "naive" lock), biasing pre W-2 toward 0. Lower-bound correction (pre × sqrt(n/(n-1))): 3-tier significant W-2 cells 157 → 155 (4 lost, 2 gained, no tongue cell); × 1.25: 29 lost incl. mild tongue.
+  4. **Scalar within-animal test on real data (3-tier, scalar + W-2 families, 824 cells)**: published `**` reproduced exactly (824/824). Within-animal `**` (`wa_sig`): 598 calls vs 570 published; 544 shared, 26 published-only, 54 within-animal-only. Null calibration on real pre-stroke sessions (relabeled within animal, 864 cells): false-positive rate MWU 3.9%, within-animal 4.3%; both calibrated.
+  5. **Animal direction disagreement**: in 92 of the 570 published `**` calls (and 111 of 598 within-animal calls) not every animal changed in the direction of the group effect. 34 of the 54 within-animal-only calls are of this kind, e.g. jaw_peak_abs_deflection, moderate, L, acute: PS46 +17, PS51 −88 → balanced mean −36 with a tight within-animal CI. The within-animal SE reflects only session noise within each animal, so with 2 animals it can call opposite-direction changes "significant"; the pooled MWU is conservative there (q = 0.77) but can instead be carried by one outlying animal (e.g. eye W-2, mild, acute: PS50 alone).
+- *Decision:*
+  - Keep the session-level MWU + pooled session bootstrap as the headline (`**`) test. Add, as sensitivity analyses: the within-animal permutation test + within-animal session bootstrap (`wa_*` columns) and an animal-direction-agreement flag (`wa_all_animals_agree`, `wa_sig_consistent`). Report direction disagreement alongside any `**` it affects.
+  - Keep the pooled cluster permutation for trajectory shading; the within-animal cluster permutation is a sensitivity analysis (run pending on the Mac).
+  - Add an opt-in leave-one-out pre reference for W-2; run it and replace the manuscript sensitivity sentence with the exact result.
+  - Correct the manuscript wording (effect definition, baseline correction, null calibration, cluster details, W-2 bias).
+- *Rationale:* Both scalar tests are empirically calibrated on this cohort's pre-stroke data, so neither is "wrong"; they weight animals differently and fail in different ways at n = 2-4 (pooled MWU: one dominant animal; within-animal: animals that disagree). Reporting both plus direction agreement makes the per-animal basis of each claim explicit. The W-2 leave-one-out correction is exact because pre pools are cell-wise count sums on a fixed grid.
+- *Enforced at:*
+  - `src/stroke_orofacial/stats/pooled_endpoint_suite.py` (`within_animal_permutation_test`, `within_animal_bootstrap_ci`, `compute_endpoint_cell_suite(within_animal=...)`); `scripts/phase_9_stats/build_pooled_phenotype_stats.py --within-animal` (writes `pooled_phenotype_stats_within_animal.csv`) and `--w2-version v2_loo`.
+  - `src/stroke_orofacial/stats/trajectory_within_animal_cluster.py`; `scripts/manuscript/run_within_animal_cluster_perm.py`; `scripts/manuscript/plot_traj_panels.py --test within_animal`.
+  - `src/stroke_orofacial/stats/spatial_wasserstein.py` (`leave_one_out`); `--w2-pre-leave-one-out` in `scripts/chore_dlc_pooled_phenotype/q12_v2_emit.py` and `scripts/chore_whisker_nose_spatial/emit_cohort.py` (outputs to `<scope>/v2_loo/`).
+  - Tests: `tests/test_pooled_suite_within_animal.py`, `tests/test_trajectory_within_animal_cluster.py`, `tests/test_spatial_wasserstein.py`.
+  - Results: `stats/results/phenotype_pooled/3_tier/pooled_phenotype_stats_within_animal_scalar_w2_only.csv` (scalar + W-2 families only; phase-aligned endpoint families need a full `--within-animal` run on the Mac).
+  - Manuscript: `docs/MANUSCRIPT_FIGURES.md` (file versions and what was changed).
+- *Open:* (a) full `build_pooled_phenotype_stats.py --within-animal` run incl. phase-aligned endpoint families; (b) W-2 `v2_loo` re-emit + `--w2-version v2_loo`; (c) within-animal trajectory cluster run; (d) Illustrator legend text in Figure1_behavior / vector_main_figures footers.
+
+---
+
 ## 2026-06-01 — Unify the filter-variant wrapper layout to `no_filter` across `stats/results/` + `stats/figures/`
 
 - *Context:* The `stats/results/` tree used `results/none/` for the unfiltered variant (mismatched the `stats/figures/` tree which used loose `figures/{forest_plots, headlines, per_animal}/` siblings). The asymmetry made it harder to reason about which inputs produced which figures + invited variant-name confusion (`none` vs `no_filter` showed up inconsistently in driver flags + doc references).

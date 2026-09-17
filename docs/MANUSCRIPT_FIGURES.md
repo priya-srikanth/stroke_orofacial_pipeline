@@ -89,3 +89,11 @@ W-2 bias statement). Updated: `overleaf_project/main.tex` + `references.bib` (ma
 Pre-edit copies: `overleaf_backup_2026-09-17/`. Not updated (need Illustrator): the
 "bootstrap CI of the median ... difference" footer baked into `Figure1_behavior.pdf`
 (Behavior.ai) and the matplotlib footers in `vector_main_figures/*.svg`.
+
+## Within-animal sensitivity for scalar `**` (2026-09-17)
+
+`build_pooled_phenotype_stats.py --within-animal` adds `wa_*` columns (see DECISIONS
+2026-09-17). Scalar + W-2 result (3-tier): 544 shared calls, 26 published-only,
+54 within-animal-only (34 of them with animals moving in opposite directions);
+92 of 570 published `**` calls have direction disagreement among animals. File:
+`stats/results/phenotype_pooled/3_tier/pooled_phenotype_stats_within_animal_scalar_w2_only.csv`.

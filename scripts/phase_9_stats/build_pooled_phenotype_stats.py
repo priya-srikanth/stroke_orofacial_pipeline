@@ -374,7 +374,8 @@ def _attach_phenotype(df: pd.DataFrame, scope: str) -> pd.DataFrame:
     return df
 
 
-def _run_family(long_df: pd.DataFrame, *, n_boot: int) -> pd.DataFrame:
+def _run_family(long_df: pd.DataFrame, *, n_boot: int,
+                within_animal: bool = False) -> pd.DataFrame:
     """Engine over every (family, endpoint, phenotype, side, post_epoch) cell."""
     out_rows: list[dict] = []
     # Group by (family, endpoint): the first-lick and all-licks phase-aligned
@@ -395,7 +396,7 @@ def _run_family(long_df: pd.DataFrame, *, n_boot: int) -> pd.DataFrame:
                         continue
                     res = SUITE.compute_endpoint_cell_suite(
                         phen_df, post_epoch=post_epoch, value_col="value_norm",
-                        n_boot=n_boot)
+                        n_boot=n_boot, within_animal=within_animal)
                     res.update({"family": family, "endpoint": endpoint,
                                 "recovery_phenotype": phen, "side": side})
                     out_rows.append(res)
@@ -419,6 +420,26 @@ def _attach_headline(res: pd.DataFrame) -> pd.DataFrame:
     res["headline_sig"] = res["headline_p_fdr"] < 0.05
     res["headline_and_bootstrap_sig"] = (
         res["headline_sig"] & res.get("excludes_zero", False).astype(bool))
+    return res
+
+
+def _attach_within_animal(res: pd.DataFrame) -> pd.DataFrame:
+    """BH-FDR (per family) on the within-animal permutation p + agreement flags.
+
+    ``wa_sig`` = within-animal FDR q < 0.05 AND within-animal bootstrap CI
+    excludes 0 (the within-animal analogue of ``headline_and_bootstrap_sig``).
+    ``wa_all_animals_agree``: every animal's own post-pre change has the sign
+    of the balanced effect; ``wa_sig_consistent`` = ``wa_sig`` and that.
+    ``wa_agrees_with_headline`` compares ``wa_sig`` to the published ``**`` call.
+    """
+    res = res.rename(columns={"wa_p": "p_value"})
+    res = apply_correction_to_results_df(res, group_cols=("family",))
+    res = res.rename(columns={"p_value": "wa_p", "p_adj": "wa_p_fdr"})
+    res = res.drop(columns=["reject"], errors="ignore")
+    res["wa_sig"] = (res["wa_p_fdr"] < 0.05) & res["wa_excludes_zero"].astype(bool)
+    res["wa_all_animals_agree"] = res["wa_n_animals_same_sign"] == res["wa_n_animals"]
+    res["wa_sig_consistent"] = res["wa_sig"] & res["wa_all_animals_agree"]
+    res["wa_agrees_with_headline"] = res["wa_sig"] == res["headline_and_bootstrap_sig"]
     return res
 
 
@@ -472,6 +493,10 @@ def main(argv: list[str] | None = None) -> int:
                          "the trial+session DLC filter, matching the canonical "
                          "v3 figures. Spatial/wasserstein stays unfiltered. "
                          "none: all sessions (legacy)."))
+    p.add_argument("--within-animal", action="store_true",
+                   help="Also run the within-animal permutation test + "
+                        "within-animal bootstrap (wa_* columns, wa_sig). "
+                        "Writes a separate *_within_animal sheet.")
     p.add_argument("--w2-version", choices=("v2", "v2_loo"), default="v2",
                    help="W-2 per-session source: v2 (published) or v2_loo "
                         "(leave-one-out pre reference). v2_loo writes "
@@ -514,7 +539,8 @@ def main(argv: list[str] | None = None) -> int:
 
     for scope in args.scopes:
         scoped = _attach_phenotype(long_all, scope)
-        res = _run_family(scoped, n_boot=args.n_boot)
+        res = _run_family(scoped, n_boot=args.n_boot,
+                          within_animal=args.within_animal)
         if res.empty:
             log.warning("[%s] no results", scope)
             continue
@@ -527,11 +553,16 @@ def main(argv: list[str] | None = None) -> int:
             res = res.rename(columns={"p_value": pcol, "p_adj": adj})
             res = res.drop(columns=["reject"], errors="ignore")
         res = _attach_headline(res)
+        if args.within_animal:
+            res = _attach_within_animal(res)
         out_dir = (resolver.pipeline_outputs(subdir="stats") / "results"
                    / "phenotype_pooled" / scope)
         out_dir.mkdir(parents=True, exist_ok=True)
-        stem = ("pooled_phenotype_stats" if args.w2_version == "v2"
-                else "pooled_phenotype_stats_w2loo")
+        stem = "pooled_phenotype_stats"
+        if args.w2_version != "v2":
+            stem += "_w2loo"
+        if args.within_animal:
+            stem += "_within_animal"
         out_path = out_dir / f"{stem}.csv"
         res.to_csv(out_path, index=False)
         _write_highlighted_xlsx(res, out_dir / f"{stem}.xlsx")
