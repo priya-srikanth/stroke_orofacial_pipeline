@@ -1,0 +1,91 @@
+figure,axes,kind,artist,i,x,y,color
+FigureS5_vfss_forest,axes_1,marker,line2d_1,0,0.0,Oral area — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_2,0,1.0,Oral area — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_3,0,2.0000000000000004,Oral area — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_4,0,3.0000000000000004,Oral area — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_5,0,3.9999999999999996,Oral area — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_6,0,5.0,Oral area — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_7,0,-0.2080499985597224,Inter-swallow interval — post1 *,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_8,0,-0.2080499985597224,Inter-swallow interval — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_9,0,-0.2080499985597224,Licks per swallow — post1 *,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_10,0,-0.2080499985597224,Licks per swallow — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_11,0,-0.2080499985597224,Pharyngeal bolus area — post1,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_12,0,-0.2080499985597224,Pharyngeal bolus area — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_13,0,-0.2080499985597224,Swallow duration — post1,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_14,0,-0.2080499985597224,Swallow duration — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_15,0,-0.2080499985597224,Pharyngeal residue — post1,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_16,0,-0.2080499985597224,Pharyngeal residue — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_17,0,-0.2080499985597224,Pharyngeal transit time — post1,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_18,0,-0.2080499985597224,Pharyngeal transit time — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_19,0,-0.2080499985597224,Bolus % clearance — post1,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_20,0,-0.2080499985597224,Bolus % clearance — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_21,0,-0.2080499985597224,Lick rate (motor) — post1,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_22,0,-0.2080499985597224,Lick rate (motor) — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_23,0,-0.2080499985597224,Lick:swallow ratio — post1,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_24,0,-0.2080499985597224,Lick:swallow ratio — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_25,0,-0.2080499985597224,Oral area — post1,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_26,0,-0.2080499985597224,Oral area — post2,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_27,0,1.0810000056135984,Inter-swallow interval — post1 *,#dc143c
+FigureS5_vfss_forest,axes_1,marker,line2d_28,0,1.937000004739461,Inter-swallow interval — post1 *,#dc143c
+FigureS5_vfss_forest,axes_1,marker,line2d_29,0,0.5969999973639308,Inter-swallow interval — post2,#dc143c
+FigureS5_vfss_forest,axes_1,marker,line2d_30,0,1.4499999993170807,Inter-swallow interval — post2,#dc143c
+FigureS5_vfss_forest,axes_1,marker,line2d_31,0,1.2039999989619625,Licks per swallow — post1 *,#dc143c
+FigureS5_vfss_forest,axes_1,marker,line2d_32,0,2.100000001365839,Licks per swallow — post1 *,#dc143c
+FigureS5_vfss_forest,axes_1,marker,line2d_33,0,0.5720000072662637,Licks per swallow — post2,#dc143c
+FigureS5_vfss_forest,axes_1,marker,line2d_34,0,1.4639999997814659,Licks per swallow — post2,#dc143c
+FigureS5_vfss_forest,axes_1,marker,line2d_35,0,0.8989999995765898,Pharyngeal bolus area — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_36,0,1.3330000003141431,Pharyngeal bolus area — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_37,0,0.8330000071433386,Pharyngeal bolus area — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_38,0,1.2670000078808914,Pharyngeal bolus area — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_39,0,0.7859999968039366,Swallow duration — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_40,0,1.1769999970907628,Swallow duration — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_41,0,0.8780000057092074,Swallow duration — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_42,0,1.260999999877075,Swallow duration — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_43,0,0.8159999958478492,Pharyngeal residue — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_44,0,1.140000004643853,Pharyngeal residue — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_45,0,0.7950000019804668,Pharyngeal residue — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_46,0,1.1159999999453665,Pharyngeal residue — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_47,0,0.8019999953834644,Pharyngeal transit time — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_48,0,1.3020000022126599,Pharyngeal transit time — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_49,0,0.6650000015707147,Pharyngeal transit time — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_50,0,1.1599999994536647,Pharyngeal transit time — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_51,0,0.9459999962576013,Bolus % clearance — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_52,0,1.296000007867233,Bolus % clearance — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_53,0,0.8859999981697757,Bolus % clearance — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_54,0,1.232999998948304,Bolus % clearance — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_55,0,0.9149999981561177,Lick rate (motor) — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_56,0,1.0,Lick rate (motor) — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_57,0,1.0,Lick rate (motor) — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_58,0,1.0860000009014543,Lick rate (motor) — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_59,0,1.0459999976234404,Lick:swallow ratio — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_60,0,1.8579999972410053,Lick:swallow ratio — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_61,0,0.6600000062828597,Lick:swallow ratio — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_62,0,1.4720000059004246,Lick:swallow ratio — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_63,0,0.05100000656968584,Oral area — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_64,0,4.3850000059414,Oral area — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_65,0,0.8980000005190187,Oral area — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_66,0,5.231999999890734,Oral area — post2,#666666
+FigureS5_vfss_forest,axes_1,line,line2d_67,0,1.0,Oral area — post2,#000000
+FigureS5_vfss_forest,axes_1,line,line2d_67,1,1.0,Inter-swallow interval — post1 *,#000000
+FigureS5_vfss_forest,axes_1,marker,line2d_68,0,1.5089999983473348,Inter-swallow interval — post1 *,#dc143c
+FigureS5_vfss_forest,axes_1,marker,line2d_69,0,1.0240000046984865,Inter-swallow interval — post2,#dc143c
+FigureS5_vfss_forest,axes_1,marker,line2d_70,0,1.652000000163901,Licks per swallow — post1 *,#dc143c
+FigureS5_vfss_forest,axes_1,marker,line2d_71,0,1.0179999966946696,Licks per swallow — post2,#dc143c
+FigureS5_vfss_forest,axes_1,marker,line2d_72,0,1.1159999999453665,Pharyngeal bolus area — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_73,0,1.0500000075121148,Pharyngeal bolus area — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_74,0,0.9820000033053304,Swallow duration — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_75,0,1.0700000023219265,Swallow duration — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_76,0,0.9780000070750465,Pharyngeal residue — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_77,0,0.9550000014341311,Pharyngeal residue — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_78,0,1.052000005627257,Pharyngeal transit time — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_79,0,0.9120000009834044,Pharyngeal transit time — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_80,0,1.1210000088916123,Bolus % clearance — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_81,0,1.0589999990302545,Bolus % clearance — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_82,0,0.9569999995492733,Lick rate (motor) — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_83,0,1.0430000004507267,Lick rate (motor) — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_84,0,1.4519999974322229,Lick:swallow ratio — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_85,0,1.0660000060916426,Lick:swallow ratio — post2,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_86,0,2.217999999426348,Oral area — post1,#666666
+FigureS5_vfss_forest,axes_1,marker,line2d_87,0,3.065000007034071,Oral area — post2,#666666
+FigureS5_vfss_forest,axes_1,bar,patch_2,0,2.64150000323021,Inter-swallow interval — post1 *,#ffffff
+FigureS5_vfss_forest,axes_1,bar_base,patch_2,0,2.64150000323021,Oral area — post2,#ffffff
