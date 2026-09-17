@@ -151,3 +151,5 @@ Current versions: `VLS_stroke_manuscript_revised_v8.docx`, `VLS_stroke_manuscrip
 `VLS_stroke_overleaf_v5.zip`.
 
 Current manuscript versions (2026-09-17, after the full within-animal run): `VLS_stroke_manuscript_revised_v9.docx`, `VLS_stroke_manuscript_compiled_v6.pdf`, `VLS_stroke_overleaf_v6.zip`.
+
+After the full W-2 leave-one-out run: `VLS_stroke_manuscript_revised_v10.docx`, `VLS_stroke_manuscript_compiled_v7.pdf`, `VLS_stroke_overleaf_v7.zip` (occupancy reported with the LOO reference).
