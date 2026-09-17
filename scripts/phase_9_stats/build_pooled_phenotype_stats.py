@@ -323,11 +323,14 @@ def load_all_licks_endpoints_family(
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
-def load_wasserstein_family(resolver: PathResolver, *, w2_version: str = "v2") -> pd.DataFrame:
+def load_wasserstein_family(resolver: PathResolver, *, w2_version: str = "v2",
+                            fallback_to_v2: bool = True) -> pd.DataFrame:
     """Persisted per-session W-2 (absolute + normalized) -> per-session long-form.
 
     ``w2_version`` selects the ``<scope>/<version>/`` subdir: ``v2`` (published,
     pre sessions vs full pre pool) or ``v2_loo`` (leave-one-out pre reference).
+    ``w2_reference`` records which version each row came from; with
+    ``fallback_to_v2`` bodyparts lacking the requested version use v2.
     """
     res = resolver.pipeline_outputs(subdir="stats") / "results" / "phenotype_pooled"
     frames = []
@@ -360,7 +363,20 @@ def load_wasserstein_family(resolver: PathResolver, *, w2_version: str = "v2") -
     # p-values in the pooled stats. Key on the natural session identity; one
     # row per (animal, date, side, endpoint, epoch_label, family) is correct.
     key = ["animal", "date", "side", "endpoint", "epoch_label", "family"]
-    return out.drop_duplicates(subset=key, ignore_index=True)
+    out = out.drop_duplicates(subset=key, ignore_index=True)
+    out["w2_reference"] = w2_version
+    if w2_version != "v2" and fallback_to_v2:
+        # Bodyparts without a leave-one-out re-emit yet (e.g. whisker/nose while
+        # that emitter is still running) fall back to the published v2 values so
+        # the W-2 FDR families keep the same set of cells as the published sheet.
+        base = load_wasserstein_family(resolver, w2_version="v2", fallback_to_v2=False)
+        have = set(map(tuple, out[["family", "endpoint"]].drop_duplicates().to_numpy()))
+        missing = base[[ (f, e) not in have for f, e in zip(base["family"], base["endpoint"]) ]]
+        if not missing.empty:
+            log.warning("W-2 %s missing for %s; using published v2 values for those bodyparts",
+                        w2_version, sorted(set(missing["endpoint"])))
+            out = pd.concat([out, missing], ignore_index=True)
+    return out
 
 
 def _attach_phenotype(df: pd.DataFrame, scope: str) -> pd.DataFrame:
@@ -399,6 +415,8 @@ def _run_family(long_df: pd.DataFrame, *, n_boot: int,
                         n_boot=n_boot, within_animal=within_animal)
                     res.update({"family": family, "endpoint": endpoint,
                                 "recovery_phenotype": phen, "side": side})
+                    if "w2_reference" in phen_df.columns:
+                        res["w2_reference"] = phen_df["w2_reference"].iloc[0]
                     out_rows.append(res)
     return pd.DataFrame(out_rows)
 
