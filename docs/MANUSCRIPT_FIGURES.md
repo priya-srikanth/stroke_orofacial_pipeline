@@ -42,12 +42,16 @@ Shading = clusters with `reject == True` (Maris-Oostenveld cluster permutation v
 
 ## Trajectory significance tests
 
-- **Pooled shuffle (current CSVs)**: `compute_trajectory_cluster_permutation_stats`
-  (`figures/phase_aligned_trajectories.py`) permutes pre/post session labels freely
-  ACROSS animals. Ignores animal nesting, so p-values are anticonservative (in a
-  simulation with no true effect and animal-imbalanced sessions it flagged 20/20
-  datasets; within-animal version 1/20).
-- **Within-animal shuffle (new)**: `stats/trajectory_within_animal_cluster.py`.
+- **Pooled shuffle (current CSVs, headline)**: `compute_trajectory_cluster_permutation_stats`
+  (`figures/phase_aligned_trajectories.py`) permutes pre/post session labels across animals,
+  but the plotted/tested `delta` variant is already within-animal adjusted (each animal's
+  own pre-stroke baseline per side x phase bin is subtracted), and the Q13 null calibration
+  (DECISIONS 2026-05-28, labels shuffled within animal) gave 0% false positives.
+  Simulations at the cohort's real session counts (2026-09-17) agreed: delta variant pooled
+  test 0-2/20 false positives. It is only anticonservative for the RAW variant with
+  between-animal offsets (20/20), or with extreme imbalance plus very few pre sessions per
+  animal (8/20 at 2 pre / 10 post). Do not use raw-variant clusters for inference.
+- **Within-animal shuffle (sensitivity analysis, optional)**: `stats/trajectory_within_animal_cluster.py`.
   Session unit (trials averaged), animal-balanced per-bin t with pooled within-animal
   variance, labels shuffled only within each animal, same-sign clusters,
   p = (1+k)/(1+N), BH-FDR over the same family. Inference is conditional on the
