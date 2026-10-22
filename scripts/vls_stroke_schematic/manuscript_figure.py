@@ -29,6 +29,8 @@ if SCHEME == 'severity':   # VLS paper phenotype groups + manuscript colours (sc
     from matplotlib.colors import to_rgb
     GROUPS = {'mild': ['PS47', 'PS48', 'PS49', 'PS50'], 'moderate': ['PS46', 'PS51'], 'severe': ['PS54', 'PS55']}
     BASE = {'mild': '#f2c12e', 'moderate': '#f0822e', 'severe': '#b4001e'}
+    if FILL:   # Priya 10-22: brighter, more lemon yellow for mild in the filled version so it separates from moderate orange
+        BASE['mild'] = '#ffd60a'
     DASH = ['-', (0, (5, 1.6)), (0, (1.2, 1.2)), (0, (5, 1.4, 1.2, 1.4))]
     COLORS, STYLE = {}, {}
     for g, animals in GROUPS.items():
@@ -54,9 +56,9 @@ for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
         for g in getattr(U, 'geoms', [U]):
             if g.is_empty or not hasattr(g, 'exterior'): continue
             x, y = g.exterior.xy
-            if FILL and kind != 'interpolated':
+            if FILL and kind != 'interpolated' and not (SCHEME == 'severity' and a in GROUPS['severe']):
                 grp = next((g for g, an in GROUPS.items() if a in an), None) if SCHEME == 'severity' else None
-                ax.fill(x, y, color=COLORS[a], alpha=FILL * {'severe': 0.6, 'moderate': 1.2, 'mild': 1.8}.get(grp, 1.0), lw=0)   # lighter under the big severe strokes so the small mild/moderate ones stay readable
+                ax.fill(x, y, color=COLORS[a], alpha=FILL * {'severe': 0.0, 'moderate': 1.4, 'mild': 2.0}.get(grp, 1.0), lw=0)   # lighter under the big severe strokes so the small mild/moderate ones stay readable
             ax.plot(x, y, color=COLORS[a], lw=(1.4 if SCHEME == 'severity' else 1.2) if kind != 'interpolated' else 0.9,
                     ls=(0, (2.5, 1.5)) if kind == 'interpolated' else STYLE[a], solid_joinstyle='round')
     yy, xx = np.nonzero(R['brain']); pp = R['ppm']

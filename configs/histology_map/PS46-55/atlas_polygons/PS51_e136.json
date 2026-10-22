@@ -2,7 +2,7 @@
  "section_id": "PS51_e136",
  "name": "PS51_2_2",
  "animal": "PS51",
- "figure": 30,
+ "figure": 31,
  "poly": [
   [
    -2.657,
@@ -190,7 +190,7 @@
   ]
  ],
  "exclude": false,
- "note": "",
+ "note": "moved to Fig 31 by Priya 2026-10-22",
  "saved_at": "2026-10-22T04:20:06.112Z",
- "ap_review_from": 29
+ "ap_review_from": 30
 }
