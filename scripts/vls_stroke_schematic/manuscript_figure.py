@@ -10,16 +10,21 @@ from shapely.ops import unary_union
 from wfield_local.histology_map import schematic as SC, plates as PLT
 matplotlib.rcParams.update({'svg.fonttype': 'none', 'pdf.fonttype': 42, 'font.size': 8})
 POLY, OUT = sys.argv[1], sys.argv[2]
+COHORT = sys.argv[3] if len(sys.argv) > 3 else 'PS46-55'
 PDF = '/mnt/user-data/uploads/Documents/data/Immuno/PS92-95_widefield_stroke_cohort/lesion_map_work/paxinos_p63-98.pdf'
 # target plate: (fallback plate for real data or None, interpolation allowed)
 LEVELS = [(21, None, False), (23, 24, True), (25, 26, False), (27, 28, False), (29, None, False),
           (30, None, False), (31, None, False), (32, 33, False), (34, None, False)]
 COLORS = dict(PS46='#1f77b4', PS47='#ff7f0e', PS48='#2ca02c', PS49='#d62728', PS50='#9467bd', PS51='#8c564b',
               PS54='#e377c2', PS55='#17becf')
+if COHORT == 'PS92-95':   # Priya 2026-10-22: +0.86, +0.62, +0.38 (from +0.50), +0.26 (from +0.14), +0.02, -0.10
+    LEVELS = [(24, None, False), (26, None, False), (28, 27, False), (29, 30, False), (31, None, False), (32, None, False)]
+    from wfield_local import config
+    COLORS = config.animal_color()
 real, rows = SC.footprints_from_polygons(POLY)
 interp_all = copy.deepcopy(real); flags = SC.fill_gaps(interp_all)
 PL = PLT.load_plates(PDF)
-fig, axs = plt.subplots(1, len(LEVELS), figsize=(18, 2.9))
+fig, axs = plt.subplots(1, len(LEVELS), figsize=(2.0 * len(LEVELS), 2.9))
 log = []
 for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
     P = PL[f]; R = PLT.raster(P); LB = PLT.left_brain_polygon(R)
