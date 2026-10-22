@@ -11,6 +11,7 @@ from wfield_local.histology_map import schematic as SC, plates as PLT
 matplotlib.rcParams.update({'svg.fonttype': 'none', 'pdf.fonttype': 42, 'font.size': 8})
 POLY, OUT = sys.argv[1], sys.argv[2]
 COHORT = sys.argv[3] if len(sys.argv) > 3 else 'PS46-55'
+SCHEME = sys.argv[4] if len(sys.argv) > 4 else 'animal'   # 'severity': paper phenotype colours
 PDF = '/mnt/user-data/uploads/Documents/data/Immuno/PS92-95_widefield_stroke_cohort/lesion_map_work/paxinos_p63-98.pdf'
 # target plate: (fallback plate for real data or None, interpolation allowed)
 LEVELS = [(21, None, False), (23, 24, True), (25, 26, False), (27, 28, False), (29, None, False),
@@ -21,6 +22,19 @@ if COHORT == 'PS92-95':   # Priya 2026-10-22: +0.86, +0.62, +0.38 (from +0.50), 
     LEVELS = [(24, None, False), (26, None, False), (28, 27, False), (29, 30, False), (31, None, False), (32, None, False)]
     from wfield_local import config
     COLORS = config.animal_color()
+STYLE = {a: '-' for a in COLORS}
+if SCHEME == 'severity':   # VLS paper phenotype groups + manuscript colours (scripts/manuscript/*: mild #f2c12e, moderate #f0822e, severe #b4001e)
+    import colorsys
+    from matplotlib.colors import to_rgb
+    GROUPS = {'mild': ['PS47', 'PS48', 'PS49', 'PS50'], 'moderate': ['PS46', 'PS51'], 'severe': ['PS54', 'PS55']}
+    BASE = {'mild': '#f2c12e', 'moderate': '#f0822e', 'severe': '#b4001e'}
+    DASH = ['-', (0, (5, 1.6)), (0, (1.2, 1.2)), (0, (5, 1.4, 1.2, 1.4))]
+    COLORS, STYLE = {}, {}
+    for g, animals in GROUPS.items():
+        h, l, s_ = colorsys.rgb_to_hls(*to_rgb(BASE[g]))
+        for i, a in enumerate(animals):
+            dl = (i - (len(animals) - 1) / 2) * 0.07          # small lightness steps around the paper colour
+            COLORS[a] = colorsys.hls_to_rgb(h, min(max(l - dl, 0.15), 0.8), s_); STYLE[a] = DASH[i]
 real, rows = SC.footprints_from_polygons(POLY)
 interp_all = copy.deepcopy(real); flags = SC.fill_gaps(interp_all)
 PL = PLT.load_plates(PDF)
@@ -29,7 +43,7 @@ log = []
 for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
     P = PL[f]; R = PLT.raster(P); LB = PLT.left_brain_polygon(R)
     PLT.draw(ax, P, lw=0.35, color='0.25', brain=R['brain'], ppm=R['ppm'], fill_color='0.9')
-    for a in sorted(COLORS):
+    for a in (sorted(COLORS, key=lambda a: -list(COLORS).index(a)) if SCHEME == 'severity' else sorted(COLORS)):
         src, kind = None, None
         if a in real.get(f, {}): src, kind = real[f][a], 'real'
         elif fb and a in real.get(fb, {}): src, kind = real[fb][a], f'real from {PL[fb]["bregma"]:+.2f}'
@@ -39,15 +53,18 @@ for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
         for g in getattr(U, 'geoms', [U]):
             if g.is_empty or not hasattr(g, 'exterior'): continue
             x, y = g.exterior.xy
-            ax.plot(x, y, color=COLORS[a], lw=1.2 if kind != 'interpolated' else 0.9,
-                    ls=(0, (2.5, 1.5)) if kind == 'interpolated' else '-', solid_joinstyle='round')
+            ax.plot(x, y, color=COLORS[a], lw=(1.4 if SCHEME == 'severity' else 1.2) if kind != 'interpolated' else 0.9,
+                    ls=(0, (2.5, 1.5)) if kind == 'interpolated' else STYLE[a], solid_joinstyle='round')
     yy, xx = np.nonzero(R['brain']); pp = R['ppm']
     ax.set_xlim(xx.min() / pp - 6.1, 0.15); ax.set_ylim(yy.max() / pp + 0.1, yy.min() / pp - 0.1)
     ax.set_title(f"{P['bregma']:+.2f} mm", fontsize=9)
-h = [Line2D([0], [0], color=COLORS[a], lw=1.6, label=a) for a in sorted(COLORS)]
+if SCHEME == 'severity':
+    h = [Line2D([0], [0], color=COLORS[a], lw=1.8, ls=STYLE[a], label=f'{a} ({g})') for g, an in GROUPS.items() for a in an]
+else:
+    h = [Line2D([0], [0], color=COLORS[a], lw=1.6, label=a) for a in sorted(COLORS)]
 if any(r['source'] == 'interpolated' for r in log):
     h.append(Line2D([0], [0], color='0.3', lw=0.9, ls=(0, (2.5, 1.5)), label='interpolated'))
-fig.legend(handles=h, loc='lower center', ncol=len(h), frameon=False, fontsize=8)
+fig.legend(handles=h, loc='lower center', ncol=len(h), frameon=False, fontsize=8, handlelength=3.2)
 plt.tight_layout(rect=(0, 0.08, 1, 0.94), w_pad=0.2)
 for e in ('png', 'svg', 'pdf'): fig.savefig(f'{OUT}.{e}', dpi=400)
 json.dump(log, open(f'{OUT}_sources.json', 'w'), indent=1)
