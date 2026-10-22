@@ -40,6 +40,8 @@ if SCHEME == 'severity':   # VLS paper phenotype groups + manuscript colours (sc
             dl = (i - (len(animals) - 1) / 2) * 0.07          # small lightness steps around the paper colour
             COLORS[a] = colorsys.hls_to_rgb(h, min(max(l - dl, 0.15), 0.8), s_); STYLE[a] = DASH[i]
 EXTRA_FB = {}   # (was PS51 at -0.10 from +0.02; replaced by the real PS51_2_10 section, 2026-10-22)
+HATCH = ['|||', '---', '\\\\\\', '///']
+matplotlib.rcParams['hatch.linewidth'] = 0.6
 real, rows = SC.footprints_from_polygons(POLY)
 interp_all = copy.deepcopy(real); flags = SC.fill_gaps(interp_all)
 PL = PLT.load_plates(PDF)
@@ -62,21 +64,39 @@ for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
             x, y = g.exterior.xy
             if FILL and kind != 'interpolated' and not (SCHEME == 'severity' and a not in GROUPS['mild']):   # Priya 10-22: fill mild only
                 grp = next((g for g, an in GROUPS.items() if a in an), None) if SCHEME == 'severity' else None
-                ax.fill(x, y, color=COLORS[a], alpha=FILL * {'severe': 0.0, 'moderate': 0.0, 'mild': 2.0}.get(grp, 1.0), lw=0)   # lighter under the big severe strokes so the small mild/moderate ones stay readable
+                if grp == 'mild':   # Priya 10-22: hatched fill, one direction per mild animal (#1 vertical, #2 horizontal, #3 up-left, #4 up-right)
+                    ax.fill(x, y, facecolor='none', edgecolor=COLORS[a], hatch=HATCH[GROUPS['mild'].index(a)], lw=0, alpha=0.9)
+                else:
+                    ax.fill(x, y, color=COLORS[a], alpha=FILL * {'severe': 0.0, 'moderate': 0.0}.get(grp, 1.0), lw=0)   # lighter under the big severe strokes so the small mild/moderate ones stay readable
             ax.plot(x, y, color=COLORS[a], lw=(1.4 if SCHEME == 'severity' else 1.2) if kind != 'interpolated' else 1.4,
                     ls=STYLE[a], alpha=0.45 if kind == 'interpolated' else 1.0, solid_joinstyle='round')   # interpolated = same line style, faded
     yy, xx = np.nonzero(R['brain']); pp = R['ppm']
     ax.set_xlim(xx.min() / pp - 6.1, 0.15); ax.set_ylim(yy.max() / pp + 0.1, yy.min() / pp - 0.1)
     ax.set_title(f"{P['bregma']:+.2f} mm", fontsize=9)
 if SCHEME == 'severity':
-    h = [Line2D([0], [0], color=COLORS[a], lw=1.8, ls=STYLE[a], label=f'{g.capitalize()} #{i + 1}') for g, an in GROUPS.items() for i, a in enumerate(an)]
+    from matplotlib.patches import Patch
+    h = [(Patch(facecolor='none', edgecolor=COLORS[a], hatch=HATCH[i], lw=1.4, ls=STYLE[a], label=f'{g.capitalize()} #{i + 1}') if (FILL and g == 'mild') else
+          Line2D([0], [0], color=COLORS[a], lw=1.8, ls=STYLE[a], label=f'{g.capitalize()} #{i + 1}')) for g, an in GROUPS.items() for i, a in enumerate(an)]
     json.dump({f'{g.capitalize()} #{i + 1}': a for g, an in GROUPS.items() for i, a in enumerate(an)}, open(f'{OUT}_animal_key.json', 'w'), indent=1)
 else:
     h = [Line2D([0], [0], color=COLORS[a], lw=1.6, label=a) for a in sorted(COLORS)]
-if any(r['source'] == 'interpolated' for r in log):
-    h.append(Line2D([0], [0], color='0.3', lw=1.6, alpha=0.45, label='interpolated (faded)'))
-fig.legend(handles=h, loc='lower center', ncol=len(h), frameon=False, fontsize=8, handlelength=3.2)
-plt.tight_layout(rect=(0, 0.08, 1, 0.94), w_pad=0.2)
+# Origin of every shape that is not a section cut at that level (Priya 10-22: text, not a grey legend line)
+NAME = ({a: f'{g.capitalize()} #{i + 1}' for g, an in GROUPS.items() for i, a in enumerate(an)} if SCHEME == 'severity' else {a: a for a in COLORS})
+notes = []
+for lv in sorted({r['level'] for r in log}, reverse=True):
+    parts = [f"{NAME[r['animal']]} " + ('interpolated (faded)' if r['source'] == 'interpolated' else r['source'].replace('real from', '(section at') + ' mm)')
+             for r in sorted(log, key=lambda r: list(NAME).index(r['animal'])) if r['level'] == lv and r['source'] != 'real']
+    if parts: notes.append(f"{lv:+.2f} mm: " + ', '.join(parts))
+NOTE = notes
+H0 = fig.get_figheight(); EXTRA = 0.22 * (len(NOTE) + 1) if NOTE else 0.0
+fig.set_figheight(H0 + EXTRA)
+fb = EXTRA / (H0 + EXTRA)                        # fraction of the figure taken by the origin notes
+fig.legend(handles=h, loc='lower center', ncol=len(h), frameon=False, fontsize=8, handlelength=3.2, bbox_to_anchor=(0.5, fb))
+if NOTE:
+    fig.text(0.5, fb - 0.01, 'Outlines are sections cut at the labelled level, except:', ha='center', va='top', fontsize=7.5, color='0.15')
+    for i, line in enumerate(NOTE):
+        fig.text(0.5, fb - 0.01 - (i + 1) * 0.2 / (H0 + EXTRA), line, ha='center', va='top', fontsize=7.5, color='0.25')
+plt.tight_layout(rect=(0, fb + 0.25 / (H0 + EXTRA), 1, 0.97), w_pad=0.2)
 for e in ('png', 'svg', 'pdf'): fig.savefig(f'{OUT}.{e}', dpi=400)
 json.dump(log, open(f'{OUT}_sources.json', 'w'), indent=1)
 import collections
