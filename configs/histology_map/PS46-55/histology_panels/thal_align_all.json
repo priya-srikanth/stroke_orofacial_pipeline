@@ -228,12 +228,12 @@
  {
   "atlas_box_top_mm": null,
   "cx_mm": 4.7216,
-  "cy_mm": 2.1967,
+  "cy_mm": 3.6967,
   "figure": 39,
   "pick": "PS47:e58",
   "rot_deg": 3,
   "saved_at": "2026-10-22T17:17:08.360Z",
-  "note": "vertically flipped after alignment: cy mirrored, rotation negated"
+  "note": "vertically flipped after alignment: cy mirrored, rotation negated; moved 1.5 mm down so the small anterior hippocampi sit at the top of the box (Priya 10-22)"
  },
  {
   "atlas_box_top_mm": null,
