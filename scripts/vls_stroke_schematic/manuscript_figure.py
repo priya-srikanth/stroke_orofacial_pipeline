@@ -69,7 +69,7 @@ for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
                 if grp == 'mild':   # Priya 10-22: hatched fill, one direction per mild animal (#1 vertical, #2 horizontal, #3 up-left, #4 up-right)
                     ax.fill(x, y, facecolor='none', edgecolor=COLORS[a], hatch=HATCH[GROUPS['mild'].index(a)], lw=0, alpha=0.5)
                 elif a == GROUPS['moderate'][0]:   # Priya 10-22: sparse dots for Moderate #1
-                    ax.fill(x, y, facecolor='none', edgecolor=COLORS[a], hatch='o', lw=0, alpha=0.6)   # lighter under the big severe strokes so the small mild/moderate ones stay readable
+                    ax.fill(x, y, facecolor='none', edgecolor=COLORS[a], hatch='..', lw=0, alpha=0.85)   # lighter under the big severe strokes so the small mild/moderate ones stay readable
             ax.plot(x, y, color=COLORS[a], lw=(1.4 if SCHEME == 'severity' else 1.2) if kind != 'interpolated' else 1.4,
                     ls=STYLE[a], alpha=0.4 if kind == 'interpolated' else 0.75,   # Priya 10-22: more transparent so overlaps show
                     solid_joinstyle='round')   # interpolated = same line style, faded
@@ -78,7 +78,7 @@ for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
     ax.set_title(f"{P['bregma']:+.2f} mm", fontsize=9)
 if SCHEME == 'severity':
     from matplotlib.patches import Patch
-    h = [(Patch(facecolor='none', edgecolor=COLORS[a], hatch=(HATCH[i] if g == 'mild' else 'o'), lw=1.4, ls=STYLE[a], label=f'{g.capitalize()} #{i + 1}') if (FILL and (g == 'mild' or (g == 'moderate' and i == 0))) else
+    h = [(Patch(facecolor='none', edgecolor=COLORS[a], hatch=(HATCH[i] if g == 'mild' else '..'), lw=1.4, ls=STYLE[a], label=f'{g.capitalize()} #{i + 1}') if (FILL and (g == 'mild' or (g == 'moderate' and i == 0))) else
           Line2D([0], [0], color=COLORS[a], lw=1.8, ls=STYLE[a], label=f'{g.capitalize()} #{i + 1}')) for g, an in GROUPS.items() for i, a in enumerate(an)]
     json.dump({f'{g.capitalize()} #{i + 1}': a for g, an in GROUPS.items() for i, a in enumerate(an)}, open(f'{OUT}_animal_key.json', 'w'), indent=1)
 else:
