@@ -12,7 +12,8 @@ matplotlib.rcParams.update({'svg.fonttype': 'none', 'pdf.fonttype': 42, 'font.si
 POLY, OUT = sys.argv[1], sys.argv[2]
 COHORT = sys.argv[3] if len(sys.argv) > 3 else 'PS46-55'
 SCHEME = sys.argv[4] if len(sys.argv) > 4 else 'animal'
-FILL = float(sys.argv[5]) if len(sys.argv) > 5 else 0.0   # alpha of a light fill under each outline (0 = none)   # 'severity': paper phenotype colours
+FILL = float(sys.argv[5]) if len(sys.argv) > 5 else 0.0
+INTERP_ALL = len(sys.argv) > 6 and sys.argv[6] == 'interp'   # fill any remaining gap between an animal's labelled sections (dashed)   # alpha of a light fill under each outline (0 = none)   # 'severity': paper phenotype colours
 PDF = '/mnt/user-data/uploads/Documents/data/Immuno/PS92-95_widefield_stroke_cohort/lesion_map_work/paxinos_p63-98.pdf'
 # target plate: (fallback plate for real data or None, interpolation allowed)
 LEVELS = [(21, None, False), (23, 24, True), (25, 26, False), (27, 28, False), (29, None, False),
@@ -50,7 +51,7 @@ for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
         src, kind = None, None
         if a in real.get(f, {}): src, kind = real[f][a], 'real'
         elif fb and a in real.get(fb, {}): src, kind = real[fb][a], f'real from {PL[fb]["bregma"]:+.2f}'
-        elif allow_interp and flags.get((f, a)): src, kind = interp_all[f][a], 'interpolated'
+        elif (allow_interp or INTERP_ALL) and flags.get((f, a)): src, kind = interp_all[f][a], 'interpolated'
         if src is None: continue
         U = unary_union(src).intersection(LB); log.append(dict(level=P['bregma'], figure=f, animal=a, source=kind))
         for g in getattr(U, 'geoms', [U]):
