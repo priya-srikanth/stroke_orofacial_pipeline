@@ -1,0 +1,1422 @@
+[
+ {
+  "pick": "PS47:e45",
+  "animal": "PS47",
+  "label": "Mild1_PS47_fig28",
+  "row": "striatum",
+  "atlas_fig": 28,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e54",
+  "animal": "PS47",
+  "label": "Mild1_PS47_fig28",
+  "row": "striatum",
+  "atlas_fig": 28,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e59",
+  "animal": "PS47",
+  "label": "Mild1_PS47_fig30",
+  "row": "striatum",
+  "atlas_fig": 30,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e55",
+  "animal": "PS47",
+  "label": "Mild1_PS47_fig31",
+  "row": "striatum",
+  "atlas_fig": 31,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e12",
+  "animal": "PS47",
+  "label": "Mild1_PS47_fig32",
+  "row": "striatum",
+  "atlas_fig": 32,
+  "ovr": {}
+ },
+ {
+  "pick": "PS48:e36",
+  "animal": "PS48",
+  "label": "Mild2_PS48_fig23",
+  "row": "striatum",
+  "atlas_fig": 23,
+  "ovr": {}
+ },
+ {
+  "pick": "PS48:e32",
+  "animal": "PS48",
+  "label": "Mild2_PS48_fig24",
+  "row": "striatum",
+  "atlas_fig": 24,
+  "ovr": {}
+ },
+ {
+  "pick": "PS48:e19",
+  "animal": "PS48",
+  "label": "Mild2_PS48_fig28",
+  "row": "striatum",
+  "atlas_fig": 28,
+  "ovr": {}
+ },
+ {
+  "pick": "PS48:e34",
+  "animal": "PS48",
+  "label": "Mild2_PS48_fig31",
+  "row": "striatum",
+  "atlas_fig": 31,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e2",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig25",
+  "row": "striatum",
+  "atlas_fig": 25,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e21",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig25",
+  "row": "striatum",
+  "atlas_fig": 25,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e20",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig26",
+  "row": "striatum",
+  "atlas_fig": 26,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e12",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig30",
+  "row": "striatum",
+  "atlas_fig": 30,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e17",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig30",
+  "row": "striatum",
+  "atlas_fig": 30,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e19",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig30",
+  "row": "striatum",
+  "atlas_fig": 30,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e15",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig31",
+  "row": "striatum",
+  "atlas_fig": 31,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e11",
+  "animal": "PS49",
+  "label": "Mild3_PS49_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e6",
+  "animal": "PS49",
+  "label": "Mild3_PS49_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS50:e42",
+  "animal": "PS50",
+  "label": "Mild4_PS50_fig22",
+  "row": "striatum",
+  "atlas_fig": 22,
+  "ovr": {}
+ },
+ {
+  "pick": "PS50:e36",
+  "animal": "PS50",
+  "label": "Mild4_PS50_fig24",
+  "row": "striatum",
+  "atlas_fig": 24,
+  "ovr": {}
+ },
+ {
+  "pick": "PS50:e37",
+  "animal": "PS50",
+  "label": "Mild4_PS50_fig25",
+  "row": "striatum",
+  "atlas_fig": 25,
+  "ovr": {}
+ },
+ {
+  "pick": "PS50:e51",
+  "animal": "PS50",
+  "label": "Mild4_PS50_fig29",
+  "row": "striatum",
+  "atlas_fig": 29,
+  "ovr": {}
+ },
+ {
+  "pick": "PS50:e44",
+  "animal": "PS50",
+  "label": "Mild4_PS50_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS50:e45",
+  "animal": "PS50",
+  "label": "Mild4_PS50_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS46:e66",
+  "animal": "PS46",
+  "label": "Mod1_PS46_fig28",
+  "row": "striatum",
+  "atlas_fig": 28,
+  "ovr": {},
+  "flip_invert": true
+ },
+ {
+  "pick": "PS46:e77",
+  "animal": "PS46",
+  "label": "Mod1_PS46_fig28",
+  "row": "striatum",
+  "atlas_fig": 28,
+  "ovr": {}
+ },
+ {
+  "pick": "PS46:e76",
+  "animal": "PS46",
+  "label": "Mod1_PS46_fig29",
+  "row": "striatum",
+  "atlas_fig": 29,
+  "ovr": {}
+ },
+ {
+  "pick": "PS46:e70",
+  "animal": "PS46",
+  "label": "Mod1_PS46_fig30",
+  "row": "striatum",
+  "atlas_fig": 30,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e139",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig23",
+  "row": "striatum",
+  "atlas_fig": 23,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e137",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig26",
+  "row": "striatum",
+  "atlas_fig": 26,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e133",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig27",
+  "row": "striatum",
+  "atlas_fig": 27,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e135",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig29",
+  "row": "striatum",
+  "atlas_fig": 29,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e136",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig31",
+  "row": "striatum",
+  "atlas_fig": 31,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e144",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig32",
+  "row": "striatum",
+  "atlas_fig": 32,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e142",
+  "animal": "PS51",
+  "label": "Mod2_PS51_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e146",
+  "animal": "PS51",
+  "label": "Mod2_PS51_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e150",
+  "animal": "PS51",
+  "label": "Mod2_PS51_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e151",
+  "animal": "PS51",
+  "label": "Mod2_PS51_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e206",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig25",
+  "row": "striatum",
+  "atlas_fig": 25,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e207",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig27",
+  "row": "striatum",
+  "atlas_fig": 27,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e208",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig29",
+  "row": "striatum",
+  "atlas_fig": 29,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e209",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig30",
+  "row": "striatum",
+  "atlas_fig": 30,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e210",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig31",
+  "row": "striatum",
+  "atlas_fig": 31,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e212",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig33",
+  "row": "striatum",
+  "atlas_fig": 33,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e216",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig34",
+  "row": "striatum",
+  "atlas_fig": 34,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e219",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig35",
+  "row": "striatum",
+  "atlas_fig": 35,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e222",
+  "animal": "PS54",
+  "label": "Sev1_PS54_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e224",
+  "animal": "PS54",
+  "label": "Sev1_PS54_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e226",
+  "animal": "PS54",
+  "label": "Sev1_PS54_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e227",
+  "animal": "PS54",
+  "label": "Sev1_PS54_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e230",
+  "animal": "PS54",
+  "label": "Sev1_PS54_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e82",
+  "animal": "PS55",
+  "label": "Sev2_PS55_fig20",
+  "row": "striatum",
+  "atlas_fig": 20,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e78",
+  "animal": "PS55",
+  "label": "Sev2_PS55_fig21",
+  "row": "striatum",
+  "atlas_fig": 21,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e77",
+  "animal": "PS55",
+  "label": "Sev2_PS55_fig22",
+  "row": "striatum",
+  "atlas_fig": 22,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e81",
+  "animal": "PS55",
+  "label": "Sev2_PS55_fig23",
+  "row": "striatum",
+  "atlas_fig": 23,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e84",
+  "animal": "PS55",
+  "label": "Sev2_PS55_fig25",
+  "row": "striatum",
+  "atlas_fig": 25,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e87",
+  "animal": "PS55",
+  "label": "Sev2_PS55_fig27",
+  "row": "striatum",
+  "atlas_fig": 27,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e86",
+  "animal": "PS55",
+  "label": "Sev2_PS55_fig28",
+  "row": "striatum",
+  "atlas_fig": 28,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e83",
+  "animal": "PS55",
+  "label": "Sev2_PS55_fig30",
+  "row": "striatum",
+  "atlas_fig": 30,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e85",
+  "animal": "PS55",
+  "label": "Sev2_PS55_fig31",
+  "row": "striatum",
+  "atlas_fig": 31,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e91",
+  "animal": "PS55",
+  "label": "Sev2_PS55_fig33",
+  "row": "striatum",
+  "atlas_fig": 33,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e93",
+  "animal": "PS55",
+  "label": "Sev2_PS55_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e95",
+  "animal": "PS55",
+  "label": "Sev2_PS55_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e96",
+  "animal": "PS55",
+  "label": "Sev2_PS55_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e97",
+  "animal": "PS55",
+  "label": "Sev2_PS55_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e104",
+  "animal": "PS55",
+  "label": "Sev2_PS55_thal",
+  "row": "thalamus",
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e57",
+  "animal": "PS47",
+  "label": "Mild1_PS47_fig21",
+  "row": "extra",
+  "atlas_fig": 21,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS48:e20",
+  "animal": "PS48",
+  "label": "Mild2_PS48_fig32",
+  "row": "extra",
+  "atlas_fig": 32,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e159",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig58",
+  "row": "extra",
+  "atlas_fig": 58,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e232",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig53",
+  "row": "extra",
+  "atlas_fig": 53,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e233",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig52",
+  "row": "extra",
+  "atlas_fig": 52,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e154",
+  "animal": "PS51",
+  "label": "Mod2_PS51_thal",
+  "row": "thalamus",
+  "atlas_fig": 53,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e25",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig33",
+  "row": "extra",
+  "atlas_fig": 33,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e79",
+  "animal": "PS55",
+  "label": "Sev2_PS55_fig20",
+  "row": "extra",
+  "atlas_fig": 20,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e141",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig38",
+  "row": "extra",
+  "atlas_fig": 38,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e201",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig21",
+  "row": "extra",
+  "atlas_fig": 21,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e123",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig14",
+  "row": "extra",
+  "atlas_fig": 14,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e155",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig54",
+  "row": "extra",
+  "atlas_fig": 54,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e197",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig17",
+  "row": "extra",
+  "atlas_fig": 17,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e220",
+  "animal": "PS54",
+  "label": "Sev1_PS54_thal",
+  "row": "thalamus",
+  "atlas_fig": 39,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e7",
+  "animal": "PS49",
+  "label": "Mild3_PS49_thal",
+  "row": "thalamus",
+  "atlas_fig": 45,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e105",
+  "animal": "PS55",
+  "label": "Sev2_PS55_thal",
+  "row": "thalamus",
+  "atlas_fig": 46,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e138",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig34",
+  "row": "extra",
+  "atlas_fig": 34,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e124",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig16",
+  "row": "extra",
+  "atlas_fig": 16,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS48:e29",
+  "animal": "PS48",
+  "label": "Mild2_PS48_fig31",
+  "row": "extra",
+  "atlas_fig": 31,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e237",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig56",
+  "row": "extra",
+  "atlas_fig": 56,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e234",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig58",
+  "row": "extra",
+  "atlas_fig": 58,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e153",
+  "animal": "PS51",
+  "label": "Mod2_PS51_thal",
+  "row": "thalamus",
+  "atlas_fig": 51,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e235",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig55",
+  "row": "extra",
+  "atlas_fig": 55,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e225",
+  "animal": "PS54",
+  "label": "Sev1_PS54_thal",
+  "row": "thalamus",
+  "atlas_fig": 45,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e145",
+  "animal": "PS51",
+  "label": "Mod2_PS51_thal",
+  "row": "thalamus",
+  "atlas_fig": 44,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e127",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig18",
+  "row": "extra",
+  "atlas_fig": 18,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e238",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig60",
+  "row": "extra",
+  "atlas_fig": 60,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e53",
+  "animal": "PS47",
+  "label": "Mild1_PS47_fig22",
+  "row": "extra",
+  "atlas_fig": 22,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e98",
+  "animal": "PS55",
+  "label": "Sev2_PS55_fig52",
+  "row": "extra",
+  "atlas_fig": 52,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e58",
+  "animal": "PS47",
+  "label": "Mild1_PS47_thal",
+  "row": "thalamus",
+  "atlas_fig": 39,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e35",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig33",
+  "row": "extra",
+  "atlas_fig": 33,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e18",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig32",
+  "row": "extra",
+  "atlas_fig": 32,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e132",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig24",
+  "row": "extra",
+  "atlas_fig": 24,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS50:e43",
+  "animal": "PS50",
+  "label": "Mild4_PS50_fig32",
+  "row": "extra",
+  "atlas_fig": 32,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e1",
+  "animal": "PS49",
+  "label": "Mild3_PS49_thal",
+  "row": "thalamus",
+  "atlas_fig": 41,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e56",
+  "animal": "PS47",
+  "label": "Mild1_PS47_fig33",
+  "row": "extra",
+  "atlas_fig": 33,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS50:e39",
+  "animal": "PS50",
+  "label": "Mild4_PS50_fig33",
+  "row": "extra",
+  "atlas_fig": 33,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS48:e25",
+  "animal": "PS48",
+  "label": "Mild2_PS48_fig33",
+  "row": "extra",
+  "atlas_fig": 33,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e156",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig56",
+  "row": "extra",
+  "atlas_fig": 56,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS48:e21",
+  "animal": "PS48",
+  "label": "Mild2_PS48_fig37",
+  "row": "extra",
+  "atlas_fig": 37,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e13",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig33",
+  "row": "extra",
+  "atlas_fig": 33,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS48:e30",
+  "animal": "PS48",
+  "label": "Mild2_PS48_fig35",
+  "row": "extra",
+  "atlas_fig": 35,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e100",
+  "animal": "PS55",
+  "label": "Sev2_PS55_thal",
+  "row": "thalamus",
+  "atlas_fig": 42,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e30",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig48",
+  "row": "extra",
+  "atlas_fig": 48,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e196",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig16",
+  "row": "extra",
+  "atlas_fig": 16,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e8",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig46",
+  "row": "extra",
+  "atlas_fig": 46,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e143",
+  "animal": "PS51",
+  "label": "Mod2_PS51_thal",
+  "row": "thalamus",
+  "atlas_fig": 41,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e236",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig58",
+  "row": "extra",
+  "atlas_fig": 58,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e205",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig25",
+  "row": "extra",
+  "atlas_fig": 25,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e44",
+  "animal": "PS47",
+  "label": "Mild1_PS47_fig23",
+  "row": "extra",
+  "atlas_fig": 23,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e49",
+  "animal": "PS47",
+  "label": "Mild1_PS47_fig21",
+  "row": "extra",
+  "atlas_fig": 21,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS50:e38",
+  "animal": "PS50",
+  "label": "Mild4_PS50_thal",
+  "row": "thalamus",
+  "atlas_fig": 39,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS50:e46",
+  "animal": "PS50",
+  "label": "Mild4_PS50_thal",
+  "row": "thalamus",
+  "atlas_fig": 43,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e131",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig21",
+  "row": "extra",
+  "atlas_fig": 21,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e231",
+  "animal": "PS54",
+  "label": "Sev1_PS54_thal",
+  "row": "thalamus",
+  "atlas_fig": 50,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS48:e26",
+  "animal": "PS48",
+  "label": "Mild2_PS48_fig34",
+  "row": "extra",
+  "atlas_fig": 34,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e223",
+  "animal": "PS54",
+  "label": "Sev1_PS54_thal",
+  "row": "thalamus",
+  "atlas_fig": 42,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e29",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig46",
+  "row": "extra",
+  "atlas_fig": 46,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e102",
+  "animal": "PS55",
+  "label": "Sev2_PS55_thal",
+  "row": "thalamus",
+  "atlas_fig": 51,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e239",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig64",
+  "row": "extra",
+  "atlas_fig": 64,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e61",
+  "animal": "PS47",
+  "label": "Mild1_PS47_fig25",
+  "row": "extra",
+  "atlas_fig": 25,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS50:e47",
+  "animal": "PS50",
+  "label": "Mild4_PS50_thal",
+  "row": "thalamus",
+  "atlas_fig": 46,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e3",
+  "animal": "PS49",
+  "label": "Mild3_PS49_thal",
+  "row": "thalamus",
+  "atlas_fig": 42,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e80",
+  "animal": "PS55",
+  "label": "Sev2_PS55_fig17",
+  "row": "extra",
+  "atlas_fig": 17,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e26",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig35",
+  "row": "extra",
+  "atlas_fig": 35,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e27",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig35",
+  "row": "extra",
+  "atlas_fig": 35,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e92",
+  "animal": "PS55",
+  "label": "Sev2_PS55_fig34",
+  "row": "extra",
+  "atlas_fig": 34,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS48:e33",
+  "animal": "PS48",
+  "label": "Mild2_PS48_fig21",
+  "row": "extra",
+  "atlas_fig": 21,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e148",
+  "animal": "PS51",
+  "label": "Mod2_PS51_thal",
+  "row": "thalamus",
+  "atlas_fig": 42,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e204",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig23",
+  "row": "extra",
+  "atlas_fig": 23,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e14",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig34",
+  "row": "extra",
+  "atlas_fig": 34,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS48:e24",
+  "animal": "PS48",
+  "label": "Mild2_PS48_fig24",
+  "row": "extra",
+  "atlas_fig": 24,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e40",
+  "animal": "PS47",
+  "label": "Mild1_PS47_fig27",
+  "row": "extra",
+  "atlas_fig": 27,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS46:e65",
+  "animal": "PS46",
+  "label": "Mod1_PS46_fig31",
+  "row": "extra",
+  "atlas_fig": 31,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e217",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig36",
+  "row": "extra",
+  "atlas_fig": 36,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e140",
+  "animal": "PS51",
+  "label": "Mod2_PS51_thal",
+  "row": "thalamus",
+  "atlas_fig": 41,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS48:e35",
+  "animal": "PS48",
+  "label": "Mild2_PS48_fig37",
+  "row": "extra",
+  "atlas_fig": 37,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e147",
+  "animal": "PS51",
+  "label": "Mod2_PS51_thal",
+  "row": "thalamus",
+  "atlas_fig": 43,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e5",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig51",
+  "row": "extra",
+  "atlas_fig": 51,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS48:e22",
+  "animal": "PS48",
+  "label": "Mild2_PS48_fig39",
+  "row": "extra",
+  "atlas_fig": 39,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e43",
+  "animal": "PS47",
+  "label": "Mild1_PS47_fig32",
+  "row": "extra",
+  "atlas_fig": 32,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e152",
+  "animal": "PS51",
+  "label": "Mod2_PS51_thal",
+  "row": "thalamus",
+  "atlas_fig": 50,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e16",
+  "animal": "PS49",
+  "label": "Mild3_PS49_fig32",
+  "row": "extra",
+  "atlas_fig": 32,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e157",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig59",
+  "row": "extra",
+  "atlas_fig": 59,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e52",
+  "animal": "PS47",
+  "label": "Mild1_PS47_fig26",
+  "row": "extra",
+  "atlas_fig": 26,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS48:e37",
+  "animal": "PS48",
+  "label": "Mild2_PS48_thal",
+  "row": "thalamus",
+  "atlas_fig": 40,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS55:e94",
+  "animal": "PS55",
+  "label": "Sev2_PS55_fig37",
+  "row": "extra",
+  "atlas_fig": 37,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS46:e64",
+  "animal": "PS46",
+  "label": "Mod1_PS46_fig33",
+  "row": "extra",
+  "atlas_fig": 33,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e129",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig23",
+  "row": "extra",
+  "atlas_fig": 23,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e15",
+  "animal": "PS47",
+  "label": "Mild1_PS47_thal",
+  "row": "thalamus",
+  "atlas_fig": 36,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS46:e72",
+  "animal": "PS46",
+  "label": "Mod1_PS46_fig33",
+  "row": "extra",
+  "atlas_fig": 33,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS47:e41",
+  "animal": "PS47",
+  "label": "Mild1_PS47_thal",
+  "row": "thalamus",
+  "atlas_fig": 36,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS51:e130",
+  "animal": "PS51",
+  "label": "Mod2_PS51_fig22",
+  "row": "extra",
+  "atlas_fig": 22,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e200",
+  "animal": "PS54",
+  "label": "Sev1_PS54_fig20",
+  "row": "extra",
+  "atlas_fig": 20,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e28",
+  "animal": "PS49",
+  "label": "Mild3_PS49_thal",
+  "row": "thalamus",
+  "atlas_fig": 44,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS46:e75",
+  "animal": "PS46",
+  "label": "Mod1_PS46_fig35",
+  "row": "extra",
+  "atlas_fig": 35,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS54:e221",
+  "animal": "PS54",
+  "label": "Sev1_PS54_thal",
+  "row": "thalamus",
+  "atlas_fig": 40,
+  "zoom": true,
+  "ovr": {}
+ },
+ {
+  "pick": "PS46:e74",
+  "animal": "PS46",
+  "label": "Mod1_PS46_fig33",
+  "row": "extra",
+  "atlas_fig": 33,
+  "zoom": false,
+  "ovr": {}
+ },
+ {
+  "pick": "PS49:e4",
+  "animal": "PS49",
+  "label": "Mild3_PS49_thal",
+  "row": "thalamus",
+  "atlas_fig": 50,
+  "zoom": true,
+  "ovr": {}
+ }
+]

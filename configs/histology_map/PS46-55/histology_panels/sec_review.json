@@ -1,0 +1,758 @@
+[
+ {
+  "figure": 21,
+  "include": true,
+  "pick": "PS47:e57",
+  "saved_at": "2026-10-22T16:21:59.768Z",
+  "thalamus": false
+ },
+ {
+  "figure": 30,
+  "include": false,
+  "pick": "PS49:e31",
+  "saved_at": "2026-10-22T16:34:28.809Z",
+  "thalamus": false
+ },
+ {
+  "figure": 32,
+  "include": true,
+  "pick": "PS48:e20",
+  "saved_at": "2026-10-22T16:27:36.714Z",
+  "thalamus": false
+ },
+ {
+  "figure": 58,
+  "include": true,
+  "pick": "PS51:e159",
+  "saved_at": "2026-10-22T17:11:00.079Z",
+  "thalamus": false
+ },
+ {
+  "figure": 53,
+  "include": true,
+  "pick": "PS54:e232",
+  "saved_at": "2026-10-22T16:46:36.277Z",
+  "thalamus": false
+ },
+ {
+  "figure": 52,
+  "include": true,
+  "pick": "PS54:e233",
+  "saved_at": "2026-10-22T16:46:49.941Z",
+  "thalamus": false
+ },
+ {
+  "figure": 53,
+  "include": true,
+  "pick": "PS51:e154",
+  "saved_at": "2026-10-22T16:43:02.428Z",
+  "thalamus": true
+ },
+ {
+  "figure": 38,
+  "include": false,
+  "pick": "PS47:e14",
+  "saved_at": "2026-10-22T16:25:26.194Z",
+  "thalamus": false
+ },
+ {
+  "figure": 33,
+  "include": true,
+  "pick": "PS49:e25",
+  "saved_at": "2026-10-22T16:32:48.237Z",
+  "thalamus": false
+ },
+ {
+  "figure": 20,
+  "include": true,
+  "pick": "PS55:e79",
+  "saved_at": "2026-10-22T16:48:31.646Z",
+  "thalamus": false
+ },
+ {
+  "figure": 38,
+  "include": true,
+  "pick": "PS51:e141",
+  "saved_at": "2026-10-22T16:41:04.773Z",
+  "thalamus": false
+ },
+ {
+  "figure": 21,
+  "include": true,
+  "pick": "PS54:e201",
+  "saved_at": "2026-10-22T16:44:52.900Z",
+  "thalamus": false
+ },
+ {
+  "figure": 14,
+  "include": true,
+  "pick": "PS51:e123",
+  "saved_at": "2026-10-22T17:09:09.663Z",
+  "thalamus": false
+ },
+ {
+  "figure": 54,
+  "include": true,
+  "pick": "PS51:e155",
+  "saved_at": "2026-10-22T17:10:12.503Z",
+  "thalamus": false
+ },
+ {
+  "figure": 17,
+  "include": true,
+  "pick": "PS54:e197",
+  "saved_at": "2026-10-22T17:11:20.286Z",
+  "thalamus": false
+ },
+ {
+  "figure": 39,
+  "include": true,
+  "pick": "PS54:e220",
+  "saved_at": "2026-10-22T16:45:46.021Z",
+  "thalamus": true
+ },
+ {
+  "figure": 45,
+  "include": true,
+  "pick": "PS49:e7",
+  "saved_at": "2026-10-22T16:30:47.081Z",
+  "thalamus": true
+ },
+ {
+  "figure": 46,
+  "include": true,
+  "pick": "PS55:e105",
+  "saved_at": "2026-10-22T16:50:48.119Z",
+  "thalamus": true
+ },
+ {
+  "figure": 34,
+  "include": true,
+  "pick": "PS51:e138",
+  "saved_at": "2026-10-22T16:40:18.530Z",
+  "thalamus": false
+ },
+ {
+  "figure": 16,
+  "include": true,
+  "pick": "PS51:e124",
+  "saved_at": "2026-10-22T17:09:14.374Z",
+  "thalamus": false
+ },
+ {
+  "figure": 31,
+  "include": false,
+  "pick": "PS49:e32",
+  "saved_at": "2026-10-22T16:34:32.857Z",
+  "thalamus": false
+ },
+ {
+  "figure": 31,
+  "include": true,
+  "pick": "PS48:e29",
+  "saved_at": "2026-10-22T16:26:02.698Z",
+  "thalamus": false
+ },
+ {
+  "figure": 56,
+  "include": true,
+  "pick": "PS54:e237",
+  "saved_at": "2026-10-22T17:12:46.370Z",
+  "thalamus": false
+ },
+ {
+  "figure": 58,
+  "include": true,
+  "pick": "PS54:e234",
+  "saved_at": "2026-10-22T17:11:37.431Z",
+  "thalamus": false
+ },
+ {
+  "figure": 51,
+  "include": true,
+  "pick": "PS51:e153",
+  "saved_at": "2026-10-22T16:42:39.732Z",
+  "thalamus": true
+ },
+ {
+  "figure": 55,
+  "include": true,
+  "pick": "PS54:e235",
+  "saved_at": "2026-10-22T17:11:55.807Z",
+  "thalamus": false
+ },
+ {
+  "figure": 45,
+  "include": true,
+  "pick": "PS54:e225",
+  "saved_at": "2026-10-22T16:45:56.637Z",
+  "thalamus": true
+ },
+ {
+  "figure": 44,
+  "include": true,
+  "pick": "PS51:e145",
+  "saved_at": "2026-10-22T16:41:53.524Z",
+  "thalamus": true
+ },
+ {
+  "figure": 28,
+  "include": false,
+  "pick": "PS49:e24",
+  "saved_at": "2026-10-22T16:31:20.336Z",
+  "thalamus": false
+ },
+ {
+  "figure": 18,
+  "include": true,
+  "pick": "PS51:e127",
+  "saved_at": "2026-10-22T17:09:23.157Z",
+  "thalamus": false
+ },
+ {
+  "figure": 60,
+  "include": true,
+  "pick": "PS54:e238",
+  "saved_at": "2026-10-22T17:12:53.759Z",
+  "thalamus": false
+ },
+ {
+  "figure": 22,
+  "include": true,
+  "pick": "PS47:e53",
+  "saved_at": "2026-10-22T16:21:24.504Z",
+  "thalamus": false
+ },
+ {
+  "figure": 52,
+  "include": true,
+  "pick": "PS55:e98",
+  "saved_at": "2026-10-22T16:49:19.991Z",
+  "thalamus": false
+ },
+ {
+  "figure": 39,
+  "include": true,
+  "pick": "PS47:e58",
+  "saved_at": "2026-10-22T16:22:46.425Z",
+  "thalamus": true
+ },
+ {
+  "figure": 33,
+  "include": true,
+  "pick": "PS49:e35",
+  "saved_at": "2026-10-22T16:32:41.792Z",
+  "thalamus": false
+ },
+ {
+  "figure": 32,
+  "include": true,
+  "pick": "PS49:e18",
+  "saved_at": "2026-10-22T16:32:32.345Z",
+  "thalamus": false
+ },
+ {
+  "figure": 24,
+  "include": true,
+  "pick": "PS51:e132",
+  "saved_at": "2026-10-22T16:40:07.947Z",
+  "thalamus": false
+ },
+ {
+  "figure": 32,
+  "include": true,
+  "pick": "PS50:e43",
+  "saved_at": "2026-10-22T16:35:38.153Z",
+  "thalamus": false
+ },
+ {
+  "figure": 50,
+  "include": false,
+  "pick": "PS50:e48",
+  "saved_at": "2026-10-22T16:36:51.211Z",
+  "thalamus": false
+ },
+ {
+  "figure": 41,
+  "include": true,
+  "pick": "PS49:e1",
+  "saved_at": "2026-10-22T16:29:10.328Z",
+  "thalamus": true
+ },
+ {
+  "figure": 33,
+  "include": true,
+  "pick": "PS47:e56",
+  "saved_at": "2026-10-22T16:21:44.857Z",
+  "thalamus": false
+ },
+ {
+  "figure": 33,
+  "include": true,
+  "pick": "PS50:e39",
+  "saved_at": "2026-10-22T16:35:21.257Z",
+  "thalamus": false
+ },
+ {
+  "figure": 33,
+  "include": true,
+  "pick": "PS48:e25",
+  "saved_at": "2026-10-22T16:28:21.256Z",
+  "thalamus": false
+ },
+ {
+  "figure": 56,
+  "include": true,
+  "pick": "PS51:e156",
+  "saved_at": "2026-10-22T17:10:37.639Z",
+  "thalamus": false
+ },
+ {
+  "figure": 37,
+  "include": true,
+  "pick": "PS48:e21",
+  "saved_at": "2026-10-22T16:27:48.464Z",
+  "thalamus": false
+ },
+ {
+  "figure": 33,
+  "include": true,
+  "pick": "PS49:e13",
+  "saved_at": "2026-10-22T16:31:43.154Z",
+  "thalamus": false
+ },
+ {
+  "figure": 35,
+  "include": true,
+  "pick": "PS48:e30",
+  "saved_at": "2026-10-22T16:26:25.161Z",
+  "thalamus": false
+ },
+ {
+  "figure": 42,
+  "include": true,
+  "pick": "PS55:e100",
+  "saved_at": "2026-10-22T16:50:01.886Z",
+  "thalamus": true
+ },
+ {
+  "figure": 48,
+  "include": true,
+  "pick": "PS49:e30",
+  "saved_at": "2026-10-22T16:34:12.089Z",
+  "thalamus": false
+ },
+ {
+  "figure": 38,
+  "include": false,
+  "pick": "PS48:e3",
+  "saved_at": "2026-10-22T16:28:52.080Z",
+  "thalamus": false
+ },
+ {
+  "figure": 16,
+  "include": true,
+  "pick": "PS54:e196",
+  "saved_at": "2026-10-22T17:11:15.569Z",
+  "thalamus": false
+ },
+ {
+  "figure": 46,
+  "include": true,
+  "pick": "PS49:e8",
+  "saved_at": "2026-10-22T16:31:03.362Z",
+  "thalamus": false
+ },
+ {
+  "figure": 41,
+  "include": true,
+  "pick": "PS51:e143",
+  "saved_at": "2026-10-22T16:41:51.149Z",
+  "thalamus": true
+ },
+ {
+  "figure": 58,
+  "include": true,
+  "pick": "PS54:e236",
+  "saved_at": "2026-10-22T17:12:27.638Z",
+  "thalamus": false
+ },
+ {
+  "figure": 25,
+  "include": true,
+  "pick": "PS54:e205",
+  "saved_at": "2026-10-22T16:45:36.629Z",
+  "thalamus": false
+ },
+ {
+  "figure": 23,
+  "include": true,
+  "pick": "PS47:e44",
+  "saved_at": "2026-10-22T16:24:54.297Z",
+  "thalamus": false
+ },
+ {
+  "figure": 21,
+  "include": true,
+  "pick": "PS47:e49",
+  "saved_at": "2026-10-22T16:25:15.504Z",
+  "thalamus": false
+ },
+ {
+  "figure": 39,
+  "include": true,
+  "pick": "PS50:e38",
+  "saved_at": "2026-10-22T16:34:43.025Z",
+  "thalamus": true
+ },
+ {
+  "figure": 43,
+  "include": true,
+  "pick": "PS50:e46",
+  "saved_at": "2026-10-22T16:36:25.753Z",
+  "thalamus": true
+ },
+ {
+  "figure": 21,
+  "include": true,
+  "pick": "PS51:e131",
+  "saved_at": "2026-10-22T16:39:43.146Z",
+  "thalamus": false
+ },
+ {
+  "figure": 50,
+  "include": true,
+  "pick": "PS54:e231",
+  "saved_at": "2026-10-22T16:46:14.295Z",
+  "thalamus": true
+ },
+ {
+  "figure": 34,
+  "include": true,
+  "pick": "PS48:e26",
+  "saved_at": "2026-10-22T16:28:39.856Z",
+  "thalamus": false
+ },
+ {
+  "figure": 42,
+  "include": true,
+  "pick": "PS54:e223",
+  "saved_at": "2026-10-22T16:45:53.282Z",
+  "thalamus": true
+ },
+ {
+  "figure": 46,
+  "include": true,
+  "pick": "PS49:e29",
+  "saved_at": "2026-10-22T16:33:58.723Z",
+  "thalamus": false
+ },
+ {
+  "figure": 51,
+  "include": true,
+  "pick": "PS55:e102",
+  "saved_at": "2026-10-22T16:50:15.391Z",
+  "thalamus": true
+ },
+ {
+  "figure": 29,
+  "include": false,
+  "pick": "PS46:e73",
+  "saved_at": "2026-10-22T16:37:08.202Z",
+  "thalamus": false
+ },
+ {
+  "figure": 64,
+  "include": true,
+  "pick": "PS54:e239",
+  "saved_at": "2026-10-22T17:13:22.631Z",
+  "thalamus": false
+ },
+ {
+  "figure": 25,
+  "include": true,
+  "pick": "PS47:e61",
+  "saved_at": "2026-10-22T16:23:01.074Z",
+  "thalamus": false
+ },
+ {
+  "figure": 46,
+  "include": true,
+  "pick": "PS50:e47",
+  "saved_at": "2026-10-22T16:36:47.937Z",
+  "thalamus": true
+ },
+ {
+  "figure": 42,
+  "include": true,
+  "pick": "PS49:e3",
+  "saved_at": "2026-10-22T16:29:22.872Z",
+  "thalamus": true
+ },
+ {
+  "figure": 17,
+  "include": true,
+  "pick": "PS55:e80",
+  "saved_at": "2026-10-22T17:13:56.862Z",
+  "thalamus": false
+ },
+ {
+  "figure": 35,
+  "include": true,
+  "pick": "PS49:e26",
+  "saved_at": "2026-10-22T16:33:05.469Z",
+  "thalamus": false
+ },
+ {
+  "figure": 35,
+  "include": true,
+  "pick": "PS49:e27",
+  "saved_at": "2026-10-22T16:33:19.071Z",
+  "thalamus": false
+ },
+ {
+  "figure": 34,
+  "include": true,
+  "pick": "PS55:e92",
+  "saved_at": "2026-10-22T16:48:49.911Z",
+  "thalamus": false
+ },
+ {
+  "figure": 21,
+  "include": true,
+  "pick": "PS48:e33",
+  "saved_at": "2026-10-22T16:26:54.664Z",
+  "thalamus": false
+ },
+ {
+  "figure": 42,
+  "include": true,
+  "pick": "PS51:e148",
+  "saved_at": "2026-10-22T16:41:59.348Z",
+  "thalamus": true
+ },
+ {
+  "figure": 23,
+  "include": true,
+  "pick": "PS54:e204",
+  "saved_at": "2026-10-22T16:45:28.149Z",
+  "thalamus": false
+ },
+ {
+  "figure": 34,
+  "include": true,
+  "pick": "PS49:e14",
+  "saved_at": "2026-10-22T16:31:57.545Z",
+  "thalamus": false
+ },
+ {
+  "figure": 24,
+  "include": true,
+  "pick": "PS48:e24",
+  "saved_at": "2026-10-22T16:28:13.880Z",
+  "thalamus": false
+ },
+ {
+  "figure": 27,
+  "include": true,
+  "pick": "PS47:e40",
+  "saved_at": "2026-10-22T16:23:08.640Z",
+  "thalamus": false
+ },
+ {
+  "figure": 30,
+  "include": false,
+  "pick": "PS46:e71",
+  "saved_at": "2026-10-22T16:36:54.370Z",
+  "thalamus": false
+ },
+ {
+  "figure": 31,
+  "include": true,
+  "pick": "PS46:e65",
+  "saved_at": "2026-10-22T16:37:59.074Z",
+  "thalamus": false
+ },
+ {
+  "figure": 36,
+  "include": true,
+  "pick": "PS54:e217",
+  "saved_at": "2026-10-22T16:45:41.964Z",
+  "thalamus": false
+ },
+ {
+  "figure": 41,
+  "include": true,
+  "pick": "PS51:e140",
+  "saved_at": "2026-10-22T16:40:52.035Z",
+  "thalamus": true
+ },
+ {
+  "figure": 37,
+  "include": true,
+  "pick": "PS48:e35",
+  "saved_at": "2026-10-22T16:27:09.114Z",
+  "thalamus": false
+ },
+ {
+  "figure": 43,
+  "include": true,
+  "pick": "PS51:e147",
+  "saved_at": "2026-10-22T16:41:56.371Z",
+  "thalamus": true
+ },
+ {
+  "figure": 51,
+  "include": true,
+  "pick": "PS49:e5",
+  "saved_at": "2026-10-22T16:30:16.592Z",
+  "thalamus": false
+ },
+ {
+  "figure": 39,
+  "include": true,
+  "pick": "PS48:e22",
+  "saved_at": "2026-10-22T16:28:06.330Z",
+  "thalamus": false
+ },
+ {
+  "figure": 32,
+  "include": true,
+  "pick": "PS47:e43",
+  "saved_at": "2026-10-22T16:24:30.265Z",
+  "thalamus": false
+ },
+ {
+  "figure": 50,
+  "include": true,
+  "pick": "PS51:e152",
+  "saved_at": "2026-10-22T16:42:30.021Z",
+  "thalamus": true
+ },
+ {
+  "figure": 32,
+  "include": true,
+  "pick": "PS49:e16",
+  "saved_at": "2026-10-22T16:32:12.320Z",
+  "thalamus": false
+ },
+ {
+  "figure": 59,
+  "include": true,
+  "pick": "PS51:e157",
+  "saved_at": "2026-10-22T17:10:44.743Z",
+  "thalamus": false
+ },
+ {
+  "figure": 26,
+  "include": true,
+  "pick": "PS47:e52",
+  "saved_at": "2026-10-22T16:21:13.433Z",
+  "thalamus": false
+ },
+ {
+  "figure": 40,
+  "include": true,
+  "pick": "PS48:e37",
+  "saved_at": "2026-10-22T16:27:27.865Z",
+  "thalamus": true
+ },
+ {
+  "figure": 37,
+  "include": true,
+  "pick": "PS55:e94",
+  "saved_at": "2026-10-22T16:49:01.894Z",
+  "thalamus": false
+ },
+ {
+  "figure": 33,
+  "include": true,
+  "pick": "PS46:e64",
+  "saved_at": "2026-10-22T16:37:53.234Z",
+  "thalamus": false
+ },
+ {
+  "figure": 23,
+  "include": true,
+  "pick": "PS51:e129",
+  "saved_at": "2026-10-22T16:39:52.650Z",
+  "thalamus": false
+ },
+ {
+  "figure": 36,
+  "include": true,
+  "pick": "PS47:e15",
+  "saved_at": "2026-10-22T16:25:42.633Z",
+  "thalamus": true
+ },
+ {
+  "figure": 33,
+  "include": true,
+  "pick": "PS46:e72",
+  "saved_at": "2026-10-22T16:37:02.953Z",
+  "thalamus": false
+ },
+ {
+  "figure": 36,
+  "include": true,
+  "pick": "PS47:e41",
+  "saved_at": "2026-10-22T16:24:02.569Z",
+  "thalamus": true
+ },
+ {
+  "figure": 22,
+  "include": true,
+  "pick": "PS51:e130",
+  "saved_at": "2026-10-22T16:39:47.858Z",
+  "thalamus": false
+ },
+ {
+  "figure": 20,
+  "include": true,
+  "pick": "PS54:e200",
+  "saved_at": "2026-10-22T16:45:05.093Z",
+  "thalamus": false
+ },
+ {
+  "figure": 44,
+  "include": true,
+  "pick": "PS49:e28",
+  "saved_at": "2026-10-22T16:33:45.632Z",
+  "thalamus": true
+ },
+ {
+  "figure": 35,
+  "include": true,
+  "pick": "PS46:e75",
+  "saved_at": "2026-10-22T16:37:38.945Z",
+  "thalamus": false
+ },
+ {
+  "figure": 19,
+  "include": false,
+  "pick": "PS54:e202",
+  "saved_at": "2026-10-22T16:45:14.749Z",
+  "thalamus": false
+ },
+ {
+  "figure": 40,
+  "include": true,
+  "pick": "PS54:e221",
+  "saved_at": "2026-10-22T16:45:50.518Z",
+  "thalamus": true
+ },
+ {
+  "figure": 33,
+  "include": true,
+  "pick": "PS46:e74",
+  "saved_at": "2026-10-22T16:37:28.226Z",
+  "thalamus": false
+ },
+ {
+  "figure": 50,
+  "include": true,
+  "pick": "PS49:e4",
+  "saved_at": "2026-10-22T16:30:02.264Z",
+  "thalamus": true
+ }
+]

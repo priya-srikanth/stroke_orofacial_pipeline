@@ -37,3 +37,21 @@ Large intermediates were deleted after the repo and server copies were verified:
 - Manuscript figure, nine levels (+1.18 to -0.34), real sections only; +0.98 uses PS50's +0.86, +0.74 uses PS51's +0.62, +0.50 uses PS46-48's +0.38, -0.10 uses PS54/PS55's -0.22 (Priya): `manuscript_figure.py <atlas_polygons dir> <out_stem>` -> `VLS_stroke_extent_PS46-55.*` + `_sources.json`.
 - Severity-coded manuscript figure: `manuscript_figure.py <atlas_polygons dir> <out_stem> PS46-55 severity` -> `VLS_stroke_extent_PS46-55_severity.*`. Paper phenotype groups (mild PS47-50, moderate PS46 + PS51, severe PS54 + PS55) in the manuscript colours (mild #f2c12e, moderate #f0822e, severe #b4001e, as in scripts/manuscript/*); animals within a group differ by line style (solid, dashed, dotted, dash-dot) and a small lightness step.
 - Light fill: add a 5th argument (fill alpha, e.g. `0.1`) -> `VLS_stroke_extent_PS46-55_severity_fill.*`. Fill is weighted by group (severe x0.6, moderate x1.2, mild x1.8) so the large severe areas stay faint behind the small mild/moderate ones.
+
+## Outlines v3 and the histology panels (2026-10-22, later)
+- **Stroke outlines v3 = `configs/histology_map/PS46-55/atlas_polygons_v3/`** (supersede `atlas_polygons/`). Priya redrew every
+  section in the Stroke Outline Editor (claude.ai artifact WpkEFXT3wuhWxhqTC888oU): 165 sections, 72 with stroke, any number of
+  separate regions per section (perforating-vessel strokes sit dorsal to the main one; three sections have two or more).
+  One JSON per region (`<section>_rN` when a section has several), same fields as before, so
+  `schematic.footprints_from_polygons` and `manuscript_figure.py` read them unchanged. Raw editor export:
+  `configs/histology_map/PS46-55/histology_panels/outlines_PS46-55.json` (also records her left-right and upside-down flips).
+- Manuscript figures and the all-slices schematic were re-rendered from v3 (`manuscript_figure.py`, `render_schematic_v3.py`),
+  into the server/local `stroke_schematic/` folders and Overleaf `figures/FigureS7_stroke_extent.*`.
+- **Histology panels** (`scripts/vls_stroke_schematic/histology_panels/`, inputs in `configs/histology_map/PS46-55/histology_panels/`):
+  sections rendered from the VS200 `.ets` pyramids (DAPI blue, GFAP green, NeuN red; Cy5/DARPP32 never read), each channel scaled
+  against its own section's background with NeuN/DAPI mean brightness matched, lesion flipped left, tilt from left-right symmetry,
+  one mm scale for every section. Sections: the schematic ones plus 99 more Priya kept in the Section Review page
+  (`sec_review.json`, plates from Fig 14 to Fig 64). Thalamus zooms: a fixed 5.8 x 4.2 mm box placed by Priya
+  (`thal_align_all.json`, two alignment pages), with and without GFAP. `compose_grid.py` builds the two figures
+  (rows = animals, columns = plates with the plate drawing and the v3 outlines on top, scale bar on every panel) into
+  `Manuscripts/VLS stroke methods paper/histology_panels/PS46-55_sections/` and the same folder on MICROSCOPE.

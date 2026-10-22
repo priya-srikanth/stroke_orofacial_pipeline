@@ -1,0 +1,417 @@
+[
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 5.7896,
+  "cy_mm": 4.0916,
+  "figure": 40,
+  "pick": "PS49:e11",
+  "rot_deg": -0.5,
+  "saved_at": "2026-10-22T15:39:45.370Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 5.3472,
+  "cy_mm": 4.1102,
+  "figure": 40,
+  "pick": "PS49:e6",
+  "rot_deg": 4.5,
+  "saved_at": "2026-10-22T15:39:02.657Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 5.2148,
+  "cy_mm": 4.2741,
+  "figure": 37,
+  "pick": "PS50:e44",
+  "rot_deg": 5.5,
+  "saved_at": "2026-10-22T15:40:32.194Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 5.2998,
+  "cy_mm": 4.4571,
+  "figure": 39,
+  "pick": "PS50:e45",
+  "rot_deg": -5.5,
+  "saved_at": "2026-10-22T15:40:58.163Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.6475,
+  "cy_mm": 3.814,
+  "figure": null,
+  "pick": "PS51:e142",
+  "rot_deg": 1,
+  "saved_at": "2026-10-22T15:42:37.468Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.924,
+  "cy_mm": 4.249,
+  "figure": 45,
+  "pick": "PS51:e146",
+  "rot_deg": 0.5,
+  "saved_at": "2026-10-22T15:43:28.300Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.9071,
+  "cy_mm": 4.2658,
+  "figure": 49,
+  "pick": "PS51:e150",
+  "rot_deg": -1.5,
+  "saved_at": "2026-10-22T15:44:10.126Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.8572,
+  "cy_mm": 4.2912,
+  "figure": 46,
+  "pick": "PS51:e151",
+  "rot_deg": -1.5,
+  "saved_at": "2026-10-22T15:46:02.038Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.7397,
+  "cy_mm": 3.9571,
+  "figure": 41,
+  "pick": "PS54:e222",
+  "rot_deg": -2,
+  "saved_at": "2026-10-22T15:48:07.599Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.8999,
+  "cy_mm": 4.0487,
+  "figure": 44,
+  "pick": "PS54:e224",
+  "rot_deg": 0,
+  "saved_at": "2026-10-22T15:49:47.232Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.9584,
+  "cy_mm": 4.0209,
+  "figure": 45,
+  "pick": "PS54:e226",
+  "rot_deg": 1,
+  "saved_at": "2026-10-22T15:50:19.297Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 5.0771,
+  "cy_mm": 3.9537,
+  "figure": 49,
+  "pick": "PS54:e227",
+  "rot_deg": -1,
+  "saved_at": "2026-10-22T15:51:42.930Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 3.4611,
+  "cy_mm": 4.2209,
+  "figure": 48,
+  "pick": "PS54:e230",
+  "rot_deg": -3,
+  "saved_at": "2026-10-22T15:53:03.835Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.5727,
+  "cy_mm": 3.7962,
+  "figure": 49,
+  "pick": "PS55:e104",
+  "rot_deg": -3.5,
+  "saved_at": "2026-10-22T16:00:27.087Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.3817,
+  "cy_mm": 4.1012,
+  "figure": 38,
+  "pick": "PS55:e93",
+  "rot_deg": 0.5,
+  "saved_at": "2026-10-22T15:54:40.388Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.3086,
+  "cy_mm": 3.9719,
+  "figure": 39,
+  "pick": "PS55:e95",
+  "rot_deg": -1.5,
+  "saved_at": "2026-10-22T15:55:55.365Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.6734,
+  "cy_mm": 5.3188,
+  "figure": 42,
+  "pick": "PS55:e96",
+  "rot_deg": -3.5,
+  "saved_at": "2026-10-22T15:58:25.366Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.7589,
+  "cy_mm": 4.2975,
+  "figure": 48,
+  "pick": "PS55:e97",
+  "rot_deg": -4,
+  "saved_at": "2026-10-22T15:59:44.727Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.9273,
+  "cy_mm": 4.068,
+  "figure": 53,
+  "pick": "PS51:e154",
+  "rot_deg": 2,
+  "saved_at": "2026-10-22T17:21:29.424Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.5744,
+  "cy_mm": 3.8338,
+  "figure": 39,
+  "pick": "PS54:e220",
+  "rot_deg": 1,
+  "saved_at": "2026-10-22T17:21:47.767Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 5.1151,
+  "cy_mm": 4.029,
+  "figure": 45,
+  "pick": "PS49:e7",
+  "rot_deg": -1,
+  "saved_at": "2026-10-22T17:18:39.247Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 3.2661,
+  "cy_mm": 3.0087,
+  "figure": 46,
+  "pick": "PS55:e105",
+  "rot_deg": -1,
+  "saved_at": "2026-10-22T17:23:08.095Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 5.0855,
+  "cy_mm": 4.0829,
+  "figure": 51,
+  "pick": "PS51:e153",
+  "rot_deg": -5,
+  "saved_at": "2026-10-22T17:21:13.080Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 3.4854,
+  "cy_mm": 4.0326,
+  "figure": 46,
+  "pick": "PS54:e225",
+  "rot_deg": -0.5,
+  "saved_at": "2026-10-22T17:22:27.721Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.8971,
+  "cy_mm": 4.1185,
+  "figure": 44,
+  "pick": "PS51:e145",
+  "rot_deg": 1,
+  "saved_at": "2026-10-22T17:21:20.224Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.7216,
+  "cy_mm": 2.1967,
+  "figure": 39,
+  "pick": "PS47:e58",
+  "rot_deg": 3,
+  "saved_at": "2026-10-22T17:17:08.360Z",
+  "note": "vertically flipped after alignment: cy mirrored, rotation negated"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 5.2417,
+  "cy_mm": 3.9007,
+  "figure": 41,
+  "pick": "PS49:e1",
+  "rot_deg": -5,
+  "saved_at": "2026-10-22T17:17:44.503Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.5623,
+  "cy_mm": 4.1097,
+  "figure": 42,
+  "pick": "PS55:e100",
+  "rot_deg": -5,
+  "saved_at": "2026-10-22T17:22:53.488Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.706,
+  "cy_mm": 4.1733,
+  "figure": 41,
+  "pick": "PS51:e143",
+  "rot_deg": -2,
+  "saved_at": "2026-10-22T17:20:47.927Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.4185,
+  "cy_mm": 4.2075,
+  "figure": 41,
+  "pick": "PS50:e38",
+  "rot_deg": -1,
+  "saved_at": "2026-10-22T17:19:40.425Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 5.1344,
+  "cy_mm": 4.2409,
+  "figure": 42,
+  "pick": "PS50:e46",
+  "rot_deg": -4.5,
+  "saved_at": "2026-10-22T17:20:20.300Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 5.1274,
+  "cy_mm": 4.0122,
+  "figure": 49,
+  "pick": "PS54:e231",
+  "rot_deg": -1,
+  "saved_at": "2026-10-22T17:22:41.592Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.8735,
+  "cy_mm": 4.0344,
+  "figure": 42,
+  "pick": "PS54:e223",
+  "rot_deg": 1,
+  "saved_at": "2026-10-22T17:22:04.336Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.8378,
+  "cy_mm": 4.118,
+  "figure": 51,
+  "pick": "PS55:e102",
+  "rot_deg": -2,
+  "saved_at": "2026-10-22T17:23:27.416Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 5.2502,
+  "cy_mm": 4.4941,
+  "figure": 46,
+  "pick": "PS50:e47",
+  "rot_deg": 1,
+  "saved_at": "2026-10-22T17:20:39.335Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 5.2468,
+  "cy_mm": 4.1881,
+  "figure": 42,
+  "pick": "PS49:e3",
+  "rot_deg": 4,
+  "saved_at": "2026-10-22T17:17:49.823Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.8338,
+  "cy_mm": 4.1109,
+  "figure": 42,
+  "pick": "PS51:e148",
+  "rot_deg": 2,
+  "saved_at": "2026-10-22T17:20:54.455Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.746,
+  "cy_mm": 4.1248,
+  "figure": 41,
+  "pick": "PS51:e140",
+  "rot_deg": -1,
+  "saved_at": "2026-10-22T17:20:57.767Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.8724,
+  "cy_mm": 4.2008,
+  "figure": 43,
+  "pick": "PS51:e147",
+  "rot_deg": 1,
+  "saved_at": "2026-10-22T17:21:00.855Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.9509,
+  "cy_mm": 4.2158,
+  "figure": 50,
+  "pick": "PS51:e152",
+  "rot_deg": -3,
+  "saved_at": "2026-10-22T17:21:16.447Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 5.0103,
+  "cy_mm": 3.7238,
+  "figure": 40,
+  "pick": "PS48:e37",
+  "rot_deg": -4,
+  "saved_at": "2026-10-22T17:17:30.455Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.5256,
+  "cy_mm": 2.8542,
+  "figure": 39,
+  "pick": "PS47:e15",
+  "rot_deg": -3.5,
+  "saved_at": "2026-10-22T17:16:23.000Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.3923,
+  "cy_mm": 3.2527,
+  "figure": 35,
+  "pick": "PS47:e41",
+  "rot_deg": 2,
+  "saved_at": "2026-10-22T17:16:41.830Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 5.3869,
+  "cy_mm": 4.658,
+  "figure": 45,
+  "pick": "PS49:e28",
+  "rot_deg": -0.5,
+  "saved_at": "2026-10-22T17:18:26.847Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.8737,
+  "cy_mm": 3.9468,
+  "figure": 40,
+  "pick": "PS54:e221",
+  "rot_deg": 0,
+  "saved_at": "2026-10-22T17:22:00.327Z"
+ },
+ {
+  "atlas_box_top_mm": null,
+  "cx_mm": 4.9415,
+  "cy_mm": 3.9642,
+  "figure": 50,
+  "pick": "PS49:e4",
+  "rot_deg": -1,
+  "saved_at": "2026-10-22T17:19:07.000Z"
+ }
+]
