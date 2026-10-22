@@ -11,7 +11,8 @@ from wfield_local.histology_map import schematic as SC, plates as PLT
 matplotlib.rcParams.update({'svg.fonttype': 'none', 'pdf.fonttype': 42, 'font.size': 8})
 POLY, OUT = sys.argv[1], sys.argv[2]
 COHORT = sys.argv[3] if len(sys.argv) > 3 else 'PS46-55'
-SCHEME = sys.argv[4] if len(sys.argv) > 4 else 'animal'   # 'severity': paper phenotype colours
+SCHEME = sys.argv[4] if len(sys.argv) > 4 else 'animal'
+FILL = float(sys.argv[5]) if len(sys.argv) > 5 else 0.0   # alpha of a light fill under each outline (0 = none)   # 'severity': paper phenotype colours
 PDF = '/mnt/user-data/uploads/Documents/data/Immuno/PS92-95_widefield_stroke_cohort/lesion_map_work/paxinos_p63-98.pdf'
 # target plate: (fallback plate for real data or None, interpolation allowed)
 LEVELS = [(21, None, False), (23, 24, True), (25, 26, False), (27, 28, False), (29, None, False),
@@ -53,6 +54,9 @@ for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
         for g in getattr(U, 'geoms', [U]):
             if g.is_empty or not hasattr(g, 'exterior'): continue
             x, y = g.exterior.xy
+            if FILL and kind != 'interpolated':
+                grp = next((g for g, an in GROUPS.items() if a in an), None) if SCHEME == 'severity' else None
+                ax.fill(x, y, color=COLORS[a], alpha=FILL * {'severe': 0.6, 'moderate': 1.2, 'mild': 1.8}.get(grp, 1.0), lw=0)   # lighter under the big severe strokes so the small mild/moderate ones stay readable
             ax.plot(x, y, color=COLORS[a], lw=(1.4 if SCHEME == 'severity' else 1.2) if kind != 'interpolated' else 0.9,
                     ls=(0, (2.5, 1.5)) if kind == 'interpolated' else STYLE[a], solid_joinstyle='round')
     yy, xx = np.nonzero(R['brain']); pp = R['ppm']
