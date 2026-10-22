@@ -1,3 +1,4 @@
+import os
 """VLS manuscript stroke-extent figure, PS46-55: nine Paxinos levels, coloured outlines per animal.
 Per level and animal: the real section on that plate; else a real section from the named neighbouring plate
 (drawn on the target plate in the same mm coordinates); else, where allowed, the signed-distance interpolation."""
@@ -13,6 +14,7 @@ POLY, OUT = sys.argv[1], sys.argv[2]
 COHORT = sys.argv[3] if len(sys.argv) > 3 else 'PS46-55'
 SCHEME = sys.argv[4] if len(sys.argv) > 4 else 'animal'
 FILL = float(sys.argv[5]) if len(sys.argv) > 5 else 0.0
+MOD2 = os.environ.get('MOD2', 'diamonds'); MK = {'circles': 'o', 'diamonds': 'D'}.get(MOD2)   # '', 'circles' or 'diamonds': fill pattern for Moderate #2 (Priya 10-22)
 INTERP_ALL = len(sys.argv) > 6 and sys.argv[6] == 'interp'   # fill any remaining gap between an animal's labelled sections (dashed)   # alpha of a light fill under each outline (0 = none)   # 'severity': paper phenotype colours
 PDF = '/mnt/user-data/uploads/Documents/data/Immuno/PS92-95_widefield_stroke_cohort/lesion_map_work/paxinos_p63-98.pdf'
 # target plate: (fallback plate for real data or None, interpolation allowed)
@@ -39,7 +41,8 @@ if SCHEME == 'severity':   # VLS paper phenotype groups + manuscript colours (sc
         for i, a in enumerate(animals):
             dl = (i - (len(animals) - 1) / 2) * 0.07          # small lightness steps around the paper colour
             COLORS[a] = colorsys.hls_to_rgb(h, min(max(l - dl, 0.15), 0.8), s_); STYLE[a] = DASH[i]
-EXTRA_FB = {}   # (was PS51 at -0.10 from +0.02; replaced by the real PS51_2_10 section, 2026-10-22)
+EXTRA_FB = {}
+INTERP_EXTRA = {(30, 'PS51')} if COHORT == 'PS46-55' else set()   # Priya 10-22: interpolate Moderate #2 (PS51) at +0.14 in every version   # (was PS51 at -0.10 from +0.02; replaced by the real PS51_2_10 section, 2026-10-22)
 HATCH = ['|||', '---', '\\\\\\', '///']
 matplotlib.rcParams['hatch.linewidth'] = 0.6
 real, rows = SC.footprints_from_polygons(POLY)
@@ -58,18 +61,24 @@ for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
         elif fb and a in real.get(fb, {}): src, kind = real[fb][a], f'real from {PL[fb]["bregma"]:+.2f}'
         elif (f, a) in EXTRA_FB and a in real.get(EXTRA_FB[(f, a)], {}):
             src, kind = real[EXTRA_FB[(f, a)]][a], f'real from {PL[EXTRA_FB[(f, a)]]["bregma"]:+.2f}'
-        elif (allow_interp or INTERP_ALL) and flags.get((f, a)): src, kind = interp_all[f][a], 'interpolated'
+        elif (allow_interp or INTERP_ALL or (f, a) in INTERP_EXTRA) and flags.get((f, a)): src, kind = interp_all[f][a], 'interpolated'
         if src is None: continue
         U = unary_union(src).intersection(LB); log.append(dict(level=P['bregma'], figure=f, animal=a, source=kind))
         for g in getattr(U, 'geoms', [U]):
             if g.is_empty or not hasattr(g, 'exterior'): continue
             x, y = g.exterior.xy
-            if FILL and kind != 'interpolated' and not (SCHEME == 'severity' and a not in GROUPS['mild'] + GROUPS['moderate'][:1]):   # Priya 10-22: fill mild only
+            if FILL and not (SCHEME == 'severity' and a not in GROUPS['mild'] + GROUPS['moderate'][:(2 if MOD2 else 1)]):   # Priya 10-22: fill mild (+ moderate) only
                 grp = next((g for g, an in GROUPS.items() if a in an), None) if SCHEME == 'severity' else None
                 if grp == 'mild':   # Priya 10-22: hatched fill, one direction per mild animal (#1 vertical, #2 horizontal, #3 up-left, #4 up-right)
                     ax.fill(x, y, facecolor='none', edgecolor=COLORS[a], hatch=HATCH[GROUPS['mild'].index(a)], lw=0, alpha=0.5)
                 elif a == GROUPS['moderate'][0]:   # Priya 10-22: sparse dots for Moderate #1
                     ax.fill(x, y, facecolor='none', edgecolor=COLORS[a], hatch='..', lw=0, alpha=0.85)   # lighter under the big severe strokes so the small mild/moderate ones stay readable
+                elif MOD2:   # Priya 10-22: open circles or diamonds for Moderate #2 (marker grid clipped to the outline; the native 'o' hatch clips badly in the legend)
+                    from matplotlib.path import Path as MPath
+                    gx, gy = np.meshgrid(np.arange(min(x), max(x), 0.2), np.arange(min(y), max(y), 0.2))
+                    gx[1::2] += 0.1; pts = np.c_[gx.ravel(), gy.ravel()]
+                    pts = pts[MPath(np.c_[x, y]).contains_points(pts)]
+                    ax.plot(pts[:, 0], pts[:, 1], ls='none', marker=MK, ms=1.8, mfc='none', mec=COLORS[a], mew=0.5, alpha=0.75)   # interpolated shapes get the same fill as measured ones; only the outline is faded (Priya 10-22)
             ax.plot(x, y, color=COLORS[a], lw=(1.4 if SCHEME == 'severity' else 1.2) if kind != 'interpolated' else 1.4,
                     ls=STYLE[a], alpha=0.4 if kind == 'interpolated' else 0.75,   # Priya 10-22: more transparent so overlaps show
                     solid_joinstyle='round')   # interpolated = same line style, faded
@@ -78,7 +87,12 @@ for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
     ax.set_title(f"{P['bregma']:+.2f} mm", fontsize=9)
 if SCHEME == 'severity':
     from matplotlib.patches import Patch
+    MKH = []
+    def _mod2(a, lab):
+        m = Line2D([0], [0], ls='none', marker=MK, ms=3.2, mfc='none', mec=COLORS[a], mew=0.7); MKH.append(m)
+        return (Patch(facecolor='none', edgecolor=COLORS[a], lw=1.4, ls=STYLE[a]), m)
     h = [(Patch(facecolor='none', edgecolor=COLORS[a], hatch=(HATCH[i] if g == 'mild' else '..'), lw=1.4, ls=STYLE[a], label=f'{g.capitalize()} #{i + 1}') if (FILL and (g == 'mild' or (g == 'moderate' and i == 0))) else
+          _mod2(a, f'{g.capitalize()} #{i + 1}') if (FILL and MOD2 and g == 'moderate' and i == 1) else
           Line2D([0], [0], color=COLORS[a], lw=1.8, ls=STYLE[a], label=f'{g.capitalize()} #{i + 1}')) for g, an in GROUPS.items() for i, a in enumerate(an)]
     json.dump({f'{g.capitalize()} #{i + 1}': a for g, an in GROUPS.items() for i, a in enumerate(an)}, open(f'{OUT}_animal_key.json', 'w'), indent=1)
 else:
@@ -94,7 +108,9 @@ NOTE = notes
 H0 = fig.get_figheight(); EXTRA = 0.2 * (len(NOTE) + 1) if NOTE else 0.0
 fig.set_figheight(H0 + EXTRA)
 fb = EXTRA / (H0 + EXTRA)                        # fraction of the figure taken by the origin notes
-fig.legend(handles=h, loc='lower center', ncol=int(np.ceil(len(h) / 2)), frameon=False, fontsize=8, handlelength=3.2, bbox_to_anchor=(0.5, fb))
+from matplotlib.legend_handler import HandlerTuple, HandlerLine2D
+LAB = [f'{g.capitalize()} #{i + 1}' for g, an in GROUPS.items() for i, a in enumerate(an)] if SCHEME == 'severity' else [x.get_label() for x in h]
+fig.legend(h, LAB, handler_map={tuple: HandlerTuple(ndivide=1, pad=0), **{m: HandlerLine2D(numpoints=3, marker_pad=0.6) for m in (MKH if SCHEME == 'severity' else [])}}, loc='lower center', ncol=int(np.ceil(len(h) / 2)), frameon=False, fontsize=8, handlelength=3.2, handleheight=1.6, bbox_to_anchor=(0.5, fb))
 if NOTE:
     fig.text(0.5, fb - 0.01, 'Outlines are sections cut at the labelled level, except:', ha='center', va='top', fontsize=7.5, color='0.15')
     for i, line in enumerate(NOTE):
