@@ -39,6 +39,7 @@ if SCHEME == 'severity':   # VLS paper phenotype groups + manuscript colours (sc
         for i, a in enumerate(animals):
             dl = (i - (len(animals) - 1) / 2) * 0.07          # small lightness steps around the paper colour
             COLORS[a] = colorsys.hls_to_rgb(h, min(max(l - dl, 0.15), 0.8), s_); STYLE[a] = DASH[i]
+EXTRA_FB = {(32, 'PS51'): 31} if COHORT == 'PS46-55' else {}   # Priya 10-22: PS51_2_2 (+0.02) also stands in at -0.10
 real, rows = SC.footprints_from_polygons(POLY)
 interp_all = copy.deepcopy(real); flags = SC.fill_gaps(interp_all)
 PL = PLT.load_plates(PDF)
@@ -51,6 +52,8 @@ for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
         src, kind = None, None
         if a in real.get(f, {}): src, kind = real[f][a], 'real'
         elif fb and a in real.get(fb, {}): src, kind = real[fb][a], f'real from {PL[fb]["bregma"]:+.2f}'
+        elif (f, a) in EXTRA_FB and a in real.get(EXTRA_FB[(f, a)], {}):
+            src, kind = real[EXTRA_FB[(f, a)]][a], f'real from {PL[EXTRA_FB[(f, a)]]["bregma"]:+.2f}'
         elif (allow_interp or INTERP_ALL) and flags.get((f, a)): src, kind = interp_all[f][a], 'interpolated'
         if src is None: continue
         U = unary_union(src).intersection(LB); log.append(dict(level=P['bregma'], figure=f, animal=a, source=kind))
