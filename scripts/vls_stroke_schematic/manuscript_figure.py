@@ -13,7 +13,7 @@ POLY, OUT = sys.argv[1], sys.argv[2]
 PDF = '/mnt/user-data/uploads/Documents/data/Immuno/PS92-95_widefield_stroke_cohort/lesion_map_work/paxinos_p63-98.pdf'
 # target plate: (fallback plate for real data or None, interpolation allowed)
 LEVELS = [(21, None, False), (23, 24, True), (25, 26, False), (27, 28, False), (29, None, False),
-          (30, None, False), (31, None, False), (32, None, True), (34, None, False)]
+          (30, None, False), (31, None, False), (32, 33, False), (34, None, False)]
 COLORS = dict(PS46='#1f77b4', PS47='#ff7f0e', PS48='#2ca02c', PS49='#d62728', PS50='#9467bd', PS51='#8c564b',
               PS54='#e377c2', PS55='#17becf')
 real, rows = SC.footprints_from_polygons(POLY)
@@ -40,7 +40,8 @@ for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
     ax.set_xlim(xx.min() / pp - 6.1, 0.15); ax.set_ylim(yy.max() / pp + 0.1, yy.min() / pp - 0.1)
     ax.set_title(f"{P['bregma']:+.2f} mm", fontsize=9)
 h = [Line2D([0], [0], color=COLORS[a], lw=1.6, label=a) for a in sorted(COLORS)]
-h.append(Line2D([0], [0], color='0.3', lw=0.9, ls=(0, (2.5, 1.5)), label='interpolated'))
+if any(r['source'] == 'interpolated' for r in log):
+    h.append(Line2D([0], [0], color='0.3', lw=0.9, ls=(0, (2.5, 1.5)), label='interpolated'))
 fig.legend(handles=h, loc='lower center', ncol=len(h), frameon=False, fontsize=8)
 plt.tight_layout(rect=(0, 0.08, 1, 0.94), w_pad=0.2)
 for e in ('png', 'svg', 'pdf'): fig.savefig(f'{OUT}.{e}', dpi=400)
