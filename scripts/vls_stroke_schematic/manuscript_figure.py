@@ -60,8 +60,8 @@ for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
             if FILL and kind != 'interpolated' and not (SCHEME == 'severity' and a not in GROUPS['mild']):   # Priya 10-22: fill mild only
                 grp = next((g for g, an in GROUPS.items() if a in an), None) if SCHEME == 'severity' else None
                 ax.fill(x, y, color=COLORS[a], alpha=FILL * {'severe': 0.0, 'moderate': 0.0, 'mild': 2.0}.get(grp, 1.0), lw=0)   # lighter under the big severe strokes so the small mild/moderate ones stay readable
-            ax.plot(x, y, color=COLORS[a], lw=(1.4 if SCHEME == 'severity' else 1.2) if kind != 'interpolated' else 0.9,
-                    ls=(0, (2.5, 1.5)) if kind == 'interpolated' else STYLE[a], solid_joinstyle='round')
+            ax.plot(x, y, color=COLORS[a], lw=(1.4 if SCHEME == 'severity' else 1.2) if kind != 'interpolated' else 1.4,
+                    ls=STYLE[a], alpha=0.45 if kind == 'interpolated' else 1.0, solid_joinstyle='round')   # interpolated = same line style, faded
     yy, xx = np.nonzero(R['brain']); pp = R['ppm']
     ax.set_xlim(xx.min() / pp - 6.1, 0.15); ax.set_ylim(yy.max() / pp + 0.1, yy.min() / pp - 0.1)
     ax.set_title(f"{P['bregma']:+.2f} mm", fontsize=9)
@@ -71,7 +71,7 @@ if SCHEME == 'severity':
 else:
     h = [Line2D([0], [0], color=COLORS[a], lw=1.6, label=a) for a in sorted(COLORS)]
 if any(r['source'] == 'interpolated' for r in log):
-    h.append(Line2D([0], [0], color='0.3', lw=0.9, ls=(0, (2.5, 1.5)), label='interpolated'))
+    h.append(Line2D([0], [0], color='0.3', lw=1.6, alpha=0.45, label='interpolated (faded)'))
 fig.legend(handles=h, loc='lower center', ncol=len(h), frameon=False, fontsize=8, handlelength=3.2)
 plt.tight_layout(rect=(0, 0.08, 1, 0.94), w_pad=0.2)
 for e in ('png', 'svg', 'pdf'): fig.savefig(f'{OUT}.{e}', dpi=400)
