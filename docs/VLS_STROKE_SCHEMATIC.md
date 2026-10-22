@@ -31,3 +31,7 @@ CSV, and the notebook that draws Fig 1F (`Stroke_area_quantification_plots.ipynb
 Large intermediates were deleted after the repo and server copies were verified: the level-4 section crops
 (~490 MB; re-cut from the VS200 scans with `crop_series.py` / `crop_fixed.py`, which stay in
 `Documents/data/Immuno/PS46-55_stroke_map_work/`), draft review sheets and footprint caches.
+
+## Figure versions (2026-10-22)
+- All levels, coloured outlines, interpolated levels dashed: `render_schematic.py <out_stem> outline` -> `PS46-55_stroke_schematic_outlines.*` (filled: omit `outline`).
+- Manuscript figure, nine levels (+1.18 to -0.34), real sections only; +0.98 uses PS50's +0.86, +0.74 uses PS51's +0.62, +0.50 uses PS46-48's +0.38, -0.10 uses PS54/PS55's -0.22 (Priya): `manuscript_figure.py <atlas_polygons dir> <out_stem>` -> `VLS_stroke_extent_PS46-55.*` + `_sources.json`.

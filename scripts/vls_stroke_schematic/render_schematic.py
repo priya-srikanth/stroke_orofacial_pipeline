@@ -1,6 +1,6 @@
 """PS46-55 stroke-extent schematic (VLS stroke paper) from Priya's hand-edited atlas polygons.
 
-    python scripts/vls_stroke_schematic/render_schematic.py <out_stem>
+    python scripts/vls_stroke_schematic/render_schematic.py <out_stem> [outline]
 
 Draws configs/histology_map/PS46-55/atlas_polygons/*.json (plate mm; x from midline, negative = left; y from page
 top) onto outline-only Paxinos & Franklin plates, animals overlaid with transparency, levels between an animal's
@@ -17,4 +17,5 @@ COLORS = dict(PS46='#1f77b4', PS47='#ff7f0e', PS48='#2ca02c', PS49='#d62728', PS
               PS54='#e377c2', PS55='#17becf')
 if __name__ == '__main__':
     SC.render({}, None, PDF, COLORS, sys.argv[1], 'Stroke extent, PS46-55 (lesion left; Paxinos & Franklin outlines)',
-              ncol=5, polygons_dir=REPO / 'configs/histology_map/PS46-55/atlas_polygons')
+              ncol=5, polygons_dir=REPO / 'configs/histology_map/PS46-55/atlas_polygons',
+              style=sys.argv[2] if len(sys.argv) > 2 else 'filled')   # 'outline': coloured outlines, interpolated levels dashed
