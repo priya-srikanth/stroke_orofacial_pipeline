@@ -39,7 +39,7 @@ if SCHEME == 'severity':   # VLS paper phenotype groups + manuscript colours (sc
         for i, a in enumerate(animals):
             dl = (i - (len(animals) - 1) / 2) * 0.07          # small lightness steps around the paper colour
             COLORS[a] = colorsys.hls_to_rgb(h, min(max(l - dl, 0.15), 0.8), s_); STYLE[a] = DASH[i]
-EXTRA_FB = {(32, 'PS51'): 31} if COHORT == 'PS46-55' else {}   # Priya 10-22: PS51_2_2 (+0.02) also stands in at -0.10
+EXTRA_FB = {}   # (was PS51 at -0.10 from +0.02; replaced by the real PS51_2_10 section, 2026-10-22)
 real, rows = SC.footprints_from_polygons(POLY)
 interp_all = copy.deepcopy(real); flags = SC.fill_gaps(interp_all)
 PL = PLT.load_plates(PDF)
