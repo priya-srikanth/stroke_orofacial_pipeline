@@ -1,0 +1,147 @@
+<title>Atlas Level Review</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: header bar | section image beside five candidate plates (chosen ±2), one decision per screen */
+:root{
+  --bg:#f3f4f6; --panel:#ffffff; --ink:#1d232b; --muted:#5d6874; --line:#d5dae0;
+  --plate:#27303a; --stroke:#d9821e; --stroke-fill:rgba(217,130,30,.28);
+  --accent:#2763b8; --ok:#2f8a4e; --warn:#b5472c;
+  --body:"Atkinson Hyperlegible",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#14181d; --panel:#1c2229; --ink:#e6eaee; --muted:#9aa5b1; --line:#2d3540;
+  --plate:#27303a; --stroke:#f0a040; --stroke-fill:rgba(240,160,64,.30);
+  --accent:#78a7ea; --ok:#5cc07c; --warn:#ef8466; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#14181d; --panel:#1c2229; --ink:#e6eaee; --muted:#9aa5b1; --line:#2d3540;
+  --plate:#27303a; --stroke:#f0a040; --stroke-fill:rgba(240,160,64,.30);
+  --accent:#78a7ea; --ok:#5cc07c; --warn:#ef8466; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;margin:0;box-sizing:border-box;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px}
+.app{display:flex;flex-direction:column;gap:10px;height:100%}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px}
+h1{font:500 20px var(--mono);margin:0}
+.meta{color:var(--muted);font-size:13px}
+.bar{display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap}
+button,select{font:13px var(--body);padding:6px 11px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:4px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button:focus-visible,.card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--panel);font-weight:700}
+.prog{width:160px;height:8px;background:var(--line);border-radius:4px;overflow:hidden}.prog i{display:block;height:100%;background:var(--ok)}
+main{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:8px}
+@media (max-width:800px){main{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:none}}
+.sec{background:#000;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0}
+.sec{position:relative}.lab{position:absolute;top:6px;left:8px;color:#fff;font:12px var(--mono);opacity:.8}
+.sec img{max-width:100%;max-height:100%;object-fit:contain}
+.cands{display:contents}
+.card{background:var(--panel);border:2px solid var(--line);border-radius:6px;padding:6px;display:flex;flex-direction:column;gap:4px;cursor:pointer;min-width:0}
+.card:hover{border-color:var(--accent)}
+.card[aria-pressed="true"]{border-color:var(--ok);box-shadow:0 0 0 2px var(--ok)}
+.card .t{display:flex;justify-content:space-between;font:12px var(--mono);font-variant-numeric:tabular-nums}
+.card .tag{font:11px var(--body);color:var(--muted)}
+.card .now{color:var(--accent);font-weight:700}
+.card svg{width:100%;flex:1;min-height:0;background:#fff;border-radius:3px}
+.pl{fill:none;stroke:var(--plate)}
+.shape{fill:var(--stroke-fill);stroke:var(--stroke)}
+.foot{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
+#status{font-size:13px}#status.err{color:var(--warn)}
+kbd{font:11px var(--mono);border:1px solid var(--line);border-radius:3px;padding:0 4px}
+</style>
+
+<div class="app">
+  <header>
+    <h1 id="name">Loading</h1><span class="meta" id="meta"></span>
+    <div class="bar">
+      <span class="meta" id="count"></span><div class="prog"><i id="progFill"></i></div>
+      <button id="prev">◀ Prev</button>
+      <button id="keep" class="primary">Keep Fig</button>
+      <button id="next">Next ▶</button>
+      <select id="jump" aria-label="Jump to section"></select>
+    </div>
+  </header>
+  <main>
+    <div class="sec"><span class="lab">Your section</span><img id="img" alt="Section: NeuN red, GFAP green, DAPI blue, lesion on the left"></div>
+    <div class="cands" id="cands"></div>
+  </main>
+  <div class="foot">
+    <label class="meta" for="op">Atlas photo</label><input type="range" id="op" min="0" max="1" step="0.05" value="0.75">
+    <label class="meta"><input type="checkbox" id="showPoly" checked> show your stroke polygon</label>
+    <span class="meta">Click a plate to choose it (or keys <kbd>1</kbd>–<kbd>5</kbd>), <kbd>Enter</kbd> keeps the current pick, <kbd>←</kbd> <kbd>→</kbd> move between sections. Odd figures are Nissl, even are AChE.</span>
+    <span id="status" role="status"></span>
+  </div>
+</div>
+
+<script type="application/json" id="data">__DATA__</script>
+<script>
+const DATA = JSON.parse(document.getElementById('data').textContent);
+const SEC = DATA.sections, PL = DATA.plates, NS = 'http://www.w3.org/2000/svg', $ = id => document.getElementById(id);
+let i = 0, choice = {}, db = null;
+const status = (t, e) => { $('status').textContent = t; $('status').className = e ? 'err' : ''; };
+for (const [k, s] of SEC.entries()){ const o = document.createElement('option'); o.value = k; o.textContent = `${s.name} (Fig ${s.figure})`; $('jump').appendChild(o); }
+function el(t, a, p){ const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; }
+function plateSvg(f, poly){
+  const P = PL[String(f)], svg = document.createElementNS(NS, 'svg');
+  if (!P){ svg.setAttribute('viewBox', '0 0 10 8'); return svg; }
+  const [x0, y0, x1, y1] = P.box, pad = 0.15;
+  svg.setAttribute('viewBox', `${x0 - pad} ${y0 - pad} ${x1 - x0 + 2 * pad} ${y1 - y0 + 2 * pad}`);
+  if (P.photo){ const im = el('image', {href: P.photo, x: x0, y: y0, width: x1 - x0, height: y1 - y0, preserveAspectRatio: 'none', class: 'ph'}, svg);
+  im.style.opacity = $('op').value; }
+  for (const l of P.lines) el('polyline', {points: l.d, class: 'pl', 'stroke-width': l.dash ? 0.008 : 0.016, opacity: l.dash ? .55 : .9}, svg);
+  if ($('showPoly').checked && poly && poly.length) el('polygon', {points: poly.map(p => p.join(',')).join(' '), class: 'shape', 'stroke-width': 0.02}, svg);
+  return svg;
+}
+function render(){
+  const s = SEC[i], ch = choice[s.id], pick = ch ? ch.figure : s.figure;
+  $('name').textContent = s.name;
+  $('meta').textContent = `${s.use ? '[' + s.use + ']  ' : ''}you said Fig ${s.yours.join('/')}; editor has Fig ${s.figure}` + (s.exclude ? '; left out of figure' : '');
+  $('img').src = s.img; $('jump').value = i;
+  $('keep').textContent = 'Keep Fig ' + pick;
+  const c = $('cands'); c.innerHTML = '';
+  for (let k = -2; k <= 2; k++){
+    const f = s.figure + k; if (!PL[String(f)]){ const d = document.createElement('div'); c.appendChild(d); continue; }
+    const card = document.createElement('div'); card.className = 'card'; card.tabIndex = 0; card.setAttribute('role', 'button');
+    card.setAttribute('aria-pressed', f === pick ? 'true' : 'false');
+    card.innerHTML = `<div class="t"><span>${k + 3}. Fig ${f}${f === s.figure ? ' <span class="now">current</span>' : ''}</span><span>${PL[String(f)].bregma >= 0 ? '+' : ''}${PL[String(f)].bregma.toFixed(2)}</span></div><div class="tag">${PL[String(f)].photo ? PL[String(f)].stain : 'atlas lines only (photo does not line up)'}</div>`;
+    card.appendChild(plateSvg(f, s.poly));
+    card.onclick = () => choose(f); card.onkeydown = e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); choose(f); } };
+    c.appendChild(card);
+  }
+  const n = Object.keys(choice).length;
+  $('count').textContent = `${n} of ${SEC.length} reviewed`; $('progFill').style.width = (100 * n / SEC.length) + '%';
+  status(ch ? (ch.figure === s.figure ? 'Kept Fig ' + ch.figure + '.' : 'Changed to Fig ' + ch.figure + '.') : 'Not reviewed yet.');
+  try { localStorage.setItem('apReview.i', i); } catch (e) {}
+}
+async function choose(f, advance){
+  const s = SEC[i];
+  const rec = {section_id: s.id, name: s.name, figure: f, previous: s.figure, changed: f !== s.figure, saved_at: new Date().toISOString()};
+  choice[s.id] = rec; render();
+  if (!db){ status('Saving needs you signed in to Claude. Your pick is shown but not saved.', true); return; }
+  try { await db.doc('ap_choice/' + s.id).set(rec); status((rec.changed ? 'Saved: Fig ' + f : 'Saved: kept Fig ' + f) + '.'); if (advance && i < SEC.length - 1){ i++; render(); } }
+  catch (e){ status('Could not save: ' + (e && e.message || e) + '. Try again.', true); }
+}
+$('keep').onclick = () => { const s = SEC[i]; choose(choice[s.id] ? choice[s.id].figure : s.figure, true); };
+$('prev').onclick = () => { if (i > 0){ i--; render(); } };
+$('next').onclick = () => { if (i < SEC.length - 1){ i++; render(); } };
+$('jump').onchange = () => { i = +$('jump').value; render(); };
+$('op').oninput = () => document.querySelectorAll('image.ph').forEach(e => e.style.opacity = $('op').value);
+$('showPoly').onchange = render;
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowRight') $('next').click(); else if (e.key === 'ArrowLeft') $('prev').click();
+  else if (e.key === 'Enter' && !e.target.classList.contains('card')) $('keep').click();
+  else if (/^[1-5]$/.test(e.key)){ const f = SEC[i].figure + (+e.key - 3); if (PL[String(f)]) choose(f); }
+});
+(async () => {
+  try { const s = +localStorage.getItem('apReview.i'); if (s >= 0 && s < SEC.length) i = s; } catch (e) {}
+  render();
+  db = window.claude ? await claude.use('db') : null;
+  if (!db){ status('Read-only here: sign in to Claude to save.', true); return; }
+  db.collection('ap_choice').onSnapshot(snap => {
+    choice = {};
+    for (const d of (snap.docs || [])){ const v = d.data ? d.data() : d; if (v && v.section_id) choice[v.section_id] = v; }
+    render();
+  });
+})();
+</script>

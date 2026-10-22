@@ -1,0 +1,304 @@
+<title>Stroke Atlas Editor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/dist/polygon-clipping.umd.min.js"></script>
+<style>
+/* Layout: section rail | reference section | editable Paxinos plate, one working screen */
+:root{
+  --bg:#f3f4f6; --panel:#ffffff; --ink:#1d232b; --muted:#5d6874; --line:#d5dae0;
+  --plate:#3a424c; --fill:#e3e7eb; --stroke:#d9821e; --stroke-fill:rgba(217,130,30,.30);
+  --ghost:#7b8794; --accent:#2763b8; --ok:#2f8a4e; --warn:#b5472c;
+  --body:"Atkinson Hyperlegible",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#14181d; --panel:#1c2229; --ink:#e6eaee; --muted:#9aa5b1; --line:#2d3540;
+  --plate:#b9c2cc; --fill:#2a323c; --stroke:#f0a040; --stroke-fill:rgba(240,160,64,.30);
+  --ghost:#8794a2; --accent:#78a7ea; --ok:#5cc07c; --warn:#ef8466; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#14181d; --panel:#1c2229; --ink:#e6eaee; --muted:#9aa5b1; --line:#2d3540;
+  --plate:#b9c2cc; --fill:#2a323c; --stroke:#f0a040; --stroke-fill:rgba(240,160,64,.30);
+  --ghost:#8794a2; --accent:#78a7ea; --ok:#5cc07c; --warn:#ef8466; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px;box-sizing:border-box}
+.app{display:grid;grid-template-columns:200px minmax(0,1fr) minmax(0,1.25fr);gap:12px;height:100%;min-height:560px}
+@media (max-width:900px){.app{grid-template-columns:1fr;height:auto}.rail{max-height:200px}}
+.rail,.pane{background:var(--panel);border:1px solid var(--line);border-radius:6px;min-width:0}
+.rail{overflow:auto;padding:8px}
+.rail h2{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:10px 4px 4px}
+.rail button{display:flex;justify-content:space-between;width:100%;border:0;background:none;color:var(--ink);
+  font:13px var(--mono);padding:4px 6px;border-radius:4px;cursor:pointer;text-align:left}
+.rail button:hover{background:var(--fill)}
+.rail button[aria-current="true"]{background:var(--accent);color:var(--panel)}
+.rail .dot{width:8px;height:8px;border-radius:50%;margin-top:4px;background:transparent;border:1px solid var(--muted)}
+.rail .dot.saved{background:var(--ok);border-color:var(--ok)}
+.pane{display:flex;flex-direction:column;padding:10px;gap:8px;overflow:hidden}
+.pane header{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px}
+.pane h1{font-size:18px;margin:0;font-family:var(--mono);font-weight:500}
+.meta{color:var(--muted);font-size:13px}
+.ref{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#000;border-radius:4px;overflow:hidden}
+.ref img{max-height:100%;object-fit:contain}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted)}
+.sw{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px}
+.tools{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.tools button,.tools select{font:13px var(--body);padding:5px 10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:4px;cursor:pointer}
+.tools button:hover{border-color:var(--accent)}
+.tools button.primary{background:var(--accent);border-color:var(--accent);color:var(--panel);font-weight:700}
+.tools button:focus-visible,.rail button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.tools .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+#stage{flex:1;min-height:0;width:100%;touch-action:none;user-select:none}
+#stage .pl{fill:none;stroke:var(--plate)}
+#stage .fl{fill:var(--fill);stroke:none}
+#stage .ghost{fill:none;stroke:var(--ghost);stroke-dasharray:.04 .03}
+#stage .shape{fill:var(--stroke-fill);stroke:var(--stroke);cursor:move}
+#stage .vx{fill:var(--panel);stroke:var(--stroke);cursor:pointer}
+#stage .h{fill:var(--accent);stroke:var(--panel);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.seg{display:inline-flex;gap:0}.seg button{border-radius:0}.seg button:first-child{border-radius:4px 0 0 4px}.seg button:last-child{border-radius:0 4px 4px 0}
+.prog{display:flex;align-items:center;gap:10px}.bar{position:relative;flex:1;height:10px;background:var(--fill);border-radius:5px;overflow:hidden}
+.bar i{position:absolute;inset:0 auto 0 0;background:var(--stroke)}.bar b{position:absolute;top:0;bottom:0;width:2px;background:var(--ink)}
+#progTxt{font-variant-numeric:tabular-nums;white-space:nowrap}
+#stage .brush{fill:none;stroke:var(--accent);stroke-width:.01}
+#stage .trail{fill:none;stroke-linecap:round;stroke-linejoin:round;opacity:.5}
+#stage .hl{stroke:var(--accent);stroke-dasharray:.03 .03}
+.hint{font-size:12px;color:var(--muted);line-height:1.5}
+.hint kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:3px;padding:0 4px}
+#status{font-size:13px;min-height:1.3em;font-variant-numeric:tabular-nums}
+#status.err{color:var(--warn)}
+textarea{width:100%;box-sizing:border-box;font:13px var(--body);background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:6px;resize:vertical;min-height:34px}
+</style>
+
+<div class="app">
+  <nav class="rail" id="rail" aria-label="Sections in atlas order"></nav>
+  <section class="pane">
+    <header><h1 id="secName">Loading</h1><span class="meta" id="secMeta"></span></header>
+    <div class="ref"><img id="refImg" alt="Section: NeuN red, GFAP green, DAPI blue, lesion on the left"></div>
+    <div class="legend"><span><i class="sw" style="background:var(--stroke)"></i>Claude's footprint</span><span><i class="sw" style="background:#fff;outline:1px solid var(--line)"></i>your QuPath stroke outline</span><span>NeuN red · GFAP green · DAPI blue</span></div>
+    <p class="hint">Drag the shape to move it. Drag a white vertex to reshape. Blue handles: <b>corner</b> scales, <b>side</b> handles stretch width or height, <b>top</b> rotates. Double-click an edge to add a vertex; <kbd>Shift</kbd>-click a vertex to remove it. Arrow keys nudge 0.02 mm (<kbd>Shift</kbd> 0.1 mm). <b>Paint</b> adds area, <b>Erase</b> removes it (keys <kbd>P</kbd> <kbd>E</kbd> <kbd>S</kbd>); paint must touch the shape, and the largest connected piece is kept.</p>
+  </section>
+  <section class="pane">
+    <header><h1 id="plateName"></h1><span class="meta" id="plateMeta"></span></header>
+    <div class="tools">
+      <span class="seg" role="group" aria-label="Tool">
+        <button id="mShape" aria-pressed="true">Shape</button><button id="mPaint" aria-pressed="false">Paint</button><button id="mErase" aria-pressed="false">Erase</button>
+      </span>
+      <label class="meta" for="brush">Brush</label><input type="range" id="brush" min="0.04" max="0.6" step="0.02" value="0.16"><span class="meta" id="brushV">0.16 mm</span>
+      <span class="sep"></span>
+      <button id="figPrev" title="Previous (more anterior) plate">◀ Fig</button>
+      <button id="figNext" title="Next (more posterior) plate">Fig ▶</button>
+      <span class="sep"></span>
+      <button id="undo">Undo</button>
+      <button id="reset">Reset to Claude's</button>
+      <label class="meta"><input type="checkbox" id="exclude"> leave out of figure</label>
+      <span class="sep"></span>
+      <button id="save" class="primary">Save</button>
+      <button id="saveNext">Save + next</button>
+    </div>
+    <div class="prog" aria-live="polite"><div class="bar"><i id="progFill"></i><b id="progMark"></b></div><span id="progTxt" class="meta"></span></div>
+    <svg id="stage" role="img" aria-label="Paxinos plate with the editable stroke polygon"></svg>
+    <textarea id="note" placeholder="Note for Claude (optional)"></textarea>
+    <div id="status" role="status"></div>
+  </section>
+</div>
+
+<script type="application/json" id="data">__DATA__</script>
+<script>
+const DATA = JSON.parse(document.getElementById('data').textContent);
+const SEC = DATA.sections, PLATES = DATA.plates, byId = Object.fromEntries(SEC.map(s => [s.id, s]));
+const $ = id => document.getElementById(id), NS = 'http://www.w3.org/2000/svg';
+const svg = $('stage');
+let cur = null, st = null, undo = [], saved = {}, db = null;
+const clone = o => JSON.parse(JSON.stringify(o));
+const status = (t, err) => { $('status').textContent = t; $('status').className = err ? 'err' : ''; };
+
+function renderRail(){
+  const rail = $('rail'); rail.innerHTML = '';
+  const animals = [...new Set(SEC.map(s => s.animal))].sort();
+  for (const a of animals){
+    const h = document.createElement('h2'); h.textContent = a; rail.appendChild(h);
+    for (const s of SEC.filter(s => s.animal === a)){
+      const b = document.createElement('button');
+      b.setAttribute('aria-current', cur && cur.id === s.id ? 'true' : 'false');
+      const fig = saved[s.id] ? saved[s.id].figure : s.figure;
+      b.innerHTML = `<span>${s.name.replace(a + '_', '')} <span style="opacity:.7">F${fig}</span></span><i class="dot ${saved[s.id] ? 'saved' : ''}"></i>`;
+      b.onclick = () => open(s.id); rail.appendChild(b);
+    }
+  }
+}
+function el(tag, attrs, parent){ const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); (parent || svg).appendChild(e); return e; }
+let gPlate, gGhost, gEdit, scaleW = 0.012;
+
+function drawPlate(){
+  const P = PLATES[String(st.figure)];
+  svg.innerHTML = '';
+  if (!P){ status('No plate data for Fig ' + st.figure + '. Use the arrows to pick a nearby plate.', true); return; }
+  const [x0, y0, x1, y1] = P.box, pad = 0.2;
+  svg.setAttribute('viewBox', `${x0 - pad} ${y0 - pad} ${x1 - x0 + 2 * pad} ${y1 - y0 + 2 * pad}`);
+  gPlate = el('g', {});
+  for (const f of P.fills) el('polygon', {points: f, class: 'fl'}, gPlate);
+  for (const l of P.lines) el('polyline', {points: l.d, class: 'pl', 'stroke-width': l.dash ? 0.006 : 0.012, 'stroke-dasharray': l.dash ? '.03 .02' : 'none', opacity: l.dash ? .6 : 1}, gPlate);
+  gGhost = el('g', {}); gEdit = el('g', {});
+  if (st.figure === cur.figure) el('polygon', {points: cur.poly.map(p => p.join(',')).join(' '), class: 'ghost', 'stroke-width': 0.01}, gGhost);
+  $('plateName').textContent = 'Fig ' + st.figure;
+  $('plateMeta').textContent = `Bregma ${P.bregma >= 0 ? '+' : ''}${P.bregma.toFixed(2)} mm` + (st.figure === cur.figure ? '' : '  (moved from Fig ' + cur.figure + ')');
+  drawEdit();
+}
+function centroid(p){ let x = 0, y = 0; for (const q of p){ x += q[0]; y += q[1]; } return [x / p.length, y / p.length]; }
+function bbox(p){ const xs = p.map(q => q[0]), ys = p.map(q => q[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; }
+function polyArea(p){ let s = 0; for (let i = 0; i < p.length; i++){ const a = p[i], b = p[(i + 1) % p.length]; s += a[0] * b[1] - b[0] * a[1]; } return Math.abs(s / 2); }
+function progress(){
+  const a = polyArea(st.poly), L = cur.lost_mm2 || 0, f = L ? a / L : 0, max = 1.5;
+  $('progFill').style.width = Math.min(f / max, 1) * 100 + '%'; $('progMark').style.left = (100 / max) + '%';
+  $('progTxt').textContent = `${a.toFixed(2)} of ${L.toFixed(2)} mm² lost striatum (${Math.round(f * 100)}%)`;
+}
+function drawEdit(){
+  gEdit.innerHTML = ''; progress();
+  const p = st.poly; if (!p.length) return;
+  const shape = el('polygon', {points: p.map(q => q.join(',')).join(' '), class: 'shape', 'stroke-width': 0.014}, gEdit);
+  shape.addEventListener('pointerdown', e => startDrag(e, 'move'));
+  shape.addEventListener('dblclick', e => addVertex(e));
+  if (mode !== 'shape') return;
+  const [bx0, by0, bx1, by1] = bbox(p), r = 0.035;
+  el('rect', {x: bx0, y: by0, width: bx1 - bx0, height: by1 - by0, fill: 'none', class: 'hl', 'stroke-width': 0.006}, gEdit);
+  const cx = (bx0 + bx1) / 2;
+  el('line', {x1: cx, y1: by0, x2: cx, y2: by0 - 0.25, class: 'hl', 'stroke-width': 0.006}, gEdit);
+  const handles = [['rot', cx, by0 - 0.25], ['sc', bx1, by1], ['sx', bx1, (by0 + by1) / 2], ['sy', cx, by1], ['sx0', bx0, (by0 + by1) / 2], ['sy0', cx, by0]];
+  for (const [kind, x, y] of handles){
+    const h = kind === 'rot' ? el('circle', {cx: x, cy: y, r: r * 1.15, class: 'h', 'stroke-width': 0.01}, gEdit)
+                             : el('rect', {x: x - r, y: y - r, width: 2 * r, height: 2 * r, class: 'h', 'stroke-width': 0.01}, gEdit);
+    h.addEventListener('pointerdown', e => startDrag(e, kind));
+  }
+  p.forEach((q, i) => {
+    const v = el('circle', {cx: q[0], cy: q[1], r: 0.022, class: 'vx', 'stroke-width': 0.01}, gEdit);
+    v.addEventListener('pointerdown', e => { if (e.shiftKey){ e.stopPropagation(); if (st.poly.length > 3){ push(); st.poly.splice(i, 1); drawEdit(); } return; } startDrag(e, 'vx', i); });
+  });
+}
+function toMM(e){ const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const m = svg.getScreenCTM().inverse(); const r = pt.matrixTransform(m); return [r.x, r.y]; }
+function push(){ undo.push(clone(st)); if (undo.length > 80) undo.shift(); }
+let drag = null, mode = 'shape', paint = null, cursorC = null;
+const brushR = () => +$('brush').value;
+function setMode(m){ mode = m; for (const [id, v] of [['mShape','shape'],['mPaint','paint'],['mErase','erase']]) $(id).setAttribute('aria-pressed', m === v); svg.style.cursor = m === 'shape' ? '' : 'none'; if (gEdit) drawEdit(); }
+$('mShape').onclick = () => setMode('shape'); $('mPaint').onclick = () => setMode('paint'); $('mErase').onclick = () => setMode('erase');
+$('brush').oninput = () => { $('brushV').textContent = (+$('brush').value).toFixed(2) + ' mm'; };
+function circle(c, r, n){ const o = []; for (let i = 0; i < n; i++){ const a = 2 * Math.PI * i / n; o.push([c[0] + r * Math.cos(a), c[1] + r * Math.sin(a)]); } o.push(o[0]); return o; }
+function rdp(pts, eps){ if (pts.length < 4) return pts; const a = pts[0], b = pts[pts.length - 1]; let idx = 0, dm = 0;
+  for (let i = 1; i < pts.length - 1; i++){ const p = pts[i], vx = b[0] - a[0], vy = b[1] - a[1], L = Math.hypot(vx, vy) || 1e-9; const d = Math.abs(vy * p[0] - vx * p[1] + b[0] * a[1] - b[1] * a[0]) / L; if (d > dm){ dm = d; idx = i; } }
+  if (dm > eps){ const l = rdp(pts.slice(0, idx + 1), eps), r = rdp(pts.slice(idx), eps); return l.slice(0, -1).concat(r); } return [a, b]; }
+function applyStroke(pts, erase){
+  if (typeof polygonClipping === 'undefined'){ status('Paint needs the geometry library, which did not load. Shape editing still works.', true); return; }
+  const r = brushR(), step = Math.max(r / 3, 0.01), circles = [];
+  for (let i = 0; i < pts.length; i++){
+    const p = pts[i]; circles.push([circle(p, r, 20)]);
+    if (i){ const q = pts[i - 1], d = Math.hypot(p[0] - q[0], p[1] - q[1]); for (let t = step; t < d; t += step) circles.push([circle([q[0] + (p[0] - q[0]) * t / d, q[1] + (p[1] - q[1]) * t / d], r, 20)]); }
+  }
+  const strokeMP = polygonClipping.union(...circles);
+  const ring = st.poly.concat([st.poly[0]]);
+  const res = erase ? polygonClipping.difference([ring], strokeMP) : polygonClipping.union([ring], strokeMP);
+  if (!res.length){ status('That erased the whole shape; undo to get it back.', true); st.poly = []; drawEdit(); return; }
+  const area = r => { let s = 0; for (let i = 0; i < r.length - 1; i++) s += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1]; return Math.abs(s / 2); };
+  let best = res[0]; for (const p of res) if (area(p[0]) > area(best[0])) best = p;
+  if (res.length > 1) status('Kept the largest piece; ' + (res.length - 1) + ' separate piece(s) dropped.');
+  let outer = best[0].slice(0, -1); const h = Math.floor(outer.length / 2);   // split the ring in two open halves so RDP has distinct end points
+  outer = rdp(outer.slice(0, h + 1), 0.008).slice(0, -1).concat(rdp(outer.slice(h).concat([outer[0]]), 0.008).slice(0, -1));
+  st.poly = outer; drawEdit();
+}
+function startDrag(e, kind, i){
+  if (mode !== 'shape') return;
+  e.preventDefault(); e.stopPropagation(); push();
+  const p0 = clone(st.poly), m0 = toMM(e), c = centroid(p0), b = bbox(p0);
+  drag = {kind, i, p0, m0, c, b};
+  svg.setPointerCapture(e.pointerId);
+}
+svg.addEventListener('pointerdown', e => {
+  if (mode === 'shape') return;
+  e.preventDefault(); push(); paint = {pts: [toMM(e)]}; svg.setPointerCapture(e.pointerId);
+  paint.el = el('polyline', {class: 'trail', points: paint.pts.map(q => q.join(',')).join(' '), stroke: mode === 'erase' ? 'var(--warn)' : 'var(--stroke)', 'stroke-width': 2 * brushR()}, gEdit);
+}, true);
+svg.addEventListener('pointermove', e => {
+  if (mode !== 'shape'){
+    const m = toMM(e);
+    if (!cursorC || !cursorC.isConnected) cursorC = el('circle', {class: 'brush', r: brushR()}, gEdit);
+    cursorC.setAttribute('cx', m[0]); cursorC.setAttribute('cy', m[1]); cursorC.setAttribute('r', brushR());
+    if (paint){ const l = paint.pts[paint.pts.length - 1]; if (Math.hypot(m[0] - l[0], m[1] - l[1]) > 0.01){ paint.pts.push(m); paint.el.setAttribute('points', paint.pts.map(q => q.join(',')).join(' ')); } }
+    return;
+  }
+  if (!drag) return;
+  const m = toMM(e), d = drag, dx = m[0] - d.m0[0], dy = m[1] - d.m0[1];
+  if (d.kind === 'move') st.poly = d.p0.map(q => [q[0] + dx, q[1] + dy]);
+  else if (d.kind === 'vx'){ st.poly = clone(d.p0); st.poly[d.i] = [d.p0[d.i][0] + dx, d.p0[d.i][1] + dy]; }
+  else if (d.kind === 'rot'){
+    const a0 = Math.atan2(d.m0[1] - d.c[1], d.m0[0] - d.c[0]), a1 = Math.atan2(m[1] - d.c[1], m[0] - d.c[0]), a = a1 - a0, cs = Math.cos(a), sn = Math.sin(a);
+    st.poly = d.p0.map(q => [d.c[0] + (q[0] - d.c[0]) * cs - (q[1] - d.c[1]) * sn, d.c[1] + (q[0] - d.c[0]) * sn + (q[1] - d.c[1]) * cs]);
+  } else {
+    const [x0, y0, x1, y1] = d.b; let sx = 1, sy = 1, ox = x0, oy = y0;
+    if (d.kind === 'sc'){ const s = Math.max(0.2, ((m[0] - x0) / (x1 - x0) + (m[1] - y0) / (y1 - y0)) / 2); sx = sy = s; }
+    if (d.kind === 'sx') sx = Math.max(0.2, (m[0] - x0) / (x1 - x0));
+    if (d.kind === 'sy') sy = Math.max(0.2, (m[1] - y0) / (y1 - y0));
+    if (d.kind === 'sx0'){ sx = Math.max(0.2, (x1 - m[0]) / (x1 - x0)); ox = x1; }
+    if (d.kind === 'sy0'){ sy = Math.max(0.2, (y1 - m[1]) / (y1 - y0)); oy = y1; }
+    st.poly = d.p0.map(q => [ox + (q[0] - ox) * sx, oy + (q[1] - oy) * sy]);
+  }
+  drawEdit();
+});
+const endDrag = () => { drag = null; if (paint){ const p = paint; paint = null; applyStroke(p.pts, mode === 'erase'); } };
+svg.addEventListener('pointerup', endDrag); svg.addEventListener('pointercancel', endDrag);
+function addVertex(e){
+  const m = toMM(e), p = st.poly; let best = 0, bd = 1e9;
+  for (let i = 0; i < p.length; i++){
+    const a = p[i], b = p[(i + 1) % p.length], vx = b[0] - a[0], vy = b[1] - a[1];
+    const t = Math.max(0, Math.min(1, ((m[0] - a[0]) * vx + (m[1] - a[1]) * vy) / (vx * vx + vy * vy + 1e-12)));
+    const dd = Math.hypot(a[0] + t * vx - m[0], a[1] + t * vy - m[1]); if (dd < bd){ bd = dd; best = i; }
+  }
+  push(); p.splice(best + 1, 0, m); drawEdit();
+}
+document.addEventListener('keydown', e => {
+  if (!st || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'p' || e.key === 'P'){ setMode('paint'); return; } if (e.key === 'e' || e.key === 'E'){ setMode('erase'); return; } if (e.key === 's' || e.key === 'S'){ setMode('shape'); return; }
+  const k = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[e.key]; if (!k) return;
+  e.preventDefault(); push(); const s = e.shiftKey ? 0.1 : 0.02; st.poly = st.poly.map(q => [q[0] + k[0] * s, q[1] + k[1] * s]); drawEdit();
+});
+
+function open(id){
+  cur = byId[id];
+  const sv = saved[id];
+  st = sv ? {figure: sv.figure, poly: clone(sv.poly), exclude: !!sv.exclude} : {figure: cur.figure, poly: clone(cur.poly), exclude: false};
+  undo = [];
+  $('secName').textContent = cur.name;
+  $('secMeta').textContent = (cur.use ? '[' + cur.use + ']  ' : '') + 'your level: Fig ' + cur.yours.join('/');
+  $('refImg').src = cur.img; $('note').value = sv ? (sv.note || '') : ''; $('exclude').checked = st.exclude;
+  drawPlate(); renderRail();
+  status(sv ? 'Your saved version (' + new Date(sv.saved_at).toLocaleString() + ').' : "Claude's version. Not saved yet.");
+  try { localStorage.setItem('atlasEditor.section', id); } catch (e) {}
+}
+$('undo').onclick = () => { const s = undo.pop(); if (s){ st = s; drawPlate(); } };
+$('reset').onclick = () => { push(); st = {figure: cur.figure, poly: clone(cur.poly), exclude: false}; $('exclude').checked = false; drawPlate(); status("Reset to Claude's version (not saved)."); };
+$('figPrev').onclick = () => { if (PLATES[String(st.figure - 1)]){ push(); st.figure--; drawPlate(); } else status('Fig ' + (st.figure - 1) + ' is not loaded here; tell Claude if you need it.', true); };
+$('figNext').onclick = () => { if (PLATES[String(st.figure + 1)]){ push(); st.figure++; drawPlate(); } else status('Fig ' + (st.figure + 1) + ' is not loaded here; tell Claude if you need it.', true); };
+$('exclude').onchange = () => { st.exclude = $('exclude').checked; };
+async function save(){
+  if (!db){ status('Saving needs you signed in to Claude. Your edits are still on screen.', true); return false; }
+  const rec = {section_id: cur.id, name: cur.name, animal: cur.animal, figure: st.figure, poly: st.poly.map(q => [+q[0].toFixed(4), +q[1].toFixed(4)]),
+               exclude: !!st.exclude, note: $('note').value.trim(), saved_at: new Date().toISOString()};
+  status('Saving…');
+  try { await db.doc('atlas_polygons/' + cur.id).set(rec); saved[cur.id] = rec; renderRail(); status('Saved ' + cur.name + ' on Fig ' + st.figure + '.'); return true; }
+  catch (e){ status('Could not save: ' + (e && e.message || e) + '. Try again.', true); return false; }
+}
+$('save').onclick = save;
+$('saveNext').onclick = async () => { if (await save()){ const i = SEC.findIndex(s => s.id === cur.id); if (i < SEC.length - 1) open(SEC[i + 1].id); } };
+
+(async () => {
+  let start = SEC[0].id;
+  try { const s = localStorage.getItem('atlasEditor.section'); if (s && byId[s]) start = s; } catch (e) {}
+  open(start);
+  db = window.claude ? await claude.use('db') : null;
+  if (!db){ status('Read-only here: sign in to Claude to save.', true); $('save').disabled = true; $('saveNext').disabled = true; return; }
+  let first = true;
+  db.collection('atlas_polygons').onSnapshot(snap => {
+    saved = {};
+    for (const d of (snap.docs || [])){ const v = d.data ? d.data() : d; if (v && v.section_id) saved[v.section_id] = v; }
+    if (first && saved[cur.id]) open(cur.id); else renderRail();
+    first = false;
+  });
+})();
+</script>
