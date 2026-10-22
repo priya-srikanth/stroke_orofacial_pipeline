@@ -59,7 +59,8 @@ for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
     ax.set_xlim(xx.min() / pp - 6.1, 0.15); ax.set_ylim(yy.max() / pp + 0.1, yy.min() / pp - 0.1)
     ax.set_title(f"{P['bregma']:+.2f} mm", fontsize=9)
 if SCHEME == 'severity':
-    h = [Line2D([0], [0], color=COLORS[a], lw=1.8, ls=STYLE[a], label=f'{a} ({g})') for g, an in GROUPS.items() for a in an]
+    h = [Line2D([0], [0], color=COLORS[a], lw=1.8, ls=STYLE[a], label=f'{g.capitalize()} #{i + 1}') for g, an in GROUPS.items() for i, a in enumerate(an)]
+    json.dump({f'{g.capitalize()} #{i + 1}': a for g, an in GROUPS.items() for i, a in enumerate(an)}, open(f'{OUT}_animal_key.json', 'w'), indent=1)
 else:
     h = [Line2D([0], [0], color=COLORS[a], lw=1.6, label=a) for a in sorted(COLORS)]
 if any(r['source'] == 'interpolated' for r in log):
