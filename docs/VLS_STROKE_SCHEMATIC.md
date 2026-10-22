@@ -21,3 +21,13 @@ projects from Priya's Mac):
 - Priya then edited every shape in the atlas editor (`atlas_editor_template.html`) and reviewed levels in
   `level_review_template.html`. Her rules: lateral stroke edge at the striatum's lateral border (corpus callosum /
   external capsule); blob extending dorsolaterally from the core, only a touch ventral; never a crescent.
+
+## Striatal ipsi/contra % area (Fig 1F) — data and code
+`configs/histology_map/PS46-55/stroke_area/`: Priya's source workbook (`Stroke_quantification.xlsx`), its two sheets as
+CSV, and the notebook that draws Fig 1F (`Stroke_area_quantification_plots.ipynb`). Copy on MICROSCOPE:
+`stroke_orofacial_pipeline_outputs/vls_stroke_paper/histology_panels/fig1F_data/`.
+
+## Working files (2026-10-22 clean-up)
+Large intermediates were deleted after the repo and server copies were verified: the level-4 section crops
+(~490 MB; re-cut from the VS200 scans with `crop_series.py` / `crop_fixed.py`, which stay in
+`Documents/data/Immuno/PS46-55_stroke_map_work/`), draft review sheets and footprint caches.
