@@ -191,11 +191,12 @@
  {
   "atlas_box_top_mm": null,
   "cx_mm": 3.2661,
-  "cy_mm": 3.0087,
+  "cy_mm": 3.1587,
   "figure": 46,
   "pick": "PS55:e105",
   "rot_deg": -1,
-  "saved_at": "2026-10-22T17:23:08.095Z"
+  "saved_at": "2026-10-22T17:23:08.095Z",
+  "note": "moved down 0.15 mm (Priya 10-22: show only the lower half of the hippocampus)"
  },
  {
   "atlas_box_top_mm": null,
