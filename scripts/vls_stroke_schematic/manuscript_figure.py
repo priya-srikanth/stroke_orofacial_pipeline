@@ -56,9 +56,9 @@ for ax, (f, fb, allow_interp) in zip(axs, LEVELS):
         for g in getattr(U, 'geoms', [U]):
             if g.is_empty or not hasattr(g, 'exterior'): continue
             x, y = g.exterior.xy
-            if FILL and kind != 'interpolated' and not (SCHEME == 'severity' and a in GROUPS['severe']):
+            if FILL and kind != 'interpolated' and not (SCHEME == 'severity' and a not in GROUPS['mild']):   # Priya 10-22: fill mild only
                 grp = next((g for g, an in GROUPS.items() if a in an), None) if SCHEME == 'severity' else None
-                ax.fill(x, y, color=COLORS[a], alpha=FILL * {'severe': 0.0, 'moderate': 1.4, 'mild': 2.0}.get(grp, 1.0), lw=0)   # lighter under the big severe strokes so the small mild/moderate ones stay readable
+                ax.fill(x, y, color=COLORS[a], alpha=FILL * {'severe': 0.0, 'moderate': 0.0, 'mild': 2.0}.get(grp, 1.0), lw=0)   # lighter under the big severe strokes so the small mild/moderate ones stay readable
             ax.plot(x, y, color=COLORS[a], lw=(1.4 if SCHEME == 'severity' else 1.2) if kind != 'interpolated' else 0.9,
                     ls=(0, (2.5, 1.5)) if kind == 'interpolated' else STYLE[a], solid_joinstyle='round')
     yy, xx = np.nonzero(R['brain']); pp = R['ppm']
