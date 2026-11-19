@@ -63,7 +63,16 @@ Units = nominal 3.5 mm squares. The two side-to-below pairs have only 9-24 share
 judged (`MIN_PAIR_POSES`): their own estimates disagree by 0.4-0.7 deg while each camera's pose relative to video2
 agrees to <0.1 deg. PS51-55 rests on few poses (video4 8, video1 10): confirm it on session data before trusting it.
 
-## Next
+## Decision 2026-11-19: parked
+
+Priya: the LATERAL angle is the readout that matters, and 3-D would not change it. The front view (video2) sees
+lateral displacement directly. With 25 mm lenses at this working distance, the change in image scale over the
+tongue's few-mm depth range is a few percent. 3-D would add only depth (reach), which is not the question. The
+calibration stays on this branch in case depth or a below-view check is ever needed. One condition: if a 2-D
+"angle" divides lateral by vertical / extension length, a shorter post-stroke lick moves it; lateral displacement
+normalized to the spout separation does not.
+
+## Next (if resumed)
 
 1. Per-session check that the cameras had not moved relative to each other: triangulate rod tips / nose in all four
    views; residual at calibration level (~0.3 px) = consistent. (Spout positions cannot test this: hand-placed.)
