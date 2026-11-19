@@ -63,6 +63,52 @@ Units = nominal 3.5 mm squares. The two side-to-below pairs have only 9-24 share
 judged (`MIN_PAIR_POSES`): their own estimates disagree by 0.4-0.7 deg while each camera's pose relative to video2
 agrees to <0.1 deg. PS51-55 rests on few poses (video4 8, video1 10): confirm it on session data before trusting it.
 
+## Decision 2026-11-19 (afternoon): 3-D is not needed for the lick-direction conclusions
+
+Priya: "for now it seems to suggest we don't need to do 3d as it will not change conclusions". The evidence, PS46:
+the front-view angle the pipeline reports follows the tongue's true lateral position seen from below, per lick
+(median error 0.5-0.7 deg in every session) and in its pre -> post change (03-16 R trials +8.4 vs +7.4 deg
+predicted), and the shorter post-stroke licks do not bias it. 3-D would add depth (reach), which is not the question.
+
+Limits of that statement, to revisit if the question changes:
+
+* One animal (PS46), 6 sessions, first 5 licks per trial. Other animals were not checked (PS47-50 share the
+  calibration; PS51-55 have their own and were not run).
+* The front view does NOT measure reach. Its "extension" (vertical image distance) mixes reach with height; a 3-D or
+  below-view reach readout would need the work under "Next".
+* 3-D for PS46-50 after 03-16 needs per-session camera poses (a camera moved).
+
+The code stays on this branch (calibration, rods, lateral test, two-view clips) so the check can be re-run on another
+animal (`scripts/pose3d_2pram/lateral_test/run.sh`, then `analyze.py`).
+
+## Below-view tongue: lower cutoff (2026-11-19)
+
+Priya: the below-view tongue tracking is poor; would a lower likelihood cutoff (then cleaning, as for cohort-2 cam1)
+help? Measured with `scripts/pose3d_2pram/lateral_test/below_tongue_cutoff.py` (output
+`pose3d/lateral_test_20261119/below_tongue_cutoff_PS46.csv`): reference = the front view's cleaned tongue
+(fill_method 0 = out, 3 = in), all trial-window frames, PS46 six sessions.
+
+| below-view tongue kept | share of front-"out" frames recovered | share of front-"in" frames with a tongue point |
+|---|---|---|
+| p > 0.9 (what the test used) | 28-37 % | 1-5 % (03-16: 20 %) |
+| p > 0.4 | 47-57 % | 4-9 % (03-16: 34 %) |
+| p > 0.1 | 49-59 % | 4-10 % (03-16: 35 %) |
+| **p > 0.4 + position gate** (used by the clips) | **46-57 %** | **3-9 %** (03-16: 8 %) |
+
+* The points added between 0.4 and 0.9 are real tongue: 90-96 % fall on front-"out" frames and their x correlates with
+  the front-view tongue x (r 0.86-0.92, vs 0.92-0.95 above 0.9) -- sessions other than 03-16, whose added points
+  include the nose-tip errors below. Below 0.4 there is almost nothing left to gain.
+* **Nose-tip errors.** On 03-16 the model put the tongue on the nose tip (between the nostrils, ~126 px above the rod
+  tips) in 34 % of the frames where the tongue was in, often for 10+ frames at a time (54 trials). No real tongue point
+  lies more than ~40-50 px above the rod-tip line (front-"out" frames: 1st percentile -23 to -47 px; median +17 to +26),
+  so the gate drops anything more than 40 px above it. These points did NOT enter the lateral test (every lick it used
+  had its below-view point near the mouth: forward position < 0.6 rod spacings).
+* **About half of the tongue-out frames have no below-view tongue at any cutoff.** That is the limit of the zero-shot
+  cam1 model on this camera (and of short protrusions hidden under the jaw from below), not a cutoff problem. Cleaning
+  (the cohort-2 cam1 recipe bridges gaps <= 24 ms) would fill only short dropouts. A real gain needs a video4 model
+  fine-tuned from the cam1 weights with tongue / jaw labels on video4 frames (~100-200). Not needed for the lateral
+  conclusion.
+
 ## Lateral-angle test: result (2026-11-19)
 
 **The pipeline's front-view lick angle measures the tongue's lateral position, before and after the stroke.** PS46,
@@ -106,7 +152,7 @@ Priya asked for the test after all ("you can do the test"). Question: does the p
   `conda run`, calling its python.exe directly fails to load MKL); clips in `dlc`; the cam1 model in `lp`.
 * Work files (clips, cam1 predictions; not outputs): `C:/Users/SabatiniLab/lp_stage/pram_3d_20261118/latangle/`.
 
-**Two-view clips** (`scripts/pose3d_2pram/two_view_clips.py`, outputs `pose3d/clips/twoview_cam1zeroshot_20261119/`):
+**Two-view clips** (`scripts/pose3d_2pram/two_view_clips.py`; current outputs `pose3d/clips/twoview_cam1zeroshot_v2_20261119/`, see v2 below):
 PS46 03-10 (pre) and 03-16 (post), 2 trials per side; video2 + video4 with their 2-D keypoints, the tongue / jaw / nose triangulated from the two views with the PS46-50
 calibration and projected back (x), and flat 3-D panels (from below: lateral x forward; from the front: lateral x
 up; origin = rod-tip midpoint, units nominal mm). Front-view tongue / jaw = the pipeline's CLEANED traces mapped back
@@ -117,7 +163,17 @@ tongue 11 px (calibration: 0.3 px) -- the two models' labels are not the same ph
 the below-view snout tip), so the 3-D points are good to roughly 0.5-1 nominal mm: fine for illustration, not for mm
 measurements. The frame offset cannot be refitted on these keypoints (error flat over +-20 frames) and is fixed at 0.
 
-## Decision 2026-11-19 (morning): parked -- superseded the same day by the test above
+**Clips v2 (2026-11-19, Priya: "render so no bodyparts are cut off").** v1 used a fixed box around the face: long
+front-view licks left the front tile and the below-view jaw left the below tile. v2 sizes each tile as a square that
+holds every point drawn in the rendered trials (2-D labels including the cleaned tongue at full extension, the
+reprojected 3-D points, rods) plus 40 px; the below view is drawn from the full 800-px frame, not the model's 600-px
+crop. The front tile now spans eyes to chin (~610 px; long licks reach the bottom edge of the 600-px front frame
+itself). Below-view cutoffs: tongue p > 0.4 + the nose-tip gate, jaw 0.6, nose 0.9 (were all 0.9). 03-10: tongue in 3-D
+in 34 % of trial-window frames (v1 23 %), jaw 94 % (71 %). 03-16: tongue 23 %, jaw 95 %. Same sessions (03-10 pre,
+03-16 post), 2 trials per side; the trials picked differ from v1 (picked by two-view tongue frames). v1 clips
+(`twoview_cam1zeroshot_20261119/`) are superseded, kept until Priya approves deleting them.
+
+## Decision 2026-11-19 (morning): parked -- superseded the same day by the test above (and confirmed in the afternoon decision)
 
 Priya: the LATERAL angle is the readout that matters, and 3-D would not change it. The front view (video2) sees
 lateral displacement directly. With 25 mm lenses at this working distance, the change in image scale over the

@@ -56,7 +56,15 @@ BGR = {
     "rod": (255, 200, 0),
 }
 HEX = {"nose": "#ffd700", "jaw": "#3cdc3c", "tongue": "#ff3c3c", "rod": "#00c8ff"}
-P_MIN = 0.9  # widefield cam1 LP model (video4)
+#: widefield cam1 LP model on video4, per-part cutoffs. Tongue 0.4 + a position gate (below_tongue_cutoff.py, 11-19:
+#: vs the front view's cleaned tongue, p 0.9 -> 0.4 raises recall of front-"out" frames from 28-37 % to 46-57 %, the
+#: added points 90-96 % on tongue-out frames, lateral r with the front 0.86-0.92; below 0.4 adds ~1-2 %). Jaw 0.6 =
+#: the cohort-2 cam1 analysis cutoff. Nose stays 0.9.
+P4 = {"tongue": 0.4, "jaw": 0.6, "nose": 0.9}
+#: the zero-shot model puts "tongue" on the NOSE TIP (between the nostrils, ~126 px above the rod tips) while the tongue
+#: is in -- PS46 03-16: 34 % of front-"in" frames. A real tongue point is never > 40 px above the rod-tip line
+#: (front-"out" frames: p1 -23 .. -47 px, p50 +17 .. +26 px; 03-16 p1 -114 = those nose frames).
+TONGUE_GATE_PX = 40.0
 #: 2025 DLC (video2), RAW labels (nose, eyes, rods): this cohort used low cutoffs (Priya 11-19: "0.6 or 0.5").
 #: Tongue and jaw do not use raw DLC at all: they come from the pipeline's CLEANED traces (export_front_cleaned.py).
 DLC_P = {}
@@ -86,6 +94,12 @@ def v4crop_to_cal(xy):
 def cal_to_v4crop(xy):
     xy = np.asarray(xy, float)
     return np.stack([799.0 - xy[..., 0] - CROP_X0, 599.0 - xy[..., 1]], -1)
+
+
+def cal_to_v4full(xy):
+    """calibration video4 frame -> full-width cam1 orientation (vertical flip of raw)."""
+    xy = np.asarray(xy, float)
+    return np.stack([799.0 - xy[..., 0], 599.0 - xy[..., 1]], -1)
 
 
 def load_dlc(animal, date):
@@ -148,6 +162,15 @@ def run(session, work, out_dir, n_per_side=1):
         f2[ok] = f2_of_trig[t[ok]]
         return f2
 
+    rod_y = float(rods4[:, 1].mean())
+
+    def ok4(part):
+        """video4 frames whose `part` label is kept (cutoff; tongue also the nose-tip gate)."""
+        m = L4[part][:, 2] > P4[part]
+        if part == "tongue":
+            m &= L4[part][:, 1] - rod_y > -TONGUE_GATE_PX
+        return m
+
     def views(part, f2):
         good = f2 >= 0
         a2 = np.full((len(f2), 2), np.nan)
@@ -157,7 +180,7 @@ def run(session, work, out_dir, n_per_side=1):
             a2[good] = np.where(
                 D2[part][f2[good], 2:3] > dlc_p(part), D2[part][f2[good], :2], np.nan
             )
-        a4 = np.where(L4[part][:, 2:3] > P_MIN, v4crop_to_cal(L4[part][:, :2]), np.nan)
+        a4 = np.where(ok4(part)[:, None], v4crop_to_cal(L4[part][:, :2]), np.nan)
         return a2, a4
 
     # Frame offset: fixed at 0 (trigger index), the value the board fitted for video4 vs video2 in calibration_2.
@@ -186,7 +209,7 @@ def run(session, work, out_dir, n_per_side=1):
         if best is None or er.mean() < best[2].mean():
             best = (order, Xr, er)
     order, rodX, rod_err = best
-    rods4_disp = rods4[list(order)] - [CROP_X0, 0]
+    rods4_full = rods4[list(order)]
 
     X, E = {}, {}
     for p in PARTS3D:
@@ -243,26 +266,49 @@ def run(session, work, out_dir, n_per_side=1):
     epoch = "pre" if date < STROKE[animal] else "post"
     cap2 = cv2.VideoCapture(glob.glob(f"{RAW}/{date}/{animal}/video2_*.avi")[0])
     cap4 = cv2.VideoCapture(glob.glob(f"{RAW}/{date}/{animal}/video4_*.avi")[0])
-    # front-view crop: square around eyes, nose and rods
-    pts2 = np.array(
-        [
-            np.nanmedian(D2[b][D2[b][:, 2] > dlc_p(b), :2], 0)
-            for b in ("L_eye", "R_eye", "nose", "L_spout", "R_spout")
-        ]
-    )
-    c2 = pts2.mean(0)
-    h2 = int(max(np.ptp(pts2[:, 0]), np.ptp(pts2[:, 1])) / 2 + 90)
-    box2 = (int(c2[0] - h2), int(c2[1] - h2), 2 * h2)
-    # below-view crop: square around nose and rods (cam1-orientation crop coords)
-    nose4 = np.nanmedian(L4["nose"][L4["nose"][:, 2] > P_MIN, :2], 0)
-    pts4 = np.vstack([rods4_disp, nose4])
-    c4 = pts4.mean(0)
-    h4 = int(max(np.ptp(pts4[:, 0]), np.ptp(pts4[:, 1])) / 2 + 110)
-    box4 = (int(c4[0] - h4), int(c4[1] - h4), 2 * h4)
+    # Crop boxes: a square that holds EVERY point drawn in the picked trials (2-D labels incl. the cleaned tongue at
+    # full extension, the 3-D points reprojected, rods), plus a margin -- a fixed box around the face cut off long
+    # front-view licks and the below-view jaw (Priya 11-19). video4 is drawn from the FULL-width flipped frame (not
+    # the model's 600-px crop) so the box can extend past it; all video4 coordinates below are full-width cam1.
+    rows_all = np.concatenate([np.arange(t * per_trial, (t + 1) * per_trial) for t in picks])
+    rows_all = rows_all[f2[rows_all] >= 0]
+    pts2, pts4 = [rod2], [rods4_full]
+    ff = f2[rows_all]
+    for b in ("L_eye", "R_eye", "L_spout", "R_spout", *PARTS3D):
+        if b in CLEANED:
+            pts2.append(FC[f"{b}_xy"][ff])
+        else:
+            q = D2[b][ff]
+            pts2.append(q[q[:, 2] > dlc_p(b), :2])
+    for p in PARTS3D:
+        q = L4[p][rows_all]
+        pts4.append(q[ok4(p)[rows_all], :2] + [CROP_X0, 0])
+        ok = np.isfinite(E[p][rows_all])
+        if ok.any():
+            rp = cg.project(X[p][rows_all[ok]]).reshape(2, -1, 2)
+            pts2.append(rp[0])
+            pts4.append(cal_to_v4full(rp[1]))
+
+    def fit_box(pts, margin):
+        pts = np.vstack(pts)
+        pts = pts[np.all(np.isfinite(pts), 1)]
+        lo, hi = pts.min(0) - margin, pts.max(0) + margin
+        s = int(np.ceil(max(hi - lo)))
+        c = (lo + hi) / 2
+        return (int(np.round(c[0] - s / 2)), int(np.round(c[1] - s / 2)), s)
+
+    box2, box4 = fit_box(pts2, 40), fit_box(pts4, 40)
+    print(f"{session}: front box {box2}, below box {box4} (x0, y0, side px)", flush=True)
 
     allpts = np.vstack([XF["tongue"], XF["jaw"], XF["nose"], rodF])
     lim = np.nanpercentile(allpts, [0.5, 99.5], axis=0)
-    lim = np.stack([np.minimum(lim[0], rodF.min(0)), np.maximum(lim[1], rodF.max(0))]) + [[-1], [1]]
+    shown = np.vstack([XF[p][rows_all] for p in PARTS3D])  # never clip a 3-D point that is drawn
+    lim = np.stack(
+        [
+            np.nanmin(np.vstack([lim[0], rodF.min(0), np.nanmin(shown, 0)]), 0),
+            np.nanmax(np.vstack([lim[1], rodF.max(0), np.nanmax(shown, 0)]), 0),
+        ]
+    ) + [[-1], [1]]
 
     def crop(im, box):
         x0, y0, s = box
@@ -294,10 +340,10 @@ def run(session, work, out_dir, n_per_side=1):
             cap2.set(cv2.CAP_PROP_POS_FRAMES, int(f2[r]))
             ok2, im2 = cap2.read()
             cap4.set(cv2.CAP_PROP_POS_FRAMES, int(idx4[r]))
-            ok4, im4 = cap4.read()
-            if not (ok2 and ok4):
+            okr4, im4 = cap4.read()
+            if not (ok2 and okr4):
                 continue
-            im4 = np.ascontiguousarray(im4[::-1, CROP_X0 : CROP_X0 + 600])
+            im4 = np.ascontiguousarray(im4[::-1])  # cam1 orientation, full width
             t2, s2 = crop(im2, box2)
             t4, s4 = crop(im4, box4)
             for b in ("L_spout", "R_spout"):
@@ -318,7 +364,7 @@ def run(session, work, out_dir, n_per_side=1):
                     BGR["eye"],
                     "dot",
                 )
-            for rp in rods4_disp:
+            for rp in rods4_full:
                 mark(t4, rp, box4, s4, BGR["rod"], "ring")
             for p in PARTS3D:
                 if p in CLEANED:
@@ -326,12 +372,12 @@ def run(session, work, out_dir, n_per_side=1):
                     mark(t2, FC[f"{p}_xy"][f2[r]], box2, s2, BGR[p], "dot" if fl == 0 else "iring")
                 elif D2[p][f2[r], 2] > dlc_p(p):
                     mark(t2, D2[p][f2[r], :2], box2, s2, BGR[p], "dot")
-                if L4[p][r, 2] > P_MIN:
-                    mark(t4, L4[p][r, :2], box4, s4, BGR[p], "dot")
+                if ok4(p)[r]:
+                    mark(t4, L4[p][r, :2] + [CROP_X0, 0], box4, s4, BGR[p], "dot")
                 if np.isfinite(E[p][r]):
                     rep = cg.project(X[p][r][None]).reshape(2, 2)
                     mark(t2, rep[0], box2, s2, BGR[p], "x")
-                    mark(t4, cal_to_v4crop(rep[1]), box4, s4, BGR[p], "x")
+                    mark(t4, cal_to_v4full(rep[1]), box4, s4, BGR[p], "x")
             for t, lab in (
                 (t2, "video2 (front) - DLC 2025"),
                 (t4, "video4 (below) - widefield cam1 model"),
