@@ -195,6 +195,7 @@ def _persession_from_pertrial(df: pd.DataFrame, endpoint: str) -> pd.DataFrame:
 
 def load_scalar_family(
     resolver: PathResolver, *, filter_variant: str = "filtered_v1",
+    endpoints: list[str] | None = None,
 ) -> pd.DataFrame:
     """Scalar endpoints -> per-session long-form, scoped + filtered.
 
@@ -204,6 +205,10 @@ def load_scalar_family(
     (the QC-filtered tongue family), else falls back to the unfiltered
     ``stats/inputs/<ep>/`` (jaw / spout-behavior have no filtered tree and are
     unfiltered in their canonical figures too).
+
+    ``endpoints`` (explicit opt-in, e.g. the xy-distance pair, 2026-11-19)
+    restricts the load to those slugs and bypasses the figured-scope check,
+    since a new endpoint has no phenotype-pooled figure dir yet.
     """
     inp = resolver.pipeline_outputs(subdir="stats") / "inputs"
     no_filter_root = inp / "no_filter"
@@ -215,8 +220,13 @@ def load_scalar_family(
     ) if no_filter_root.is_dir() else []
     frames = []
     n_filtered = n_unfiltered = 0
+    if endpoints is not None:
+        missing = sorted(set(endpoints) - set(eps))
+        if missing:
+            raise FileNotFoundError(f"no no_filter inputs for {missing}")
+        eps = sorted(endpoints)
     for ep in eps:
-        if ep not in figured or ep in SCALAR_DIAGNOSTIC_DROP:
+        if endpoints is None and (ep not in figured or ep in SCALAR_DIAGNOSTIC_DROP):
             continue
         filt_dir = inp / "filtered_v1" / ep
         use_filtered = filter_variant == "filtered_v1" and filt_dir.is_dir()
@@ -519,9 +529,36 @@ def main(argv: list[str] | None = None) -> int:
                    help="W-2 per-session source: v2 (published) or v2_loo "
                         "(leave-one-out pre reference). v2_loo writes "
                         "pooled_phenotype_stats_w2loo.csv instead.")
+    p.add_argument("--endpoints", nargs="*", default=None,
+                   help="Scalar family only: restrict to these slugs (skips "
+                        "the figured-scope filter). Use with --out-suffix so "
+                        "the subset is its own BH family in its own file.")
+    p.add_argument("--out-suffix", default="",
+                   help="Appended to the sheet stem, e.g. 'xy_dist' -> "
+                        "pooled_phenotype_stats_xy_dist.csv.")
+    p.add_argument("--refuse-existing", action="store_true",
+                   help="Abort (before computing) if the output sheet exists.")
     args = p.parse_args(argv)
+    if args.endpoints is not None and (
+            args.families != ["scalar"] or not args.out_suffix):
+        p.error("--endpoints needs --families scalar and an --out-suffix "
+                "(a subset must not replace the full sheet)")
 
     resolver = PathResolver()
+    stem = "pooled_phenotype_stats"
+    if args.w2_version != "v2":
+        stem += "_w2loo"
+    if args.within_animal:
+        stem += "_within_animal"
+    if args.out_suffix:
+        stem += f"_{args.out_suffix}"
+    if args.refuse_existing:
+        res_base = resolver.pipeline_outputs(subdir="stats") / "results" / "phenotype_pooled"
+        clash = [res_base / sc / f"{stem}{ext}" for sc in args.scopes
+                 for ext in (".csv", ".xlsx") if (res_base / sc / f"{stem}{ext}").exists()]
+        if clash:
+            log.error("refusing to overwrite: %s", clash)
+            return 2
     animals = sorted(load_animals().keys())
     filtered = args.filter_variant == "filtered_v1"
 
@@ -535,7 +572,9 @@ def main(argv: list[str] | None = None) -> int:
     base_long = []
     if "scalar" in args.families:
         log.info("loading scalar family ...")
-        base_long.append(load_scalar_family(resolver, filter_variant=args.filter_variant))
+        base_long.append(load_scalar_family(
+            resolver, filter_variant=args.filter_variant,
+            endpoints=args.endpoints))
     if "phase_aligned_endpoints" in args.families:
         log.info("loading phase_aligned family ...")
         base_long.append(load_phase_aligned_family(
@@ -576,11 +615,6 @@ def main(argv: list[str] | None = None) -> int:
         out_dir = (resolver.pipeline_outputs(subdir="stats") / "results"
                    / "phenotype_pooled" / scope)
         out_dir.mkdir(parents=True, exist_ok=True)
-        stem = "pooled_phenotype_stats"
-        if args.w2_version != "v2":
-            stem += "_w2loo"
-        if args.within_animal:
-            stem += "_within_animal"
         out_path = out_dir / f"{stem}.csv"
         res.to_csv(out_path, index=False)
         _write_highlighted_xlsx(res, out_dir / f"{stem}.xlsx")

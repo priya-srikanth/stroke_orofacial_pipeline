@@ -751,6 +751,112 @@ def _materialize_tongue_cue_relative(
     return rows
 
 
+# xy protrusion distance (2026-11-19, DECISIONS.md "xy tongue-protrusion
+# distance"). Euclidean distance of the tongue tip from the cleaned-trace mouth
+# origin (``kinematics_baselines`` (x0, y0); the frame ``lick1_y_peak`` and
+# ``lick1_x_at_ypeak`` are already in), taken at each lick's Y-peak frame.
+# Kept as its own small slug set: these endpoints are materialized from the
+# existing per-trial JSON + lick_events parquet, so no upstream re-run is needed.
+_TONGUE_XY_DIST_SLUGS: frozenset[str] = frozenset({
+    "tongue_lick1_xy_peak",
+    "tongue_median_xy_peak_per_trial",
+})
+
+
+def _xy_dist(x: Any, y: Any) -> float | None:
+    """``hypot(x, y)``, or None if either coordinate is missing / non-finite."""
+    if x is None or y is None:
+        return None
+    xf, yf = float(x), float(y)
+    if not (np.isfinite(xf) and np.isfinite(yf)):
+        return None
+    return float(np.hypot(xf, yf))
+
+
+def _lick_events_path(resolver: PathResolver, animal: str, date_label: str) -> Path:
+    """Path of the v7 kept-lick parquet for one tongue session.
+
+    Built here rather than via ``resolver.lick_events`` because that method
+    creates the parent directory eagerly (it is a WRITE path helper); a read
+    must not create directories on the share for an animal with no file.
+    """
+    return (
+        resolver.pipeline_outputs(subdir="dlc_kinematics") / "lick_events"
+        / "tongue" / animal / f"{date_label}.parquet"
+    )
+
+
+def _median_xy_per_trial(
+    lick_events: pd.DataFrame, trial_indices: list[int],
+) -> list[float | None]:
+    """Per trial: median ``hypot(x, y)`` over EVERY kept lick in the trial.
+
+    ``lick_events`` holds all v7-kept licks in the [70, 3000] ms lick window
+    (the window lick 1/2 and the velocity vectors use), not only the first 5:
+    ``peak_velocity_per_lick`` vectors are capped at 5 licks, so this median is
+    deliberately NOT the same lick set as ``tongue_median_vxy_peak_per_trial``.
+    A trial with no kept lick gets None (emitted as a sentinel).
+    """
+    if lick_events.empty:
+        return [None] * len(trial_indices)
+    d = np.hypot(lick_events["x"].to_numpy(float), lick_events["y"].to_numpy(float))
+    by_trial = (
+        pd.Series(d, index=lick_events["trial"].to_numpy())
+        .replace([np.inf, -np.inf], np.nan).dropna()
+        .groupby(level=0).median()
+    )
+    return [
+        float(by_trial[ti]) if ti in by_trial.index else None
+        for ti in (int(t) for t in trial_indices)
+    ]
+
+
+def _materialize_tongue_xy_dist(
+    spec: EndpointSpec,
+    animal: str,
+    animal_info: AnimalInfo,
+    session_scalars: _SessionScalars,
+    resolver: PathResolver,
+) -> list[dict[str, Any]]:
+    """One row per (date, trial_idx, side) for an xy-distance tongue endpoint.
+
+    - ``tongue_lick1_xy_peak``: ``hypot(lick1_x_at_ypeak, lick1_y_peak)`` from
+      the per-trial JSON, i.e. distance at the existing lick-1 Y-peak frame.
+    - ``tongue_median_xy_peak_per_trial``: median over all kept licks of
+      ``hypot(x, y)`` at each lick's Y-peak, from the lick_events parquet.
+      Sessions without a lick_events file are skipped (as a missing JSON is).
+    """
+    rows: list[dict[str, Any]] = []
+    for date_label in session_scalars.dates:
+        payload = _load_tongue_pertrial_json(animal, date_label, resolver)
+        if payload is None:
+            continue
+        if spec.slug == "tongue_lick1_xy_peak":
+            m = payload["tongue"]["lick1_lick2_metrics"]
+            values = [
+                _xy_dist(x, y)
+                for x, y in zip(m["lick1_x_at_ypeak"], m["lick1_y_peak"])
+            ]
+        elif spec.slug == "tongue_median_xy_peak_per_trial":
+            le_path = _lick_events_path(resolver, animal, date_label)
+            if not le_path.exists():
+                print(f"  {spec.slug}: no lick_events for {animal}/{date_label}; skipped")
+                continue
+            values = _median_xy_per_trial(
+                pd.read_parquet(le_path, columns=["trial", "x", "y"]),
+                payload["trial_indices"],
+            )
+        else:  # pragma: no cover — guarded by the dispatcher
+            raise KeyError(spec.slug)
+        rows.extend(_emit_tongue_per_trial_rows(
+            payload=payload, spec=spec, animal=animal,
+            animal_info=animal_info, date_label=date_label,
+            session_scalars=session_scalars,
+            value_getter=lambda _p, _v=values: _v,
+        ))
+    return rows
+
+
 def _emit_tongue_per_trial_rows(
     *,
     payload: dict[str, Any],
@@ -1040,6 +1146,12 @@ def _dispatch_materializer(
         return _materialize_latency_hist(spec, animal, animal_info, session_scalars)
     if spec.slug == "lickRate_byTrial":
         return _materialize_lick_rate_by_trial(spec, animal, animal_info, session_scalars)
+    # Before ``is_derived``: the xy slugs are derived too, but are not
+    # reductions of a JSON vector, so they have no _TONGUE_DERIVED_PATH entry.
+    if spec.slug in _TONGUE_XY_DIST_SLUGS:
+        return _materialize_tongue_xy_dist(
+            spec, animal, animal_info, session_scalars, resolver,
+        )
     if spec.is_derived:
         return _materialize_tongue_derived(
             spec, animal, animal_info, session_scalars, resolver,
@@ -1363,6 +1475,16 @@ def _parse_args() -> argparse.Namespace:
             "mode (filter is tongue-only by design)."
         ),
     )
+    p.add_argument(
+        "--filter-manifest-dir", type=Path, default=None,
+        help=(
+            "Directory for the SessionFilter + TrialFilter manifests in a "
+            "filtered variant. Default: stats/inputs/<variant>/_manifests/. "
+            "Set it for a partial (--endpoints) run: the manifests are "
+            "rewritten whole, so a partial run at the default path would "
+            "replace the full-inventory manifests with a 2-endpoint subset."
+        ),
+    )
     return p.parse_args()
 
 
@@ -1573,7 +1695,7 @@ def main() -> int:
     # Filtered-variant: write the SessionFilter + TrialFilter manifests under
     # stats/inputs/filtered_v1/_manifests/ alongside the filtered parquet tree.
     if variant:
-        man_dir = (
+        man_dir = args.filter_manifest_dir or (
             resolver.pipeline_outputs(subdir="stats") / "inputs" / variant
             / "_manifests"
         )
