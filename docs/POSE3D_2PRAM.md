@@ -72,8 +72,9 @@ predicted), and the shorter post-stroke licks do not bias it. 3-D would add dept
 
 Limits of that statement, to revisit if the question changes:
 
-* One animal (PS46), 6 sessions, first 5 licks per trial. Other animals were not checked (PS47-50 share the
-  calibration; PS51-55 have their own and were not run).
+* Checked on PS46 and PS50 (6 sessions each, first 5 licks per trial; PS50 below "PS50 (second animal)"). PS55
+  (other calibration) is being run on late post sessions: it barely licked for 2.5 weeks after its stroke, so it
+  has no early post session to test.
 * The front view does NOT measure reach. Its "extension" (vertical image distance) mixes reach with height; a 3-D or
   below-view reach readout would need the work under "Next".
 * 3-D for PS46-50 after 03-16 needs per-session camera poses (a camera moved).
@@ -127,6 +128,38 @@ help? Measured with `scripts/pose3d_2pram/lateral_test/below_tongue_cutoff.py` (
 
 Outputs: `pose3d/lateral_test_20261119/` (licks_PS46.csv per lick, sessions_PS46.csv, lateral_test_PS46.png,
 results_PS46.txt). Code: `scripts/pose3d_2pram/lateral_test/` (`run.sh` events -> clips -> cam1 model; `analyze.py`).
+
+### PS50 (second animal, 2026-11-19)
+
+Same conclusion, with a noisier below view. 2,200 licks in both views (03-20/21/22 pre, 03-24/25/26 post; stroke
+03-23).
+
+* **Fit-free comparison** (`fitfree.py`; both views' lateral position in rod-tip spacings from the rod midpoint, change
+  from the pre mean per session x trial side, no fit between views): the post-stroke changes agree within 0.03
+  spacings in 5 of 6 session x side rows, including the large one, 03-24 R trials (front +0.65, below +0.62: R-trial
+  licks moved to the L side; 80 % of them on the L side in the front view, 77 % in the below view). The exception is
+  03-25 R (front +0.19, below +0.27). PS46 by the same measure: 03-16 R +0.54 vs +0.60, all others within 0.06.
+* **The pre-fit degrees understate changes when the below view is noisy.** PS50's pre fit (A2 = 9.2 * L4 - 0.4) has
+  r = 0.73, so the below-view noise flattens the slope and the predicted angles shrink toward zero (03-24 R: +10.0 deg
+  observed vs +5.4 predicted; pre R sessions -5.6 vs -3.2). For PS46 (r ~0.95) this did not matter. Use the fit-free
+  table for the comparison.
+* **Below-view errors.** Per lick r = 0.39-0.80 (PS46 0.93-0.97 apart from 03-16), median error vs the pre fit
+  2.0-2.6 deg (PS46 0.5-0.7), side disagreement 7.9 % of clear licks (PS46 1.5 %). Part of this is the zero-shot model
+  labeling points that cannot be the tongue (up to 2.7 spacings lateral, 1.9 behind the rod line). Keeping licks whose
+  below-view point is near the mouth (|lateral| <= 1, |forward| <= 0.6 spacings; 2,114 of 2,200 licks; drops 3 of
+  PS46's 2,436) raises r to 0.74-0.92 and leaves the fit-free changes as above (numbers above are the gated ones;
+  ungated 03-24 R +0.65 vs +0.59, 03-25 R +0.18 vs +0.37).
+* **Rod tips: three manual overrides** (`tips_override.py`, checked by eye on
+  `rod_tips/rods_check_ps5055.png`): PS50 03-26 left rod (dim face under it, the auto tip ran to the image bottom) and
+  PS55 05-02 / 05-03 (water drops on the rod ends). Each override is recorded in its tips JSON.
+
+Outputs (same folder): licks_PS50.csv, sessions_PS50.csv, lateral_test_PS50.png, results_PS50.txt,
+fitfree_PS46_PS50.csv (all and gated rows), rod_tips/ (PS50 + PS55 tips JSON and the check image).
+
+PS55: 04-23/26/29 pre ran; 05-01 failed in prep (video4 has one frame more than its timestamp file, 908,377 vs
+908,376); 05-02 / 05-03 ran but the front-view pipeline has no licks for them (PS55 licked 0-23 times per session
+05-01..05-17, so those sessions are excluded upstream). Late post sessions 05-28, 05-29, 06-10 (313-412 licks) are
+running.
 
 **A camera moved between 03-16 and 03-20.** In the two-view triangulation the rod tips (static) reproject at 0-12 px
 on 03-10 / 03-16 but 29-37 px on 03-20 and 03-24 (every body part ~35-39 px, at any frame offset): the
