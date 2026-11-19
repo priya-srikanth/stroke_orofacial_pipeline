@@ -173,6 +173,11 @@ in 34 % of trial-window frames (v1 23 %), jaw 94 % (71 %). 03-16: tongue 23 %, j
 03-16 post), 2 trials per side; the trials picked differ from v1 (picked by two-view tongue frames). v1 clips
 (`twoview_cam1zeroshot_20261119/`: 8 clips + 4 summaries) were deleted 2026-11-19 with Priya's approval; v2 holds the
 03-20 / 03-24 camera-move summaries too (rods 29-37 px, identical to v1).
+Later the same day (Priya: "align the projections with camera angle"): the two 3-D panels are now drawn as each camera
+sees them -- an orthographic projection onto that camera's image axes from the calibration, the front-camera panel on
+the LEFT under video2, the below-camera panel on the RIGHT under video4 (cam1 orientation = the calibration frame
+rotated 180 deg). Checked by eye: nose, rods, tongue and jaw sit where they do in the video above. The v2 clips were
+re-rendered in place with this layout (same trials).
 
 ## Decision 2026-11-19 (morning): parked -- superseded the same day by the test above (and confirmed in the afternoon decision)
 

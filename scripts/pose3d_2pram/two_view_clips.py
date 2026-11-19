@@ -2,9 +2,10 @@
 
 Top: video2 (front; 2025 DLC: tongue / jaw = the pipeline's cleaned traces, small open circle = interpolated frame;
 nose / eyes / rods = raw DLC, p > 0.6) and video4 (from below, shown in widefield-cam1 orientation; widefield cam1 LP
-model run zero-shot, p > 0.9) with their 2-D keypoints (dot), the rod tips (rings) and the tongue / jaw / nose
-3-D point projected back into each camera (x). Bottom: the 3-D points in a per-session frame, projected flat from below
-(lateral x forward) and from the front (lateral x up): rods as rings, nose, and the last 120 ms of tongue and jaw.
+model run zero-shot; tongue p > 0.4 + nose-tip gate, jaw 0.6, nose 0.9) with their 2-D keypoints (dot), the rod tips (rings) and the tongue / jaw / nose
+3-D point projected back into each camera (x). Bottom: the 3-D points seen along each camera's
+axis, each under its own video in the same orientation (left = front camera, right = below camera; orthographic
+projection onto the camera's image axes): rods as rings, nose, and the last 120 ms of tongue and jaw.
 
 3-D = linear triangulation of the two views with the batch calibration (pose3d/calibration/<batch>/calibration.toml).
 The two models do not share label definitions (front-view DLC vs below-view widefield cam1 labels), so a 3-D point is
@@ -12,8 +13,7 @@ The two models do not share label definitions (front-view DLC vs below-view wide
 Frame pairing: trigger index (counter - counter[0]), offset 0 (the board's video4-vs-video2 value; it cannot be refitted
 on these keypoints, see run()).
 
-Session frame: origin = midpoint of the two rod tips; x = lateral (DLC L_spout -> R_spout); z = up (away from the
-below camera); y = forward (toward the nose). Units = nominal mm (board square assumed 3.5 mm; true scale unknown,
+3-D panels: origin = midpoint of the two rod tips; axes = the camera's image right / up. Units = nominal mm (board square assumed 3.5 mm; true scale unknown,
 angles unaffected).
 
 Inputs come from the lateral-angle test (trial windows tone .. tone + 1 s; per-session index npz from prep.py, LP
@@ -215,24 +215,7 @@ def run(session, work, out_dir, n_per_side=1):
     for p in PARTS3D:
         a2, a4 = views(p, f2)
         X[p], E[p] = triangulate(cg, a2, a4)
-    # session frame: x = lateral (rod L_spout -> R_spout), z = up (away from the below camera, orthogonal to x),
-    # y = forward (sign: the nose has y > 0). Display frame only -- not necessarily right-handed.
-    origin = rodX.mean(0)
-    ex = (rodX[1] - rodX[0]) / np.linalg.norm(rodX[1] - rodX[0])
-    M4 = cg.cameras[[c.get_name() for c in cg.cameras].index("video4")].get_extrinsics_mat()
-    down = (-M4[:3, :3].T @ M4[:3, 3]) - origin
-    ez = -(down - down.dot(ex) * ex)
-    ez /= np.linalg.norm(ez)
-    ey = np.cross(ez, ex)
-    if (np.nanmedian(X["nose"], 0) - origin).dot(ey) < 0:
-        ey = -ey
-    R = np.stack([ex, ey, ez])
-
-    def to_frame(P):
-        return (np.asarray(P) - origin) @ R.T
-
-    XF = {p: to_frame(X[p]) for p in PARTS3D}
-    rodF = to_frame(rodX)
+    origin = rodX.mean(0)  # 3-D panels are centered on the rod-tip midpoint
     summary = {
         "session": session,
         "frame_offset_video4_minus_video2": offset,
@@ -300,15 +283,33 @@ def run(session, work, out_dir, n_per_side=1):
     box2, box4 = fit_box(pts2, 40), fit_box(pts4, 40)
     print(f"{session}: front box {box2}, below box {box4} (x0, y0, side px)", flush=True)
 
-    allpts = np.vstack([XF["tongue"], XF["jaw"], XF["nose"], rodF])
-    lim = np.nanpercentile(allpts, [0.5, 99.5], axis=0)
-    shown = np.vstack([XF[p][rows_all] for p in PARTS3D])  # never clip a 3-D point that is drawn
-    lim = np.stack(
-        [
-            np.nanmin(np.vstack([lim[0], rodF.min(0), np.nanmin(shown, 0)]), 0),
-            np.nanmax(np.vstack([lim[1], rodF.max(0), np.nanmax(shown, 0)]), 0),
-        ]
-    ) + [[-1], [1]]
+    # 3-D panels drawn as each CAMERA sees them (Priya 11-19: "align the projections with camera angle"): an
+    # orthographic projection onto the camera's own image axes (calibration rotation), origin at the rod-tip midpoint,
+    # nominal mm. Same orientation as the video tile above it: video2 is shown as recorded (image x right, y down);
+    # video4 is shown in cam1 orientation = the calibration frame rotated 180 deg (calibration = raw horizontally
+    # flipped, display = raw vertically flipped), hence the sign flips.
+    names = [c.get_name() for c in cg.cameras]
+
+    def cam_rot(name):
+        return cg.cameras[names.index(name)].get_extrinsics_mat()[:3, :3]
+
+    R2c, R4c = cam_rot("video2"), cam_rot("video4")
+    PANELS = (  # (title, axes rows: horizontal, vertical-up), left = under video2, right = under video4
+        ("3-D, seen along the front camera (video2)", np.stack([R2c[0], -R2c[1]])),
+        ("3-D, seen along the below camera (video4)", np.stack([-R4c[0], R4c[1]])),
+    )
+
+    def proj(P, A):
+        return (np.asarray(P) - origin) @ A.T
+
+    plims = []
+    for _, A in PANELS:
+        allp = np.vstack([proj(X[p], A) for p in PARTS3D] + [proj(rodX, A)])
+        lo_, hi_ = np.nanpercentile(allp, [0.5, 99.5], axis=0)
+        shown = np.vstack([proj(X[p][rows_all], A) for p in PARTS3D] + [proj(rodX, A)])
+        lo_ = np.fmin(lo_, np.nanmin(shown, 0)) - 1  # never clip a point that is drawn
+        hi_ = np.fmax(hi_, np.nanmax(shown, 0)) + 1
+        plims.append((lo_, hi_))
 
     def crop(im, box):
         x0, y0, s = box
@@ -389,32 +390,28 @@ def run(session, work, out_dir, n_per_side=1):
 
             fig, axs = plt.subplots(1, 2, figsize=(2 * TILE / 100, 3.6), dpi=100)
             lo = max(0, j - TRAIL)
-            for ax, (a, b, ttl, yl) in zip(
-                axs,
-                (
-                    (0, 1, "3-D from below", "forward (nominal mm)"),
-                    (0, 2, "3-D from the front", "up (nominal mm)"),
-                ),
-            ):
+            for ax, (ttl, A), (plo, phi) in zip(axs, PANELS, plims):
+                rp_ = proj(rodX, A)
                 ax.scatter(
-                    rodF[:, a],
-                    rodF[:, b],
+                    rp_[:, 0],
+                    rp_[:, 1],
                     s=70,
                     facecolors="none",
                     edgecolors=HEX["rod"],
                     linewidths=1.5,
                 )
                 for p in ("tongue", "jaw"):
-                    trl = XF[p][rows[lo : j + 1]]
-                    ax.plot(trl[:, a], trl[:, b], c=HEX[p], lw=1.2, alpha=0.7)
+                    trl = proj(X[p][rows[lo : j + 1]], A)
+                    ax.plot(trl[:, 0], trl[:, 1], c=HEX[p], lw=1.2, alpha=0.7)
                 for p in PARTS3D:
-                    if np.all(np.isfinite(XF[p][r])):
-                        ax.scatter(XF[p][r, a], XF[p][r, b], s=28, c=HEX[p], zorder=3)
-                ax.set_xlim(lim[0, a], lim[1, a])
-                ax.set_ylim(lim[0, b], lim[1, b])
+                    if np.all(np.isfinite(X[p][r])):
+                        q = proj(X[p][r], A)
+                        ax.scatter(q[0], q[1], s=28, c=HEX[p], zorder=3)
+                ax.set_xlim(plo[0], phi[0])
+                ax.set_ylim(plo[1], phi[1])
                 ax.set_aspect("equal")
-                ax.set_xlabel("lateral, toward R_spout (nominal mm)", fontsize=7)
-                ax.set_ylabel(yl, fontsize=7)
+                ax.set_xlabel("image right (nominal mm)", fontsize=7)
+                ax.set_ylabel("image up (nominal mm)", fontsize=7)
                 ax.tick_params(labelsize=6)
                 ax.spines[["top", "right"]].set_visible(False)
                 ax.set_title(ttl, fontsize=8)
