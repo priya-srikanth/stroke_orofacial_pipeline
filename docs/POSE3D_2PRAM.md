@@ -63,7 +63,32 @@ Units = nominal 3.5 mm squares. The two side-to-below pairs have only 9-24 share
 judged (`MIN_PAIR_POSES`): their own estimates disagree by 0.4-0.7 deg while each camera's pose relative to video2
 agrees to <0.1 deg. PS51-55 rests on few poses (video4 8, video1 10): confirm it on session data before trusting it.
 
-## Lateral-angle test and two-view clips (2026-11-19, in progress)
+## Lateral-angle test: result (2026-11-19)
+
+**The pipeline's front-view lick angle measures the tongue's lateral position, before and after the stroke.** PS46,
+2,436 licks seen in both views (first 5 licks per trial, 6 sessions):
+
+* Per lick, front angle vs below-view lateral position: r = 0.95 / 0.97 / 0.95 pre, 0.50 / 0.95 / 0.93 post. 03-16
+  has a low r only because its angles barely spread (SD 1.5 deg vs ~5.4 elsewhere: R trials licked to the L side);
+  the per-lick error against the pre-stroke fit is the same in every session (median |error| 0.47-0.72 deg).
+* Session means: the post-stroke change in the front angle matches the change predicted from the below view, e.g.
+  03-16 R trials +8.4 deg observed vs +7.4 predicted (92 % of their licks to the L side in the front view, 94 % in
+  the below view); all other session x side changes within +-0.9 deg of baseline in both.
+* Shorter post-stroke licks (front-view tongue extension down 20-27 px on 03-16) do not distort it: the angle's
+  extension term is small because the eye (the angle's vertex) is ~417 px from the spouts.
+* The two views disagree on which side a clear lick went (|angle| > 2 deg) for 1.5 % of licks (34 / 2,198), spread
+  over pre and post sessions: occasional single-view tracking errors.
+
+Outputs: `pose3d/lateral_test_20261119/` (licks_PS46.csv per lick, sessions_PS46.csv, lateral_test_PS46.png,
+results_PS46.txt). Code: `scripts/pose3d_2pram/lateral_test/` (`run.sh` events -> clips -> cam1 model; `analyze.py`).
+
+**A camera moved between 03-16 and 03-20.** In the two-view triangulation the rod tips (static) reproject at 0-12 px
+on 03-10 / 03-16 but 29-37 px on 03-20 and 03-24 (every body part ~35-39 px, at any frame offset): the
+video2-video4 geometry no longer matches the 03-11 calibration. The lateral test is unaffected (it compares 2-D
+positions within each view); 3-D for later PS46-50 sessions would need the camera poses re-estimated per session
+(e.g. from rods + nose in all four views). `two_view_clips.py` refuses such sessions (`MAX_ROD_REPROJ_PX`).
+
+## Lateral-angle test and two-view clips (2026-11-19, method)
 
 Priya asked for the test after all ("you can do the test"). Question: does the pipeline's front-view per-lick angle
 (`angle_max_signed_per_lick`) change pre -> post the way the tongue's TRUE lateral position does, seen from below?
@@ -76,13 +101,13 @@ Priya asked for the test after all ("you can do the test"). Question: does the p
   this: the rods do not move within a session.
 * Per lick: the pipeline angle vs the below-view lateral position (tongue x - rod midpoint) / rod spacing, signed
   max-|.| within the pipeline's +-52 ms peak window (absorbs the 0-5-frame camera start offset).
-* First result, 03-10 (pre): r = 0.95 between the two per lick (450 of 478 licks seen in both views).
+* Result: see above.
 * Envs: trial events / analysis in `stroke_orofacial` (created on this box 11-19 from environment.yml; run it through
   `conda run`, calling its python.exe directly fails to load MKL); clips in `dlc`; the cam1 model in `lp`.
-* Work files (not outputs): `C:/Users/SabatiniLab/lp_stage/pram_3d_20261118/latangle/`.
+* Work files (clips, cam1 predictions; not outputs): `C:/Users/SabatiniLab/lp_stage/pram_3d_20261118/latangle/`.
 
 **Two-view clips** (`scripts/pose3d_2pram/two_view_clips.py`, outputs `pose3d/clips/twoview_cam1zeroshot_20261119/`):
-video2 + video4 with their 2-D keypoints, the tongue / jaw / nose triangulated from the two views with the PS46-50
+PS46 03-10 (pre) and 03-16 (post), 2 trials per side; video2 + video4 with their 2-D keypoints, the tongue / jaw / nose triangulated from the two views with the PS46-50
 calibration and projected back (x), and flat 3-D panels (from below: lateral x forward; from the front: lateral x
 up; origin = rod-tip midpoint, units nominal mm). Front-view tongue / jaw = the pipeline's CLEANED traces mapped back
 to image pixels (`export_front_cleaned.py`: the cleaned frame is a pure per-session translation of the DLC image

@@ -71,6 +71,10 @@ def dlc_p(part):
 TILE = 420
 TRAIL = 30  # frames = 120 ms
 CROP_X0 = 100  # video4 cam1-orientation crop = x 100:700 of the vertically flipped raw frame
+#: A session whose rods (static) reproject worse than this does not match the calibration: a camera moved (PS46
+#: 2025-03-20: rods 29-37 px, every part ~35-39 px at any frame offset; 03-10 / 03-16: rods 0-12, parts 3-11 px).
+#: No clips are written for it (its 3-D would be wrong); the summary records why.
+MAX_ROD_REPROJ_PX = 20.0
 
 
 def v4crop_to_cal(xy):
@@ -215,7 +219,17 @@ def run(session, work, out_dir, n_per_side=1):
         "median_reprojection_px": {p: float(np.nanmedian(E[p])) for p in PARTS3D},
         "frames_3d_fraction": {p: float(np.isfinite(E[p]).mean()) for p in PARTS3D},
     }
+    summary["matches_calibration"] = bool(np.max(rod_err) <= MAX_ROD_REPROJ_PX)
     print(json.dumps(summary, indent=1), flush=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / f"twoview_{animal}_{date}_summary.json").write_text(json.dumps(summary, indent=1))
+    if not summary["matches_calibration"]:
+        print(
+            f"{session}: rods reproject at {rod_err.round(1)} px > {MAX_ROD_REPROJ_PX}: a camera moved since the "
+            "calibration -> no clips",
+            flush=True,
+        )
+        return []
 
     # trials: per side, the n trials with the most two-view tongue frames
     n_tr = len(tone2)
@@ -387,7 +401,6 @@ def run(session, work, out_dir, n_per_side=1):
             vw.release()
             written.append(path)
             print("wrote", path, flush=True)
-    (out_dir / f"twoview_{animal}_{date}_summary.json").write_text(json.dumps(summary, indent=1))
     return written
 
 
