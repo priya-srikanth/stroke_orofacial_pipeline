@@ -1,4 +1,4 @@
-"""Lateral-angle test, PS46: does the front-view (video2) per-lick angle change pre -> post the same way as the
+"""Lateral-angle test, one animal (argv[1], default PS46): does the front-view (video2) per-lick angle change pre -> post the same way as the
 lateral tongue position seen from below (video4)?
 
 Per lick (first 5 licks/trial, the pipeline's own lick times): the pipeline's angle_max_signed_per_lick (A2), the
@@ -8,25 +8,32 @@ The +-52 ms window (the pipeline's peak_pad_ms) absorbs the unknown 0-5-frame ca
 
 import glob
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import yaml
 
 O = "M:/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs"
 PAD = 13  # 52 ms at 250 fps
-STROKE = "20250313"
+A = sys.argv[1] if len(sys.argv) > 1 else "PS46"
+# stroke date from the repo's animal metadata (configs/animals.yaml), as YYYYMMDD
+_cfg = yaml.safe_load(
+    (Path(__file__).resolve().parents[3] / "configs" / "animals.yaml").read_text()
+)
+STROKE = pd.Timestamp(str(_cfg[A]["stroke_date"])).strftime("%Y%m%d")
 rows = []
-for f in sorted(glob.glob("clips/PS46_*_index.npz")):
+for f in sorted(glob.glob(f"clips/{A}_*_index.npz")):
     d = f.split("_")[1]
-    pc = glob.glob(f"preds/PS46_{d}_video4_trials_*.csv")
+    pc = glob.glob(f"preds/{A}_{d}_video4_trials_*.csv")
     if not pc:
         continue
     Z = np.load(f)
     idx4 = Z["idx4"]
     trig2, trig4 = Z["trig2"], Z["trig4"]
     tone2 = Z["tone2"]
-    tips = json.loads(Path(f"clips/PS46_{d}_tips.json").read_text())["tips"]
+    tips = json.loads(Path(f"clips/{A}_{d}_tips.json").read_text())["tips"]
     x0 = int(Z["x0"])  # rods.py v3 (centerline jump)
     (xa, ya, _), (xb, yb, _) = tips
     mx, my, s4 = 0.5 * (xa + xb) - x0, 0.5 * (ya + yb), abs(xb - xa)
@@ -37,16 +44,16 @@ for f in sorted(glob.glob("clips/PS46_*_index.npz")):
     lat4 = np.where(tl > 0.9, (tx - mx) / s4, np.nan)
     fwd4 = np.where(tl > 0.9, (my - ty) / s4, np.nan)
     row_of = {v: i for i, v in enumerate(idx4)}
-    J = json.loads(Path(f"{O}/dlc_kinematics/per_trial/tongue/PS46/{d}.json").read_text())
+    J = json.loads(Path(f"{O}/dlc_kinematics/per_trial/tongue/{A}/{d}.json").read_text())
     assert list(J["sides"]) == list(Z["sides"]), "trial sides differ"
-    ct = pd.read_parquet(f"{O}/dlc_kinematics/cleaned_traces/tongue/PS46/{d}.parquet")
-    pf = pd.read_parquet(f"{O}/dlc_kinematics/per_frame/tongue/PS46/{d}.parquet")[
+    ct = pd.read_parquet(f"{O}/dlc_kinematics/cleaned_traces/tongue/{A}/{d}.parquet")
+    pf = pd.read_parquet(f"{O}/dlc_kinematics/per_frame/tongue/{A}/{d}.parquet")[
         "angle_deg_smoothed"
     ].values
     x2, y2 = ct["x_final"].values, ct["y_final"].values
     dd = f"{d[:4]}-{d[4:6]}-{d[6:]}"
     sp = pd.read_parquet(
-        glob.glob(f"{O}/dlc_analysis/centered_spout_midpoint/PS46/video2_{dd}T*.parquet")[0]
+        glob.glob(f"{O}/dlc_analysis/centered_spout_midpoint/{A}/video2_{dd}T*.parquet")[0]
     )
 
     def med(bp, ax, sp=sp):
@@ -97,7 +104,7 @@ for f in sorted(glob.glob("clips/PS46_*_index.npz")):
         flush=True,
     )
 D = pd.DataFrame(rows)
-D.to_csv("licks_PS46.csv", index=False)
+D.to_csv(f"licks_{A}.csv", index=False)
 ok = D.dropna(subset=["A2", "L4", "L2"])
 print("\nlicks with both views:", len(ok), "of", len(D))
 print("corr per session (A2~L4, L2~L4):")
@@ -133,7 +140,7 @@ S["dA2_from_L4"] = S.A2_from_L4 - S.side.map(base.A2_from_L4)
 S["dY2"] = S.Y2 - S.side.map(base.Y2)
 print("\nchange from the pre mean (deg; Y2 px), per session x trial side:")
 print(S.round(2).to_string(index=False))
-S.to_csv("sessions_PS46.csv", index=False)
+S.to_csv(f"sessions_{A}.csv", index=False)
 
 import matplotlib
 
@@ -180,10 +187,10 @@ ax[1].set_title("B. Session means vs pre (stroke = dashed line)", loc="left", fo
 for x in ax:
     x.spines[["top", "right"]].set_visible(False)
 fig.suptitle(
-    "PS46: front-view angle vs below-view lateral position (first 5 licks per trial)", fontsize=10
+    f"{A}: front-view angle vs below-view lateral position (first 5 licks per trial)", fontsize=10
 )
 fig.tight_layout()
-fig.savefig("lateral_test_PS46.png", dpi=150)
+fig.savefig(f"lateral_test_{A}.png", dpi=150)
 
 # ---- per-lick residual vs the pre fit, and side agreement (added 11-19) ----
 ok["res"] = ok.A2 - (a * ok.L4 + b)
@@ -197,13 +204,11 @@ for d, g in ok.groupby("date"):
         round(np.sqrt((g.res**2).mean()), 2),
         round(g.res.abs().median(), 2),
     )
-g = ok[ok.date.astype(str) == "20250316"]
 print(
-    "03-16 R trials: fraction of licks to the L side (A2 > 0):",
-    round((g[g.side == "R"].A2 > 0).mean(), 2),
-    " below view (L4 > 0):",
-    round((g[g.side == "R"].L4 > 0).mean(), 2),
+    "fraction of licks to the L side (front A2 > 0 | below, pre-fit angle > 0), per session x trial side:"
 )
+for (d, sd), g in ok.groupby(["date", "side"]):
+    print(" ", d, sd, round((g.A2 > 0).mean(), 2), round(((a * g.L4 + b) > 0).mean(), 2))
 side4 = np.sign(a * ok.L4 + b)  # below-view side in angle units (zero crossing of the pre fit)
 clear = (ok.A2.abs() > 2) & ((a * ok.L4 + b).abs() > 2)
 dis = clear & (np.sign(ok.A2) != side4)
