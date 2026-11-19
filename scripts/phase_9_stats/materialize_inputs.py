@@ -170,6 +170,40 @@ def load_inventory(path: Path | str = DEFAULT_INVENTORY_PATH) -> list[EndpointSp
 # endpoints by iterating endpoints in the inner loop.
 
 
+# Response window for the lick-COUNT ``_rw`` endpoints only (Priya
+# 2026-11-19): licks with cue + 0.07 s <= t <= cue + 8.0 s. Unlike
+# ``behavior_report.window_around_tones`` ((before, after) = 1 s BEFORE to 8 s
+# after the cue), both bounds are AFTER cue onset. The 70 ms floor matches the
+# six-position cohort (cue + 70 ms to trial stop). Every other endpoint keeps
+# window_around_tones.
+LICK_COUNT_RESPONSE_WINDOW_S: tuple[float, float] = (0.07, 8.0)
+
+
+def _restrict_delays_to_response_window(
+    delays: dict[str, dict[int, dict[str, np.ndarray]]],
+    sample_rate: float,
+    window_s: tuple[float, float] = LICK_COUNT_RESPONSE_WINDOW_S,
+) -> dict[str, dict[int, dict[str, np.ndarray]]]:
+    """Keep only lick delays (samples after cue) with
+    ``window_s[0] <= delay / sample_rate <= window_s[1]`` (both inclusive).
+
+    ``delays`` is :func:`compute_trial_lick_delays` output for the wider
+    window_around_tones, which contains the response window, so filtering it
+    is equivalent to re-windowing. Comparison is in seconds (not truncated
+    sample counts) so the 70 ms floor is exact at any sample rate.
+    """
+    lo, hi = float(window_s[0]), float(window_s[1])
+    out: dict[str, dict[int, dict[str, np.ndarray]]] = {}
+    for tone_key, per_trial in delays.items():
+        out[tone_key] = {}
+        for trial, by_side in per_trial.items():
+            out[tone_key][trial] = {}
+            for lick_key, d in by_side.items():
+                t = np.asarray(d, dtype=float) / float(sample_rate)
+                out[tone_key][trial][lick_key] = np.asarray(d)[(t >= lo) & (t <= hi)]
+    return out
+
+
 @dataclass
 class _SessionScalars:
     """Per-session scalar values for ONE animal (× all sessions).
@@ -186,6 +220,11 @@ class _SessionScalars:
     num_correct_licks_per_trial: dict[str, dict[str, float]] = field(default_factory=dict)
     num_all_licks_per_trial: dict[str, dict[str, float]] = field(default_factory=dict)
     num_incorrect_licks_per_trial: dict[str, dict[str, float]] = field(default_factory=dict)
+    # Response-window lick counts (2026-11-19): same three counts restricted to
+    # LICK_COUNT_RESPONSE_WINDOW_S after cue onset. Separate slugs (``_rw``).
+    num_correct_licks_per_trial_rw: dict[str, dict[str, float]] = field(default_factory=dict)
+    num_all_licks_per_trial_rw: dict[str, dict[str, float]] = field(default_factory=dict)
+    num_incorrect_licks_per_trial_rw: dict[str, dict[str, float]] = field(default_factory=dict)
     latency_to_first_correct_lick_s: dict[str, dict[str, float]] = field(default_factory=dict)
     late_lickiness: dict[str, dict[str, float]] = field(default_factory=dict)
     lick_switch_rate: dict[str, dict[str, float]] = field(default_factory=dict)
@@ -261,6 +300,9 @@ def _compute_session_scalars_for_animal(
             first_corr, treat_none_as_zero=True,
         )
         ms_num = compute_num_licks_bySession(delays)
+        ms_num_rw = compute_num_licks_bySession(
+            _restrict_delays_to_response_window(delays, data.sample_rate),
+        )
         ms_lat = compute_latency_bySession(
             fcl_idx, data.tones_idx, data.sample_rate,
         )
@@ -286,6 +328,10 @@ def _compute_session_scalars_for_animal(
         scalars.num_incorrect_licks_per_trial[date_label] = {
             s: ms_num["incorrect"][f"Tone_{s}"]["mean"] for s in ("L", "R")
         }
+        for kind in ("correct", "all", "incorrect"):
+            getattr(scalars, f"num_{kind}_licks_per_trial_rw")[date_label] = {
+                s: ms_num_rw[kind][f"Tone_{s}"]["mean"] for s in ("L", "R")
+            }
         scalars.latency_to_first_correct_lick_s[date_label] = {
             s: ms_lat[s]["mean"] for s in ("L", "R")
         }
@@ -441,6 +487,10 @@ _SESSION_SLUG_TO_FIELD: dict[str, str] = {
     "num_correct_licks_per_trial": "num_correct_licks_per_trial",
     "num_all_licks_per_trial": "num_all_licks_per_trial",
     "num_incorrect_licks_per_trial": "num_incorrect_licks_per_trial",
+    # Response-window variants (LICK_COUNT_RESPONSE_WINDOW_S, 2026-11-19).
+    "num_correct_licks_per_trial_rw": "num_correct_licks_per_trial_rw",
+    "num_all_licks_per_trial_rw": "num_all_licks_per_trial_rw",
+    "num_incorrect_licks_per_trial_rw": "num_incorrect_licks_per_trial_rw",
     "latency_to_first_correct_lick_s": "latency_to_first_correct_lick_s",
     "late_lickiness": "late_lickiness",
     "lick_switch_rate": "lick_switch_rate",

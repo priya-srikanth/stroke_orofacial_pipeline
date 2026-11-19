@@ -15,6 +15,17 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-11-19 — Cohort-1 lick counts in the response window only (`num_{all,correct,incorrect}_licks_per_trial_rw`)
+
+- *Context:* The two-tone cohort's (PS46-55) licks-per-trial endpoints count spout-contact licks in `behavior_report.window_around_tones: [1.0, 8.0]`, which is (before, after) = 1 s BEFORE to 8 s after cue onset, so pre-cue licks were counted. Priya (2026-11-19): lick counts must use the response window only.
+- *Decision:*
+  1. New named window `LICK_COUNT_RESPONSE_WINDOW_S = (0.07, 8.0)` s after cue onset, both bounds inclusive (cue + 70 ms <= t <= cue + 8 s), applied to the three lick-COUNT endpoints only. It filters the existing `compute_trial_lick_delays` output (which already spans it), comparing in seconds so the 70 ms floor is exact.
+  2. New slugs `num_all_licks_per_trial_rw`, `num_correct_licks_per_trial_rw`, `num_incorrect_licks_per_trial_rw`, materialized for all 8 animals with the same sessions and filters as the originals (`no_filter`; spout endpoints have no filtered tree). `window_around_tones` and every other endpoint (first-lick accuracy, latency, switch rate, lickiness, ...) are unchanged.
+  3. Own BH-FDR family in `pooled_phenotype_stats_lick_count_rw.csv` (3_tier, same tests and 5000-draw bootstrap), so no existing q-value changes. The old slugs and the main sheet are kept as they are.
+- *Rationale:* A lick before the cue is not a response to it. The 70 ms floor matches the six-position cohort (cue + 70 ms to trial stop), so the two cohorts count licks the same way.
+- *Result:* the window removes 0.39 licks/trial pre-stroke on average (0.20 correct, 0.19 incorrect); no session count went up. All-licks and correct-licks effects move by < 1 lick/trial and keep every significance call. 30/54 cells are significant (`headline_and_bootstrap_sig`) in both old and new; two incorrect-lick cells swap: severe L sub-acute is no longer significant (−0.95, q 0.016 -> −0.55, q 0.054) and severe R sub-acute becomes significant (+0.60, q 0.32 -> +0.80, q 0.030). Running the old endpoints as their own 3-endpoint family gives the same 30 calls, so the swap comes from the window, not the family size.
+- *Enforced at:* `scripts/phase_9_stats/materialize_inputs.py` (`LICK_COUNT_RESPONSE_WINDOW_S`, `_restrict_delays_to_response_window`); `configs/phase_9_1_endpoint_lists/lick_count_rw_inventory.csv` (`is_primary=false`, so default runs skip them); `tests/test_lick_count_response_window.py`. Commands in `STATS_PIPELINE.md` "Separate-family subset runs".
+
 ## 2026-11-19 — xy tongue-protrusion distance (`tongue_lick1_xy_peak`, `tongue_median_xy_peak_per_trial`, trajectory `xy_dist`)
 
 - *Context:* Priya asked for an xy (Euclidean) protrusion distance alongside the y-only protrusion endpoints, measured from the same reference as `y_centered`, as scalars and as a phase-aligned trajectory signal, without changing any existing output.
