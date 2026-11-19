@@ -171,7 +171,8 @@ crop. The front tile now spans eyes to chin (~610 px; long licks reach the botto
 itself). Below-view cutoffs: tongue p > 0.4 + the nose-tip gate, jaw 0.6, nose 0.9 (were all 0.9). 03-10: tongue in 3-D
 in 34 % of trial-window frames (v1 23 %), jaw 94 % (71 %). 03-16: tongue 23 %, jaw 95 %. Same sessions (03-10 pre,
 03-16 post), 2 trials per side; the trials picked differ from v1 (picked by two-view tongue frames). v1 clips
-(`twoview_cam1zeroshot_20261119/`) are superseded, kept until Priya approves deleting them.
+(`twoview_cam1zeroshot_20261119/`: 8 clips + 4 summaries) were deleted 2026-11-19 with Priya's approval; v2 holds the
+03-20 / 03-24 camera-move summaries too (rods 29-37 px, identical to v1).
 
 ## Decision 2026-11-19 (morning): parked -- superseded the same day by the test above (and confirmed in the afternoon decision)
 
