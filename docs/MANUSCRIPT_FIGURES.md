@@ -70,6 +70,31 @@ How the shading differs:
 - **Raw angle trajectories:** not in the main figures. If shown (Supplement, absolute angle), use only `traj_panels_within_animal/extra/traj_*_angle_deg_raw_*` (within-animal shading).
 - Do not use `phase_panels/` or the unshaded pipeline renders in the manuscript.
 
+## xy tongue-protrusion distance (2026-11-19, not yet in a figure)
+
+New endpoints, so no manuscript panel uses them yet. Definitions and the origin
+are in `DECISIONS.md` (2026-11-19). Distance = `hypot(x, y)` from the
+cleaned-trace mouth origin (`kinematics_baselines` (x0, y0); the same frame as
+`y_centered` / `lick1_y_peak`). The xy endpoints are their own BH-FDR family,
+so the published sheets and q-values are unchanged.
+
+| What | Server path (under `stroke_orofacial_pipeline_outputs/stats/`) |
+|---|---|
+| Scalar inputs | `inputs/{no_filter,filtered_v1}/{tongue_lick1_xy_peak,tongue_median_xy_peak_per_trial}/<animal>.parquet`; filter manifests `inputs/filtered_v1/_manifests_xy_dist/` |
+| Pooled stats (3-tier, `--n-boot 5000`) | `results/phenotype_pooled/3_tier/pooled_phenotype_stats_xy_dist.{csv,xlsx}` (`headline_and_bootstrap_sig` = the `**` call) |
+| Trajectories, first lick | `results/phenotype_pooled/phase_aligned_trajectories/3_tier/v3_xy_dist/` (cluster CSV `trajectory_cluster_permutation_bh_fdr.csv`); SVGs in `figures/.../phase_aligned_trajectories/3_tier/v3_xy_dist/` |
+| Trajectories, all licks | the same under `phase_aligned_trajectories_all_licks/3_tier/v3_xy_dist/` |
+
+- `tongue_lick1_xy_peak`: at the lick-1 Y-peak frame. Pre-stroke means
+  104-149 px per animal, a few px above lick-1 y. Behaves like lick-1 y.
+- `tongue_median_xy_peak_per_trial`: median over ALL kept licks ([70, 3000] ms),
+  not the first 5. Pre-stroke means 178-195 px. Lower in every moderate and
+  severe cell (severe sub-acute -42 L / -68 R px).
+- Trajectory `xy_dist` (delta, pooled cluster permutation): first lick 8 / 35
+  clusters significant; all licks 12 / 33, all negative.
+- To plot with `plot_traj_panels.py`, point it at the `v3_xy_dist` dirs; the
+  plotting script itself was not changed.
+
 ## Trajectory significance tests
 
 - **Pooled shuffle (current CSVs, headline)**: `compute_trajectory_cluster_permutation_stats`
