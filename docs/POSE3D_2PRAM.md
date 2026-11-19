@@ -72,9 +72,10 @@ predicted), and the shorter post-stroke licks do not bias it. 3-D would add dept
 
 Limits of that statement, to revisit if the question changes:
 
-* Checked on PS46 and PS50 (6 sessions each, first 5 licks per trial; PS50 below "PS50 (second animal)"). PS55
-  (other calibration) is being run on late post sessions: it barely licked for 2.5 weeks after its stroke, so it
-  has no early post session to test.
+* Checked on PS46, PS50 and PS55 (first 5 licks per trial; sections "PS50 (second animal)" and "PS55 (third
+  animal)" below). PS55 barely licked for 2.5 weeks after its stroke, so its post sessions are days 28-41.
+* The below view does not recover licks the front view loses (section "Does the below view add lick
+  information?"), so it serves only as a check on lick direction.
 * The front view does NOT measure reach. Its "extension" (vertical image distance) mixes reach with height; a 3-D or
   below-view reach readout would need the work under "Next".
 * 3-D for PS46-50 after 03-16 needs per-session camera poses (a camera moved).
@@ -109,6 +110,21 @@ help? Measured with `scripts/pose3d_2pram/lateral_test/below_tongue_cutoff.py` (
   (the cohort-2 cam1 recipe bridges gaps <= 24 ms) would fill only short dropouts. A real gain needs a video4 model
   fine-tuned from the cam1 weights with tongue / jaw labels on video4 frames (~100-200). Not needed for the lateral
   conclusion.
+
+## Does the below view add lick information? (2026-11-19)
+
+Priya: "so the below view doesn't help recover any lick information eg from spout occlusion". Correct, with the
+zero-shot model. `scripts/pose3d_2pram/lateral_test/occlusion_check.py` (output `occlusion_check_PS46.csv`), PS46 six
+sessions, all trial-window frames, below-view tongue = p > 0.4 + 40 px gate:
+
+* **Front-view gaps.** Where the front view loses the tongue mid-lick (cleaned fill_method 1 = interpolated; 20-26 % of
+  tongue-out frames), the below view has the tongue in only 9-22 % of those frames.
+* **Licks the front view missed.** Below-view tongue runs of >= 3 frames during front-"in" that sit > 6 frames from
+  any front-view tongue-out or gap frame: 3-6 per session (10-37 frames) on 03-10/11/12/20/24. 03-16 has 89 runs
+  (584 frames). Eight of them, spread over the 89, checked by eye (`occlusion_frames.py`,
+  `figures/occlusion_candidates_PS46_20250316.png`): no tongue in either view (front-view tongue likelihood
+  0.02-0.17); the below-view point is on the water drop hanging from a spout (5) or on the face between the spouts (3).
+  Water drops are a recurring error of this model (also PS55 05-28 L trials).
 
 ## Lateral-angle test: result (2026-11-19)
 
@@ -149,17 +165,39 @@ Same conclusion, with a noisier below view. 2,200 licks in both views (03-20/21/
   below-view point is near the mouth (|lateral| <= 1, |forward| <= 0.6 spacings; 2,114 of 2,200 licks; drops 3 of
   PS46's 2,436) raises r to 0.74-0.92 and leaves the fit-free changes as above (numbers above are the gated ones;
   ungated 03-24 R +0.65 vs +0.59, 03-25 R +0.18 vs +0.37).
-* **Rod tips: three manual overrides** (`tips_override.py`, checked by eye on
-  `rod_tips/rods_check_ps5055.png`): PS50 03-26 left rod (dim face under it, the auto tip ran to the image bottom) and
-  PS55 05-02 / 05-03 (water drops on the rod ends). Each override is recorded in its tips JSON.
+* **Rod tips: manual overrides** (`tips_override.py`, checked by eye on `rod_tips/rods_check_ps5055.png` and
+  `rods_check_ps55late.png`): PS50 03-26 left rod (dim face under it, the auto tip ran to the image bottom) and
+  PS55 05-02 / 05-03 / 05-28 (water drops on the rod ends). Each override is recorded in its tips JSON.
 
 Outputs (same folder): licks_PS50.csv, sessions_PS50.csv, lateral_test_PS50.png, results_PS50.txt,
-fitfree_PS46_PS50.csv (all and gated rows), rod_tips/ (PS50 + PS55 tips JSON and the check image).
+fitfree_PS46_PS50_PS55.csv (all and gated rows, all three animals), rod_tips/.
 
-PS55: 04-23/26/29 pre ran; 05-01 failed in prep (video4 has one frame more than its timestamp file, 908,377 vs
-908,376); 05-02 / 05-03 ran but the front-view pipeline has no licks for them (PS55 licked 0-23 times per session
-05-01..05-17, so those sessions are excluded upstream). Late post sessions 05-28, 05-29, 06-10 (313-412 licks) are
-running.
+### PS55 (third animal, other calibration, 2026-11-19)
+
+Pre 04-23/26/29; stroke 04-30. PS55 licked 0-23 times per session 05-01..05-17 (front-view pipeline excludes them),
+so the post sessions are the first with normal licking: 05-28, 05-29 (days 28, 29) and 06-10 (day 41), 313-412 licks
+(skipped 05-30 / 06-01 / 06-05: secondary-spout sessions). 05-01 failed in prep (video4 has one frame more than its
+timestamp file, 908,377 vs 908,376). These are subacute under PS55's own epoch days (acute <= 19, subacute 20-50).
+
+* Same conclusion. Per lick, gated: r = 0.93-0.95 pre, 0.84 / 0.97 on 05-29 / 06-10. R-trial licks are on the L side
+  after the stroke in both views (fit-free change from pre: 05-28 +0.65 front vs +0.45 below, 05-29 +0.68 vs +0.61,
+  06-10 +0.41 vs +0.35); L trials 05-29 +0.11 vs +0.08, 06-10 +0.06 vs +0.04.
+* 05-28 agrees less (r 0.54; L trials +0.11 front vs -0.12 below): the left rod carries a water drop that session and
+  the model labels it as tongue (a vertical streak of L-trial licks at below-view lateral -0.55 in
+  `figures/lat_per_lick_angle.png`).
+* The gate matters more here: 06-10 keeps 204 of 299 licks (its below-view points sit 0.6 spacings behind the rod
+  line on many licks, likely chin / jaw errors). Ungated 06-10 r = 0.34.
+* The spouts sit higher and closer together after the stroke (spacing 137-144 vs 149-151 px); rod-spacing units keep
+  the scale comparable.
+
+Across the three animals: 16 of 18 post-stroke session x trial-side changes agree within 0.08 rod spacings (the two
+exceptions are PS55 05-28).
+
+### Figures and results page (2026-11-19)
+
+`scripts/pose3d_2pram/lateral_test/figures.py` writes `pose3d/lateral_test_20261119/figures/` (example two-view
+frames, change scatter front vs below, session timeline, per-lick position and angle, below-tongue cutoff sweep) and
+`figures/session_changes_gated.csv`. Results page: https://claude.ai/artifact/9b6CnSpDqQmgPQ6oNydkzo.
 
 **A camera moved between 03-16 and 03-20.** In the two-view triangulation the rod tips (static) reproject at 0-12 px
 on 03-10 / 03-16 but 29-37 px on 03-20 and 03-24 (every body part ~35-39 px, at any frame offset): the

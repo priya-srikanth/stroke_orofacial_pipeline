@@ -1,10 +1,11 @@
-"""Rod tips for PS50 / PS55 median frames -> clips/<animal>_<date>_tips.json, with three manual overrides (2026-11-19).
+"""Rod tips for PS50 / PS55 median frames -> clips/<animal>_<date>_tips.json, with manual overrides (2026-11-19).
 
-rods.rod_tips failed on three tips (checked by eye, rod_tips/rods_check_ps5055.png in the outputs):
+rods.rod_tips failed on these tips (checked by eye, rod_tips/rods_check_ps5055.png in the outputs):
 * PS50 03-26 left rod: the face under it is dim, the centerline jump is ~+25 (< the +30 rule), the walk ran to the
   image bottom (y 594). Real end y 315 (centerline gray profile; right rod 317).
 * PS55 05-02 (both rods) / 05-03 (both): a water drop on the rod end widens the dark blob, so the edge-read x and the
   tip row shift. Ends read from the profile (y 340-345, as on the clean PS55 sessions).
+* PS55 05-28 left rod: a drop on its end; auto tip at y 261 (mid-rod), real end y 305 (right rod 301).
 Override x = fitted centerline (top-row edge lines, unaffected by the drop) + the median (edge-read - centerline)
 offset of the same rod on the same animal's clean sessions. Each override is recorded in the JSON ("override")."""
 
@@ -53,9 +54,12 @@ fix = {
     ("PS50", "20250326"): {0: 315},
     ("PS55", "20250502"): {0: 345, 1: 345},
     ("PS55", "20250503"): {0: 345, 1: 340},
+    ("PS55", "20250528"): {0: 305},
 }
+# sessions whose auto tips are fine but are not used for the offsets (PS55 late post, added 11-19 evening)
+also = {"PS55": ["20250529", "20250610"]}
 for a, ds in clean.items():
-    for d in sorted(set(ds) | {dd for (aa, dd) in fix if aa == a}):
+    for d in sorted(set(ds) | set(also.get(a, [])) | {dd for (aa, dd) in fix if aa == a}):
         m = np.load(f"median_{a}_{d}.npy")
         t = [list(x) for x in rods.rod_tips(m)]
         note = {}
