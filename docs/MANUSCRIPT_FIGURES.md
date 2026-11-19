@@ -92,8 +92,9 @@ so the published sheets and q-values are unchanged.
   severe cell (severe sub-acute -42 L / -68 R px).
 - Trajectory `xy_dist` (delta, pooled cluster permutation): first lick 8 / 35
   clusters significant; all licks 12 / 33, all negative.
-- To plot with `plot_traj_panels.py`, point it at the `v3_xy_dist` dirs; the
-  plotting script itself was not changed.
+- Manuscript-style panels: `scripts/manuscript/plot_traj_panels.py` cannot plot
+  these yet. It hardcodes `3_tier/v3` and its own `SIGNALS` dict (no `xy_dist`),
+  so it needs a version / signal option first. The pipeline SVGs above exist.
 
 ## Trajectory significance tests
 
