@@ -63,7 +63,36 @@ Units = nominal 3.5 mm squares. The two side-to-below pairs have only 9-24 share
 judged (`MIN_PAIR_POSES`): their own estimates disagree by 0.4-0.7 deg while each camera's pose relative to video2
 agrees to <0.1 deg. PS51-55 rests on few poses (video4 8, video1 10): confirm it on session data before trusting it.
 
-## Decision 2026-11-19: parked
+## Lateral-angle test and two-view clips (2026-11-19, in progress)
+
+Priya asked for the test after all ("you can do the test"). Question: does the pipeline's front-view per-lick angle
+(`angle_max_signed_per_lick`) change pre -> post the way the tongue's TRUE lateral position does, seen from below?
+
+* PS46, pre 03-10 / 03-11 / 03-12, post 03-16 / 03-20 / 03-24. Trial windows tone .. tone + 1 s (tone frames from the
+  repo's `_derive_trial_events_from_spout_behavior`); video4 frames paired by trigger index (every trial matched).
+* video4: the widefield cam1 LP model, zero-shot, on the vertically flipped frame; the two rod tips per session from
+  the median frame (`pose3d/rods.py`: rod edges fitted in the top rows, tip = where the gray along the rod's centerline
+  jumps onto the face; checked by eye on all six sessions; rod spacing 133-138 px). No two-spout model is needed for
+  this: the rods do not move within a session.
+* Per lick: the pipeline angle vs the below-view lateral position (tongue x - rod midpoint) / rod spacing, signed
+  max-|.| within the pipeline's +-52 ms peak window (absorbs the 0-5-frame camera start offset).
+* First result, 03-10 (pre): r = 0.95 between the two per lick (450 of 478 licks seen in both views).
+* Envs: trial events / analysis in `stroke_orofacial` (created on this box 11-19 from environment.yml; run it through
+  `conda run`, calling its python.exe directly fails to load MKL); clips in `dlc`; the cam1 model in `lp`.
+* Work files (not outputs): `C:/Users/SabatiniLab/lp_stage/pram_3d_20261118/latangle/`.
+
+**Two-view clips** (`scripts/pose3d_2pram/two_view_clips.py`, outputs `pose3d/clips/twoview_cam1zeroshot_20261119/`):
+video2 + video4 with their 2-D keypoints, the tongue / jaw / nose triangulated from the two views with the PS46-50
+calibration and projected back (x), and flat 3-D panels (from below: lateral x forward; from the front: lateral x
+up; origin = rod-tip midpoint, units nominal mm). Front-view tongue / jaw = the pipeline's CLEANED traces mapped back
+to image pixels (`export_front_cleaned.py`: the cleaned frame is a pure per-session translation of the DLC image
+coordinates); nose / eyes / rods raw DLC at p > 0.6 (Priya: this cohort used low cutoffs). 03-10: the tongue is 3-D in
+23 % of trial-window frames, the jaw 71 %, the nose 90 %. Median two-view reprojection error: nose 5 px, jaw 6.5,
+tongue 11 px (calibration: 0.3 px) -- the two models' labels are not the same physical point (e.g. the front nose vs
+the below-view snout tip), so the 3-D points are good to roughly 0.5-1 nominal mm: fine for illustration, not for mm
+measurements. The frame offset cannot be refitted on these keypoints (error flat over +-20 frames) and is fixed at 0.
+
+## Decision 2026-11-19 (morning): parked -- superseded the same day by the test above
 
 Priya: the LATERAL angle is the readout that matters, and 3-D would not change it. The front view (video2) sees
 lateral displacement directly. With 25 mm lenses at this working distance, the change in image scale over the
