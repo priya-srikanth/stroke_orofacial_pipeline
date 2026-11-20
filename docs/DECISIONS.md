@@ -43,6 +43,14 @@ Entries are reverse-chronological (newest at top). Format:
 - *Enforced at:* `configs/animals.yaml` (PS47 `epoch_boundaries`); `stats/recovery_epochs.py::assign_epoch_label`; `scripts/manuscript/run_within_animal_cluster_perm.py` (`--out-suffix`, refusal checked before computing).
 
 
+## 2026-11-19 — Two-tone severity grade = time to return of contralesional correct licking (manuscript v41)
+
+- *Context:* Manuscript v41 (Priya 11-19) grades the two-tone animals by recovery time instead of the A/B/C severity axes, computed until now only in the manuscript's `figures/supp_c1_recovery_time.py` and the k-means check in `analysis/c1_severity_features_kmeans.py`.
+- *Decision:* Ported as `stats/recovery_time.py` + `scripts/manuscript/run_recovery_time_grading.py`. Recovery day = first post-stroke day on which mean correct contralesional licks per trial (`num_correct_licks_per_trial_rw`, cue + 70 ms to + 8 s, `no_filter`, sentinels dropped) reach the threshold x the mean of the last five pre-stroke days (`rel_day < 0`); not required to be sustained; censored at last day + 1 if never reached. Thresholds 25 / 50 / 75 %. k-means (k = 3, 200 restarts, seed 0) on log days at each threshold vs the 3-tier grade (ARI).
+- *Result:* 50 %: PS47 1, PS48 1, PS49 2, PS50 2, PS46 6, PS51 18, PS54 37, PS55 70 days (#1-#8), equal to the manuscript. 25 %: 1, 1, 1, 2, 6, 12, 36, 41; 75 %: 3, 2, 2, 3, 7, 18, 38, 71 (PS55 censored). k-means on log days gives the three grades at every threshold (ARI 1.0).
+- *Outputs:* `stats/results/recovery_time/recovery_time_per_animal.csv`, `recovery_time_kmeans_log_days.csv` (script refuses to overwrite).
+- *Enforced at:* `src/stroke_orofacial/stats/recovery_time.py`; `tests/test_recovery_time.py`.
+
 ## 2026-11-19 — All-lick peak tongue speed restored to the cohort-2-aligned set (sheet v2)
 
 - *Context:* `tongue_median_vxy_peak_per_trial` (all-lick peak speed, manuscript Figure 2G; the cohort-1 counterpart of cohort 2's all-lick 3-D speed) was on the 2026-11-19 drop list, which left 2G as the only cohort-1 panel on the old rule.
