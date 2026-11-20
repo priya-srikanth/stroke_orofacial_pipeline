@@ -16,6 +16,17 @@ Entries are reverse-chronological (newest at top). Format:
 ---
 
 
+
+## 2026-11-19 — Trial-outcome statistics and body weight by epoch moved into the pipeline (manuscript v41 Fig 2B, Fig 1F)
+
+- *Context:* Two cohort-1 statistics were computed only in the manuscript's own scripts: the trial-outcome change (`figures/c1_trial_classes_extract.py` + the cohort-1 part of `figures/trial_class_distribution.py`) and the body-weight LMM (`figures/weights_by_epoch.py`). The cohort-2 parts of both belong to widefield_pipeline.
+- *Decision:* Ported unchanged.
+  - `stats/trial_outcomes.py` + `scripts/manuscript/run_trial_outcome_stats.py`: per-trial class (complete = spout contact in (tone, tone + 5 s]; incomplete = DLC tongue protrusion, no contact; jaw_only; no_resp); per-session fractions; session MWU of each post epoch vs pre within grade x cue side x class, BH over all 72 tests, `*` q < 0.05. Epochs from `configs/animals.yaml` (equal to the manuscript's hard-coded table, PS47 chronic from day 5).
+  - `stats/body_weight_epoch.py` + `scripts/manuscript/run_weight_epoch_lmm.py`: % of pre-stroke mean weight; MixedLM (REML, random intercept animal) `pct ~ epoch * grade`; 9 epoch-vs-pre contrasts within grade, BH; `*`/`**`/`***` at q 0.05/0.01/0.001. Epochs from `animals.yaml` or the stamped columns of `--epoch-table` (the manuscript used `derived_epoch_boundaries_ps47d5.csv`; same values).
+- *Result:* trial classes: 23,932 trials, every class equal to the manuscript's `c1_trial_classes.csv` snapshot (PS48 20250317 skipped for a trial-count mismatch in both). MWU table: delta, p, q, n equal to the manuscript run exactly; 30 starred cells, stars unchanged (the manuscript script, re-run on its inputs, reproduces the v41 Fig 2B PDF text exactly). Weight LMM: equal to the manuscript to its 4-decimal rounding (max difference 5e-5); stars unchanged (mild sub-acute *, mild chronic ** (q 0.0097), moderate acute **, severe acute and sub-acute ***).
+- *Outputs:* `stats/results/trial_outcomes/c1_trial_{classes,outcome_mwu_bh,outcome_fractions}.csv`; `stats/results/body_weight/c1_weight_epoch_{days,lmm,summary}_ps47d5.csv` (scripts refuse to overwrite).
+- *Enforced at:* `src/stroke_orofacial/stats/trial_outcomes.py`, `src/stroke_orofacial/stats/body_weight_epoch.py`; `tests/test_trial_outcomes_weight_epoch.py`.
+
 ## 2026-11-19 — Session-level trajectory tables moved into the pipeline (manuscript v39-v41)
 
 - *Context:* The manuscript's trajectory lines and bands are the mean and SEM across sessions (Priya 11-19), computed so far in the manuscript's `analysis/c1_traj_session_stats.py`, `c1_xy_traj_session_stats.py` and `c1_path_session_sem.py`.
