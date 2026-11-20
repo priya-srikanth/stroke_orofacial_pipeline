@@ -15,6 +15,13 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-11-20 — Two-tone treadmill / running on the 60-min recording (first to last sync pulse)
+
+- *Context:* For the manuscript treadmill / running supplement (both cohorts), Priya asked that the two-tone cohort be time-matched to its 60-min recording, "beginning to end of sync pulse", instead of the review tables' first cue -> last cue + 8 s ("whole") or first cue + 50.5 min ("matched").
+- *Decision:* `scripts/manuscript/engagement_movement/c1_sync60.py`. Window = first rising to last falling edge of wavesurfer `Sync_signal` (spout_behavior/wavesurfer_signals_processed), capped at 60 min (only PS48 2025-03-14, two recordings joined as halves a + b, would exceed it); 256/256 sessions, median 60.0 min, one session 53.5 min (its sync stops early). Running / stillness = c1_running definitions over that window; push / walking = trials.parquet values on trials whose cue + 3.5 s lies inside it (24,766 of 24,793); statistics = c1_stats.run_family (families treadmill_primary_sidepooled_sync60, running_sync60). Treadmill stars identical to "whole"; running 22 -> 20 (moderate acute bouts / min and fraction of time > 3 mm/s lose their star). The six-position rows stay on their first 95 min.
+- *Alternatives considered:* "whole" (first cue -> last cue + 8 s; varies 48-71 min per session) and the 50.5-min cue-based match.
+- *Enforced at:* `scripts/manuscript/engagement_movement/c1_sync60.py`; outputs in `vls_stroke_paper/review/c2_treadmill_2026-11-20/combined_mac_2026-11-20/c1_sync60/`, figure `.../figures/C_treadmill_running_5x4_by_severity_v3_sync60`.
+
 ## 2026-11-20 — v41 branches merged to main (Priya: "Merge to main when safe")
 
 - *Context:* Priya 2026-11-20 authorized merging the v41 sync branches to main and adding the session's scripts.

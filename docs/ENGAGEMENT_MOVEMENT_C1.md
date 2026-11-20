@@ -88,3 +88,7 @@ TIM stats: the pre-stroke disengaged-vs-engaged step now writes a "not estimable
 Cohort speed check (pre-stroke): cue-aligned forward speed (-1..3 s, session-mean trace) two-tone 0.32-0.65 mm/s
 (mean 0.47) vs six-position 0.28-0.62 mm/s (mean 0.39, treadmill_traces_by_epoch.csv); two-tone whole-session mean
 forward speed 0.96 mm/s (animal means 0.37-2.41; PS54/PS55 = 1.37/2.41), 8.7 % of time > 3 mm/s, 88 % still.
+
+## 60-min recording window (Priya 2026-11-20; manuscript treadmill / running figure)
+`c1_sync60.py <c1> <out>`: treadmill push / walking and running / stillness on each session's 60-min recording, first to
+last sync pulse (see docs/DECISIONS.md 2026-11-20). `--stats-only` reruns the statistics from an existing <out>.
