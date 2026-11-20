@@ -58,6 +58,11 @@ scripts.
 
 ## Inferential test hierarchy
 
+**Current sheet for the manuscript: `pooled_phenotype_stats_c2aligned_v2.csv`**
+(all-lick speed restored; `--test-set c2_aligned --out-suffix v2`; DECISIONS
+2026-11-19 "All-lick peak tongue speed restored"). The xy pair stays in
+`pooled_phenotype_stats_c2aligned_xy_dist.csv`.
+
 **Current for the manuscript (2026-11-19, `--test-set c2_aligned`; DECISIONS
 "Cohort-1 statistics aligned with the six-position cohort"):** star = session
 MWU q < 0.05 (BH per family) AND the nested animals -> sessions bootstrap 95% CI

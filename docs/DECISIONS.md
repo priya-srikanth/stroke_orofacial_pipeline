@@ -15,6 +15,14 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-11-19 — All-lick peak tongue speed restored to the cohort-2-aligned set (sheet v2)
+
+- *Context:* `tongue_median_vxy_peak_per_trial` (all-lick peak speed, manuscript Figure 2G; the cohort-1 counterpart of cohort 2's all-lick 3-D speed) was on the 2026-11-19 drop list, which left 2G as the only cohort-1 panel on the old rule.
+- *Decision (Priya):* restore it to the c2_aligned scalar family; every other dropped endpoint (incl. `tongue_median_vy_peak_per_trial`) stays dropped. The result is a NEW sheet, `pooled_phenotype_stats_c2aligned_v2.{csv,xlsx}` (29 scalar endpoints, 728 cells); the v1 sheet (`pooled_phenotype_stats_c2aligned`, 712 cells) is unchanged. The xy family is a separate family and is unchanged (no v2).
+- *Result:* the scalar family gains 16 cells, so every scalar q shifts slightly, but no existing cell changes its star: 398 -> 407 starred, all 9 new stars are speed cells (mild L acute/sub-acute, mild R acute; moderate L chronic, R sub-acute; severe L and R sub-acute/chronic). The two moderate-acute speed cells have one animal, so no nested CI and no star.
+- *Outputs:* `stats/results/phenotype_pooled/3_tier/pooled_phenotype_stats_c2aligned_v2.{csv,xlsx}` (command: `build_pooled_phenotype_stats --test-set c2_aligned --scopes 3_tier --out-suffix v2`); review panels `vls_stroke_paper/review/c2aligned_panels_2026-11-19/aligned_v2/` (`c1_panels_c2aligned.py --sheet pooled_phenotype_stats_c2aligned_v2`, incl. `F2_speed_all`).
+- *Enforced at:* `scripts/phase_9_stats/build_pooled_phenotype_stats.py` (`C2_ALIGNED_SCALAR_DROP`); `tests/test_c2_aligned_stats.py::test_allick_speed_restored_other_drops_unchanged`.
+
 ## 2026-11-19 — Cohort-1 statistics aligned with the six-position cohort (`--test-set c2_aligned`)
 
 - *Context:* The pooled-phenotype `**` was a session Mann-Whitney U (BH per family) plus a bootstrap that resampled SESSIONS from the pooled pre and post groups. Each session is first expressed relative to its animal's own pre-stroke mean, but the test still treats sessions as independent (pseudoreplication across animals) and lets animals with many sessions dominate. The six-position cohort (`widefield_pipeline/wfield_local/orofacial_stats.py`) stars a cell only when the session MWU AND a paired, animal-weighted nested bootstrap agree, and shades trajectories with a cluster test whose labels are shuffled within animal. Priya: align cohort 1 to cohort 2.
