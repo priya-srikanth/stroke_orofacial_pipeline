@@ -58,6 +58,16 @@ scripts.
 
 ## Inferential test hierarchy
 
+**Current for the manuscript (2026-11-19, `--test-set c2_aligned`; DECISIONS
+"Cohort-1 statistics aligned with the six-position cohort"):** star = session
+MWU q < 0.05 (BH per family) AND the nested animals -> sessions bootstrap 95% CI
+excludes 0 (cohort 2's `boot_delta`; needs >= 2 animals). No Wilcoxon, no LMM;
+the within-animal permutation is a sensitivity column (`wa_p_fdr`). Trajectory
+shading = cohort 2's cluster test (Welch t, two-sided p < .05 bin threshold,
+labels shuffled within animal), cluster p BH-FDR within each signal. The list
+below is the legacy default (`--test-set legacy`), kept so the published sheets
+stay reproducible:
+
 Locked across Q13 / Q13b / Q13c and the pooled-phenotype stats sheet (see
 `memory/project_phase_9_1_unification_canonical_conventions.md`):
 
@@ -113,6 +123,8 @@ behaviour is unchanged:
 | Scalars, filtered_v1 | same, plus `--filter-variant filtered_v1 --filter-manifest-dir <stats>/inputs/filtered_v1/_manifests_xy_dist --manifest .scratch_phase_9/materialize_manifest_xy_dist_filtered_v1.csv` | `stats/inputs/filtered_v1/<slug>/`, `_manifests_xy_dist/` |
 | Pooled sheet | `python -m scripts.phase_9_stats.build_pooled_phenotype_stats --families scalar --endpoints <slugs> --out-suffix xy_dist --scopes 3_tier --n-boot 5000 --refuse-existing` | `results/phenotype_pooled/3_tier/pooled_phenotype_stats_xy_dist.{csv,xlsx}` |
 | Response-window lick counts (2026-11-19) | `python scripts/phase_9_stats/materialize_inputs.py --inventory configs/phase_9_1_endpoint_lists/lick_count_rw_inventory.csv --endpoints num_correct_licks_per_trial_rw num_all_licks_per_trial_rw num_incorrect_licks_per_trial_rw --manifest .scratch_phase_9/materialize_manifest_lick_count_rw_no_filter.csv`, then the pooled-sheet command with those slugs and `--out-suffix lick_count_rw` (spout endpoints have no filtered_v1 tree) | `stats/inputs/no_filter/<slug>_rw/`, `results/phenotype_pooled/3_tier/pooled_phenotype_stats_lick_count_rw.{csv,xlsx}` |
+| Cohort-2-aligned sheet (2026-11-19) | `python -m scripts.phase_9_stats.build_pooled_phenotype_stats --test-set c2_aligned --scopes 3_tier --refuse-existing` (xy pair: add `--families scalar --endpoints tongue_lick1_xy_peak tongue_median_xy_peak_per_trial --out-suffix xy_dist`) | `results/phenotype_pooled/3_tier/pooled_phenotype_stats_c2aligned[_xy_dist].{csv,xlsx}` |
+| Cohort-2-aligned trajectory clusters | `python -m scripts.manuscript.run_within_animal_cluster_perm --test c2_aligned --lick-set both --use-cache --refuse-existing` | `results/phenotype_pooled/phase_aligned_trajectories[_all_licks]/3_tier/v3/trajectory_cluster_permutation_c2aligned_bh_fdr.csv` |
 | Trajectories | `python -m scripts.chore_dlc_pooled_phenotype.q13_traj_v2_emit --remap-phenotypes 3tier --out-version v3_xy_dist --signals xy_dist --lick-set {first_lick,all_multi} --refuse-existing` | `{results,figures}/phenotype_pooled/phase_aligned_trajectories[_all_licks]/3_tier/v3_xy_dist/` |
 
 Pitfall: in a filtered variant, `materialize_inputs.py` rewrites
