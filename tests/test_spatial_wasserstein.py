@@ -254,3 +254,46 @@ class TestAggregatePhenotypePooledWasserstein:
     def test_empty_input(self) -> None:
         out = aggregate_phenotype_pooled_wasserstein([], {})
         assert out == {}
+
+
+# ---------------------------------------------------------------------------
+# leave-one-out pre reference (2026-09-17)
+# ---------------------------------------------------------------------------
+
+def test_per_session_w2_leave_one_out(monkeypatch):
+    """LOO pre W-2 equals W-2 against the pool of the OTHER pre sessions and
+    is larger than the naive (self-included) value; post rows unaffected."""
+    import stroke_orofacial.stats.spatial_proportion_diff as spd
+    from stroke_orofacial.stats import spatial_wasserstein as sw
+
+    extent = [0.0, 10.0, 0.0, 10.0]
+    rng = np.random.default_rng(0)
+    hists = {}
+    for i in range(4):
+        h = np.zeros((10, 10))
+        h[3 + i % 3, 4] = 5.0 + i
+        h[6, 2 + i] = 3.0
+        hists[dt.date(2025, 3, 1 + i)] = h + rng.random((10, 10)) * 0.01
+    pool = sum(hists.values())
+
+    monkeypatch.setattr(spd, "get_spatial_recipe", lambda bp: object())
+    monkeypatch.setattr(
+        spd, "compute_pooled_recipe_histogram",
+        lambda animal, dates, recipe, side, resolver, **kw:
+            (hists[dates[0]].copy(), extent, 1, 1, int(hists[dates[0]].sum())),
+    )
+    kw = dict(animal="PSX", pre_pool={"H_pre_counts": pool, "extent": extent},
+              post_dates=list(hists), side="L", bodypart="tongue",
+              resolver=None, defaults={}, animal_info=_make_ai("PSX"))
+    naive = sw.compute_per_animal_per_session_w2_long(epoch_label="pre", **kw)
+    loo = sw.compute_per_animal_per_session_w2_long(
+        epoch_label="pre", leave_one_out=True, **kw)
+    for n_row, l_row in zip(naive, loo):
+        others = pool - hists[l_row["date"]]
+        assert l_row["w2"] == pytest.approx(
+            compute_wasserstein2_2d(others, hists[l_row["date"]], extent))
+        assert l_row["w2"] > n_row["w2"]
+        assert l_row["pre_reference"] == "leave_one_out"
+    post = sw.compute_per_animal_per_session_w2_long(
+        epoch_label="acute", leave_one_out=True, **kw)
+    assert [r["w2"] for r in post] == pytest.approx([r["w2"] for r in naive])

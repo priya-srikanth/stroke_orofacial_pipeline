@@ -179,7 +179,7 @@ def _d_record(animal, side, bodypart, post_epoch, rec, *, pre_trials_key):
 
 def compute_animal(
     animal: str, *, resolver: PathResolver, defaults: dict, animal_info,
-    bodyparts: list[str],
+    bodyparts: list[str], w2_pre_leave_one_out: bool = False,
 ) -> tuple[list[dict], list[dict]]:
     """Compute heatmap D records + per-session W-2 rows for one animal.
 
@@ -202,7 +202,10 @@ def compute_animal(
         get_spatial_recipe(bodypart)  # validates the bodypart early
 
         # --- Heatmap D records (HEATMAP_SIDES) ---
-        for side in HEATMAP_SIDES[bodypart]:
+        # Leave-one-out runs only re-emit W-2 and never render heatmaps, so the
+        # (slow) heatmap D computation is skipped for them.
+        heatmap_sides = () if w2_pre_leave_one_out else HEATMAP_SIDES[bodypart]
+        for side in heatmap_sides:
             pre_pool = compute_per_animal_pre_pool(
                 animal=animal, bodypart=bodypart, side=side, resolver=resolver,
                 defaults=defaults, animal_info=animal_info, pre_dates=pre_dates)
@@ -246,7 +249,8 @@ def compute_animal(
                     side=side, bodypart=bodypart, resolver=resolver,
                     defaults=defaults, animal_info=animal_info,
                     epoch_label=epoch_label,
-                    with_ot_decomposition=WITH_OT_DECOMPOSITION)
+                    with_ot_decomposition=WITH_OT_DECOMPOSITION,
+                    leave_one_out=w2_pre_leave_one_out)
                 for row in rows:
                     row["recovery_phenotype"] = animal_info.recovery_phenotype
                 w2_rows.extend(rows)
@@ -270,7 +274,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--log-level",
                         choices=("DEBUG", "INFO", "WARNING", "ERROR"),
                         default="INFO")
+    parser.add_argument("--w2-pre-leave-one-out", action="store_true",
+                        help="Leave-one-out pre reference for pre-session W-2; "
+                             "W-2 outputs go to <scope>/v2_loo/.")
     args = parser.parse_args(argv)
+    w2_ver = "v2_loo" if args.w2_pre_leave_one_out else "v2"
     if isinstance(args.bodyparts, str):  # default "all" not run through type
         args.bodyparts = parse_bodyparts(args.bodyparts)
     logging.basicConfig(
@@ -291,9 +299,29 @@ def main(argv: list[str] | None = None) -> int:
     all_records: list[dict] = []
     all_w2_rows: list[dict] = []
     for animal in animals:
-        recs, w2 = compute_animal(
-            animal, resolver=resolver, defaults=defaults,
-            animal_info=animals_map_full[animal], bodyparts=bodyparts)
+        # Per-animal checkpoint (2026-09-17): an interrupted run resumes from the
+        # first animal without a cache file. Delete the cache dir to force recompute.
+        ckpt_dir = resolver.pipeline_outputs(
+            subdir="stats/sensitivity/whisker_nose_emit_checkpoints") / (
+                f"{w2_ver}_{'-'.join(bodyparts)}")
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        ckpt = ckpt_dir / f"{animal}.pkl"
+        if ckpt.exists():
+            import pickle
+            with open(ckpt, "rb") as fh:
+                recs, w2 = pickle.load(fh)
+            logger.info("[%s] loaded checkpoint %s", animal, ckpt)
+        else:
+            recs, w2 = compute_animal(
+                animal, resolver=resolver, defaults=defaults,
+                animal_info=animals_map_full[animal], bodyparts=bodyparts,
+                w2_pre_leave_one_out=args.w2_pre_leave_one_out)
+            import pickle
+            tmp = ckpt.with_suffix(".pkl.tmp")
+            with open(tmp, "wb") as fh:
+                pickle.dump((recs, w2), fh)
+            tmp.replace(ckpt)
+            logger.info("[%s] checkpoint -> %s", animal, ckpt)
         all_records.extend(recs)
         all_w2_rows.extend(w2)
     logger.info("Compute: %d D-records, %d per-session W-2 rows",
@@ -323,8 +351,10 @@ def main(argv: list[str] | None = None) -> int:
         pooled = aggregate_phenotype_pooled_spatial_diff(all_records, amap)
         hm_dir = resolver.pipeline_outputs(subdir=HEATMAP_SUBDIR) / scope / "v2"
         hm_dir.mkdir(parents=True, exist_ok=True)
+        # Leave-one-out runs only change W-2; don't re-render the published heatmaps.
+        heatmap_bodyparts = [] if args.w2_pre_leave_one_out else bodyparts
 
-        for bodypart in bodyparts:
+        for bodypart in heatmap_bodyparts:
             # Per-bodypart shared_vmax (the 4 reference points live on very
             # different spatial scales; a cohort-wide vmax would wash out the
             # tight-band spout/eye maps).
@@ -375,7 +405,7 @@ def main(argv: list[str] | None = None) -> int:
         w2_scoped = w2_scoped.dropna(subset=["recovery_phenotype"])
         pooled_w2 = aggregate_phenotype_pooled_mean_sem(
             w2_scoped, value_col="w2", by_side=True)
-        w2_dir = resolver.pipeline_outputs(subdir=W2_SUBDIR) / scope / "v2"
+        w2_dir = resolver.pipeline_outputs(subdir=W2_SUBDIR) / scope / w2_ver
         w2_dir.mkdir(parents=True, exist_ok=True)
         for bodypart in bodyparts:
             w2_side_keys = tuple(
@@ -410,7 +440,7 @@ def main(argv: list[str] | None = None) -> int:
         # CSV is no longer written — write-only orphan; figures render from the
         # in-memory ``pooled_w2`` and mean+SEM recomputes from per_session.)
         res_dir = resolver.pipeline_outputs(
-            subdir=W2_SUBDIR.replace("figures", "results")) / scope / "v2"
+            subdir=W2_SUBDIR.replace("figures", "results")) / scope / w2_ver
         res_dir.mkdir(parents=True, exist_ok=True)
         # Persist per-session W-2 (+ OT create/destroy/move) for reuse.
         # Namespaced under ``whisker_nose/`` so the consolidated-stats loader's
@@ -436,7 +466,7 @@ def main(argv: list[str] | None = None) -> int:
             w2_norm, value_col="value_norm", by_side=True)
         norm_dir = resolver.pipeline_outputs(
             subdir="stats/figures/phenotype_pooled/normalized_wasserstein_recovery",
-        ) / scope / "v2"
+        ) / scope / w2_ver
         norm_dir.mkdir(parents=True, exist_ok=True)
         norm_names = {
             bp: f"Normalized W-2 (x pre-stroke baseline) -- {bp}"
@@ -467,7 +497,7 @@ def main(argv: list[str] | None = None) -> int:
                                       "path": repr(exc)})
         nres_dir = resolver.pipeline_outputs(
             subdir="stats/results/phenotype_pooled/normalized_wasserstein_recovery",
-        ) / scope / "v2"
+        ) / scope / w2_ver
         nres_dir.mkdir(parents=True, exist_ok=True)
         # (normalized mean+SEM summary CSV removed — write-only orphan.)
         # Per-session normalized W-2 (mirrors q12): write ``value_norm`` into a

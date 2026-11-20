@@ -17,6 +17,11 @@ cell, both scopes (3_tier, 4_tier), `pre` as reference, gets:
 
 (Cluster permutation is trajectory-only — no phase dim here. Per-trial MWU skipped.)
 
+Optional (``within_animal=True``, 2026-09-17): a within-animal permutation test
+(pre/post labels shuffled only among each animal's own sessions) and a
+within-animal session bootstrap CI, both on an animal-balanced effect
+(``wa_*`` columns). Sensitivity analysis for the session-pooled MWU.
+
 This module is the reusable per-cell engine; a driver (next) iterates it across
 every pooled family + writes the consolidated per-scope sheet.
 """
@@ -79,6 +84,147 @@ def session_bootstrap_effect_ci(
     }
 
 
+def _animal_groups(sub: pd.DataFrame, value_col: str, epoch_col: str,
+                   animal_col: str, post_epoch: str):
+    """Per-animal (pre, post) finite value arrays; animals lacking either dropped."""
+    groups = []
+    for animal, g in sub.groupby(animal_col, sort=True):
+        pre = _finite(g.loc[g[epoch_col] == PRE_LABEL, value_col])
+        post = _finite(g.loc[g[epoch_col] == post_epoch, value_col])
+        if pre.size and post.size:
+            groups.append((animal, pre, post))
+    return groups
+
+
+def _balanced_t_batch(pre_blocks: list[np.ndarray],
+                      post_blocks: list[np.ndarray]) -> np.ndarray:
+    """Animal-balanced studentized difference for a batch of relabelings.
+
+    ``pre_blocks[a]`` / ``post_blocks[a]`` have shape (B, n_pre_a) /
+    (B, n_post_a): one row per relabeling. Statistic per row:
+    ``D = mean_a(mean(post_a) - mean(pre_a))`` divided by
+    ``sqrt(sum_a(s2_pre/n_pre_a + s2_post/n_post_a)) / A`` with within-animal
+    session variances pooled across animals. If a pooled variance has no
+    degrees of freedom the other one is used; if neither does, D is returned
+    unscaled.
+    """
+    A = len(pre_blocks)
+    d = np.mean([po.mean(axis=1) - pr.mean(axis=1)
+                 for pr, po in zip(pre_blocks, post_blocks)], axis=0)
+
+    def pooled(blocks):
+        ss = sum(((b - b.mean(axis=1, keepdims=True)) ** 2).sum(axis=1)
+                 for b in blocks)
+        df = sum(b.shape[1] - 1 for b in blocks)
+        return (ss / df if df > 0 else None), df
+
+    s2_pre, df_pre = pooled(pre_blocks)
+    s2_post, df_post = pooled(post_blocks)
+    if s2_pre is None and s2_post is None:
+        return d
+    s2_pre = s2_post if s2_pre is None else s2_pre
+    s2_post = s2_pre if s2_post is None else s2_post
+    var = sum(s2_pre / pr.shape[1] + s2_post / po.shape[1]
+              for pr, po in zip(pre_blocks, post_blocks))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t = d / (np.sqrt(var) / A)
+    return np.where(np.isfinite(t), t, 0.0)
+
+
+def within_animal_permutation_test(
+    cell_df: pd.DataFrame,
+    *,
+    post_epoch: str,
+    value_col: str = "value_norm",
+    epoch_col: str = "epoch_label",
+    animal_col: str = "animal",
+    n_perm: int = 5000,
+    seed: int = 0,
+) -> dict[str, Any]:
+    """Two-sided permutation test with pre/post labels shuffled WITHIN animal.
+
+    Unit = session; each animal's session count per label is preserved, so
+    between-animal differences and unequal session counts cannot drive the
+    result. Statistic = animal-balanced studentized post-pre difference
+    (each animal weighted equally). ``p = (1 + #{|T*| >= |T|}) / (1 + n_perm)``.
+    ``wa_min_p`` is the smallest p attainable given the number of distinct
+    within-animal relabelings. ``wa_n_animals_same_sign`` counts animals whose
+    own post-pre difference has the sign of the balanced effect; a call where
+    this is < ``wa_n_animals`` is driven by animals that disagree.
+    """
+    from math import comb, prod
+    sub = cell_df[cell_df[epoch_col].isin((PRE_LABEL, post_epoch))]
+    groups = _animal_groups(sub, value_col, epoch_col, animal_col, post_epoch)
+    diffs = [q.mean() - p.mean() for _, p, q in groups]
+    bal = float(np.mean(diffs)) if diffs else np.nan
+    out: dict[str, Any] = {
+        "wa_stat": np.nan, "wa_p": np.nan,
+        "wa_n_animals": len(groups), "wa_min_p": np.nan,
+        # how many animals individually moved in the direction of the
+        # animal-balanced effect (the permutation test does NOT require
+        # animals to agree: with 2 animals moving in opposite directions the
+        # balanced mean can still be "significant").
+        "wa_n_animals_same_sign": int(sum(np.sign(d) == np.sign(bal)
+                                          for d in diffs)) if diffs else 0,
+    }
+    if not groups or sum(len(p) + len(q) for _, p, q in groups) < 3:
+        return out
+    obs = float(_balanced_t_batch([p[None, :] for _, p, _ in groups],
+                                  [q[None, :] for _, _, q in groups])[0])
+    rng = np.random.default_rng(seed)
+    pre_b, post_b = [], []
+    for _, p, q in groups:
+        joint = np.concatenate([p, q])
+        idx = rng.permuted(np.tile(np.arange(joint.size), (n_perm, 1)), axis=1)
+        perm = joint[idx]
+        pre_b.append(perm[:, :p.size])
+        post_b.append(perm[:, p.size:])
+    null = _balanced_t_batch(pre_b, post_b)
+    n_distinct = prod(comb(p.size + q.size, q.size) for _, p, q in groups)
+    pval = (1.0 + np.sum(np.abs(null) >= abs(obs) - 1e-12)) / (1.0 + n_perm)
+    out.update({"wa_stat": obs,
+                "wa_p": float(max(pval, 1.0 / n_distinct)),
+                "wa_min_p": 1.0 / n_distinct})
+    return out
+
+
+def within_animal_bootstrap_ci(
+    cell_df: pd.DataFrame,
+    *,
+    post_epoch: str,
+    value_col: str = "value_norm",
+    epoch_col: str = "epoch_label",
+    animal_col: str = "animal",
+    n_boot: int = 5000,
+    ci: float = 0.95,
+    seed: int = 0,
+) -> dict[str, Any]:
+    """Bootstrap CI of the animal-balanced post-pre difference.
+
+    Resamples sessions with replacement WITHIN each animal (pre and post
+    separately, counts preserved); animals themselves are fixed, so the CI is
+    conditional on the animals studied.
+    """
+    sub = cell_df[cell_df[epoch_col].isin((PRE_LABEL, post_epoch))]
+    groups = _animal_groups(sub, value_col, epoch_col, animal_col, post_epoch)
+    if not groups:
+        return {"wa_effect": np.nan, "wa_effect_ci_lo": np.nan,
+                "wa_effect_ci_hi": np.nan, "wa_excludes_zero": False}
+    rng = np.random.default_rng(seed)
+    obs = float(np.mean([q.mean() - p.mean() for _, p, q in groups]))
+    d = np.zeros(n_boot)
+    for _, p, q in groups:
+        bp = p[rng.integers(0, p.size, (n_boot, p.size))].mean(axis=1)
+        bq = q[rng.integers(0, q.size, (n_boot, q.size))].mean(axis=1)
+        d += bq - bp
+    d /= len(groups)
+    lo_q = (1.0 - ci) / 2.0
+    lo, hi = np.quantile(d, [lo_q, 1.0 - lo_q])
+    return {"wa_effect": obs, "wa_effect_ci_lo": float(lo),
+            "wa_effect_ci_hi": float(hi),
+            "wa_excludes_zero": bool(lo > 0 or hi < 0)}
+
+
 def _session_mwu(pre_vals: np.ndarray, post_vals: np.ndarray) -> tuple[float, float]:
     """Unpaired Mann-Whitney U on per-session Δ (post vs pre). (stat, p)."""
     from scipy.stats import mannwhitneyu
@@ -101,6 +247,8 @@ def compute_endpoint_cell_suite(
     epoch_col: str = "epoch_label",
     animal_col: str = "animal",
     n_boot: int = 5000,
+    within_animal: bool = False,
+    n_perm: int = 5000,
 ) -> dict[str, Any]:
     """Run the 4 scalar tests for ONE (phenotype × side × endpoint × post_epoch)
     cell on the Δ metric. ``cell_df`` holds per-session rows (one per session)
@@ -126,6 +274,14 @@ def compute_endpoint_cell_suite(
     except Exception as exc:  # pragma: no cover — surfaced as status
         lmm_stat, lmm_p, lmm_status = float("nan"), float("nan"), f"error:{exc}"
     boot = session_bootstrap_effect_ci(pre_vals, post_vals, n_boot=n_boot)
+    wa: dict[str, Any] = {}
+    if within_animal:
+        wa.update(within_animal_permutation_test(
+            sub, post_epoch=post_epoch, value_col=value_col,
+            epoch_col=epoch_col, animal_col=animal_col, n_perm=n_perm))
+        wa.update(within_animal_bootstrap_ci(
+            sub, post_epoch=post_epoch, value_col=value_col,
+            epoch_col=epoch_col, animal_col=animal_col, n_boot=n_boot))
 
     return {
         "post_epoch": post_epoch,
@@ -135,6 +291,7 @@ def compute_endpoint_cell_suite(
         "mwu_session_u": mwu_u, "mwu_session_p": mwu_p,
         "lmm_coef": lmm_stat, "lmm_p": lmm_p, "lmm_status": lmm_status,
         **boot,
+        **wa,
     }
 
 

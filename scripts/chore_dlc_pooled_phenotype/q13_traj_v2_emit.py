@@ -45,6 +45,7 @@ import logging
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -98,7 +99,37 @@ V3_TRAJ_SUBTITLE = (
     "Source: filtered_v1 (substrate v3 — v7-cleaned-trace routing fix per "
     "chore vChore-tongue-substrate-v7-routing-fix); mean ± SEM session-pooled"
 )
-TRAJ_SUBTITLE_BY_VERSION = {"v2": V2_TRAJ_SUBTITLE, "v3": V3_TRAJ_SUBTITLE}
+# v3_xy_dist (2026-11-19): the v3 substrate, restricted to the derived
+# ``xy_dist`` signal so it forms its own BH-FDR family and lands in its own
+# subdir; the shipped v3 signal set and files are untouched.
+V3_XY_TRAJ_SUBTITLE = (
+    V3_TRAJ_SUBTITLE + "; xy_dist = hypot(x_centered, y_centered) per frame, "
+    "cleaned-trace mouth origin"
+)
+TRAJ_SUBTITLE_BY_VERSION = {
+    "v2": V2_TRAJ_SUBTITLE, "v3": V3_TRAJ_SUBTITLE,
+    "v3_xy_dist": V3_XY_TRAJ_SUBTITLE,
+}
+#: Signals derived here from the substrate columns (not built by the bundle).
+DERIVED_SIGNALS = ("xy_dist",)
+
+
+def add_xy_dist(cohort_df: pd.DataFrame) -> pd.DataFrame:
+    """Add ``xy_dist = hypot(x_centered, y_centered)`` to frame-grained rows.
+
+    Computed per frame, BEFORE densify / phase binning, because the mean of
+    per-frame distances is not the distance of the mean position. x/y are in
+    the cleaned-trace mouth-origin frame (``kinematics_baselines`` (x0, y0)
+    subtracted in interpolation), so in-mouth (baseline-filled) frames are
+    exactly (0, 0) -> xy_dist 0, and NaN x or y stays NaN: the same in-mouth
+    handling as ``x_centered`` / ``y_centered``.
+    """
+    out = cohort_df.copy()
+    out["xy_dist"] = np.hypot(
+        out["x_centered"].to_numpy(dtype=np.float64),
+        out["y_centered"].to_numpy(dtype=np.float64),
+    )
+    return out
 # All-L cohort: ipsi = mouse-L, contra = mouse-R.
 SIDE_DISPLAY = {"L": "Ipsi (mouse-L)", "R": "Contra (mouse-R)"}
 
@@ -199,10 +230,22 @@ def main(argv: list[str] | None = None) -> int:
         "--remap-phenotypes", choices=("none", "3tier", "both"), default="none",
     )
     parser.add_argument(
-        "--out-version", choices=("v2", "v3"), default="v3",
+        "--out-version", choices=("v2", "v3", "v3_xy_dist"), default="v3",
         help="Output subdir + subtitle marker. v3 (default) = the "
              "v7-cleaned-trace substrate fix; v2 = the pre-fix audit copy "
-             "(retained, not overwritten by a v3 run).",
+             "(retained, not overwritten by a v3 run); v3_xy_dist = the v3 "
+             "substrate with --signals xy_dist (its own BH family).",
+    )
+    parser.add_argument(
+        "--signals", nargs="+", default=None,
+        help="Restrict figures + every stats family to these signals "
+             "(default: the full TRAJECTORY_SIGNALS set). 'xy_dist' is "
+             "derived here from x_centered / y_centered.",
+    )
+    parser.add_argument(
+        "--refuse-existing", action="store_true",
+        help="Abort before the bundle walk if any target figure/results "
+             "directory already exists (guards against overwriting).",
     )
     parser.add_argument(
         "--lick-set", choices=("first_lick", "all_multi"), default="first_lick",
@@ -232,6 +275,27 @@ def main(argv: list[str] | None = None) -> int:
                 ",".join(animals), args.remap_phenotypes)
     logger.info("=" * 72)
 
+    if args.out_version == "v3_xy_dist" and args.signals != ["xy_dist"]:
+        parser.error("--out-version v3_xy_dist requires --signals xy_dist")
+    signals = tuple(args.signals) if args.signals else None
+
+    # Resolve output dirs up front so --refuse-existing can stop before the
+    # slow bundle walk. all_multi routes to a sibling family so it never
+    # collides with the shipped first-lick pooled trajectory (F, Priya
+    # 2026-06-01).
+    _suffix = "_all_licks" if args.lick_set == "all_multi" else ""
+    fig_root = resolver.pipeline_outputs(subdir=FIGURE_SUBDIR + _suffix)
+    res_root = resolver.pipeline_outputs(subdir=RESULTS_SUBDIR + _suffix)
+    if args.refuse_existing:
+        scope_names = (["4_tier"] if args.remap_phenotypes in ("none", "both") else []) + (
+            ["3_tier"] if args.remap_phenotypes in ("3tier", "both") else [])
+        clash = [d for sc in scope_names for d in (
+            fig_root / sc / args.out_version, res_root / sc / args.out_version)
+            if d.exists()]
+        if clash:
+            logger.error("refusing to write into existing dirs: %s", clash)
+            return 2
+
     # Heavy step: walk the cohort once (bundle rebuild -> phase rows).
     cohort_df, _manifest = walk_cohort(
         animals=animals, resolver=resolver, logger=logger,
@@ -240,6 +304,8 @@ def main(argv: list[str] | None = None) -> int:
     if cohort_df.empty:
         logger.error("walk_cohort returned 0 rows; aborting.")
         return 1
+    if signals is not None and "xy_dist" in signals:
+        cohort_df = add_xy_dist(cohort_df)
 
     # Filter once (scope-independent).
     cohort_df, report = filter_phase_rows(
@@ -261,11 +327,6 @@ def main(argv: list[str] | None = None) -> int:
         scopes.append(("3_tier", PHENOTYPE_ORDER_3TIER,
                        remap_animals_to_3tier(animals_map_full)))
 
-    # all_multi routes to a sibling family so it never collides with the
-    # shipped first-lick pooled trajectory (F, Priya 2026-06-01).
-    _suffix = "_all_licks" if args.lick_set == "all_multi" else ""
-    fig_root = resolver.pipeline_outputs(subdir=FIGURE_SUBDIR + _suffix)
-    res_root = resolver.pipeline_outputs(subdir=RESULTS_SUBDIR + _suffix)
     for scope, phenotype_order, amap in scopes:
         out_dir = fig_root / scope / args.out_version
         res_dir = res_root / scope / args.out_version
@@ -279,6 +340,7 @@ def main(argv: list[str] | None = None) -> int:
             animals_map=amap, phenotype_order=phenotype_order,
             figure_subtitle_override=TRAJ_SUBTITLE_BY_VERSION[args.out_version],
             figure_side_display=SIDE_DISPLAY,
+            signals=signals,
         )
         logger.info(
             "[%s] status=%s figs=%d", scope, result.get("status"),

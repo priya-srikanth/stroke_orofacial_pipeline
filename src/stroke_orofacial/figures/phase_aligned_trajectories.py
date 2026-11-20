@@ -122,11 +122,17 @@ EPOCH_DISPLAY_NAMES: dict[str, str] = {
 }
 
 # Human-readable axis labels for the trajectory signals (Q-lock 13c
-# Stage 3: added y_centered protrusion-axis label).
+# Stage 3: added y_centered protrusion-axis label). NB (2026-11-19): the
+# x/y labels say "spout-midpoint frame" (locked by a Q-lock 13c test), but the
+# substrate x/y are the cleaned trace, whose origin is the per-animal mouth
+# origin (configs/animals.yaml kinematics_baselines (x0, y0)); see DECISIONS.md
+# "xy tongue-protrusion distance". ``xy_dist`` = hypot(x, y) per frame,
+# derived in q13_traj_v2_emit.
 SIGNAL_DISPLAY_NAMES: dict[str, str] = {
     "angle_deg": "Tongue angle (deg)",
     "x_centered": "Tongue x (spout-midpoint frame, px)",
     "y_centered": "Tongue y (spout-midpoint frame, px)",
+    "xy_dist": "Tongue xy distance from mouth origin (px)",
 }
 
 VARIANT_DISPLAY_NAMES: dict[str, str] = {

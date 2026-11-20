@@ -118,6 +118,7 @@ def compute_per_animal_records(
     skip_w2_boxplots: bool = False,
     skip_heatmaps: bool = False,
     with_ot_decomposition: bool = False,
+    w2_pre_leave_one_out: bool = False,
 ) -> tuple[
     list[dict], list[dict], list[dict], list[dict[str, object]],
 ]:
@@ -228,6 +229,7 @@ def compute_per_animal_records(
                     defaults=defaults, animal_info=animal_info,
                     epoch_label="pre",
                     with_ot_decomposition=with_ot_decomposition,
+                    leave_one_out=w2_pre_leave_one_out,
                 )
                 for row in pre_session_rows:
                     row["recovery_phenotype"] = animal_info.recovery_phenotype

@@ -227,6 +227,15 @@ ENDPOINT_DISPLAY_NAMES: dict[str, tuple[str, str]] = {
         "Tongue lick-1 X at Y-peak",
         "Delta X (px)",
     ),
+    # xy protrusion distance from the mouth origin (2026-11-19).
+    "tongue_lick1_xy_peak": (
+        "Tongue lick-1 xy distance at Y-peak",
+        "Delta xy distance (px)",
+    ),
+    "tongue_median_xy_peak_per_trial": (
+        "Tongue median xy distance (all licks)",
+        "Delta xy distance (px)",
+    ),
     "tongue_num_correct_licks_dlc": (
         "DLC cue-correct licks / trial",
         "Delta licks / trial",

@@ -101,6 +101,26 @@ annotations.
 | `scripts/phase_9_1_q13/build_stats_figure_deck.py` | 209-slide deck with on-slide significance grids | `phenotype_pooled/_deck/` |
 | `scripts/chore_whisker_nose_spatial/emit_cohort.py` | Spatial for whisker / nose / spout / eye | `phenotype_pooled/wasserstein_recovery/…/whisker_nose/` |
 
+### Separate-family subset runs (xy distance, 2026-11-19)
+
+A subset of endpoints or signals can be run as its own BH-FDR family without
+touching the shipped files. Each driver has an opt-in flag set, and the default
+behaviour is unchanged:
+
+| Step | Command (from repo root) | Writes (new paths only) |
+|---|---|---|
+| Scalars, unfiltered | `python scripts/phase_9_stats/materialize_inputs.py --inventory configs/phase_9_1_endpoint_lists/xy_dist_inventory.csv --endpoints tongue_lick1_xy_peak tongue_median_xy_peak_per_trial --manifest .scratch_phase_9/materialize_manifest_xy_dist_no_filter.csv` | `stats/inputs/no_filter/<slug>/` |
+| Scalars, filtered_v1 | same, plus `--filter-variant filtered_v1 --filter-manifest-dir <stats>/inputs/filtered_v1/_manifests_xy_dist --manifest .scratch_phase_9/materialize_manifest_xy_dist_filtered_v1.csv` | `stats/inputs/filtered_v1/<slug>/`, `_manifests_xy_dist/` |
+| Pooled sheet | `python -m scripts.phase_9_stats.build_pooled_phenotype_stats --families scalar --endpoints <slugs> --out-suffix xy_dist --scopes 3_tier --n-boot 5000 --refuse-existing` | `results/phenotype_pooled/3_tier/pooled_phenotype_stats_xy_dist.{csv,xlsx}` |
+| Trajectories | `python -m scripts.chore_dlc_pooled_phenotype.q13_traj_v2_emit --remap-phenotypes 3tier --out-version v3_xy_dist --signals xy_dist --lick-set {first_lick,all_multi} --refuse-existing` | `{results,figures}/phenotype_pooled/phase_aligned_trajectories[_all_licks]/3_tier/v3_xy_dist/` |
+
+Pitfall: in a filtered variant, `materialize_inputs.py` rewrites
+`session_filter_manifest.csv` / `trial_filter_manifest.csv` whole. A partial
+(`--endpoints`) run at the default path replaces the full-inventory manifests
+with a subset, which is why `--filter-manifest-dir` exists; always pass it for a
+partial run. The `materialize_manifest*.csv` default path has the same issue
+(`--manifest`).
+
 ## Open follow-ups
 
 - Remaining `stats/` folder structure cleanup items — see memory

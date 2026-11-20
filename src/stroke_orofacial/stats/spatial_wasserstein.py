@@ -193,6 +193,7 @@ def compute_per_animal_per_session_w2_long(
     animal_info=None,
     epoch_label: str | None = None,
     with_ot_decomposition: bool = False,
+    leave_one_out: bool = False,
 ) -> list[dict[str, Any]]:
     """Compute per-session W-2 against the animal's pre-pool.
 
@@ -207,6 +208,14 @@ def compute_per_animal_per_session_w2_long(
     (Q-lock 12a Addendum #6 v1 "naive" lock per Priya 2026-05-28). The
     small bias toward 0 is acceptable as a noise-floor reference; the
     rigorous leave-one-out alternative is deferred.
+
+    ``leave_one_out=True`` (2026-09-17) removes that bias for pre sessions:
+    each pre session is compared against the pre-pool with its own counts
+    subtracted (pool counts are a cell-wise sum on a fixed recipe grid, so
+    ``H_pre - H_session`` is exactly the pool of the OTHER pre sessions).
+    Only applied when ``epoch_label == "pre"``; post sessions are never in
+    the pool. Sessions whose leave-one-out pool is empty (the animal's only
+    pre session) are skipped. Default False preserves the published values.
 
     Returns a list of dicts (long-form rows). Sessions whose H_post is
     None or zero-mass (no contributing tones / parquets) are skipped
@@ -239,7 +248,12 @@ def compute_per_animal_per_session_w2_long(
         if H_post is None or n_total_post == 0:
             continue
         extent = pre_pool["extent"] if pre_pool["extent"] is not None else ext
-        w2 = compute_wasserstein2_2d(pre_pool["H_pre_counts"], H_post, extent)
+        H_ref = pre_pool["H_pre_counts"]
+        if leave_one_out and epoch_label == "pre":
+            H_ref = np.clip(np.asarray(H_ref, dtype=float) - H_post, 0.0, None)
+            if H_ref.sum() <= 0:
+                continue
+        w2 = compute_wasserstein2_2d(H_ref, H_post, extent)
         row = {
             "animal": animal,
             "date": d,
@@ -248,9 +262,11 @@ def compute_per_animal_per_session_w2_long(
             "epoch_label": epoch_label,
             "w2": float(w2),
         }
+        if leave_one_out and epoch_label == "pre":
+            row["pre_reference"] = "leave_one_out"
         if with_ot_decomposition:
             row.update(_ot_decomposition_scalars(
-                pre_pool["H_pre_counts"], H_post, extent,
+                H_ref, H_post, extent,
             ))
         rows.append(row)
     return rows

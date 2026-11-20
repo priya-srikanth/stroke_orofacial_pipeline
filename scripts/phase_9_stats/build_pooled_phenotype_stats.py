@@ -195,6 +195,7 @@ def _persession_from_pertrial(df: pd.DataFrame, endpoint: str) -> pd.DataFrame:
 
 def load_scalar_family(
     resolver: PathResolver, *, filter_variant: str = "filtered_v1",
+    endpoints: list[str] | None = None,
 ) -> pd.DataFrame:
     """Scalar endpoints -> per-session long-form, scoped + filtered.
 
@@ -204,6 +205,10 @@ def load_scalar_family(
     (the QC-filtered tongue family), else falls back to the unfiltered
     ``stats/inputs/<ep>/`` (jaw / spout-behavior have no filtered tree and are
     unfiltered in their canonical figures too).
+
+    ``endpoints`` (explicit opt-in, e.g. the xy-distance pair, 2026-11-19)
+    restricts the load to those slugs and bypasses the figured-scope check,
+    since a new endpoint has no phenotype-pooled figure dir yet.
     """
     inp = resolver.pipeline_outputs(subdir="stats") / "inputs"
     no_filter_root = inp / "no_filter"
@@ -215,8 +220,13 @@ def load_scalar_family(
     ) if no_filter_root.is_dir() else []
     frames = []
     n_filtered = n_unfiltered = 0
+    if endpoints is not None:
+        missing = sorted(set(endpoints) - set(eps))
+        if missing:
+            raise FileNotFoundError(f"no no_filter inputs for {missing}")
+        eps = sorted(endpoints)
     for ep in eps:
-        if ep not in figured or ep in SCALAR_DIAGNOSTIC_DROP:
+        if endpoints is None and (ep not in figured or ep in SCALAR_DIAGNOSTIC_DROP):
             continue
         filt_dir = inp / "filtered_v1" / ep
         use_filtered = filter_variant == "filtered_v1" and filt_dir.is_dir()
@@ -323,8 +333,15 @@ def load_all_licks_endpoints_family(
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
-def load_wasserstein_family(resolver: PathResolver) -> pd.DataFrame:
-    """Persisted per-session W-2 (absolute + normalized) -> per-session long-form."""
+def load_wasserstein_family(resolver: PathResolver, *, w2_version: str = "v2",
+                            fallback_to_v2: bool = True) -> pd.DataFrame:
+    """Persisted per-session W-2 (absolute + normalized) -> per-session long-form.
+
+    ``w2_version`` selects the ``<scope>/<version>/`` subdir: ``v2`` (published,
+    pre sessions vs full pre pool) or ``v2_loo`` (leave-one-out pre reference).
+    ``w2_reference`` records which version each row came from; with
+    ``fallback_to_v2`` bodyparts lacking the requested version use v2.
+    """
     res = resolver.pipeline_outputs(subdir="stats") / "results" / "phenotype_pooled"
     frames = []
     for fam, sub in [("wasserstein_recovery", "wasserstein_recovery"),
@@ -332,6 +349,8 @@ def load_wasserstein_family(resolver: PathResolver) -> pd.DataFrame:
                       "normalized_wasserstein_recovery")]:
         for f in glob.glob(str(res / sub / "**" / "wasserstein_recovery_per_session.csv"),
                            recursive=True):
+            if Path(f).parent.parent.name != w2_version:
+                continue
             df = pd.read_csv(f)
             if df.empty or "w2" not in df.columns:
                 continue
@@ -354,7 +373,20 @@ def load_wasserstein_family(resolver: PathResolver) -> pd.DataFrame:
     # p-values in the pooled stats. Key on the natural session identity; one
     # row per (animal, date, side, endpoint, epoch_label, family) is correct.
     key = ["animal", "date", "side", "endpoint", "epoch_label", "family"]
-    return out.drop_duplicates(subset=key, ignore_index=True)
+    out = out.drop_duplicates(subset=key, ignore_index=True)
+    out["w2_reference"] = w2_version
+    if w2_version != "v2" and fallback_to_v2:
+        # Bodyparts without a leave-one-out re-emit yet (e.g. whisker/nose while
+        # that emitter is still running) fall back to the published v2 values so
+        # the W-2 FDR families keep the same set of cells as the published sheet.
+        base = load_wasserstein_family(resolver, w2_version="v2", fallback_to_v2=False)
+        have = set(map(tuple, out[["family", "endpoint"]].drop_duplicates().to_numpy()))
+        missing = base[[ (f, e) not in have for f, e in zip(base["family"], base["endpoint"]) ]]
+        if not missing.empty:
+            log.warning("W-2 %s missing for %s; using published v2 values for those bodyparts",
+                        w2_version, sorted(set(missing["endpoint"])))
+            out = pd.concat([out, missing], ignore_index=True)
+    return out
 
 
 def _attach_phenotype(df: pd.DataFrame, scope: str) -> pd.DataFrame:
@@ -368,7 +400,8 @@ def _attach_phenotype(df: pd.DataFrame, scope: str) -> pd.DataFrame:
     return df
 
 
-def _run_family(long_df: pd.DataFrame, *, n_boot: int) -> pd.DataFrame:
+def _run_family(long_df: pd.DataFrame, *, n_boot: int,
+                within_animal: bool = False) -> pd.DataFrame:
     """Engine over every (family, endpoint, phenotype, side, post_epoch) cell."""
     out_rows: list[dict] = []
     # Group by (family, endpoint): the first-lick and all-licks phase-aligned
@@ -389,9 +422,11 @@ def _run_family(long_df: pd.DataFrame, *, n_boot: int) -> pd.DataFrame:
                         continue
                     res = SUITE.compute_endpoint_cell_suite(
                         phen_df, post_epoch=post_epoch, value_col="value_norm",
-                        n_boot=n_boot)
+                        n_boot=n_boot, within_animal=within_animal)
                     res.update({"family": family, "endpoint": endpoint,
                                 "recovery_phenotype": phen, "side": side})
+                    if "w2_reference" in phen_df.columns:
+                        res["w2_reference"] = phen_df["w2_reference"].iloc[0]
                     out_rows.append(res)
     return pd.DataFrame(out_rows)
 
@@ -413,6 +448,26 @@ def _attach_headline(res: pd.DataFrame) -> pd.DataFrame:
     res["headline_sig"] = res["headline_p_fdr"] < 0.05
     res["headline_and_bootstrap_sig"] = (
         res["headline_sig"] & res.get("excludes_zero", False).astype(bool))
+    return res
+
+
+def _attach_within_animal(res: pd.DataFrame) -> pd.DataFrame:
+    """BH-FDR (per family) on the within-animal permutation p + agreement flags.
+
+    ``wa_sig`` = within-animal FDR q < 0.05 AND within-animal bootstrap CI
+    excludes 0 (the within-animal analogue of ``headline_and_bootstrap_sig``).
+    ``wa_all_animals_agree``: every animal's own post-pre change has the sign
+    of the balanced effect; ``wa_sig_consistent`` = ``wa_sig`` and that.
+    ``wa_agrees_with_headline`` compares ``wa_sig`` to the published ``**`` call.
+    """
+    res = res.rename(columns={"wa_p": "p_value"})
+    res = apply_correction_to_results_df(res, group_cols=("family",))
+    res = res.rename(columns={"p_value": "wa_p", "p_adj": "wa_p_fdr"})
+    res = res.drop(columns=["reject"], errors="ignore")
+    res["wa_sig"] = (res["wa_p_fdr"] < 0.05) & res["wa_excludes_zero"].astype(bool)
+    res["wa_all_animals_agree"] = res["wa_n_animals_same_sign"] == res["wa_n_animals"]
+    res["wa_sig_consistent"] = res["wa_sig"] & res["wa_all_animals_agree"]
+    res["wa_agrees_with_headline"] = res["wa_sig"] == res["headline_and_bootstrap_sig"]
     return res
 
 
@@ -466,9 +521,44 @@ def main(argv: list[str] | None = None) -> int:
                          "the trial+session DLC filter, matching the canonical "
                          "v3 figures. Spatial/wasserstein stays unfiltered. "
                          "none: all sessions (legacy)."))
+    p.add_argument("--within-animal", action="store_true",
+                   help="Also run the within-animal permutation test + "
+                        "within-animal bootstrap (wa_* columns, wa_sig). "
+                        "Writes a separate *_within_animal sheet.")
+    p.add_argument("--w2-version", choices=("v2", "v2_loo"), default="v2",
+                   help="W-2 per-session source: v2 (published) or v2_loo "
+                        "(leave-one-out pre reference). v2_loo writes "
+                        "pooled_phenotype_stats_w2loo.csv instead.")
+    p.add_argument("--endpoints", nargs="*", default=None,
+                   help="Scalar family only: restrict to these slugs (skips "
+                        "the figured-scope filter). Use with --out-suffix so "
+                        "the subset is its own BH family in its own file.")
+    p.add_argument("--out-suffix", default="",
+                   help="Appended to the sheet stem, e.g. 'xy_dist' -> "
+                        "pooled_phenotype_stats_xy_dist.csv.")
+    p.add_argument("--refuse-existing", action="store_true",
+                   help="Abort (before computing) if the output sheet exists.")
     args = p.parse_args(argv)
+    if args.endpoints is not None and (
+            args.families != ["scalar"] or not args.out_suffix):
+        p.error("--endpoints needs --families scalar and an --out-suffix "
+                "(a subset must not replace the full sheet)")
 
     resolver = PathResolver()
+    stem = "pooled_phenotype_stats"
+    if args.w2_version != "v2":
+        stem += "_w2loo"
+    if args.within_animal:
+        stem += "_within_animal"
+    if args.out_suffix:
+        stem += f"_{args.out_suffix}"
+    if args.refuse_existing:
+        res_base = resolver.pipeline_outputs(subdir="stats") / "results" / "phenotype_pooled"
+        clash = [res_base / sc / f"{stem}{ext}" for sc in args.scopes
+                 for ext in (".csv", ".xlsx") if (res_base / sc / f"{stem}{ext}").exists()]
+        if clash:
+            log.error("refusing to overwrite: %s", clash)
+            return 2
     animals = sorted(load_animals().keys())
     filtered = args.filter_variant == "filtered_v1"
 
@@ -482,7 +572,9 @@ def main(argv: list[str] | None = None) -> int:
     base_long = []
     if "scalar" in args.families:
         log.info("loading scalar family ...")
-        base_long.append(load_scalar_family(resolver, filter_variant=args.filter_variant))
+        base_long.append(load_scalar_family(
+            resolver, filter_variant=args.filter_variant,
+            endpoints=args.endpoints))
     if "phase_aligned_endpoints" in args.families:
         log.info("loading phase_aligned family ...")
         base_long.append(load_phase_aligned_family(
@@ -493,7 +585,7 @@ def main(argv: list[str] | None = None) -> int:
             resolver, trial_filter=trial_filter, kept_keys=kept_keys))
     if "wasserstein" in args.families:
         log.info("loading wasserstein family (always unfiltered — spatial) ...")
-        base_long.append(load_wasserstein_family(resolver))
+        base_long.append(load_wasserstein_family(resolver, w2_version=args.w2_version))
     base_long = [d for d in base_long if not d.empty]
     if not base_long:
         log.error("no family data loaded")
@@ -504,7 +596,8 @@ def main(argv: list[str] | None = None) -> int:
 
     for scope in args.scopes:
         scoped = _attach_phenotype(long_all, scope)
-        res = _run_family(scoped, n_boot=args.n_boot)
+        res = _run_family(scoped, n_boot=args.n_boot,
+                          within_animal=args.within_animal)
         if res.empty:
             log.warning("[%s] no results", scope)
             continue
@@ -517,12 +610,14 @@ def main(argv: list[str] | None = None) -> int:
             res = res.rename(columns={"p_value": pcol, "p_adj": adj})
             res = res.drop(columns=["reject"], errors="ignore")
         res = _attach_headline(res)
+        if args.within_animal:
+            res = _attach_within_animal(res)
         out_dir = (resolver.pipeline_outputs(subdir="stats") / "results"
                    / "phenotype_pooled" / scope)
         out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / "pooled_phenotype_stats.csv"
+        out_path = out_dir / f"{stem}.csv"
         res.to_csv(out_path, index=False)
-        _write_highlighted_xlsx(res, out_dir / "pooled_phenotype_stats.xlsx")
+        _write_highlighted_xlsx(res, out_dir / f"{stem}.xlsx")
         n_head = int(res["headline_sig"].sum())
         n_both = int(res["headline_and_bootstrap_sig"].sum())
         log.info("[%s] %d rows | %d headline-sig (MWU-FDR) | %d also bootstrap-sig "

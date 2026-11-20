@@ -339,8 +339,15 @@ def run_stats_and_figures(
     phenotype_order: tuple[str, ...] | None = None,
     figure_subtitle_override: str | None = None,
     figure_side_display: dict[str, str] | None = None,
+    signals: tuple[str, ...] | None = None,
 ) -> dict[str, object]:
     """Run Stages 1→2→3 on the cohort phase-row DataFrame.
+
+    ``signals`` (default None = every helper's own ``TRAJECTORY_SIGNALS``
+    default) restricts every stage to the named signal columns. Restricting
+    also restricts the cluster-permutation / Wilcoxon / MWU / LMM BH-FDR
+    families, which span the signals of one run: an xy-only run is its own
+    family (2026-11-19, DECISIONS.md "xy tongue-protrusion distance").
 
     Q-lock 13c Addendum #2 (2026-05-29): numerical CSV outputs split
     from the figures tree. ``output_dir`` continues to receive SVG
@@ -365,25 +372,27 @@ def run_stats_and_figures(
         "(removes ILI-lattice jaggedness)...",
     )
     n_rows_before = len(cohort_df)
-    cohort_df = densify_phase_rows_via_interp(cohort_df)
+    # Only forward ``signals`` when given, so a default call is unchanged.
+    sig_kw: dict = {} if signals is None else {"signals": tuple(signals)}
+    cohort_df = densify_phase_rows_via_interp(cohort_df, **sig_kw)
     logger.info(
         "  densified rows: %d (was %d frame-grained)",
         len(cohort_df), n_rows_before,
     )
 
     logger.info("Stage 1: per-animal phase-bin baseline (epoch_label=pre)...")
-    baseline = compute_per_animal_phase_bin_baseline(cohort_df)
+    baseline = compute_per_animal_phase_bin_baseline(cohort_df, **sig_kw)
     logger.info(
         "  baseline rows: %d (n animals × phase_bins × signals)",
         len(baseline),
     )
 
     logger.info("Stage 1: apply delta = signal - per-animal-baseline...")
-    cohort_with_delta = apply_phase_bin_baseline_delta(cohort_df, baseline)
+    cohort_with_delta = apply_phase_bin_baseline_delta(cohort_df, baseline, **sig_kw)
 
     logger.info("Stage 2: phenotype-pooled phase-bin mean + SEM...")
     pooled = aggregate_phenotype_pooled_phase_bin_mean_sem(
-        cohort_with_delta, by_side=True,
+        cohort_with_delta, by_side=True, **sig_kw,
     )
     logger.info("  pooled rows: %d", len(pooled))
 
@@ -391,6 +400,7 @@ def run_stats_and_figures(
         "Stage 3: emit trajectory figures — SEM (canonical) + SD (sd_band/)...",
     )
     figure_kwargs: dict = {
+        **sig_kw,
         "resolver": resolver,
         "output_dir": output_dir,
         "overwrite": "force" if overwrite == "force" else "prompt",
@@ -455,7 +465,7 @@ def run_stats_and_figures(
     logger.info(
         "Stage 6.1: per-animal trajectory scalar (raw signal, by epoch)...",
     )
-    scalar_df = compute_per_animal_trajectory_scalar(cohort_df)
+    scalar_df = compute_per_animal_trajectory_scalar(cohort_df, **sig_kw)
     logger.info("  per-animal scalar rows: %d", len(scalar_df))
     scalar_csv = csv_dir / "per_animal_trajectory_scalar.csv"
     scalar_df.to_csv(scalar_csv, index=False)
@@ -466,7 +476,7 @@ def run_stats_and_figures(
     )
     if animals_map is None:
         animals_map = load_animals()
-    wilcoxon_df = compute_trajectory_wilcoxon_stats(scalar_df, animals_map)
+    wilcoxon_df = compute_trajectory_wilcoxon_stats(scalar_df, animals_map, **sig_kw)
     wilcoxon_csv = csv_dir / "trajectory_paired_wilcoxon_bh_fdr.csv"
     wilcoxon_df.to_csv(wilcoxon_csv, index=False)
     n_reject = int(wilcoxon_df["reject"].fillna(False).sum())
@@ -481,11 +491,11 @@ def run_stats_and_figures(
         "Stage 6.1: per-session trajectory scalar + unpaired MWU "
         "(session n)...",
     )
-    session_scalar_df = compute_per_session_trajectory_scalar(cohort_df)
+    session_scalar_df = compute_per_session_trajectory_scalar(cohort_df, **sig_kw)
     session_scalar_csv = csv_dir / "per_session_trajectory_scalar.csv"
     session_scalar_df.to_csv(session_scalar_csv, index=False)
     mwu_session_df = compute_trajectory_mwu_stats(
-        session_scalar_df, animals_map, grain="session",
+        session_scalar_df, animals_map, grain="session", **sig_kw,
     )
     mwu_session_csv = csv_dir / "trajectory_mwu_per_session_bh_fdr.csv"
     mwu_session_df.to_csv(mwu_session_csv, index=False)
@@ -500,11 +510,11 @@ def run_stats_and_figures(
         "Stage 6.1: per-trial trajectory scalar + unpaired MWU "
         "(trial n)...",
     )
-    trial_scalar_df = compute_per_trial_trajectory_scalar(cohort_df)
+    trial_scalar_df = compute_per_trial_trajectory_scalar(cohort_df, **sig_kw)
     trial_scalar_csv = csv_dir / "per_trial_trajectory_scalar.csv"
     trial_scalar_df.to_csv(trial_scalar_csv, index=False)
     mwu_trial_df = compute_trajectory_mwu_stats(
-        trial_scalar_df, animals_map, grain="trial",
+        trial_scalar_df, animals_map, grain="trial", **sig_kw,
     )
     mwu_trial_csv = csv_dir / "trajectory_mwu_per_trial_bh_fdr.csv"
     mwu_trial_df.to_csv(mwu_trial_csv, index=False)
@@ -522,7 +532,7 @@ def run_stats_and_figures(
 
     # Q-lock 13.6 — LMM (proper inferential at session grain).
     logger.info("Stage 6.6: per-session LMM (scalar ~ epoch + (1|animal))...")
-    lmm_df = compute_trajectory_lmm_stats(session_scalar_df, animals_map)
+    lmm_df = compute_trajectory_lmm_stats(session_scalar_df, animals_map, **sig_kw)
     lmm_csv = csv_dir / "trajectory_lmm_per_session_bh_fdr.csv"
     lmm_df.to_csv(lmm_csv, index=False)
     n_reject_lmm = int(lmm_df["reject"].fillna(False).sum())
@@ -539,7 +549,7 @@ def run_stats_and_figures(
     )
     cluster_df = compute_trajectory_cluster_permutation_stats(
         cohort_with_delta, animals_map,
-        n_permutations=5000, t_threshold=2.0,
+        n_permutations=5000, t_threshold=2.0, **sig_kw,
     )
     cluster_csv = csv_dir / "trajectory_cluster_permutation_bh_fdr.csv"
     cluster_df.to_csv(cluster_csv, index=False)
@@ -556,7 +566,7 @@ def run_stats_and_figures(
         "Stage 6.6: bootstrap CI on pre trajectory (5000 resamples)...",
     )
     boot_df = compute_trajectory_bootstrap_pre_ci(
-        cohort_with_delta, animals_map, n_bootstrap=5000, ci=0.95,
+        cohort_with_delta, animals_map, n_bootstrap=5000, ci=0.95, **sig_kw,
     )
     boot_csv = csv_dir / "trajectory_pre_bootstrap_ci.csv"
     boot_df.to_csv(boot_csv, index=False)
@@ -570,7 +580,7 @@ def run_stats_and_figures(
         "(5000 resamples, animal-level)...",
     )
     boot_eff_df = compute_trajectory_bootstrap_effect_ci(
-        cohort_with_delta, animals_map, n_bootstrap=5000, ci=0.95,
+        cohort_with_delta, animals_map, n_bootstrap=5000, ci=0.95, **sig_kw,
     )
     boot_eff_csv = csv_dir / "trajectory_effect_bootstrap_ci.csv"
     boot_eff_df.to_csv(boot_eff_csv, index=False)
