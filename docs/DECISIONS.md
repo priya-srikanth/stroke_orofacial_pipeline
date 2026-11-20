@@ -15,6 +15,19 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-11-20 — v41 branches merged to main (Priya: "Merge to main when safe")
+
+- *Context:* Priya 2026-11-20 authorized merging the v41 sync branches to main and adding the session's scripts.
+- *Decision:* Merged onto origin/main (94f82b6) with `--no-ff`, in this order: `ps47-chronic-day5` (1d7ce8e; first, as asked), `ms-v41-c1-stats-port` (e558ffe), `ms-v41-recovery-time-grading` (c426072; the only conflict, two DECISIONS entries added at the same place, kept both), `ms-v41-merge41` (Fig 2B `--aligned`, below). No rebase of published commits. Full pytest suite and ruff run on the merged tree before the push. The two-tone engagement / movement scripts of `review/c2_treadmill_2026-11-20/c1/` are NOT added yet (still being revised).
+
+## 2026-11-20 — Fig 2B trial outcomes re-tested under the aligned rule (comparison only; figure unchanged)
+
+- *Context:* Fig 2B was the last cohort-1 panel still on the old rule (session MWU vs pre, sessions pooled within grade, BH over all 72 tests, `*` = q < 0.05). Every other cohort-1 panel uses the aligned rule (`compute_endpoint_cell_suite(test_set="c2_aligned")`).
+- *Decision:* `run_trial_outcome_stats.py --aligned` (`trial_outcomes.aligned_vs_pre`): same 72 cells (grade x cue side x post epoch x class) and the same per-session class fractions, each expressed as the change from the animal's OWN pre mean (per animal x cue side x class); session MWU (post vs pre changes) + nested animals -> sessions bootstrap (4,000 draws); BH over the 72 rows (one family); `**` = q < 0.05 AND CI excludes 0. Reads the existing `c1_trial_classes.csv` (no re-extraction). Figure not changed.
+- *Result:* old 30 stars -> aligned 22 (21 kept, 9 lost, 1 gained). Lost: moderate ipsi acute complete / jaw_only / no_resp, moderate ipsi sub-acute complete / jaw_only, moderate ipsi chronic jaw_only, severe contra chronic jaw_only / no_resp, severe contra sub-acute incomplete. Gained: severe contra chronic incomplete. Every lost cell has 2 animals (moderate = PS46 + PS51, severe = PS54 + PS55); in 7 of the 9 the MWU q stays < 0.05 but the 2-animal bootstrap CI touches 0 (one animal shows no change), in 2 (severe contra chronic jaw_only, severe contra sub-acute incomplete) q also rises above 0.05.
+- *Outputs:* `stats/results/trial_outcomes/c1_trial_outcome_aligned.csv`, `c1_trial_outcome_aligned_vs_old.csv` (old star, new star, kept / lost / gained; refuses to overwrite).
+- *Enforced at:* `src/stroke_orofacial/stats/trial_outcomes.py::aligned_vs_pre`, `compare_stars`; `tests/test_trial_outcomes_weight_epoch.py::test_aligned_vs_pre_and_compare`.
+
 
 
 ## 2026-11-19 — Trial-outcome statistics and body weight by epoch moved into the pipeline (manuscript v41 Fig 2B, Fig 1F)
