@@ -15,6 +15,12 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-11-20 — Engagement / movement supplement scripts and the xy-distance cluster test (Mac session)
+
+- *Context:* Priya asked for one engagement / movement supplementary figure for both cohorts (time-matched; two-tone on the 60-min recording), with ONE task-independent-movement (TIM) and ONE motion-energy (ME) measure per window, keypoints + FaceRhythm combined; and asked why S7 I-J (first-lick xy protrusion trajectories) carried no cluster bars.
+- *Decision:* `scripts/manuscript/engagement_movement/c1_engmove_sync60.py` (two-tone GLM-HMM occupancy = mean posterior of the engaged / partial / disengaged roles, keypoint TIM and keypoint ME on trials inside the 60-min window; c1_stats.run_family), `tim_combined_px.py` (keypoint TIM averaged over keypoints in px; a first version that z-scored each keypoint was dropped because the near-zero pre-stroke tongue ITI TIM blew the z up), `movement_combined.py` (TIM = mean of each modality's TIM z-scored to the animal's own pre-stroke sessions; ME = mean of keypoint and FaceRhythm ME, both already z to own pre-stroke frames; two-tone keypoints only until its FaceRhythm data exist). `scripts/manuscript/xy_cluster_c2aligned.py`: the c2-aligned within-animal cluster test (unchanged function, signal xy_dist) on the cached PS47-day-5 xy substrate -> v3_xy_dist/trajectory_cluster_permutation_c2aligned_bh_fdr_ps47d5.csv (8 clusters), so S7 I-J now carry bars.
+- *Enforced at:* those scripts; manuscript copies and outputs in `vls_stroke_paper/review/c2_treadmill_2026-11-20/combined_mac_2026-11-20/`. The six-position halves read the desktop's widefield review tables and call widefield_pipeline `orofacial_stats.session_change_tests` (WF_REPO).
+
 ## 2026-11-20 — Two-tone treadmill / running on the 60-min recording (first to last sync pulse)
 
 - *Context:* For the manuscript treadmill / running supplement (both cohorts), Priya asked that the two-tone cohort be time-matched to its 60-min recording, "beginning to end of sync pulse", instead of the review tables' first cue -> last cue + 8 s ("whole") or first cue + 50.5 min ("matched").
