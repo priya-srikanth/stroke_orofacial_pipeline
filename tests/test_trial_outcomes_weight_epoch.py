@@ -31,3 +31,22 @@ def test_bh_matches_statsmodels():
 def test_weight_epochs():
     df = pd.DataFrame({"animal": ["A"] * 5, "day": [-1, 0, 1, 3, 5]})
     assert bw.assign_epochs(df, {"A": (1, 5)}).tolist() == ["pre", "pre", "acute", "subacute", "chronic"]
+
+
+def test_aligned_vs_pre_and_compare():
+    rng = np.random.default_rng(1)
+    rows = []
+    for an in ("A", "B", "C"):
+        for k, (ep, p_complete) in enumerate([("pre", 0.9)] * 4 + [("acute", 0.2)] * 3):
+            for t in range(40):
+                c = "complete" if rng.random() < p_complete else "no_resp"
+                rows.append({"animal": an, "date": f"d{k}", "epoch": ep, "side": "contra", "grp": "mild", "cls": c})
+    trials = pd.DataFrame(rows)
+    new = to.aligned_vs_pre(trials)
+    assert set(new.cls) == set(to.CLASSES) and (new.n_animals == 3).all()
+    comp = new.set_index("cls").loc["complete"]
+    assert comp.delta < -0.5 and comp.ci_hi < 0 and comp.star == "**"
+    assert new.set_index("cls").loc["jaw_only"].star == ""   # all-zero cell: no change, no star
+    old = to.mwu_vs_pre(trials)
+    cmp = to.compare_stars(old, new)
+    assert len(cmp) == len(old) and set(cmp.change) <= {"kept", "lost", "gained", "none"}
