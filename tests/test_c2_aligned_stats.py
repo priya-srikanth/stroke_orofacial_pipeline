@@ -94,9 +94,13 @@ def test_c2_endpoint_set(tmp_path):
         c2_aligned_scalar_endpoints,
     )
     fig = PathResolver(output_root=tmp_path).pipeline_outputs(subdir="stats") / "figures" / "phenotype_pooled"
+    nf = fig.parents[1] / "inputs" / "no_filter"
     for ep in ("num_correct_licks_per_trial", "late_lickiness", "tongue_lick1_y_peak",
-               "jaw_pass_qc", "d_prime"):
+               "jaw_pass_qc", "d_prime", "wasserstein_recovery"):
         (fig / ep).mkdir(parents=True)
+        if ep != "wasserstein_recovery":  # a figure folder with no scalar inputs
+            (nf / ep).mkdir(parents=True)
+    (nf / "num_correct_licks_per_trial_rw").mkdir()
     eps = c2_aligned_scalar_endpoints(PathResolver(output_root=tmp_path))
     assert eps == ["d_prime", "num_correct_licks_per_trial_rw", "tongue_lick1_y_peak"]
 

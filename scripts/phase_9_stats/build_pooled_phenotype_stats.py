@@ -121,8 +121,17 @@ def c2_aligned_scalar_endpoints(resolver: PathResolver) -> list[str]:
     diagnostic and 2026-11-19 drop sets, with the lick counts swapped for their
     response-window versions."""
     figured = _figured_scalar_endpoints(resolver)
-    keep = figured - SCALAR_DIAGNOSTIC_DROP - C2_ALIGNED_SCALAR_DROP
-    return sorted({C2_ALIGNED_SCALAR_REPLACE.get(e, e) for e in keep})
+    # The figure tree also holds non-scalar family folders (W-2, trajectories,
+    # ...); keep only slugs that have materialized scalar inputs, as
+    # load_scalar_family's own figured-scope filter does.
+    nf = resolver.pipeline_outputs(subdir="stats") / "inputs" / "no_filter"
+    scalars = {d.name for d in nf.iterdir() if d.is_dir()} if nf.is_dir() else set()
+    keep = (figured & scalars) - SCALAR_DIAGNOSTIC_DROP - C2_ALIGNED_SCALAR_DROP
+    out = {C2_ALIGNED_SCALAR_REPLACE.get(e, e) for e in keep}
+    missing = sorted(out - scalars)
+    if missing:
+        raise FileNotFoundError(f"replacement slugs not materialized: {missing}")
+    return sorted(out)
 
 
 def _figured_scalar_endpoints(resolver: PathResolver) -> set[str]:
