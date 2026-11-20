@@ -15,8 +15,18 @@ Reads ``spout_behavior/licks_and_rewards`` and
 ``dlc_kinematics/tongue_jaw_mismatch/candidate_trials`` (read-only). Refuses to
 overwrite.
 
+``--aligned`` (Priya 2026-11-20): instead, re-test the same Fig 2B cells under the
+rule every other cohort-1 panel uses (change from each animal's own pre, session
+MWU + nested animals -> sessions bootstrap, star ``**`` = BH q < 0.05 AND CI
+excludes 0; ``trial_outcomes.aligned_vs_pre``). Reads the existing
+``c1_trial_classes.csv`` and ``c1_trial_outcome_mwu_bh.csv`` (no re-extraction)
+and writes, in the same folder, ``c1_trial_outcome_aligned<tag>.csv`` and
+``c1_trial_outcome_aligned_vs_old<tag>.csv`` (old star, new star,
+kept / lost / gained). Figures are not changed.
+
 Usage:
     python scripts/manuscript/run_trial_outcome_stats.py [--out-suffix S]
+    python scripts/manuscript/run_trial_outcome_stats.py --aligned [--out-suffix S]
 """
 from __future__ import annotations
 
@@ -38,10 +48,15 @@ EPOCH_NAME = {"pre": "pre", "acute": "acute", "sub_acute": "subacute", "chronic"
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out-suffix", default="")
+    ap.add_argument("--aligned", action="store_true", help="aligned-rule re-test of the existing tables")
+    ap.add_argument("--trials-csv", default=None, help="--aligned input (default: c1_trial_classes.csv)")
+    ap.add_argument("--old-csv", default=None, help="--aligned comparison (default: c1_trial_outcome_mwu_bh.csv)")
     a = ap.parse_args(argv)
     tag = f"_{a.out_suffix}" if a.out_suffix else ""
     r = PathResolver()
     out_dir = r.pipeline_outputs(subdir="stats") / "results" / "trial_outcomes"
+    if a.aligned:
+        return _aligned(out_dir, tag, a.trials_csv, a.old_csv)
     outs = [out_dir / f"c1_trial_classes{tag}.csv", out_dir / f"c1_trial_outcome_mwu_bh{tag}.csv",
             out_dir / f"c1_trial_outcome_fractions{tag}.csv"]
     clash = [str(p) for p in outs if p.exists()]
@@ -81,6 +96,24 @@ def main(argv: list[str] | None = None) -> int:
     stats.to_csv(outs[1], index=False)
     pd.DataFrame(fr).to_csv(outs[2], index=False)
     print(stats[stats.star == "*"].to_string(index=False))
+    for p in outs:
+        print("wrote", p)
+    return 0
+
+
+def _aligned(out_dir, tag: str, trials_csv: str | None, old_csv: str | None) -> int:
+    outs = [out_dir / f"c1_trial_outcome_aligned{tag}.csv", out_dir / f"c1_trial_outcome_aligned_vs_old{tag}.csv"]
+    clash = [str(p) for p in outs if p.exists()]
+    if clash:
+        sys.exit(f"refusing to overwrite {', '.join(clash)}")
+    trials = pd.read_csv(trials_csv or out_dir / "c1_trial_classes.csv")
+    old = pd.read_csv(old_csv or out_dir / "c1_trial_outcome_mwu_bh.csv")
+    new = to.aligned_vs_pre(trials)
+    cmp = to.compare_stars(old, new)
+    new.to_csv(outs[0], index=False)
+    cmp.to_csv(outs[1], index=False)
+    print(cmp.change.value_counts().to_string())
+    print(cmp[cmp.change.isin(["lost", "gained"])].to_string(index=False))
     for p in outs:
         print("wrote", p)
     return 0
