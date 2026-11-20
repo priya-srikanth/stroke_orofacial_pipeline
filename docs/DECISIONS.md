@@ -15,6 +15,15 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+
+## 2026-11-19 — Session-level trajectory tables moved into the pipeline (manuscript v39-v41)
+
+- *Context:* The manuscript's trajectory lines and bands are the mean and SEM across sessions (Priya 11-19), computed so far in the manuscript's `analysis/c1_traj_session_stats.py`, `c1_xy_traj_session_stats.py` and `c1_path_session_sem.py`.
+- *Decision:* Ported as `stats/trajectory_session_summary.py` + `scripts/manuscript/run_trajectory_session_tables.py` (next to `run_within_animal_cluster_perm.py`, whose cached `trial_bin_substrate[_S].parquet` it reads; `--substrate-suffix S` reads the `_S` substrates and xy cache `v3_xy_dist/_xy_session_cache_S/`, and names the outputs `_S`). No computation changed. The path SEM now also has a `_ps47d5` version (the manuscript only had it on the old substrate).
+- *Result:* `c1_traj_sessions_ps47d5.csv`, `c1_traj_xy_sessions_ps47d5.csv` and `c1_traj_xy_sessions.csv` are byte-identical to the manuscript's `data/` copies; `c1_traj_sessions.csv` and `c1_path_session_sem.csv` have identical keys, NaN pattern and values (max abs difference 0; written on a different machine, so the text differs).
+- *Outputs:* `stats/results/trajectory_sessions/{c1_traj_sessions,c1_traj_xy_sessions,c1_path_session_sem}{,_ps47d5}.csv` (refuses to overwrite).
+- *Enforced at:* `src/stroke_orofacial/stats/trajectory_session_summary.py`; `tests/test_trajectory_session_summary.py`.
+
 ## 2026-11-19 — PS47 (#1) chronic onset moved from day 3 to day 5
 
 - *Context:* PS47's stamped boundaries were acute day 1, sub-acute day 2, chronic from day 3. Against its last five pre-stroke sessions, contralesional first-lick accuracy and criterion are back on day 3, but d′ (−1.1 SD on day 3) and ipsilesional correct licks (−0.8 SD) recover on day 4, and contralesional first-lick latency is still +1.7 SD on day 4 and near baseline on day 5. The automatic epoch derivation (`stats/epoch_derivation.py`, `pipeline_outputs/epochs/derived_epoch_boundaries.csv`) already puts PS47's chronic onset at day 5. Paper-folder handoff: `HANDOFF_PS47_epoch_change.md` (2026-11-18); prompt `PROMPT_c1_PS47_epoch_c2aligned.md` (2026-11-19).
