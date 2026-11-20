@@ -24,9 +24,23 @@ and writes, in the same folder, ``c1_trial_outcome_aligned<tag>.csv`` and
 ``c1_trial_outcome_aligned_vs_old<tag>.csv`` (old star, new star,
 kept / lost / gained). Figures are not changed.
 
+``--distribution`` (Priya 2026-11-20): ONE change-in-distribution test per Fig 2B bar
+(grade x cue side x post epoch) instead of the per-class tests
+(``trial_outcomes.distribution_vs_pre``: per-animal TVD of the epoch vs own-pre mean
+composition, animal-weighted D, within-animal pre/epoch label permutation, exact when
+<= 20,000 relabellings else 10,000 random with seed 0, BH over all bars, star_dist =
+q < 0.05). Reads ``--trials-csv`` (default ``c1_trial_classes.csv``) and the aligned
+per-class table ``--aligned-csv`` (default ``c1_trial_outcome_aligned.csv``) and writes
+``c1_trial_outcome_distribution_test<tag>.csv`` (+ ``_per_animal``, ``_vs_aligned``).
+``--jaw-flags FILE --jaw-col COL`` re-splits the no-contact, no-tongue trials into
+jaw_only / no_resp from a per-trial boolean (parquet or csv keyed by animal, date
+YYYYMMDD, trial_index; ``trial_outcomes.override_jaw_only``) before testing.
+
 Usage:
     python scripts/manuscript/run_trial_outcome_stats.py [--out-suffix S]
     python scripts/manuscript/run_trial_outcome_stats.py --aligned [--out-suffix S]
+    python scripts/manuscript/run_trial_outcome_stats.py --distribution [--jaw-flags F --jaw-col C]
+        [--aligned-csv A] --out-suffix S
 """
 from __future__ import annotations
 
@@ -51,10 +65,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--aligned", action="store_true", help="aligned-rule re-test of the existing tables")
     ap.add_argument("--trials-csv", default=None, help="--aligned input (default: c1_trial_classes.csv)")
     ap.add_argument("--old-csv", default=None, help="--aligned comparison (default: c1_trial_outcome_mwu_bh.csv)")
+    ap.add_argument("--distribution", action="store_true", help="one distribution test per bar")
+    ap.add_argument("--aligned-csv", default=None, help="--distribution comparison (default: c1_trial_outcome_aligned.csv)")
+    ap.add_argument("--jaw-flags", default=None, help="--distribution: per-trial jaw-only flags (parquet / csv)")
+    ap.add_argument("--jaw-col", default=None, help="--distribution: boolean column of --jaw-flags")
     a = ap.parse_args(argv)
     tag = f"_{a.out_suffix}" if a.out_suffix else ""
     r = PathResolver()
     out_dir = r.pipeline_outputs(subdir="stats") / "results" / "trial_outcomes"
+    if a.distribution:
+        return _distribution(out_dir, tag, a.trials_csv, a.aligned_csv, a.jaw_flags, a.jaw_col)
     if a.aligned:
         return _aligned(out_dir, tag, a.trials_csv, a.old_csv)
     outs = [out_dir / f"c1_trial_classes{tag}.csv", out_dir / f"c1_trial_outcome_mwu_bh{tag}.csv",
@@ -114,6 +134,34 @@ def _aligned(out_dir, tag: str, trials_csv: str | None, old_csv: str | None) -> 
     cmp.to_csv(outs[1], index=False)
     print(cmp.change.value_counts().to_string())
     print(cmp[cmp.change.isin(["lost", "gained"])].to_string(index=False))
+    for p in outs:
+        print("wrote", p)
+    return 0
+
+
+def _distribution(out_dir, tag: str, trials_csv, aligned_csv, jaw_flags, jaw_col) -> int:
+    base = f"c1_trial_outcome_distribution_test{tag}"
+    outs = [out_dir / f"{base}.csv", out_dir / f"{base}_per_animal.csv", out_dir / f"{base}_vs_aligned.csv"]
+    clash = [str(p) for p in outs if p.exists()]
+    if clash:
+        sys.exit(f"refusing to overwrite {', '.join(clash)}")
+    if (jaw_flags is None) != (jaw_col is None):
+        sys.exit("--jaw-flags and --jaw-col go together")
+    trials = pd.read_csv(trials_csv or out_dir / "c1_trial_classes.csv")
+    if jaw_flags:
+        fl = pd.read_parquet(jaw_flags) if str(jaw_flags).endswith(".parquet") else pd.read_csv(jaw_flags)
+        trials = to.override_jaw_only(trials, fl, jaw_col)
+        print("jaw override:", pd.crosstab(trials.cls_v1, trials.cls).to_string())
+    cells, per = to.distribution_vs_pre(trials)
+    cmp = to.compare_distribution_aligned(cells, pd.read_csv(aligned_csv or out_dir / "c1_trial_outcome_aligned.csv"))
+    print(per[["group", "side", "epoch", "animal", "tvd", "n_pre_sessions", "n_epoch_sessions"]].round(3).to_string(index=False))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cells.to_csv(outs[0], index=False)
+    per.to_csv(outs[1], index=False)
+    cmp.to_csv(outs[2], index=False)
+    print(cmp.round(4).to_string(index=False))
+    print("distribution stars:", int(cmp.star_dist.sum()), "| bars with >= 1 aligned star:",
+          int(cmp.any_aligned_star.sum()), "| disagreements:", int((cmp.agree == 0).sum()))
     for p in outs:
         print("wrote", p)
     return 0

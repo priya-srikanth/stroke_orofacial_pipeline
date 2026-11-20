@@ -178,3 +178,56 @@ def compare_stars(old: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
     was, now = m.old_star != "", m.new_star != ""
     m["change"] = np.select([was & now, was & ~now, ~was & now], ["kept", "lost", "gained"], "none")
     return m
+
+
+def override_jaw_only(trials: pd.DataFrame, flags: pd.DataFrame, col: str) -> pd.DataFrame:
+    """Re-split the no-contact, no-tongue trials into ``jaw_only`` / ``no_resp`` from a per-trial boolean.
+
+    ``flags`` is keyed by ``animal``, ``date`` (YYYYMMDD) and ``trial_index`` (the candidate-table index =
+    ``trials.trial``) and carries the boolean ``col`` (True = jaw-only trial under the new rule). ``complete``
+    and ``incomplete`` are untouched; every trial currently ``jaw_only`` or ``no_resp`` must have a flag
+    (raises otherwise). Returns a copy with ``cls`` rewritten and ``cls_v1`` = the original class.
+    """
+    f = flags[["animal", "date", "trial_index", col]].copy()
+    f["date"] = f.date.astype(str)
+    f = f.rename(columns={"trial_index": "trial", col: "_jaw"})
+    if f.duplicated(["animal", "date", "trial"]).any():
+        raise ValueError("jaw flags: duplicate animal/date/trial_index rows")
+    t = trials.copy()
+    t["date"] = t.date.astype(str)
+    t = t.merge(f, on=["animal", "date", "trial"], how="left", validate="many_to_one")
+    open_ = t.cls.isin(["jaw_only", "no_resp"])
+    miss = open_ & t._jaw.isna()
+    if miss.any():
+        raise ValueError(f"jaw flags missing for {int(miss.sum())} jaw_only/no_resp trials "
+                         f"(e.g. {t.loc[miss, ['animal', 'date', 'trial']].head(3).to_dict('records')})")
+    t["cls_v1"] = t.cls
+    t.loc[open_, "cls"] = np.where(t.loc[open_, "_jaw"].astype(bool), "jaw_only", "no_resp")
+    return t.drop(columns="_jaw")
+
+
+def distribution_vs_pre(trials: pd.DataFrame, **kw) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Fig 2B: ONE change-in-distribution test per bar (grade x cue side x post epoch; Priya 2026-11-20).
+
+    Same session x (grade, cue side) class fractions as :func:`aligned_vs_pre`; the test (per-animal TVD of the
+    epoch vs own-pre mean composition, animal-weighted D, within-animal label permutation, BH over every cell,
+    ``star_dist`` = q < 0.05) is :func:`stroke_orofacial.stats.composition_test.distribution_tests`.
+    Returns (cells, per_animal); ``group`` = grade.
+    """
+    from stroke_orofacial.stats import composition_test as ct
+
+    s = session_fractions(trials, ["grp", "side"])
+    cells, per = ct.distribution_tests(s, CLASSES, ["grp", "side"], POST_EPOCHS, **kw)
+    cells.insert(0, "cohort", 1)
+    return cells.rename(columns={"grp": "group"}), per.rename(columns={"grp": "group"})
+
+
+def compare_distribution_aligned(cells: pd.DataFrame, aligned: pd.DataFrame) -> pd.DataFrame:
+    """Each bar's distribution star next to the per-class aligned stars of the same bar."""
+    k = ["group", "side", "epoch"]
+    st = (aligned[aligned.star.fillna("") != ""].groupby(k).cls.apply(";".join).rename("aligned_classes"))
+    m = cells[[*k, "star_dist", "D", "p", "p_min", "q", "n_animals"]].merge(st.reset_index(), on=k, how="left")
+    m["aligned_classes"] = m.aligned_classes.fillna("")
+    m["any_aligned_star"] = (m.aligned_classes != "").astype(int)
+    m["agree"] = (m.any_aligned_star == m.star_dist).astype(int)
+    return m
