@@ -792,9 +792,13 @@ def _plot_row_lick_raster(
     # top reading; mirrors the day-labels' rotated-270° right-spine
     # convention.
     half_label_fs = cohort_config["raster_half_label_fontsize"]
+    # Optional key (absent from defaults.yaml -> pipeline -0.08); the
+    # summary renderer widens it with font_scale so larger labels clear
+    # the "0" tick labels.
+    half_label_x = cohort_config.get("raster_half_label_x", -0.08)
     if n_bare > 0:
         ax.text(
-            -0.08, n_bare / 2,
+            half_label_x, n_bare / 2,
             SPOUT_DISTANCE_DISPLAY_LABELS["bare"],
             transform=ax.get_yaxis_transform(),
             rotation=90,
@@ -804,7 +808,7 @@ def _plot_row_lick_raster(
         )
     if n_b > 0:
         ax.text(
-            -0.08, n_bare + 0.5 + n_b / 2,
+            half_label_x, n_bare + 0.5 + n_b / 2,
             SPOUT_DISTANCE_DISPLAY_LABELS["b"],
             transform=ax.get_yaxis_transform(),
             rotation=90,
@@ -848,6 +852,14 @@ def render_animal_summary_spout_close_vs_std(
     behavior_params: dict[str, Any] | None = None,
     animal_info: AnimalInfo | None = None,
     overwrite: Literal["force", "skip", "raise"] = "force",
+    figsize: tuple[float, float] | None = None,
+    height_ratios: tuple[float, ...] | list[float] | None = None,
+    font_scale: float = 1.0,
+    raster_incorrect_color: str | None = None,
+    title_label: str | None = None,
+    out_dir: Path | str | None = None,
+    out_stem: str | None = None,
+    wrap_labels: bool = False,
 ) -> tuple[Path, Path]:
     """Render one 4×2 cohort summary figure for one animal.
 
@@ -906,6 +918,42 @@ def render_animal_summary_spout_close_vs_std(
     overwrite : {"force", "skip", "raise"}
         Same semantics as :func:`save_visual_gate_figure`.
 
+    Manuscript overrides (VLS paper Fig. S5B, 2026-11-19). Every default
+    reproduces the pipeline figure exactly; they exist so the
+    manuscript version can be rendered to a separate folder without
+    touching the pipeline outputs or ``configs/defaults.yaml``.
+
+    figsize : (float, float), optional
+        Figure size in inches. ``None`` = ``(10.0, 14.0)``.
+    height_ratios : sequence of 4 floats, optional
+        Row heights (rows 1-4) passed to the gridspec. ``None`` =
+        equal rows. The manuscript uses ``(1, 1, 1, 1.8)`` so the
+        raster row is not compressed.
+    font_scale : float
+        Multiplier applied to every ``*_fontsize`` entry of
+        ``cohort_config`` (panel titles, axis labels, tick labels,
+        raster half / day labels, suptitle). It also scales the raster
+        half-label offset and the "Trials" labelpad so the larger labels
+        clear the tick labels. ``1.0`` = unchanged.
+    raster_incorrect_color : str, optional
+        Row-4 color for licks on the un-cued side. ``None`` = the
+        ``visual_gate.raster_dot_incorrect_color`` config value
+        (magenta). The manuscript uses red (``#D62728``) because
+        magenta is the R-cue color in rows 1-3.
+    title_label : str, optional
+        Animal label in the suptitle (e.g. ``"#6"``). ``None`` =
+        ``animal``.
+    out_dir : path, optional
+        Output folder. ``None`` =
+        ``resolver.spout_close_vs_std_dir(animal=None)``.
+    out_stem : str, optional
+        Output file stem. ``None`` = ``f"{animal}_summary"``.
+    wrap_labels : bool
+        Break the rows 1-3 y-labels and panel titles onto
+        2-3 lines (wording unchanged). Needed with ``font_scale`` > 1,
+        where the one-line labels are longer than the axes and
+        collide. ``False`` = one-line labels (pipeline figure).
+
     Returns
     -------
     tuple[Path, Path]
@@ -914,10 +962,33 @@ def render_animal_summary_spout_close_vs_std(
     Raises
     ------
     ValueError
-        If the animal has zero post-stroke Cohort B sessions.
+        If the animal has zero post-stroke Cohort B sessions, or
+        ``height_ratios`` does not have 4 entries.
     """
     config = config or load_visual_gate_config()
     cohort_config = cohort_config or load_cohort_config()
+    # Manuscript overrides work on COPIES so the caller's / loaded
+    # config dicts are never mutated (other renderers may share them).
+    if font_scale != 1.0:
+        cohort_config = {
+            k: (v * font_scale
+                if k.endswith("_fontsize") and isinstance(v, (int, float))
+                and not isinstance(v, bool) else v)
+            for k, v in cohort_config.items()
+        }
+        # Larger labels need more room beside the raster tick labels:
+        # push the Standard / Close half labels and "Trials" out too.
+        cohort_config["raster_half_label_x"] = -0.08 * font_scale
+        cohort_config["raster_ylabel_labelpad"] = (
+            cohort_config["raster_ylabel_labelpad"] * font_scale
+        )
+    if raster_incorrect_color is not None:
+        config = {**config, "raster_dot_incorrect_color": raster_incorrect_color}
+    if height_ratios is not None and len(height_ratios) != 4:
+        raise ValueError(
+            f"height_ratios must have 4 entries (one per row); got "
+            f"{len(height_ratios)}"
+        )
     behavior_params = behavior_params or load_behavior_report_params()
     window = behavior_params["window_around_tones"]
     if animal_info is None:
@@ -981,9 +1052,13 @@ def render_animal_summary_spout_close_vs_std(
     row3_ylim = (0.0, max(1.0, row3_max * 1.1))
 
     # ---- Build figure ----
-    figsize = (10.0, 14.0)
+    figsize = figsize if figsize is not None else (10.0, 14.0)
     fig, axs = plt.subplots(
         nrows=4, ncols=2, figsize=figsize, squeeze=False,
+        gridspec_kw=(
+            {"height_ratios": list(height_ratios)}
+            if height_ratios is not None else None
+        ),
     )
     panel_title_fontsize = cohort_config["panel_title_fontsize"]
     licking_xtick_fontsize = cohort_config["licking_xtick_fontsize"]
@@ -1006,6 +1081,10 @@ def render_animal_summary_spout_close_vs_std(
         cohort_config.get("lick_count_integer_yticks", True),
     ))
 
+    # Label line break: a space reproduces the pipeline's one-line
+    # labels exactly; a newline wraps them (manuscript, font_scale > 1).
+    _br = "\n" if wrap_labels else " "
+
     # Row 1: accuracy_firstCorrectLickAll (fractional [0, 1] — NOT
     # integer-locator-eligible)
     for jj, side in enumerate(("L", "R")):
@@ -1022,12 +1101,12 @@ def render_animal_summary_spout_close_vs_std(
         )
         ax.set_ylim(*row1_ylim)
         ax.set_title(
-            f"Tone {side}: first-lick correct (all trials)",
+            f"Tone {side}: first-lick correct{_br}(all trials)",
             fontsize=panel_title_fontsize,
         )
         if jj == 0:
             ax.set_ylabel(
-                "Accuracy (first-lick correct / all trials)",
+                f"Accuracy{_br}(first-lick correct /{_br}all trials)",
                 fontsize=cohort_ylabel_fontsize,
             )
 
@@ -1047,12 +1126,12 @@ def render_animal_summary_spout_close_vs_std(
         )
         ax.set_ylim(*row2_ylim)
         ax.set_title(
-            f"Tone {side}: mean correct licks/trial",
+            f"Tone {side}: mean correct{_br}licks/trial",
             fontsize=panel_title_fontsize,
         )
         if jj == 0:
             ax.set_ylabel(
-                "Mean correct licks per trial",
+                f"Mean correct{_br}licks per trial",
                 fontsize=cohort_ylabel_fontsize,
             )
 
@@ -1072,7 +1151,7 @@ def render_animal_summary_spout_close_vs_std(
         )
         ax.set_ylim(*row3_ylim)
         ax.set_title(
-            f"Tone {side}: mean incorrect licks/trial",
+            f"Tone {side}: mean incorrect{_br}licks/trial",
             fontsize=panel_title_fontsize,
         )
         # Addendum #2 Tweak 1: "Spout Distance" xlabel on Row 3
@@ -1084,7 +1163,7 @@ def render_animal_summary_spout_close_vs_std(
         )
         if jj == 0:
             ax.set_ylabel(
-                "Mean incorrect licks per trial",
+                f"Mean incorrect{_br}licks per trial",
                 fontsize=cohort_ylabel_fontsize,
             )
 
@@ -1133,17 +1212,22 @@ def render_animal_summary_spout_close_vs_std(
                 labelpad=cohort_config["raster_ylabel_labelpad"],
             )
     fig.suptitle(
-        f"{animal}  spout close vs standard  "
+        f"{title_label if title_label is not None else animal}  "
+        f"spout close vs standard  "
         f"(n={len(sessions)} post-stroke sessions)",
         fontsize=panel_title_fontsize,
     )
     fig.tight_layout(rect=[0, 0.02, 1, 0.97])
 
     # Save.
-    out_dir = resolver.spout_close_vs_std_dir(animal=None)
+    out_dir = (
+        Path(out_dir) if out_dir is not None
+        else resolver.spout_close_vs_std_dir(animal=None)
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
-    svg_path = out_dir / f"{animal}_summary.svg"
-    png_path = out_dir / f"{animal}_summary.png"
+    stem = out_stem if out_stem is not None else f"{animal}_summary"
+    svg_path = out_dir / f"{stem}.svg"
+    png_path = out_dir / f"{stem}.png"
     for target in (svg_path, png_path):
         if not target.exists():
             continue
