@@ -599,3 +599,80 @@ def _to_jsonable_float(x: float) -> float | None:
     if not np.isfinite(xf):
         return None
     return xf
+
+
+# ===========================================================================
+# Movement ONSET + after-cue rule (Priya 2026-11-20: "for 2B movement must start after cue")
+# ===========================================================================
+
+
+def jaw_onset_after_cue(
+    jaw_y: np.ndarray,
+    fps: float,
+    tone_frame_idx: int,
+    *,
+    detect_win_ms: tuple[float, float],
+    baseline_win_ms: tuple[float, float],
+    sd_mult: float,
+    min_px: float,
+    density_thr: float,
+    window_n: int,
+) -> dict[str, Any]:
+    """The ``jaw_pass_qc`` call of `_compute_per_trial` (same snippet, baseline, threshold and density test) plus the
+    MOVEMENT ONSET it implies, and whether that movement STARTS AFTER the cue.
+
+    Port of the six-position cohort's rule (widefield_pipeline ``wfield_local.jaw_kinematics.jaw_onsets``, Priya
+    2026-10-20 / 10-21) so both cohorts' "jaw-only" class means the same thing:
+
+    - onset = the first suprathreshold frame of the first ``window_n``-frame window inside ``detect_win_ms`` that
+      passes the density test; ``onset_frames`` = frames after the cue frame (>= 0).
+    - ``onset_frames == 0`` means the jaw was ALREADY deflected from its pre-cue baseline at the cue: that movement
+      did not start after the cue. Such a trial counts only through a RE-ONSET -- the first window that fails the
+      density test (the deflection has settled), then the next window that passes; its first suprathreshold frame
+      (Priya 10-21: "a deflected jaw at the cue doesn't mean no reaction").
+    - ``moved_after_cue`` = 1.0 when jaw_pass_qc and (onset_frames > 0 or a re-onset exists); 0.0 when the jaw did
+      not pass; NaN when it passed only through an at-cue deflection that never settled and moved again (cannot be
+      judged -- the six-position cohort calls these "unknown").
+
+    Returns jaw_pass_qc (bool), onset_frames, reonset_frames (float, NaN = none), moved_after_cue (1 / 0 / NaN),
+    onset_ms (the after-cue onset used: onset, else re-onset; NaN when none).
+    """
+    n = len(jaw_y)
+    lo, hi = min(baseline_win_ms[0], detect_win_ms[0]), max(baseline_win_ms[1], detect_win_ms[1])
+    pre_f, post_f = abs(_ms_to_frames(lo, fps)), abs(_ms_to_frames(hi, fps))
+    t_ms = np.arange(-pre_f, post_f + 1) * (1000.0 / fps)
+    yw = _snippet(np.asarray(jaw_y, float), int(tone_frame_idx), pre_f, post_f, n)
+    out = dict(jaw_pass_qc=False, onset_frames=float("nan"), reonset_frames=float("nan"), moved_after_cue=0.0,
+               onset_ms=float("nan"))
+    bm, bs = _compute_jaw_baseline(yw, t_ms, baseline_win_ms=baseline_win_ms)
+    if not np.isfinite(bm) or not np.isfinite(bs) or bs <= 0:
+        return out                                     # legacy: degenerate baseline -> QC fail (as _compute_per_trial)
+    thr, _ = _compute_jaw_threshold(bs, sd_mult=sd_mult, min_px=min_px)
+    ok, _n = _check_sustained_density(yw, t_ms, bm, thr, detect_win_ms=detect_win_ms, window_n=window_n,
+                                      density_thr=density_thr)
+    if not ok:
+        return out
+    out["jaw_pass_qc"] = True
+    tm = _window_mask(t_ms, detect_win_ms)
+    supra = (np.isfinite(yw) & tm & (np.abs(yw - bm) > thr)).astype(int)
+    W, K = max(1, int(window_n)), max(1, int(np.ceil(density_thr * window_n)))
+    idx = np.flatnonzero(tm)
+    s = supra[idx]
+    passing = (np.convolve(s, np.ones(W, int), mode="valid") >= K) if s.size >= W else np.array([True])
+    w0 = int(np.flatnonzero(passing)[0])
+    j = idx[w0 + int(np.flatnonzero(s[w0:w0 + W])[0])]
+    out["onset_frames"] = float(j - pre_f)
+    if j - pre_f > 0:
+        out["moved_after_cue"], out["onset_ms"] = 1.0, (j - pre_f) * 1000.0 / fps
+        return out
+    out["moved_after_cue"] = float("nan")              # deflected AT the cue: judged only through a re-onset
+    if passing.size > 1:
+        settle = np.flatnonzero(~passing)
+        if settle.size:
+            again = np.flatnonzero(passing[settle[0]:])
+            if again.size:
+                w1 = settle[0] + int(again[0])
+                jr = idx[w1 + int(np.flatnonzero(s[w1:w1 + W])[0])]
+                out["reonset_frames"] = float(jr - pre_f)
+                out["moved_after_cue"], out["onset_ms"] = 1.0, (jr - pre_f) * 1000.0 / fps
+    return out
