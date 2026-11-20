@@ -11,11 +11,20 @@ documented re-derivation / cross-check.
 
 Usage:
     conda activate stroke_orofacial
-    python scripts/run_epoch_derivation.py
+    python scripts/run_epoch_derivation.py [--out-suffix SUFFIX]
+
+``--out-suffix S`` writes ``derived_epoch_boundaries_S.csv`` and
+``epoch_criteria_S.png`` (e.g. ``ps47d5_rederived`` after the 2026-11-19 PS47
+change, whose stamped columns come from ``configs/animals.yaml``). The script
+refuses to overwrite either output (2026-11-19: the plain
+``derived_epoch_boundaries.csv`` of 2026-06-08 records PS47 stamped 2 / 3 and is
+kept as the record of that run; it is superseded, not rewritten).
 """
 from __future__ import annotations
 
+import argparse
 import csv
+import sys
 
 import matplotlib
 
@@ -51,13 +60,26 @@ def _combined_index(animal: str, resolver: PathResolver, filter_name: str):
     return comps, combined
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--out-suffix", default="",
+                    help="write derived_epoch_boundaries_<S>.csv / epoch_criteria_<S>.png")
+    args = ap.parse_args(argv)
+    tag = f"_{args.out_suffix}" if args.out_suffix else ""
+
     resolver = PathResolver()
     filter_name = "no_filter"
     animals_info = {a: i for a, i in load_animals().items() if i.stroke_date is not None}
     animals = sorted(animals_info)
 
     out_dir = resolver.pipeline_outputs(subdir="epochs")
+    out_csv = out_dir / f"derived_epoch_boundaries{tag}.csv"
+    out_png = out_dir / f"epoch_criteria{tag}.png"
+    # Refuse before computing anything: existing epoch tables are records of
+    # the run that wrote them (CLAUDE.md: never overwrite an analysis output).
+    for p in (out_csv, out_png):
+        if p.exists():
+            sys.exit(f"refusing to overwrite {p}; pass a new --out-suffix")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # --- comparison CSV ----------------------------------------------------
@@ -81,7 +103,7 @@ def main() -> None:
             "onset": d.onset_rel_day,
             "plateau": d.plateau_rel_day,
         })
-    with open(out_dir / "derived_epoch_boundaries.csv", "w", newline="") as f:
+    with open(out_csv, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         w.writeheader()
         w.writerows(rows)
@@ -150,8 +172,8 @@ def main() -> None:
                  "regions vs hand-stamped boundaries (black lines)",
                  y=1.04, fontsize=12)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
-    fig.savefig(out_dir / "epoch_criteria.png", dpi=145, bbox_inches="tight")
-    print(f"wrote {out_dir}/derived_epoch_boundaries.csv, epoch_criteria.png")
+    fig.savefig(out_png, dpi=145, bbox_inches="tight")
+    print(f"wrote {out_csv}, {out_png}")
 
 
 if __name__ == "__main__":
