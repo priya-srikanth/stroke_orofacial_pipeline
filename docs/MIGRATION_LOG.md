@@ -7681,3 +7681,19 @@ both scopes); V4/V5 scalar figures (tongue+jaw × both scopes × `no_filter`+
   `recovery_phenotype` count tests are unchanged (that field did not change).
   `docs/DECISIONS.md` got a "superseded 2026-06-08" note on the prior boundary
   lock; historical kickoff/scoping prompts left intact.
+
+## 2026-11-18 — pose3d-2pram-calibration (four-camera calibration, new module; branch `pose3d-2pram-calibration`)
+
+- **New, not a legacy port.** `src/stroke_orofacial/pose3d/` (`rig.py`, `calibration.py`),
+  `scripts/pose3d_2pram/calibrate.py`, `tests/test_pose3d_calibration.py` (7 tests, synthetic data). Calibration
+  machinery COPIED and reduced from widefield_pipeline `wfield_local/dlc_anipose.py` (no cross-repo import).
+  Write-up: `docs/POSE3D_2PRAM.md`.
+- **Rig facts established from the recordings:** four 250-fps Flea3 cameras (not the single `video2` the 2-D
+  pipeline uses), 25 mm lenses on all four, video4 mirrored, frames pair by frame-counter trigger index.
+- **Results:** PS46-50 bundle reprojection 0.327 px (two March recordings, rig-unmoved test passed); PS51-55
+  0.233 px (one recording, few poses -- to be confirmed on session data). Units: nominal 3.5 mm squares until the
+  rod diameter fixes the scale.
+- **Outputs:** `pipeline_outputs/pose3d/calibration/` (detection caches per recording, `calibration.{json,toml}`
+  per batch). No existing output touched.
+- **Environment:** needs `opencv` + `aniposelib` (not in `environment.yml`; run from the analysis desktop's `dlc`
+  env with `PYTHONPATH=src` until they are added).
