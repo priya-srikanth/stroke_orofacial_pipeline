@@ -95,6 +95,35 @@ MWU_HEADLINE_FAMILIES = frozenset({
 })
 DLC_FILTER_METRIC = "dlc_tongue_trajectory_metrics"
 
+# --test-set c2_aligned (Priya 2026-11-19): align cohort 1 with the six-position
+# cohort (widefield_pipeline orofacial_stats). Star = session MWU q < 0.05 (BH per
+# family) AND the nested animals -> sessions bootstrap CI excludes 0; the
+# Wilcoxon and LMM are not run. Endpoints dropped from the hypothesis set:
+C2_ALIGNED_SCALAR_DROP = frozenset({
+    "late_lickiness", "lick_switch_rate", "lickRate_byTrial",
+    "tongue_lick_rate_hz", "tongue_n_licks", "tongue_n_left", "tongue_n_right",
+    "tongue_lick1_vy_peak", "tongue_median_vy_peak_per_trial",
+    "tongue_median_vxy_peak_per_trial", "jaw_peak_abs_deflection",
+})
+# Spout-contact lick counts use the response window (cue + 70 ms to cue + 8 s)
+# instead of window_around_tones (DECISIONS 2026-11-19): old slug -> new slug.
+C2_ALIGNED_SCALAR_REPLACE = {
+    "num_all_licks_per_trial": "num_all_licks_per_trial_rw",
+    "num_correct_licks_per_trial": "num_correct_licks_per_trial_rw",
+    "num_incorrect_licks_per_trial": "num_incorrect_licks_per_trial_rw",
+}
+# The spout is tracked apparatus, not a body part: out of the W-2 families.
+C2_ALIGNED_W2_DROP = frozenset({"spout"})
+
+
+def c2_aligned_scalar_endpoints(resolver: PathResolver) -> list[str]:
+    """Scalar slugs for --test-set c2_aligned: the figured scope minus the
+    diagnostic and 2026-11-19 drop sets, with the lick counts swapped for their
+    response-window versions."""
+    figured = _figured_scalar_endpoints(resolver)
+    keep = figured - SCALAR_DIAGNOSTIC_DROP - C2_ALIGNED_SCALAR_DROP
+    return sorted({C2_ALIGNED_SCALAR_REPLACE.get(e, e) for e in keep})
+
 
 def _figured_scalar_endpoints(resolver: PathResolver) -> set[str]:
     """Slugs that have a phenotype-pooled FIGURE dir (the in-scope set).
@@ -401,7 +430,8 @@ def _attach_phenotype(df: pd.DataFrame, scope: str) -> pd.DataFrame:
 
 
 def _run_family(long_df: pd.DataFrame, *, n_boot: int,
-                within_animal: bool = False) -> pd.DataFrame:
+                within_animal: bool = False,
+                test_set: str = "legacy") -> pd.DataFrame:
     """Engine over every (family, endpoint, phenotype, side, post_epoch) cell."""
     out_rows: list[dict] = []
     # Group by (family, endpoint): the first-lick and all-licks phase-aligned
@@ -422,7 +452,8 @@ def _run_family(long_df: pd.DataFrame, *, n_boot: int,
                         continue
                     res = SUITE.compute_endpoint_cell_suite(
                         phen_df, post_epoch=post_epoch, value_col="value_norm",
-                        n_boot=n_boot, within_animal=within_animal)
+                        n_boot=n_boot, within_animal=within_animal,
+                        test_set=test_set)
                     res.update({"family": family, "endpoint": endpoint,
                                 "recovery_phenotype": phen, "side": side})
                     if "w2_reference" in phen_df.columns:
@@ -448,6 +479,32 @@ def _attach_headline(res: pd.DataFrame) -> pd.DataFrame:
     res["headline_sig"] = res["headline_p_fdr"] < 0.05
     res["headline_and_bootstrap_sig"] = (
         res["headline_sig"] & res.get("excludes_zero", False).astype(bool))
+    return res
+
+
+def _attach_c2_aligned(res: pd.DataFrame, *, within_animal: bool) -> pd.DataFrame:
+    """Headline columns for --test-set c2_aligned (cohort-2 rule).
+
+    ``headline_sig`` = session-MWU BH-FDR q < 0.05 (per family);
+    ``headline_and_bootstrap_sig`` (the figure star, same column name the
+    figure scripts read) = that AND the nested animals -> sessions bootstrap CI
+    excludes 0. With ``within_animal``, the within-animal permutation p gets its
+    own per-family BH (``wa_p_fdr``) as a sensitivity column, plus
+    ``wa_agrees_with_headline`` (wa q < 0.05 vs the star).
+    """
+    res = res.copy()
+    res["headline_test"] = "mwu_session+nested_bootstrap"
+    res["headline_p_fdr"] = res["mwu_session_p_fdr"]
+    res["headline_sig"] = res["headline_p_fdr"] < 0.05
+    res["headline_and_bootstrap_sig"] = (
+        res["headline_sig"] & res["nb_excludes_zero"].astype(bool))
+    if within_animal and "wa_p" in res.columns:
+        res = res.rename(columns={"wa_p": "p_value"})
+        res = apply_correction_to_results_df(res, group_cols=("family",))
+        res = res.rename(columns={"p_value": "wa_p", "p_adj": "wa_p_fdr"})
+        res = res.drop(columns=["reject"], errors="ignore")
+        res["wa_agrees_with_headline"] = (
+            (res["wa_p_fdr"] < 0.05) == res["headline_and_bootstrap_sig"])
     return res
 
 
@@ -485,8 +542,8 @@ def _write_highlighted_xlsx(res: pd.DataFrame, out_path: Path) -> None:
     GREY = PatternFill("solid", fgColor="D9D9D9")
     cols = list(res.columns)
     pcols = [c for c in ("headline_p_fdr", "wilcoxon_p_fdr",
-                         "mwu_session_p_fdr", "lmm_p_fdr") if c in cols]
-    boolcols = [c for c in ("excludes_zero", "headline_sig",
+                         "mwu_session_p_fdr", "lmm_p_fdr", "wa_p_fdr") if c in cols]
+    boolcols = [c for c in ("excludes_zero", "nb_excludes_zero", "headline_sig",
                             "headline_and_bootstrap_sig") if c in cols]
     with pd.ExcelWriter(out_path, engine="openpyxl") as xw:
         res.to_excel(xw, index=False, sheet_name="stats")
@@ -538,7 +595,22 @@ def main(argv: list[str] | None = None) -> int:
                         "pooled_phenotype_stats_xy_dist.csv.")
     p.add_argument("--refuse-existing", action="store_true",
                    help="Abort (before computing) if the output sheet exists.")
+    p.add_argument("--test-set", choices=("legacy", "c2_aligned"), default="legacy",
+                   help="legacy (default): Wilcoxon + session MWU + LMM + session "
+                        "bootstrap, as published. c2_aligned (2026-11-19): the "
+                        "six-position cohort's rule -- star = MWU q < 0.05 AND "
+                        "nested animals->sessions bootstrap CI excludes 0; drops "
+                        "C2_ALIGNED_SCALAR_DROP + spout W-2, uses the _rw lick "
+                        "counts and W-2 v2_loo; writes *_c2aligned sheets.")
     args = p.parse_args(argv)
+    c2 = args.test_set == "c2_aligned"
+    if c2:
+        # The within-animal permutation is always reported as the sensitivity
+        # column in the aligned sheet (Priya 2026-11-19).
+        args.within_animal = True
+    if c2 and args.w2_version == "v2":
+        # The manuscript W-2 panels use the leave-one-out pre reference.
+        args.w2_version = "v2_loo"
     if args.endpoints is not None and (
             args.families != ["scalar"] or not args.out_suffix):
         p.error("--endpoints needs --families scalar and an --out-suffix "
@@ -546,9 +618,11 @@ def main(argv: list[str] | None = None) -> int:
 
     resolver = PathResolver()
     stem = "pooled_phenotype_stats"
-    if args.w2_version != "v2":
+    if c2:
+        stem += "_c2aligned"  # implies W-2 v2_loo; no separate _w2loo tag
+    elif args.w2_version != "v2":
         stem += "_w2loo"
-    if args.within_animal:
+    if args.within_animal and not c2:
         stem += "_within_animal"
     if args.out_suffix:
         stem += f"_{args.out_suffix}"
@@ -572,9 +646,12 @@ def main(argv: list[str] | None = None) -> int:
     base_long = []
     if "scalar" in args.families:
         log.info("loading scalar family ...")
+        eps = args.endpoints
+        if c2 and eps is None:
+            eps = c2_aligned_scalar_endpoints(resolver)
+            log.info("c2_aligned scalar endpoints (%d): %s", len(eps), eps)
         base_long.append(load_scalar_family(
-            resolver, filter_variant=args.filter_variant,
-            endpoints=args.endpoints))
+            resolver, filter_variant=args.filter_variant, endpoints=eps))
     if "phase_aligned_endpoints" in args.families:
         log.info("loading phase_aligned family ...")
         base_long.append(load_phase_aligned_family(
@@ -585,7 +662,10 @@ def main(argv: list[str] | None = None) -> int:
             resolver, trial_filter=trial_filter, kept_keys=kept_keys))
     if "wasserstein" in args.families:
         log.info("loading wasserstein family (always unfiltered — spatial) ...")
-        base_long.append(load_wasserstein_family(resolver, w2_version=args.w2_version))
+        w2 = load_wasserstein_family(resolver, w2_version=args.w2_version)
+        if c2 and not w2.empty:
+            w2 = w2[~w2["endpoint"].isin(C2_ALIGNED_W2_DROP)]
+        base_long.append(w2)
     base_long = [d for d in base_long if not d.empty]
     if not base_long:
         log.error("no family data loaded")
@@ -597,21 +677,27 @@ def main(argv: list[str] | None = None) -> int:
     for scope in args.scopes:
         scoped = _attach_phenotype(long_all, scope)
         res = _run_family(scoped, n_boot=args.n_boot,
-                          within_animal=args.within_animal)
+                          within_animal=args.within_animal,
+                          test_set=args.test_set)
         if res.empty:
             log.warning("[%s] no results", scope)
             continue
         # BH-FDR within family, per test column.
-        for pcol, adj in [("wilcoxon_p", "wilcoxon_p_fdr"),
-                          ("mwu_session_p", "mwu_session_p_fdr"),
-                          ("lmm_p", "lmm_p_fdr")]:
+        tests = ([("mwu_session_p", "mwu_session_p_fdr")] if c2 else
+                 [("wilcoxon_p", "wilcoxon_p_fdr"),
+                  ("mwu_session_p", "mwu_session_p_fdr"),
+                  ("lmm_p", "lmm_p_fdr")])
+        for pcol, adj in tests:
             res = res.rename(columns={pcol: "p_value"})
             res = apply_correction_to_results_df(res, group_cols=("family",))
             res = res.rename(columns={"p_value": pcol, "p_adj": adj})
             res = res.drop(columns=["reject"], errors="ignore")
-        res = _attach_headline(res)
-        if args.within_animal:
-            res = _attach_within_animal(res)
+        if c2:
+            res = _attach_c2_aligned(res, within_animal=args.within_animal)
+        else:
+            res = _attach_headline(res)
+            if args.within_animal:
+                res = _attach_within_animal(res)
         out_dir = (resolver.pipeline_outputs(subdir="stats") / "results"
                    / "phenotype_pooled" / scope)
         out_dir.mkdir(parents=True, exist_ok=True)

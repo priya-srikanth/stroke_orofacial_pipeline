@@ -225,6 +225,62 @@ def within_animal_bootstrap_ci(
             "wa_excludes_zero": bool(lo > 0 or hi < 0)}
 
 
+#: Cohort-2 (widefield_pipeline ``analysis_kit``) bootstrap constants, kept equal
+#: so the two cohorts' CIs are drawn the same way (Priya 2026-11-19).
+NESTED_N_BOOT: int = 4000
+NESTED_PCTL: tuple[float, float] = (2.5, 97.5)
+
+
+def nested_animal_bootstrap_ci(
+    cell_df: pd.DataFrame,
+    *,
+    post_epoch: str,
+    value_col: str = "value_norm",
+    epoch_col: str = "epoch_label",
+    animal_col: str = "animal",
+    n_boot: int = NESTED_N_BOOT,
+    seed: int = 0,
+) -> dict[str, Any]:
+    """Paired, animal-weighted animals -> sessions bootstrap of the post - pre change.
+
+    Port of widefield_pipeline ``analysis_kit.paired_animal_draws`` /
+    ``boot_delta`` (the cohort-2 rule), so cohort 1 and cohort 2 use one CI:
+
+    1. only animals with sessions in BOTH arms count;
+    2. each animal's change = mean(its post sessions) - mean(its pre sessions);
+    3. the change = the MEAN OVER ANIMALS (animals weigh equally, so a
+       heavily-sampled animal cannot decide it);
+    4. each draw resamples animals with replacement ONCE (shared by both arms,
+       which makes it paired), then sessions within each drawn animal.
+
+    Needs >= 2 animals (cohort 2's ``len(post_a) >= 2`` guard): with one animal
+    there is nothing to resample at the animal level, so the CI is NaN and
+    ``nb_excludes_zero`` is False. Percentile CI at ``NESTED_PCTL``.
+    """
+    sub = cell_df[cell_df[epoch_col].isin((PRE_LABEL, post_epoch))]
+    groups = _animal_groups(sub, value_col, epoch_col, animal_col, post_epoch)
+    out: dict[str, Any] = {"nb_effect": np.nan, "nb_ci_lo": np.nan, "nb_ci_hi": np.nan,
+                           "nb_excludes_zero": False, "nb_n_animals": len(groups)}
+    if len(groups) < 2:
+        return out
+    out["nb_effect"] = float(np.mean([q.mean() - p.mean() for _, p, q in groups]))
+    rng = np.random.default_rng(seed)
+    draws = np.empty(n_boot)
+    for i in range(n_boot):
+        d = []
+        for j in rng.integers(0, len(groups), len(groups)):
+            _, p, q = groups[j]
+            # Same order as analysis_kit: post sessions drawn before pre.
+            qa = q[rng.integers(0, q.size, q.size)].mean()
+            pa = p[rng.integers(0, p.size, p.size)].mean()
+            d.append(qa - pa)
+        draws[i] = np.mean(d)
+    lo, hi = np.percentile(draws, NESTED_PCTL)
+    out.update({"nb_ci_lo": float(lo), "nb_ci_hi": float(hi),
+                "nb_excludes_zero": bool(lo > 0 or hi < 0)})
+    return out
+
+
 def _session_mwu(pre_vals: np.ndarray, post_vals: np.ndarray) -> tuple[float, float]:
     """Unpaired Mann-Whitney U on per-session Δ (post vs pre). (stat, p)."""
     from scipy.stats import mannwhitneyu
@@ -249,15 +305,43 @@ def compute_endpoint_cell_suite(
     n_boot: int = 5000,
     within_animal: bool = False,
     n_perm: int = 5000,
+    test_set: str = "legacy",
 ) -> dict[str, Any]:
-    """Run the 4 scalar tests for ONE (phenotype × side × endpoint × post_epoch)
+    """Run the scalar tests for ONE (phenotype × side × endpoint × post_epoch)
     cell on the Δ metric. ``cell_df`` holds per-session rows (one per session)
     with ``value_col`` (Δ-from-pre), ``epoch_col``, ``animal_col`` for `pre` +
     this `post_epoch`. Returns a flat dict (caller adds the grouping keys + FDR).
+
+    ``test_set``:
+      * ``"legacy"`` (default; reproduces the published sheets): paired
+        Wilcoxon, session MWU, LMM, session bootstrap.
+      * ``"c2_aligned"`` (Priya 2026-11-19, aligned to the six-position
+        cohort): session MWU + the nested animals -> sessions bootstrap
+        (:func:`nested_animal_bootstrap_ci`). The Wilcoxon (cannot reach
+        p < 0.05 at 1-4 animals) and the LMM (non-estimable at this size)
+        are not run.
     """
+    if test_set not in ("legacy", "c2_aligned"):
+        raise ValueError(f"unknown test_set {test_set!r}")
     sub = cell_df[cell_df[epoch_col].isin((PRE_LABEL, post_epoch))]
     pre_vals = sub.loc[sub[epoch_col] == PRE_LABEL, value_col].to_numpy()
     post_vals = sub.loc[sub[epoch_col] == post_epoch, value_col].to_numpy()
+    if test_set == "c2_aligned":
+        mwu_u, mwu_p = _session_mwu(pre_vals, post_vals)
+        res: dict[str, Any] = {
+            "post_epoch": post_epoch,
+            "mwu_session_u": mwu_u, "mwu_session_p": mwu_p,
+            "n_pre_sessions": int(_finite(pre_vals).size),
+            "n_post_sessions": int(_finite(post_vals).size),
+        }
+        res.update(nested_animal_bootstrap_ci(
+            sub, post_epoch=post_epoch, value_col=value_col,
+            epoch_col=epoch_col, animal_col=animal_col))
+        if within_animal:
+            res.update(within_animal_permutation_test(
+                sub, post_epoch=post_epoch, value_col=value_col,
+                epoch_col=epoch_col, animal_col=animal_col, n_perm=n_perm))
+        return res
 
     wil = fit_paired_pre_post_wilcoxon(
         sub, post_epoch=post_epoch, value_col=value_col,
