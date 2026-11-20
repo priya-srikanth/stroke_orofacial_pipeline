@@ -266,3 +266,156 @@ def compute_trajectory_cluster_permutation_within_animal(
     res = apply_correction_to_results_df(res, p_value_col="p_value",
                                          method="bh_fdr", group_cols=())
     return res
+
+
+# ---------------------------------------------------------------------------
+# Cohort-2-aligned cluster test (Priya 2026-11-19)
+# ---------------------------------------------------------------------------
+#: Bin-wise threshold = two-sided p < C2_ALPHA for the Welch t (df = n - 2),
+#: and the per-cluster significance level before BH (widefield_pipeline
+#: ``orofacial_stats.ALPHA``).
+C2_ALPHA: float = 0.05
+
+
+def welch_t(post: np.ndarray, pre: np.ndarray) -> np.ndarray:
+    """Per-bin Welch t of post (n_post x bins) vs pre (n_pre x bins), NaN-aware.
+
+    Port of widefield_pipeline ``orofacial_stats._welch_t``: NaN where either
+    arm has < 2 finite sessions in that bin.
+    """
+    import warnings
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        # All-NaN / single-session bins are expected; they become NaN below.
+        warnings.simplefilter("ignore", RuntimeWarning)
+        ma, mb = np.nanmean(post, 0), np.nanmean(pre, 0)
+        va, vb = np.nanvar(post, 0, ddof=1), np.nanvar(pre, 0, ddof=1)
+        na, nb = np.sum(np.isfinite(post), 0), np.sum(np.isfinite(pre), 0)
+        t = (ma - mb) / np.sqrt(va / na + vb / nb)
+    return np.where((na >= 2) & (nb >= 2), t, np.nan)
+
+
+def c2_aligned_cluster_test(
+    sessions: pd.DataFrame,
+    bins: Sequence[int],
+    post_epoch: str,
+    *,
+    n_permutations: int,
+    rng: np.random.Generator,
+    alpha: float = C2_ALPHA,
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    """One pre-vs-post_epoch comparison with the six-position cohort's test.
+
+    Port of widefield_pipeline ``orofacial_stats.cluster_permutation``:
+    per-bin Welch t of the post-epoch session trajectories vs the pre sessions
+    (all animals' sessions pooled for the STATISTIC); clusters = contiguous
+    same-sign runs with |t| above the two-sided ``alpha`` critical t at
+    df = n_post + n_pre - 2; mass = sum |t|; null = max cluster mass after
+    shuffling pre/post labels WITHIN each animal (an animal's sessions never
+    move to another animal). Unlike the cohort-2 function, which returns only
+    a mask at uncorrected p < alpha, this returns each cluster's permutation p
+    so the caller can apply BH within a metric family.
+    """
+    from scipy.stats import t as tdist
+    g = sessions[sessions.epoch_label.isin(("pre", post_epoch))]
+    keep = []
+    for animal, ga in g.groupby("animal", sort=True):
+        if (ga.epoch_label == "pre").any() and (ga.epoch_label == post_epoch).any():
+            keep.append(animal)
+    g = g[g.animal.isin(keep)]
+    is_post = (g.epoch_label == post_epoch).to_numpy()
+    curves = g[list(bins)].to_numpy(float)
+    animal = g.animal.to_numpy()
+    info: dict[str, object] = {
+        "n_animals": len(keep), "animals": ",".join(keep),
+        "n_pre": int((~is_post).sum()), "n_post": int(is_post.sum()),
+    }
+    if is_post.sum() < 2 or (~is_post).sum() < 2:
+        info["status"] = "insufficient_data"
+        return [], info
+    thr = float(tdist.ppf(1 - alpha / 2, max(int(is_post.sum() + (~is_post).sum() - 2), 1)))
+    info["t_threshold"] = thr
+    info["n_distinct_perms"] = n_distinct_permutations(
+        [int(((animal == a) & ~is_post).sum()) for a in keep],
+        [int(((animal == a) & is_post).sum()) for a in keep])
+    info["min_attainable_p"] = 1.0 / info["n_distinct_perms"]
+    obs = find_signed_clusters(welch_t(curves[is_post], curves[~is_post]), thr)
+    if not obs:
+        info["status"] = "no_cluster"
+        return [], info
+    groups = [np.flatnonzero(animal == a) for a in np.unique(animal)]
+    null = np.zeros(n_permutations)
+    lab = is_post.copy()
+    for k in range(n_permutations):
+        for gi in groups:
+            lab[gi] = rng.permutation(is_post[gi])
+        cl = find_signed_clusters(welch_t(curves[lab], curves[~lab]), thr)
+        null[k] = max((c["mass"] for c in cl), default=0.0)
+    rows = []
+    for ci, c in enumerate(obs):
+        p = (1.0 + np.sum(null >= c["mass"])) / (1.0 + n_permutations)
+        rows.append({"cluster_idx": ci, "start_bin": c["start_bin"],
+                     "end_bin": c["end_bin"], "cluster_mass": c["mass"],
+                     "sign": c["sign"],
+                     "p_value": float(max(p, info["min_attainable_p"]))})
+    info["status"] = "ok"
+    return rows, info
+
+
+def compute_trajectory_cluster_permutation_c2_aligned(
+    densified: pd.DataFrame,
+    *,
+    phenotype_order: Iterable[str],
+    signals: Iterable[str] = DEFAULT_SIGNALS,
+    variant: str = "delta",
+    n_permutations: int = 5000,
+    rng_seed: int = 42,
+) -> pd.DataFrame:
+    """Cohort-2-aligned cluster test over every (phenotype, side, signal,
+    post_epoch) cell, with BH-FDR within each METRIC family (one family per
+    signal, across its phenotypes x sides x epochs; Priya 2026-11-19).
+
+    Same substrate and output columns as
+    :func:`compute_trajectory_cluster_permutation_within_animal`, plus
+    ``t_threshold``; ``test`` = ``c2_aligned_cluster_perm``. Only the delta
+    variant is tested by default: its curves are each session's change from
+    the animal's own pre baseline, the input the cohort-2 test takes.
+    """
+    from stroke_orofacial.stats.multiple_comparisons import (
+        apply_correction_to_results_df,
+    )
+    rng = np.random.default_rng(rng_seed)
+    out: list[dict[str, object]] = []
+    for phen in phenotype_order:
+        for side in SIDE_ORDER:
+            cell = densified[(densified.recovery_phenotype == phen)
+                             & (densified.side == side)]
+            for sig in signals:
+                col = sig if variant == "raw" else f"{sig}_delta"
+                key = {"recovery_phenotype": phen, "side": side,
+                       "signal": sig, "variant": variant}
+                sess = (session_trajectories(cell, col)
+                        if (not cell.empty and col in cell) else pd.DataFrame())
+                for ep in POST_EPOCHS:
+                    base = {**key, "post_epoch": ep, "test": "c2_aligned_cluster_perm"}
+                    if sess.empty:
+                        out.append({**base, "cluster_idx": 0, "start_bin": -1,
+                                    "end_bin": -1, "p_value": np.nan,
+                                    "status": "insufficient_data",
+                                    "n_pre": 0, "n_post": 0, "n_animals": 0})
+                        continue
+                    bins = [c for c in sess.columns if isinstance(c, int)]
+                    rows, info = c2_aligned_cluster_test(
+                        sess, bins, ep, n_permutations=n_permutations, rng=rng)
+                    if not rows:
+                        # NaN (not 1.0) so the BH family is exactly the
+                        # clusters that were observed; BH skips NaN.
+                        pv = np.nan
+                        out.append({**base, **info, "cluster_idx": 0,
+                                    "start_bin": -1, "end_bin": -1,
+                                    "cluster_mass": 0.0, "sign": 0.0,
+                                    "p_value": pv})
+                    for r in rows:
+                        out.append({**base, **info, **r})
+    res = pd.DataFrame(out)
+    return apply_correction_to_results_df(res, p_value_col="p_value",
+                                          method="bh_fdr", group_cols=("signal", "variant"))

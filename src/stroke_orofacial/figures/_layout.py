@@ -236,6 +236,19 @@ ENDPOINT_DISPLAY_NAMES: dict[str, tuple[str, str]] = {
         "Tongue median xy distance (all licks)",
         "Delta xy distance (px)",
     ),
+    # Response-window lick counts, cue + 0.07 s to cue + 8 s (2026-11-19).
+    "num_correct_licks_per_trial_rw": (
+        "Correct licks per trial (response window)",
+        "Delta licks / trial",
+    ),
+    "num_all_licks_per_trial_rw": (
+        "All licks per trial (response window)",
+        "Delta licks / trial",
+    ),
+    "num_incorrect_licks_per_trial_rw": (
+        "Incorrect licks per trial (response window)",
+        "Delta licks / trial",
+    ),
     "tongue_num_correct_licks_dlc": (
         "DLC cue-correct licks / trial",
         "Delta licks / trial",

@@ -38,6 +38,7 @@ from stroke_orofacial.stats.aggregators import (  # noqa: E402
     densify_phase_rows_via_interp,
 )
 from stroke_orofacial.stats.trajectory_within_animal_cluster import (  # noqa: E402
+    compute_trajectory_cluster_permutation_c2_aligned,
     compute_trajectory_cluster_permutation_within_animal,
 )
 from scripts.chore_dlc_pooled_phenotype.q13_traj_v2_emit import (  # noqa: E402
@@ -53,6 +54,8 @@ from scripts.phase_9_1_q13.emit_cohort import (  # noqa: E402
 
 logger = logging.getLogger("manuscript.within_animal_cluster")
 OUT_CSV = "trajectory_cluster_permutation_within_animal_bh_fdr.csv"
+# --test c2_aligned (2026-11-19): the six-position cohort's cluster test, BH per signal.
+OUT_CSV_C2 = "trajectory_cluster_permutation_c2aligned_bh_fdr.csv"
 CACHE = "trial_bin_substrate.parquet"
 
 
@@ -83,6 +86,15 @@ def main(argv=None) -> int:
     ap.add_argument("--n-permutations", type=int, default=5000)
     ap.add_argument("--t-threshold", type=float, default=2.0)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--test", choices=("within_animal", "c2_aligned"),
+                    default="within_animal",
+                    help="within_animal (default, Sept 2026 sensitivity test) or "
+                         "c2_aligned (cohort-2 cluster test: Welch t, two-sided "
+                         "p < .05 bin threshold, within-animal shuffle, BH per "
+                         "signal; delta variant). --t-threshold is ignored for "
+                         "c2_aligned.")
+    ap.add_argument("--refuse-existing", action="store_true",
+                    help="abort a lick set whose output CSV already exists")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s [%(levelname)s] %(message)s",
@@ -102,11 +114,19 @@ def main(argv=None) -> int:
             dense = build_substrate(ls, resolver)
             dense.to_parquet(cache, index=False)
             logger.info("[%s] cached %d rows -> %s", ls, len(dense), cache)
-        res = compute_trajectory_cluster_permutation_within_animal(
-            dense, phenotype_order=PHENOTYPE_ORDER_3TIER,
-            n_permutations=args.n_permutations,
-            t_threshold=args.t_threshold, rng_seed=args.seed)
-        out = res_dir / OUT_CSV
+        out = res_dir / (OUT_CSV_C2 if args.test == "c2_aligned" else OUT_CSV)
+        if args.refuse_existing and out.exists():
+            logger.error("[%s] refusing to overwrite %s", ls, out)
+            return 2
+        if args.test == "c2_aligned":
+            res = compute_trajectory_cluster_permutation_c2_aligned(
+                dense, phenotype_order=PHENOTYPE_ORDER_3TIER,
+                n_permutations=args.n_permutations, rng_seed=args.seed)
+        else:
+            res = compute_trajectory_cluster_permutation_within_animal(
+                dense, phenotype_order=PHENOTYPE_ORDER_3TIER,
+                n_permutations=args.n_permutations,
+                t_threshold=args.t_threshold, rng_seed=args.seed)
         res.to_csv(out, index=False)
         logger.info("[%s] wrote %s (%d rows, %d significant clusters)",
                     ls, out, len(res), int(res["reject"].fillna(False).sum()))
