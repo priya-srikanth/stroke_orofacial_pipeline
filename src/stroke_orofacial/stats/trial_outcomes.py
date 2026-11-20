@@ -119,3 +119,62 @@ def mwu_vs_pre(trials: pd.DataFrame) -> pd.DataFrame:
     t["q"] = bh(t.p)
     t["star"] = np.where(t.q < Q_STAR, "*", "")
     return t
+
+
+def aligned_vs_pre(trials: pd.DataFrame) -> pd.DataFrame:
+    """Fig 2B cells under the cohort-aligned rule (Priya 2026-11-19 / 11-20).
+
+    Same cells as :func:`mwu_vs_pre` (grade x cue side x post epoch x class), but
+    each session fraction is first expressed as the change from the animal's OWN
+    pre-stroke mean (per animal x cue side x class); then per cell the session
+    Mann-Whitney U (post vs pre changes) and the nested animals -> sessions
+    bootstrap CI (``pooled_endpoint_suite.compute_endpoint_cell_suite(
+    test_set="c2_aligned")``, 4,000 draws, 95 % percentile). BH-FDR over every
+    row of the table (one family, as in :func:`mwu_vs_pre`);
+    ``star = "**"`` when q < 0.05 AND the bootstrap CI excludes 0.
+    Animals without pre sessions on that cue side drop out of the cell.
+    """
+    from stroke_orofacial.stats import pooled_endpoint_suite as suite
+
+    s = session_fractions(trials, ["grp", "side"])
+    long = s.melt(id_vars=["grp", "side", "animal", "date", "epoch"], value_vars=list(CLASSES),
+                  var_name="cls", value_name="value")
+    pre = (long[long.epoch == "pre"].groupby(["animal", "side", "cls"]).value.mean().rename("pre_mean"))
+    long = long.merge(pre.reset_index(), on=["animal", "side", "cls"], how="left")
+    long["value_norm"] = long.value - long.pre_mean
+    long = long.dropna(subset=["value_norm"])
+    rows = []
+    for (g, sd, c), d in long.groupby(["grp", "side", "cls"]):
+        for e in POST_EPOCHS:
+            if not (d.epoch == e).any() or not (d.epoch == "pre").any():
+                continue
+            r = suite.compute_endpoint_cell_suite(d, post_epoch=e, value_col="value_norm", epoch_col="epoch",
+                                                  animal_col="animal", test_set="c2_aligned")
+            rows.append({"cohort": 1, "group": g, "side": sd, "epoch": e, "cls": c,
+                         "delta": r["nb_effect"], "ci_lo": r["nb_ci_lo"], "ci_hi": r["nb_ci_hi"],
+                         "ci_excludes_0": r["nb_excludes_zero"], "p": r["mwu_session_p"],
+                         "n_animals": r["nb_n_animals"], "n_pre": r["n_pre_sessions"],
+                         "n_post": r["n_post_sessions"],
+                         "session_mean_delta": float(d[d.epoch == e].value_norm.mean())})
+    t = pd.DataFrame(rows)
+    # MWU p is NaN only when a cell has no finite values; such a cell cannot be starred.
+    t["q"] = np.nan
+    ok = t.p.notna()
+    t.loc[ok, "q"] = bh(t.loc[ok, "p"])
+    t["star"] = np.where((t.q < Q_STAR) & t.ci_excludes_0.astype(bool), "**", "")
+    return t
+
+
+def compare_stars(old: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
+    """Old (session MWU, q < 0.05) vs aligned (q < 0.05 AND CI excludes 0) star per cell."""
+    k = ["group", "side", "epoch", "cls"]
+    o = old[k + ["delta", "p", "q", "star"]].rename(columns={"delta": "old_delta", "p": "old_p", "q": "old_q",
+                                                            "star": "old_star"})
+    n = new[k + ["delta", "ci_lo", "ci_hi", "p", "q", "star", "n_animals"]].rename(
+        columns={"delta": "new_delta", "p": "new_p", "q": "new_q", "star": "new_star"})
+    m = o.merge(n, on=k, how="outer")
+    for c in ("old_star", "new_star"):
+        m[c] = m[c].fillna("")
+    was, now = m.old_star != "", m.new_star != ""
+    m["change"] = np.select([was & now, was & ~now, ~was & now], ["kept", "lost", "gained"], "none")
+    return m
