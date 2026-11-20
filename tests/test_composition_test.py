@@ -65,6 +65,9 @@ def test_jaw_override_and_fig2b_wrapper():
     assert t2[t2.epoch == "acute"].cls.value_counts().to_dict() == {"complete": 2, "incomplete": 2, "jaw_only": 4}
     with pytest.raises(ValueError):
         to.override_jaw_only(t, fl[fl.trial_index != 2], "jaw_v2")
+    unk = fl.assign(jaw_v2=fl.jaw_v2.astype(float))
+    unk.loc[(unk.animal == "A") & (unk.trial_index == 2) & (unk.date == 20250101), "jaw_v2"] = np.nan
+    assert len(to.override_jaw_only(t, unk, "jaw_v2")) == len(t) - 1          # NaN = unknown -> dropped
     cells, _ = to.distribution_vs_pre(t2)
     r = cells.iloc[0]
     # each animal: pre (.25, .25, 0, .5), acute (.25, .25, .5, 0) -> TVD 0.5; 3 relabellings each, the

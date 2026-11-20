@@ -185,8 +185,9 @@ def override_jaw_only(trials: pd.DataFrame, flags: pd.DataFrame, col: str) -> pd
 
     ``flags`` is keyed by ``animal``, ``date`` (YYYYMMDD) and ``trial_index`` (the candidate-table index =
     ``trials.trial``) and carries the boolean ``col`` (True = jaw-only trial under the new rule). ``complete``
-    and ``incomplete`` are untouched; every trial currently ``jaw_only`` or ``no_resp`` must have a flag
-    (raises otherwise). Returns a copy with ``cls`` rewritten and ``cls_v1`` = the original class.
+    and ``incomplete`` are untouched; every trial currently ``jaw_only`` or ``no_resp`` must have a flag row
+    (raises otherwise). A NaN flag = unknown: that jaw_only / no_resp trial is DROPPED (as cohort 2 drops
+    'unknown'). Returns a copy with ``cls`` rewritten and ``cls_v1`` = the original class.
     """
     f = flags[["animal", "date", "trial_index", col]].copy()
     f["date"] = f.date.astype(str)
@@ -195,15 +196,17 @@ def override_jaw_only(trials: pd.DataFrame, flags: pd.DataFrame, col: str) -> pd
         raise ValueError("jaw flags: duplicate animal/date/trial_index rows")
     t = trials.copy()
     t["date"] = t.date.astype(str)
-    t = t.merge(f, on=["animal", "date", "trial"], how="left", validate="many_to_one")
+    t = t.merge(f, on=["animal", "date", "trial"], how="left", validate="many_to_one", indicator=True)
     open_ = t.cls.isin(["jaw_only", "no_resp"])
-    miss = open_ & t._jaw.isna()
+    miss = open_ & (t._merge == "left_only")
     if miss.any():
         raise ValueError(f"jaw flags missing for {int(miss.sum())} jaw_only/no_resp trials "
                          f"(e.g. {t.loc[miss, ['animal', 'date', 'trial']].head(3).to_dict('records')})")
+    t = t[~(open_ & t._jaw.isna())].copy()            # unknown -> dropped
+    open_ = t.cls.isin(["jaw_only", "no_resp"])
     t["cls_v1"] = t.cls
     t.loc[open_, "cls"] = np.where(t.loc[open_, "_jaw"].astype(bool), "jaw_only", "no_resp")
-    return t.drop(columns="_jaw")
+    return t.drop(columns=["_jaw", "_merge"])
 
 
 def distribution_vs_pre(trials: pd.DataFrame, **kw) -> tuple[pd.DataFrame, pd.DataFrame]:
