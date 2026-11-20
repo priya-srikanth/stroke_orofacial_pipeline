@@ -158,3 +158,16 @@ def test_cluster_family_bh_per_signal_skips_no_cluster_rows():
     assert ang["reject"].any()
     # Every observed cluster is in the BH family; placeholder rows are not.
     assert (ang["p_value"].notna() == ang["p_adj"].notna()).all()
+
+
+def test_allick_speed_restored_other_drops_unchanged():
+    """2026-11-19 (Priya): all-lick peak speed (Figure 2G) is back in the
+    c2_aligned set; every other dropped endpoint stays dropped."""
+    from scripts.phase_9_stats.build_pooled_phenotype_stats import C2_ALIGNED_SCALAR_DROP
+    assert "tongue_median_vxy_peak_per_trial" not in C2_ALIGNED_SCALAR_DROP
+    assert C2_ALIGNED_SCALAR_DROP == {
+        "late_lickiness", "lick_switch_rate", "lickRate_byTrial",
+        "tongue_lick_rate_hz", "tongue_n_licks", "tongue_n_left", "tongue_n_right",
+        "tongue_lick1_vy_peak", "tongue_median_vy_peak_per_trial",
+        "jaw_peak_abs_deflection",
+    }

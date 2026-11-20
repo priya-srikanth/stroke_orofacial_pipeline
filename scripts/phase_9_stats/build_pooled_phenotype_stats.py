@@ -103,7 +103,9 @@ C2_ALIGNED_SCALAR_DROP = frozenset({
     "late_lickiness", "lick_switch_rate", "lickRate_byTrial",
     "tongue_lick_rate_hz", "tongue_n_licks", "tongue_n_left", "tongue_n_right",
     "tongue_lick1_vy_peak", "tongue_median_vy_peak_per_trial",
-    "tongue_median_vxy_peak_per_trial", "jaw_peak_abs_deflection",
+    "jaw_peak_abs_deflection",
+    # tongue_median_vxy_peak_per_trial (all-lick peak speed, manuscript panel
+    # F2_speed_all) was dropped on 2026-11-19 and restored the same day (Priya).
 })
 # Spout-contact lick counts use the response window (cue + 70 ms to cue + 8 s)
 # instead of window_around_tones (DECISIONS 2026-11-19): old slug -> new slug.
