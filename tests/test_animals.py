@@ -1264,7 +1264,7 @@ class TestRealCohortEpochBoundariesRoundtrip:
     # PS49 (1,4,5), PS51 (6,30,31), PS54 (17,39,40), PS55 (17,49,50).
     EXPECTED: dict[str, tuple[str, tuple[int, int, int]]] = {
         "PS46": ("moderate",         (5, 8, 9)),
-        "PS47": ("mild",             (1, 2, 3)),
+        "PS47": ("mild",             (1, 4, 5)),   # chronic from day 5 (DECISIONS 2026-11-19; was (1, 2, 3))
         "PS48": ("mild",             (1, 2, 3)),
         "PS49": ("mild",             (1, 5, 6)),
         "PS50": ("mild",             (1, 4, 5)),
