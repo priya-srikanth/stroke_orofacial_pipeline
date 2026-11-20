@@ -15,6 +15,14 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-11-19 — PS47 (#1) chronic onset moved from day 3 to day 5
+
+- *Context:* PS47's stamped boundaries were acute day 1, sub-acute day 2, chronic from day 3. Against its last five pre-stroke sessions, contralesional first-lick accuracy and criterion are back on day 3, but d′ (−1.1 SD on day 3) and ipsilesional correct licks (−0.8 SD) recover on day 4, and contralesional first-lick latency is still +1.7 SD on day 4 and near baseline on day 5. The automatic epoch derivation (`stats/epoch_derivation.py`, `pipeline_outputs/epochs/derived_epoch_boundaries.csv`) already puts PS47's chronic onset at day 5. Paper-folder handoff: `HANDOFF_PS47_epoch_change.md` (2026-11-18); prompt `PROMPT_c1_PS47_epoch_c2aligned.md` (2026-11-19).
+- *Decision:* `configs/animals.yaml` PS47 `subacute_max_rel_day: 4`, `chronic_min_rel_day: 5` (acute day 1 unchanged). Only PS47's day-3 and day-4 sessions change label (chronic -> sub-acute); no session-level value changes. Every group statistic that pools the mild grade by epoch is recomputed, to NEW files (suffix `_ps47d5`) so the current manuscript sheets stay reproducible: materialized inputs re-emitted for PS47 after a backup (`stats/inputs_backup_pre_ps47d5_2026-11-19/`); aligned sheets `pooled_phenotype_stats_c2aligned_v3_ps47d5` and `..._c2aligned_xy_dist_ps47d5`; cluster tables `trajectory_cluster_permutation_c2aligned_bh_fdr_ps47d5.csv` (substrate cache `trial_bin_substrate_ps47d5.parquet`); manuscript session tables `c1_traj_sessions_ps47d5.csv`, `c1_traj_xy_sessions_ps47d5.csv`.
+- *Rationale:* Chronic should start when the animal's deficits have settled, not when the first endpoint returns; day 5 is where the last quoted endpoint (latency) is back and where the derivation already places it, so stamped and derived boundaries now agree for all eight animals.
+- *Enforced at:* `configs/animals.yaml` (PS47 `epoch_boundaries`); `stats/recovery_epochs.py::assign_epoch_label`; `scripts/manuscript/run_within_animal_cluster_perm.py` (`--out-suffix`, refusal checked before computing).
+
+
 ## 2026-11-19 — All-lick peak tongue speed restored to the cohort-2-aligned set (sheet v2)
 
 - *Context:* `tongue_median_vxy_peak_per_trial` (all-lick peak speed, manuscript Figure 2G; the cohort-1 counterpart of cohort 2's all-lick 3-D speed) was on the 2026-11-19 drop list, which left 2G as the only cohort-1 panel on the old rule.
