@@ -32,13 +32,15 @@ composition, animal-weighted D, within-animal pre/epoch label permutation, exact
 q < 0.05). Reads ``--trials-csv`` (default ``c1_trial_classes.csv``) and the aligned
 per-class table ``--aligned-csv`` (default ``c1_trial_outcome_aligned.csv``) and writes
 ``c1_trial_outcome_distribution_test<tag>.csv`` (+ ``_per_animal``, ``_vs_aligned``).
-``--jaw-flags FILE --jaw-col COL`` re-splits the no-contact, no-tongue trials into
-jaw_only / no_resp from a per-trial boolean (parquet or csv keyed by animal, date
-YYYYMMDD, trial_index; ``trial_outcomes.override_jaw_only``) before testing.
+``--jaw-flags FILE --jaw-col COL`` (with ``--distribution`` or ``--aligned``) re-splits
+the no-contact, no-tongue trials into jaw_only / no_resp from a per-trial 1 / 0 / NaN
+flag (parquet or csv keyed by animal, date YYYYMMDD, trial_index; NaN = unknown, the
+trial is dropped; ``trial_outcomes.override_jaw_only``) before testing. With a jaw
+override, pass the matching ``--aligned-csv`` to ``--distribution``.
 
 Usage:
     python scripts/manuscript/run_trial_outcome_stats.py [--out-suffix S]
-    python scripts/manuscript/run_trial_outcome_stats.py --aligned [--out-suffix S]
+    python scripts/manuscript/run_trial_outcome_stats.py --aligned [--jaw-flags F --jaw-col C] [--out-suffix S]
     python scripts/manuscript/run_trial_outcome_stats.py --distribution [--jaw-flags F --jaw-col C]
         [--aligned-csv A] --out-suffix S
 """
@@ -73,10 +75,12 @@ def main(argv: list[str] | None = None) -> int:
     tag = f"_{a.out_suffix}" if a.out_suffix else ""
     r = PathResolver()
     out_dir = r.pipeline_outputs(subdir="stats") / "results" / "trial_outcomes"
+    if (a.jaw_flags is None) != (a.jaw_col is None):
+        sys.exit("--jaw-flags and --jaw-col go together")
     if a.distribution:
         return _distribution(out_dir, tag, a.trials_csv, a.aligned_csv, a.jaw_flags, a.jaw_col)
     if a.aligned:
-        return _aligned(out_dir, tag, a.trials_csv, a.old_csv)
+        return _aligned(out_dir, tag, a.trials_csv, a.old_csv, a.jaw_flags, a.jaw_col)
     outs = [out_dir / f"c1_trial_classes{tag}.csv", out_dir / f"c1_trial_outcome_mwu_bh{tag}.csv",
             out_dir / f"c1_trial_outcome_fractions{tag}.csv"]
     clash = [str(p) for p in outs if p.exists()]
@@ -121,12 +125,24 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _aligned(out_dir, tag: str, trials_csv: str | None, old_csv: str | None) -> int:
+def _load_trials(out_dir, trials_csv, jaw_flags, jaw_col) -> pd.DataFrame:
+    """The per-trial class table, with jaw_only / no_resp re-split from --jaw-flags when given."""
+    trials = pd.read_csv(trials_csv or out_dir / "c1_trial_classes.csv")
+    if jaw_flags:
+        fl = pd.read_parquet(jaw_flags) if str(jaw_flags).endswith(".parquet") else pd.read_csv(jaw_flags)
+        n0 = len(trials)
+        trials = to.override_jaw_only(trials, fl, jaw_col)
+        print(f"jaw override ({jaw_col}): {n0 - len(trials)} unknown trials dropped")
+        print(pd.crosstab(trials.cls_v1, trials.cls).to_string())
+    return trials
+
+
+def _aligned(out_dir, tag: str, trials_csv: str | None, old_csv: str | None, jaw_flags=None, jaw_col=None) -> int:
     outs = [out_dir / f"c1_trial_outcome_aligned{tag}.csv", out_dir / f"c1_trial_outcome_aligned_vs_old{tag}.csv"]
     clash = [str(p) for p in outs if p.exists()]
     if clash:
         sys.exit(f"refusing to overwrite {', '.join(clash)}")
-    trials = pd.read_csv(trials_csv or out_dir / "c1_trial_classes.csv")
+    trials = _load_trials(out_dir, trials_csv, jaw_flags, jaw_col)
     old = pd.read_csv(old_csv or out_dir / "c1_trial_outcome_mwu_bh.csv")
     new = to.aligned_vs_pre(trials)
     cmp = to.compare_stars(old, new)
@@ -145,13 +161,7 @@ def _distribution(out_dir, tag: str, trials_csv, aligned_csv, jaw_flags, jaw_col
     clash = [str(p) for p in outs if p.exists()]
     if clash:
         sys.exit(f"refusing to overwrite {', '.join(clash)}")
-    if (jaw_flags is None) != (jaw_col is None):
-        sys.exit("--jaw-flags and --jaw-col go together")
-    trials = pd.read_csv(trials_csv or out_dir / "c1_trial_classes.csv")
-    if jaw_flags:
-        fl = pd.read_parquet(jaw_flags) if str(jaw_flags).endswith(".parquet") else pd.read_csv(jaw_flags)
-        trials = to.override_jaw_only(trials, fl, jaw_col)
-        print("jaw override:", pd.crosstab(trials.cls_v1, trials.cls).to_string())
+    trials = _load_trials(out_dir, trials_csv, jaw_flags, jaw_col)
     cells, per = to.distribution_vs_pre(trials)
     cmp = to.compare_distribution_aligned(cells, pd.read_csv(aligned_csv or out_dir / "c1_trial_outcome_aligned.csv"))
     print(per[["group", "side", "epoch", "animal", "tvd", "n_pre_sessions", "n_epoch_sessions"]].round(3).to_string(index=False))
