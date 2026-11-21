@@ -15,6 +15,13 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-11-21 — S5 B–D spout close-vs-standard summaries: print preset and opt-in PDF
+
+- *Context:* In the manuscript layout the three summaries (PS51, PS55, PS54 = #6, #8, #7) sit two per row at ~0.48 of the text width; scaling the 10-in `ms` render down in LaTeX left ~3 pt text. The print-size panels used in the manuscript (S5 B–D, `*_summary_r2.pdf`) were first rendered by an uncommitted call.
+- *Decision:* `render_animal_summary_spout_close_vs_std` gains `save_pdf=False` (also write `<stem>.pdf`; guarded by `overwrite` like the svg / png). `scripts/manuscript/render_s5_spout_close_summaries.py` gains `--preset {ms,print}`: `print` = 3.15 x 5.6 in, font_scale 0.5, the `ms` row ratios / wrapped labels / red incorrect licks / #6-#8 titles, svg + png + pdf named `<animal>_summary_print`. Defaults are unchanged (pipeline figure and `ms` preset identical).
+- *Rationale:* Drawing at print size keeps text ~5.5-7 pt; committing the preset makes the manuscript panels reproducible.
+- *Enforced at:* those two files; `tests/test_spout_close_vs_std.py::TestSummaryManuscriptOverrides::test_save_pdf_opt_in`, `test_save_pdf_refuses_existing_pdf`. Output: `vls_stroke_paper/review/s5_print_2026-11-21/` (same size and content as the manuscript `*_summary_r2.pdf`). Known small: the raster "d+N" session labels stay ~3.5 pt at print size.
+
 ## 2026-11-21 — Two-tone task-session structure (manuscript Supplementary Figure S2)
 
 - *Context:* Priya asked for a supplementary diagram of the two-tone task session (comment C244): session time, L vs R cues, and the structure of cue-reward and non-reward blocks. The figure was first built in the paper code with the computation and the drawing in one script; per Priya the computation belongs here and the paper code only plots.
@@ -92,6 +99,13 @@ Entries are reverse-chronological (newest at top). Format:
 
 
 
+## 2026-11-19 — S5B spout close-vs-standard summaries: manuscript styling (opt-in kwargs)
+
+- *Context:* Supplementary Fig. S5B of the VLS manuscript shows the `spout_close_vs_std` cohort summaries for PS51, PS55 and PS54. At print size (~1/3 page width) the text was too small, the raster row was compressed, and incorrect raster licks were magenta, the same color as the R cue in rows 1-3. Priya asked for manuscript-only changes.
+- *Decision:* `render_animal_summary_spout_close_vs_std` gains keyword overrides whose defaults reproduce the pipeline figure byte for byte (default SVG checked identical before vs after, fixed hash salt / date): `figsize=None` (10 x 14 in), `height_ratios=None` (equal rows), `font_scale=1.0` (scales every `*_fontsize` in `spout_close_vs_std:`, plus the raster half-label offset and the "Trials" labelpad), `raster_incorrect_color=None` (config magenta), `title_label=None` (animal ID), `out_dir=None` (cohort folder), `out_stem=None` (`<animal>_summary`), `wrap_labels=False` (one-line titles / y-labels). The raster helper reads an optional `raster_half_label_x` (absent from `defaults.yaml`, so -0.08). The manuscript render (`scripts/manuscript/render_s5_spout_close_summaries.py`) uses font_scale 1.4, height_ratios (1, 1, 1, 1.8), figsize 10 x 19.3 in (rows 1-3 at 1.15x the pipeline row height so the wrapped 1.4x y-labels fit; width unchanged so text is 1.4x at print width), incorrect licks #D62728, wrapped labels, and titles #6 (PS51) / #7 (PS54) / #8 (PS55).
+- *Rationale:* Manuscript styling must not change the pipeline outputs or `configs/defaults.yaml`. Red keeps "incorrect" distinct from the R-cue magenta. At 1.4x the one-line y-labels and row-1 / row-3 titles were longer than the axes and collided, and the Standard / Close half labels overlapped the raster "0" ticks, hence the label wrapping (wording unchanged) and the scaled offsets.
+- *Outputs:* `vls_stroke_paper/figure_review/S5_summaries/{PS51,PS55,PS54}_summary_ms.{png,svg}` (png 300 dpi). The pipeline figures in `spout_behavior/spout_behavior_figures/spout_close_vs_std/cohort/` are unchanged.
+- *Enforced at:* `src/stroke_orofacial/spout_behavior/spout_close_vs_std.py` (`render_animal_summary_spout_close_vs_std`, `_plot_row_lick_raster`); `scripts/manuscript/render_s5_spout_close_summaries.py`; `tests/test_spout_close_vs_std.py::TestSummaryManuscriptOverrides`.
 ## 2026-11-19 — Trial-outcome statistics and body weight by epoch moved into the pipeline (manuscript v41 Fig 2B, Fig 1F)
 
 - *Context:* Two cohort-1 statistics were computed only in the manuscript's own scripts: the trial-outcome change (`figures/c1_trial_classes_extract.py` + the cohort-1 part of `figures/trial_class_distribution.py`) and the body-weight LMM (`figures/weights_by_epoch.py`). The cohort-2 parts of both belong to widefield_pipeline.

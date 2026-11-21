@@ -31,10 +31,14 @@ from stroke_orofacial.spout_behavior.spout_close_vs_std import (
     iter_cohort_b_session_keys,
     iter_cohort_b_sessions,
     list_cohort_b_animals,
+    load_cohort_config,
     render_animal_per_trial_spout_close_vs_std,
     render_animal_summary_spout_close_vs_std,
 )
-from stroke_orofacial.spout_behavior.visual_gate import SessionPlotData
+from stroke_orofacial.spout_behavior.visual_gate import (
+    SessionPlotData,
+    load_visual_gate_config,
+)
 
 
 _HOST_KEY = "windows" if platform.system() == "Windows" else "mac"
@@ -1670,3 +1674,180 @@ class TestRenderAnimalPerTrial:
         assert "#1e90ff" in text, "L-panel mouse-side color missing"
         assert "#c71585" in text, "R-panel mouse-side color missing"
 
+
+
+# ---- Manuscript overrides (VLS paper Fig. S5B, 2026-11-19) ----
+
+
+def _render_capture_fig(monkeypatch, pairs, tmp_path, **kwargs):
+    """Render the summary and return (fig, svg, png); the figure is
+    captured at its first savefig so its layout can be inspected."""
+    from matplotlib.figure import Figure
+    captured: list = []
+    orig = Figure.savefig
+
+    def recording_savefig(self, *a, **k):
+        if not captured:
+            captured.append(self)
+        return orig(self, *a, **k)
+
+    monkeypatch.setattr(Figure, "savefig", recording_savefig)
+    svg, png = render_animal_summary_spout_close_vs_std(
+        "PS55", sessions=pairs,
+        resolver=PathResolver(output_root=tmp_path), **kwargs,
+    )
+    return captured[0], svg, png
+
+
+def _raster_dot_colors(fig) -> set[tuple]:
+    from matplotlib.colors import to_rgba
+    raster_axes = sorted(fig.axes, key=lambda a: a.get_position().y0)[:2]
+    return {
+        tuple(np.round(to_rgba(c), 4))[:3]
+        for ax in raster_axes for coll in ax.collections
+        for c in coll.get_facecolors()
+    }
+
+
+class TestSummaryManuscriptOverrides:
+    def test_defaults_unchanged(
+        self, synth_pairs_3_sessions, tmp_path, monkeypatch,
+    ):
+        """Pin: with no override kwargs the figure is the pipeline
+        figure — 10x14 in, equal row heights, magenta incorrect raster
+        dots, suptitle = animal ID, config font sizes, cohort path."""
+        from matplotlib.colors import to_rgba
+        fig, svg, png = _render_capture_fig(
+            monkeypatch, synth_pairs_3_sessions, tmp_path,
+        )
+        assert tuple(fig.get_size_inches()) == (10.0, 14.0)
+        heights = sorted({
+            round(a.get_position().height, 6) for a in fig.axes
+        })
+        assert len(heights) == 1, f"rows not equal height: {heights}"
+        colors = _raster_dot_colors(fig)
+        assert tuple(np.round(to_rgba("m"), 4))[:3] in colors
+        assert tuple(np.round(to_rgba("#D62728"), 4))[:3] not in colors
+        assert fig._suptitle.get_text().startswith("PS55  ")
+        cohort_config = load_cohort_config()
+        assert fig._suptitle.get_fontsize() == cohort_config[
+            "panel_title_fontsize"
+        ]
+        assert svg == tmp_path / svg.relative_to(tmp_path)
+        assert svg.name == "PS55_summary.svg" and png.name == "PS55_summary.png"
+        assert svg.parent.name == "cohort"
+
+    def test_overrides_applied(
+        self, synth_pairs_3_sessions, tmp_path, monkeypatch,
+    ):
+        """Manuscript kwargs: taller raster row, scaled fonts, red
+        incorrect dots, manuscript label, separate output folder."""
+        from matplotlib.colors import to_rgba
+        out = tmp_path / "ms"
+        fig, svg, png = _render_capture_fig(
+            monkeypatch, synth_pairs_3_sessions, tmp_path,
+            figsize=(10.0, 16.0), height_ratios=(1, 1, 1, 1.8),
+            font_scale=1.4, raster_incorrect_color="#D62728",
+            title_label="#8", out_dir=out, out_stem="PS55_summary_ms",
+        )
+        assert tuple(fig.get_size_inches()) == (10.0, 16.0)
+        by_y = sorted(fig.axes, key=lambda a: a.get_position().y0)
+        raster_h = by_y[0].get_position().height
+        top_h = by_y[-1].get_position().height
+        assert raster_h / top_h == pytest.approx(1.8, rel=0.02)
+        colors = _raster_dot_colors(fig)
+        assert tuple(np.round(to_rgba("#D62728"), 4))[:3] in colors
+        assert tuple(np.round(to_rgba("m"), 4))[:3] not in colors
+        assert fig._suptitle.get_text().startswith("#8  ")
+        cohort_config = load_cohort_config()
+        assert fig._suptitle.get_fontsize() == pytest.approx(
+            1.4 * cohort_config["panel_title_fontsize"]
+        )
+        assert (svg.parent, svg.name, png.name) == (
+            out, "PS55_summary_ms.svg", "PS55_summary_ms.png",
+        )
+        # Pipeline cohort folder untouched by a manuscript render.
+        assert not (
+            PathResolver(output_root=tmp_path).spout_close_vs_std_dir(animal=None)
+            / "PS55_summary.svg"
+        ).exists()
+
+    def test_override_does_not_mutate_configs(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        cfg = load_visual_gate_config()
+        ccfg = load_cohort_config()
+        cfg0, ccfg0 = dict(cfg), dict(ccfg)
+        render_animal_summary_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions,
+            resolver=PathResolver(output_root=tmp_path),
+            config=cfg, cohort_config=ccfg, font_scale=1.4,
+            raster_incorrect_color="#D62728", out_dir=tmp_path / "ms",
+        )
+        assert cfg == cfg0 and ccfg == ccfg0
+
+    def test_save_pdf_opt_in(self, synth_pairs_3_sessions, tmp_path):
+        """PDF is written only with save_pdf=True (manuscript print preset);
+        the default render writes svg + png only."""
+        res = PathResolver(output_root=tmp_path)
+        render_animal_summary_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=res,
+            out_dir=tmp_path / "a",
+        )
+        assert sorted(p.suffix for p in (tmp_path / "a").iterdir()) == [".png", ".svg"]
+        render_animal_summary_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=res,
+            out_dir=tmp_path / "b", save_pdf=True,
+        )
+        assert sorted(p.suffix for p in (tmp_path / "b").iterdir()) == [".pdf", ".png", ".svg"]
+
+    def test_save_pdf_refuses_existing_pdf(self, synth_pairs_3_sessions, tmp_path):
+        """overwrite='raise' also guards the optional PDF."""
+        (tmp_path / "c").mkdir()
+        (tmp_path / "c" / "PS55_summary.pdf").write_text("x")
+        with pytest.raises(FileExistsError):
+            render_animal_summary_spout_close_vs_std(
+                "PS55", sessions=synth_pairs_3_sessions,
+                resolver=PathResolver(output_root=tmp_path),
+                out_dir=tmp_path / "c", save_pdf=True, overwrite="raise",
+            )
+
+    def test_height_ratios_wrong_length_raises(
+        self, synth_pairs_3_sessions, tmp_path,
+    ):
+        with pytest.raises(ValueError, match="4 entries"):
+            render_animal_summary_spout_close_vs_std(
+                "PS55", sessions=synth_pairs_3_sessions,
+                resolver=PathResolver(output_root=tmp_path),
+                height_ratios=(1, 2),
+            )
+
+    def test_wrap_labels_and_half_label_offset(
+        self, synth_pairs_3_sessions, tmp_path, monkeypatch,
+    ):
+        """Default: one-line titles / y-labels and half labels at the
+        pipeline -0.08 offset. wrap_labels + font_scale: wrapped labels,
+        half labels pushed out by font_scale."""
+        def _labels(fig):
+            return [t for a in fig.axes for t in (a.get_title(), a.get_ylabel())]
+
+        def _half_label_x(fig):
+            return {
+                round(t.get_position()[0], 4) for a in fig.axes
+                for t in a.texts if t.get_text() in ("Standard", "Close")
+            }
+
+        fig, _s, _p = _render_capture_fig(
+            monkeypatch, synth_pairs_3_sessions, tmp_path,
+        )
+        assert not any("\n" in t for t in _labels(fig))
+        assert "Accuracy (first-lick correct / all trials)" in _labels(fig)
+        assert _half_label_x(fig) == {-0.08}
+        fig2, _s, _p = _render_capture_fig(
+            monkeypatch, synth_pairs_3_sessions, tmp_path,
+            font_scale=1.4, wrap_labels=True, out_dir=tmp_path / "ms",
+        )
+        wrapped = [t for t in _labels(fig2) if "\n" in t]
+        assert len(wrapped) >= 6  # rows 1-3 titles (x2) + y-labels
+        assert {t.replace("\n", " ") for t in _labels(fig2)} == set(_labels(fig))
+        assert _half_label_x(fig2) == {round(-0.08 * 1.4, 4)}
