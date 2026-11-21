@@ -15,6 +15,44 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-11-21 — Two-tone recovery-mechanics review scripts (within-lick correction, CSM gate, T1, across-lick, quiet-block ME)
+
+- *Context:* Priya asked for two-tone (#1-#8) counterparts of the six-position recovery analyses in widefield_pipeline (`within_lick_correction.py`, `learned_compensation.py` T1, `lick_correction.py`), plus two secondaries: spontaneous licks in the non-reward blocks, and face motion energy (ME) in those blocks. These are manuscript Supplementary Figure S10 and panel L of S20.
+- *Decision:* `scripts/manuscript/recovery_mechanics/`:
+  - **Scripts:**
+    - `c1_recovery_mechanics.py` (extract + CLI);
+    - `c1_recovery_mechanics_summary.py` (tables, family tests, panels);
+    - `c1_quiet_me.py`.
+  - **Angles:**
+    - theta_L = launch direction, SG(5, 2) displacement over the first 3 frames (12 ms) of the out-of-mouth run.
+    - theta_E = arcsin(lat / r) of the tongue tip at its extension peak, both about the mouth origin.
+    - lat = -x of the front camera (mouse-right positive), recoded to contralesional-positive with `ipsi_contra_recoding` and animals.yaml `stroke_laterality`.
+    - e = angle minus the animal's pre-stroke HIT mean for that cue side. Within-lick correction = e_E - e_L, signed toward the target.
+  - **Corrective submovements (CSMs):** extra speed peaks per out / back phase. The prominence threshold is calibrated so a noise surrogate (SG(9, 3) track plus Gaussian noise at the session's residual SD) gains a CSM over the smooth surrogate on <= 5 % of pre-stroke licks. A gate is required before any post-stroke CSM number.
+  - **T1:** contralesional-cue first lick (lick_idx 0), e_E primary, in early / middle / late thirds per session. statsmodels MixedLM with animal groups and a session variance component:
+    - within-session y ~ x * post;
+    - overnight pairs y ~ second * post;
+    - post = acute + subacute;
+    - also split mild + moderate vs severe (`t1_by_grade`).
+  - **Across-lick:** k -> k + 1 pairs <= 300 ms apart; miss-minus-hit toward-target change in 5-deg error bins.
+  - **Spontaneous and quiet-block windows:** inter-cue gaps > 60 s, from the block's last cue + B to the next cue - 2 s. B = 33 s: the first second >= 8 s from which the pre-stroke contact rate stays within 1.5x of its 30-60 s plateau.
+  - **Statistics:** c1_stats.run_family. Families: c1rm_within_lick, c1rm_csm, c1rm_across_lick, c1rm_spont, quiet_me.
+  - **Outputs:** vls_stroke_paper/review/c1_recovery_mechanics_2026-11-21_r2/. Every writer refuses to overwrite.
+  - **Constants:** thresholds stay module constants, as in the other scripts/manuscript review scripts (no configs/defaults.yaml move).
+- *Rationale:*
+  - **Why not peak_angle_deg:** the pipeline's per-lick `peak_angle_deg` is eye-referenced and taken at the v7 peak frame. A launch angle needs the mouth-origin reference, so theta_L and theta_E share one origin, as in the widefield 3D analysis. On 63,592 pre-stroke licks (53 sessions) theta_E and peak_angle_deg agree closely:
+    - r = -0.96 (-0.96 to -0.98 per animal);
+    - opposite sign convention;
+    - theta_E ~ -3.38 x peak_angle_deg - 1.0 (the mouth-origin angle is wider).
+  - **Cue -> frame mapping:** cues and contacts are mapped with the pipeline's own lookup (`dlc_spatial.tone_aligned.ws_samples_to_frame_indices`, round(sig_camIdx__idx_ws)). This fixes the first run's searchsorted mapping, which put about half the cues one frame late relative to the lick events (review of PR #181). The frame interval comes from configs alignment.fps_cam.
+  - **Effect of the fix** (first run review/c1_recovery_mechanics_2026-11-21 vs _r2):
+    - Endpoint e_E, across-lick, spontaneous and quiet ME are essentially unchanged (same stars; T1 e_E coefficients within 0.25 deg).
+    - The 2D launch angle moves: its pre-stroke correlation with theta_E falls from 0.26 to 0.15. Mild contralesional acute e_L goes from -7.7 to -4.4 (still starred). Severe contralesional e_L goes from -14.5 / -13.5 to -7.8 (starred) / -7.2 (not starred).
+    - Within-lick correction on contralesional-cue trials gains two stars (moderate chronic -2.8, severe subacute -12.4).
+    - The CSM gate fails more clearly: the pre real-minus-surrogate share is +0.3 % [-0.5, 1.1], 4 / 8 animals (was +2.4 % [0.9, 3.8]); misses do not carry more CSMs than hits.
+  - **Conclusions:** CSMs are not reported for the two-tone cohort (2D, about 9 frames per lick), and the launch angle is treated as supporting only. The endpoint carries the two-tone aim result.
+- *Enforced at:* `scripts/manuscript/recovery_mechanics/*`. Outputs in `vls_stroke_paper/review/c1_recovery_mechanics_2026-11-21_r2/` (README there). The first-run folder is kept unchanged for comparison.
+
 ## 2026-11-20 — Engagement / movement supplement scripts and the xy-distance cluster test (Mac session)
 
 - *Context:* Priya asked for one engagement / movement supplementary figure for both cohorts (time-matched; two-tone on the 60-min recording), with ONE task-independent-movement (TIM) and ONE motion-energy (ME) measure per window, keypoints + FaceRhythm combined; and asked why S7 I-J (first-lick xy protrusion trajectories) carried no cluster bars.
