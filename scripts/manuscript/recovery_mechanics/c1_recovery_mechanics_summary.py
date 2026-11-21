@@ -442,12 +442,18 @@ def epoch_panel(S, R, measure, ylabel, fname, out: Path, zero=True, sides=('ipsi
     plt.close(fig)
 
 
-def daycourse(S1: pd.DataFrame, out: Path):
-    """Per animal (moderate, severe): first-lick e_E on contralesional-cue trials by session thirds over recovery."""
+def daycourse(S1: pd.DataFrame, out: Path, grid: str = '1x4', fname: str = 'c1rm_t1_daycourse'):
+    """Per animal (moderate, severe): first-lick e_E on contralesional-cue trials by session thirds over recovery.
+    grid '1x4' (one row, 6.5 in) or '2x2' (3.25 in wide, so it spans two columns of the manuscript's four-column
+    panel grid; Priya 11-21)."""
     plt = _style()
     an = sorted(S1[S1.grade.isin(['moderate', 'severe'])].animal.unique())
-    fig, axs = plt.subplots(1, len(an), figsize=(6.5, 1.55), sharey=False)
-    for ax, a in zip(np.atleast_1d(axs), an):
+    if grid == '2x2':
+        fig, axs = plt.subplots(2, 2, figsize=(3.25, 2.75), sharey=False)
+    else:
+        fig, axs = plt.subplots(1, len(an), figsize=(6.5, 1.55), sharey=False)
+    axs = np.atleast_1d(axs).ravel()
+    for ax, a in zip(axs, an):
         g = S1[(S1.animal == a)].dropna(subset=['W_eE']).sort_values('day')
         gr = g.grade.iloc[0]
         b0 = g[g.epoch == 'pre'].M_eE.mean()          # change from the animal's own pre-stroke first-lick mean
@@ -470,10 +476,21 @@ def daycourse(S1: pd.DataFrame, out: Path):
         ax.set_title(f'#{_num(a)} ({gr})', fontsize=8, pad=2)
         ax.set_xticks([])
         ax.set_xlabel('sessions (thirds)', fontsize=7.5)
-    np.atleast_1d(axs)[0].set_ylabel('$\\Delta$ contralesional-cue\nfirst-lick angle (deg)', fontsize=7.5)
-    fig.subplots_adjust(left=0.09, right=0.99, bottom=0.17, top=0.86, wspace=0.35)
-    fig.savefig(out / 'figures/c1rm_t1_daycourse.pdf')
-    fig.savefig(out / 'figures/c1rm_t1_daycourse.png', dpi=300)
+    lab = '$\\Delta$ contralesional-cue\nfirst-lick angle (deg)'
+    if grid == '2x2':
+        for ax in axs[::2]:
+            ax.set_ylabel(lab, fontsize=7.5)
+        for ax in axs[:2]:
+            ax.set_xlabel('')
+        fig.subplots_adjust(left=0.2, right=0.98, bottom=0.08, top=0.93, wspace=0.35, hspace=0.42)
+    else:
+        axs[0].set_ylabel(lab, fontsize=7.5)
+        fig.subplots_adjust(left=0.09, right=0.99, bottom=0.17, top=0.86, wspace=0.35)
+    f = out / f'figures/{fname}.pdf'
+    if f.exists():
+        sys.exit(f'refusing to overwrite {f}')
+    fig.savefig(f)
+    fig.savefig(out / f'figures/{fname}.png', dpi=300)
     plt.close(fig)
 
 
