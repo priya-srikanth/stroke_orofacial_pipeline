@@ -1,9 +1,14 @@
 """Summary, statistics, and panels for c1_recovery_mechanics.py (definitions in that module's docstring).
 
-cmd_summarize(out): reads <out>/data/{cued_licks.pkl, spont_licks.pkl, block_decay.npz} + the review trials table,
-  writes <out>/tables/*.csv (calibration, gate, session cells, family tests, T1 thirds / mixed models / overnight pairs,
-  across-lick cells, spontaneous cells, per-animal counts) and <out>/tables/summary.json. Refuses to overwrite.
-cmd_plot(out): manuscript-style panels -> <out>/figures/*.pdf (3.25 x 1.55 in two-cue panels, Arial 7.5 / 8 pt).
+cmd_summarize(out, c1_dir): reads <out>/data/{cued_licks.pkl, spont_licks.pkl, block_decay.npz} + <c1_dir>/data/
+  trials.parquet, writes <out>/tables/*.csv (calibration, gate, session cells, family tests, T1 thirds / mixed models /
+  overnight pairs, across-lick cells, spontaneous cells, per-animal counts), <out>/tables/summary.json and
+  <out>/data/cued_licks_scored.pkl. Refuses to overwrite.
+cmd_t1_by_grade(out, c1_dir): T1 mixed models split mild + moderate vs severe -> tables/t1_mixed_by_grade.csv.
+cmd_plot(out, daycourse_grid): manuscript-style panels -> <out>/figures/*.pdf (3.25 x 1.55 in two-cue panels, Arial
+  7.5 / 8 pt); the per-animal day course as 1 x 4 (c1rm_t1_daycourse) or 2 x 2 (c1rm_t1_daycourse_2x2). Refuses to
+  overwrite any figure.
+Constants are module constants, as in the other scripts/manuscript review scripts (DECISIONS 2026-11-21).
 """
 from __future__ import annotations
 
@@ -14,7 +19,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-import c1_recovery_mechanics as RM
+sys.path.insert(0, str(Path(__file__).resolve().parent))                               # c1_recovery_mechanics
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'engagement_movement'))  # c1_stats
+
+import c1_recovery_mechanics as RM  # noqa: E402
 
 GRADES = ['mild', 'moderate', 'severe']
 EPOCHS = ['pre', 'acute', 'sub_acute', 'chronic']
@@ -29,16 +37,30 @@ PAIR_MAX_MS = 300.0
 EBIN = 5.0
 
 
-def _side_ic(c):
-    return np.where(np.asarray(c) == 'R', 'contra', 'ipsi')      # all fibers left VLS: right = contralesional
+# Manuscript figure labels (#1-#8; ANIMAL_KEY in the paper folder): two-tone animals numbered by severity grade, lab-ID
+# order within a grade. A figure-label map only; no analysis depends on it.
+FIG_LABEL = {'PS47': 1, 'PS48': 2, 'PS49': 3, 'PS50': 4, 'PS46': 5, 'PS51': 6, 'PS54': 7, 'PS55': 8}
 
 
-def load(out: Path):
+def side_ic(cue_sides, animals) -> np.ndarray:
+    """Mouse-frame cue / spout sides -> 'ipsi' / 'contra' with each animal's stroke_laterality (animals.yaml), via
+    the repo's single source of truth, stroke_orofacial.ipsi_contra_recoding."""
+    from stroke_orofacial.animals import load_animals
+    from stroke_orofacial.ipsi_contra_recoding import cue_side_to_ipsi_contra
+    lat = {a: v.stroke_laterality for a, v in load_animals().items()}
+    pairs = pd.DataFrame({'c': np.asarray(cue_sides), 'a': np.asarray(animals)})
+    lut = {(c, a): cue_side_to_ipsi_contra(c, lat[a]) for c, a in pairs.drop_duplicates().itertuples(index=False)}
+    return np.array([lut[(c, a)] for c, a in zip(pairs.c, pairs.a)])
+
+
+def load(out: Path, c1_dir: Path):
+    """Extracted cued licks joined to the trials table (animal, day, epoch, grade) with ipsi / contra cue side."""
     L = pd.read_pickle(out / 'data/cued_licks.pkl')
-    T = pd.read_parquet(RM.TRIALS, columns=['label', 'animal', 'rel_day', 'epoch', 'grade', 'trial', 'side',
-                                            'first_correct', 'cue_s'])
+    T = pd.read_parquet(c1_dir / 'data/trials.parquet', columns=['label', 'animal', 'rel_day', 'epoch', 'grade',
+                                                                 'trial', 'side', 'first_correct', 'cue_s'])
+    T['side_ic'] = side_ic(T.side, T.animal)
     L = L.merge(T[['label', 'trial', 'animal', 'rel_day', 'epoch', 'grade']], on=['label', 'trial'], how='left')
-    L['side'] = _side_ic(L.cue)
+    L['side'] = side_ic(L.cue, L.animal)
     return L, T
 
 
@@ -56,6 +78,8 @@ def add_errors(L: pd.DataFrame) -> pd.DataFrame:
 
 
 def calibrate(L: pd.DataFrame) -> dict:
+    """CSM prominence threshold: smallest grid value at which the noise surrogate gains a CSM over the smooth surrogate
+    on <= FALSE_MAX of pre-stroke fully tracked licks; returns the grid table and the chosen threshold."""
     C = L[(L.epoch == 'pre') & L.full_ok & L.sur_sm_sp.notna() & L.pk_sp.notna()]
     tab = []
     for th in RM.GRID:
@@ -69,6 +93,7 @@ def calibrate(L: pd.DataFrame) -> dict:
 
 
 def add_csm(L: pd.DataFrame, th: float) -> pd.DataFrame:
+    """Per-lick CSM count / any-CSM flag at threshold th, and the per-lick surrogate false-CSM flag."""
     m = L.full_ok & L.pk_sp.notna()
     L['csm'] = np.nan
     L.loc[m, 'csm'] = [RM.csm_count(*x, th) for x in L.loc[m, 'pk_sp']]
@@ -113,6 +138,7 @@ def gate(L: pd.DataFrame) -> pd.DataFrame:
 
 
 def session_cells(L: pd.DataFrame) -> pd.DataFrame:
+    """Session x cue-side means of e_E, e_L, corr_toward, csm_share, csm_false (NaN below MIN_N licks)."""
     keys = ['label', 'animal', 'grade', 'epoch', 'rel_day', 'side']
     rows = []
     for k, g in L.groupby(keys):
@@ -127,20 +153,23 @@ def session_cells(L: pd.DataFrame) -> pd.DataFrame:
 
 
 def to_long(S: pd.DataFrame, measures) -> pd.DataFrame:
+    """Wide session cells -> the long (measure, value) layout c1_stats.run_family expects."""
     return S.melt(id_vars=['label', 'animal', 'grade', 'epoch', 'rel_day', 'side'], value_vars=measures,
                   var_name='measure', value_name='value').dropna(subset=['value'])
 
 
 # ------------------------------------------------------------------------------------------------ T1
 def first_licks(L: pd.DataFrame) -> pd.DataFrame:
-    F = L.sort_values(['label', 'trial', 't_ms']).groupby(['label', 'trial']).head(1)
-    return F
+    """The first lick of each trial (lick_idx == 0 of the pipeline's lick events), when it was scored."""
+    return L[L.lick_idx == 0]
 
 
 def t1(L: pd.DataFrame, T: pd.DataFrame):
+    """T1: contralesional-cue first-lick e_E / e_L / accuracy by session thirds, overnight pairs, and the within-session
+    (y ~ x * post) and overnight (y ~ second * post) mixed models."""
     import statsmodels.formula.api as smf
     F = first_licks(L)
-    X = T[T.side == 'R'].merge(F[['label', 'trial', 'e_E', 'e_L']], on=['label', 'trial'], how='left')
+    X = T[T.side_ic == 'contra'].merge(F[['label', 'trial', 'e_E', 'e_L']], on=['label', 'trial'], how='left')
     X = X[X.epoch.isin(['pre', 'acute', 'sub_acute'])].sort_values(['label', 'trial'])
     X['post'] = (X.epoch != 'pre').astype(int)
     rows = []
@@ -221,6 +250,8 @@ def t1(L: pd.DataFrame, T: pd.DataFrame):
 
 # ------------------------------------------------------------------------------------------------ across-lick
 def across_lick(L: pd.DataFrame) -> pd.DataFrame:
+    """Per session x cue side: toward-target change on the lick after a miss, and the miss-minus-hit contrast at
+    matched |error| (xcorr)."""
     L = L.sort_values(['label', 'trial', 't_ms'])
     rows = []
     for (lab, tr), g in L.groupby(['label', 'trial'], sort=False):
@@ -273,10 +304,12 @@ def choose_buffer(out: Path, T: pd.DataFrame) -> tuple[float, pd.DataFrame]:
 
 
 def spontaneous(out: Path, L: pd.DataFrame, T: pd.DataFrame, Bs: float):
+    """Spontaneous (non-reward block) contact-lick angle cells (D vs own pre to the same spout, GAP vs the cued hit
+    first-lick e_E) and per-animal counts."""
     S = pd.read_pickle(out / 'data/spont_licks.pkl')
     S = S.merge(T.groupby('label')[['animal', 'grade', 'epoch', 'rel_day']].first().reset_index(), on='label')
     S = S[(S.since_cue >= Bs) & (S.to_cue >= 2.0) & np.isfinite(S.theta_E)].copy()
-    S['side'] = _side_ic(S.spout)
+    S['side'] = side_ic(S.spout, S.animal)
     ref = S[S.epoch == 'pre'].groupby(['animal', 'spout']).theta_E.mean().rename('ref_sp')
     S = S.join(ref, on=['animal', 'spout'])
     S['D'] = S.theta_E - S.ref_sp
@@ -296,13 +329,15 @@ def spontaneous(out: Path, L: pd.DataFrame, T: pd.DataFrame, Bs: float):
     return C, counts
 
 
-def cmd_summarize(out: Path):
+def cmd_summarize(out: Path, c1_dir: Path):
+    """All tables, family tests, summary.json and data/cued_licks_scored.pkl (refuses to overwrite any of them)."""
     td = out / 'tables'
-    if td.exists() and any(td.iterdir()):
-        sys.exit(f'refusing to overwrite {td}')
+    scored = out / 'data/cued_licks_scored.pkl'
+    if (td.exists() and any(td.iterdir())) or scored.exists():
+        sys.exit(f'refusing to overwrite {td} / {scored}')
     td.mkdir(parents=True, exist_ok=True)
     import c1_stats as CS
-    L, T = load(out)
+    L, T = load(out, c1_dir)
     s_check = L[(L.epoch == 'pre') & L.hit].groupby('cue').theta_E.mean().to_dict()
     L = add_errors(L)
     cal = calibrate(L)
@@ -344,7 +379,7 @@ def cmd_summarize(out: Path):
     # across-lick
     A = across_lick(L)
     A.to_csv(td / 'across_lick_cells.csv', index=False)
-    R3 = CS.run_family(to_long(A.rename(columns={}), ['xcorr', 'toward_after_miss']), 'c1rm_across_lick')
+    R3 = CS.run_family(to_long(A, ['xcorr', 'toward_after_miss']), 'c1rm_across_lick')
     R3.to_csv(td / 'tests_across_lick.csv', index=False)
     # spontaneous (secondary)
     Bs, D = choose_buffer(out, T)
@@ -353,19 +388,21 @@ def cmd_summarize(out: Path):
     C.to_csv(td / 'spont_cells.csv', index=False)
     cnt.to_csv(td / 'spont_counts.csv', index=False)
     summ['spont_buffer_s'] = Bs
-    lg = C[C.scope == 'bout_first'].rename(columns={})
-    R4 = CS.run_family(to_long(lg.assign(side=lg.side), ['D', 'GAP']), 'c1rm_spont')
+    R4 = CS.run_family(to_long(C[C.scope == 'bout_first'], ['D', 'GAP']), 'c1rm_spont')
     R4.to_csv(td / 'tests_spont.csv', index=False)
-    L.drop(columns=[c for c in L if c.startswith(('pk_', 'sur_'))]).to_pickle(out / 'data/cued_licks_scored.pkl')
-    json.dump(summ, open(td / 'summary.json', 'w'), indent=1, default=float)
+    L.drop(columns=[c for c in L if c.startswith(('pk_', 'sur_'))]).to_pickle(scored)
+    with open(td / 'summary.json', 'w') as fh:
+        json.dump(summ, fh, indent=1, default=float)
     print(json.dumps(summ, indent=1, default=float))
     for nm, R in (('within_lick', R1), ('csm', R2 if 'csm_any' in L else None), ('across_lick', R3), ('spont', R4)):
         if R is not None and len(R):
             print('==', nm)
             print(R[['measure', 'grade', 'side', 'post_epoch', 'nb_effect', 'nb_ci_lo', 'nb_ci_hi', 'q_bh', 'star',
                      'nb_n_animals', 'n_animals_down']].round(3).to_string(index=False))
-    print('== T1 mixed'); print(M1.round(4).to_string(index=False))
-    print('== T1 per animal'); print(pd.DataFrame(pa).round(3).to_string(index=False))
+    print('== T1 mixed')
+    print(M1.round(4).to_string(index=False))
+    print('== T1 per animal')
+    print(pd.DataFrame(pa).round(3).to_string(index=False))
 
 
 # ------------------------------------------------------------------------------------------------ plots
@@ -382,6 +419,11 @@ def _style():
 
 def epoch_panel(S, R, measure, ylabel, fname, out: Path, zero=True, sides=('ipsi', 'contra'), ylim=None,
                 surrogate=None, titles=None):
+    """Two-cue (or two-condition) epoch panel by grade: faded sessions, mean +- SEM, ** from the family test table.
+    Refuses to overwrite figures/<fname>.pdf."""
+    fd = out / 'figures'
+    if (fd / f'{fname}.pdf').exists() or (fd / f'{fname}.png').exists():
+        sys.exit(f'refusing to overwrite {fd / fname}')
     plt = _style()
     fig, axs = plt.subplots(1, len(sides), figsize=(3.25, 1.55), sharey=True)
     axs = np.atleast_1d(axs)
@@ -401,10 +443,11 @@ def epoch_panel(S, R, measure, ylabel, fname, out: Path, zero=True, sides=('ipsi
                 if len(gg):
                     ax.scatter(np.full(len(gg), i + off[gr]) + np.random.default_rng(i).uniform(-.05, .05, len(gg)),
                                gg, s=4, color=COLORS[gr], alpha=0.18, linewidths=0, zorder=1)
-                    xs.append(i + off[gr]); ms.append(gg.mean()); es.append(gg.std(ddof=1) / np.sqrt(len(gg)) if len(gg) > 1 else 0)
+                    xs.append(i + off[gr])
+                    ms.append(gg.mean())
+                    es.append(gg.std(ddof=1) / np.sqrt(len(gg)) if len(gg) > 1 else 0)
             xs, ms, es = map(np.array, (xs, ms, es))
             if len(xs):
-                full = [i + off[gr] for i in range(4)]
                 solid = len(xs) == 4
                 if solid:
                     ax.plot(xs, ms, color=COLORS[gr], lw=1.1, zorder=2)
@@ -435,7 +478,6 @@ def epoch_panel(S, R, measure, ylabel, fname, out: Path, zero=True, sides=('ipsi
             ax.set_ylim(*ylim)
     axs[0].set_ylabel(ylabel, fontsize=7.5)
     fig.subplots_adjust(left=0.2, right=0.99, bottom=0.27, top=0.86, wspace=0.12)
-    fd = out / 'figures'
     fd.mkdir(parents=True, exist_ok=True)
     fig.savefig(fd / f'{fname}.pdf')
     fig.savefig(fd / f'{fname}.png', dpi=300)
@@ -473,7 +515,7 @@ def daycourse(S1: pd.DataFrame, out: Path, grid: str = '1x4', fname: str = 'c1rm
             prev = (xs[-1], ys[-1], r.day)
             x += 1.6
         ax.axhline(0, color='0.6', lw=0.6, ls='--')
-        ax.set_title(f'#{_num(a)} ({gr})', fontsize=8, pad=2)
+        ax.set_title(f'#{FIG_LABEL.get(a, a)} ({gr})', fontsize=8, pad=2)
         ax.set_xticks([])
         ax.set_xlabel('sessions (thirds)', fontsize=7.5)
     lab = '$\\Delta$ contralesional-cue\nfirst-lick angle (deg)'
@@ -494,13 +536,17 @@ def daycourse(S1: pd.DataFrame, out: Path, grid: str = '1x4', fname: str = 'c1rm
     plt.close(fig)
 
 
-def _num(a):
-    key = {'PS47': 1, 'PS48': 2, 'PS49': 3, 'PS50': 4, 'PS46': 5, 'PS51': 6, 'PS54': 7, 'PS55': 8}
-    return key.get(a, a)
+PLOT_FILES = ('c1rm_launch_error', 'c1rm_endpoint_error', 'c1rm_within_lick_corr', 'c1rm_csm_share', 'c1rm_across_lick',
+              'c1rm_spont_angle')
 
 
-def cmd_plot(out: Path):
+def cmd_plot(out: Path, daycourse_grid: str = '1x4'):
+    """All manuscript panels; checks every target first so a re-run never overwrites part of a set."""
     td = out / 'tables'
+    dname = 'c1rm_t1_daycourse' + ('_2x2' if daycourse_grid == '2x2' else '')
+    hit = [f for f in PLOT_FILES + (dname,) if (out / 'figures' / f'{f}.pdf').exists()]
+    if hit:
+        sys.exit(f'refusing to overwrite figures {hit}')
     S = pd.read_csv(td / 'session_cells_within_lick.csv')
     R1 = pd.read_csv(td / 'tests_within_lick.csv')
     epoch_panel(S, R1, 'e_L', 'launch error $e_L$\n(deg, + = contra)', 'c1rm_launch_error', out)
@@ -514,7 +560,7 @@ def cmd_plot(out: Path):
     R3 = pd.read_csv(td / 'tests_across_lick.csv')
     epoch_panel(A, R3, 'xcorr', 'next-lick correction,\nmiss $-$ hit (deg)', 'c1rm_across_lick', out, zero=False)
     S1 = pd.read_csv(td / 't1_sessions.csv')
-    daycourse(S1, out)
+    daycourse(S1, out, grid=daycourse_grid, fname=dname)
     C = pd.read_csv(td / 'spont_cells.csv')
     R4 = pd.read_csv(td / 'tests_spont.csv')
     epoch_panel(C[C.scope == 'bout_first'], R4, 'D', 'spontaneous lick angle\n$\\Delta$ vs pre (deg)',
@@ -522,7 +568,13 @@ def cmd_plot(out: Path):
                 titles={'ipsi': 'ipsilesional spout', 'contra': 'contralesional spout'})
 
 
-def cmd_t1_by_grade(out: Path):
+def cmd_daycourse(out: Path, daycourse_grid: str = '2x2'):
+    """Only the per-animal day course (refuses to overwrite), e.g. the 2 x 2 version after a full plot run."""
+    dname = 'c1rm_t1_daycourse' + ('_2x2' if daycourse_grid == '2x2' else '')
+    daycourse(pd.read_csv(out / 'tables/t1_sessions.csv'), out, grid=daycourse_grid, fname=dname)
+
+
+def cmd_t1_by_grade(out: Path, c1_dir: Path):
     """T1 mixed models split mild + moderate vs severe (the severe animals' post-stroke within-session pattern differs;
     added after the pooled run). Writes tables/t1_mixed_by_grade.csv (refuses to overwrite)."""
     import statsmodels.formula.api as smf
@@ -530,10 +582,11 @@ def cmd_t1_by_grade(out: Path):
     if f.exists():
         sys.exit(f'refusing to overwrite {f}')
     L = pd.read_pickle(out / 'data/cued_licks_scored.pkl')
-    T = pd.read_parquet(RM.TRIALS, columns=['label', 'animal', 'rel_day', 'epoch', 'grade', 'trial', 'side',
-                                            'first_correct'])
+    T = pd.read_parquet(c1_dir / 'data/trials.parquet', columns=['label', 'animal', 'rel_day', 'epoch', 'grade',
+                                                                 'trial', 'side', 'first_correct'])
+    T['side_ic'] = side_ic(T.side, T.animal)
     F = first_licks(L)
-    X = T[T.side == 'R'].merge(F[['label', 'trial', 'e_E']], on=['label', 'trial'], how='left')
+    X = T[T.side_ic == 'contra'].merge(F[['label', 'trial', 'e_E']], on=['label', 'trial'], how='left')
     X = X[X.epoch.isin(['pre', 'acute', 'sub_acute'])].sort_values(['label', 'trial'])
     X['post'] = (X.epoch != 'pre').astype(int)
     rows = []
