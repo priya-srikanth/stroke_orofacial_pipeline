@@ -15,6 +15,83 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-11-21 — Two-tone task-session structure (manuscript Supplementary Figure S2)
+
+- *Context:* Priya asked for a supplementary diagram of the two-tone task session (comment C244): session time, L vs R cues, and the structure of cue-reward and non-reward blocks. The figure was first built in the paper code with the computation and the drawing in one script; per Priya the computation belongs here and the paper code only plots.
+- *Decision:* `scripts/manuscript/task_structure/c1_task_structure.py` reads a trials table (label, animal, epoch, trial, side, cue_s), keeps pre-stroke sessions, splits cues into cue-reward blocks at gaps >= 100 s, and writes sessions_structure.csv, blocks.csv, cue_intervals.csv, example_session.csv and summary.json to a new folder. The paper's `figures/task_structure/c1_task_structure_plot.py` reads these tables only.
+  - **Design checked against:** the legacy `generate_reward_traces.ipynb` (identical in facerhythm_stroke_biomarker_exp and _Priya; read only). A 60-min schedule alternates baseline epochs U(120, 300) s with reward epochs U(20, 240) s, first and last baseline; up to 100 rewards at random inside reward epochs, >= 8 s apart and not in an epoch's last 8 s, L/R alternating in the sampling order (exactly 50/50, random order); 200-ms tone with the reward. The generator stops early when no placeable time remains.
+  - **Data agree with the design:** 59 pre-stroke sessions, 8 animals; median 96 trials (72-97), 10 blocks (8-11) of 1-22 trials, within-block interval >= 8.0 s (median 11.8 s), non-reward gaps 130-329 s, frac_L 0.50 in every session.
+  - **The 72-trial session (PS49 2025-03-11, day -6)** is the generated schedule, not a recording problem: its saved experiment_design WAVs hold 36 + 36 rewards (read-only check of Rich's raw folder), and the recording has 36 + 36 rewards and tones over 60.2 min.
+  - **Sham days:** PS49's 03-11 WaveSurfer file is named sham_0001.h5. Sham-day sessions count as pre-stroke baseline (Priya 2026-11-21); the stroke comparisons still use the last five pre-stroke sessions.
+- *Rationale:* The 100-s block split sits in the empty part of a bimodal gap distribution (within-block <= 65 s, between >= 130 s) and below the design's 120-s minimum baseline. Keeping the computation in the repo puts every manuscript number in committed code.
+- *Enforced at:* `scripts/manuscript/task_structure/c1_task_structure.py` (refuses to overwrite). Output: `vls_stroke_paper/review/c1_task_structure_2026-11-21_repo/`, identical to the first paper-code run (summary.json and sessions_structure.csv equal); the redrawn figure is pixel-identical.
+
+## 2026-11-21 — Two-tone recovery-mechanics review scripts (within-lick correction, CSM gate, T1, across-lick, quiet-block ME)
+
+- *Context:* Priya asked for two-tone (#1-#8) counterparts of the six-position recovery analyses in widefield_pipeline (`within_lick_correction.py`, `learned_compensation.py` T1, `lick_correction.py`), plus two secondaries: spontaneous licks in the non-reward blocks, and face motion energy (ME) in those blocks. These are manuscript Supplementary Figure S10 and panel L of S20.
+- *Decision:* `scripts/manuscript/recovery_mechanics/`:
+  - **Scripts:**
+    - `c1_recovery_mechanics.py` (extract + CLI);
+    - `c1_recovery_mechanics_summary.py` (tables, family tests, panels);
+    - `c1_quiet_me.py`.
+  - **Angles:**
+    - theta_L = launch direction, SG(5, 2) displacement over the first 3 frames (12 ms) of the out-of-mouth run.
+    - theta_E = arcsin(lat / r) of the tongue tip at its extension peak, both about the mouth origin.
+    - lat = -x of the front camera (mouse-right positive), recoded to contralesional-positive with `ipsi_contra_recoding` and animals.yaml `stroke_laterality`.
+    - e = angle minus the animal's pre-stroke HIT mean for that cue side. Within-lick correction = e_E - e_L, signed toward the target.
+  - **Corrective submovements (CSMs):** extra speed peaks per out / back phase. The prominence threshold is calibrated so a noise surrogate (SG(9, 3) track plus Gaussian noise at the session's residual SD) gains a CSM over the smooth surrogate on <= 5 % of pre-stroke licks. A gate is required before any post-stroke CSM number.
+  - **T1:** contralesional-cue first lick (lick_idx 0), e_E primary, in early / middle / late thirds per session. statsmodels MixedLM with animal groups and a session variance component:
+    - within-session y ~ x * post;
+    - overnight pairs y ~ second * post;
+    - post = acute + subacute;
+    - also split mild + moderate vs severe (`t1_by_grade`).
+  - **Across-lick:** k -> k + 1 pairs <= 300 ms apart; miss-minus-hit toward-target change in 5-deg error bins.
+  - **Spontaneous and quiet-block windows:** inter-cue gaps > 60 s, from the block's last cue + B to the next cue - 2 s. B = 33 s: the first second >= 8 s from which the pre-stroke contact rate stays within 1.5x of its 30-60 s plateau.
+  - **Statistics:** c1_stats.run_family. Families: c1rm_within_lick, c1rm_csm, c1rm_across_lick, c1rm_spont, quiet_me.
+  - **Outputs:** vls_stroke_paper/review/c1_recovery_mechanics_2026-11-21_r2/. Every writer refuses to overwrite.
+  - **Constants:** thresholds stay module constants, as in the other scripts/manuscript review scripts (no configs/defaults.yaml move).
+- *Rationale:*
+  - **Why not peak_angle_deg:** the pipeline's per-lick `peak_angle_deg` is eye-referenced and taken at the v7 peak frame. A launch angle needs the mouth-origin reference, so theta_L and theta_E share one origin, as in the widefield 3D analysis. On 63,592 pre-stroke licks (53 sessions) theta_E and peak_angle_deg agree closely:
+    - r = -0.96 (-0.96 to -0.98 per animal);
+    - opposite sign convention;
+    - theta_E ~ -3.38 x peak_angle_deg - 1.0 (the mouth-origin angle is wider).
+  - **Cue -> frame mapping:** cues and contacts are mapped with the pipeline's own lookup (`dlc_spatial.tone_aligned.ws_samples_to_frame_indices`, round(sig_camIdx__idx_ws)). This fixes the first run's searchsorted mapping, which put about half the cues one frame late relative to the lick events (review of PR #181). The frame interval comes from configs alignment.fps_cam.
+  - **Effect of the fix** (first run review/c1_recovery_mechanics_2026-11-21 vs _r2):
+    - Endpoint e_E, across-lick, spontaneous and quiet ME are essentially unchanged (same stars; T1 e_E coefficients within 0.25 deg).
+    - The 2D launch angle moves: its pre-stroke correlation with theta_E falls from 0.26 to 0.15. Mild contralesional acute e_L goes from -7.7 to -4.4 (still starred). Severe contralesional e_L goes from -14.5 / -13.5 to -7.8 (starred) / -7.2 (not starred).
+    - Within-lick correction on contralesional-cue trials gains two stars (moderate chronic -2.8, severe subacute -12.4).
+    - The CSM gate fails more clearly: the pre real-minus-surrogate share is +0.3 % [-0.5, 1.1], 4 / 8 animals (was +2.4 % [0.9, 3.8]); misses do not carry more CSMs than hits.
+  - **Conclusions:** CSMs are not reported for the two-tone cohort (2D, about 9 frames per lick), and the launch angle is treated as supporting only. The endpoint carries the two-tone aim result.
+- *Enforced at:* `scripts/manuscript/recovery_mechanics/*`. Outputs in `vls_stroke_paper/review/c1_recovery_mechanics_2026-11-21_r2/` (README there). The first-run folder is kept unchanged for comparison.
+
+## 2026-11-20 — Engagement / movement supplement scripts and the xy-distance cluster test (Mac session)
+
+- *Context:* Priya asked for one engagement / movement supplementary figure for both cohorts (time-matched; two-tone on the 60-min recording), with ONE task-independent-movement (TIM) and ONE motion-energy (ME) measure per window, keypoints + FaceRhythm combined; and asked why S7 I-J (first-lick xy protrusion trajectories) carried no cluster bars.
+- *Decision:* `scripts/manuscript/engagement_movement/c1_engmove_sync60.py` (two-tone GLM-HMM occupancy = mean posterior of the engaged / partial / disengaged roles, keypoint TIM and keypoint ME on trials inside the 60-min window; c1_stats.run_family), `tim_combined_px.py` (keypoint TIM averaged over keypoints in px; a first version that z-scored each keypoint was dropped because the near-zero pre-stroke tongue ITI TIM blew the z up), `movement_combined.py` (TIM = mean of each modality's TIM z-scored to the animal's own pre-stroke sessions; ME = mean of keypoint and FaceRhythm ME, both already z to own pre-stroke frames; two-tone keypoints only until its FaceRhythm data exist). `scripts/manuscript/xy_cluster_c2aligned.py`: the c2-aligned within-animal cluster test (unchanged function, signal xy_dist) on the cached PS47-day-5 xy substrate -> v3_xy_dist/trajectory_cluster_permutation_c2aligned_bh_fdr_ps47d5.csv (8 clusters), so S7 I-J now carry bars.
+- *Enforced at:* those scripts; manuscript copies and outputs in `vls_stroke_paper/review/c2_treadmill_2026-11-20/combined_mac_2026-11-20/`. The six-position halves read the desktop's widefield review tables and call widefield_pipeline `orofacial_stats.session_change_tests` (WF_REPO).
+
+## 2026-11-20 — Two-tone treadmill / running on the 60-min recording (first to last sync pulse)
+
+- *Context:* For the manuscript treadmill / running supplement (both cohorts), Priya asked that the two-tone cohort be time-matched to its 60-min recording, "beginning to end of sync pulse", instead of the review tables' first cue -> last cue + 8 s ("whole") or first cue + 50.5 min ("matched").
+- *Decision:* `scripts/manuscript/engagement_movement/c1_sync60.py`. Window = first rising to last falling edge of wavesurfer `Sync_signal` (spout_behavior/wavesurfer_signals_processed), capped at 60 min (only PS48 2025-03-14, two recordings joined as halves a + b, would exceed it); 256/256 sessions, median 60.0 min, one session 53.5 min (its sync stops early). Running / stillness = c1_running definitions over that window; push / walking = trials.parquet values on trials whose cue + 3.5 s lies inside it (24,766 of 24,793); statistics = c1_stats.run_family (families treadmill_primary_sidepooled_sync60, running_sync60). Treadmill stars identical to "whole"; running 22 -> 20 (moderate acute bouts / min and fraction of time > 3 mm/s lose their star). The six-position rows stay on their first 95 min.
+- *Alternatives considered:* "whole" (first cue -> last cue + 8 s; varies 48-71 min per session) and the 50.5-min cue-based match.
+- *Enforced at:* `scripts/manuscript/engagement_movement/c1_sync60.py`; outputs in `vls_stroke_paper/review/c2_treadmill_2026-11-20/combined_mac_2026-11-20/c1_sync60/`, figure `.../figures/C_treadmill_running_5x4_by_severity_v3_sync60`.
+
+## 2026-11-20 — v41 branches merged to main (Priya: "Merge to main when safe")
+
+- *Context:* Priya 2026-11-20 authorized merging the v41 sync branches to main and adding the session's scripts.
+- *Decision:* Merged onto origin/main (94f82b6) with `--no-ff`, in this order: `ps47-chronic-day5` (1d7ce8e; first, as asked), `ms-v41-c1-stats-port` (e558ffe), `ms-v41-recovery-time-grading` (c426072; the only conflict, two DECISIONS entries added at the same place, kept both), `ms-v41-merge41` (Fig 2B `--aligned`, below). No rebase of published commits. Full pytest suite and ruff run on the merged tree before the push. The two-tone engagement / movement scripts of `review/c2_treadmill_2026-11-20/c1/` (final 2026-11-20 revision: c1_analysis, c1_dlc_common, c1_extract_sessions, c1_figures, c1_glmhmm, c1_jaw_trials, c1_keypoint_me, c1_running, c1_stats, c1_tim) are added byte-identical under `scripts/manuscript/engagement_movement/`, their README as `docs/ENGAGEMENT_MOVEMENT_C1.md`; every script writes only under the output folder given as its first argument and refuses to overwrite. Left as reviewed (not lint-edited): ruff 0.16 reports 24 style findings on them (unused noqa / casts / dict() calls, two unused locals, two loop-variable lambdas that are called inside the loop), the same categories as the 1,018 findings on main.
+
+## 2026-11-20 — Fig 2B trial outcomes re-tested under the aligned rule (comparison only; figure unchanged)
+
+- *Context:* Fig 2B was the last cohort-1 panel still on the old rule (session MWU vs pre, sessions pooled within grade, BH over all 72 tests, `*` = q < 0.05). Every other cohort-1 panel uses the aligned rule (`compute_endpoint_cell_suite(test_set="c2_aligned")`).
+- *Decision:* `run_trial_outcome_stats.py --aligned` (`trial_outcomes.aligned_vs_pre`): same 72 cells (grade x cue side x post epoch x class) and the same per-session class fractions, each expressed as the change from the animal's OWN pre mean (per animal x cue side x class); session MWU (post vs pre changes) + nested animals -> sessions bootstrap (4,000 draws); BH over the 72 rows (one family); `**` = q < 0.05 AND CI excludes 0. Reads the existing `c1_trial_classes.csv` (no re-extraction). Figure not changed.
+- *Result:* old 30 stars -> aligned 22 (21 kept, 9 lost, 1 gained). Lost: moderate ipsi acute complete / jaw_only / no_resp, moderate ipsi sub-acute complete / jaw_only, moderate ipsi chronic jaw_only, severe contra chronic jaw_only / no_resp, severe contra sub-acute incomplete. Gained: severe contra chronic incomplete. Every lost cell has 2 animals (moderate = PS46 + PS51, severe = PS54 + PS55); in 7 of the 9 the MWU q stays < 0.05 but the 2-animal bootstrap CI touches 0 (one animal shows no change), in 2 (severe contra chronic jaw_only, severe contra sub-acute incomplete) q also rises above 0.05.
+- *Outputs:* `stats/results/trial_outcomes/c1_trial_outcome_aligned.csv`, `c1_trial_outcome_aligned_vs_old.csv` (old star, new star, kept / lost / gained; refuses to overwrite).
+- *Enforced at:* `src/stroke_orofacial/stats/trial_outcomes.py::aligned_vs_pre`, `compare_stars`; `tests/test_trial_outcomes_weight_epoch.py::test_aligned_vs_pre_and_compare`.
+
+
+
 ## 2026-11-19 — S5B spout close-vs-standard summaries: manuscript styling (opt-in kwargs)
 
 - *Context:* Supplementary Fig. S5B of the VLS manuscript shows the `spout_close_vs_std` cohort summaries for PS51, PS55 and PS54. At print size (~1/3 page width) the text was too small, the raster row was compressed, and incorrect raster licks were magenta, the same color as the R cue in rows 1-3. Priya asked for manuscript-only changes.
@@ -22,6 +99,47 @@ Entries are reverse-chronological (newest at top). Format:
 - *Rationale:* Manuscript styling must not change the pipeline outputs or `configs/defaults.yaml`. Red keeps "incorrect" distinct from the R-cue magenta. At 1.4x the one-line y-labels and row-1 / row-3 titles were longer than the axes and collided, and the Standard / Close half labels overlapped the raster "0" ticks, hence the label wrapping (wording unchanged) and the scaled offsets.
 - *Outputs:* `vls_stroke_paper/figure_review/S5_summaries/{PS51,PS55,PS54}_summary_ms.{png,svg}` (png 300 dpi). The pipeline figures in `spout_behavior/spout_behavior_figures/spout_close_vs_std/cohort/` are unchanged.
 - *Enforced at:* `src/stroke_orofacial/spout_behavior/spout_close_vs_std.py` (`render_animal_summary_spout_close_vs_std`, `_plot_row_lick_raster`); `scripts/manuscript/render_s5_spout_close_summaries.py`; `tests/test_spout_close_vs_std.py::TestSummaryManuscriptOverrides`.
+## 2026-11-19 — Trial-outcome statistics and body weight by epoch moved into the pipeline (manuscript v41 Fig 2B, Fig 1F)
+
+- *Context:* Two cohort-1 statistics were computed only in the manuscript's own scripts: the trial-outcome change (`figures/c1_trial_classes_extract.py` + the cohort-1 part of `figures/trial_class_distribution.py`) and the body-weight LMM (`figures/weights_by_epoch.py`). The cohort-2 parts of both belong to widefield_pipeline.
+- *Decision:* Ported unchanged.
+  - `stats/trial_outcomes.py` + `scripts/manuscript/run_trial_outcome_stats.py`: per-trial class (complete = spout contact in (tone, tone + 5 s]; incomplete = DLC tongue protrusion, no contact; jaw_only; no_resp); per-session fractions; session MWU of each post epoch vs pre within grade x cue side x class, BH over all 72 tests, `*` q < 0.05. Epochs from `configs/animals.yaml` (equal to the manuscript's hard-coded table, PS47 chronic from day 5).
+  - `stats/body_weight_epoch.py` + `scripts/manuscript/run_weight_epoch_lmm.py`: % of pre-stroke mean weight; MixedLM (REML, random intercept animal) `pct ~ epoch * grade`; 9 epoch-vs-pre contrasts within grade, BH; `*`/`**`/`***` at q 0.05/0.01/0.001. Epochs from `animals.yaml` or the stamped columns of `--epoch-table` (the manuscript used `derived_epoch_boundaries_ps47d5.csv`; same values).
+- *Result:* trial classes: 23,932 trials, every class equal to the manuscript's `c1_trial_classes.csv` snapshot (PS48 20250317 skipped for a trial-count mismatch in both). MWU table: delta, p, q, n equal to the manuscript run exactly; 30 starred cells, stars unchanged (the manuscript script, re-run on its inputs, reproduces the v41 Fig 2B PDF text exactly). Weight LMM: equal to the manuscript to its 4-decimal rounding (max difference 5e-5); stars unchanged (mild sub-acute *, mild chronic ** (q 0.0097), moderate acute **, severe acute and sub-acute ***).
+- *Outputs:* `stats/results/trial_outcomes/c1_trial_{classes,outcome_mwu_bh,outcome_fractions}.csv`; `stats/results/body_weight/c1_weight_epoch_{days,lmm,summary}_ps47d5.csv` (scripts refuse to overwrite).
+- *Enforced at:* `src/stroke_orofacial/stats/trial_outcomes.py`, `src/stroke_orofacial/stats/body_weight_epoch.py`; `tests/test_trial_outcomes_weight_epoch.py`.
+
+## 2026-11-19 — Session-level trajectory tables moved into the pipeline (manuscript v39-v41)
+
+- *Context:* The manuscript's trajectory lines and bands are the mean and SEM across sessions (Priya 11-19), computed so far in the manuscript's `analysis/c1_traj_session_stats.py`, `c1_xy_traj_session_stats.py` and `c1_path_session_sem.py`.
+- *Decision:* Ported as `stats/trajectory_session_summary.py` + `scripts/manuscript/run_trajectory_session_tables.py` (next to `run_within_animal_cluster_perm.py`, whose cached `trial_bin_substrate[_S].parquet` it reads; `--substrate-suffix S` reads the `_S` substrates and xy cache `v3_xy_dist/_xy_session_cache_S/`, and names the outputs `_S`). No computation changed. The path SEM now also has a `_ps47d5` version (the manuscript only had it on the old substrate).
+- *Result:* `c1_traj_sessions_ps47d5.csv`, `c1_traj_xy_sessions_ps47d5.csv` and `c1_traj_xy_sessions.csv` are byte-identical to the manuscript's `data/` copies; `c1_traj_sessions.csv` and `c1_path_session_sem.csv` have identical keys, NaN pattern and values (max abs difference 0; written on a different machine, so the text differs).
+- *Outputs:* `stats/results/trajectory_sessions/{c1_traj_sessions,c1_traj_xy_sessions,c1_path_session_sem}{,_ps47d5}.csv` (refuses to overwrite).
+- *Enforced at:* `src/stroke_orofacial/stats/trajectory_session_summary.py`; `tests/test_trajectory_session_summary.py`.
+
+## 2026-11-19 — PS47 (#1) chronic onset moved from day 3 to day 5
+
+- *Context:* PS47's stamped boundaries were acute day 1, sub-acute day 2, chronic from day 3. Against its last five pre-stroke sessions, contralesional first-lick accuracy and criterion are back on day 3, but d′ (−1.1 SD on day 3) and ipsilesional correct licks (−0.8 SD) recover on day 4, and contralesional first-lick latency is still +1.7 SD on day 4 and near baseline on day 5. The automatic epoch derivation (`stats/epoch_derivation.py`, `pipeline_outputs/epochs/derived_epoch_boundaries.csv`) already puts PS47's chronic onset at day 5. Paper-folder handoff: `HANDOFF_PS47_epoch_change.md` (2026-11-18); prompt `PROMPT_c1_PS47_epoch_c2aligned.md` (2026-11-19).
+- *Decision:* `configs/animals.yaml` PS47 `subacute_max_rel_day: 4`, `chronic_min_rel_day: 5` (acute day 1 unchanged). Only PS47's day-3 and day-4 sessions change label (chronic -> sub-acute); no session-level value changes. Every group statistic that pools the mild grade by epoch is recomputed, to NEW files (suffix `_ps47d5`) so the current manuscript sheets stay reproducible: materialized inputs re-emitted for PS47 after a backup (`stats/inputs_backup_pre_ps47d5_2026-11-19/`); aligned sheets `pooled_phenotype_stats_c2aligned_v3_ps47d5` and `..._c2aligned_xy_dist_ps47d5`; cluster tables `trajectory_cluster_permutation_c2aligned_bh_fdr_ps47d5.csv` (on `trial_bin_substrate_ps47d5.parquet`, the cached substrate with PS47's labels re-derived; equals a full rebuild because only the label of PS47 days 3-4 changes and the delta baseline is pre-stroke); PS47 inputs outside the re-emitted inventories and the spatial inputs relabelled in place, values checked identical to the backup (Priya 11-19: relabel, not recompute, where only the label is stale); manuscript session tables `c1_traj_sessions_ps47d5.csv`, `c1_traj_xy_sessions_ps47d5.csv`.
+- *Rationale:* Chronic should start when the animal's deficits have settled, not when the first endpoint returns; day 5 is where the last quoted endpoint (latency) is back and where the derivation already places it, so stamped and derived boundaries now agree for all eight animals.
+- *Enforced at:* `configs/animals.yaml` (PS47 `epoch_boundaries`); `stats/recovery_epochs.py::assign_epoch_label`; `scripts/manuscript/run_within_animal_cluster_perm.py` (`--out-suffix`, refusal checked before computing).
+
+
+## 2026-11-19 — Two-tone severity grade = time to return of contralesional correct licking (manuscript v41)
+
+- *Context:* Manuscript v41 (Priya 11-19) grades the two-tone animals by recovery time instead of the A/B/C severity axes, computed until now only in the manuscript's `figures/supp_c1_recovery_time.py` and the k-means check in `analysis/c1_severity_features_kmeans.py`.
+- *Decision:* Ported as `stats/recovery_time.py` + `scripts/manuscript/run_recovery_time_grading.py`. Recovery day = first post-stroke day on which mean correct contralesional licks per trial (`num_correct_licks_per_trial_rw`, cue + 70 ms to + 8 s, `no_filter`, sentinels dropped) reach the threshold x the mean of the last five pre-stroke days (`rel_day < 0`); not required to be sustained; censored at last day + 1 if never reached. Thresholds 25 / 50 / 75 %. k-means (k = 3, 200 restarts, seed 0) on log days at each threshold vs the 3-tier grade (ARI).
+- *Result:* 50 %: PS47 1, PS48 1, PS49 2, PS50 2, PS46 6, PS51 18, PS54 37, PS55 70 days (#1-#8), equal to the manuscript. 25 %: 1, 1, 1, 2, 6, 12, 36, 41; 75 %: 3, 2, 2, 3, 7, 18, 38, 71 (PS55 censored). k-means on log days gives the three grades at every threshold (ARI 1.0).
+- *Outputs:* `stats/results/recovery_time/recovery_time_per_animal.csv`, `recovery_time_kmeans_log_days.csv` (script refuses to overwrite).
+- *Enforced at:* `src/stroke_orofacial/stats/recovery_time.py`; `tests/test_recovery_time.py`.
+
+## 2026-11-19 — All-lick peak tongue speed restored to the cohort-2-aligned set (sheet v2)
+
+- *Context:* `tongue_median_vxy_peak_per_trial` (all-lick peak speed, manuscript Figure 2G; the cohort-1 counterpart of cohort 2's all-lick 3-D speed) was on the 2026-11-19 drop list, which left 2G as the only cohort-1 panel on the old rule.
+- *Decision (Priya):* restore it to the c2_aligned scalar family; every other dropped endpoint (incl. `tongue_median_vy_peak_per_trial`) stays dropped. The result is a NEW sheet, `pooled_phenotype_stats_c2aligned_v2.{csv,xlsx}` (29 scalar endpoints, 728 cells); the v1 sheet (`pooled_phenotype_stats_c2aligned`, 712 cells) is unchanged. The xy family is a separate family and is unchanged (no v2).
+- *Result:* the scalar family gains 16 cells, so every scalar q shifts slightly, but no existing cell changes its star: 398 -> 407 starred, all 9 new stars are speed cells (mild L acute/sub-acute, mild R acute; moderate L chronic, R sub-acute; severe L and R sub-acute/chronic). The two moderate-acute speed cells have one animal, so no nested CI and no star.
+- *Outputs:* `stats/results/phenotype_pooled/3_tier/pooled_phenotype_stats_c2aligned_v2.{csv,xlsx}` (command: `build_pooled_phenotype_stats --test-set c2_aligned --scopes 3_tier --out-suffix v2`); review panels `vls_stroke_paper/review/c2aligned_panels_2026-11-19/aligned_v2/` (`c1_panels_c2aligned.py --sheet pooled_phenotype_stats_c2aligned_v2`, incl. `F2_speed_all`).
+- *Enforced at:* `scripts/phase_9_stats/build_pooled_phenotype_stats.py` (`C2_ALIGNED_SCALAR_DROP`); `tests/test_c2_aligned_stats.py::test_allick_speed_restored_other_drops_unchanged`.
 
 ## 2026-11-19 — Cohort-1 statistics aligned with the six-position cohort (`--test-set c2_aligned`)
 

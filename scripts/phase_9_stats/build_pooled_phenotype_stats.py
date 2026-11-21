@@ -103,7 +103,9 @@ C2_ALIGNED_SCALAR_DROP = frozenset({
     "late_lickiness", "lick_switch_rate", "lickRate_byTrial",
     "tongue_lick_rate_hz", "tongue_n_licks", "tongue_n_left", "tongue_n_right",
     "tongue_lick1_vy_peak", "tongue_median_vy_peak_per_trial",
-    "tongue_median_vxy_peak_per_trial", "jaw_peak_abs_deflection",
+    "jaw_peak_abs_deflection",
+    # tongue_median_vxy_peak_per_trial (all-lick peak speed, manuscript panel
+    # F2_speed_all) was dropped on 2026-11-19 and restored the same day (Priya).
 })
 # Spout-contact lick counts use the response window (cue + 70 ms to cue + 8 s)
 # instead of window_around_tones (DECISIONS 2026-11-19): old slug -> new slug.
@@ -427,6 +429,46 @@ def load_wasserstein_family(resolver: PathResolver, *, w2_version: str = "v2",
     return out
 
 
+def relabel_epochs(df: pd.DataFrame) -> pd.DataFrame:
+    """Re-derive ``epoch_label`` for every row from (animal, date) with the current
+    ``configs/animals.yaml`` boundaries (``recovery_epochs.assign_epoch_label``).
+
+    Why: cached per-session tables (the W-2 ``wasserstein_recovery_per_session.csv``)
+    store the epoch label of the run that wrote them; after a boundary change
+    (PS47 chronic from day 5, 2026-11-19) only the label is stale, not the value,
+    so relabelling at load time avoids rewriting those published outputs.
+    Rows of animals not in animals.yaml keep their label. Logs each change.
+    """
+    import datetime
+
+    from stroke_orofacial.stats.recovery_epochs import assign_epoch_label
+    amap = load_animals()
+    out = df.copy()
+    dates = pd.to_datetime(out["date"].astype(str), format="mixed").dt.date
+    cache: dict = {}
+
+    def _lab(a, d: datetime.date, old):
+        info = amap.get(a)
+        if info is None:
+            return old
+        k = (a, d)
+        if k not in cache:
+            cache[k] = assign_epoch_label(int(info.day_relative_to_stroke(d)), info)
+        return cache[k]
+
+    new = [_lab(a, d, o) for a, d, o in zip(out["animal"], dates, out["epoch_label"])]
+    changed = out["epoch_label"].to_numpy() != pd.Series(new, index=out.index).to_numpy()
+    if changed.any():
+        summary = (out.loc[changed].assign(new=pd.Series(new, index=out.index)[changed])
+                   .groupby(["family", "animal", "epoch_label", "new"]).size())
+        log.info("relabel_epochs: %d rows changed: %s", int(changed.sum()),
+                 summary.to_string().replace("\n", "; "))
+    else:
+        log.info("relabel_epochs: no row changed")
+    out["epoch_label"] = new
+    return out
+
+
 def _attach_phenotype(df: pd.DataFrame, scope: str) -> pd.DataFrame:
     amap = {a: i.recovery_phenotype for a, i in load_animals().items()}
     df = df.copy()
@@ -611,6 +653,11 @@ def main(argv: list[str] | None = None) -> int:
                         "nested animals->sessions bootstrap CI excludes 0; drops "
                         "C2_ALIGNED_SCALAR_DROP + spout W-2, uses the _rw lick "
                         "counts and W-2 v2_loo; writes *_c2aligned sheets.")
+    p.add_argument("--relabel-epochs", action="store_true",
+                   help="re-derive every row's epoch_label from (animal, date) with the "
+                        "current configs/animals.yaml after loading (opt-in; 2026-11-19 PS47 "
+                        "chronic-day-5 rerun): the persisted W-2 per-session CSVs store the "
+                        "label of the run that wrote them. Logs every change.")
     args = p.parse_args(argv)
     c2 = args.test_set == "c2_aligned"
     if c2:
@@ -680,6 +727,8 @@ def main(argv: list[str] | None = None) -> int:
         log.error("no family data loaded")
         return 1
     long_all = pd.concat(base_long, ignore_index=True)
+    if args.relabel_epochs:
+        long_all = relabel_epochs(long_all)
     log.info("per-session rows: %d across %d endpoints (filter_variant=%s)",
              len(long_all), long_all["endpoint"].nunique(), args.filter_variant)
 

@@ -15,6 +15,10 @@ Usage (from the repo root, pipeline env active; ~30-60 min per lick set
 without cache):
   python -m scripts.manuscript.run_within_animal_cluster_perm --lick-set both
   python -m scripts.manuscript.run_within_animal_cluster_perm --lick-set first_lick --use-cache
+
+--out-suffix S (2026-11-19, PS47 epoch rerun): writes <name>_S.csv and caches the substrate as
+trial_bin_substrate_S.parquet, so a rerun with changed epoch labels never touches the current files
+(default: no suffix, unchanged behaviour). --refuse-existing is checked before any computation.
 """
 from __future__ import annotations
 
@@ -95,17 +99,31 @@ def main(argv=None) -> int:
                          "c2_aligned.")
     ap.add_argument("--refuse-existing", action="store_true",
                     help="abort a lick set whose output CSV already exists")
+    ap.add_argument("--out-suffix", default="",
+                    help="suffix for the output CSV and the substrate cache "
+                         "(e.g. ps47d5 -> *_bh_fdr_ps47d5.csv, trial_bin_substrate_ps47d5.parquet)")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s [%(levelname)s] %(message)s",
                         datefmt="%H:%M:%S")
     resolver = PathResolver()
     sets = ["first_lick", "all_multi"] if args.lick_set == "both" else [args.lick_set]
-    for ls in sets:
+    tag = f"_{args.out_suffix}" if args.out_suffix else ""
+
+    def _paths(ls):
         suffix = "_all_licks" if ls == "all_multi" else ""
         res_dir = resolver.pipeline_outputs(subdir=RESULTS_SUBDIR + suffix) / "3_tier" / "v3"
+        name = OUT_CSV_C2 if args.test == "c2_aligned" else OUT_CSV
+        return res_dir, res_dir / CACHE.replace(".parquet", f"{tag}.parquet"), res_dir / name.replace(".csv", f"{tag}.csv")
+
+    if args.refuse_existing:   # before any (30-60 min) computation
+        clash = [str(o) for o in (_paths(ls)[2] for ls in sets) if o.exists()]
+        if clash:
+            logger.error("refusing to overwrite %s", ", ".join(clash))
+            return 2
+    for ls in sets:
+        res_dir, cache, out = _paths(ls)
         res_dir.mkdir(parents=True, exist_ok=True)
-        cache = res_dir / CACHE
         if args.use_cache and cache.exists():
             logger.info("[%s] loading cached substrate %s", ls, cache)
             dense = pd.read_parquet(cache)
@@ -114,7 +132,6 @@ def main(argv=None) -> int:
             dense = build_substrate(ls, resolver)
             dense.to_parquet(cache, index=False)
             logger.info("[%s] cached %d rows -> %s", ls, len(dense), cache)
-        out = res_dir / (OUT_CSV_C2 if args.test == "c2_aligned" else OUT_CSV)
         if args.refuse_existing and out.exists():
             logger.error("[%s] refusing to overwrite %s", ls, out)
             return 2

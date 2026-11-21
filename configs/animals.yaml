@@ -136,8 +136,8 @@ PS47:
       y0: 310.0
   epoch_boundaries:
     acute_max_rel_day: 1         # acute = rel_day 1
-    subacute_max_rel_day: 2      # sub-acute = rel_day 2
-    chronic_min_rel_day: 3       # chronic = rel_day >= 3
+    subacute_max_rel_day: 4      # sub-acute = rel_day 2-4 (was 2; Priya 2026-11-19, DECISIONS "PS47 chronic onset day 5")
+    chronic_min_rel_day: 5       # chronic = rel_day >= 5 (was 3; matches the automatic epoch derivation)
 
 PS48:
   stroke_date: 2025-03-13
