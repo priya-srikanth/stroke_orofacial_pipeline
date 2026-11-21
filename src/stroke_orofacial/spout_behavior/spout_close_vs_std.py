@@ -860,6 +860,7 @@ def render_animal_summary_spout_close_vs_std(
     out_dir: Path | str | None = None,
     out_stem: str | None = None,
     wrap_labels: bool = False,
+    save_pdf: bool = False,
 ) -> tuple[Path, Path]:
     """Render one 4×2 cohort summary figure for one animal.
 
@@ -953,6 +954,8 @@ def render_animal_summary_spout_close_vs_std(
         2-3 lines (wording unchanged). Needed with ``font_scale`` > 1,
         where the one-line labels are longer than the axes and
         collide. ``False`` = one-line labels (pipeline figure).
+    save_pdf : bool, default False
+        Also write ``<stem>.pdf`` (vector, for print layouts). Off by default.
 
     Returns
     -------
@@ -1228,7 +1231,11 @@ def render_animal_summary_spout_close_vs_std(
     stem = out_stem if out_stem is not None else f"{animal}_summary"
     svg_path = out_dir / f"{stem}.svg"
     png_path = out_dir / f"{stem}.png"
-    for target in (svg_path, png_path):
+    # Optional vector PDF for print layouts (manuscript S5 B-D are placed as
+    # PDFs in LaTeX); off by default so the pipeline outputs are unchanged.
+    pdf_path = out_dir / f"{stem}.pdf"
+    targets = (svg_path, png_path, pdf_path) if save_pdf else (svg_path, png_path)
+    for target in targets:
         if not target.exists():
             continue
         if overwrite == "raise":
@@ -1241,6 +1248,8 @@ def render_animal_summary_spout_close_vs_std(
             return svg_path, png_path
     fig.savefig(svg_path, format="svg")
     fig.savefig(png_path, format="png", dpi=300)
+    if save_pdf:
+        fig.savefig(pdf_path, format="pdf")
     plt.close(fig)
     return svg_path, png_path
 

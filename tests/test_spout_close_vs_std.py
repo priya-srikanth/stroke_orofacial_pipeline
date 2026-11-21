@@ -1786,6 +1786,32 @@ class TestSummaryManuscriptOverrides:
         )
         assert cfg == cfg0 and ccfg == ccfg0
 
+    def test_save_pdf_opt_in(self, synth_pairs_3_sessions, tmp_path):
+        """PDF is written only with save_pdf=True (manuscript print preset);
+        the default render writes svg + png only."""
+        res = PathResolver(output_root=tmp_path)
+        render_animal_summary_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=res,
+            out_dir=tmp_path / "a",
+        )
+        assert sorted(p.suffix for p in (tmp_path / "a").iterdir()) == [".png", ".svg"]
+        render_animal_summary_spout_close_vs_std(
+            "PS55", sessions=synth_pairs_3_sessions, resolver=res,
+            out_dir=tmp_path / "b", save_pdf=True,
+        )
+        assert sorted(p.suffix for p in (tmp_path / "b").iterdir()) == [".pdf", ".png", ".svg"]
+
+    def test_save_pdf_refuses_existing_pdf(self, synth_pairs_3_sessions, tmp_path):
+        """overwrite='raise' also guards the optional PDF."""
+        (tmp_path / "c").mkdir()
+        (tmp_path / "c" / "PS55_summary.pdf").write_text("x")
+        with pytest.raises(FileExistsError):
+            render_animal_summary_spout_close_vs_std(
+                "PS55", sessions=synth_pairs_3_sessions,
+                resolver=PathResolver(output_root=tmp_path),
+                out_dir=tmp_path / "c", save_pdf=True, overwrite="raise",
+            )
+
     def test_height_ratios_wrong_length_raises(
         self, synth_pairs_3_sessions, tmp_path,
     ):

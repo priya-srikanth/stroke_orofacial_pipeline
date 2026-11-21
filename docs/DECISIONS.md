@@ -15,6 +15,13 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-11-21 — S5 B–D spout close-vs-standard summaries: print preset and opt-in PDF
+
+- *Context:* In the manuscript layout the three summaries (PS51, PS55, PS54 = #6, #8, #7) sit two per row at ~0.48 of the text width; scaling the 10-in `ms` render down in LaTeX left ~3 pt text. The print-size panels used in the manuscript (S5 B–D, `*_summary_r2.pdf`) were first rendered by an uncommitted call.
+- *Decision:* `render_animal_summary_spout_close_vs_std` gains `save_pdf=False` (also write `<stem>.pdf`; guarded by `overwrite` like the svg / png). `scripts/manuscript/render_s5_spout_close_summaries.py` gains `--preset {ms,print}`: `print` = 3.15 x 5.6 in, font_scale 0.5, the `ms` row ratios / wrapped labels / red incorrect licks / #6-#8 titles, svg + png + pdf named `<animal>_summary_print`. Defaults are unchanged (pipeline figure and `ms` preset identical).
+- *Rationale:* Drawing at print size keeps text ~5.5-7 pt; committing the preset makes the manuscript panels reproducible.
+- *Enforced at:* those two files; `tests/test_spout_close_vs_std.py::TestSummaryManuscriptOverrides::test_save_pdf_opt_in`, `test_save_pdf_refuses_existing_pdf`. Output: `vls_stroke_paper/review/s5_print_2026-11-21/` (same size and content as the manuscript `*_summary_r2.pdf`). Known small: the raster "d+N" session labels stay ~3.5 pt at print size.
+
 ## 2026-11-21 — Two-tone task-session structure (manuscript Supplementary Figure S2)
 
 - *Context:* Priya asked for a supplementary diagram of the two-tone task session (comment C244): session time, L vs R cues, and the structure of cue-reward and non-reward blocks. The figure was first built in the paper code with the computation and the drawing in one script; per Priya the computation belongs here and the paper code only plots.
