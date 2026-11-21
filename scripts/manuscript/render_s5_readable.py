@@ -70,9 +70,9 @@ WIDTH_IN = 3.15     # unchanged from r2, so B and C still fit side by side
 # Rows 1-3 keep a fixed height; the raster row is a fixed height per session
 # (with a floor for the 1- and 3-session animals).
 SCALAR_ROW_IN = 0.78
-SESSION_BLOCK_IN = 0.27
+SESSION_BLOCK_IN = 0.25
 RASTER_MIN_IN = 1.35
-TOP_IN, BOTTOM_IN = 0.30, 0.50
+TOP_IN, BOTTOM_IN = 0.30, 0.45
 GAP_SCALAR_IN, GAP_RASTER_IN = 0.34, 0.42
 LEFT_IN, RIGHT_IN, WSPACE_IN = 0.50, 0.06, 0.30
 
