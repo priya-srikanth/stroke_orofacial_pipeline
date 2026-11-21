@@ -4,6 +4,62 @@ Started 2026-11-18 with Priya. Code: `src/stroke_orofacial/pose3d/` (`rig.py` = 
 `calibration.py` = the solve), driver `scripts/pose3d_2pram/calibrate.py`, tests `tests/test_pose3d_calibration.py`.
 Outputs: `<pipeline_outputs>/pose3d/` (MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/pose3d).
 
+## Summary for methods: why the PS46-PS55 lick direction is reported from the front view in 2-D (2026-11-19)
+
+Start here if you are writing methods or a response to "why not 3-D?". Sections below hold the details; numbers are
+copied from them.
+
+* **Readout.** Lick direction = the per-lick tongue angle from the front camera (video2, DLC; the pipeline's
+  `angle_max_signed_per_lick`). Reported in 2-D.
+* **Concern tested.** A single front view cannot see depth, so a 2-D angle could mix lick direction with reach or
+  height (for example, shorter post-stroke licks). The rig also had a camera below the mouth (video4), which sees the
+  tongue's lateral position directly, and four cameras that were calibrated together.
+* **Test.**
+  * Animals and sessions: PS46, PS50 and PS55, three pre-stroke sessions each plus three post-stroke sessions. PS55's
+    post sessions are days 28-41, because it barely licked before then. PS55 is on the second calibration (May).
+  * Licks: the first 5 per trial, from tone to tone + 1 s.
+  * Below view: the tongue tracked zero-shot by the widefield cam1 Lightning Pose model. Lateral position is
+    measured from the midpoint of the two spout rods and expressed in rod spacings (rods located per session).
+  * Comparison: per lick, and as the pre -> post change per session x trial side, taken from each animal's own pre
+    mean in each view. The change comparison involves no fit between the views.
+  * Gate: licks whose below-view point is near the mouth (|lateral| <= 1, |forward| <= 0.6 rod spacings).
+* **Result: the two views agree.**
+  * Per lick, front angle vs below-view lateral position: r = 0.93-0.97 pre for PS46 and PS55, 0.74-0.92 for PS50.
+    PS50 is lower because its below view is noisier.
+  * Across the three animals, 16 of 18 post-stroke session x trial-side changes agree within 0.08 rod spacings.
+    Both exceptions are PS55 05-28, where a water drop on the rod is labeled as tongue.
+  * The main effect, right-trial licks shifting to the left side after the stroke, appears in both views:
+    * PS46 03-16: +0.54 front vs +0.60 below;
+    * PS50 03-24: +0.65 vs +0.62;
+    * PS55 05-29: +0.68 vs +0.61.
+  * Shorter post-stroke licks do not bias the angle: its vertex, the eye, is ~417 px from the spouts.
+* **Why no 3-D triangulation.**
+  * It would add only depth (reach), which is not the question. Priya, 2026-11-19: "we don't need to do 3d as it will
+    not change conclusions".
+  * One PS46-50 camera moved after 03-16, so later sessions would need per-session camera poses.
+  * The front and below models label different physical points: tongue reprojection is 11 px, against 0.3 px for the
+    calibration.
+* **The below view does not recover licks the front view misses.** It sees the tongue in only 9-22 % of the
+  front-view gap frames. Its below-only "licks" were water drops or face points in 8 of 8 checked by eye.
+  It serves only as the direction check above.
+* **Limits.**
+  * Reach is not measured: the front view's extension mixes reach with height.
+  * Checked on 3 of the PS46-PS55 animals.
+  * The below-view tracking is zero-shot. About half of tongue-out frames have no below-view tongue point.
+* **Where things are.**
+  * Code: `scripts/pose3d_2pram/lateral_test/` (`run.sh`, `analyze.py`, `fitfree.py`, `figures.py`,
+    `occlusion_check.py`) and `src/stroke_orofacial/pose3d/` (calibration, rods).
+  * Outputs: `<pipeline_outputs>/pose3d/lateral_test_20261119/`. The key tables are
+    `fitfree_PS46_PS50_PS55.csv` and `figures/session_changes_gated.csv`.
+  * Results page with figures: https://claude.ai/artifact/9b6CnSpDqQmgPQ6oNydkzo.
+  * Merged to main in PR #174, tag `vChore-pose3d-2pram-lateral-test`.
+
+Draft methods sentence: "Lick direction was measured from the front camera in 2-D. To confirm that this angle
+reflects lateral tongue position rather than reach, we compared it with the tongue's lateral position seen by a
+camera below the mouth in three mice (three pre- and three post-stroke sessions each). Post-stroke changes from each
+mouse's own baseline agreed between views (16 of 18 session x trial-side comparisons within 0.08 spout spacings), so
+3-D reconstruction was not used."
+
 ## Why
 
 The existing DLC analysis tracks ONE camera (video2, front). In that view x is lateral and y is vertical; depth
@@ -80,8 +136,8 @@ Limits of that statement, to revisit if the question changes:
   below-view reach readout would need the work under "Next".
 * 3-D for PS46-50 after 03-16 needs per-session camera poses (a camera moved).
 
-The code stays on this branch (calibration, rods, lateral test, two-view clips) so the check can be re-run on another
-animal (`scripts/pose3d_2pram/lateral_test/run.sh`, then `analyze.py`).
+The code (calibration, rods, lateral test, two-view clips; merged to main in PR #174) lets the check be re-run on
+another animal (`scripts/pose3d_2pram/lateral_test/run.sh`, then `analyze.py`).
 
 ## Below-view tongue: lower cutoff (2026-11-19)
 
