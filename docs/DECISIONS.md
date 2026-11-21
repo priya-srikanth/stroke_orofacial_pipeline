@@ -15,6 +15,17 @@ Entries are reverse-chronological (newest at top). Format:
 
 ---
 
+## 2026-11-21 — Two-tone task-session structure (manuscript Supplementary Figure S2)
+
+- *Context:* Priya asked for a supplementary diagram of the two-tone task session (comment C244): session time, L vs R cues, and the structure of cue-reward and non-reward blocks. The figure was first built in the paper code with the computation and the drawing in one script; per Priya the computation belongs here and the paper code only plots.
+- *Decision:* `scripts/manuscript/task_structure/c1_task_structure.py` reads a trials table (label, animal, epoch, trial, side, cue_s), keeps pre-stroke sessions, splits cues into cue-reward blocks at gaps >= 100 s, and writes sessions_structure.csv, blocks.csv, cue_intervals.csv, example_session.csv and summary.json to a new folder. The paper's `figures/task_structure/c1_task_structure_plot.py` reads these tables only.
+  - **Design checked against:** the legacy `generate_reward_traces.ipynb` (identical in facerhythm_stroke_biomarker_exp and _Priya; read only). A 60-min schedule alternates baseline epochs U(120, 300) s with reward epochs U(20, 240) s, first and last baseline; up to 100 rewards at random inside reward epochs, >= 8 s apart and not in an epoch's last 8 s, L/R alternating in the sampling order (exactly 50/50, random order); 200-ms tone with the reward. The generator stops early when no placeable time remains.
+  - **Data agree with the design:** 59 pre-stroke sessions, 8 animals; median 96 trials (72-97), 10 blocks (8-11) of 1-22 trials, within-block interval >= 8.0 s (median 11.8 s), non-reward gaps 130-329 s, frac_L 0.50 in every session.
+  - **The 72-trial session (PS49 2025-03-11, day -6)** is the generated schedule, not a recording problem: its saved experiment_design WAVs hold 36 + 36 rewards (read-only check of Rich's raw folder), and the recording has 36 + 36 rewards and tones over 60.2 min.
+  - **Sham days:** PS49's 03-11 WaveSurfer file is named sham_0001.h5. Sham-day sessions count as pre-stroke baseline (Priya 2026-11-21); the stroke comparisons still use the last five pre-stroke sessions.
+- *Rationale:* The 100-s block split sits in the empty part of a bimodal gap distribution (within-block <= 65 s, between >= 130 s) and below the design's 120-s minimum baseline. Keeping the computation in the repo puts every manuscript number in committed code.
+- *Enforced at:* `scripts/manuscript/task_structure/c1_task_structure.py` (refuses to overwrite). Output: `vls_stroke_paper/review/c1_task_structure_2026-11-21_repo/`, identical to the first paper-code run (summary.json and sessions_structure.csv equal); the redrawn figure is pixel-identical.
+
 ## 2026-11-21 — Two-tone recovery-mechanics review scripts (within-lick correction, CSM gate, T1, across-lick, quiet-block ME)
 
 - *Context:* Priya asked for two-tone (#1-#8) counterparts of the six-position recovery analyses in widefield_pipeline (`within_lick_correction.py`, `learned_compensation.py` T1, `lick_correction.py`), plus two secondaries: spontaneous licks in the non-reward blocks, and face motion energy (ME) in those blocks. These are manuscript Supplementary Figure S10 and panel L of S20.
