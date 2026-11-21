@@ -381,7 +381,7 @@ def _style():
 
 
 def epoch_panel(S, R, measure, ylabel, fname, out: Path, zero=True, sides=('ipsi', 'contra'), ylim=None,
-                surrogate=None):
+                surrogate=None, titles=None):
     plt = _style()
     fig, axs = plt.subplots(1, len(sides), figsize=(3.25, 1.55), sharey=True)
     axs = np.atleast_1d(axs)
@@ -421,14 +421,13 @@ def epoch_panel(S, R, measure, ylabel, fname, out: Path, zero=True, sides=('ipsi
             ax.axhline(0, color='0.6', lw=0.6, ls='--', zorder=0)
         ax.set_xticks(range(4), [EP_NAME[e] for e in EPOCHS], rotation=30, ha='right')
         ax.set_xlim(-0.45, 3.45)
-        ax.set_title(f'{"ipsilesional" if sd == "ipsi" else "contralesional"} cue', fontsize=8, pad=2)
+        ttl = titles[sd] if titles else f'{"ipsilesional" if sd == "ipsi" else "contralesional"} cue'
+        ax.set_title(ttl, fontsize=8, pad=2)
         if R is not None and len(R):
             rr = R[(R.measure == measure) & (R.side == sd) & R.star]
-            ytop = ax.get_ylim()[1] if ylim is None else ylim[1]
             for _, r in rr.iterrows():
                 i = EPOCHS.index(r.post_epoch)
                 k = ['mild', 'moderate', 'severe'].index(r.grade)
-                ax.text(i, ytop * (0.97 - 0.0) - 0, '', fontsize=1)
                 ax.annotate('**', (i, 1.0), xycoords=('data', 'axes fraction'), xytext=(0, -2 - 7 * (2 - k)),
                             textcoords='offset points', ha='center', va='top', color=COLORS[r.grade], fontsize=7.5,
                             fontweight='bold')
@@ -451,6 +450,8 @@ def daycourse(S1: pd.DataFrame, out: Path):
     for ax, a in zip(np.atleast_1d(axs), an):
         g = S1[(S1.animal == a)].dropna(subset=['W_eE']).sort_values('day')
         gr = g.grade.iloc[0]
+        b0 = g[g.epoch == 'pre'].M_eE.mean()          # change from the animal's own pre-stroke first-lick mean
+        g = g.assign(early_eE=g.early_eE - b0, mid_eE=g.mid_eE - b0, late_eE=g.late_eE - b0)
         pre = g[g.epoch == 'pre'].tail(3)
         post = g[g.epoch != 'pre']
         x = 0
@@ -469,7 +470,7 @@ def daycourse(S1: pd.DataFrame, out: Path):
         ax.set_title(f'#{_num(a)} ({gr})', fontsize=8, pad=2)
         ax.set_xticks([])
         ax.set_xlabel('sessions (thirds)', fontsize=7.5)
-    np.atleast_1d(axs)[0].set_ylabel('contralesional first-lick\n$e_E$ (deg, + = contra)', fontsize=7.5)
+    np.atleast_1d(axs)[0].set_ylabel('$\\Delta$ contralesional-cue\nfirst-lick angle (deg)', fontsize=7.5)
     fig.subplots_adjust(left=0.09, right=0.99, bottom=0.17, top=0.86, wspace=0.35)
     fig.savefig(out / 'figures/c1rm_t1_daycourse.pdf')
     fig.savefig(out / 'figures/c1rm_t1_daycourse.png', dpi=300)
@@ -500,4 +501,37 @@ def cmd_plot(out: Path):
     C = pd.read_csv(td / 'spont_cells.csv')
     R4 = pd.read_csv(td / 'tests_spont.csv')
     epoch_panel(C[C.scope == 'bout_first'], R4, 'D', 'spontaneous lick angle\n$\\Delta$ vs pre (deg)',
-                'c1rm_spont_angle', out, zero=False, sides=('ipsi', 'contra'))
+                'c1rm_spont_angle', out, zero=False, sides=('ipsi', 'contra'),
+                titles={'ipsi': 'ipsilesional spout', 'contra': 'contralesional spout'})
+
+
+def cmd_t1_by_grade(out: Path):
+    """T1 mixed models split mild + moderate vs severe (the severe animals' post-stroke within-session pattern differs;
+    added after the pooled run). Writes tables/t1_mixed_by_grade.csv (refuses to overwrite)."""
+    import statsmodels.formula.api as smf
+    f = out / 'tables/t1_mixed_by_grade.csv'
+    if f.exists():
+        sys.exit(f'refusing to overwrite {f}')
+    L = pd.read_pickle(out / 'data/cued_licks_scored.pkl')
+    T = pd.read_parquet(RM.TRIALS, columns=['label', 'animal', 'rel_day', 'epoch', 'grade', 'trial', 'side',
+                                            'first_correct'])
+    F = first_licks(L)
+    X = T[T.side == 'R'].merge(F[['label', 'trial', 'e_E']], on=['label', 'trial'], how='left')
+    X = X[X.epoch.isin(['pre', 'acute', 'sub_acute'])].sort_values(['label', 'trial'])
+    X['post'] = (X.epoch != 'pre').astype(int)
+    rows = []
+    for scope, gr in (('mild+moderate', ['mild', 'moderate']), ('severe', ['severe'])):
+        for col in ('e_E', 'first_correct'):
+            d = X[X.grade.isin(gr)].dropna(subset=[col]).copy()
+            d = d[d.groupby('label')[col].transform('size') >= MIN_T1].copy()
+            d['x'] = d.groupby('label').cumcount() / (d.groupby('label')[col].transform('size') - 1)
+            d['y'] = d[col].astype(float)
+            m = smf.mixedlm('y ~ x * post', d, groups=d['animal'], vc_formula={'session': '0 + C(label)'},
+                            re_formula='1').fit(reml=True, method=['lbfgs', 'powell'])
+            ci = m.conf_int()
+            for t in ('x', 'x:post'):
+                rows.append({'scope': scope, 'readout': col, 'term': t, 'coef': m.params[t], 'lo': ci.loc[t, 0],
+                             'hi': ci.loc[t, 1], 'p': m.pvalues[t], 'n_sessions': d.label.nunique()})
+    R = pd.DataFrame(rows)
+    R.to_csv(f, index=False)
+    print(R.round(4).to_string(index=False))
