@@ -22,6 +22,7 @@ in widefield_pipeline (scripts/within_lick_correction.py, learned_compensation.p
                 grid value at which a noise surrogate (SG(9, 3) track + Gaussian noise with the session's residual SD)
                 gains a CSM over the smooth surrogate on <= 5 % of pre-stroke licks (widefield calibrate()). Scored on
                 fully tracked licks (onset and offset within 2 frames of the lick's rise / fall, >= MIN_CSM_FR frames).
+                Speed peaks are interior local maxima of the real speed trace (peaks v2, 2026-11-22; ``_peaks``).
      GATE (before any post-stroke CSM number): pre-stroke real CSM share must exceed the surrogate false rate.
   2  WITHIN- vs BETWEEN-SESSION RECOVERY (T1): contralesional-cue FIRST-lick e_E (primary), e_L, and first-lick accuracy
      in early / middle / late thirds of each session; mixed models (statsmodels MixedLM, animal groups, session
@@ -46,7 +47,7 @@ Inputs (read-only): <outputs>/dlc_kinematics/{lick_events,cleaned_traces}/tongue
 spout_behavior licks (visual_gate.load_session_plot_data), configs/animals.yaml (stroke_laterality), and the review
 trials table <c1_dir>/data/trials.parquet (sessions, epochs with PS47 chronic >= day 5, grades, first-lick accuracy).
 Usage (PYTHONPATH=src; sibling modules are found via sys.path):
-  python c1_recovery_mechanics.py extract <out> <c1_dir> [--jobs 6] [--only LABEL]
+  python c1_recovery_mechanics.py extract <out> <c1_dir> [--jobs 6] [--only LABEL] [--peaks-version {1,2}]
   python c1_recovery_mechanics.py summarize <out> <c1_dir>
   python c1_recovery_mechanics.py t1_by_grade <out> <c1_dir>
   python c1_recovery_mechanics.py plot <out> [--daycourse-grid {1x4,2x2}]
@@ -70,7 +71,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))                        
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'engagement_movement'))  # c1_stats
 
 N_LAUNCH, MIN_PEAK_FR, ONSET_TOL_FR, MIN_CSM_FR = 3, 4, 2, 10
-GRID = list(range(200, 4001, 100))         # px/s prominence grid
+# px/s prominence grid. 2026-11-22: extended below the old 200 px/s floor (50-150 px/s) with the peaks-v2 fix, as the
+# six-position grid was extended from 30 to 10 mm/s, so the threshold rule can find its minimum under the fixed measure.
+GRID = [50, 100, 150] + list(range(200, 4001, 100))
 FALSE_MAX = 0.05
 WIN_MS = (70.0, 3000.0)
 CONTACT_TOL_FR = 2
@@ -104,15 +107,35 @@ def _runs(mask):
     return list(zip(np.flatnonzero(d == 1), np.flatnonzero(d == -1)))
 
 
-def _peaks(x, k):
+#: Peak measure stored per lick (``peaks_v``). v1 = zero-padded trace (the 2026-11-21 runs); v2 = interior maxima of
+#: the real trace (2026-11-22), the widefield_pipeline within_lick_correction.py PEAKS_VERSION 2 fix. The pickles keep
+#: only prominences, so a change of measure needs a re-extract.
+PEAKS_VERSION = 2
+
+
+def _peaks(x, k, version: int = PEAKS_VERSION):
+    """Speed-peak prominences before / after the extension-peak frame k (a maximum exactly at k is in neither).
+
+    v2 (default): only INTERIOR local maxima of the real trace count, with prominence measured on the real trace. The
+    old v1 zero-padded the trace, so the first or last tracked frame became a "peak" whenever speed was still rising at
+    the edge of the run (a track cut short, not a submovement), and prominences could fall to the padded 0. Same code
+    for the real lick and both noise surrogates. v1 is kept only to reproduce the 2026-11-21 tables (control run)."""
     from scipy.signal import find_peaks, peak_prominences
-    xp = np.r_[0.0, x, 0.0]
-    pk, _ = find_peaks(xp)
+    x = np.asarray(x, float)
+    if version == 1:
+        xp = np.r_[0.0, x, 0.0]
+        pk, _ = find_peaks(xp)
+        if not len(pk):
+            return (), ()
+        pr = peak_prominences(xp, pk)[0]
+        idx = pk - 1
+        return tuple(np.round(pr[idx < k], 1)), tuple(np.round(pr[idx > k], 1))
+    pk, _ = find_peaks(x)
+    pk = pk[(pk > 0) & (pk < len(x) - 1)]
     if not len(pk):
         return (), ()
-    pr = peak_prominences(xp, pk)[0]
-    idx = pk - 1
-    return tuple(np.round(pr[idx < k], 1)), tuple(np.round(pr[idx > k], 1))
+    pr = peak_prominences(x, pk)[0]
+    return tuple(np.round(pr[pk < k], 1)), tuple(np.round(pr[pk > k], 1))
 
 
 def csm_count(pre, post, th):
@@ -120,7 +143,7 @@ def csm_count(pre, post, th):
     return max(0, sum(p >= th for p in pre) - 1) + max(0, sum(p >= th for p in post) - 1)
 
 
-def process(label, trials_path: Path):
+def process(label, trials_path: Path, peaks_version: int = PEAKS_VERSION):
     """Per-lick launch / endpoint angles, CSM speed-peak prominences (real and noise surrogates), contacts, and the
     session's spontaneous (non-reward block) contact licks and post-block lick-rate decay. Returns a dict with status."""
     from scipy.signal import savgol_filter
@@ -219,15 +242,16 @@ def process(label, trials_path: Path):
                 nd = np.linalg.norm(dv)
                 row['theta_L'] = float(np.degrees(np.arcsin(np.clip(dv[0] / nd, -1, 1)))) if nd > 1.0 else np.nan
             if full_ok:
-                row['pk_sp'] = _peaks(sp, k)
+                row['pk_sp'] = _peaks(sp, k, peaks_version)
                 if np.isfinite(sdn).all():
                     T9 = savgol_filter(P, 9, 3, axis=0)
                     Tn = T9 + rng.normal(0, 1, T9.shape) * sdn
                     for nm, Z in (('sm', T9), ('nz', Tn)):
                         Vz = savgol_filter(Z, 5, 2, deriv=1, axis=0) / dt
-                        row[f'sur_{nm}_sp'] = _peaks(np.linalg.norm(Vz, axis=1), k)
+                        row[f'sur_{nm}_sp'] = _peaks(np.linalg.norm(Vz, axis=1), k, peaks_version)
         rows.append(row)
     L = pd.DataFrame(rows)
+    L['peaks_v'] = peaks_version
     # ---- spontaneous licks in the non-reward blocks (item 4): every lick-sensor contact in a block gap
     sp_rows = []
     gaps = np.flatnonzero(np.diff(cues) > BLOCK_GAP_S)
@@ -264,7 +288,7 @@ def process(label, trials_path: Path):
             'noise_sd': sdn.tolist()}
 
 
-def cmd_extract(out: Path, c1_dir: Path, jobs: int, only: str | None):
+def cmd_extract(out: Path, c1_dir: Path, jobs: int, only: str | None, peaks_version: int = PEAKS_VERSION):
     """Run process() over every session of the trials table; write data/{cued_licks.pkl, spont_licks.pkl,
     block_decay.npz, extract_status.csv}. With --only, prints one session and writes nothing."""
     od = out / 'data'
@@ -274,7 +298,7 @@ def cmd_extract(out: Path, c1_dir: Path, jobs: int, only: str | None):
         if existing:
             sys.exit(f'refusing to overwrite {existing}')
     labs = [only] if only else sorted(pd.read_parquet(trials, columns=['label']).label.unique())
-    fn = partial(process, trials_path=trials)
+    fn = partial(process, trials_path=trials, peaks_version=peaks_version)
     if jobs > 1 and len(labs) > 1:
         with Pool(jobs) as p:
             R = p.map(fn, labs, chunksize=1)
@@ -305,12 +329,14 @@ def main(argv=None):
     ap.add_argument('c1_dir', type=Path, nargs='?', help='review c1 folder holding data/trials.parquet')
     ap.add_argument('--jobs', type=int, default=6)
     ap.add_argument('--only', default=None)
+    ap.add_argument('--peaks-version', type=int, choices=[1, 2], default=PEAKS_VERSION,
+                    help='CSM peak measure for extract (1 = the 2026-11-21 zero-padded measure, control only)')
     ap.add_argument('--daycourse-grid', choices=['1x4', '2x2'], default='1x4')
     a = ap.parse_args(argv)
     if a.cmd not in ('plot', 'daycourse') and a.c1_dir is None:
         ap.error(f'{a.cmd} needs <c1_dir>')
     if a.cmd == 'extract':
-        cmd_extract(a.out, a.c1_dir, a.jobs, a.only)
+        cmd_extract(a.out, a.c1_dir, a.jobs, a.only, a.peaks_version)
         return
     import c1_recovery_mechanics_summary as SM
     if a.cmd == 'plot':

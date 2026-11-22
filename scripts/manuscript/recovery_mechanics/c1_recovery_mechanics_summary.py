@@ -137,6 +137,22 @@ def gate(L: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def gate_per_animal(L: pd.DataFrame) -> pd.DataFrame:
+    """Pre-stroke real CSM share vs the noise-surrogate false rate per animal, overall and by cue side (ipsi / contra),
+    as the mean of the animal's session values (sessions with >= MIN_N scored licks)."""
+    P = L[(L.epoch == 'pre') & L.csm_any.notna()]
+    rows = []
+    for scope, sub in [('all', P)] + [(f'{sd} cue', P[P.side == sd]) for sd in ('ipsi', 'contra')]:
+        S = sub.groupby(['label', 'animal']).agg(real=('csm_any', 'mean'), false=('csm_false', 'mean'),
+                                                 n=('csm_any', 'size')).reset_index()
+        S = S[S.n >= MIN_N]
+        for an, g in S.groupby('animal'):
+            rows.append({'scope': scope, 'animal': an, 'label': FIG_LABEL.get(an), 'n_sessions': len(g),
+                         'n_licks': int(g.n.sum()), 'real': g.real.mean(), 'false': g.false.mean(),
+                         'real_minus_false': (g.real - g.false).mean()})
+    return pd.DataFrame(rows)
+
+
 def session_cells(L: pd.DataFrame) -> pd.DataFrame:
     """Session x cue-side means of e_E, e_L, corr_toward, csm_share, csm_false (NaN below MIN_N licks)."""
     keys = ['label', 'animal', 'grade', 'epoch', 'rel_day', 'side']
@@ -348,6 +364,8 @@ def cmd_summarize(out: Path, c1_dir: Path):
         G = gate(L)
         G.to_csv(td / 'csm_gate.csv', index=False)
         summ['gate'] = G.to_dict('records')
+        gate_per_animal(L).to_csv(td / 'csm_gate_per_animal.csv', index=False)
+    summ['peaks_v'] = sorted(int(v) for v in L.peaks_v.unique()) if 'peaks_v' in L else [1]
     # launch quality: pre correlation of theta_L with theta_E, and L / R separation
     pre = L[(L.epoch == 'pre') & L.theta_L.notna()]
     summ['launch_quality'] = {'n': int(len(pre)), 'r_launch_endpoint': float(np.corrcoef(pre.theta_L, pre.theta_E)[0, 1]),
@@ -361,6 +379,10 @@ def cmd_summarize(out: Path, c1_dir: Path):
     if 'csm_any' in L:
         R2 = CS.run_family(to_long(S, meas[3:]), 'c1rm_csm')
         R2.to_csv(td / 'tests_csm.csv', index=False)
+        # real minus surrogate per session x side (the six-position csm_excess), its own family so the
+        # csm_share / csm_false family above keeps the structure of the 2026-11-21 tables
+        S['csm_excess'] = S.csm_share - S.csm_false
+        CS.run_family(to_long(S, ['csm_excess']), 'c1rm_csm_excess').to_csv(td / 'tests_csm_excess.csv', index=False)
     # T1
     S1, P1, M1 = t1(L, T)
     S1.to_csv(td / 't1_sessions.csv', index=False)
