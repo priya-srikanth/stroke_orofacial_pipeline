@@ -51,7 +51,7 @@ import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.patches import Arc
+from matplotlib.patches import Arc, Wedge
 
 O2 = "/Volumes/Neurobio/MICROSCOPE/Priya/DeepLabCut/O2_analysis"
 CAM = "/Volumes/Neurobio/MICROSCOPE/Rich/data/2pRAM/facerhythm_stroke_biomarker_exp/camera"
@@ -237,11 +237,13 @@ def render(animal, date, frame, out_dir, cache):
     a_ref = np.degrees(np.arctan2(sy - ey, sx - ex))
     a_tng = np.degrees(np.arctan2(p["tongue"][1] - ey, p["tongue"][0] - ex))
     lo, hi = sorted((a_ref, a_tng))
-    ax.add_patch(Arc((ex, ey), 2 * r, 2 * r, theta1=lo, theta2=hi, color="white", lw=0.6, alpha=0.95))
+    # shaded wedge plus a heavier arc so the small (~6 deg) angle reads at print size (Priya 2026-11-22)
+    ax.add_patch(Wedge((ex, ey), r, lo, hi, facecolor="#FFD54A", edgecolor="none", alpha=0.35))
+    ax.add_patch(Arc((ex, ey), 2 * r, 2 * r, theta1=lo, theta2=hi, color="#FFD54A", lw=1.2, alpha=1.0))
     side = 1 if p["tongue"][0] > sx else -1
     a_lab = np.radians(a_tng)
-    _txt(ax, ex + r * np.cos(a_lab) + side * 13, ey + r * np.sin(a_lab) + 2, "θ", "white",
-         size=6.0)
+    _txt(ax, ex + r * np.cos(a_lab) + side * 20, ey + r * np.sin(a_lab) + 2, "θ", "#FFD54A",
+         size=8.0)
 
     # keypoints, current frame only
     for b in BPS:
