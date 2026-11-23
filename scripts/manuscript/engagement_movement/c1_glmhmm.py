@@ -29,6 +29,12 @@ Variants (--variant):
   init      (Priya 2026-11-20) outcome = response INITIATION (lick OR jaw opening) vs none = the six-position 'init'
             refit (s3_glmhmm_refit.py); engaged role = initiation rate >= 0.9.
             Jaw variants: no-lick trials of the 8 sessions without a jaw classifier file are unobserved.
+  cam3      (CC-B caption review 2026-11-23, S15 item 11b) outcome = attempt / jaw-only / no response with "lick" defined
+            as in the six-position cohort: a DAQ spout lick (cue + 70 ms .. 8 s) OR a camera-detected tongue protrusion
+            without contact (camera trial class 'incomplete', stats/results/trial_outcomes/c1_trial_classes.csv, --classes);
+            jaw-only / no response from the same camera classes; trials without a class and without a DAQ lick are
+            unobserved. Latency stays the DAQ first-lick latency (unobserved on camera-only attempts). Other outputs as
+            primary. Comparison only.
   no_cue    outcome + latency dropped entirely (lick-free of the cue response): engagement from pre-cue / ITI licking
             and running only (sensitivity).
 
@@ -71,6 +77,12 @@ def build(T: pd.DataFrame, variant: str):
             out = np.where(contra, -1, out); lat = np.where(contra, -1, lat)
         if variant == 'no_cue':
             out = np.full(len(S), -1); lat = np.full(len(S), -1)
+        if variant == 'cam3':         # six-position lick rule: DAQ spout lick OR camera tongue protrusion (incomplete)
+            resp = S.responded.to_numpy(bool)
+            cls = S.cam_cls.fillna('').to_numpy(str)
+            out = np.where(resp | (cls == 'incomplete'), 0, np.where(cls == 'jaw_only', 1,
+                                                                     np.where(cls == 'no_resp', 2, -1)))
+            lat = np.where(resp, lat, -1)
         if variant in ('jaw3', 'init'):
             jaw = S.jaw_open.to_numpy(float)
             resp = S.responded.to_numpy(bool)
@@ -86,7 +98,7 @@ def build(T: pd.DataFrame, variant: str):
         sw = np.r_[0.0, (S.side.to_numpy()[1:] != S.side.to_numpy()[:-1]).astype(float)]
         X = np.hstack([A, np.ones((len(S), 1)), contra[:, None], sw[:, None]])
         keep = ['label', 'animal', 'date', 'epoch', 'grade', 'trial', 'side', 't_min', 'responded']
-        data[lab] = (X, Y, S[keep + (['jaw_open'] if 'jaw_open' in S else [])])
+        data[lab] = (X, Y, S[keep + [c for c in ('jaw_open', 'cam_cls') if c in S]])
     return data, len(animals) - 1, {'lat_q50': float(q50), 'lat_q90': float(q90)}
 
 
@@ -96,6 +108,10 @@ def profile(Tab, K, variant='primary'):
     no lick otherwise; jaw_only = no lick but jaw opened (trials with jaw data)."""
     rows = []
     lick = Tab.responded.astype(float).to_numpy()
+    if variant == 'cam3':     # attempt = DAQ lick OR camera incomplete; jaw / none from the camera classes
+        cls = Tab.cam_cls.fillna('').to_numpy(str)
+        lick = np.where(lick == 1, 1.0, np.where(cls == 'incomplete', 1.0, np.where(cls == '', np.nan, 0.0)))
+        Tab = Tab.assign(jaw_open=np.where(cls == 'jaw_only', 1.0, np.where(cls == 'no_resp', 0.0, np.nan)))
     jaw = Tab.jaw_open.to_numpy(float) if 'jaw_open' in Tab else np.full(len(Tab), np.nan)
     jo = np.where(np.isfinite(jaw), (lick == 0) & (jaw == 1), np.nan).astype(float)
     none = np.where(np.isfinite(jaw), (lick == 0) & (jaw == 0), np.nan).astype(float)
@@ -106,7 +122,7 @@ def profile(Tab, K, variant='primary'):
         return float(np.average(x[ok], weights=w[ok])) if ok.any() and w[ok].sum() > 0 else np.nan
     for k in range(K):
         w = Tab[f'p_state{k}'].to_numpy(float)
-        jaw_v = variant in ('jaw3', 'init')
+        jaw_v = variant in ('jaw3', 'init', 'cam3')
         rows.append({'state': k, 'response': wavg(att, w) if variant == 'init' else wavg(lick, w),
                      'no_response': wavg(none, w) if jaw_v else wavg(1 - lick, w),
                      'lick_rate': wavg(lick, w), 'jaw_only_rate': wavg(jo, w), 'neither_rate': wavg(none, w),
@@ -122,21 +138,27 @@ def profile(Tab, K, variant='primary'):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('c1', type=Path)
-    ap.add_argument('--variant', default='primary', choices=('primary', 'ipsi_only', 'no_cue', 'jaw3', 'init'))
+    ap.add_argument('--variant', default='primary', choices=('primary', 'ipsi_only', 'no_cue', 'jaw3', 'init', 'cam3'))
+    ap.add_argument('--classes', type=Path, default=None,
+                    help='cam3: camera trial classes csv (stats/results/trial_outcomes/c1_trial_classes.csv)')
+    ap.add_argument('--out-dir', type=Path, default=None, help='write here instead of <c1>/glmhmm')
     ap.add_argument('--k', type=int, default=5)
     ap.add_argument('--select-k', action='store_true')
     ap.add_argument('--wf', default='C:/Users/SabatiniLab/Github/widefield_pipeline_c2stats')
     a = ap.parse_args()
     sys.path.insert(0, a.wf)
     from wfield_local import glm_hmm as G
-    od = a.c1 / 'glmhmm'; od.mkdir(exist_ok=True)
+    od = a.out_dir or (a.c1 / 'glmhmm'); od.mkdir(parents=True, exist_ok=True)
     T = pd.read_parquet(a.c1 / 'data' / 'trials.parquet')
     if a.variant in ('jaw3', 'init'):              # c1_jaw_trials.py output (pipeline jaw_pass_qc per trial)
         T = T.merge(pd.read_parquet(a.c1 / 'data' / 'jaw_trials.parquet')[['label', 'trial', 'jaw_open']],
                     on=['label', 'trial'], how='left')
+    if a.variant == 'cam3':
+        C = pd.read_csv(a.classes, dtype={'date': str})[['animal', 'date', 'trial', 'cls']].rename(columns={'cls': 'cam_cls'})
+        T = T.assign(date=T.date.astype(str)).merge(C, on=['animal', 'date', 'trial'], how='left')
     data, ns, meta = build(T, a.variant)
     labs = sorted(data)
-    ncls = [3] + NCLS[1:] if a.variant == 'jaw3' else NCLS
+    ncls = [3] + NCLS[1:] if a.variant in ('jaw3', 'cam3') else NCLS
     print(f'{a.variant}: {len(labs)} sessions, {sum(len(v[1]) for v in data.values())} trials, X width '
           f'{data[labs[0]][0].shape[1]} (shared {ns}); latency cut points {meta}', flush=True)
     if a.select_k:
