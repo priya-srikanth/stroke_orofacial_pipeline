@@ -6439,3 +6439,13 @@ The following decisions are **deliberately deferred** — recorded here so they 
 **Rationale:** (1) Codifies the jaw-v3.4 lesson ([[verify-producer-code-in-repo-before-depending-on-outputs]]) into the cleanup workflow so provenance survives disk reclamation. (2) A non-negotiable ground rule outranks a chore kickoff; the kickoff author can be wrong, and force-deleting branches is irreversible with no disk benefit (content is on origin).
 
 **Enforced at:** `pipeline_outputs/archive/scratch_preserved_2026-06/` (pattern instance); the repo-cleanup chore performed zero branch operations.
+
+## 2026-11-19 — VLS manuscript check: first-lick angle vs first-lick latency across sessions (exploratory, not adopted)
+
+Per animal, post-stroke sessions, Spearman of the session median first-lick angle (`tongue_lick1_angle_at_ypeak`,
+filtered_v1, signed + = contralesional) against the session median camera latency (`tongue_first_peak_t_ms`, filtered_v1)
+and against `latency_to_first_correct_lick_s` (no_filter). Contralesional-cue trials (camera latency): #1 +0.84, #2
+-0.64, #3 -0.66, #4 -0.25, #5 -0.32, #6 +0.48, #7 -0.27, #8 -0.58 (inconsistent within every grade); ipsilesional-cue
+trials: negative in 7 / 8 animals (5 with p < 0.05). Both measures recover over the same weeks, so these correlations
+partly reflect a shared trend. Not reported in the manuscript (the six-position cohort's coupling is). Computed ad hoc
+(no script in this repo); the per-session table is reproducible from the two input parquets.
