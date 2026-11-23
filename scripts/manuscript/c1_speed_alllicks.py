@@ -35,6 +35,10 @@ sys.path.insert(0, str(_REPO_ROOT))
 from stroke_orofacial.dlc_kinematics import tongue_pertrial as TP  # noqa: E402
 
 _REC: list[list[tuple[float, float]]] = []
+# --window onsetpeak (2026-11-23 late): max over lick onset (rise start) .. extension peak only, as the six-position
+# speed_peak (onset -> 3-D peak). The speed is still differentiated over the whole masked [rise, fall] window (central
+# differences at the peak), then the max is taken up to the peak frame (frame of t_ms nearest the lick's peak time).
+WINDOW = "risefall"
 _orig = TP._extract_peak_velocity_first5
 
 
@@ -59,6 +63,11 @@ def _uncapped(y_t, x_t, t_ms, fps, *, params, v7_trial_result=None):
             xw = np.where(base[rsf:fef + 1], np.nan, xc[rsf:fef + 1].astype(np.float64))
             if int(np.count_nonzero(np.isfinite(yw) & np.isfinite(xw))) >= min_finite:
                 vxy = np.sqrt((np.gradient(xw) * fps) ** 2 + (np.gradient(yw) * fps) ** 2)
+                if WINDOW == "onsetpeak":
+                    if len(t_ms) != len(yc):
+                        raise RuntimeError("trial t_ms and cleaned trace differ in length")
+                    pk = int(np.argmin(np.abs(np.asarray(t_ms, float) - t)))
+                    vxy = vxy[: max(0, min(pk, fef) - rsf) + 1]
                 if np.isfinite(vxy).any():
                     v = float(np.nanmax(vxy))
         rec.append((t, v))
@@ -72,7 +81,7 @@ def licks_one_animal(animal: str, stage: Path) -> None:
     from stroke_orofacial.manifest import build_manifest
     from scripts.phase_9_1_q13.emit_cohort import enumerate_session_dates
 
-    out = stage / f"speed_alllicks_{animal}.parquet"
+    out = stage / (f"speed_alllicks_{animal}.parquet" if WINDOW == "risefall" else f"speed_onsetpeak_{animal}.parquet")
     if out.exists():
         print("exists", out)
         return
@@ -104,7 +113,7 @@ def licks_one_animal(animal: str, stage: Path) -> None:
         for e, rec in zip(ev, _REC):
             for k, (t, v) in enumerate(rec):
                 rows.append((animal, d, int(e.trial_index), e.side, k, t, v))
-            if (int(e.trial_index), e.side) in jv:
+            if WINDOW == "risefall" and (int(e.trial_index), e.side) in jv:
                 a = np.array([v for _, v in rec[:5]] + [np.nan] * (5 - len(rec[:5])), float)
                 b = np.array([np.nan if x is None else x for x in jv[(int(e.trial_index), e.side)]], float)
                 checks.append(bool(np.allclose(a, b, equal_nan=True, rtol=1e-9, atol=1e-6)))
@@ -124,12 +133,13 @@ def stats(stage: Path) -> None:
     r = PathResolver()
     st = r.pipeline_outputs(subdir="stats")
     r3 = st / "results/phenotype_pooled/3_tier"
-    out_csv = r3 / "pooled_phenotype_stats_c2aligned_v3_ps47d5_alllicks_sessmean.csv"
-    sess_csv = st / "inputs/sessmean_licks/tongue_alllicks_sessmean_vxy_peak_per_session.csv"
+    tag = "alllicks" if WINDOW == "risefall" else "alllicks_onsetpeak"
+    out_csv = r3 / f"pooled_phenotype_stats_c2aligned_v3_ps47d5_{tag}_sessmean.csv"
+    sess_csv = st / f"inputs/sessmean_licks/tongue_{tag}_sessmean_vxy_peak_per_session.csv"
     for p in (out_csv, sess_csv):
         if p.exists():
             raise SystemExit(f"refusing to overwrite {p}")
-    L = pd.concat([pd.read_parquet(p) for p in sorted(stage.glob("speed_alllicks_PS*.parquet"))], ignore_index=True)
+    L = pd.concat([pd.read_parquet(p) for p in sorted(stage.glob(("speed_alllicks" if WINDOW == "risefall" else "speed_onsetpeak") + "_PS*.parquet"))], ignore_index=True)
     L["date"] = pd.to_datetime(L["date"]).dt.date
     t = kept_trials(r, "tongue_median_vxy_peak_per_trial")
     t["date"] = pd.to_datetime(t["date"]).dt.date
@@ -139,7 +149,7 @@ def stats(stage: Path) -> None:
     s = L.groupby(["animal", "date", "side"], as_index=False).agg(
         value=("vxy_peak", "mean"), n_licks=("vxy_peak", "size"), n_trials=("trial_idx", "nunique"),
         epoch_label=("epoch_label", "first"))
-    s["endpoint"] = "tongue_alllicks_sessmean_vxy_peak"
+    s["endpoint"] = f"tongue_{tag}_sessmean_vxy_peak"
     s["passes_min_licks"] = s["n_licks"] >= MIN_LICKS
     s.to_csv(sess_csv, index=False)
     print("sessions", len(s), "excluded", int((~s.passes_min_licks).sum()), "licks", int(s.n_licks.sum()),
@@ -166,7 +176,10 @@ def main(argv=None) -> int:
     ap.add_argument("step", choices=("licks", "stats"))
     ap.add_argument("--animal")
     ap.add_argument("--stage", type=Path, required=True)
+    ap.add_argument("--window", choices=("risefall", "onsetpeak"), default="risefall")
     a = ap.parse_args(argv)
+    global WINDOW
+    WINDOW = a.window
     a.stage.mkdir(parents=True, exist_ok=True)
     licks_one_animal(a.animal, a.stage) if a.step == "licks" else stats(a.stage)
     return 0

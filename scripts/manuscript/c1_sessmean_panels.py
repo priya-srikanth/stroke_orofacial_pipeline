@@ -40,6 +40,20 @@ def main():
             C.render(C.baseline(C.per_session_scalar(ROOT, ep), 1), sh, None, ep, C.PANELS[name][3],
                      str(out / f"{name}_lp_ps47d5_CONTROL"))
         return
+    if "--firstspeed" in sys.argv:   # item 26: first-lick peak speed (onset to extension peak), final family stars
+        sh = pd.read_csv(R3 / "pooled_phenotype_stats_c2aligned_v3_ps47d5_final_ccB1123.csv")
+        C.render(C.baseline(sess("tongue_lick1_onsetpeak_vxy_peak"), 1), sh, "scalar",
+                 "tongue_lick1_onsetpeak_vxy_peak", "Δ first-lick peak\nspeed (px/s)",
+                 str(out / "F2_speed_first_lp_ps47d5_onsetpeak_final"))
+        print("wrote F2_speed_first_lp_ps47d5_onsetpeak_final")
+        return
+    if "--onsetpeak" in sys.argv:   # Fig 2E, all licks, max speed from lick onset to extension peak only
+        sh = pd.read_csv(R3 / "pooled_phenotype_stats_c2aligned_v3_ps47d5_alllicks_onsetpeak_sessmean.csv")
+        C.render(C.baseline(sess("tongue_alllicks_onsetpeak_sessmean_vxy_peak"), 1), sh, "scalar",
+                 "tongue_alllicks_onsetpeak_sessmean_vxy_peak", "Δ peak speed,\nall licks (px/s)",
+                 str(out / "F2_speed_all_lp_ps47d5_alllicks_onsetpeak_sessmean"))
+        print("wrote F2_speed_all_lp_ps47d5_alllicks_onsetpeak_sessmean")
+        return
     if "--alllicks" in sys.argv:   # Fig 2E without the five-licks-per-trial cap (c1_speed_alllicks.py)
         sh = pd.read_csv(R3 / "pooled_phenotype_stats_c2aligned_v3_ps47d5_alllicks_sessmean.csv")
         C.render(C.baseline(sess("tongue_alllicks_sessmean_vxy_peak"), 1), sh, "scalar",
