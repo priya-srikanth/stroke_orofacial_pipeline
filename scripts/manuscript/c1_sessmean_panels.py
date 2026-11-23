@@ -40,6 +40,13 @@ def main():
             C.render(C.baseline(C.per_session_scalar(ROOT, ep), 1), sh, None, ep, C.PANELS[name][3],
                      str(out / f"{name}_lp_ps47d5_CONTROL"))
         return
+    if "--alllicks" in sys.argv:   # Fig 2E without the five-licks-per-trial cap (c1_speed_alllicks.py)
+        sh = pd.read_csv(R3 / "pooled_phenotype_stats_c2aligned_v3_ps47d5_alllicks_sessmean.csv")
+        C.render(C.baseline(sess("tongue_alllicks_sessmean_vxy_peak"), 1), sh, "scalar",
+                 "tongue_alllicks_sessmean_vxy_peak", "Δ peak speed,\nall licks (px/s)",
+                 str(out / "F2_speed_all_lp_ps47d5_alllicks_sessmean"))
+        print("wrote F2_speed_all_lp_ps47d5_alllicks_sessmean")
+        return
     sh = pd.read_csv(R3 / "pooled_phenotype_stats_c2aligned_v3_ps47d5_sessmean.csv")
     jobs = [("S_xy_all_lp_ps47d5_sessmean", sess("tongue_sessmean_xy_peak"), "tongue_sessmean_xy_peak",
              "Δ peak protrusion, xy,\nall licks (px)"),
