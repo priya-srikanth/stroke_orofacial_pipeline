@@ -50,3 +50,25 @@ def test_aligned_vs_pre_and_compare():
     old = to.mwu_vs_pre(trials)
     cmp = to.compare_stars(old, new)
     assert len(cmp) == len(old) and set(cmp.change) <= {"kept", "lost", "gained", "none"}
+
+
+def test_weight_epoch_tests_c2_aligned():
+    rng = np.random.default_rng(1)
+    rows = []
+    for an, g in (("A", "mild"), ("B", "mild"), ("C", "mild")):
+        for d in range(-5, 1):
+            rows.append((an, g, "pre", 100 + rng.normal(0, 0.5)))
+        for d in range(1, 6):
+            rows.append((an, g, "acute", 90 + rng.normal(0, 0.5)))
+            rows.append((an, g, "chronic", 100 + rng.normal(0, 0.5)))
+    df = pd.DataFrame(rows, columns=["animal", "group", "epoch", "pct"])
+    t = bw.epoch_tests_c2_aligned(df, n_boot=500, grades=("mild",))
+    t = t.set_index("epoch")
+    assert set(t.index) == {"acute", "chronic"}
+    assert (t.n_boot == 500).all()
+    assert t.loc["acute", "star"] == "**" and t.loc["acute", "nb_ci_hi"] < 0
+    assert abs(t.loc["acute", "nb_effect"] + 10) < 1
+    assert t.loc["chronic", "star"] == ""
+    # one animal in a cell: no interval, never starred
+    t1 = bw.epoch_tests_c2_aligned(df[df.animal == "A"], n_boot=200, grades=("mild",)).set_index("epoch")
+    assert not t1.nb_excludes_zero.any() and (t1.star == "").all()
