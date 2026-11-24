@@ -298,7 +298,7 @@ def figures(L: pd.DataFrame, S: pd.DataFrame, out: Path):
     for coh in ("c1", "c2"):
         Lc = L[(L.cohort == coh)]
         grps = ["mild", "moderate", "severe"] if coh == "c1" else ["all"]
-        fig, ax = plt.subplots(len(SETS) * 3, len(grps), figsize=(2.4 * len(grps) + 0.6, 10), squeeze=False)
+        fig, ax = plt.subplots(len(SETS) * 3, len(grps), figsize=(max(2.4 * len(grps) + 0.6, 6.5), 10), squeeze=False)
         for i, (s, meas) in enumerate([(s, m) for m in ("protrusion", "speed", "angle") for s in SETS]):
             d = lickset(Lc[Lc.measure == meas], s).dropna(subset=["value"])
             ref = d[d.epoch == "pre"].groupby(["animal", "group"]).value.median().rename("ref")
