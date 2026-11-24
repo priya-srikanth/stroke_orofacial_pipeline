@@ -12,7 +12,7 @@ Hit vs miss styling = the six-position S12D v2 exactly (wf_ccb_s12dmm1123 script
 Grades sit side by side within an epoch (mild, moderate, severe). Markers: nested animal -> session bootstrap estimate and
 95 % CI; single-animal cells: smaller marker (ms 2.6) and DASHED CI (the within-animal bootstrap CI).
 Marks in each panel's top band (S8 style, one row per grade in the grade color): ** = q < 0.05 AND CI excludes 0;
-dagger = single-animal cell with q < 0.05 AND within-animal CI excludes 0; each mark sits above ITS grade pair, and
+dagger = single-animal cell with q < 0.05 AND within-animal CI excludes 0; each mark sits directly above the circle it refers to (miss or hit; v5), in its grade's row, and
 the y range is set so that a BAND_PT top band lies above all data and CIs (v4).
 Canvas 4.85 x 3.2 in (gain panels 2.70 in, matched panels 1.05 in); faint epoch separators, Arial 6.5 pt, no top / right spine.
 
@@ -92,13 +92,13 @@ def draw(ax, S, R, m, side, gsp, dx=0.0, hollow=False, marks=True, jit=0.03):
             ax.plot([x], [est], 'o', ms=2.6 if one else 3.6, zorder=3, **mk)
             vals.extend([lo, hi])
             if marks and isinstance(r.mark, str) and r.mark:
-                ax.annotate(r.mark, (i + (k - 1) * gsp, 1.0), xycoords=('data', 'axes fraction'),   # over ITS grade pair
+                ax.annotate(r.mark, (x, 1.0), xycoords=('data', 'axes fraction'),   # v5: over the circle it refers to
                             xytext=(0, -1.0 - ROW_PT * k), textcoords='offset points', ha='center', va='top',
                             color=col, fontsize=FS, fontweight='bold')
     return vals
 
 
-def main(d: str, stem: str = 'S8D_miss_correction_px_v4_ccB1123'):
+def main(d: str, stem: str = 'S8D_miss_correction_px_v5_ccB1123'):
     d = Path(d)
     if any((d / f'{stem}.{e}').exists() for e in ('pdf', 'png')):
         sys.exit(f'refusing to overwrite {d / stem}')
@@ -121,7 +121,7 @@ def main(d: str, stem: str = 'S8D_miss_correction_px_v4_ccB1123'):
     for row, sd in enumerate(['ipsi', 'contra']):
         jg, jm = JIT_IN * upi['gain'], JIT_IN * upi['match']
         vg.append(draw(axs[(row, 0)], S, R, 'gain_miss_lat', sd, gs['gain'], -dx_gain, False, jit=jg)
-                  + draw(axs[(row, 0)], S, R, 'gain_hit_lat', sd, gs['gain'], dx_gain, True, marks=False, jit=jg))
+                  + draw(axs[(row, 0)], S, R, 'gain_hit_lat', sd, gs['gain'], dx_gain, True, jit=jg))
         vm.append(draw(axs[(row, 1)], S, R, 'binned_lat', sd, gs['match'], jit=jm))
     for col, vv in ((0, vg), (1, vm)):                                     # one y scale per column (both cues)
         v = np.asarray(vv[0] + vv[1], float)
