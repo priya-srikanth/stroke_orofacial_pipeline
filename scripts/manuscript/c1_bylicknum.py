@@ -45,7 +45,9 @@ OUT = Path(sys.argv[1])
 #: optional sensitivity: keep only trials with >= MIN_BOUT licks, lick numbers 1..MIN_BOUT (late bin = 6-10 only)
 MIN_BOUT = int(sys.argv[2]) if len(sys.argv) > 2 else 0
 OUT.mkdir(parents=True, exist_ok=True)
-SUFFIX = (f"_bout{MIN_BOUT}" if MIN_BOUT else "") + "_bylicknum_ccB1123"
+SUFFIX = (f"_bout{MIN_BOUT}" if MIN_BOUT else "") + "_bylicknum_v2_ccB1123"
+#: per-bin session summary: median for speed / xy; MEAN for the angle (angles are means everywhere, Priya 11-23)
+AGG = {"speed": "median", "xy": "median", "angle": "mean"}
 KEY = ["animal", "date", "trial_idx", "side"]
 MIN_N = 5
 BINS = [("1", 1, 1), ("2", 2, 2), ("3-5", 3, 5), ("6-10", 6, 10), ("11-15", 11, 15), ("16+", 16, 10**6)]
@@ -74,6 +76,26 @@ V = V[np.isfinite(V.vxy_peak)].rename(columns={"vxy_peak": "value", "lick_k": "k
 SPD = V.merge(trials("tongue_median_vxy_peak_per_trial"), on=KEY)
 
 
+def angle_licks():
+    """All-lick peak tongue angle (Fig 2G source, stats/inputs/all_licks_endpoints/peak_angle_deg), one row per lick in
+    the SAME row order as the speed_onsetpeak per-lick table (checked: animal, date, side and peak time identical row
+    by row), which supplies trial_idx and the lick order. Sign flipped so + = contralesional (vls_style.ANGLE_SIGN_C1)."""
+    out = []
+    for p in sorted((SM / "speed_onsetpeak_per_lick").glob("speed_onsetpeak_PS*.parquet")):
+        s = pd.read_parquet(p)
+        g = pd.read_parquet(r.pipeline_outputs(subdir="stats") / "inputs/all_licks_endpoints/peak_angle_deg"
+                            / f"{s.animal.iloc[0]}.parquet")
+        assert len(s) == len(g) and (s.t_ms.to_numpy() == g.peak_t_ms.to_numpy()).all()             and (s.side.to_numpy() == g.side.to_numpy()).all(), p
+        s = s.assign(value=-g.value.to_numpy(float), sentinel=g.is_sentinel.to_numpy(bool))
+        out.append(s[~s.sentinel & np.isfinite(s.value)])
+    A = pd.concat(out, ignore_index=True).rename(columns={"lick_k": "k"})
+    A["date"] = pd.to_datetime(A["date"]).dt.date
+    return A.drop(columns=["vxy_peak", "sentinel"]).merge(trials("tongue_median_vxy_peak_per_trial"), on=KEY)
+
+
+ANG = angle_licks()
+
+
 def xy_licks(T):
     rows = []
     for (animal, date), tr in T.groupby(["animal", "date"]):
@@ -88,8 +110,9 @@ def xy_licks(T):
 
 
 XY = xy_licks(trials("tongue_median_xy_peak_per_trial"))
-SPD["side"], XY["side"] = SPD.side.map(SIDE_NAME), XY.side.map(SIDE_NAME)
-LICKS = {"speed": SPD, "xy": XY}
+for _T in (SPD, XY, ANG):
+    _T["side"] = _T.side.map(SIDE_NAME)
+LICKS = {"speed": SPD, "xy": XY, "angle": ANG}
 if MIN_BOUT:   # same trials supply every lick number 1..MIN_BOUT (removes the bout-length selection)
     for _m, _L in list(LICKS.items()):
         _nb = _L.groupby(["animal", "date", "trial_idx", "side"]).k.transform("max") + 1
@@ -133,11 +156,13 @@ for meas, L in LICKS.items():
     L = L.assign(n=L.k + 1)
     g = ["animal", "date", "side", "epoch_label"]
     for lab, lo, hi in BINS:
-        s = L[(L.n >= lo) & (L.n <= hi)].groupby(g).value.agg(["median", "size"]).reset_index()
+        s = L[(L.n >= lo) & (L.n <= hi)].groupby(g).value.agg([AGG[meas], "size"]).reset_index()
+        s = s.rename(columns={AGG[meas]: "value"})
         sess.append(s.assign(measure=meas, bin=lab, kind="bin"))
-    s = L[L.n <= 15].groupby(g + ["n"]).value.agg(["median", "size"]).reset_index()
+    s = L[L.n <= 15].groupby(g + ["n"]).value.agg([AGG[meas], "size"]).reset_index()
+    s = s.rename(columns={AGG[meas]: "value"})
     sess.append(s.assign(measure=meas, bin=s.n.astype(str), kind="licknum").drop(columns="n"))
-S = pd.concat(sess, ignore_index=True).rename(columns={"median": "value", "size": "n_licks"})
+S = pd.concat(sess, ignore_index=True).rename(columns={"size": "n_licks"})
 S = S[S.n_licks >= MIN_N].copy()
 S["grade"] = S.animal.map(amap)
 # change from own pre in the same bin x side
