@@ -27,8 +27,8 @@ FIG_LABEL = {'PS47': 1, 'PS48': 2, 'PS49': 3, 'PS50': 4, 'PS46': 5, 'PS51': 6, '
 NUM = {a: f'#{n}' for a, n in FIG_LABEL.items()}
 COLORS = {'mild': '#f2c12e', 'moderate': '#f0822e', 'severe': '#b4001e'}
 MARKERS = {'mild': 'o', 'moderate': 's', 'severe': 'D'}
-GROUPS = [('mild', ['mild']), ('moderate', ['moderate']), ('severe', ['severe']),
-          ('mild+moderate', ['mild', 'moderate'])]
+GROUPS = [('mild+moderate', ['mild', 'moderate']), ('mild', ['mild']), ('moderate', ['moderate']),
+          ('severe', ['severe'])]
 
 
 def boot(post: dict, pre: dict):
@@ -48,8 +48,10 @@ def load(path: str) -> pd.DataFrame:
 
 
 def render(S: pd.DataFrame, stem: str):
-    """S8E block at its size in S8_aim_recovery_v28_compact_4in (3.17 x 1.34 in; 2 x 2: moderate, severe), fonts as
-    the compact page (Arial 6.5 pt ticks / labels, 7 pt titles); ink kept inside the page."""
+    """S8E, all eight animals (Priya 11-23: the figure shows the animals in the statistic), 4 rows x 2 columns grouped
+    by grade (mild #1-#4, moderate #5-#6, severe #7-#8), 3.17 in wide (the width of the S8 right-column block) x
+    4.63 in (0.85 in panels). Drawing style = the S12F style (thirds_recovery_core.STYLE); fonts as the S8 compact page (Arial 6.5 pt
+    ticks / labels, 7 pt titles); ink kept inside the page."""
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -60,25 +62,28 @@ def render(S: pd.DataFrame, stem: str):
                          'pdf.fonttype': 42, 'svg.fonttype': 'none', 'axes.spines.top': False,
                          'axes.spines.right': False, 'axes.labelpad': 1.5, 'xtick.labelsize': 6.5,
                          'ytick.labelsize': 6.5})
-    W, H = 3.17, 1.34
-    eL, eR, eB, eT, eWS, eHS = 0.47, 0.04, 0.17, 0.13, 0.28, 0.25
-    aw, ah = (W - eL - eR - eWS) / 2, (H - eB - eT - eHS) / 2
+    # panel height 0.85 in = the S12F per-animal panel (1.35 in x (0.86 - 0.24) = 0.84 in); Priya 11-23: a taller
+    # block is fine, width stays the S8 right-column block
+    eL, eR, eB, eT, eWS, eHS, ah = 0.47, 0.04, 0.2, 0.13, 0.28, 0.3, 0.85
+    W, H = 3.17, eB + eT + 3 * eHS + 4 * ah
+    aw = (W - eL - eR - eWS) / 2
     fig = plt.figure(figsize=(W, H))
-    an = sorted(S[S.grade.isin(['moderate', 'severe'])].animal.unique())
+    an = sorted(S.animal.unique(), key=lambda a: FIG_LABEL[a])
     axs = []
     for k, a in enumerate(an):
         r, c = divmod(k, 2)
         ax = fig.add_axes([(eL + c * (aw + eWS)) / W, (H - eT - (r + 1) * ah - r * eHS) / H, aw / W, ah / H])
         d = S[S.animal == a]
         gr = d.grade.iloc[0]
-        TC.draw_animal(ax, d, lambda _r, g=gr: COLORS[g], MARKERS[gr], 2.2, pre_label_fs=6.0)
+        TC.draw_animal(ax, d, lambda _r, g=gr: COLORS[g], MARKERS[gr], pre_label_fs=6.0)
         ax.set_title(f'{NUM[a]} ({gr})', fontsize=7, pad=2)
-        ax.yaxis.set_major_locator(mt.MultipleLocator(20))
+        lo, hi = ax.get_ylim()
+        ax.yaxis.set_major_locator(mt.MultipleLocator(20 if hi - lo > 30 else 10))
         axs.append(ax)
-    for ax in axs[2:]:
+    for ax in axs[-2:]:
         ax.set_xlabel('sessions (thirds)', fontsize=6.5, labelpad=5)
-    fig.text(0.085 / W, (H - eT - ah - eHS / 2) / H, '$\\Delta$ contralesional-cue\nfirst-lick angle (deg)',
-             rotation=90, ha='center', va='center', fontsize=6.5, multialignment='center')
+    fig.text(0.085 / W, (eB + (H - eB - eT) / 2) / H, '$\Delta$ contralesional-cue first-lick angle (deg)',
+             rotation=90, ha='center', va='center', fontsize=6.5)
     for x in ('pdf', 'svg', 'png'):
         fig.savefig(f'{stem}.{x}', dpi=600 if x == 'png' else None)
     plt.close(fig)
@@ -102,8 +107,10 @@ def main(t1: str, out: str, stem: str):
     R, A = pd.concat(summ, ignore_index=True), pd.concat(pa, ignore_index=True)
     R.to_csv(o / 'thirds_boot_lmm_twotone.csv', index=False)
     A.to_csv(o / 'thirds_per_animal_twotone.csv', index=False)
-    for nm, gap in (('pairs_gap2_twotone.csv', TC.MAX_GAP), ('pairs_gap1_twotone.csv', 1)):
-        TC.pairs(S, gap).to_csv(o / nm, index=False)
+    TC.pairs(S, None).to_csv(o / 'pairs_anygap_twotone.csv', index=False)
+    G = pd.concat([TC.gap_table(S[S.grade.isin(gr)], g) for g, gr in GROUPS], ignore_index=True)
+    G.to_csv(o / 'pair_gaps_twotone.csv', index=False)
+    print(G.pivot_table(index=['group', 'post'], columns='gap', values='n_pairs', fill_value=0))
     w = S[S.post == 1].groupby('animal').day.agg(['min', 'max', 'size'])
     w.to_csv(o / 'post_window_per_animal_twotone.csv')
     print(w)
