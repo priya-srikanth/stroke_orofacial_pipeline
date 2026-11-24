@@ -15,6 +15,9 @@ widefield_pipeline.
   pre within each grade (9 linear contrasts, Wald z, normal 95% CI),
   Benjamini-Hochberg over the 9; marks ``*`` q < 0.05, ``**`` < 0.01,
   ``***`` < 0.001.
+- ``epoch_tests_c2_aligned`` (2026-11-23, Figure 1K as unified): the same
+  animal-days tested by the two-tone behavior-panel rule (session MWU + BH over
+  the 9 cells, AND the nested animals -> days bootstrap; ``**`` only).
 """
 from __future__ import annotations
 
@@ -99,4 +102,57 @@ def lmm_epoch_by_grade(df: pd.DataFrame, grades: tuple[str, ...] = GRADES) -> pd
     t = pd.DataFrame(rows, columns=["group", "epoch", "diff_pct", "ci_lo", "ci_hi", "p"])
     t["q"] = multipletests(t.p, method="fdr_bh")[1]
     t["stars"] = ["***" if q < 0.001 else "**" if q < 0.01 else "*" if q < 0.05 else "" for q in t.q]
+    return t
+
+
+def epoch_tests_c2_aligned(df: pd.DataFrame, *, n_boot: int, grades: tuple[str, ...] = GRADES,
+                           seed: int = 0) -> pd.DataFrame:
+    """Each post epoch vs pre within each grade, by the rule of the two-tone behavior panels (VLS manuscript, 2026-11-23).
+
+    The c2-aligned scalar rule (``pooled_endpoint_suite.compute_endpoint_cell_suite(test_set="c2_aligned")`` plus
+    ``build_pooled_phenotype_stats._attach_c2_aligned``) applied to body weight, with one animal-day as the session:
+
+    - value = each day's ``pct`` minus the animal's own mean pre-stroke ``pct`` (= ``pct - 100``, since ``pct`` is
+      already % of that mean);
+    - session-level two-sided Mann-Whitney U, post-epoch days vs pre-stroke days of the grade
+      (``pooled_endpoint_suite._session_mwu``);
+    - paired, animal-weighted nested bootstrap (animals, then days within animal) of the change
+      (``nested_animal_bootstrap_ci``; ``n_boot`` is required so the caller states it; a cell with < 2 animals has no
+      interval and is not marked);
+    - Benjamini-Hochberg over the grade x epoch cells of this call only (the weight panel's own family);
+    - ``star`` = ``"**"`` when q < 0.05 AND the interval excludes 0, else ``""`` (the behavior panels draw no single
+      ``*``); ``boot_only`` flags cells whose interval excludes 0 without the MWU passing.
+
+    ``df`` needs ``animal``, ``pct``, ``epoch`` and ``group`` (grade). Returns one row per (group, epoch).
+    """
+    from statsmodels.stats.multitest import multipletests
+
+    from stroke_orofacial.stats import pooled_endpoint_suite as suite
+
+    x = df.copy()
+    x["value"] = x.pct - x.animal.map(x[x.epoch == "pre"].groupby("animal").pct.mean())
+    rows = []
+    for g in grades:
+        sub = x[x.group == g]
+        pre = sub.loc[sub.epoch == "pre", "value"].to_numpy()
+        for e in EPOCHS[1:]:
+            post = sub.loc[sub.epoch == e, "value"].to_numpy()
+            if post.size == 0:
+                continue
+            u, p = suite._session_mwu(pre, post)
+            nb = suite.nested_animal_bootstrap_ci(sub, post_epoch=e, value_col="value", epoch_col="epoch",
+                                                  animal_col="animal", n_boot=n_boot, seed=seed)
+            rows.append({"group": g, "epoch": e, "n_animals": int(sub.loc[sub.epoch == e, "animal"].nunique()),
+                         "n_pre_days": int(pre.size), "n_post_days": int(post.size),
+                         "mean_change_days": float(post.mean() - pre.mean()),
+                         "mwu_u": u, "mwu_p": p, **nb, "n_boot": int(n_boot)})
+    t = pd.DataFrame(rows)
+    ok = np.isfinite(t.mwu_p.to_numpy(float))
+    t["mwu_q"] = np.nan
+    if ok.any():
+        t.loc[ok, "mwu_q"] = multipletests(t.loc[ok, "mwu_p"], method="fdr_bh")[1]
+    t["headline_sig"] = t.mwu_q < 0.05
+    t["headline_and_bootstrap_sig"] = t.headline_sig & t.nb_excludes_zero.astype(bool)
+    t["boot_only"] = t.nb_excludes_zero.astype(bool) & ~t.headline_sig
+    t["star"] = np.where(t.headline_and_bootstrap_sig, "**", "")
     return t
