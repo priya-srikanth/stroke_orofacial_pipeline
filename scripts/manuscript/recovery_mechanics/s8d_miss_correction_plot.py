@@ -6,12 +6,15 @@ Hit vs miss styling = the six-position S12D v2 exactly (wf_ccb_s12dmm1123 script
 22e599b2), with the GRADE color in place of the epoch color:
   circles; summary marker ms 3.6, miss = filled (mec k, mew 0.4), hit = open (white face, mec = color, mew 0.9);
   session points miss filled ms 1.6 / hit open ms 1.8 (mew 0.45), alpha 0.4; CI = errorbar elinewidth 0.9, no caps;
-  miss / hit side by side at the same PHYSICAL offset as S12D (0.19 epoch on its 1.30-in panel = 0.060 in).
+  v4 (Priya 11-23): each grade's miss + hit = a tight PAIR, centers PAIR_IN = 0.06 in apart (miss left, hit right);
+  grade pairs GRADE_PITCH_IN = 0.19 in apart (gap between pairs 0.13 in, > 2x the pair spacing); epochs farther apart
+  still; order mild, moderate, severe in every panel. All offsets are set in INCHES and converted per panel.
 Grades sit side by side within an epoch (mild, moderate, severe). Markers: nested animal -> session bootstrap estimate and
 95 % CI; single-animal cells: smaller marker (ms 2.6) and DASHED CI (the within-animal bootstrap CI).
 Marks in each panel's top band (S8 style, one row per grade in the grade color): ** = q < 0.05 AND CI excludes 0;
-dagger = single-animal cell with q < 0.05 AND within-animal CI excludes 0, shifted 0.30 epoch right.
-Canvas 4.4 x 3.2 in (gain panels 2.45 in, matched panels 0.85 in); faint epoch separators, Arial 6.5 pt, no top / right spine.
+dagger = single-animal cell with q < 0.05 AND within-animal CI excludes 0; each mark sits above ITS grade pair, and
+the y range is set so that a BAND_PT top band lies above all data and CIs (v4).
+Canvas 4.85 x 3.2 in (gain panels 2.70 in, matched panels 1.05 in); faint epoch separators, Arial 6.5 pt, no top / right spine.
 
     python s8d_miss_correction_plot.py <twotone_s8d dir> [stem]
 Refuses to overwrite.
@@ -32,14 +35,16 @@ EPOCHS = ['pre', 'acute', 'sub_acute', 'chronic']
 XL = ['pre', 'ac', 'sub', 'chr']                                           # as S12D
 SEV = {'mild': '#F2C02A', 'moderate': '#E0702A', 'severe': '#8E0012'}     # Fig 2 palette (vls_style.SEV)
 LEG = '0.2'
-W_IN, H_IN = 4.4, 3.2
+W_IN, H_IN = 4.85, 3.2
 L_IN, R_IN, GAP_IN = 0.50, 0.05, 0.55
-W_GAIN, W_MATCH = 2.45, 0.85
+W_GAIN, W_MATCH = 2.70, 1.05
 B_IN, T_IN, VGAP_IN = 0.24, 0.30, 0.42
 XLIM = (-0.55, 3.55)
-S12D_DX_IN = 0.19 * 1.30 / 4.10                                            # S12D miss / hit offset, inches
-G_SP = {'gain': 0.31, 'match': 0.25}                                       # grade spacing (epoch units)
-DAG_DX = 0.30
+PAIR_IN = 0.06            # miss / hit centers within a grade pair (inches)
+GRADE_PITCH_IN = {'gain': 0.19, 'match': 0.085}   # grade-to-grade center spacing (inches)
+JIT_IN = 0.022            # total width of the session-point jitter (inches)
+ROW_PT = 6.5              # one mark row per grade in the top band (points)
+BAND_PT = 3 * ROW_PT + 3  # top band height reserved above ALL data and CIs (star_top / reserve_headroom rule)
 FS = 6.5
 RC = {'font.family': 'Arial', 'font.size': FS, 'axes.labelsize': FS, 'axes.titlesize': FS, 'xtick.labelsize': FS,
       'ytick.labelsize': FS, 'legend.fontsize': FS, 'axes.linewidth': 0.6, 'xtick.major.width': 0.6,
@@ -53,7 +58,7 @@ def chg(S, m, side):
     return d
 
 
-def draw(ax, S, R, m, side, gsp, dx=0.0, hollow=False, marks=True):
+def draw(ax, S, R, m, side, gsp, dx=0.0, hollow=False, marks=True, jit=0.03):
     """One class (miss filled / hit hollow) for all grades; returns the values that set the y range."""
     vals = []
     rng = np.random.RandomState(3)
@@ -67,7 +72,7 @@ def draw(ax, S, R, m, side, gsp, dx=0.0, hollow=False, marks=True):
             x = i + (k - 1) * gsp + dx
             v = g[g.epoch == ep].chg.to_numpy()
             if len(v):
-                ax.plot(x + (rng.rand(len(v)) - .5) * 0.08, v, 'o', ms=1.8 if hollow else 1.6, alpha=0.4, zorder=1,
+                ax.plot(x + (rng.rand(len(v)) - .5) * jit, v, 'o', ms=1.8 if hollow else 1.6, alpha=0.4, zorder=1,
                         **pt)
                 vals.extend(v)
             if ep == 'pre':
@@ -87,13 +92,13 @@ def draw(ax, S, R, m, side, gsp, dx=0.0, hollow=False, marks=True):
             ax.plot([x], [est], 'o', ms=2.6 if one else 3.6, zorder=3, **mk)
             vals.extend([lo, hi])
             if marks and isinstance(r.mark, str) and r.mark:
-                ax.annotate(r.mark, (i + (DAG_DX if r.mark != '**' else 0), 1.0), xycoords=('data', 'axes fraction'),
-                            xytext=(0, 1.5 - 6.0 * k), textcoords='offset points', ha='center', va='top',
+                ax.annotate(r.mark, (i + (k - 1) * gsp, 1.0), xycoords=('data', 'axes fraction'),   # over ITS grade pair
+                            xytext=(0, -1.0 - ROW_PT * k), textcoords='offset points', ha='center', va='top',
                             color=col, fontsize=FS, fontweight='bold')
     return vals
 
 
-def main(d: str, stem: str = 'S8D_miss_correction_px_v3_ccB1123'):
+def main(d: str, stem: str = 'S8D_miss_correction_px_v4_ccB1123'):
     d = Path(d)
     if any((d / f'{stem}.{e}').exists() for e in ('pdf', 'png')):
         sys.exit(f'refusing to overwrite {d / stem}')
@@ -104,7 +109,9 @@ def main(d: str, stem: str = 'S8D_miss_correction_px_v3_ccB1123'):
     plt.rcParams.update(RC)
     fig = plt.figure(figsize=(W_IN, H_IN))
     ph = (H_IN - B_IN - T_IN - VGAP_IN) / 2
-    dx_gain = S12D_DX_IN / (W_GAIN / (XLIM[1] - XLIM[0]))                 # same physical offset as S12D
+    upi = {'gain': (XLIM[1] - XLIM[0]) / W_GAIN, 'match': (XLIM[1] - XLIM[0]) / W_MATCH}   # epoch units per inch
+    dx_gain = PAIR_IN / 2 * upi['gain']
+    gs = {k: GRADE_PITCH_IN[k] * upi[k] for k in upi}
     axs = {}
     for row, sd in enumerate(['ipsi', 'contra']):
         y0 = B_IN + (1 - row) * (ph + VGAP_IN)
@@ -112,15 +119,20 @@ def main(d: str, stem: str = 'S8D_miss_correction_px_v3_ccB1123'):
         axs[(row, 1)] = fig.add_axes([(L_IN + W_GAIN + GAP_IN) / W_IN, y0 / H_IN, W_MATCH / W_IN, ph / H_IN])
     vg, vm = [], []
     for row, sd in enumerate(['ipsi', 'contra']):
-        vg.append(draw(axs[(row, 0)], S, R, 'gain_miss_lat', sd, G_SP['gain'], -dx_gain, False)
-                  + draw(axs[(row, 0)], S, R, 'gain_hit_lat', sd, G_SP['gain'], dx_gain, True, marks=False))
-        vm.append(draw(axs[(row, 1)], S, R, 'binned_lat', sd, G_SP['match']))
+        jg, jm = JIT_IN * upi['gain'], JIT_IN * upi['match']
+        vg.append(draw(axs[(row, 0)], S, R, 'gain_miss_lat', sd, gs['gain'], -dx_gain, False, jit=jg)
+                  + draw(axs[(row, 0)], S, R, 'gain_hit_lat', sd, gs['gain'], dx_gain, True, marks=False, jit=jg))
+        vm.append(draw(axs[(row, 1)], S, R, 'binned_lat', sd, gs['match'], jit=jm))
     for col, vv in ((0, vg), (1, vm)):                                     # one y scale per column (both cues)
         v = np.asarray(vv[0] + vv[1], float)
         lo, hi = np.nanmin(v), np.nanmax(v)
         rg = hi - lo
         for row in (0, 1):
-            axs[(row, col)].set_ylim(lo - 0.05 * rg, hi + 0.30 * rg)   # top band reserved for the mark rows
+            f = BAND_PT / (ph * 72)                                    # band as a fraction of the axes height
+            y0_ = lo - 0.04 * rg
+            axs[(row, col)].set_ylim(y0_, y0_ + (hi + 0.02 * rg - y0_) / (1 - f))   # data + CIs end below the band
+            tk = [t for t in axs[(row, col)].get_yticks() if y0_ <= t <= hi + 0.02 * rg]   # no ticks in the band
+            axs[(row, col)].set_yticks(tk)
     for (row, col), ax in axs.items():
         ax.axhline(0, color='0.6', lw=0.6, ls='--', zorder=0)
         for xb in (0.5, 1.5, 2.5):                                         # faint epoch separators
@@ -128,7 +140,7 @@ def main(d: str, stem: str = 'S8D_miss_correction_px_v3_ccB1123'):
         ax.set_xticks(range(4), XL)
         ax.set_xlim(*XLIM)
         ax.spines[['top', 'right']].set_visible(False)
-        ax.set_title(f'{"ipsilesional" if row == 0 else "contralesional"} cue', fontsize=FS, pad=2)
+        ax.set_title(f'{"ipsilesional" if row == 0 else "contralesional"} cue', fontsize=FS, pad=3)
         ax.set_ylabel('$\\Delta$ correction gain\n(fraction of lateral error)' if col == 0
                       else '$\\Delta$ correction after a miss,\nerror-matched (px)')
     h = [plt.Line2D([], [], marker='o', ls='none', ms=3.6, mfc=SEV[g], mec='k', mew=0.4, label=g) for g in GRADES]
@@ -141,7 +153,7 @@ def main(d: str, stem: str = 'S8D_miss_correction_px_v3_ccB1123'):
     for e in ('pdf', 'png'):
         fig.savefig(d / f'{stem}.{e}', dpi=600 if e == 'png' else None)
     plt.close(fig)
-    print(f'canvas {W_IN} x {H_IN} in; gain panel {W_GAIN} in, matched panel {W_MATCH} in; miss/hit dx {dx_gain:.3f}')
+    print(f'canvas {W_IN} x {H_IN} in; gain panel {W_GAIN} in, matched panel {W_MATCH} in; miss/hit dx {dx_gain:.3f} u, grade pitch {gs}')
 
 
 if __name__ == '__main__':
