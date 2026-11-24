@@ -47,7 +47,7 @@ def load(path: str) -> pd.DataFrame:
                          'late': S.late_eE, 'M': S.M_eE})
 
 
-def render(S: pd.DataFrame, stem: str):
+def render(S: pd.DataFrame, stem: str, yshare: str = 'none'):
     """S8E, all eight animals (Priya 11-23: the figure shows the animals in the statistic), 4 rows x 2 columns grouped
     by grade (mild #1-#4, moderate #5-#6, severe #7-#8), 3.17 in wide (the width of the S8 right-column block) x
     4.63 in (0.85 in panels). Drawing style = the S12F style (thirds_recovery_core.STYLE); fonts as the S8 compact page (Arial 6.5 pt
@@ -77,9 +77,19 @@ def render(S: pd.DataFrame, stem: str):
         gr = d.grade.iloc[0]
         TC.draw_animal(ax, d, lambda _r, g=gr: COLORS[g], MARKERS[gr], pre_label_fs=6.0)
         ax.set_title(f'{NUM[a]} ({gr})', fontsize=7, pad=2)
+        axs.append(ax)
+    # y scale: 'none' = each panel its own (default), 'grade' = shared within a grade, 'all' = one scale for all 8
+    grp = {a: (S[S.animal == a].grade.iloc[0] if yshare == 'grade' else 'all') for a in an}
+    if yshare != 'none':
+        for g in set(grp.values()):
+            ks = [k for k, a in enumerate(an) if grp[a] == g]
+            lo = min(axs[k].get_ylim()[0] for k in ks)
+            hi = max(axs[k].get_ylim()[1] for k in ks)
+            for k in ks:
+                axs[k].set_ylim(lo, hi)
+    for ax in axs:
         lo, hi = ax.get_ylim()
         ax.yaxis.set_major_locator(mt.MultipleLocator(20 if hi - lo > 30 else 10))
-        axs.append(ax)
     for ax in axs[-2:]:
         ax.set_xlabel('sessions (thirds)', fontsize=6.5, labelpad=5)
     fig.text(0.085 / W, (eB + (H - eB - eT) / 2) / H, '$\Delta$ contralesional-cue first-lick angle (deg)',
@@ -124,6 +134,17 @@ def main(t1: str, out: str, stem: str):
     render(S, stem)
 
 
+def render_variant(sessions_csv: str, stem: str, yshare: str):
+    """Re-render S8E from the written thirds_sessions_twotone.csv with another y-scale rule (refuses to overwrite)."""
+    for x in ('pdf', 'svg', 'png'):
+        if Path(f'{stem}.{x}').exists():
+            sys.exit(f'refusing to overwrite {stem}.{x}')
+    render(pd.read_csv(sessions_csv), stem, yshare)
+
+
 if __name__ == '__main__':
     np.seterr(all='ignore')
-    main(*sys.argv[1:4])
+    if sys.argv[1] == '--render-variant':
+        render_variant(*sys.argv[2:5])
+    else:
+        main(*sys.argv[1:4])
