@@ -31,7 +31,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts.manuscript.c1_dagger_single_animal import MS_NUM
+from scripts.manuscript.c1_dagger_single_animal import DAGGER, MS_NUM, cell_result
 from scripts.manuscript.c1_sessmean_scalars import REMAP3, kept_trials
 
 from stroke_orofacial.animals import load_animals
@@ -45,7 +45,7 @@ OUT = Path(sys.argv[1])
 #: optional sensitivity: keep only trials with >= MIN_BOUT licks, lick numbers 1..MIN_BOUT (late bin = 6-10 only)
 MIN_BOUT = int(sys.argv[2]) if len(sys.argv) > 2 else 0
 OUT.mkdir(parents=True, exist_ok=True)
-SUFFIX = (f"_bout{MIN_BOUT}" if MIN_BOUT else "") + "_bylicknum_v2_ccB1123"
+SUFFIX = (f"_bout{MIN_BOUT}" if MIN_BOUT else "") + "_bylicknum_v3_ccB1123"
 #: per-bin session summary: median for speed / xy; MEAN for the angle (angles are means everywhere, Priya 11-23)
 AGG = {"speed": "median", "xy": "median", "angle": "mean"}
 KEY = ["animal", "date", "trial_idx", "side"]
@@ -76,24 +76,40 @@ V = V[np.isfinite(V.vxy_peak)].rename(columns={"vxy_peak": "value", "lick_k": "k
 SPD = V.merge(trials("tongue_median_vxy_peak_per_trial"), on=KEY)
 
 
+#: two-tone angle per lick WITH its lick number, rebuilt from the Fig 2G producer (c1_angle_licks_source.py): Fig 2G's
+#: own session set (filtered_v1 DLC session filter), no trial filter, lick number from the source's per-trial lick list
+ANG_SRC = (r.pipeline_outputs(subdir="vls_stroke_paper") / "ccB_caption_review_2026-11-23/bylicknum/c1_v3"
+           / "c1_angle_per_lick_source_bylicknum_v3_ccB1123.parquet")
+
+
 def angle_licks():
-    """All-lick peak tongue angle (Fig 2G source, stats/inputs/all_licks_endpoints/peak_angle_deg), one row per lick in
-    the SAME row order as the speed_onsetpeak per-lick table (checked: animal, date, side and peak time identical row
-    by row), which supplies trial_idx and the lick order. Sign flipped so + = contralesional (vls_style.ANGLE_SIGN_C1)."""
-    out = []
-    for p in sorted((SM / "speed_onsetpeak_per_lick").glob("speed_onsetpeak_PS*.parquet")):
-        s = pd.read_parquet(p)
-        g = pd.read_parquet(r.pipeline_outputs(subdir="stats") / "inputs/all_licks_endpoints/peak_angle_deg"
-                            / f"{s.animal.iloc[0]}.parquet")
-        assert len(s) == len(g) and (s.t_ms.to_numpy() == g.peak_t_ms.to_numpy()).all()             and (s.side.to_numpy() == g.side.to_numpy()).all(), p
-        s = s.assign(value=-g.value.to_numpy(float), sentinel=g.is_sentinel.to_numpy(bool))
-        out.append(s[~s.sentinel & np.isfinite(s.value)])
-    A = pd.concat(out, ignore_index=True).rename(columns={"lick_k": "k"})
+    """All-lick peak tongue angle (Fig 2G), one row per lick: trial_idx, side, k (0-based order of the lick peaks in the
+    trial), value (sign flipped so + = contralesional, vls_style.ANGLE_SIGN_C1). Epoch labels = the filtered_v1 session
+    labels used by every other two-tone row (same sessions; the producer's assign_epoch_label is compared and printed).
+    Also checks the lick numbers against the earlier row-by-row join to the speed per-lick table."""
+    A = pd.read_parquet(ANG_SRC).rename(columns={"trial_index": "trial_idx"})
     A["date"] = pd.to_datetime(A["date"]).dt.date
-    return A.drop(columns=["vxy_peak", "sentinel"]).merge(trials("tongue_median_vxy_peak_per_trial"), on=KEY)
+    A = A[np.isfinite(A.peak_angle_deg.astype(float))].copy()
+    A["value"] = -A.peak_angle_deg.astype(float)
+    lab = trials("tongue_median_vxy_peak_per_trial").drop_duplicates(["animal", "date"]).set_index(
+        ["animal", "date"]).epoch_label
+    src_lab = A.epoch_label
+    A["epoch_label"] = [lab.get((x, d), np.nan) for x, d in zip(A.animal, A.date)]
+    dif = A.loc[A.epoch_label.astype(str) != src_lab.astype(str), ["animal", "date"]].drop_duplicates()
+    print("angle: sessions whose producer epoch label differs from the filtered_v1 label:", len(dif),
+          dif.to_dict("records")[:20], flush=True)
+    # cross-check: the lick numbers of the earlier join (speed per-lick table, same row order as the 2G table)
+    J = pd.concat([pd.read_parquet(p) for p in sorted((SM / "speed_onsetpeak_per_lick").glob("speed_onsetpeak_PS*.parquet"))])
+    J["date"] = pd.to_datetime(J["date"]).dt.date
+    m = A.merge(J[["animal", "date", "trial_idx", "side", "t_ms", "lick_k"]].rename(columns={"t_ms": "peak_t_ms"}),
+                on=["animal", "date", "trial_idx", "side", "peak_t_ms"], how="left")
+    print(f"angle: lick number vs the earlier join: matched {int(m.lick_k.notna().sum())} / {len(m)}, "
+          f"identical {int((m.lick_k == m.k).sum())}", flush=True)
+    return A[["animal", "date", "trial_idx", "side", "k", "peak_t_ms", "value", "epoch_label"]]
 
 
 ANG = angle_licks()
+print("angle licks (Fig 2G session set, finite):", len(ANG), flush=True)
 
 
 def xy_licks(T):
@@ -208,8 +224,11 @@ for (meas, kind, b, side, grade), d in long.groupby(["measure", "kind", "bin", "
                    n_sessions=len(post_v), n_pre_sessions=len(pre_v), n_animals=len(animals),
                    animals_ms=" ".join(MS_NUM[a] for a in animals), **nb)
         if len(animals) == 1:
-            wa = SUITE.within_animal_bootstrap_ci(sub, post_epoch=post, value_col="value_norm", n_boot=4000)
-            res.update(wa1_effect=wa["wa_effect"], wa1_ci_lo=wa["wa_effect_ci_lo"], wa1_ci_hi=wa["wa_effect_ci_hi"])
+            # the manuscript single-animal rule (SECTION_dagger_single_animal.md): c1_dagger_single_animal.cell_result,
+            # unchanged (re-checks the MWU p, 4,000-draw within-animal session bootstrap, seed 0)
+            wa = cell_result(sub, post, p, f"{meas}/{kind}/{b}/{side}/{grade}/{post}")
+            res.update(wa1_effect=wa["wa1_effect"], wa1_ci_lo=wa["wa1_ci_lo"], wa1_ci_hi=wa["wa1_ci_hi"],
+                       wa1_excludes_zero=wa["wa1_excludes_zero"])
         rows.append(res)
         for a in animals:
             x = sub[sub.animal == a]
@@ -223,13 +242,15 @@ R["fam"] = np.where(R.kind == "trend", np.where(R.bin == "late_minus_early", "tr
 out = []
 for fam, d in R.groupby("fam"):
     d = d.rename(columns={"p": "p_value"}).assign(family=fam)
-    ok = d.p_value.notna() & ~d.single_animal   # single-animal cells: reported, not in the family, never starred
+    ok = d.p_value.notna()   # single-animal cells ARE in the family (manuscript rule: their q is the family q)
     dd = apply_correction_to_results_df(d[ok].copy(), group_cols=("family",))
     d.loc[ok, "q"] = dd["p_adj"].to_numpy()
     out.append(d.rename(columns={"p_value": "p"}))
 R = pd.concat(out, ignore_index=True)
 R["epoch"] = R.epoch.replace({"sub_acute": "subacute"})
 R["star"] = (R.q < 0.05) & R.nb_excludes_zero.astype(bool) & ~R.single_animal
+R["dagger"] = R.single_animal & (R.q < 0.05) & R.get("wa1_excludes_zero", False).fillna(False).astype(bool)
+R["mark"] = np.where(R.star, "*", np.where(R.dagger, DAGGER, ""))
 save(R, "c1_cells")
 save(pd.DataFrame(peran).replace({"epoch": {"sub_acute": "subacute"}}), "c1_per_animal")
 t = R[R.fam == "trend"]
