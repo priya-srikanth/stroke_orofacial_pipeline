@@ -27,8 +27,11 @@ STATS = Path("M:/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/stats")
 FINAL_DAG = "pooled_phenotype_stats_c2aligned_v3_ps47d5_final_ccB1123_dagger"
 V = Path("M:/MICROSCOPE/Priya/stroke_orofacial_pipeline_outputs/vls_stroke_paper")
 TABLES = V / "ccB_caption_review_2026-11-23/twotone_rerun/v29dag/tables"
-SFX = "_v29dag"
+SFX = "_v29dag2"
 DAG_SCALE = 0.75   # the dagger spans ascender to descender; at 0.75 x the star size it fills the same band height
+DAG_DX = 0.30      # v29dag2 (Priya 11-23): the dagger sits 0.30 epoch RIGHT of the star column, in its grade's row,
+                   # so it never overlaps the star of the row below (e.g. mild ** under a moderate dagger)
+NATIVE_BRIDGE = "ls=(0, (1, 1.6)), alpha=0.4, zorder=0.5"   # v29 bridge now in the master renderers (CC-A, 11-23)
 
 
 def mark_for(sheet, fam, ep, ph, side, epoch):
@@ -47,7 +50,9 @@ def load_subst(path, name, subs):
     """Load a renderer with the v29 bridge substitution plus `subs` [(old, new, count)], counts asserted."""
     src = Path(path).read_text(encoding="utf-8")
     src, n = PAT.subn(r"_bridge_plot(ax, \1, \2, gap, color=\3, lw=\4)", src)
-    assert n == 1, f"{path}: bridge statement count {n}"
+    # either the old statement (patched here) or the master's native v29 bridge (used as is)
+    assert n == 1 or (n == 0 and src.count(NATIVE_BRIDGE) == 1), f"{path}: bridge statement count {n}"
+    assert not os.environ.get("VLS_BRIDGE_DASHED"), "VLS_BRIDGE_DASHED is set: the v29 bridge would not be drawn"
     for old, new, cnt in subs:
         k = src.count(old)
         assert k == cnt, f"{path}: {old!r} found {k}x, expected {cnt}"
@@ -57,6 +62,7 @@ def load_subst(path, name, subs):
     mod._bridge_plot = bridge_plot
     mod._mark_for = mark_for
     mod.DAG_SCALE = DAG_SCALE
+    mod.DAG_DX = DAG_DX
     sys.modules[name] = mod
     exec(compile(src, str(path), "exec"), mod.__dict__)
     return mod
@@ -65,16 +71,18 @@ def load_subst(path, name, subs):
 STAR_TXT = "'**', color=S.SEV[ph], ha='center', va='center',"
 C_SUBS = [("if stars_for(sheet, fam, ep, ph, side, e):", "if (_mk := _mark_for(sheet, fam, ep, ph, side, e)):", 1),
           (STAR_TXT, STAR_TXT.replace("'**'", "_mk"), 1),
+          ("ax.text(i, y1 - (0.07", "ax.text(i + (0 if _mk == '**' else DAG_DX), y1 - (0.07", 1),
           ("fontsize=8, fontweight='bold')", "fontsize=8 * (1 if _mk == '**' else DAG_SCALE), fontweight='bold')", 1)]
 S6_SUBS = [("if C.stars_for(sheet, fam, ep, ph, side, e):", "if (_mk := _mark_for(sheet, fam, ep, ph, side, e)):", 1),
            (STAR_TXT, STAR_TXT.replace("'**'", "_mk"), 1),
+           ("ax.text(i, y1_ - (0.07", "ax.text(i + (0 if _mk == '**' else DAG_DX), y1_ - (0.07", 1),
            ("fontsize=FSTAR, fontweight='bold')", "fontsize=FSTAR * (1 if _mk == '**' else DAG_SCALE), fontweight='bold')", 1)]
 S8_KEY_OLD = "label='q < 0.05 & CI'))\n    return h"
 S8_KEY_NEW = ("label='q < 0.05 & CI'))\n"
               "    h.append(plt.Line2D([], [], color='0.2', marker='$\u2020$', ls='none', ms=6, "
               "label='one animal: q < 0.05 & within-animal CI'))\n    return h")
 S8_SUBS = [("& R.star]", "& (R.star | R.dagger)]", 1),
-           ("ax.annotate('**', (i, 1.0)", "ax.annotate(r.mark, (i, 1.0)", 1),
+           ("ax.annotate('**', (i, 1.0)", "ax.annotate(r.mark, (i + (0 if r.mark == '**' else DAG_DX), 1.0)", 1),
            ("fontsize=T['star'], fontweight='bold')", "fontsize=T['star'] * (1 if r.mark == '**' else DAG_SCALE), fontweight='bold')", 1),
            (S8_KEY_OLD, S8_KEY_NEW, 1)]
 
