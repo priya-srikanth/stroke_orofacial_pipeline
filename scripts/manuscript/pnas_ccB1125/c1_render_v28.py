@@ -18,7 +18,7 @@ render() instead (check against the live panels).
 v29 (--v29; PROMPT_CC_B_layout_inputs_2026-11-25 item 1): data-area top / kept ticks by band_rule v29 (the axis line
 covers the data: it ends at the first major tick at or above the highest drawn point, labelled); suffix _FINAL_v29_ccB1125.
 
-Usage: python c1_render_v28.py <out_dir> [--repro | --v29]
+Usage: python c1_render_v28.py <out_dir> [--repro | --v29] [--dump <dir>: write the pre-plot tables per panel, no render]
 """
 import os
 import sys
@@ -40,6 +40,7 @@ STEMS = ["F1_accuracy", "F1_correct_licks", "F1_latency", "F2_first_lick_time", 
 ROW_TOP_PT, ROW_STEP_PT = 3.5, 4.5
 BAND_PT = ROW_TOP_PT + 2 * ROW_STEP_PT + 2.0
 LOG = []
+DUMP = None
 MODE = "v28"          # --v29: band_rule v29 (spine ends at the first major tick >= the highest drawn point)
 
 
@@ -149,8 +150,9 @@ def make_render_v28(C):
 def main():
     import matplotlib
     matplotlib.use("Agg")
+    global MODE, DUMP
     out = Path(sys.argv[1])
-    global MODE
+    DUMP = Path(sys.argv[sys.argv.index("--dump") + 1]) if "--dump" in sys.argv else None
     repro = "--repro" in sys.argv
     MODE = "v29" if "--v29" in sys.argv else "v28"
     if not repro:
@@ -186,7 +188,18 @@ def main():
         src, ep, fam, ylab, sign = C.PANELS[sp] if isinstance(sp, str) else sp
         ep = A.C2_RENAME.get(ep, ep)
         s = C.per_session_scalar(FR.STATS, ep) if src == "scalar" else C.per_session_phase(FR.STATS, fam, ep)
-        rnd(C.baseline(relab(s), sign), sheet, fam, ep, ylab, str(out / f"{stem}_lp_ps47d5{sfx}"))
+        d = C.baseline(relab(s), sign)
+        if DUMP:                        # layout inputs: the exact pre-plot tables (no render)
+            pdir = DUMP / stem; pdir.mkdir(parents=True, exist_ok=True)
+            d.to_csv(pdir / f"{stem}_sessions.csv", index=False, float_format="%.17g")
+            mk = sheet[sheet.endpoint == ep]
+            mk = mk[mk.family == fam] if fam else mk
+            mk.to_csv(pdir / f"{stem}_marks.csv", index=False, encoding="utf-8")
+            (pdir / f"{stem}_spec.json").write_text(__import__("json").dumps(
+                {"endpoint": ep, "family": fam, "ylabel": ylab, "sign": sign}, ensure_ascii=False, indent=1),
+                encoding="utf-8")
+            continue
+        rnd(d, sheet, fam, ep, ylab, str(out / f"{stem}_lp_ps47d5{sfx}"))
         print("wrote", stem, flush=True)
     if LOG:
         pd.DataFrame(LOG).to_csv(out / f"c1_band_log{sfx}.csv", index=False)
