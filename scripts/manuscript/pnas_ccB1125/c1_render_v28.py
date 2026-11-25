@@ -15,7 +15,10 @@ The master renderer manuscript_code/figures/c1_panels.py is NOT edited: it is ex
 render() replaced by render_v28() below (a copy of render() with the band changes). --repro runs the unchanged master
 render() instead (check against the live panels).
 
-Usage: python c1_render_v28.py <out_dir> [--repro]
+v29 (--v29; PROMPT_CC_B_layout_inputs_2026-11-25 item 1): data-area top / kept ticks by band_rule v29 (the axis line
+covers the data: it ends at the first major tick at or above the highest drawn point, labelled); suffix _FINAL_v29_ccB1125.
+
+Usage: python c1_render_v28.py <out_dir> [--repro | --v29]
 """
 import os
 import sys
@@ -28,6 +31,8 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 from c1_bridge_v29style import MC  # noqa: E402
+sys.path.insert(0, str(HERE))
+import band_rule as BR  # noqa: E402
 import c1_final_render as FR  # noqa: E402  (STATS, FINAL sheet name, FILES, SINGLE specs)
 
 STEMS = ["F1_accuracy", "F1_correct_licks", "F1_latency", "F2_first_lick_time", "S_xy_all", "F2_speed_all",
@@ -35,6 +40,7 @@ STEMS = ["F1_accuracy", "F1_correct_licks", "F1_latency", "F2_first_lick_time", 
 ROW_TOP_PT, ROW_STEP_PT = 3.5, 4.5
 BAND_PT = ROW_TOP_PT + 2 * ROW_STEP_PT + 2.0
 LOG = []
+MODE = "v28"          # --v29: band_rule v29 (spine ends at the first major tick >= the highest drawn point)
 
 
 def load_master():
@@ -109,9 +115,7 @@ def make_render_v28(C):
         ys = np.concatenate([_drawn_y(ax) for ax in axes])
         vis = ys[(ys >= y0) & (ys <= live_y1)]
         top = vis.max()
-        yd1 = top + 0.01 * (top - y0)
-        if y0 < 0:
-            yd1 = max(yd1, 0.0 + 0.05 * (max(yd1, 0.0) - y0))
+        yd1, keep_ticks, spine_tick = BR.data_top(top, y0, live_ticks, MODE)
         ah_pt = axes[0].get_position().height * fig.get_size_inches()[1] * 72.0
         band = BAND_PT / ah_pt
         y1n = y0 + (yd1 - y0) / (1.0 - band)
@@ -122,7 +126,7 @@ def make_render_v28(C):
             ax.add_patch(clip)
             for a in list(ax.lines) + list(ax.collections):
                 a.set_clip_path(clip)
-        axes[0].set_yticks([t for t in live_ticks if y0 <= t <= yd1 + 1e-12])
+        axes[0].set_yticks(keep_ticks)
         axes[0].set_ylim(y0, y1n)
         marks = []
         for ax, side in zip(axes, sides):
@@ -134,7 +138,7 @@ def make_render_v28(C):
                                 transform=ax.get_xaxis_transform(), color=S.SEV[ph], ha='center', va='center',
                                 fontsize=8 * (C.DAG_SCALE if mk != '**' else 1), fontweight='bold', clip_on=False)
                         marks.append((side, ph, e, mk))
-        LOG.append(dict(stem=Path(stem).name, y0=y0, live_y1=live_y1, data_top=yd1, ylim_top=y1n, band_pt=BAND_PT,
+        LOG.append(dict(stem=Path(stem).name, mode=MODE, y0=y0, live_y1=live_y1, highest_point=top, spine_tick=spine_tick, data_top=yd1, ylim_top=y1n, band_pt=BAND_PT,
                         axes_h_pt=round(ah_pt, 2), n_points=len(ys), below_y0_live_and_new=n_below,
                         above_live_top=n_above_live, newly_clipped=n_clip_new, marks=marks))
         S.save(fig, stem)
@@ -146,10 +150,12 @@ def main():
     import matplotlib
     matplotlib.use("Agg")
     out = Path(sys.argv[1])
+    global MODE
     repro = "--repro" in sys.argv
+    MODE = "v29" if "--v29" in sys.argv else "v28"
     if not repro:
         os.environ["VLS_SPINE_TO_TICKS"] = "1"       # must be set before vls_style.apply() (c1_panels import)
-    sfx = "_REPRO_ccB1125" if repro else "_FINAL_v28_ccB1125"
+    sfx = "_REPRO_ccB1125" if repro else f"_FINAL_{MODE}_ccB1125"
     out.mkdir(parents=True, exist_ok=True)
     if any(out.glob(f"*{sfx}.*")):
         sys.exit(f"refusing to overwrite *{sfx}.* in {out}")

@@ -15,7 +15,8 @@ The figure is drawn once at the live canvas (2.45 x 5.98 in, axes at the live po
 four as live) and saved as two crops (bbox in inches, full width 176.4 pt):
   out_stem with '{part}' -> 'EF' (E and F, main figure) and 'GH' (G and H, SI).
 Usage: fr_fig5_right_pnas.py <session_scalars_per_session.csv> <fr_session_scalars.csv> <dir with peak_*_side.csv>
-       <out_stem containing {part}>        (refuses to overwrite)
+       <out_stem containing {part}> [--v29]       (refuses to overwrite)
+--v29 (PROMPT_CC_B_layout_inputs_2026-11-25 item 1): data-area top / ticks by band_rule v29.
 """
 import os
 import sys
@@ -28,6 +29,10 @@ import numpy as np, pandas as pd, matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 from matplotlib.transforms import Bbox  # noqa: E402
 import vls_style as S  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import band_rule as BR  # noqa: E402
+MODE = 'v29' if '--v29' in sys.argv else 'v28'   # v29: band_rule v29 (axis line covers the data, labelled top tick)
+sys.argv = [x for x in sys.argv if x != '--v29']
 from c2_panels import grouped, epoch_legend, EPS, C  # noqa: E402
 S.apply()
 pts, stf, fd, out = sys.argv[1], sys.argv[2], Path(sys.argv[3]), sys.argv[4]
@@ -109,20 +114,19 @@ def finish(ax, name, extra_pt=0.0):
     ticks = list(ax.get_yticks())
     ax.set_ylim(y0, live_top); live_ticks = list(ax.get_yticks())
     ys = drawn_y(ax); vis = ys[(ys >= y0) & (ys <= live_top)]
-    top = vis.max(); yd1 = top + 0.01 * (top - y0)
-    if y0 < 0: yd1 = max(yd1, 0.0 + 0.05 * (max(yd1, 0.0) - y0))
+    top = vis.max(); yd1, keep_ticks, spine_tick = BR.data_top(top, y0, live_ticks, MODE)
     ah_pt = ax.get_position().height * H * 72
     band_pt = extra_pt + ROW_TOP_PT + 2 * ROW_STEP_PT + BELOW_PT
     y1n = y0 + (yd1 - y0) / (1 - band_pt / ah_pt)
     clip = Rectangle((-10, y0), 20, yd1 - y0, transform=ax.transData, fill=False, visible=False); ax.add_patch(clip)
     for a_ in list(ax.lines) + list(ax.collections):
         if a_.get_gid() != 'keep': a_.set_clip_path(clip)
-    ax.set_yticks([t for t in live_ticks if y0 <= t <= yd1 + 1e-12]); ax.set_ylim(y0, y1n)
+    ax.set_yticks(keep_ticks); ax.set_ylim(y0, y1n)
     for x, e, col, txt, fs in MARKS[id(ax)]:
         yf = 1 - (extra_pt + ROW_TOP_PT + ROW[e] * ROW_STEP_PT) / ah_pt
         ax.text(x, yf, txt, transform=ax.get_xaxis_transform(), ha='center', va='center', color=col, fontsize=fs,
                 fontweight='bold', clip_on=False, gid='sigmark')
-    LOG.append(dict(panel=name, y0=y0, live_top=live_top, data_top=yd1, ylim_top=y1n, band_pt=band_pt,
+    LOG.append(dict(panel=name, mode=MODE, y0=y0, live_top=live_top, highest_point=top, spine_tick=spine_tick, data_top=yd1, ylim_top=y1n, band_pt=band_pt,
                     axes_h_pt=round(ah_pt, 2), n_points=len(ys), below_y0=int((ys < y0).sum()),
                     above_live_top=int((ys > live_top).sum()), newly_clipped=int(((ys > yd1) & (ys <= live_top)).sum()),
                     marks=';'.join(f'{t}@{x:.3f}/{e}' for x, e, _, t, _ in MARKS[id(ax)])))
