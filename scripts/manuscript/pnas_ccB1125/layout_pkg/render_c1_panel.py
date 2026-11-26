@@ -18,7 +18,12 @@ Modes (output = <out_stem>.pdf/.svg/.png, refuses to overwrite):
 v28 / v29 set VLS_SPINE_TO_TICKS=1 for the vls_style.py next to this script (a verbatim copy of
 manuscript_code/figures/vls_style.py as of 2026-11-25).
 
-Usage: python render_c1_panel.py <sessions.csv> <marks.csv> <spec.json> <out_stem> --mode {orig,v28,v29}
+Usage: python render_c1_panel.py <sessions.csv> <marks.csv> <spec.json> <out_stem> --mode {orig,v28,v29,v30}
+v30 (PROMPT_CC_B_ticks_stars_fig3D_v2 items 1, 2, 2b; = *_FINAL_v30_ccB1125): band_rule.py next to this script:
+  tick step from 1/2/2.5/4/5 x 10^k (4-8 ticks), first tick at/above the data top closest to it, spine ends there;
+  mark rows 3.0 pt below the band top, 4.0 pt apart, 1.5 pt below the last, only the rows (severe / moderate /
+  mild) the panel uses; lower limit extended so every mean marker, SEM bar and connecting line is inside the
+  data area (2 % of the live range below the lowest; session dots may fall below). Prints a one-line log.
 Deps: python 3.11, numpy, pandas, matplotlib 3.11.2 (the version of the live files), Arial installed.
 """
 import argparse
@@ -130,15 +135,27 @@ def render(d, marks, ylab, stem, mode):
         S.save(fig, stem)
         return
     y0, live_y1 = lo - 0.08 * span, hi + 0.42 * span
+    y0_live = y0
+    if mode == 'v30':                    # item 2b: every marker / SEM bar / connecting line inside the data area
+        import band_rule as BR
+        cl = min(BR.cover_low(ax) for ax in axes)
+        if cl - 0.02 * span < y0: y0 = cl - 0.02 * span
     axes[0].set_ylim(y0, live_y1)
     live_ticks = list(axes[0].get_yticks())
     axes[0].set_ylabel(ylab)
     fig.subplots_adjust(left=0.30 if len(sides) == 1 else 0.20, right=0.98, bottom=0.28, top=0.86, wspace=0.12)
     ys = np.concatenate([drawn_y(ax) for ax in axes])
     top = ys[(ys >= y0) & (ys <= live_y1)].max()
-    yd1, ticks = data_top(top, y0, live_ticks, mode)
+    if mode == 'v30':
+        import band_rule as BR
+        yd1, ticks, spine_tick = BR.data_top(top, y0, live_ticks, 'v30')
+        used = {row for row, ph in enumerate(['severe', 'moderate', 'mild']) for side in sides
+                for e, _ in EPOCHS[1:] if mark_for(marks, ph, side, e)}
+        band_pt = BR.band_pt(used)
+    else:
+        yd1, ticks = data_top(top, y0, live_ticks, mode); spine_tick = None; band_pt = BAND_PT
     ah_pt = axes[0].get_position().height * fig.get_size_inches()[1] * 72.0
-    y1n = y0 + (yd1 - y0) / (1.0 - BAND_PT / ah_pt)
+    y1n = y0 + (yd1 - y0) / (1.0 - band_pt / ah_pt)
     for ax in axes:
         clip = Rectangle((-10, y0), 20, yd1 - y0, transform=ax.transData, fill=False, visible=False)
         ax.add_patch(clip)
@@ -151,16 +168,21 @@ def render(d, marks, ylab, stem, mode):
             for i, (e, _) in enumerate(EPOCHS[1:], start=1):
                 mk = mark_for(marks, ph, side, e)
                 if mk:
-                    ax.text(i + (DAG_DX if mk != '**' else 0), 1.0 - (ROW_TOP_PT + row * ROW_STEP_PT) / ah_pt, mk,
+                    yf = BR.row_y(row, ah_pt) if mode == 'v30' else 1.0 - (ROW_TOP_PT + row * ROW_STEP_PT) / ah_pt
+                    ax.text(i + (DAG_DX if mk != '**' else 0), yf, mk,
                             transform=ax.get_xaxis_transform(), color=S.SEV[ph], ha='center', va='center',
                             fontsize=8 * (DAG_SCALE if mk != '**' else 1), fontweight='bold', clip_on=False)
     S.save(fig, stem)
+    if mode == 'v30':
+        print(f'LOG {Path(stem).name}: y0_live={y0_live:.6g} y0={y0:.6g} lower_changed={y0 < y0_live} '
+              f'data_top={top:.6g} spine_tick={spine_tick} ticks={ticks} band_pt={band_pt} rows={sorted(used)} '
+              f'ylim_top={y1n:.6g} newly_clipped={int(((ys > yd1) & (ys <= live_y1)).sum())}')
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('sessions'); ap.add_argument('marks'); ap.add_argument('spec'); ap.add_argument('out_stem')
-    ap.add_argument('--mode', choices=['orig', 'v28', 'v29'], required=True)
+    ap.add_argument('--mode', choices=['orig', 'v28', 'v29', 'v30'], required=True)
     a = ap.parse_args()
     for x in ('pdf', 'svg', 'png'):
         if Path(f'{a.out_stem}.{x}').exists():

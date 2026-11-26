@@ -33,8 +33,11 @@ from matplotlib.patches import Rectangle  # noqa: E402
 from matplotlib.transforms import Bbox  # noqa: E402
 import vls_style as S  # noqa: E402
 import band_rule as BR  # noqa: E402
-MODE = 'v29' if '--v29' in sys.argv else 'v28'   # v29: band_rule v29 (axis line covers the data, labelled top tick)
-sys.argv = [x for x in sys.argv if x != '--v29']
+MODE = 'v30' if '--v30' in sys.argv else 'v29' if '--v29' in sys.argv else 'v28'   # v29: band_rule v29 (axis line covers the data, labelled top tick)
+# v30 (PROMPT_CC_B_ticks_stars_fig3D_v2 items 1, 2, 2b, 4): band_rule v30 ticks (1/2/2.5/4/5 x 10^k, 4-8 ticks), rows
+# 3.0 / 4.0 / 1.5 pt and only the epoch rows in use (order acute, subacute, chronic unchanged), lower limit extended
+# so every marker / SEM / CI bar is inside the data area, G/H component names and order as panel C (CC-A's cnames).
+sys.argv = [x for x in sys.argv if x not in ('--v29', '--v30')]
 # ---- from manuscript_code/figures/c2_panels.py (verbatim; that module also imports scipy and its own S.apply())
 EPS = ['pre', 'acute', 'subacute', 'chronic']
 C = S.EP
@@ -76,6 +79,8 @@ if 'measure' in P.columns:
     P = P[P.measure.isin(['angle_spatial', 'angle_spectral', 'side_spec'])].rename(columns={'unit': 'factor'})
     P['axes'] = P.measure.map({'angle_spatial': 2, 'angle_spectral': 3, 'side_spec': 4})
 NAME = {'lick_right': 'lick\ncontra', 'lick_left': 'lick\nipsi', 'slow_jaw': 'slow\njaw', 'whisk_run': 'whisk\nrun'}
+if MODE == 'v30':   # item 4: names and order of panel C (as fr_fig5_right_v28_cnames_ccA1125.py)
+    NAME.update({'slow_jaw': 'pre-lick\njaw', 'whisk_run': 'whisking'})
 MEAS = {2: 'angle_spatial', 3: 'angle_spectral', 4: 'side_spec'}
 W, L, R = 2.45, 0.66, 0.05
 HS = [1.0, 1.0, 0.80, 0.80]
@@ -87,7 +92,7 @@ axs = []; y = H
 for h, g in zip(HS, GAP):
     y -= g + h; axs.append(fig.add_axes([L / W, y / H, 1 - (L + R) / W, h / H]))
 
-ROW_TOP_PT, ROW_STEP_PT, BELOW_PT = 3.5, 4.5, 2.0
+ROW_TOP_PT, ROW_STEP_PT, BELOW_PT = (3.0, 4.0, 1.5) if MODE == 'v30' else (3.5, 4.5, 2.0)
 ROW = {'acute': 0, 'subacute': 1, 'chronic': 2}
 SPOUT_PT = 8.0                                    # F only: line for the spout labels above the star rows
 MARKS = {id(a): [] for a in axs}                  # (x, epoch, colour, text, fontsize)
@@ -141,12 +146,18 @@ def drawn_y(ax):
 def finish(ax, name, extra_pt=0.0):
     """Data area to the highest drawn point (zero line inside), fixed band above, marks in epoch rows."""
     y0, _ = ax.get_ylim(); live_top = LIVE_TOP[id(ax)]
+    y0_live = y0
+    if MODE == 'v30':                    # item 2b: every marker / SEM / CI bar inside the data area
+        cl = BR.cover_low(ax)
+        if cl - 0.02 * (live_top - y0) < y0: y0 = cl - 0.02 * (live_top - y0)
     ticks = list(ax.get_yticks())
     ax.set_ylim(y0, live_top); live_ticks = list(ax.get_yticks())
     ys = drawn_y(ax); vis = ys[(ys >= y0) & (ys <= live_top)]
     top = vis.max(); yd1, keep_ticks, spine_tick = BR.data_top(top, y0, live_ticks, MODE)
     ah_pt = ax.get_position().height * H * 72
-    band_pt = extra_pt + ROW_TOP_PT + 2 * ROW_STEP_PT + BELOW_PT
+    used = {ROW[e] for _, e, _, _, _ in MARKS[id(ax)]}
+    band_pt = extra_pt + ((ROW_TOP_PT + max(used) * ROW_STEP_PT + BELOW_PT) if used else 0.0) if MODE == 'v30' \
+        else extra_pt + ROW_TOP_PT + 2 * ROW_STEP_PT + BELOW_PT
     y1n = y0 + (yd1 - y0) / (1 - band_pt / ah_pt)
     clip = Rectangle((-10, y0), 20, yd1 - y0, transform=ax.transData, fill=False, visible=False); ax.add_patch(clip)
     for a_ in list(ax.lines) + list(ax.collections):
@@ -156,7 +167,7 @@ def finish(ax, name, extra_pt=0.0):
         yf = 1 - (extra_pt + ROW_TOP_PT + ROW[e] * ROW_STEP_PT) / ah_pt
         ax.text(x, yf, txt, transform=ax.get_xaxis_transform(), ha='center', va='center', color=col, fontsize=fs,
                 fontweight='bold', clip_on=False, gid='sigmark')
-    LOG.append(dict(panel=name, mode=MODE, y0=y0, live_top=live_top, highest_point=top, spine_tick=spine_tick, data_top=yd1, ylim_top=y1n, band_pt=band_pt,
+    LOG.append(dict(panel=name, mode=MODE, y0_live=y0_live, y0=y0, lower_changed=y0 < y0_live, rows_used=sorted(used), live_top=live_top, highest_point=top, spine_tick=spine_tick, data_top=yd1, ylim_top=y1n, band_pt=band_pt,
                     axes_h_pt=round(ah_pt, 2), n_points=len(ys), below_y0=int((ys < y0).sum()),
                     above_live_top=int((ys > live_top).sum()), newly_clipped=int(((ys > yd1) & (ys <= live_top)).sum()),
                     marks=';'.join(f'{t}@{x:.3f}/{e}' for x, e, _, t, _ in MARKS[id(ax)])))
@@ -184,7 +195,7 @@ for i, c in enumerate(CELLS):
             MARKS[id(ax)].append((i + (j - 1.5) * w, e, C[e], '*' * int(r[3]), 8 if r[3] == 2 else 9))
 epoch_legend(ax, loc='lower center', ncol=4); lg = ax.get_legend(); lg.set_bbox_to_anchor((0.42, 1.0)); lg.set_frame_on(False)
 # G, H
-G4 = ['lick_right', 'lick_left', 'slow_jaw', 'whisk_run']
+G4 = ['lick_right', 'lick_left', 'whisk_run', 'slow_jaw'] if MODE == 'v30' else ['lick_right', 'lick_left', 'slow_jaw', 'whisk_run']
 shapes(axs[2], 2, G4); axs[2].set_ylabel('spatial angle\n(Δ deg vs own pre)')
 shapes(axs[3], 3, G4); axs[3].set_ylabel('spectral angle\n(Δ deg vs own pre)')
 finish(axs[0], 'E')

@@ -19,6 +19,7 @@ v29 (--v29; PROMPT_CC_B_layout_inputs_2026-11-25 item 1): data-area top / kept t
 covers the data: it ends at the first major tick at or above the highest drawn point, labelled); suffix _FINAL_v29_ccB1125.
 
 Usage: python c1_render_v28.py <out_dir> [--repro | --v29] [--dump <dir>: write the pre-plot tables per panel, no render]
+       [--stems F1_dprime,F1_criterion,F2_angle_all: any stems of c1_final_render.SINGLE instead of the seven PNAS panels]
 """
 import os
 import sys
@@ -155,6 +156,7 @@ def main():
     DUMP = Path(sys.argv[sys.argv.index("--dump") + 1]) if "--dump" in sys.argv else None
     repro = "--repro" in sys.argv
     MODE = "v29" if "--v29" in sys.argv else "v28"
+    stems = sys.argv[sys.argv.index("--stems") + 1].split(",") if "--stems" in sys.argv else STEMS   # 11-25 render kits: any FR.SINGLE stem
     if not repro:
         os.environ["VLS_SPINE_TO_TICKS"] = "1"       # must be set before vls_style.apply() (c1_panels import)
     sfx = "_REPRO_ccB1125" if repro else f"_FINAL_{MODE}_ccB1125"
@@ -183,7 +185,7 @@ def main():
     rnd = C.render if repro else make_render_v28(C)
     matplotlib.rcParams["axes.labelpad"] = 1.5
     spec = dict(FR.SINGLE)
-    for stem in STEMS:
+    for stem in stems:
         sp = spec[stem]
         src, ep, fam, ylab, sign = C.PANELS[sp] if isinstance(sp, str) else sp
         ep = A.C2_RENAME.get(ep, ep)
